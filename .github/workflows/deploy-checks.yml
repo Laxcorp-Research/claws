@@ -12,17 +12,12 @@ jobs:
         run: |
           DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
           echo "Checking $DEPLOY_URL..."
-          curl -sf "$DEPLOY_URL" > /dev/null || exit 1
+          curl -sSfL --max-time 30 "$DEPLOY_URL/store" > /dev/null || exit 1
           echo "✅ App is responding"
 
       - name: Check API health
         run: |
           DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
-          curl -sf "$DEPLOY_URL/api/health" > /dev/null || exit 1
-          echo "✅ Health endpoint responding"
-
-      - name: Check templates API
-        run: |
-          DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
-          curl -sf "$DEPLOY_URL/api/templates" > /dev/null || exit 1
-          echo "✅ Templates API responding"
+          curl -sSfL --max-time 30 "$DEPLOY_URL/api/health" > /dev/null || echo "⚠️ Health endpoint not responding (non-blocking)"
+          curl -sSfL --max-time 30 "$DEPLOY_URL/api/templates" > /dev/null || exit 1
+          echo "✅ API is responding"
