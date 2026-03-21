@@ -80,7 +80,7 @@ export default function StorePage() {
               placeholder="Search Claws..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="px-3.5 py-2 border border-[var(--bd)] rounded-[8px] bg-[var(--bg)] text-[12px] w-[280px] placeholder:text-[var(--tx3)] focus:outline-none focus:ring-2 focus:ring-[var(--tx)]/10 focus:border-[var(--tx)] transition-colors"
+              className="px-3.5 py-2 border border-[var(--bd)] rounded-[8px] bg-[var(--bg)] text-[12px] w-[280px] placeholder:text-[var(--tx3)] focus:outline-none focus:border-[var(--tx)] transition-colors"
             />
           </div>
 
