@@ -59,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const snapshot = await prisma.workspaceSnapshot.create({
     data: {
       workspaceId: id, version: nextVersion, snapshot: snapshotData,
-      trigger: (body as Record<string, string>).trigger || "AUTO_SAVE",
+      trigger: ((body as Record<string, string>).trigger || "AUTO_SAVE") as "AUTO_SAVE" | "MANUAL_SAVE" | "PRE_DEPLOY" | "TEMPLATE_LOAD" | "USER_LABELED",
       label: (body as Record<string, string>).label || null,
     },
   })

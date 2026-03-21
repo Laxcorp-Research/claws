@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     let payload: Record<string, unknown>
     try {
-      payload = webhookClient.webhooks.unwrap(rawBody, headers) as Record<string, unknown>
+      payload = webhookClient.webhooks.unwrap(rawBody, { headers }) as unknown as Record<string, unknown>
     } catch {
       console.error("[Webhook] Signature verification failed")
       return NextResponse.json({ received: true }, { status: 200 })
@@ -79,7 +79,7 @@ async function handlePaymentSucceeded(data: Record<string, unknown> | undefined,
     await prisma.purchase.create({
       data: {
         userId: metadata.userId, clawTemplateId: metadata.templateId, workspaceId: workspace.id,
-        amountPaid: (data?.total_amount as number) ? (data.total_amount as number) / 100 : template.priceSetup,
+        amountPaid: (data?.total_amount as number) ? ((data?.total_amount as number) / 100) : template.priceSetup,
         currency: (data?.currency as string) ?? "usd", dodoPaymentId: paymentId, status: "COMPLETED",
       },
     })

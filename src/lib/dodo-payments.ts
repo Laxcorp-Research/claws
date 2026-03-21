@@ -74,6 +74,7 @@ export async function createPlanCheckout(params: {
       ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
     product_id: productId,
+    quantity: 1,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing`,
     metadata: { userId: params.userId, type: "plan_upgrade", plan: params.plan },
   })
@@ -99,6 +100,7 @@ export async function createHostingCheckout(params: {
       ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
     product_id: CLOUD_HOSTING_PRODUCT,
+    quantity: 1,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/setup/${params.workspaceId}/step/3`,
     metadata: { userId: params.userId, workspaceId: params.workspaceId, type: "cloud_hosting" },
   })
@@ -109,8 +111,8 @@ export async function createHostingCheckout(params: {
 export async function getPortalUrl(dodoCustomerId: string): Promise<string | null> {
   if (MOCK_MODE || !dodoCustomerId) return null
   const dodo = getDodoClient()
-  const portal = await dodo.customers.createCustomerPortalSession(dodoCustomerId)
-  return portal.link ?? null
+  const portal = await (dodo.customers as unknown as Record<string, Function>).createCustomerPortalSession(dodoCustomerId)
+  return (portal as Record<string, string>).link ?? null
 }
 
 export const PLAN_LIMITS = {

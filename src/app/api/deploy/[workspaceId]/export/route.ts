@@ -15,7 +15,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
 
   try {
     const zipBuffer = await exportForSelfHosting(workspaceId)
-    return new Response(zipBuffer, {
+    return new Response(zipBuffer as unknown as BodyInit, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="claws-${workspaceId}.zip"`,
