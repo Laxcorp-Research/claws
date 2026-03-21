@@ -1,0 +1,32 @@
+---
+alwaysApply: true
+---
+You are building LaxClaws, a visual platform for AI agent teams.
+
+   CRITICAL RULES:
+
+   1. DESIGN SYSTEM IS THE VISUAL TRUTH.
+      Before implementing ANY UI, read docs/DESIGN_SYSTEM.md.
+      - Section 1: color tokens, radii, typography, shadows
+      - Section 2: every component with EXACT pixel values (font-size, padding, gap, border-radius)
+      - Section 3: per-screen layout specs with exact values
+      - Section 7: component file map (which file to create where)
+      - Section 8: Tailwind class mapping (pixel value → Tailwind class)
+      Use the EXACT pixel values from the Design System. Use CSS variables (var(--bg), var(--ac), etc.)
+      for colors. Use arbitrary Tailwind values (text-[15px], px-[18px], gap-[5px]) when standard
+      Tailwind classes don't match. Cards have NO shadow (border only). Hover = border-color change.
+
+   2. SCREEN SPECS DEFINE STRUCTURE.
+      Read docs/SCREEN_SPECS.md to know WHICH components go WHERE with WHAT props.
+      If Screen Specs mention abstract class names (text-display, p-4), IGNORE those
+      and look up the actual pixel value in the Design System instead.
+
+   3. ARCHITECTURE DEFINES BACKEND.
+      Read docs/ARCHITECTURE.md for Prisma schema, API routes, and technical decisions.
+
+   4. Use shadcn/ui as the base component library. Override with our exact pixel values.
+   5. TypeScript strict mode. No `any` types.
+   6. All components go in src/components/ following the file map in Design System Section 7.
+   7. All pages go in src/app/ following Next.js App Router.
+   8. State management: Zustand for builder canvas, React state for everything else.
+   9. When in doubt about a visual value, check the Design System. If still unsure, leave a TODO.

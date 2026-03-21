@@ -1,0 +1,1414 @@
+import { SeedSkill } from "./types"
+
+export const TOOL_SPECIFIC_SKILLS: SeedSkill[] = [
+  {
+    name: "Tavily Search",
+    slug: "tavily-search",
+    description: "Real-time web search via the Tavily API",
+    skillMd: `---
+name: Tavily Search
+description: Real-time web search via Tavily API
+metadata:
+  openclaw:
+    emoji: 🔎
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Tavily API key.
+
+## Key Endpoints
+
+**Search:**
+\`\`\`bash
+curl -X POST https://api.tavily.com/search \\
+  -H "Content-Type: application/json" \\
+  -d '{"api_key":"'$TOOL_API_KEY'","query":"latest AI news","max_results":5}'
+\`\`\`
+
+**Extract (content from URL):**
+\`\`\`bash
+curl -X POST https://api.tavily.com/extract \\
+  -H "Content-Type: application/json" \\
+  -d '{"api_key":"'$TOOL_API_KEY'","urls":["https://example.com"]}'
+\`\`\`
+
+Use \`search_depth: "advanced"\` for deeper results. Default returns title, url, content, and score.`,
+    type: "TOOL_SPECIFIC",
+    category: "SEARCH",
+    icon: "🔎",
+    compatibleTools: ["tavily"],
+    requiresToolConnection: true,
+    requiredToolCategory: "SEARCH",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "HubSpot CRM",
+    slug: "hubspot-crm",
+    description: "Manage contacts, deals, and companies in HubSpot",
+    skillMd: `---
+name: HubSpot CRM
+description: Contacts and deals CRUD via HubSpot API
+metadata:
+  openclaw:
+    emoji: 🔗
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your HubSpot private app token.
+
+## Key Endpoints
+
+**Create Contact:**
+\`\`\`bash
+curl -X POST https://api.hubapi.com/crm/v3/objects/contacts \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"properties":{"email":"j@example.com","firstname":"Jane"}}'
+\`\`\`
+
+**List Deals:**
+\`\`\`bash
+curl https://api.hubapi.com/crm/v3/objects/deals \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+**Search Contacts:**
+\`\`\`bash
+curl -X POST https://api.hubapi.com/crm/v3/objects/contacts/search \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"filterGroups":[{"filters":[{"propertyName":"email","operator":"EQ","value":"j@example.com"}]}]}'
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "CRM",
+    icon: "🔗",
+    compatibleTools: ["hubspot"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CRM",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Salesforce CRM",
+    slug: "salesforce-crm",
+    description: "Manage leads, opportunities, and accounts in Salesforce",
+    skillMd: `---
+name: Salesforce CRM
+description: Leads and opportunities via Salesforce REST API
+metadata:
+  openclaw:
+    emoji: ☁️
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` (Bearer token) and \`$SF_INSTANCE_URL\`.
+
+## Key Endpoints
+
+**Create Lead:**
+\`\`\`bash
+curl -X POST $SF_INSTANCE_URL/services/data/v59.0/sobjects/Lead \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"FirstName":"Jane","LastName":"Doe","Company":"Acme"}'
+\`\`\`
+
+**Query Opportunities:**
+\`\`\`bash
+curl "$SF_INSTANCE_URL/services/data/v59.0/query?q=SELECT+Id,Name,Amount+FROM+Opportunity" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "CRM",
+    icon: "☁️",
+    compatibleTools: ["salesforce"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CRM",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Pipedrive CRM",
+    slug: "pipedrive-crm",
+    description: "Manage deals and pipeline stages in Pipedrive",
+    skillMd: `---
+name: Pipedrive CRM
+description: Deals pipeline management via Pipedrive API
+metadata:
+  openclaw:
+    emoji: 🟢
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Pipedrive API token.
+
+## Key Endpoints
+
+**Create Deal:**
+\`\`\`bash
+curl -X POST "https://api.pipedrive.com/v1/deals?api_token=$TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"New Deal","value":5000,"currency":"USD"}'
+\`\`\`
+
+**List Pipeline Stages:**
+\`\`\`bash
+curl "https://api.pipedrive.com/v1/stages?api_token=$TOOL_API_KEY"
+\`\`\`
+
+**Update Deal Stage:**
+\`\`\`bash
+curl -X PUT "https://api.pipedrive.com/v1/deals/{id}?api_token=$TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"stage_id":3}'
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "CRM",
+    icon: "🟢",
+    compatibleTools: ["pipedrive"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CRM",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Apollo Search",
+    slug: "apollo-search",
+    description: "B2B people search and contact enrichment via Apollo.io",
+    skillMd: `---
+name: Apollo Search
+description: B2B people search and enrichment via Apollo API
+metadata:
+  openclaw:
+    emoji: 🚀
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Apollo API key.
+
+## Key Endpoints
+
+**People Search:**
+\`\`\`bash
+curl -X POST https://api.apollo.io/api/v1/mixed_people/search \\
+  -H "Content-Type: application/json" \\
+  -H "X-Api-Key: $TOOL_API_KEY" \\
+  -d '{"person_titles":["CTO"],"person_locations":["San Francisco"],"per_page":10}'
+\`\`\`
+
+**Enrich Person:**
+\`\`\`bash
+curl -X POST https://api.apollo.io/api/v1/people/match \\
+  -H "Content-Type: application/json" \\
+  -H "X-Api-Key: $TOOL_API_KEY" \\
+  -d '{"email":"jane@example.com"}'
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "LEAD_DATABASE",
+    icon: "🚀",
+    compatibleTools: ["apollo"],
+    requiresToolConnection: true,
+    requiredToolCategory: "LEAD_DATABASE",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Clay Enrichment",
+    slug: "clay-enrichment",
+    description: "Multi-source data enrichment via Clay API",
+    skillMd: `---
+name: Clay Enrichment
+description: Multi-source enrichment via Clay API
+metadata:
+  openclaw:
+    emoji: 🧱
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Clay API key.
+
+## Key Endpoints
+
+**Enrich Person:**
+\`\`\`bash
+curl -X POST https://api.clay.com/v1/enrichments \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"email":"jane@example.com","sources":["clearbit","apollo","hunter"]}'
+\`\`\`
+
+**List Tables:**
+\`\`\`bash
+curl https://api.clay.com/v1/tables \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+Clay aggregates 50+ data providers. Specify sources or let Clay auto-select the best match.`,
+    type: "TOOL_SPECIFIC",
+    category: "ENRICHMENT",
+    icon: "🧱",
+    compatibleTools: ["clay"],
+    requiresToolConnection: true,
+    requiredToolCategory: "ENRICHMENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Instantly Email",
+    slug: "instantly-email",
+    description: "Send cold email campaigns via Instantly",
+    skillMd: `---
+name: Instantly Email
+description: Cold email campaigns via Instantly API
+metadata:
+  openclaw:
+    emoji: ⚡
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Instantly API key.
+
+## Key Endpoints
+
+**Create Campaign:**
+\`\`\`bash
+curl -X POST https://api.instantly.ai/api/v1/campaign/create \\
+  -H "Content-Type: application/json" \\
+  -d '{"api_key":"'$TOOL_API_KEY'","name":"Outbound Q1"}'
+\`\`\`
+
+**Add Leads to Campaign:**
+\`\`\`bash
+curl -X POST https://api.instantly.ai/api/v1/lead/add \\
+  -H "Content-Type: application/json" \\
+  -d '{"api_key":"'$TOOL_API_KEY'","campaign_id":"abc","leads":[{"email":"j@co.com","first_name":"Jane"}]}'
+\`\`\`
+
+**Get Campaign Analytics:**
+\`\`\`bash
+curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$TOOL_API_KEY&campaign_id=abc"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "EMAIL_SENDER",
+    icon: "⚡",
+    compatibleTools: ["instantly"],
+    requiresToolConnection: true,
+    requiredToolCategory: "EMAIL_SENDER",
+    isBuiltIn: false,
+    permissions: ["internet_access", "email_send"],
+  },
+  {
+    name: "SmartLead Email",
+    slug: "smartlead-email",
+    description: "Cold email campaigns via SmartLead",
+    skillMd: `---
+name: SmartLead Email
+description: Cold email campaigns via SmartLead API
+metadata:
+  openclaw:
+    emoji: 💡
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your SmartLead API key.
+
+## Key Endpoints
+
+**Create Campaign:**
+\`\`\`bash
+curl -X POST "https://server.smartlead.ai/api/v1/campaigns/create?api_key=$TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name":"Outbound Spring"}'
+\`\`\`
+
+**Add Leads:**
+\`\`\`bash
+curl -X POST "https://server.smartlead.ai/api/v1/campaigns/{id}/leads?api_key=$TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"lead_list":[{"email":"j@co.com","first_name":"Jane"}]}'
+\`\`\`
+
+**Campaign Statistics:**
+\`\`\`bash
+curl "https://server.smartlead.ai/api/v1/campaigns/{id}/statistics?api_key=$TOOL_API_KEY"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "EMAIL_SENDER",
+    icon: "💡",
+    compatibleTools: ["smartlead"],
+    requiresToolConnection: true,
+    requiredToolCategory: "EMAIL_SENDER",
+    isBuiltIn: false,
+    permissions: ["internet_access", "email_send"],
+  },
+  {
+    name: "Twitter API",
+    slug: "twitter-api",
+    description: "Post, read, and search tweets via the Twitter/X API",
+    skillMd: `---
+name: Twitter API
+description: Post, read, and search tweets via Twitter API v2
+metadata:
+  openclaw:
+    emoji: 🐦
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Twitter Bearer token.
+
+## Key Endpoints
+
+**Post Tweet:**
+\`\`\`bash
+curl -X POST https://api.twitter.com/2/tweets \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"text":"Hello from LaxClaws!"}'
+\`\`\`
+
+**Search Tweets:**
+\`\`\`bash
+curl "https://api.twitter.com/2/tweets/search/recent?query=AI%20agents&max_results=10" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+**Get User Timeline:**
+\`\`\`bash
+curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "SOCIAL",
+    icon: "🐦",
+    compatibleTools: ["twitter-api"],
+    requiresToolConnection: true,
+    requiredToolCategory: "SOCIAL",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "LinkedIn API",
+    slug: "linkedin-api",
+    description: "Manage LinkedIn posts and profiles via Composio OAuth",
+    skillMd: `---
+name: LinkedIn API
+description: LinkedIn posts and profile management via Composio OAuth
+metadata:
+  openclaw:
+    emoji: 💼
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Create and share posts on LinkedIn
+- Read profile information
+- Manage connections and invitations
+- Comment and react to posts
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "SOCIAL",
+    icon: "💼",
+    compatibleTools: ["linkedin"],
+    requiresToolConnection: true,
+    requiredToolCategory: "SOCIAL",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Buffer Social",
+    slug: "buffer-social",
+    description: "Schedule and publish social media posts via Buffer",
+    skillMd: `---
+name: Buffer Social
+description: Schedule social posts via Buffer API
+metadata:
+  openclaw:
+    emoji: 📱
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Buffer access token.
+
+## Key Endpoints
+
+**Create Post:**
+\`\`\`bash
+curl -X POST https://api.bufferapp.com/1/updates/create.json \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -d "text=Check out our new launch!&profile_ids[]=abc123&scheduled_at=2025-03-01T10:00:00Z"
+\`\`\`
+
+**List Profiles:**
+\`\`\`bash
+curl https://api.bufferapp.com/1/profiles.json \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+Supports Twitter, LinkedIn, Facebook, Instagram, and more via connected profiles.`,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "📱",
+    compatibleTools: ["buffer"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Typefully Social",
+    slug: "typefully-social",
+    description: "Create and schedule Twitter threads via Typefully",
+    skillMd: `---
+name: Typefully Social
+description: Twitter threads and scheduling via Typefully API
+metadata:
+  openclaw:
+    emoji: ✍️
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Typefully API key.
+
+## Key Endpoints
+
+**Create Draft (thread):**
+\`\`\`bash
+curl -X POST https://api.typefully.com/v1/drafts/ \\
+  -H "X-API-KEY: $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"content":"First tweet\\n\\n---\\n\\nSecond tweet","schedule-date":"2025-03-01T10:00:00Z"}'
+\`\`\`
+
+Use \`---\` on its own line to separate thread tweets. Omit \`schedule-date\` to save as draft.`,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "✍️",
+    compatibleTools: ["typefully"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "YouTube Data API",
+    slug: "youtube-data-api",
+    description: "Manage YouTube channels, videos, and playlists",
+    skillMd: `---
+name: YouTube Data API
+description: Channel and video management via YouTube Data API v3
+metadata:
+  openclaw:
+    emoji: 🎬
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your YouTube Data API key (or OAuth token for writes).
+
+## Key Endpoints
+
+**Search Videos:**
+\`\`\`bash
+curl "https://www.googleapis.com/youtube/v3/search?part=snippet&q=AI+agents&type=video&key=$TOOL_API_KEY"
+\`\`\`
+
+**Get Channel Stats:**
+\`\`\`bash
+curl "https://www.googleapis.com/youtube/v3/channels?part=statistics&id=CHANNEL_ID&key=$TOOL_API_KEY"
+\`\`\`
+
+**List Playlists:**
+\`\`\`bash
+curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHANNEL_ID&key=$TOOL_API_KEY"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "🎬",
+    compatibleTools: ["youtube-data-api"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Beehiiv Newsletter",
+    slug: "beehiiv-newsletter",
+    description: "Manage newsletter posts and subscribers via Beehiiv",
+    skillMd: `---
+name: Beehiiv Newsletter
+description: Newsletter posts and subscribers via Beehiiv API
+metadata:
+  openclaw:
+    emoji: 🐝
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Beehiiv API key. Set \`$BEEHIIV_PUB_ID\` to your publication ID.
+
+## Key Endpoints
+
+**Create Post:**
+\`\`\`bash
+curl -X POST "https://api.beehiiv.com/v2/publications/$BEEHIIV_PUB_ID/posts" \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"Weekly Update","subtitle":"What happened this week","content_html":"<p>Hello!</p>"}'
+\`\`\`
+
+**List Subscribers:**
+\`\`\`bash
+curl "https://api.beehiiv.com/v2/publications/$BEEHIIV_PUB_ID/subscriptions" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "🐝",
+    compatibleTools: ["beehiiv"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Substack Newsletter",
+    slug: "substack-newsletter",
+    description: "Publish newsletter posts on Substack (limited API)",
+    skillMd: `---
+name: Substack Newsletter
+description: Substack newsletter management (limited API)
+metadata:
+  openclaw:
+    emoji: 📰
+---
+
+## Authentication
+Substack has a limited official API. Set \`$TOOL_API_KEY\` if using an unofficial or partner endpoint.
+
+## Notes
+- Substack does not offer a full public REST API as of 2025.
+- Reading posts is possible via the RSS feed at \`https://yourpub.substack.com/feed\`.
+- For write operations, consider using browser automation or the Substack editor API if whitelisted.
+- Monitor Substack's developer docs for future API availability.
+
+Best used for read-only integrations or alongside manual publishing workflows.`,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "📰",
+    compatibleTools: ["substack"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "ConvertKit Newsletter",
+    slug: "convertkit-newsletter",
+    description: "Manage broadcasts and subscribers via ConvertKit",
+    skillMd: `---
+name: ConvertKit Newsletter
+description: Broadcasts and subscribers via ConvertKit API
+metadata:
+  openclaw:
+    emoji: 💌
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your ConvertKit API secret.
+
+## Key Endpoints
+
+**Create Broadcast:**
+\`\`\`bash
+curl -X POST https://api.convertkit.com/v3/broadcasts \\
+  -H "Content-Type: application/json" \\
+  -d '{"api_secret":"'$TOOL_API_KEY'","subject":"Weekly Digest","content":"<p>Hello subscribers!</p>"}'
+\`\`\`
+
+**List Subscribers:**
+\`\`\`bash
+curl "https://api.convertkit.com/v3/subscribers?api_secret=$TOOL_API_KEY&page=1"
+\`\`\`
+
+**Add Subscriber to Form:**
+\`\`\`bash
+curl -X POST "https://api.convertkit.com/v3/forms/{form_id}/subscribe" \\
+  -H "Content-Type: application/json" \\
+  -d '{"api_secret":"'$TOOL_API_KEY'","email":"j@example.com"}'
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "💌",
+    compatibleTools: ["convertkit"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Binance Trading",
+    slug: "binance-trading",
+    description: "Crypto prices, balances, and orders via Binance API",
+    skillMd: `---
+name: Binance Trading
+description: Crypto prices and orders via Binance API
+metadata:
+  openclaw:
+    emoji: ₿
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` and \`$BINANCE_SECRET\` for signed endpoints.
+
+## Key Endpoints
+
+**Get Price:**
+\`\`\`bash
+curl "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+\`\`\`
+
+**Place Order (signed):**
+\`\`\`bash
+curl -X POST "https://api.binance.com/api/v3/order" \\
+  -H "X-MBX-APIKEY: $TOOL_API_KEY" \\
+  -d "symbol=BTCUSDT&side=BUY&type=LIMIT&timeInForce=GTC&quantity=0.001&price=50000&timestamp=$(date +%s000)&signature=COMPUTED_HMAC"
+\`\`\`
+
+**Account Balance:**
+\`\`\`bash
+curl "https://api.binance.com/api/v3/account?timestamp=$(date +%s000)&signature=COMPUTED_HMAC" \\
+  -H "X-MBX-APIKEY: $TOOL_API_KEY"
+\`\`\`
+
+Signatures require HMAC-SHA256 of the query string using \`$BINANCE_SECRET\`.`,
+    type: "TOOL_SPECIFIC",
+    category: "TRADING",
+    icon: "₿",
+    compatibleTools: ["binance"],
+    requiresToolConnection: true,
+    requiredToolCategory: "TRADING",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Coinbase Trading",
+    slug: "coinbase-trading",
+    description: "Crypto trading via Coinbase Advanced Trade API",
+    skillMd: `---
+name: Coinbase Trading
+description: Crypto trading via Coinbase Advanced Trade API
+metadata:
+  openclaw:
+    emoji: 🪙
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` and \`$CB_API_SECRET\` for Coinbase Advanced Trade.
+
+## Key Endpoints
+
+**List Accounts:**
+\`\`\`bash
+curl "https://api.coinbase.com/api/v3/brokerage/accounts" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+**Get Product Candles:**
+\`\`\`bash
+curl "https://api.coinbase.com/api/v3/brokerage/products/BTC-USD/candles?granularity=ONE_HOUR" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+**Create Order:**
+\`\`\`bash
+curl -X POST "https://api.coinbase.com/api/v3/brokerage/orders" \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"product_id":"BTC-USD","side":"BUY","order_configuration":{"limit_limit_gtc":{"base_size":"0.001","limit_price":"50000"}}}'
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "TRADING",
+    icon: "🪙",
+    compatibleTools: ["coinbase"],
+    requiresToolConnection: true,
+    requiredToolCategory: "TRADING",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Alpaca Trading",
+    slug: "alpaca-trading",
+    description: "US stock trading via Alpaca Markets API",
+    skillMd: `---
+name: Alpaca Trading
+description: US stock trading via Alpaca API
+metadata:
+  openclaw:
+    emoji: 📈
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` and \`$ALPACA_SECRET\` for Alpaca.
+
+## Key Endpoints
+
+**Get Account:**
+\`\`\`bash
+curl https://paper-api.alpaca.markets/v2/account \\
+  -H "APCA-API-KEY-ID: $TOOL_API_KEY" \\
+  -H "APCA-API-SECRET-KEY: $ALPACA_SECRET"
+\`\`\`
+
+**Place Order:**
+\`\`\`bash
+curl -X POST https://paper-api.alpaca.markets/v2/orders \\
+  -H "APCA-API-KEY-ID: $TOOL_API_KEY" \\
+  -H "APCA-API-SECRET-KEY: $ALPACA_SECRET" \\
+  -H "Content-Type: application/json" \\
+  -d '{"symbol":"AAPL","qty":"1","side":"buy","type":"market","time_in_force":"day"}'
+\`\`\`
+
+**Get Positions:**
+\`\`\`bash
+curl https://paper-api.alpaca.markets/v2/positions \\
+  -H "APCA-API-KEY-ID: $TOOL_API_KEY" \\
+  -H "APCA-API-SECRET-KEY: $ALPACA_SECRET"
+\`\`\`
+
+Use \`paper-api\` for paper trading, \`api\` for live.`,
+    type: "TOOL_SPECIFIC",
+    category: "TRADING",
+    icon: "📈",
+    compatibleTools: ["alpaca"],
+    requiresToolConnection: true,
+    requiredToolCategory: "TRADING",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Polymarket Trading",
+    slug: "polymarket-trading",
+    description: "Trade on prediction markets via Polymarket",
+    skillMd: `---
+name: Polymarket Trading
+description: Prediction market trading via Polymarket API
+metadata:
+  openclaw:
+    emoji: 🎯
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Polymarket API key.
+
+## Key Endpoints
+
+**List Markets:**
+\`\`\`bash
+curl "https://clob.polymarket.com/markets?limit=10"
+\`\`\`
+
+**Get Market Details:**
+\`\`\`bash
+curl "https://clob.polymarket.com/markets/{condition_id}"
+\`\`\`
+
+**Place Order:**
+\`\`\`bash
+curl -X POST "https://clob.polymarket.com/order" \\
+  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"tokenID":"abc","price":0.65,"size":10,"side":"BUY"}'
+\`\`\`
+
+Polymarket uses a CLOB (Central Limit Order Book). Prices are between 0 and 1, representing probability.`,
+    type: "TOOL_SPECIFIC",
+    category: "TRADING",
+    icon: "🎯",
+    compatibleTools: ["polymarket"],
+    requiresToolConnection: true,
+    requiredToolCategory: "TRADING",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Linear PM",
+    slug: "linear-pm",
+    description: "Manage issues and sprints via Linear GraphQL API",
+    skillMd: `---
+name: Linear PM
+description: Issues and sprints via Linear GraphQL API
+metadata:
+  openclaw:
+    emoji: 📐
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Linear API key.
+
+## Key Endpoints
+
+**Create Issue:**
+\`\`\`bash
+curl -X POST https://api.linear.app/graphql \\
+  -H "Authorization: $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"query":"mutation { issueCreate(input: { teamId: \\"TEAM_ID\\", title: \\"Fix bug\\", priority: 2 }) { success issue { id identifier } } }"}'
+\`\`\`
+
+**List Issues:**
+\`\`\`bash
+curl -X POST https://api.linear.app/graphql \\
+  -H "Authorization: $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"query":"{ issues(first: 10) { nodes { id title state { name } } } }"}'
+\`\`\`
+
+Linear uses GraphQL exclusively. Use mutations for writes, queries for reads.`,
+    type: "TOOL_SPECIFIC",
+    category: "PROJECT_MGMT",
+    icon: "📐",
+    compatibleTools: ["linear"],
+    requiresToolConnection: true,
+    requiredToolCategory: "PROJECT_MGMT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Asana PM",
+    slug: "asana-pm",
+    description: "Manage tasks and projects in Asana via Composio",
+    skillMd: `---
+name: Asana PM
+description: Task and project management via Asana (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 🎯
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Create and update tasks
+- Manage projects and sections
+- Assign tasks to team members
+- Track task completion and due dates
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "PROJECT_MGMT",
+    icon: "🎯",
+    compatibleTools: ["asana"],
+    requiresToolConnection: true,
+    requiredToolCategory: "PROJECT_MGMT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "ClickUp PM",
+    slug: "clickup-pm",
+    description: "Manage tasks and spaces in ClickUp via Composio",
+    skillMd: `---
+name: ClickUp PM
+description: Task and space management via ClickUp (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: ✅
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Create and manage tasks, subtasks, and checklists
+- Organize workspaces, spaces, and folders
+- Set priorities, due dates, and assignees
+- Track time and custom fields
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "PROJECT_MGMT",
+    icon: "✅",
+    compatibleTools: ["clickup"],
+    requiresToolConnection: true,
+    requiredToolCategory: "PROJECT_MGMT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Jira PM",
+    slug: "jira-pm",
+    description: "Manage issues and sprints in Jira via Composio",
+    skillMd: `---
+name: Jira PM
+description: Issue and sprint management via Jira (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 🔵
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Create and update issues (stories, bugs, tasks, epics)
+- Manage sprints and boards
+- Transition issue statuses through workflows
+- Add comments and attachments
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "PROJECT_MGMT",
+    icon: "🔵",
+    compatibleTools: ["jira"],
+    requiresToolConnection: true,
+    requiredToolCategory: "PROJECT_MGMT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Slack Messaging",
+    slug: "slack-messaging",
+    description: "Send messages and manage channels in Slack via Composio",
+    skillMd: `---
+name: Slack Messaging
+description: Channel messaging via Slack (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 💬
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Send messages to channels and DMs
+- Create and manage channels
+- Upload files and snippets
+- Read message history and threads
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "COMMUNICATION",
+    icon: "💬",
+    compatibleTools: ["slack"],
+    requiresToolConnection: true,
+    requiredToolCategory: "COMMUNICATION",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Notion Docs",
+    slug: "notion-docs",
+    description: "Manage pages and databases in Notion via Composio",
+    skillMd: `---
+name: Notion Docs
+description: Pages and databases via Notion (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 📝
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Create and update pages and blocks
+- Query and update databases
+- Search across workspace content
+- Manage page properties and relations
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "📝",
+    compatibleTools: ["notion"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Shopify Store",
+    slug: "shopify-store",
+    description: "Manage products, orders, and inventory via Shopify API",
+    skillMd: `---
+name: Shopify Store
+description: Products and orders via Shopify Admin API
+metadata:
+  openclaw:
+    emoji: 🛍️
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Shopify Admin API access token. Set \`$SHOPIFY_STORE\` to your store name.
+
+## Key Endpoints
+
+**List Products:**
+\`\`\`bash
+curl "https://$SHOPIFY_STORE.myshopify.com/admin/api/2024-01/products.json" \\
+  -H "X-Shopify-Access-Token: $TOOL_API_KEY"
+\`\`\`
+
+**Create Order:**
+\`\`\`bash
+curl -X POST "https://$SHOPIFY_STORE.myshopify.com/admin/api/2024-01/orders.json" \\
+  -H "X-Shopify-Access-Token: $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"order":{"line_items":[{"variant_id":123,"quantity":1}]}}'
+\`\`\`
+
+**Get Inventory Levels:**
+\`\`\`bash
+curl "https://$SHOPIFY_STORE.myshopify.com/admin/api/2024-01/inventory_levels.json?location_ids=LOC_ID" \\
+  -H "X-Shopify-Access-Token: $TOOL_API_KEY"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "FINANCE",
+    icon: "🛍️",
+    compatibleTools: ["shopify"],
+    requiresToolConnection: true,
+    requiredToolCategory: "FINANCE",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Google Search Console",
+    slug: "google-search-console",
+    description: "Search performance and indexing data via Composio",
+    skillMd: `---
+name: Google Search Console
+description: Search performance and indexing via Google Search Console (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 📊
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Query search analytics (clicks, impressions, CTR, position)
+- Inspect URL indexing status
+- Submit sitemaps
+- View crawl errors and coverage reports
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "ANALYTICS",
+    icon: "📊",
+    compatibleTools: ["google-search-console"],
+    requiresToolConnection: true,
+    requiredToolCategory: "ANALYTICS",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Google Analytics",
+    slug: "google-analytics",
+    description: "GA4 reporting and audience data via Composio",
+    skillMd: `---
+name: Google Analytics
+description: GA4 reporting via Google Analytics (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 📈
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Run GA4 Data API reports (sessions, users, pageviews)
+- Query real-time data
+- Access audience and conversion metrics
+- List account properties and data streams
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "ANALYTICS",
+    icon: "📈",
+    compatibleTools: ["google-analytics"],
+    requiresToolConnection: true,
+    requiredToolCategory: "ANALYTICS",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Ahrefs SEO",
+    slug: "ahrefs-seo",
+    description: "Keyword research and backlink analysis via Ahrefs API",
+    skillMd: `---
+name: Ahrefs SEO
+description: Keywords and backlinks via Ahrefs API
+metadata:
+  openclaw:
+    emoji: 🔗
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Ahrefs API token.
+
+## Key Endpoints
+
+**Get Backlinks:**
+\`\`\`bash
+curl "https://api.ahrefs.com/v3/site-explorer/backlinks?target=example.com&limit=10" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+**Keywords Explorer:**
+\`\`\`bash
+curl "https://api.ahrefs.com/v3/keywords-explorer/overview?keywords=ai+agents&country=us" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\`
+
+**Domain Rating:**
+\`\`\`bash
+curl "https://api.ahrefs.com/v3/site-explorer/domain-rating?target=example.com" \\
+  -H "Authorization: Bearer $TOOL_API_KEY"
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "ANALYTICS",
+    icon: "🔗",
+    compatibleTools: ["ahrefs"],
+    requiresToolConnection: true,
+    requiredToolCategory: "ANALYTICS",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Calendly Scheduling",
+    slug: "calendly-scheduling",
+    description: "Manage scheduling links and events via Composio",
+    skillMd: `---
+name: Calendly Scheduling
+description: Scheduling and events via Calendly (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 📅
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- List and manage event types
+- Get scheduled events and invitees
+- Create one-off scheduling links
+- Handle webhook events for bookings
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "CALENDAR",
+    icon: "📅",
+    compatibleTools: ["calendly"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CALENDAR",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Snyk Security",
+    slug: "snyk-security",
+    description: "Vulnerability scanning and dependency analysis via Snyk",
+    skillMd: `---
+name: Snyk Security
+description: Vulnerability scanning via Snyk API
+metadata:
+  openclaw:
+    emoji: 🛡️
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Snyk API token.
+
+## Key Endpoints
+
+**List Projects:**
+\`\`\`bash
+curl "https://api.snyk.io/rest/orgs/{org_id}/projects?version=2024-01-01" \\
+  -H "Authorization: token $TOOL_API_KEY"
+\`\`\`
+
+**Get Project Issues:**
+\`\`\`bash
+curl "https://api.snyk.io/v1/org/{org_id}/project/{project_id}/aggregated-issues" \\
+  -H "Authorization: token $TOOL_API_KEY"
+\`\`\`
+
+**Test Package:**
+\`\`\`bash
+curl -X POST "https://api.snyk.io/v1/test/npm" \\
+  -H "Authorization: token $TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"encoding":"plain","files":{"target":{"contents":"{\\\"name\\\":\\\"test\\\",\\\"dependencies\\\":{\\\"lodash\\\":\\\"4.17.15\\\"}}"}}}'
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "SECURITY",
+    icon: "🛡️",
+    compatibleTools: ["snyk"],
+    requiresToolConnection: true,
+    requiredToolCategory: "SECURITY",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Twilio SMS",
+    slug: "twilio-sms",
+    description: "Send and receive SMS messages via Twilio",
+    skillMd: `---
+name: Twilio SMS
+description: Send and receive SMS via Twilio API
+metadata:
+  openclaw:
+    emoji: 📱
+---
+
+## Authentication
+Set \`$TWILIO_SID\` and \`$TWILIO_AUTH_TOKEN\` for your Twilio account.
+
+## Key Endpoints
+
+**Send SMS:**
+\`\`\`bash
+curl -X POST "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_SID/Messages.json" \\
+  -u "$TWILIO_SID:$TWILIO_AUTH_TOKEN" \\
+  -d "To=+1234567890&From=+0987654321&Body=Hello from LaxClaws!"
+\`\`\`
+
+**List Messages:**
+\`\`\`bash
+curl "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_SID/Messages.json?PageSize=10" \\
+  -u "$TWILIO_SID:$TWILIO_AUTH_TOKEN"
+\`\`\`
+
+Uses Basic auth with Account SID and Auth Token.`,
+    type: "TOOL_SPECIFIC",
+    category: "COMMUNICATION",
+    icon: "📱",
+    compatibleTools: ["twilio"],
+    requiresToolConnection: true,
+    requiredToolCategory: "COMMUNICATION",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Zillow API",
+    slug: "zillow-api",
+    description: "Property data, Zestimates, and listings via Zillow",
+    skillMd: `---
+name: Zillow API
+description: Property data and Zestimates via Zillow API
+metadata:
+  openclaw:
+    emoji: 🏠
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your Zillow/Bridge API key.
+
+## Key Endpoints
+
+**Property Search:**
+\`\`\`bash
+curl "https://api.bridgedataoutput.com/api/v2/zestimates?access_token=$TOOL_API_KEY&address=123+Main+St"
+\`\`\`
+
+**Get Property Details:**
+\`\`\`bash
+curl "https://api.bridgedataoutput.com/api/v2/pub/parcels?access_token=$TOOL_API_KEY&zpid=12345678"
+\`\`\`
+
+Zillow data is accessed via Bridge Interactive API. Zestimates, tax history, and comparable sales available.`,
+    type: "TOOL_SPECIFIC",
+    category: "ANALYTICS",
+    icon: "🏠",
+    compatibleTools: ["zillow"],
+    requiresToolConnection: true,
+    requiredToolCategory: "ANALYTICS",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "Google Business Profile",
+    slug: "google-business-profile",
+    description: "Manage business listings and reviews via Composio",
+    skillMd: `---
+name: Google Business Profile
+description: Business listings and reviews via Google Business Profile (Composio OAuth)
+metadata:
+  openclaw:
+    emoji: 📍
+---
+
+## Authentication
+Via Composio OAuth — auth managed automatically.
+
+## Capabilities
+- Read and respond to reviews
+- Update business information (hours, description, photos)
+- Create posts and offers
+- View insights (views, clicks, calls)
+
+Composio handles the full OAuth2 flow. No manual token management required.`,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "📍",
+    compatibleTools: ["google-business-profile"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  {
+    name: "WordPress CMS",
+    slug: "wordpress-cms",
+    description: "Create and manage posts, pages, and media via WordPress REST API",
+    skillMd: `---
+name: WordPress CMS
+description: Posts and pages via WordPress REST API
+metadata:
+  openclaw:
+    emoji: 📝
+---
+
+## Authentication
+Set \`$TOOL_API_KEY\` to your WordPress application password. Set \`$WP_SITE\` to your site URL.
+
+## Key Endpoints
+
+**Create Post:**
+\`\`\`bash
+curl -X POST "$WP_SITE/wp-json/wp/v2/posts" \\
+  -u "admin:$TOOL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"New Post","content":"<p>Hello world!</p>","status":"draft"}'
+\`\`\`
+
+**List Posts:**
+\`\`\`bash
+curl "$WP_SITE/wp-json/wp/v2/posts?per_page=10" \\
+  -u "admin:$TOOL_API_KEY"
+\`\`\`
+
+**Upload Media:**
+\`\`\`bash
+curl -X POST "$WP_SITE/wp-json/wp/v2/media" \\
+  -u "admin:$TOOL_API_KEY" \\
+  -H "Content-Disposition: attachment; filename=image.png" \\
+  --data-binary @image.png
+\`\`\``,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "📝",
+    compatibleTools: ["wordpress"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+]

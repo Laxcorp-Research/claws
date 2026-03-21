@@ -1,0 +1,819 @@
+<!--
+  LAXCLAWS PLATFORM — COMPLETE SCREEN REFERENCE
+  Built from UX Specification v2.0
+  
+  10 screens covering the entire user journey:
+  1. Store (Claw catalog)
+  2. Claw Detail Page (single Claw, purchase)
+  3. My Claws (workspace list — user's home)
+  4. Setup Wizard Step 1: AI Models
+  5. Setup Wizard Step 2: Connect Tools
+  6. Setup Wizard Step 3: Deploy
+  7. Setup Wizard Step 4: Connect Channels
+  8. Setup Wizard Step 5: Go Live
+  9. Visual Agent Builder
+  10. Live Dashboard
+  11. Settings (Account + API Keys + Billing)
+  
+  Navigation: Every screen shows how user arrived and where they can go.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claws — Complete Screen Reference</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>
+:root{--bg:#fff;--bg2:#FBFBFB;--bg3:#F0F0F0;--tx:#0A0A0B;--tx2:#777777;--tx3:#999999;--bd:#EFEFEF;--bd2:#E0E0E0;--ac:#5BA1F5;--acbg:#EEF5FF;--ok:#10b981;--okbg:#dcfce7;--warn:#f59e0b;--warnbg:#FFFCE8;--err:#ef4444;--errbg:#fee2e2;--r:8px;--rl:12px}
+@media(prefers-color-scheme:dark){:root{--bg:#0A0A0B;--bg2:#141416;--bg3:#1E1E20;--tx:#E5E5E5;--tx2:#999999;--tx3:#666666;--bd:#2A2A2C;--bd2:#3A3A3C;--ac:#5BA1F5;--acbg:#1A2A40;--ok:#34d399;--okbg:#064e3b;--warn:#fbbf24;--warnbg:#451a03;--err:#f87171;--errbg:#450a0a}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--tx);padding:20px;font-size:13px;line-height:1.5}
+h1{font-size:22px;font-weight:600;margin-bottom:4px}
+.sub{font-size:13px;color:var(--tx2);margin-bottom:28px}
+.screen-section{margin-bottom:40px}
+.slabel{font-size:11px;font-weight:600;color:var(--ac);background:var(--acbg);padding:3px 10px;border-radius:var(--r);display:inline-block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.sdesc{font-size:12px;color:var(--tx2);margin-bottom:4px;line-height:1.6}
+.sarrive{font-size:11px;color:var(--ok);margin-bottom:4px}
+.sarrive b{font-weight:600}
+.sactions{font-size:11px;color:var(--tx3);margin-bottom:10px}
+.scr{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);overflow:hidden}
+.top{display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:52px;border-bottom:1px solid var(--bd);background:var(--bg)}
+.logo{font-weight:700;font-size:16px;letter-spacing:-0.5px}.logo{letter-spacing:-0.5px}
+.nav{display:flex;gap:32px;font-size:13px;font-weight:500}.nav a{color:var(--tx2);text-decoration:none;cursor:pointer}.nav a.on{color:var(--tx);font-weight:600}
+.btn{font-size:11px;padding:5px 14px;border-radius:var(--r);border:none;cursor:pointer;font-weight:500;display:inline-block}
+.bp{background:var(--tx);color:#fff;border-radius:8px}
+.bo{background:transparent;border:1px solid var(--bd);color:var(--tx2)}
+.bd{background:var(--err);color:#fff}
+.body{padding:16px}
+.impl{background:var(--warnbg);border:1px solid var(--warn);border-radius:var(--r);padding:10px 14px;margin-top:10px;font-size:11px;color:#92400e;line-height:1.5}
+.impl b{font-weight:600}
+/* Catalog styles */
+.cat-l{font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:3px 12px;border-radius:var(--r);display:inline-block;margin-bottom:6px}
+.cat-m{background:#FFF8E7;color:#8A6D00;border:1px solid #FFE9A0}.cat-c{background:#EDFFF3;color:#0D6B32;border:1px solid #B8FFCF}.cat-b{background:#EEF5FF;color:#1A5BBF;border:1px solid #A8CFFF}.cat-v{background:#FFF0EF;color:#8B2018;border:1px solid #FFD4D0}.cat-lf{background:#F5F0FF;color:#5B3A99;border:1px solid #E0D0FF}
+.catd{font-size:12px;color:var(--tx2);margin-bottom:12px}
+.claw{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);padding:14px 18px;margin-bottom:10px}
+.claw-h{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.claw-n{font-size:15px;font-weight:600}.claw-p{font-size:13px;font-weight:600;color:var(--tx);white-space:nowrap}
+.claw-d{font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:10px}
+.pills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.pill{font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--bd);color:var(--tx2);background:var(--bg2);display:inline-flex;align-items:center;gap:4px}
+.pdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.flow{font-size:11px;color:var(--tx2);font-style:italic;line-height:1.5;padding:8px 12px;background:var(--bg2);border-radius:var(--r);border-left:3px solid var(--bd)}
+.legal{font-size:10px;color:#96790A;background:#FFFCE8;padding:6px 12px;border-radius:var(--r);margin-top:8px;border-left:3px solid var(--warn)}
+/* Steps */
+.steps{display:flex;align-items:center;gap:0;justify-content:center;margin-bottom:20px;flex-wrap:wrap}
+.step-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.step-done{background:var(--ok);color:#fff}
+.step-cur{background:var(--tx);color:#fff}
+.step-todo{border:1px solid var(--bd);color:var(--tx3)}
+.step-line{width:30px;height:1px;margin:0 3px}
+.step-line-done{background:var(--ok)}
+.step-line-todo{background:var(--bd)}
+.step-label{font-size:10px;margin-left:4px;margin-right:8px}
+.step-label-on{color:var(--tx);font-weight:500}
+.step-label-off{color:var(--tx3)}
+/* Tool rows */
+.tool-list{border:1px solid var(--bd);border-radius:var(--rl);margin-bottom:14px}
+.tool-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--bd)}
+.tool-row:last-child{border-bottom:none}
+.tool-info{display:flex;align-items:center;gap:8px}
+.tool-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.tool-ok{background:var(--ok)}
+.tool-no{border:2px solid var(--bd);background:transparent}
+.tool-name{font-size:12px;font-weight:600}
+.tool-desc{font-size:10px;color:var(--tx2)}
+.tool-status{font-size:10px;font-weight:500;padding:2px 8px;border-radius:12px}
+.st-ok{color:var(--ok);background:var(--okbg)}
+.st-err{color:var(--err);background:var(--errbg)}
+/* Cards grid */
+.cgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.ccard{border:1px solid var(--bd);border-radius:var(--rl);padding:14px;cursor:pointer;transition:border-color .15s}
+.ccard:hover{border-color:var(--bd2)}
+/* Stats */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--bg2);border-radius:var(--r);padding:12px}
+.stat-l{font-size:10px;color:var(--tx2)}
+.stat-v{font-size:18px;font-weight:600;margin-top:2px}
+.stat-d{font-size:10px;color:var(--ok);margin-top:1px}
+/* Activity */
+.activity{border:1px solid var(--bd);border-radius:var(--r);padding:12px}
+.activity h4{font-size:13px;font-weight:600;margin-bottom:8px}
+.log{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd);font-size:11px;align-items:flex-start}
+.log:last-child{border:none}
+.log-t{color:var(--tx3);min-width:40px;font-family:monospace;font-size:10px}
+.log-a{font-weight:600;min-width:56px}
+.log-m{color:var(--tx2);flex:1}
+/* Hierarchy */
+.hier{display:flex;flex-direction:column;align-items:center;gap:6px;margin:12px 0}
+.hier-orch{background:var(--acbg);border:2px solid var(--ac);border-radius:var(--r);padding:8px 18px;text-align:center;min-width:180px}
+.hier-orch-label{font-size:9px;color:var(--ac);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.hier-orch-name{font-size:13px;font-weight:600}
+.hier-orch-desc{font-size:10px;color:var(--tx2)}
+.hier-arrow{color:var(--tx3);font-size:11px}
+.hier-workers{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.hier-w{border:1px solid var(--bd);border-radius:var(--r);padding:6px 12px;text-align:center;min-width:100px}
+.hier-w-name{font-size:11px;font-weight:600}
+.hier-w-desc{font-size:9px;color:var(--tx2)}
+.hier-critic{background:#ede9fe;border:2px solid #8b5cf6;border-radius:var(--r);padding:8px 18px;text-align:center;min-width:180px}
+.hier-critic-label{font-size:9px;color:#6B3FA0;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.hier-critic-name{font-size:13px;font-weight:600;color:#6B3FA0}
+.hier-critic-desc{font-size:10px;color:#7c3aed}
+/* Swap modal */
+.swap{border:1px solid var(--ac);border-radius:var(--rl);padding:14px;background:var(--acbg);margin-bottom:14px}
+.swap h5{font-size:12px;font-weight:600;color:var(--tx);margin-bottom:6px}
+.swap-opts{display:flex;gap:6px;flex-wrap:wrap}
+.swap-opt{border:1px solid var(--bd);border-radius:var(--r);padding:6px 12px;background:var(--bg);font-size:11px;cursor:pointer}
+/* Builder layout */
+.blayout{display:grid;grid-template-columns:190px 1fr 190px;gap:10px;min-height:340px}
+.bpanel{border:1px solid var(--bd);border-radius:var(--r);padding:10px;font-size:11px}
+.bpanel h4{font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.bitem{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;margin-bottom:3px;font-size:11px;cursor:pointer}
+.bitem:hover{background:var(--bg2)}
+.bitem.on{background:var(--bg3);color:var(--tx)}
+.bcanvas{background:var(--bg2);border:1px dashed var(--bd);border-radius:var(--r);padding:14px;position:relative;min-height:340px}
+.bnode{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:10px 12px;position:absolute;width:130px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.bnode h5{font-size:11px;font-weight:600;margin-bottom:2px}
+.bnode p{font-size:9px;color:var(--tx2)}
+.bnode .sts{width:6px;height:6px;border-radius:50%;background:var(--ok);position:absolute;top:7px;right:7px}
+.prop-g{margin-bottom:10px}
+.prop-g label{display:block;font-size:10px;color:var(--tx2);margin-bottom:3px;font-weight:500}
+.prop-in{width:100%;padding:5px 8px;border:1px solid var(--bd);border-radius:6px;font-size:11px;background:var(--bg);color:var(--tx)}
+.prop-ta{width:100%;padding:5px 8px;border:1px solid var(--bd);border-radius:6px;font-size:10px;background:var(--bg);color:var(--tx);height:58px;resize:none;font-family:monospace}
+/* Deploy */
+.deploy-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dcard{border:1px solid var(--bd);border-radius:var(--r);padding:14px;text-align:center}
+.dcard h5{font-size:13px;font-weight:600;margin-bottom:3px}
+.dcard p{font-size:11px;color:var(--tx2)}
+.dfeat{border:2px solid var(--ac)}
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);margin-bottom:14px}
+.tab{padding:6px 14px;font-size:12px;color:var(--tx2);cursor:pointer;border-bottom:2px solid transparent}
+.tab.on{color:var(--tx);border-bottom-color:var(--tx);font-weight:500}
+/* Channel */
+.ch-row{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px;border-bottom:1px solid var(--bd)}
+.ch-row:last-child{border:none}
+.ch-dot{width:8px;height:8px;border-radius:50%}
+/* Workspace cards */
+.ws-card{border:1px solid var(--bd);border-radius:var(--rl);padding:14px;cursor:pointer;transition:border-color .15s}
+.ws-card:hover{border-color:var(--bd2)}
+.ws-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+.ws-name{font-size:14px;font-weight:600}
+.ws-badge{font-size:10px;padding:2px 8px;border-radius:12px;font-weight:500}
+.badge-run{background:var(--okbg);color:var(--ok)}
+.badge-pause{background:var(--warnbg);color:var(--warn)}
+.badge-err{background:var(--errbg);color:var(--err)}
+.badge-draft{background:var(--bg3);color:var(--tx3)}
+.badge-setup{background:var(--acbg);color:var(--ac)}
+.ws-meta{display:flex;gap:14px;font-size:11px;color:var(--tx2);margin-top:4px}
+/* Celebration */
+.celebrate{text-align:center;padding:30px 20px}
+.celebrate h2{font-size:20px;font-weight:600;margin-bottom:6px}
+.celebrate p{font-size:13px;color:var(--tx2);margin-bottom:4px;line-height:1.6}
+.celebrate .tips{text-align:left;max-width:500px;margin:16px auto;background:var(--bg2);border-radius:var(--r);padding:14px;font-size:12px;color:var(--tx2);line-height:1.8}
+/* Model table */
+.mtable{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px}
+.mtable th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);font-weight:600;font-size:11px;color:var(--tx2)}
+.mtable td{padding:6px 8px;border-bottom:1px solid var(--bd)}
+.mtable select{padding:3px 6px;border:1px solid var(--bd);border-radius:6px;font-size:11px;background:var(--bg);color:var(--tx)}
+/* Progress bar */
+.prog{margin:12px 0}
+.prog-item{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+.prog-icon{width:18px;text-align:center}
+.prog-done{color:var(--ok)}
+.prog-cur{color:var(--ac)}
+.prog-wait{color:var(--tx3)}
+/* Empty state */
+.empty{text-align:center;padding:40px 20px;color:var(--tx2)}
+.empty h3{font-size:16px;font-weight:600;color:var(--tx);margin-bottom:6px}
+.empty p{font-size:13px;margin-bottom:14px}
+</style>
+</head>
+<body>
+
+<h1>Claws — Complete Screen Reference</h1>
+<p class="sub">11 screens covering the entire user journey. Every screen shows how user arrives, what they see, and where they go next.</p>
+
+<!-- ============================================================ -->
+<!-- SCREEN 1: STORE (CLAW CATALOG)                                -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 1 — Store (Claw catalog)</span>
+<div class="sarrive"><b>User arrives from:</b> Direct URL, marketing, Google, nav bar "Store" link</div>
+<div class="sactions"><b>Goes to:</b> Click any Claw card → Screen 2 (Claw detail). Sign in → Auth page.</div>
+<div class="sdesc">The main landing page. All 20 Claws grouped by category. Category filter tabs + search bar at top. Each card shows name, price, agent pills, and flow description.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a class="on">Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<button class="btn bp">Sign in</button>
+</div>
+<div class="body" style="background:var(--bg2)">
+<div style="text-align:center;padding:16px 0 12px">
+<div style="font-size:18px;font-weight:600">AI agents that work while you sleep</div>
+<div style="font-size:12px;color:var(--tx2);margin-top:4px">Pre-built, tested, one-click deploy. Pick a Claw, connect your tools, go.</div>
+<div style="margin-top:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+<button class="btn bp" style="font-size:10px;padding:4px 12px">All</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Money-Making</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Creator</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Business Ops</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Vertical</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Lifestyle</button>
+</div>
+</div>
+
+<span class="cat-l cat-m">Money-making Claws</span>
+<div class="catd">Highest perceived value. The Claw pays for itself.</div>
+<div class="claw">
+<div class="claw-h"><div class="claw-n">1. Quant trader</div><div class="claw-p">$999 + $99/mo</div></div>
+<div class="claw-d">Your AI hedge fund analyst. Scans markets, identifies signals, backtests strategies, manages risk, presents trade recommendations. Supports crypto, Polymarket, stock screening.</div>
+<div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Market scanner</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Signal analyst</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Risk manager</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Backtester</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Portfolio tracker</span><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Execution advisor</span></div>
+<div class="flow">Orchestrator coordinates: Market Scanner → Signal Analyst → Risk Manager → Backtester → Execution Advisor presents to human → Portfolio Tracker monitors. Critic reviews all trade theses.</div>
+<div class="legal">Research & signal intelligence — not financial advice. Human approves all trades. No guaranteed returns.</div>
+</div>
+
+<div class="claw">
+<div class="claw-h"><div class="claw-n">2. Freelancer revenue engine</div><div class="claw-p">$499 + $79/mo</div></div>
+<div class="claw-d">Find clients, send proposals, close deals, manage projects, invoice — automated for freelancers doing $5K-50K/month.</div>
+<div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Lead hunter</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Proposal writer</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Client manager</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Invoice + collections</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Upsell strategist</span></div>
+<div class="flow">Lead Hunter scans gigs → Proposal Writer crafts proposals → Client Manager tracks milestones → Invoice handles billing → Upsell identifies expansion. Critic reviews all outbound.</div>
+</div>
+
+<div style="font-size:11px;color:var(--tx3);text-align:center;padding:12px">— Showing 2 of 20 Claws. Full catalog continues with Creator, Business Ops, Vertical, Lifestyle categories —</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/store</code>. Components: ClawCatalog, ClawCategorySection, ClawDetailCard. Category filter tabs. Search bar. Each card links to <code>/store/[slug]</code>.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 2: CLAW DETAIL PAGE                                    -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 2 — Claw detail page</span>
+<div class="sarrive"><b>User arrives from:</b> Clicking a Claw card in the Store (Screen 1)</div>
+<div class="sactions"><b>Goes to:</b> "Purchase" → Stripe checkout → on success → Screen 4 (Setup Step 1). "Back" → Screen 1 (Store). If already owned → Screen 10 (Dashboard) or Screen 9 (Builder).</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a class="on">Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<button class="btn bp">Sign in</button>
+</div>
+<div class="body" style="background:var(--bg2)">
+<div style="font-size:11px;color:var(--tx2);margin-bottom:10px;cursor:pointer">← Back to store</div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+<div>
+<span class="cat-l cat-b">Business operations</span>
+<div style="font-size:22px;font-weight:600;margin-top:6px">B2B sales machine</div>
+<div style="font-size:13px;color:var(--tx2);margin-top:4px;max-width:520px;line-height:1.6">Your complete outbound engine. ICP research, lead enrichment, personalized sequences, reply handling, pipeline management, deal intelligence.</div>
+</div>
+<div style="text-align:right">
+<div style="font-size:26px;font-weight:600;color:var(--ac)">$499</div>
+<div style="font-size:11px;color:var(--tx2)">one-time setup</div>
+<div style="font-size:14px;font-weight:500;margin-top:2px">+ $89/month</div>
+<button class="btn bp" style="margin-top:10px;padding:8px 28px;font-size:13px">Purchase this Claw</button>
+</div>
+</div>
+<!-- Hierarchy -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;margin-bottom:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:10px">Agent team hierarchy</div>
+<div class="hier">
+<div class="hier-orch"><div class="hier-orch-label">Orchestrator</div><div class="hier-orch-name">Sales commander</div><div class="hier-orch-desc">Delegates, monitors quality, reports to you</div></div>
+<div class="hier-arrow">↓ delegates to workers</div>
+<div class="hier-workers">
+<div class="hier-w" style="border-left:3px solid #10b981"><div class="hier-w-name">ICP Researcher</div><div class="hier-w-desc">Build profiles</div></div>
+<div class="hier-w" style="border-left:3px solid #5BA1F5"><div class="hier-w-name">Lead Enricher</div><div class="hier-w-desc">Apollo + Clay</div></div>
+<div class="hier-w" style="border-left:3px solid #8b5cf6"><div class="hier-w-name">Sequence Writer</div><div class="hier-w-desc">Email sequences</div></div>
+<div class="hier-w" style="border-left:3px solid #f59e0b"><div class="hier-w-name">Reply Handler</div><div class="hier-w-desc">Classify + respond</div></div>
+<div class="hier-w" style="border-left:3px solid #ef4444"><div class="hier-w-name">Pipeline Mgr</div><div class="hier-w-desc">CRM + alerts</div></div>
+</div>
+<div class="hier-arrow">↓ all outputs reviewed by</div>
+<div class="hier-critic"><div class="hier-critic-label">Quality critic</div><div class="hier-critic-name">Deal intelligence</div><div class="hier-critic-desc">Reviews everything before it reaches you</div></div>
+</div>
+</div>
+<!-- Tools -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Required tools</div>
+<div style="font-size:12px;display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between"><span>Claude API</span><span style="font-size:10px;color:var(--ok)">Connect during setup</span></div>
+<div style="display:flex;justify-content:space-between"><span>Tavily (search)</span><span style="font-size:10px;color:var(--ok)">Free tier available</span></div>
+</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Recommended <span style="font-size:10px;font-weight:400;color:var(--tx2)">(swappable)</span></div>
+<div style="font-size:12px;display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between"><span>Apollo <span style="font-size:9px;color:var(--tx3)">or ZoomInfo, Lusha</span></span><span style="font-size:10px;color:var(--tx2)">Leads</span></div>
+<div style="display:flex;justify-content:space-between"><span>Instantly <span style="font-size:9px;color:var(--tx3)">or Lemlist</span></span><span style="font-size:10px;color:var(--tx2)">Email</span></div>
+<div style="display:flex;justify-content:space-between"><span>HubSpot <span style="font-size:9px;color:var(--tx3)">or Salesforce</span></span><span style="font-size:10px;color:var(--tx2)">CRM</span></div>
+</div>
+</div>
+</div>
+<div class="flow">Daily: Orchestrator delegates → ICP Researcher builds profiles → Lead Enricher pulls from Apollo + Clay → Sequence Writer creates emails → Reply Handler classifies responses → Pipeline Manager updates CRM → Critic reviews ALL outbound before sending. Daily briefing at 8 AM.</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/store/[slug]</code>. Components: ClawDetailPage, AgentHierarchyPreview, ToolRequirements, PurchaseButton (Stripe checkout). If already owned: show "Open Dashboard" + "Open Builder" instead of Purchase.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 3: MY CLAWS (WORKSPACE LIST)                           -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 3 — My Claws</span>
+<div class="sarrive"><b>User arrives from:</b> Nav bar "My Claws" link (logged in users). Also default landing for returning users.</div>
+<div class="sactions"><b>Goes to:</b> Click running card → Screen 10 (Dashboard). Click draft → Screen 9 (Builder). Click setup-incomplete → Screen 4 (Setup wizard). "Create custom" → Screen 9 (Builder, blank). "Browse store" → Screen 1.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px;align-items:center">
+<div style="width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">CS</div>
+</div>
+</div>
+<div class="body">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+<div style="font-size:16px;font-weight:600">My Claws</div>
+<div style="display:flex;gap:6px"><button class="btn bo">Browse store</button><button class="btn bp">+ Create custom Claw</button></div>
+</div>
+<div class="cgrid">
+<div class="ws-card">
+<div class="ws-head"><div class="ws-name">B2B Sales Machine</div><span class="ws-badge badge-run">Running</span></div>
+<div style="font-size:11px;color:var(--tx2)">6 agents · From template</div>
+<div class="ws-meta"><span>Last: 12 min ago</span><span>$47.20 this month</span></div>
+</div>
+<div class="ws-card">
+<div class="ws-head"><div class="ws-name">Content Engine</div><span class="ws-badge badge-pause">Paused</span></div>
+<div style="font-size:11px;color:var(--tx2)">4 agents · From template</div>
+<div class="ws-meta"><span>Last: 2 days ago</span><span>$12.50 this month</span></div>
+</div>
+<div class="ws-card">
+<div class="ws-head"><div class="ws-name">Custom Research Bot</div><span class="ws-badge badge-draft">Draft</span></div>
+<div style="font-size:11px;color:var(--tx2)">2 agents · Custom</div>
+<div class="ws-meta"><span>Never deployed</span><span>$0.00</span></div>
+</div>
+</div>
+
+<!-- Empty state (shown when user has no claws) -->
+<div style="border:1px dashed var(--bd);border-radius:var(--rl);padding:20px;margin-top:14px">
+<div class="empty">
+<h3>Empty state: No Claws yet</h3>
+<p>This is what new users see. Two clear CTAs.</p>
+<button class="btn bp" style="margin-right:6px">Browse the store</button>
+<button class="btn bo">Create custom Claw</button>
+</div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/my-claws</code>. Components: WorkspaceGrid, WorkspaceCard (status-aware click routing), EmptyState. Click routes based on workspace.status: RUNNING/PAUSED → dashboard, DRAFT → builder, DEPLOYING/SETUP_INCOMPLETE → setup wizard.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 4: SETUP STEP 1 — AI MODELS                           -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 4 — Setup step 1: AI models</span>
+<div class="sarrive"><b>User arrives from:</b> Stripe checkout success (after purchasing Claw). Or from My Claws clicking a setup-incomplete workspace.</div>
+<div class="sactions"><b>Goes to:</b> "Next" → Screen 5 (Connect tools). "Back" → not applicable (first step).</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="font-size:11px;color:var(--tx2)">Setting up: B2B Sales Machine</div>
+</div>
+<div class="body">
+<!-- Progress bar -->
+<div class="steps">
+<div class="step-dot step-cur">1</div><span class="step-label step-label-on">AI model</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">2</div><span class="step-label step-label-off">Tools</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">3</div><span class="step-label step-label-off">Deploy</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">4</div><span class="step-label step-label-off">Channels</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">5</div><span class="step-label step-label-off">Go live</span>
+</div>
+
+<div style="font-size:15px;font-weight:600;margin-bottom:4px">Choose AI models for your agents</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Each agent can use a different model. We've pre-selected the best balance of quality and cost.</div>
+
+<!-- API key input -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;margin-bottom:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:6px">Your API key</div>
+<div style="display:flex;gap:8px;align-items:center">
+<input type="text" placeholder="sk-ant-api03-..." class="prop-in" style="flex:1">
+<button class="btn bp">Validate</button>
+</div>
+<div style="font-size:10px;color:var(--tx2);margin-top:4px"><a href="#" style="color:var(--ac)">Where do I find my Anthropic API key? →</a></div>
+</div>
+
+<!-- Per-agent model table -->
+<table class="mtable">
+<tr><th>Agent</th><th>Role</th><th>Recommended</th><th>Your choice</th></tr>
+<tr><td style="font-weight:600">Sales Commander</td><td style="font-size:10px;color:var(--ac)">Orchestrator</td><td style="font-size:11px;color:var(--tx2)">Haiku 4.5 (fast, cheap)</td><td><select class="mtable select"><option>Claude Haiku 4.5</option><option>Claude Sonnet 4.6</option></select></td></tr>
+<tr><td style="font-weight:600">ICP Researcher</td><td style="font-size:10px;color:var(--tx2)">Worker</td><td style="font-size:11px;color:var(--tx2)">Sonnet 4.6 (balanced)</td><td><select class="mtable select"><option>Claude Sonnet 4.6</option><option>Claude Opus 4.6</option></select></td></tr>
+<tr><td style="font-weight:600">Lead Enricher</td><td style="font-size:10px;color:var(--tx2)">Worker</td><td style="font-size:11px;color:var(--tx2)">Sonnet 4.6</td><td><select class="mtable select"><option>Claude Sonnet 4.6</option></select></td></tr>
+<tr><td style="font-weight:600">Sequence Writer</td><td style="font-size:10px;color:var(--tx2)">Worker</td><td style="font-size:11px;color:var(--tx2)">Sonnet 4.6</td><td><select class="mtable select"><option>Claude Sonnet 4.6</option></select></td></tr>
+<tr><td style="font-weight:600">Reply Handler</td><td style="font-size:10px;color:var(--tx2)">Worker</td><td style="font-size:11px;color:var(--tx2)">Sonnet 4.6</td><td><select class="mtable select"><option>Claude Sonnet 4.6</option></select></td></tr>
+<tr><td style="font-weight:600">Pipeline Manager</td><td style="font-size:10px;color:var(--tx2)">Worker</td><td style="font-size:11px;color:var(--tx2)">Sonnet 4.6</td><td><select class="mtable select"><option>Claude Sonnet 4.6</option></select></td></tr>
+<tr><td style="font-weight:600">Deal Intelligence</td><td style="font-size:10px;color:#6B3FA0">Critic</td><td style="font-size:11px;color:var(--tx2)">Opus 4.6 (best judgment)</td><td><select class="mtable select"><option>Claude Opus 4.6</option><option>Claude Sonnet 4.6</option></select></td></tr>
+</table>
+
+<div style="background:var(--bg2);border-radius:var(--r);padding:10px;font-size:11px;color:var(--tx2);margin-bottom:14px">
+<b>Why these recommendations:</b> Orchestrator makes routing decisions (cheap model works). Workers generate content (balanced model). Critic reviews quality (best model for judgment).<br>
+<b>Estimated monthly cost:</b> ~$45-120 depending on usage volume.
+</div>
+
+<div style="display:flex;justify-content:flex-end"><button class="btn bp" style="padding:8px 24px">Next: Connect tools →</button></div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/setup/[workspaceId]/step/1</code>. Components: SetupWizard (step bar), ApiKeyInput (validate + encrypt), ModelSelectionTable (per-agent dropdowns). Populates from ClawTemplate agents. "Next" disabled until valid API key. Saves to UserApiKey + Agent.model fields.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 5: SETUP STEP 2 — CONNECT TOOLS                       -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 5 — Setup step 2: Connect tools</span>
+<div class="sarrive"><b>User arrives from:</b> Step 1 "Next". Also from Dashboard "Manage Tools" or Builder "Manage Tools".</div>
+<div class="sactions"><b>Goes to:</b> "Next" → Screen 6 (Deploy). "Back" → Screen 4 (AI Models). Tool "Swap" → swap modal overlay. "Browse 500+" → Composio catalog modal.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="font-size:11px;color:var(--tx2)">Setting up: B2B Sales Machine</div>
+</div>
+<div class="body">
+<div class="steps">
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">AI model</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-cur">2</div><span class="step-label step-label-on">Tools</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">3</div><span class="step-label step-label-off">Deploy</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">4</div><span class="step-label step-label-off">Channels</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">5</div><span class="step-label step-label-off">Go live</span>
+</div>
+
+<div style="font-size:14px;font-weight:600;margin-bottom:2px">Required tools</div>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:10px">Must be connected before deployment</div>
+<div class="tool-list">
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-ok"></div><div><div class="tool-name">Claude API (Anthropic)</div><div class="tool-desc">AI model for agent reasoning</div></div></div><span class="tool-status st-ok">Connected</span></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-ok"></div><div><div class="tool-name">Tavily</div><div class="tool-desc">Web search for lead research</div></div></div><span class="tool-status st-ok">Connected</span></div>
+</div>
+
+<div style="font-size:14px;font-weight:600;margin-bottom:2px">Recommended tools</div>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:10px">Pre-selected. Connect or swap for an alternative.</div>
+<div class="tool-list">
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-ok"></div><div><div class="tool-name">Apollo.io</div><div class="tool-desc">Lead database and prospecting</div></div></div><div style="display:flex;gap:4px"><span class="tool-status st-ok">Connected</span><button class="btn bo" style="font-size:9px;padding:2px 6px">Swap</button></div></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">Instantly.ai</div><div class="tool-desc">Email sequence automation</div></div></div><div style="display:flex;gap:4px"><button class="btn bp" style="font-size:10px;padding:3px 10px">Enter API key</button><button class="btn bo" style="font-size:9px;padding:2px 6px">Swap</button></div></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">HubSpot</div><div class="tool-desc">CRM pipeline management</div></div></div><div style="display:flex;gap:4px"><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect via OAuth</button><button class="btn bo" style="font-size:9px;padding:2px 6px">Swap</button></div></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">Gmail</div><div class="tool-desc">Email monitoring and sending</div></div></div><div style="display:flex;gap:4px"><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect via OAuth</button><button class="btn bo" style="font-size:9px;padding:2px 6px">Swap</button></div></div>
+</div>
+
+<!-- Swap modal preview -->
+<div class="swap">
+<h5>Swap CRM: Choose an alternative to HubSpot</h5>
+<div class="swap-opts"><div class="swap-opt">Salesforce</div><div class="swap-opt">Pipedrive</div><div class="swap-opt">Zoho CRM</div><div class="swap-opt">Close</div><div class="swap-opt">Copper</div></div>
+<div style="font-size:10px;color:var(--tx2);margin-top:6px">All alternatives work identically. Agent instructions are tool-agnostic.</div>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:14px"><button class="btn bo" style="flex:1;padding:8px">+ Browse 500+ tools (Composio)</button><button class="btn bo" style="flex:1;padding:8px">+ Connect custom API</button></div>
+
+<div style="display:flex;justify-content:space-between">
+<button class="btn bo">← Back</button>
+<div style="display:flex;gap:6px"><button class="btn bo">Skip optional</button><button class="btn bp" style="padding:8px 24px">Next: Deploy →</button></div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/setup/[workspaceId]/step/2</code>. Components: ToolConnectionList, ApiKeyModal (validate+encrypt), OAuthConnectButton (Composio flow), ToolSwapModal, BrowseToolsModal (Composio catalog), CustomApiModal. Required tools must all be green for "Next". Also accessible from Dashboard + Builder via "Manage Tools".</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 6: SETUP STEP 3 — DEPLOY                              -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 6 — Setup step 3: Deploy</span>
+<div class="sarrive"><b>User arrives from:</b> Step 2 "Next". Also from Builder "Deploy" button on undeployed workspace.</div>
+<div class="sactions"><b>Goes to:</b> After deploy success → Screen 7 (Channels). "Back" → Screen 5 (Tools). Self-hosted download → stays on page.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="font-size:11px;color:var(--tx2)">Setting up: B2B Sales Machine</div>
+</div>
+<div class="body">
+<div class="steps">
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">AI model</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">Tools</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-cur">3</div><span class="step-label step-label-on">Deploy</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">4</div><span class="step-label step-label-off">Channels</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">5</div><span class="step-label step-label-off">Go live</span>
+</div>
+
+<div style="font-size:15px;font-weight:600;margin-bottom:4px">How should your Claw run?</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Choose where your AI agents operate.</div>
+
+<div class="deploy-grid" style="margin-bottom:16px">
+<div class="dcard dfeat">
+<div style="font-size:10px;color:var(--ac);font-weight:600;margin-bottom:4px">RECOMMENDED</div>
+<h5 style="color:var(--ac)">Cloud hosted</h5>
+<p>We run it for you. One click. $12/month.</p>
+<p style="font-size:10px;color:var(--ok);margin-top:4px">Zero maintenance · Auto-updates · 99.9% uptime</p>
+<button class="btn bp" style="margin-top:8px">Deploy to cloud</button>
+</div>
+<div class="dcard">
+<h5>Self-hosted</h5>
+<p>Download configs for your own server.</p>
+<p style="font-size:10px;color:var(--tx2);margin-top:4px">Full control · Your infrastructure · No hosting fee</p>
+<button class="btn bo" style="margin-top:8px">Download config package</button>
+</div>
+</div>
+
+<!-- Deployment progress (shown after clicking "Deploy to cloud") -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Deployment progress</div>
+<div class="prog">
+<div class="prog-item"><span class="prog-icon prog-done">✓</span> Building workspace configuration</div>
+<div class="prog-item"><span class="prog-icon prog-done">✓</span> Provisioning container</div>
+<div class="prog-item"><span class="prog-icon prog-cur">●</span> <span style="color:var(--ac)">Configuring agents and tools...</span></div>
+<div class="prog-item"><span class="prog-icon prog-wait">○</span> Running health check</div>
+<div class="prog-item"><span class="prog-icon prog-wait">○</span> Verifying agent responses</div>
+</div>
+</div>
+
+<div style="display:flex;justify-content:space-between;margin-top:14px">
+<button class="btn bo">← Back</button>
+<button class="btn bp" style="padding:8px 24px;opacity:0.5" disabled>Next: Channels → (after deploy)</button>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/setup/[workspaceId]/step/3</code>. Components: DeploymentOptions, DeployProgress (real-time status via polling). Cloud triggers Docker container creation via <code>/api/deploy/[id]/cloud</code>. Self-hosted triggers zip generation via <code>/api/deploy/[id]/export</code>. "Next" only enabled after COMPLETED status.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 7: SETUP STEP 4 — CONNECT CHANNELS                    -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 7 — Setup step 4: Connect channels</span>
+<div class="sarrive"><b>User arrives from:</b> Step 3 after successful deployment.</div>
+<div class="sactions"><b>Goes to:</b> "Next" → Screen 8 (Go live). "Skip" with web chat only → Screen 8.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="font-size:11px;color:var(--tx2)">Setting up: B2B Sales Machine</div>
+</div>
+<div class="body">
+<div class="steps">
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">AI model</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">Tools</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">Deploy</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-cur">4</div><span class="step-label step-label-on">Channels</span>
+<div class="step-line step-line-todo"></div>
+<div class="step-dot step-todo">5</div><span class="step-label step-label-off">Go live</span>
+</div>
+
+<div style="font-size:15px;font-weight:600;margin-bottom:4px">How should your Claw talk to you?</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Connect at least one messaging channel. Your Orchestrator will send briefings, alerts, and approval requests here.</div>
+
+<div class="tool-list">
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-ok"></div><div><div class="tool-name">Web chat</div><div class="tool-desc">Built-in dashboard chat — always available</div></div></div><span class="tool-status st-ok">Active</span></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">WhatsApp</div><div class="tool-desc">Scan QR code from your phone</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">Microsoft Teams</div><div class="tool-desc">Azure Bot registration required</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Setup guide →</button></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">Telegram</div><div class="tool-desc">Enter bot token from BotFather</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">Slack</div><div class="tool-desc">Connect via OAuth</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">Discord</div><div class="tool-desc">Enter bot token</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+</div>
+
+<div style="display:flex;justify-content:space-between;margin-top:14px">
+<button class="btn bo">← Back</button>
+<button class="btn bp" style="padding:8px 24px">Next: Go live →</button>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/setup/[workspaceId]/step/4</code>. Components: ChannelList, WhatsAppQR (pairing flow), TeamsSetupGuide, TelegramTokenInput, SlackOAuth, DiscordTokenInput. Web chat is always active. At least 1 channel connected for "Next" (web chat counts).</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 8: SETUP STEP 5 — GO LIVE                             -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 8 — Setup step 5: Go live!</span>
+<div class="sarrive"><b>User arrives from:</b> Step 4 "Next".</div>
+<div class="sactions"><b>Goes to:</b> "Open Dashboard" → Screen 10. "Customize in Builder" → Screen 9.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="font-size:11px;color:var(--ok);font-weight:500">✓ Setup complete</div>
+</div>
+<div class="body">
+<div class="steps">
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">AI model</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">Tools</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">Deploy</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-done">✓</div><span class="step-label step-label-off">Channels</span>
+<div class="step-line step-line-done"></div>
+<div class="step-dot step-done" style="background:var(--ok)">✓</div><span class="step-label" style="color:var(--ok);font-weight:500">Live!</span>
+</div>
+
+<div class="celebrate">
+<div style="font-size:32px;margin-bottom:8px">🎉</div>
+<h2>Your B2B Sales Machine is live!</h2>
+<p>Your agents are starting up now. Here's what happens next.</p>
+<div class="tips">
+<b>Next few minutes:</b> The Orchestrator will introduce itself via your connected channel<br>
+<b>Tomorrow 8:00 AM:</b> First daily briefing with pipeline status and recommended actions<br>
+<b>This week:</b> Agents research leads, enrich data, and draft your first outbound sequences<br><br>
+<b>Quick tips:</b><br>
+· Message your Orchestrator anytime — just say what you need<br>
+· Check the Dashboard for real-time agent activity<br>
+· Open the Builder to customize agent personalities and skills
+</div>
+<div style="margin-top:16px;display:flex;gap:8px;justify-content:center">
+<button class="btn bp" style="padding:10px 24px;font-size:13px">Open Dashboard</button>
+<button class="btn bo" style="padding:10px 24px;font-size:13px">Customize in Builder</button>
+</div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/setup/[workspaceId]/step/5</code>. Celebration screen. "Open Dashboard" → <code>/dashboard/[workspaceId]</code>. "Customize in Builder" → <code>/builder/[workspaceId]</code>. Updates workspace status to RUNNING.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 9: VISUAL AGENT BUILDER                                -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 9 — Visual agent builder</span>
+<div class="sarrive"><b>User arrives from:</b> My Claws (click draft workspace). Go Live "Customize in Builder". Dashboard "Edit in Builder". Nav "Builder" link.</div>
+<div class="sactions"><b>Goes to:</b> "Deploy" → Screen 6 (if undeployed) or redeploy confirmation. "Dashboard" → Screen 10. "Manage Tools" → Screen 5 (tool setup).</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a class="on">Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px"><button class="btn bo" style="font-size:10px">Manage Tools</button><button class="btn bo" style="font-size:10px">Dashboard</button><button class="btn bo" style="font-size:10px">Test Run</button><button class="btn bp" style="font-size:10px">Deploy</button></div>
+</div>
+<div class="body" style="padding:10px">
+<div class="blayout">
+<div class="bpanel">
+<h4>Agents</h4>
+<div class="bitem" style="background:var(--acbg);border-left:3px solid var(--ac)"><div class="pdot" style="background:var(--ac);width:6px;height:6px"></div><b>Orchestrator</b></div>
+<div class="bitem on"><div class="pdot" style="background:#8BFCAE;width:6px;height:6px"></div>ICP Researcher</div>
+<div class="bitem"><div class="pdot" style="background:#5BA1F5;width:6px;height:6px"></div>Lead Enricher</div>
+<div class="bitem"><div class="pdot" style="background:#FFB1AB;width:6px;height:6px"></div>Sequence Writer</div>
+<div class="bitem"><div class="pdot" style="background:#FFDC6E;width:6px;height:6px"></div>Reply Handler</div>
+<div class="bitem"><div class="pdot" style="background:#5BA1F5;width:6px;height:6px"></div>Pipeline Mgr</div>
+<div class="bitem" style="border-left:3px solid #8b5cf6"><div class="pdot" style="background:#FFB1AB;width:6px;height:6px"></div><b>Critic</b></div>
+<button class="btn bo" style="width:100%;margin-top:8px;font-size:10px">+ Add worker</button>
+<h4 style="margin-top:14px">Skills</h4>
+<div class="bitem"><div class="pdot" style="background:var(--tx3);width:6px;height:6px"></div>Web search</div>
+<div class="bitem"><div class="pdot" style="background:var(--tx3);width:6px;height:6px"></div>Apollo API</div>
+<div class="bitem"><div class="pdot" style="background:var(--tx3);width:6px;height:6px"></div>HubSpot CRM</div>
+<div class="bitem"><div class="pdot" style="background:var(--tx3);width:6px;height:6px"></div>Instantly</div>
+</div>
+<div class="bcanvas">
+<!-- Orchestrator node (larger, distinct) -->
+<div class="bnode" style="left:200px;top:8px;width:160px;border:2px solid var(--ac);background:var(--acbg)"><div class="sts"></div><div style="font-size:9px;color:var(--ac);font-weight:600;text-transform:uppercase">Orchestrator</div><h5>Sales Commander</h5><p>Delegates, monitors, reports</p></div>
+<!-- Workers -->
+<div style="position:absolute;left:275px;top:72px;color:var(--tx3);font-size:10px">↓</div>
+<div class="bnode" style="left:6px;top:88px;border-left:3px solid #10b981"><div class="sts"></div><h5>ICP Researcher</h5><p>Build profiles</p></div>
+<div class="bnode" style="left:145px;top:88px;border-left:3px solid #5BA1F5"><div class="sts"></div><h5>Lead Enricher</h5><p>Apollo + Clay</p></div>
+<div class="bnode" style="left:284px;top:88px;border-left:3px solid #8b5cf6"><div class="sts"></div><h5>Seq. Writer</h5><p>Email sequences</p></div>
+<div class="bnode" style="left:423px;top:88px;border-left:3px solid #f59e0b"><div class="sts"></div><h5>Reply Handler</h5><p>Classify replies</p></div>
+<!-- Critic -->
+<div style="position:absolute;left:275px;top:160px;color:var(--tx3);font-size:10px">↓ all outputs reviewed by</div>
+<div class="bnode" style="left:200px;top:180px;width:160px;border:2px solid #8b5cf6;background:#ede9fe"><div class="sts"></div><div style="font-size:9px;color:#6B3FA0;font-weight:600;text-transform:uppercase">Critic</div><h5 style="color:#6B3FA0">Deal Intelligence</h5><p style="color:#7c3aed">Quality gate (8/10 min)</p></div>
+<!-- Heartbeat bar -->
+<div style="position:absolute;bottom:8px;left:6px;right:6px;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:6px 10px;font-size:10px;display:flex;align-items:center;gap:6px">
+<b>Heartbeat:</b> <span style="color:var(--tx2)">Every weekday 6 AM →</span> Orchestrator triggers full pipeline
+</div>
+</div>
+<div class="bpanel">
+<h4>Properties — ICP Researcher</h4>
+<div class="prop-g"><label>Role</label><span style="font-size:11px;color:var(--ok)">Worker</span></div>
+<div class="prop-g"><label>Model</label><select class="prop-in" style="font-size:10px"><option>Claude Sonnet 4.6</option></select></div>
+<div class="prop-g"><label>SOUL.md</label><textarea class="prop-ta">You are the ICP Researcher. Your job is to build detailed ideal customer profiles...</textarea></div>
+<div class="prop-g"><label>AGENTS.md</label><textarea class="prop-ta">When Orchestrator assigns research: 1. Search Apollo for matches...</textarea></div>
+<div class="prop-g"><label>Skills</label>
+<div style="font-size:10px"><div style="padding:2px 0">✓ Web search</div><div style="padding:2px 0">✓ Apollo API</div></div>
+</div>
+<div class="prop-g"><label>Reports to</label><select class="prop-in" style="font-size:10px"><option>Orchestrator</option></select></div>
+<div class="prop-g"><label>Outputs to</label><select class="prop-in" style="font-size:10px"><option>Lead Enricher</option></select></div>
+</div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/builder/[workspaceId]</code>. Core: React Flow canvas (AgentCanvas.tsx) with custom AgentNode (role-based styling), AgentSidebar (left), PropertiesPanel (right), HeartbeatConfig (bottom bar). Zustand builderStore. Auto-save debounced. Orchestrator enforced as first + required agent. Critic enforced as required. Top bar buttons: "Deploy" routes to setup step 3, "Dashboard" to dashboard, "Manage Tools" to setup step 2, "Test Run" opens test drawer.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 10: LIVE DASHBOARD                                     -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 10 — Live dashboard</span>
+<div class="sarrive"><b>User arrives from:</b> My Claws (click running workspace). Go Live "Open Dashboard". Builder "Dashboard" button.</div>
+<div class="sactions"><b>Goes to:</b> "Edit in Builder" → Screen 9. "Manage Tools" → Screen 5. Settings (avatar dropdown) → Screen 11.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px"><button class="btn bo" style="font-size:10px">Edit in Builder</button><button class="btn bo" style="font-size:10px">Manage Tools</button><button class="btn bo" style="font-size:10px">Pause</button></div>
+</div>
+<div class="body">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<div><span style="font-size:16px;font-weight:600">B2B Sales Machine</span> <span class="ws-badge badge-run" style="margin-left:6px">Running</span></div>
+</div>
+<div class="stat-grid">
+<div class="stat"><div class="stat-l">Agents running</div><div class="stat-v">7</div><div class="stat-d">All healthy</div></div>
+<div class="stat"><div class="stat-l">Tasks today</div><div class="stat-v">23</div><div class="stat-d">+8 vs yesterday</div></div>
+<div class="stat"><div class="stat-l">API cost (March)</div><div class="stat-v">$47.20</div><div class="stat-d">On track: $142/mo</div></div>
+<div class="stat"><div class="stat-l">Pending review</div><div class="stat-v" style="color:var(--warn)">3</div><div style="font-size:10px;color:var(--warn)">Action needed</div></div>
+</div>
+
+<!-- Pending approvals -->
+<div style="border:1px solid var(--warn);border-radius:var(--r);padding:12px;margin-bottom:14px;background:var(--warnbg)">
+<div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px">Pending your approval (3 items)</div>
+<div style="font-size:11px;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);padding:8px 10px;border-radius:6px">
+<span>5 outbound email sequences ready to send</span>
+<div><button class="btn bp" style="font-size:9px;padding:2px 8px;margin-right:4px">Approve</button><button class="btn bo" style="font-size:9px;padding:2px 8px">Review</button></div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);padding:8px 10px;border-radius:6px">
+<span>3 hot leads flagged for immediate follow-up</span>
+<div><button class="btn bp" style="font-size:9px;padding:2px 8px;margin-right:4px">View</button></div>
+</div>
+</div>
+</div>
+
+<div class="activity">
+<h4>Live agent activity</h4>
+<div class="log"><span class="log-t">08:42</span><span class="log-a" style="color:#10b981">Scout</span><span class="log-m">Completed ICP research. 45 prospects found matching criteria.</span></div>
+<div class="log"><span class="log-t">08:44</span><span class="log-a" style="color:#5BA1F5">Enricher</span><span class="log-m">Enriching batch of 45 via Apollo + Clay...</span></div>
+<div class="log"><span class="log-t">08:51</span><span class="log-a" style="color:#8b5cf6">Writer</span><span class="log-m">Generated 5 personalized email sequences for ICP #1</span></div>
+<div class="log"><span class="log-t">08:53</span><span class="log-a" style="color:#6B3FA0">Critic</span><span class="log-m">Reviewed sequence #1 — APPROVED (9/10). #2 — REJECTED (6/10, hook too generic)</span></div>
+<div class="log"><span class="log-t">08:55</span><span class="log-a" style="color:#8b5cf6">Writer</span><span class="log-m">Revised #2 with personalized hook. Resubmitted to Critic.</span></div>
+<div class="log"><span class="log-t">08:56</span><span class="log-a" style="color:#6B3FA0">Critic</span><span class="log-m">Sequence #2 v2 — APPROVED (8/10).</span></div>
+<div class="log"><span class="log-t">08:58</span><span class="log-a" style="color:var(--ac)">Orchestrator</span><span class="log-m">5 sequences ready. Sent to human for approval via Teams.</span></div>
+<div class="log"><span class="log-t">06:00</span><span class="log-a" style="color:var(--tx3)">Heartbeat</span><span class="log-m">Daily pipeline trigger. Orchestrator starting workflow.</span></div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/dashboard/[workspaceId]</code>. Components: StatCards, PendingApprovals (actionable cards with approve/reject), ActivityFeed (SSE real-time), AgentStatusList. Pending items use <code>/api/activity/[id]/pending</code>. Approve/reject calls agent via <code>/api/workspaces/[id]/respond</code>. "Edit in Builder" → <code>/builder/[id]</code>. "Manage Tools" → <code>/setup/[id]/step/2</code>.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 11: SETTINGS                                           -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 11 — Settings</span>
+<div class="sarrive"><b>User arrives from:</b> User avatar dropdown in nav → "Settings", "API Keys", or "Billing".</div>
+<div class="sactions"><b>Goes to:</b> Tab navigation within settings. "Manage subscription" → Stripe billing portal (external).</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px;align-items:center">
+<div style="width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">CS</div>
+</div>
+</div>
+<div class="body">
+<div class="tabs">
+<div class="tab">Account</div>
+<div class="tab on">API keys</div>
+<div class="tab">Billing</div>
+<div class="tab">Security</div>
+</div>
+
+<div style="font-size:14px;font-weight:600;margin-bottom:2px">AI model API keys</div>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:12px">These power all your Claws. Per-agent model selection is in the Builder or Setup wizard.</div>
+
+<div class="tool-list">
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-ok"></div><div><div class="tool-name">Anthropic (Claude)</div><div class="tool-desc">sk-ant-...x7Qq · Added Mar 12</div></div></div><div style="display:flex;gap:4px;align-items:center"><span style="font-size:10px;color:var(--ok)">Valid</span><button class="btn bo" style="font-size:9px;padding:2px 6px">Test</button><button class="btn bo" style="font-size:9px;padding:2px 6px;color:var(--err)">Remove</button></div></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">OpenAI (GPT)</div><div class="tool-desc">Not connected</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Add API key</button></div>
+<div class="tool-row"><div class="tool-info"><div class="tool-dot tool-no"></div><div><div class="tool-name">Google (Gemini)</div><div class="tool-desc">Not connected</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Add API key</button></div>
+</div>
+
+<div style="margin-top:16px;font-size:14px;font-weight:600;margin-bottom:2px">Billing summary</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0">
+<div class="stat"><div class="stat-l">Current plan</div><div class="stat-v" style="font-size:15px">Pro</div><div style="font-size:10px;color:var(--tx2)">$29/month</div></div>
+<div class="stat"><div class="stat-l">Active Claws</div><div class="stat-v" style="font-size:15px">3</div><div style="font-size:10px;color:var(--tx2)">2 running, 1 paused</div></div>
+<div class="stat"><div class="stat-l">This month</div><div class="stat-v" style="font-size:15px">$289</div><div style="font-size:10px;color:var(--tx2)">Support + hosting</div></div>
+</div>
+<div style="display:flex;gap:6px"><button class="btn bo">Manage subscription</button><button class="btn bo">View invoices</button></div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/settings</code> with sub-routes <code>/settings/api-keys</code>, <code>/settings/billing</code>, <code>/settings/security</code>. Components: AccountSettings, ApiKeyManager, BillingDashboard (Stripe portal), SecuritySettings. Tabs route between sub-pages. API keys stored encrypted in UserApiKey model.</div>
+</div>
+
+</body>
+</html>

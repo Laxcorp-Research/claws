@@ -1,0 +1,28 @@
+name: Post-Deploy Smoke Tests
+
+on:
+  deployment_status:
+
+jobs:
+  smoke:
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check app is live
+        run: |
+          DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
+          echo "Checking $DEPLOY_URL..."
+          curl -sf "$DEPLOY_URL" > /dev/null || exit 1
+          echo "✅ App is responding"
+
+      - name: Check API health
+        run: |
+          DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
+          curl -sf "$DEPLOY_URL/api/health" > /dev/null || exit 1
+          echo "✅ Health endpoint responding"
+
+      - name: Check templates API
+        run: |
+          DEPLOY_URL="${{ github.event.deployment_status.target_url }}"
+          curl -sf "$DEPLOY_URL/api/templates" > /dev/null || exit 1
+          echo "✅ Templates API responding"

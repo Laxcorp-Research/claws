@@ -1,0 +1,873 @@
+<!--
+  LAXCLAWS — SCREENS SUPPLEMENT
+  Covers ALL gaps from self-review M1-M7:
+  
+  NEW SCREENS:
+  12. Pricing page (platform plans)
+  13. Auth (Sign in / Sign up)
+  14. Onboarding welcome (first-time user)
+  
+  STORE EXPANSION (M3):
+  - Full Store showing 1 representative card per category (5 categories, 5+ cards)
+  
+  MODALS & OVERLAYS (M2):
+  - API Key entry modal
+  - Browse 500+ Tools (Composio catalog) modal
+  - Custom API connection modal
+  - Confirmation dialogs (Delete Claw, Pause agents)
+  - OAuth in-progress state
+  
+  ERROR & LOADING STATES (M2):
+  - My Claws: loading skeleton
+  - Setup Step 1: API key validation error
+  - Setup Step 3: deployment failure
+  - Dashboard: paused state, error state
+  - Builder: empty state (new custom Claw)
+  
+  DASHBOARD ENHANCEMENTS (M6-M7):
+  - Per-agent cost breakdown
+  - Per-agent pause/resume controls
+  
+  HOSTING PRICING (M5):
+  - Clarified in Deploy screen
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claws — Screens Supplement</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>
+:root{--bg:#fff;--bg2:#FBFBFB;--bg3:#F0F0F0;--tx:#0A0A0B;--tx2:#777777;--tx3:#999999;--bd:#EFEFEF;--bd2:#E0E0E0;--ac:#5BA1F5;--acbg:#EEF5FF;--ok:#10b981;--okbg:#dcfce7;--warn:#f59e0b;--warnbg:#FFFCE8;--err:#ef4444;--errbg:#fee2e2;--r:8px;--rl:12px}
+@media(prefers-color-scheme:dark){:root{--bg:#0A0A0B;--bg2:#141416;--bg3:#1E1E20;--tx:#E5E5E5;--tx2:#999999;--tx3:#666666;--bd:#2A2A2C;--bd2:#3A3A3C;--ac:#5BA1F5;--acbg:#1A2A40;--ok:#34d399;--okbg:#064e3b;--warn:#fbbf24;--warnbg:#451a03;--err:#f87171;--errbg:#450a0a}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--tx);padding:20px;font-size:13px;line-height:1.5}
+h1{font-size:22px;font-weight:600;margin-bottom:4px}
+h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top:2px solid var(--bd)}
+.sub{font-size:13px;color:var(--tx2);margin-bottom:28px}
+.screen-section{margin-bottom:40px}
+.slabel{font-size:11px;font-weight:600;color:var(--ac);background:var(--acbg);padding:3px 10px;border-radius:var(--r);display:inline-block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.slabel-state{font-size:11px;font-weight:600;color:#92400e;background:var(--warnbg);padding:3px 10px;border-radius:var(--r);display:inline-block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.slabel-modal{font-size:11px;font-weight:600;color:#6B3FA0;background:#ede9fe;padding:3px 10px;border-radius:var(--r);display:inline-block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.sdesc{font-size:12px;color:var(--tx2);margin-bottom:4px;line-height:1.6}
+.sarrive{font-size:11px;color:var(--ok);margin-bottom:4px}
+.sarrive b{font-weight:600}
+.sactions{font-size:11px;color:var(--tx3);margin-bottom:10px}
+.scr{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);overflow:hidden}
+.top{display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:52px;border-bottom:1px solid var(--bd);background:var(--bg)}
+.logo{font-weight:700;font-size:16px;letter-spacing:-0.5px}.logo{letter-spacing:-0.5px}
+.nav{display:flex;gap:32px;font-size:13px;font-weight:500}.nav a{color:var(--tx2);text-decoration:none;cursor:pointer}.nav a.on{color:var(--tx);font-weight:600}
+.btn{font-size:11px;padding:5px 14px;border-radius:var(--r);border:none;cursor:pointer;font-weight:500;display:inline-block}
+.bp{background:var(--tx);color:#fff;border-radius:8px}
+.bo{background:transparent;border:1px solid var(--bd);color:var(--tx2)}
+.bd{background:var(--err);color:#fff}
+.body{padding:16px}
+.impl{background:var(--warnbg);border:1px solid var(--warn);border-radius:var(--r);padding:10px 14px;margin-top:10px;font-size:11px;color:#92400e;line-height:1.5}
+.impl b{font-weight:600}
+.cat-l{font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:3px 12px;border-radius:var(--r);display:inline-block;margin-bottom:6px}
+.cat-m{background:#FFF8E7;color:#8A6D00;border:1px solid #FFE9A0}.cat-c{background:#EDFFF3;color:#0D6B32;border:1px solid #B8FFCF}.cat-b{background:#EEF5FF;color:#1A5BBF;border:1px solid #A8CFFF}.cat-v{background:#FFF0EF;color:#8B2018;border:1px solid #FFD4D0}.cat-lf{background:#F5F0FF;color:#5B3A99;border:1px solid #E0D0FF}
+.claw{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);padding:14px 18px;margin-bottom:10px}
+.claw-h{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.claw-n{font-size:15px;font-weight:600}.claw-p{font-size:13px;font-weight:600;color:var(--tx);white-space:nowrap}
+.claw-d{font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:10px}
+.pills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.pill{font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--bd);color:var(--tx2);background:var(--bg2);display:inline-flex;align-items:center;gap:4px}
+.pdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.flow{font-size:11px;color:var(--tx2);font-style:italic;line-height:1.5;padding:8px 12px;background:var(--bg2);border-radius:var(--r);border-left:3px solid var(--bd)}
+.legal{font-size:10px;color:#96790A;background:#FFFCE8;padding:6px 12px;border-radius:var(--r);margin-top:8px;border-left:3px solid var(--warn)}
+.tool-list{border:1px solid var(--bd);border-radius:var(--rl);margin-bottom:14px}
+.tool-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--bd)}
+.tool-row:last-child{border-bottom:none}
+.tool-info{display:flex;align-items:center;gap:8px}
+.tool-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.tool-ok{background:var(--ok)}
+.tool-no{border:2px solid var(--bd);background:transparent}
+.tool-name{font-size:12px;font-weight:600}
+.tool-desc{font-size:10px;color:var(--tx2)}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--bg2);border-radius:var(--r);padding:12px}
+.stat-l{font-size:10px;color:var(--tx2)}
+.stat-v{font-size:18px;font-weight:600;margin-top:2px}
+.stat-d{font-size:10px;color:var(--ok);margin-top:1px}
+.ws-badge{font-size:10px;padding:2px 8px;border-radius:12px;font-weight:500}
+.badge-run{background:var(--okbg);color:var(--ok)}
+.badge-pause{background:var(--warnbg);color:var(--warn)}
+.badge-err{background:var(--errbg);color:var(--err)}
+/* Modal overlay */
+.modal-overlay{background:rgba(0,0,0,0.3);border:2px dashed var(--tx3);border-radius:var(--rl);padding:20px;margin:10px 0}
+.modal-box{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);padding:20px;max-width:480px;margin:0 auto;box-shadow:0 8px 30px rgba(0,0,0,0.12)}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:4px}
+.modal-desc{font-size:12px;color:var(--tx2);margin-bottom:14px}
+/* Skeleton loading */
+.skel{background:linear-gradient(90deg,var(--bg3) 25%,var(--bd) 50%,var(--bg3) 75%);border-radius:var(--r);animation:shimmer 1.5s infinite}
+@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+.skel-card{height:100px;border-radius:var(--rl);margin-bottom:10px}
+.skel-line{height:14px;margin-bottom:8px;width:80%}
+.skel-line-short{height:14px;margin-bottom:8px;width:40%}
+/* Error banner */
+.err-banner{background:var(--errbg);border:1px solid var(--err);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:8px}
+.err-icon{color:var(--err);font-size:16px;flex-shrink:0}
+.err-text{font-size:12px;color:#991b1b}
+.err-text b{font-weight:600}
+/* Warning banner */
+.warn-banner{background:var(--warnbg);border:1px solid var(--warn);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:8px}
+.warn-icon{color:var(--warn);font-size:16px;flex-shrink:0}
+.warn-text{font-size:12px;color:#92400e}
+/* Plan cards */
+.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+.plan{border:1px solid var(--bd);border-radius:var(--rl);padding:20px;text-align:center}
+.plan-feat{border:2px solid var(--ac)}
+.plan-name{font-size:18px;font-weight:600;margin-bottom:4px}
+.plan-price{font-size:28px;font-weight:600;color:var(--tx)}
+.plan-period{font-size:12px;color:var(--tx2)}
+.plan-features{text-align:left;font-size:12px;margin:14px 0;line-height:2}
+.plan-features .check{color:var(--ok);margin-right:4px}
+.plan-features .cross{color:var(--tx3);margin-right:4px}
+/* Auth */
+.auth-box{max-width:400px;margin:30px auto;text-align:center}
+.auth-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;border:1px solid var(--bd);border-radius:var(--r);margin-bottom:8px;font-size:13px;cursor:pointer;background:var(--bg)}
+.auth-btn:hover{background:var(--bg2)}
+.auth-divider{display:flex;align-items:center;margin:14px 0;font-size:11px;color:var(--tx3)}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--bd)}
+.auth-divider span{margin:0 10px}
+.auth-input{width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;margin-bottom:8px}
+/* Log */
+.log{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd);font-size:11px;align-items:flex-start}
+.log:last-child{border:none}
+.log-t{color:var(--tx3);min-width:40px;font-family:monospace;font-size:10px}
+.log-a{font-weight:600;min-width:56px}
+.log-m{color:var(--tx2);flex:1}
+</style>
+</head>
+<body>
+
+<h1>Claws — Screens Supplement</h1>
+<p class="sub">New screens, modals, error states, loading states, and enhancements. Complements the main LAXCLAWS_SCREENS.html file.</p>
+
+
+<!-- ============================================================ -->
+<!-- M3: EXPANDED STORE (replaces Screen 1 in main file)           -->
+<!-- ============================================================ -->
+<h2>M3: Expanded Store — 1 card per category</h2>
+
+<div class="screen-section">
+<span class="slabel">Screen 1 (expanded) — Store with all 5 categories</span>
+<div class="sdesc">Shows the complete catalog structure: 1 representative Claw per category. The developer should render all 20 Claws from the database in this layout.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a class="on">Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px"><a href="#" style="font-size:12px;color:var(--ac);text-decoration:none">Pricing</a><button class="btn bp">Sign in</button></div>
+</div>
+<div class="body" style="background:var(--bg2)">
+
+<!-- Hero -->
+<div style="text-align:center;padding:20px 0 16px">
+<div style="font-size:20px;font-weight:600">AI agents that work while you sleep</div>
+<div style="font-size:13px;color:var(--tx2);margin-top:4px;max-width:500px;margin-left:auto;margin-right:auto">Pre-built multi-agent teams. Connect your tools, deploy in 10 minutes, monitor from your phone.</div>
+<div style="margin-top:12px"><input type="text" placeholder="Search Claws..." style="padding:8px 14px;border:1px solid var(--bd);border-radius:var(--r);width:280px;font-size:12px"></div>
+<div style="margin-top:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+<button class="btn bp" style="font-size:10px;padding:4px 12px">All (20)</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Money-Making (3)</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Creator (4)</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Business Ops (4)</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Vertical (5)</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Lifestyle (4)</button>
+</div>
+</div>
+
+<!-- MONEY-MAKING -->
+<span class="cat-l cat-m">Money-making Claws</span>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">The Claw pays for itself. Trading, freelancing, e-commerce.</div>
+<div class="claw">
+<div class="claw-h"><div class="claw-n">Quant Trader</div><div class="claw-p">$999 + $99/mo</div></div>
+<div class="claw-d">AI trading research team. Scans Polymarket, crypto, and US stocks. Identifies signals, backtests, manages risk. Alert-only or autonomous execution within hard limits.</div>
+<div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Market Scanner</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Signal Analyst</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Risk Manager</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Backtester</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Portfolio Tracker</span><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Execution Advisor</span><span class="pill" style="border-color:#E5DAFF;color:#6B3FA0"><span class="pdot" style="background:#FFB1AB"></span>Trade Thesis Reviewer</span></div>
+<div class="legal">Research & signal intelligence — not financial advice. Human approves all trades.</div>
+</div>
+
+<!-- CREATOR -->
+<span class="cat-l cat-c">Creator Claws</span>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Grow your audience and content empire. YouTube, Twitter, newsletters, podcasts.</div>
+<div class="claw">
+<div class="claw-h"><div class="claw-n">YouTube Channel OS</div><div class="claw-p">$499 + $79/mo</div></div>
+<div class="claw-d">Full content pipeline: trend scanning → idea generation → CTR-scored titles + thumbnail briefs → retention-optimized scripts → SEO metadata → comment management. 8 agents.</div>
+<div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Trend Scout</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Idea Generator</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Title & Thumbnail</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Script Builder</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>SEO Optimizer</span><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Community Engine</span></div>
+</div>
+
+<!-- BUSINESS OPS -->
+<span class="cat-l cat-b">Business Operations Claws</span>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Run your business operations on autopilot. Sales, agency, executive support, SEO.</div>
+<div class="claw">
+<div class="claw-h"><div class="claw-n">B2B Sales Machine</div><div class="claw-p">$499 + $89/mo</div></div>
+<div class="claw-d">Complete outbound engine. ICP research, lead enrichment, personalized 5-email sequences, reply handling with 7-category classification, CRM pipeline management. Built from a proven GTM playbook.</div>
+<div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>ICP Researcher</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Lead Enricher</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Sequence Writer</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Reply Handler</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Pipeline Manager</span></div>
+</div>
+
+<!-- VERTICAL -->
+<span class="cat-l cat-v">Vertical Claws</span>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Industry-specific AI with deep domain knowledge. Real estate, recruiting, medical, legal, home services.</div>
+<div class="claw">
+<div class="claw-h"><div class="claw-n">Medical Practice Manager</div><div class="claw-p">$499 + $89/mo</div></div>
+<div class="claw-d">24/7 patient intake, appointment management, no-show reduction (48h+24h+2h reminders), recall campaigns for overdue patients, review management. HIPAA-compliant — every agent enforces PHI protection.</div>
+<div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Patient Intake</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Appointment Mgr</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Recall Agent</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Review Manager</span></div>
+<div class="legal">HIPAA compliance enforced. No PHI in any external communication.</div>
+</div>
+
+<!-- LIFESTYLE -->
+<span class="cat-l cat-lf">Lifestyle Claws</span>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Personal productivity and growth. Fitness, studying, job hunting, developer tools.</div>
+<div class="claw">
+<div class="claw-h"><div class="claw-n">Job Hunter OS</div><div class="claw-p">$249 + $49/mo</div></div>
+<div class="claw-d">Complete job search system. Opportunity scanning, per-application resume tailoring with ATS optimization, personalized cover letters, STAR interview prep, salary negotiation coaching.</div>
+<div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Opportunity Scout</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Application Crafter</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Interview Coach</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Negotiation Advisor</span></div>
+</div>
+
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/store</code>. Render all 20 ClawTemplates from DB grouped by category. Search filters client-side. Category tabs filter by ClawCategory enum. Each card links to <code>/store/[slug]</code>. Logged-out users see "Sign in" button. Logged-in users see their avatar. "Pricing" link in top-right nav area.</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- M1: SCREEN 12 — PRICING PAGE                                  -->
+<!-- ============================================================ -->
+<h2>M1: New Screens</h2>
+
+<div class="screen-section">
+<span class="slabel">Screen 12 — Pricing (platform plans)</span>
+<div class="sarrive"><b>User arrives from:</b> Nav "Pricing" link, Store page CTA, or "Upgrade" prompt when hitting plan limits.</div>
+<div class="sactions"><b>Goes to:</b> "Get started" → Auth (Screen 13). "Upgrade" → Stripe checkout. "Contact sales" → email.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px"><a href="#" style="font-size:12px;color:var(--ac);text-decoration:none;font-weight:500">Pricing</a><button class="btn bp">Sign in</button></div>
+</div>
+<div class="body" style="text-align:center">
+<div style="font-size:20px;font-weight:600;margin-bottom:4px">Simple, transparent pricing</div>
+<div style="font-size:13px;color:var(--tx2);margin-bottom:20px">Claws are purchased individually. The platform plan determines how many you can run.</div>
+
+<div class="plan-grid">
+<div class="plan">
+<div class="plan-name">Free</div>
+<div class="plan-price">$0</div>
+<div class="plan-period">forever</div>
+<div class="plan-features">
+<span class="check">✓</span> 1 workspace<br>
+<span class="check">✓</span> 3 agents per workspace<br>
+<span class="check">✓</span> Export configs (self-hosted only)<br>
+<span class="check">✓</span> Community support<br>
+<span class="cross">✗</span> Cloud deployment<br>
+<span class="cross">✗</span> Priority support<br>
+<span class="cross">✗</span> $50/mo API spend limit
+</div>
+<button class="btn bo" style="width:100%;padding:10px">Get started free</button>
+</div>
+
+<div class="plan plan-feat">
+<div style="font-size:10px;color:var(--ac);font-weight:600;margin-bottom:4px">MOST POPULAR</div>
+<div class="plan-name">Pro</div>
+<div class="plan-price">$29</div>
+<div class="plan-period">per month</div>
+<div class="plan-features">
+<span class="check">✓</span> 5 workspaces<br>
+<span class="check">✓</span> 10 agents per workspace<br>
+<span class="check">✓</span> Cloud deployment ($12/mo each)<br>
+<span class="check">✓</span> Priority support<br>
+<span class="check">✓</span> All templates<br>
+<span class="check">✓</span> $200/mo API spend limit<br>
+<span class="cross">✗</span> SLA
+</div>
+<button class="btn bp" style="width:100%;padding:10px">Upgrade to Pro</button>
+</div>
+
+<div class="plan">
+<div class="plan-name">Enterprise</div>
+<div class="plan-price">$99</div>
+<div class="plan-period">per month</div>
+<div class="plan-features">
+<span class="check">✓</span> Unlimited workspaces<br>
+<span class="check">✓</span> 50 agents per workspace<br>
+<span class="check">✓</span> Cloud deployment (included)<br>
+<span class="check">✓</span> Dedicated support<br>
+<span class="check">✓</span> All templates<br>
+<span class="check">✓</span> Custom API spend limit<br>
+<span class="check">✓</span> 99.9% SLA
+</div>
+<button class="btn bo" style="width:100%;padding:10px">Contact sales</button>
+</div>
+</div>
+
+<!-- M5: Hosting pricing clarification -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;text-align:left;margin-bottom:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:6px">How pricing works</div>
+<div style="font-size:12px;color:var(--tx2);line-height:1.8">
+<b>Platform plan</b> ($0-$99/mo) — How many Claws you can run simultaneously.<br>
+<b>Claw purchase</b> ($199-$999 one-time) — Buy each Claw template. Includes the agent configurations, skills, and support updates.<br>
+<b>Monthly support</b> ($39-$99/mo per Claw) — Ongoing template updates, priority support, and agent improvements.<br>
+<b>Cloud hosting</b> ($12/mo per workspace) — We run your agents 24/7. Included free in Enterprise. Optional in Pro (self-host for free).<br>
+<b>AI model costs</b> — You bring your own API keys (Claude, OpenAI, Gemini). You pay the AI provider directly. Typical cost: $20-$100/mo depending on usage.
+</div>
+</div>
+
+<div style="font-size:12px;color:var(--tx2)">All Claw purchases include a 7-day money-back guarantee. No questions asked.</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/pricing</code>. Components: PricingPage, PlanCard (3 tiers), PricingFAQ. "Get started free" → <code>/auth/signup</code>. "Upgrade" → Stripe checkout for subscription. "Contact sales" → mailto link. Pricing data can be hardcoded initially.</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- M1: SCREEN 13 — AUTH (SIGN IN)                                -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 13 — Sign in / Sign up</span>
+<div class="sarrive"><b>User arrives from:</b> "Sign in" button (any page), "Purchase" on Claw detail (if not logged in), direct URL.</div>
+<div class="sactions"><b>Goes to:</b> After auth success → redirected to intended destination (store, checkout, my-claws). New users → Screen 14 (Onboarding).</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>Pricing</a><a>Docs</a></div>
+</div>
+<div class="body">
+<div class="auth-box">
+<div style="font-size:20px;font-weight:600;margin-bottom:4px">Welcome to Claws</div>
+<div style="font-size:13px;color:var(--tx2);margin-bottom:20px">Sign in to manage your AI agent teams</div>
+
+<div class="auth-btn">
+<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" fill="currentColor"/></svg>
+Continue with GitHub
+</div>
+<div class="auth-btn">
+<svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+Continue with Google
+</div>
+
+<div class="auth-divider"><span>or</span></div>
+
+<input type="email" placeholder="Email address" class="auth-input">
+<button class="btn bp" style="width:100%;padding:10px;font-size:13px">Send magic link</button>
+
+<div style="font-size:11px;color:var(--tx3);margin-top:14px">By signing in, you agree to our Terms of Service and Privacy Policy</div>
+</div>
+</div>
+</div>
+
+<!-- Auth error state -->
+<div style="margin-top:10px">
+<span class="slabel-state">Auth error state</span>
+<div class="sdesc">Shown when OAuth fails or magic link expired.</div>
+<div class="err-banner">
+<span class="err-icon">⚠</span>
+<div class="err-text"><b>Authentication failed.</b> This could be a temporary issue. Please try again, or use a different sign-in method.</div>
+</div>
+</div>
+
+<div class="impl"><b>Impl:</b> <code>/auth/signin</code> and <code>/auth/signup</code> (same page, different heading). NextAuth providers: GitHub, Google, Email (magic link). After first-ever sign-in: redirect to <code>/onboarding</code> (Screen 14). After subsequent sign-ins: redirect to intended destination or <code>/my-claws</code>. Error page at <code>/auth/error</code>.</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- M4: SCREEN 14 — ONBOARDING                                    -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 14 — Onboarding (first-time user)</span>
+<div class="sarrive"><b>User arrives from:</b> First-ever sign-in. Only shown once.</div>
+<div class="sactions"><b>Goes to:</b> "Browse Claws" → Screen 1 (Store). "Create custom" → Screen 9 (Builder). "Add API key" → Screen 11 (Settings).</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px;align-items:center"><div style="width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">CS</div></div>
+</div>
+<div class="body">
+<div style="max-width:560px;margin:20px auto;text-align:center">
+
+<div style="font-size:24px;font-weight:600;margin-bottom:6px">Welcome to Claws</div>
+<div style="font-size:14px;color:var(--tx2);margin-bottom:24px">Let's get your first AI agent team running. It takes about 10 minutes.</div>
+
+<!-- Step 1 -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:16px;text-align:left;margin-bottom:12px">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+<div style="width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">1</div>
+<div><div style="font-size:14px;font-weight:600">Add your AI model key</div><div style="font-size:11px;color:var(--tx2)">Your agents need an AI model to think. Add your Anthropic (Claude) or OpenAI API key.</div></div>
+</div>
+<div style="display:flex;gap:6px;margin-left:38px">
+<button class="btn bp" style="font-size:11px">Add Anthropic key</button>
+<button class="btn bo" style="font-size:11px">Add OpenAI key</button>
+<a href="#" style="font-size:11px;color:var(--ac)">Where do I get a key?</a>
+</div>
+</div>
+
+<!-- Step 2 -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:16px;text-align:left;margin-bottom:12px">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+<div style="width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">2</div>
+<div><div style="font-size:14px;font-weight:600">Pick your first Claw</div><div style="font-size:11px;color:var(--tx2)">Choose a pre-built agent team from the store, or create your own from scratch.</div></div>
+</div>
+<div style="display:flex;gap:6px;margin-left:38px">
+<button class="btn bp" style="font-size:11px">Browse the store</button>
+<button class="btn bo" style="font-size:11px">Create custom Claw</button>
+</div>
+</div>
+
+<!-- Step 3 -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:16px;text-align:left;margin-bottom:12px;opacity:0.5">
+<div style="display:flex;align-items:center;gap:10px">
+<div style="width:28px;height:28px;border-radius:50%;border:1px solid var(--bd);color:var(--tx3);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">3</div>
+<div><div style="font-size:14px;font-weight:600;color:var(--tx3)">Connect tools & deploy</div><div style="font-size:11px;color:var(--tx3)">After purchasing, the setup wizard will guide you through connecting your tools and deploying.</div></div>
+</div>
+</div>
+
+<div style="font-size:11px;color:var(--tx3);margin-top:16px">
+<a href="#" style="color:var(--ac)">Skip onboarding →</a> (you can always access these from Settings and the Store)
+</div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/onboarding</code>. Only shown once (track via user.onboardingCompleted flag in DB). Step 1 opens ApiKeyModal inline. Step 2 links to Store or Builder. "Skip" sets onboardingCompleted=true and redirects to <code>/my-claws</code>. After completing Step 1 or clicking Browse: set onboardingCompleted=true.</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- M2: MODALS & OVERLAYS                                         -->
+<!-- ============================================================ -->
+<h2>M2: Modals & Overlays</h2>
+
+<!-- API KEY MODAL -->
+<div class="screen-section">
+<span class="slabel-modal">Modal — API key entry</span>
+<div class="sdesc">Appears when user clicks "Enter API key" for any tool (Step 2) or when adding AI model keys (Settings, Onboarding).</div>
+<div class="modal-overlay">
+<div class="modal-box">
+<div class="modal-title">Connect Apollo.io</div>
+<div class="modal-desc">Enter your Apollo.io API key. We encrypt it with AES-256-GCM before storing.</div>
+<div style="margin-bottom:10px">
+<label style="font-size:11px;font-weight:500;display:block;margin-bottom:4px">API Key</label>
+<input type="text" placeholder="api_xxxxxxxxxxxxxxxx" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font-family:monospace;font-size:12px">
+</div>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:12px">
+<a href="#" style="color:var(--ac)">Where do I find my Apollo API key? →</a>
+</div>
+
+<!-- Validation states -->
+<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+<div style="font-size:11px;color:var(--ok);display:flex;align-items:center;gap:4px">✓ <b>Success state:</b> "API key validated. Connection active."</div>
+<div style="font-size:11px;color:var(--err);display:flex;align-items:center;gap:4px">✗ <b>Error state:</b> "Invalid API key. Please check and try again."</div>
+<div style="font-size:11px;color:var(--warn);display:flex;align-items:center;gap:4px">⟳ <b>Validating state:</b> "Testing connection..." (spinner)</div>
+</div>
+
+<div style="display:flex;gap:6px;justify-content:flex-end">
+<button class="btn bo">Cancel</button>
+<button class="btn bp">Validate & save</button>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> Components: ApiKeyModal. Reused for all API key connections (Apollo, Instantly, Tavily, Binance, etc.). Props: toolName, toolSlug, helpUrl, placeholderFormat. On submit: POST to <code>/api/tools/[workspaceId]/connect</code> which validates, encrypts (AES-256-GCM), stores in ToolConnection model. Shows spinner during validation, success/error after.</div>
+</div>
+
+<!-- BROWSE TOOLS MODAL -->
+<div class="screen-section">
+<span class="slabel-modal">Modal — Browse 500+ tools (Composio catalog)</span>
+<div class="sdesc">Opens when user clicks "Browse 500+ tools" on Setup Step 2. Shows Composio's full tool catalog with search.</div>
+<div class="modal-overlay">
+<div class="modal-box" style="max-width:560px">
+<div class="modal-title">Browse tools</div>
+<div class="modal-desc">Connect any of 500+ tools via Composio. Search for the tool you need.</div>
+<input type="text" placeholder="Search tools... (e.g., Notion, Airtable, Monday)" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px;margin-bottom:12px">
+
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+<button class="btn bo" style="font-size:10px;padding:3px 8px">All</button>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">CRM</button>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">Email</button>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">Calendar</button>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">PM</button>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">Social</button>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">Analytics</button>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">Finance</button>
+</div>
+
+<div class="tool-list">
+<div class="tool-row"><div class="tool-info"><div><div class="tool-name">Notion</div><div class="tool-desc">All-in-one workspace — notes, databases, wikis</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+<div class="tool-row"><div class="tool-info"><div><div class="tool-name">Airtable</div><div class="tool-desc">Spreadsheet-database hybrid for structured data</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+<div class="tool-row"><div class="tool-info"><div><div class="tool-name">Monday.com</div><div class="tool-desc">Work management and project tracking</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+<div class="tool-row"><div class="tool-info"><div><div class="tool-name">Intercom</div><div class="tool-desc">Customer messaging and support</div></div></div><button class="btn bp" style="font-size:10px;padding:3px 10px">Connect</button></div>
+</div>
+
+<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Showing 4 of 500+ available tools</div>
+<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn bo">Close</button></div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> Components: BrowseToolsModal. Fetches tool list from Composio API or our cached catalog. Search filters client-side. Category tabs filter by tool type. "Connect" triggers OAuth flow (Composio popup) or shows ApiKeyModal depending on tool auth type. After connection: adds to workspace's ToolConnection model.</div>
+</div>
+
+<!-- CUSTOM API MODAL -->
+<div class="screen-section">
+<span class="slabel-modal">Modal — Connect custom API</span>
+<div class="sdesc">For niche tools not in Composio's catalog. User provides base URL and credentials.</div>
+<div class="modal-overlay">
+<div class="modal-box">
+<div class="modal-title">Connect a custom API</div>
+<div class="modal-desc">Add any API not available in our catalog. Your agents will be able to make HTTP requests to this service.</div>
+
+<div style="margin-bottom:10px">
+<label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Tool name</label>
+<input type="text" placeholder="e.g., Our Internal CRM" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px">
+</div>
+<div style="margin-bottom:10px">
+<label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Base URL</label>
+<input type="text" placeholder="https://api.example.com/v1" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px;font-family:monospace">
+</div>
+<div style="margin-bottom:10px">
+<label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Authentication type</label>
+<select style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px">
+<option>API Key (sent as header)</option>
+<option>Bearer Token</option>
+<option>Basic Auth (username + password)</option>
+<option>Query Parameter</option>
+</select>
+</div>
+<div style="margin-bottom:10px">
+<label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">API Key / Token</label>
+<input type="password" placeholder="Your credential" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px;font-family:monospace">
+</div>
+<div style="margin-bottom:12px">
+<label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Description (helps your agents understand what this API does)</label>
+<textarea placeholder="e.g., Our internal CRM. Supports GET /contacts, POST /contacts, GET /deals..." style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font-size:12px;height:60px;resize:none"></textarea>
+</div>
+<div style="display:flex;gap:6px;justify-content:flex-end">
+<button class="btn bo">Cancel</button>
+<button class="btn bp">Test & save</button>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> Components: CustomApiModal. On submit: POST to <code>/api/tools/[workspaceId]/custom</code>. Tests connectivity (HEAD request to base URL). Encrypts credentials. Creates CustomToolConnection record. Auto-generates a SKILL.md template for this API that agents will read.</div>
+</div>
+
+<!-- CONFIRMATION DIALOGS -->
+<div class="screen-section">
+<span class="slabel-modal">Modal — Confirmation dialogs</span>
+<div class="sdesc">Used for destructive actions: deleting a Claw, pausing all agents, removing a tool connection.</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+<!-- Delete confirmation -->
+<div class="modal-overlay" style="margin:0">
+<div class="modal-box" style="max-width:360px">
+<div class="modal-title">Delete this Claw?</div>
+<div class="modal-desc">This will permanently delete "B2B Sales Machine" and all its agents, configurations, and deployment. This cannot be undone.</div>
+<div style="background:var(--errbg);border-radius:6px;padding:8px 10px;font-size:11px;color:#991b1b;margin-bottom:12px">⚠ If this Claw is currently deployed, the container will be stopped and removed.</div>
+<div style="display:flex;gap:6px;justify-content:flex-end">
+<button class="btn bo">Cancel</button>
+<button class="btn bd">Delete permanently</button>
+</div>
+</div>
+</div>
+
+<!-- Pause confirmation -->
+<div class="modal-overlay" style="margin:0">
+<div class="modal-box" style="max-width:360px">
+<div class="modal-title">Pause all agents?</div>
+<div class="modal-desc">This will pause the "B2B Sales Machine" container. Agents will stop running until you resume. Pending tasks will be queued.</div>
+<div style="display:flex;gap:6px;justify-content:flex-end">
+<button class="btn bo">Cancel</button>
+<button class="btn bp" style="background:var(--warn)">Pause agents</button>
+</div>
+</div>
+</div>
+</div>
+
+<div class="impl"><b>Impl:</b> Components: ConfirmDialog (reusable). Props: title, description, confirmLabel, confirmVariant (danger/warning/default), onConfirm, onCancel. Used for: delete workspace, pause/resume, remove tool connection, disconnect channel.</div>
+</div>
+
+<!-- OAUTH IN-PROGRESS -->
+<div class="screen-section">
+<span class="slabel-modal">State — OAuth connection in progress</span>
+<div class="sdesc">Shown inline on the tool row while the Composio OAuth popup is open.</div>
+<div class="tool-list" style="max-width:500px">
+<div class="tool-row">
+<div class="tool-info">
+<div style="width:14px;height:14px;border:2px solid var(--ac);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite"></div>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+<div><div class="tool-name">HubSpot</div><div class="tool-desc" style="color:var(--ac)">Connecting... complete the authorization in the popup window</div></div>
+</div>
+<button class="btn bo" style="font-size:10px;padding:3px 8px">Cancel</button>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> When OAuthConnectButton is clicked: open Composio OAuth URL in popup window. Show spinner on the tool row. Poll for connection status. On success: update to green checkmark. On failure: show error state. On timeout (2 minutes): show "Connection timed out. Try again."</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- M2: ERROR, LOADING, AND EMPTY STATES                          -->
+<!-- ============================================================ -->
+<h2>M2: Error, Loading, and Empty States</h2>
+
+<!-- MY CLAWS LOADING -->
+<div class="screen-section">
+<span class="slabel-state">Screen 3 state — My Claws loading skeleton</span>
+<div class="sdesc">Shown while workspaces are being fetched from the API.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a class="on">My Claws</a><a>Builder</a><a>Docs</a></div>
+</div>
+<div class="body">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+<div class="skel skel-card"></div>
+<div class="skel skel-card"></div>
+<div class="skel skel-card"></div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- SETUP STEP 1: API KEY VALIDATION ERROR -->
+<div class="screen-section">
+<span class="slabel-state">Screen 4 state — API key validation error</span>
+<div class="sdesc">Shown when the user enters an invalid API key.</div>
+<div style="max-width:500px">
+<div style="border:1px solid var(--err);border-radius:var(--rl);padding:14px;margin-bottom:14px;background:var(--errbg)">
+<div style="font-size:13px;font-weight:600;color:#991b1b;margin-bottom:6px">API key validation failed</div>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+<input type="text" value="sk-ant-INVALID-KEY-HERE" style="flex:1;padding:8px 10px;border:1px solid var(--err);border-radius:6px;font-family:monospace;font-size:12px;background:#fff">
+<button class="btn bd" style="font-size:11px">Retry</button>
+</div>
+<div style="font-size:11px;color:#991b1b">This API key is invalid or has expired. Please check your key in the <a href="#" style="color:#991b1b;font-weight:600">Anthropic dashboard</a> and try again. Common issues: expired key, wrong key type, or insufficient permissions.</div>
+</div>
+</div>
+</div>
+
+<!-- SETUP STEP 3: DEPLOYMENT FAILURE -->
+<div class="screen-section">
+<span class="slabel-state">Screen 6 state — Deployment failure</span>
+<div class="sdesc">Shown when cloud deployment fails (container provisioning error, health check failure, etc.).</div>
+<div style="max-width:500px">
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Deployment failed</div>
+<div style="margin-bottom:10px">
+<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px"><span style="color:var(--ok)">✓</span> Building workspace configuration</div>
+<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px"><span style="color:var(--ok)">✓</span> Provisioning container</div>
+<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px"><span style="color:var(--ok)">✓</span> Configuring agents and tools</div>
+<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px"><span style="color:var(--err)">✗</span> <span style="color:var(--err)"><b>Health check failed</b> — agents not responding</span></div>
+</div>
+<div class="err-banner" style="margin-bottom:10px">
+<span class="err-icon">⚠</span>
+<div class="err-text"><b>Container health check failed after 3 attempts.</b> This usually means an API key is invalid or a required tool connection has expired. Check your tool connections and try again.</div>
+</div>
+<div style="display:flex;gap:6px">
+<button class="btn bp">Retry deployment</button>
+<button class="btn bo">Check tool connections</button>
+<button class="btn bo">View logs</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- BUILDER EMPTY STATE -->
+<div class="screen-section">
+<span class="slabel-state">Screen 9 state — Builder empty (new custom Claw)</span>
+<div class="sdesc">When user creates a custom Claw from scratch and lands on an empty builder canvas.</div>
+<div class="scr" style="max-width:700px">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a class="on">Builder</a><a>Docs</a></div>
+</div>
+<div class="body" style="min-height:250px;display:flex;align-items:center;justify-content:center;background:var(--bg2)">
+<div style="text-align:center;max-width:360px">
+<div style="font-size:40px;margin-bottom:8px">🤖</div>
+<div style="font-size:16px;font-weight:600;margin-bottom:4px">Start building your agent team</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Every Claw starts with an Orchestrator — the manager that coordinates your other agents.</div>
+<button class="btn bp" style="padding:10px 20px;font-size:13px">+ Add Orchestrator</button>
+<div style="font-size:11px;color:var(--tx3);margin-top:10px">After adding the Orchestrator, you'll add Workers (task executors) and a Critic (quality reviewer).</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- DASHBOARD PAUSED STATE -->
+<div class="screen-section">
+<span class="slabel-state">Screen 10 state — Dashboard paused</span>
+<div class="sdesc">When the user has paused the Claw. Shows status with resume button.</div>
+<div style="max-width:600px">
+<div class="warn-banner">
+<span class="warn-icon">⏸</span>
+<div class="warn-text"><b>This Claw is paused.</b> Agents have stopped running. Pending tasks are queued and will resume when you unpause. Cloud hosting charges continue while paused. <button class="btn bp" style="font-size:10px;padding:3px 10px;margin-left:6px">Resume agents</button></div>
+</div>
+<div class="stat-grid" style="opacity:0.5">
+<div class="stat"><div class="stat-l">Agents</div><div class="stat-v" style="color:var(--warn)">Paused</div></div>
+<div class="stat"><div class="stat-l">Tasks today</div><div class="stat-v">0</div></div>
+<div class="stat"><div class="stat-l">Paused since</div><div class="stat-v" style="font-size:14px">Mar 14, 2:30 PM</div></div>
+<div class="stat"><div class="stat-l">Queued tasks</div><div class="stat-v">7</div></div>
+</div>
+</div>
+</div>
+
+<!-- DASHBOARD ERROR STATE -->
+<div class="screen-section">
+<span class="slabel-state">Screen 10 state — Dashboard error (container crashed)</span>
+<div class="sdesc">When the agent container has crashed or become unresponsive.</div>
+<div style="max-width:600px">
+<div class="err-banner">
+<span class="err-icon">⚠</span>
+<div class="err-text">
+<b>Agent container is not responding.</b> Last healthy check: 23 minutes ago. This may be a temporary issue — containers auto-restart up to 3 times.<br><br>
+<b>Auto-restart attempts:</b> 2 of 3 (next attempt in 45 seconds)<br>
+<b>Likely cause:</b> API key expiration or rate limiting<br><br>
+<div style="display:flex;gap:6px;margin-top:6px">
+<button class="btn bd" style="font-size:10px;padding:3px 10px">Force restart</button>
+<button class="btn bo" style="font-size:10px;padding:3px 10px">View error logs</button>
+<button class="btn bo" style="font-size:10px;padding:3px 10px">Check tool connections</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- M6-M7: DASHBOARD ENHANCEMENTS                                 -->
+<!-- ============================================================ -->
+<h2>M6-M7: Dashboard Enhancements</h2>
+
+<!-- PER-AGENT COST BREAKDOWN -->
+<div class="screen-section">
+<span class="slabel">Dashboard enhancement — Per-agent cost breakdown</span>
+<div class="sdesc">Replaces the single "API cost" stat card with a detailed breakdown showing which agents cost the most. Helps users optimize model selection.</div>
+<div style="max-width:600px">
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;margin-bottom:14px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<div style="font-size:13px;font-weight:600">API cost breakdown — March</div>
+<div style="font-size:16px;font-weight:600;color:var(--ac)">$47.20</div>
+</div>
+<div style="font-size:12px">
+<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)"><span style="font-weight:500">Agent</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;font-weight:500">Model</span><span style="width:50px;text-align:right;font-weight:500">Calls</span><span style="width:60px;text-align:right;font-weight:500">Cost</span></span></div>
+<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)"><span>Trade Thesis Reviewer</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;color:var(--tx2);font-size:10px">Opus</span><span style="width:50px;text-align:right">312</span><span style="width:60px;text-align:right;font-weight:600">$23.40</span></span></div>
+<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)"><span>Signal Analyst</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;color:var(--tx2);font-size:10px">Opus</span><span style="width:50px;text-align:right">198</span><span style="width:60px;text-align:right;font-weight:600">$14.85</span></span></div>
+<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)"><span>Risk Manager</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;color:var(--tx2);font-size:10px">Sonnet</span><span style="width:50px;text-align:right">245</span><span style="width:60px;text-align:right;font-weight:600">$3.68</span></span></div>
+<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)"><span>Market Scanner</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;color:var(--tx2);font-size:10px">Sonnet</span><span style="width:50px;text-align:right">187</span><span style="width:60px;text-align:right;font-weight:600">$2.81</span></span></div>
+<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)"><span>Portfolio Tracker</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;color:var(--tx2);font-size:10px">Haiku</span><span style="width:50px;text-align:right">890</span><span style="width:60px;text-align:right;font-weight:600">$0.89</span></span></div>
+<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)"><span>Trade Commander</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;color:var(--tx2);font-size:10px">Haiku</span><span style="width:50px;text-align:right">1,240</span><span style="width:60px;text-align:right;font-weight:600">$1.24</span></span></div>
+<div style="display:flex;justify-content:space-between;padding:6px 0"><span>Backtester</span><span style="display:flex;gap:20px"><span style="width:50px;text-align:right;color:var(--tx2);font-size:10px">Sonnet</span><span style="width:50px;text-align:right">22</span><span style="width:60px;text-align:right;font-weight:600">$0.33</span></span></div>
+</div>
+<div style="font-size:11px;color:var(--tx2);margin-top:10px;padding:8px;background:var(--bg2);border-radius:6px">
+💡 <b>Cost optimization tip:</b> Your Critic (Trade Thesis Reviewer) uses 50% of your budget. If cost is a concern, try switching it to Sonnet — but note that review quality may decrease. <a href="#" style="color:var(--ac)">Change model in Builder →</a>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> Component: AgentCostBreakdown. Data from ActivityLog model (each log has agent_id and estimated_cost). Aggregate by agent per time period. Sort by cost descending. Cost optimization tip: if any agent >40% of total, suggest model downgrade with quality caveat. Link to Builder for model change.</div>
+</div>
+
+<!-- PER-AGENT PAUSE/RESUME -->
+<div class="screen-section">
+<span class="slabel">Dashboard enhancement — Per-agent status with pause/resume</span>
+<div class="sdesc">Shows each agent's health status with individual pause/resume controls. Previously could only pause the entire Claw.</div>
+<div style="max-width:500px">
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:10px">Agent status</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg2);border-radius:6px">
+<div style="display:flex;align-items:center;gap:8px">
+<div style="width:8px;height:8px;border-radius:50%;background:var(--ok)"></div>
+<div><div style="font-size:12px;font-weight:600">Trade Commander</div><div style="font-size:10px;color:var(--tx2)">Orchestrator · Last active: 2 min ago</div></div>
+</div>
+<div style="font-size:10px;color:var(--ok)">Running</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg2);border-radius:6px">
+<div style="display:flex;align-items:center;gap:8px">
+<div style="width:8px;height:8px;border-radius:50%;background:var(--ok)"></div>
+<div><div style="font-size:12px;font-weight:600">Market Scanner</div><div style="font-size:10px;color:var(--tx2)">Worker · Last active: 5 min ago</div></div>
+</div>
+<div style="display:flex;gap:4px;align-items:center">
+<span style="font-size:10px;color:var(--ok)">Running</span>
+<button class="btn bo" style="font-size:9px;padding:2px 6px">Pause</button>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--warnbg);border-radius:6px">
+<div style="display:flex;align-items:center;gap:8px">
+<div style="width:8px;height:8px;border-radius:50%;background:var(--warn)"></div>
+<div><div style="font-size:12px;font-weight:600">Reply Handler</div><div style="font-size:10px;color:#92400e">Worker · Paused by you · 3 queued tasks</div></div>
+</div>
+<div style="display:flex;gap:4px;align-items:center">
+<span style="font-size:10px;color:var(--warn)">Paused</span>
+<button class="btn bp" style="font-size:9px;padding:2px 6px">Resume</button>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--errbg);border-radius:6px">
+<div style="display:flex;align-items:center;gap:8px">
+<div style="width:8px;height:8px;border-radius:50%;background:var(--err)"></div>
+<div><div style="font-size:12px;font-weight:600">Signal Analyst</div><div style="font-size:10px;color:#991b1b">Worker · Error: API rate limited · Retrying in 3 min</div></div>
+</div>
+<div style="display:flex;gap:4px;align-items:center">
+<span style="font-size:10px;color:var(--err)">Error</span>
+<button class="btn bo" style="font-size:9px;padding:2px 6px">Restart</button>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg2);border-radius:6px">
+<div style="display:flex;align-items:center;gap:8px">
+<div style="width:8px;height:8px;border-radius:50%;background:var(--ok)"></div>
+<div><div style="font-size:12px;font-weight:600;color:#6B3FA0">Trade Thesis Reviewer</div><div style="font-size:10px;color:var(--tx2)">Critic · Last review: 8 min ago · Pass rate: 73%</div></div>
+</div>
+<div style="font-size:10px;color:var(--ok)">Running</div>
+</div>
+
+</div>
+<div style="font-size:10px;color:var(--tx3);margin-top:8px">Note: Orchestrator and Critic cannot be paused individually — they're essential for Claw operation. Use "Pause all" to stop the entire Claw.</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> Component: AgentStatusList (enhanced). Each worker shows: health status (running/paused/error), last active timestamp, pause/resume button. Orchestrator and Critic rows don't show pause button (enforced — they're required). Pausing a worker: sends command to container, tasks for that worker are queued. Resuming: worker processes queued tasks. Error state shows: error message, retry countdown, restart button. Critic row shows pass rate (approval %).</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- ADDITIONAL: SEARCH EMPTY STATE FOR STORE                      -->
+<!-- ============================================================ -->
+<h2>Additional States</h2>
+
+<div class="screen-section">
+<span class="slabel-state">Screen 1 state — Store search with no results</span>
+<div class="scr" style="max-width:500px">
+<div class="body" style="background:var(--bg2);text-align:center;padding:30px">
+<div style="font-size:36px;margin-bottom:8px">🔍</div>
+<div style="font-size:15px;font-weight:600;margin-bottom:4px">No Claws match "blockchain notary"</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Try different keywords, or browse all categories.</div>
+<button class="btn bo">Clear search</button>
+</div>
+</div>
+</div>
+
+<!-- TOOL CONNECTION EXPIRED -->
+<div class="screen-section">
+<span class="slabel-state">Dashboard alert — Tool connection expired</span>
+<div class="sdesc">Shown as a banner on the Dashboard when a connected tool's API key or OAuth token has expired.</div>
+<div class="warn-banner" style="max-width:600px">
+<span class="warn-icon">🔌</span>
+<div class="warn-text"><b>HubSpot connection expired.</b> Your OAuth token has expired. Agents that use HubSpot (Pipeline Manager) are operating with degraded functionality. <button class="btn bp" style="font-size:10px;padding:3px 10px;margin-left:6px">Reconnect</button> <button class="btn bo" style="font-size:10px;padding:3px 10px;margin-left:2px">Manage tools</button></div>
+</div>
+</div>
+
+<!-- API SPEND WARNING -->
+<div class="screen-section">
+<span class="slabel-state">Dashboard alert — API spend warning (80% limit)</span>
+<div class="warn-banner" style="max-width:600px">
+<span class="warn-icon">💰</span>
+<div class="warn-text"><b>API spend at 82% of your $200 monthly limit.</b> At current usage, you'll hit the limit in ~4 days. Options: <button class="btn bo" style="font-size:10px;padding:3px 10px;margin-left:6px">Increase limit</button> <button class="btn bo" style="font-size:10px;padding:3px 10px;margin-left:2px">Optimize costs</button></div>
+</div>
+</div>
+
+<!-- API SPEND LIMIT REACHED -->
+<div class="screen-section">
+<span class="slabel-state">Dashboard alert — API spend limit reached (100%)</span>
+<div class="err-banner" style="max-width:600px">
+<span class="err-icon">🛑</span>
+<div class="err-text"><b>Monthly API spend limit reached ($200.00/$200.00).</b> All agents have been paused to prevent further charges. Resume by increasing your limit or waiting until next month. <button class="btn bp" style="font-size:10px;padding:3px 10px;margin-left:6px">Increase limit</button></div>
+</div>
+</div>
+
+</body>
+</html>

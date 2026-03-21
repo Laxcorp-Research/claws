@@ -1,0 +1,710 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── AUTH & USERS ───────────────────────────────────────
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String?
+  avatarUrl       String?
+  emailVerified   DateTime?
+  hashedPassword  String?
+
+  stripeCustomerId    String?   @unique
+  dodoCustomerId      String?   @unique
+  subscriptionTier    SubscriptionTier @default(FREE)
+  subscriptionId      String?
+  subscriptionEndsAt  DateTime?
+
+  maxWorkspaces       Int       @default(1)
+  maxAgentsPerWorkspace Int     @default(3)
+  monthlyApiSpendLimit Float    @default(50.0)
+
+  onboardingCompleted Boolean   @default(false)
+
+  accounts        Account[]
+  sessions        Session[]
+  workspaces      Workspace[]
+  purchases       Purchase[]
+  apiKeys         UserApiKey[]
+  auditLogs       AuditLog[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([email])
+  @@index([stripeCustomerId])
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── API KEY MANAGEMENT ─────────────────────────────────
+
+model UserApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  provider    ApiProvider
+
+  encryptedKey String
+  keyHint     String
+  label       String?
+
+  isValid     Boolean  @default(true)
+  lastUsedAt  DateTime?
+  lastError   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+enum ApiProvider {
+  ANTHROPIC
+  OPENAI
+  GOOGLE
+  OPENROUTER
+  OLLAMA
+}
+
+// ─── WORKSPACES ─────────────────────────────────────────
+
+model Workspace {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  slug        String
+  description String?
+
+  status      WorkspaceStatus @default(DRAFT)
+  deploymentType DeploymentType?
+
+  containerId     String?
+  containerName   String?
+  containerHost   String?
+  containerPort   Int?
+  hostPort        Int?
+  gatewayToken    String?
+  timezone        String?  @default("UTC")
+  lastHealthCheck DateTime?
+  healthStatus    HealthStatus @default(UNKNOWN)
+
+  channelConfigEncrypted String?
+
+  currentMonthApiCost Float    @default(0)
+  apiSpendLimit       Float    @default(50.0)
+  costAlertThreshold  Float    @default(0.8)
+  costAlertSent       Boolean  @default(false)
+
+  clawTemplateId String?
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clawTemplate ClawTemplate? @relation(fields: [clawTemplateId], references: [id])
+  agents      Agent[]
+  connections AgentConnection[]
+  activityLogs ActivityLog[]
+  deployments  Deployment[]
+  toolConnections ToolConnection[]
+  customToolConnections CustomToolConnection[]
+  snapshots   WorkspaceSnapshot[]
+  auditLogs   AuditLog[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@index([status])
+  @@index([containerId])
+}
+
+enum WorkspaceStatus {
+  DRAFT
+  SETUP_INCOMPLETE
+  DEPLOYING
+  RUNNING
+  PAUSED
+  ERROR
+  STOPPED
+}
+
+enum DeploymentType {
+  CLOUD
+  SELF_HOSTED
+}
+
+enum HealthStatus {
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+  UNKNOWN
+}
+
+// ─── AGENTS ─────────────────────────────────────────────
+
+model Agent {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  agentSlug     String
+
+  name          String
+  roleDescription String?
+  description   String?
+  color         String   @default("#5BA1F5")
+  icon          String?
+
+  soulMd        String   @db.Text
+  agentsMd      String   @db.Text
+  heartbeatMd   String?  @db.Text
+  toolsMd       String?  @db.Text
+  userMd        String?  @db.Text
+  identityMd    String?  @db.Text
+
+  model         String   @default("anthropic/claude-sonnet-4-6")
+  fallbackModel String?
+
+  skills        AgentSkill[]
+
+  positionX     Float    @default(0)
+  positionY     Float    @default(0)
+
+  role          AgentRole  @default(WORKER)
+  reportsTo     String?
+  maxRetries    Int        @default(3)
+  qualityThreshold Float   @default(8.0)
+
+  outgoingConnections AgentConnection[] @relation("SourceAgent")
+  incomingConnections AgentConnection[] @relation("TargetAgent")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, agentSlug])
+  @@index([workspaceId])
+}
+
+model AgentSkill {
+  id        String @id @default(cuid())
+  agentId   String
+  skillId   String
+
+  configOverrides String? @db.Text
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, skillId])
+  @@index([agentId])
+}
+
+// ─── AGENT CONNECTIONS ──────────────────────────────────
+
+model AgentConnection {
+  id            String @id @default(cuid())
+  workspaceId   String
+  sourceAgentId String
+  targetAgentId String
+
+  condition     ConnectionCondition @default(ON_COMPLETE)
+  conditionExpr String?
+  label         String?
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceAgent Agent     @relation("SourceAgent", fields: [sourceAgentId], references: [id], onDelete: Cascade)
+  targetAgent Agent     @relation("TargetAgent", fields: [targetAgentId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([sourceAgentId])
+  @@index([targetAgentId])
+}
+
+enum ConnectionCondition {
+  ON_COMPLETE
+  ON_APPROVAL
+  ON_REJECTION
+  ON_SCHEDULE
+  ON_HUMAN_APPROVE
+  CUSTOM
+}
+
+// ─── SKILLS LIBRARY ─────────────────────────────────────
+
+model Skill {
+  id          String @id @default(cuid())
+  name        String
+  slug        String @unique
+  description String
+
+  skillMd     String @db.Text
+
+  type        SkillType
+  category    SkillCategory
+  icon        String?
+
+  compatibleTools  String[]
+  requiresToolConnection  Boolean @default(false)
+  requiredToolCategory    String?
+
+  isVerified  Boolean @default(false)
+  isBuiltIn   Boolean @default(false)
+  isCurated   Boolean @default(true)
+  version     Int     @default(1)
+
+  permissions   String[]
+  securityNotes String?
+
+  agentSkills AgentSkill[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type, category])
+  @@index([category])
+}
+
+enum SkillType {
+  BUILT_IN
+  TOOL_SPECIFIC
+  TOOL_AGNOSTIC
+  DOMAIN_WORKFLOW
+  USER_GENERATED
+}
+
+enum SkillCategory {
+  CORE
+  CRM
+  EMAIL_SENDER
+  EMAIL_READER
+  LEAD_DATABASE
+  ENRICHMENT
+  SOCIAL
+  CALENDAR
+  PROJECT_MGMT
+  ANALYTICS
+  SEARCH
+  FINANCE
+  TRADING
+  CONTENT
+  COMMUNICATION
+  SECURITY
+  CUSTOM
+}
+
+enum AgentRole {
+  ORCHESTRATOR
+  WORKER
+  CRITIC
+}
+
+// ─── TOOL CONNECTIONS ───────────────────────────────────
+
+model ToolConnection {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  toolSlug     String
+
+  connectionType ConnectionType
+  displayName    String
+
+  encryptedApiKey String?
+  keyHint         String?
+
+  composioConnectionId String?
+  composioEntityId     String?
+
+  status       ToolConnectionStatus @default(PENDING)
+  lastTestedAt DateTime?
+  lastError    String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, toolSlug])
+  @@index([workspaceId])
+}
+
+enum ConnectionType {
+  API_KEY
+  OAUTH_COMPOSIO
+  CHANNEL_NATIVE
+}
+
+enum ToolConnectionStatus {
+  PENDING
+  CONNECTED
+  EXPIRED
+  ERROR
+  REVOKED
+}
+
+// ─── CUSTOM TOOL CONNECTIONS ────────────────────────────
+
+model CustomToolConnection {
+  id           String @id @default(cuid())
+  workspaceId  String
+  name         String
+  baseUrl      String
+  authType     CustomAuthType
+  encryptedCredentials String
+  description  String?
+
+  generatedSkillMd String? @db.Text
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+enum CustomAuthType {
+  API_KEY_HEADER
+  BEARER_TOKEN
+  BASIC_AUTH
+  QUERY_PARAM
+}
+
+// ─── CLAW TEMPLATES ─────────────────────────────────────
+
+model ClawTemplate {
+  id          String @id @default(cuid())
+  name        String
+  slug        String @unique
+  tagline     String
+  description String @db.Text
+
+  category    ClawCategory
+  tags        String[]
+
+  priceSetup  Float
+  priceMonthly Float
+
+  agentCount  Int
+  previewImage String?
+  featured    Boolean @default(false)
+  sortOrder   Int     @default(0)
+  isPublished Boolean @default(true)
+
+  dodoProductId        String?
+  dodoSupportProductId String?
+
+  workspaceSnapshot String @db.Text
+
+  purchaseCount Int @default(0)
+  avgRating     Float?
+
+  workspaces Workspace[]
+  purchases  Purchase[]
+  reviews    TemplateReview[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([category])
+  @@index([featured])
+}
+
+enum ClawCategory {
+  MONEY_MAKING
+  CREATOR
+  BUSINESS_OPS
+  VERTICAL
+  LIFESTYLE
+}
+
+model TemplateReview {
+  id             String @id @default(cuid())
+  clawTemplateId String
+  userId         String
+  rating         Int
+  review         String?
+
+  template ClawTemplate @relation(fields: [clawTemplateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([clawTemplateId, userId])
+  @@index([clawTemplateId])
+}
+
+// ─── PURCHASES & BILLING ────────────────────────────────
+
+model Purchase {
+  id              String @id @default(cuid())
+  userId          String
+  clawTemplateId  String
+  workspaceId     String?
+
+  amountPaid      Float
+  currency        String @default("usd")
+  stripePaymentId String? @unique
+  stripeInvoiceId String?
+  dodoPaymentId   String? @unique
+  dodoBusinessId  String?
+
+  subscriptionId  String?
+  subscriptionStatus SubscriptionStatus?
+
+  status          PurchaseStatus @default(COMPLETED)
+  refundedAt      DateTime?
+
+  user User          @relation(fields: [userId], references: [id])
+  clawTemplate ClawTemplate @relation(fields: [clawTemplateId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([clawTemplateId])
+  @@index([stripePaymentId])
+  @@index([dodoPaymentId])
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+  FAILED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+// ─── DEPLOYMENTS ────────────────────────────────────────
+
+model Deployment {
+  id          String @id @default(cuid())
+  workspaceId String
+
+  configSnapshot String @db.Text
+  version        Int
+
+  containerId    String?
+  containerImage String  @default("ghcr.io/openclaw/openclaw:latest")
+  containerHost  String?
+
+  status         DeploymentStatus @default(PENDING)
+  errorMessage   String?
+
+  startedAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([status])
+}
+
+enum DeploymentStatus {
+  PENDING
+  GENERATING
+  PROVISIONING
+  CONFIGURING
+  STARTING
+  HEALTH_CHECK
+  WAITING_CHANNELS
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+// ─── ACTIVITY LOGS ──────────────────────────────────────
+
+model ActivityLog {
+  id          String @id @default(cuid())
+  workspaceId String
+
+  agentName   String?
+  agentSlug   String?
+  action      String
+  actionType  ActivityType
+
+  metadata    String?  @db.Text
+
+  tokenCount  Int?
+  apiCost     Float?
+
+  timestamp   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, timestamp])
+  @@index([workspaceId, agentSlug])
+  @@index([actionType])
+}
+
+enum ActivityType {
+  HEARTBEAT
+  TASK_START
+  TASK_COMPLETE
+  TASK_FAILED
+  REVIEW_PASS
+  REVIEW_REJECT
+  HUMAN_REQUEST
+  HUMAN_APPROVE
+  HUMAN_REJECT
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  SKILL_INVOKED
+  ERROR
+  SYSTEM
+  COST_ALERT
+  TRADE_SIGNAL
+  TRADE_RECOMMENDED
+  TRADE_EXECUTED
+  TRADE_CLOSED
+  TRADE_BLOCKED
+  CIRCUIT_BREAKER
+}
+
+// ─── WORKSPACE SNAPSHOTS ────────────────────────────────
+
+model WorkspaceSnapshot {
+  id          String @id @default(cuid())
+  workspaceId String
+  version     Int
+  snapshot    Json
+  createdAt   DateTime @default(now())
+  trigger     SnapshotTrigger
+  label       String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, version])
+  @@index([workspaceId, createdAt])
+}
+
+enum SnapshotTrigger {
+  AUTO_SAVE
+  MANUAL_SAVE
+  PRE_DEPLOY
+  TEMPLATE_LOAD
+  USER_LABELED
+}
+
+// ─── AUDIT LOG ──────────────────────────────────────────
+
+model AuditLog {
+  id          String @id @default(cuid())
+  userId      String?
+  workspaceId String?
+
+  action      AuditAction
+  resource    String
+  resourceId  String
+
+  before      String?   @db.Text
+  after       String?   @db.Text
+
+  ipAddress   String?
+  userAgent   String?
+
+  timestamp   DateTime  @default(now())
+
+  user      User?      @relation(fields: [userId], references: [id])
+  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([action])
+  @@index([timestamp])
+}
+
+enum AuditAction {
+  USER_LOGIN
+  USER_LOGOUT
+  USER_REGISTER
+  PASSWORD_CHANGE
+  API_KEY_ADDED
+  API_KEY_REMOVED
+  WORKSPACE_CREATED
+  WORKSPACE_UPDATED
+  WORKSPACE_DELETED
+  AGENT_CREATED
+  AGENT_UPDATED
+  AGENT_DELETED
+  AGENT_SOUL_UPDATED
+  AGENT_SKILLS_CHANGED
+  DEPLOYMENT_STARTED
+  DEPLOYMENT_COMPLETED
+  DEPLOYMENT_FAILED
+  DEPLOYMENT_ROLLED_BACK
+  CONTAINER_STARTED
+  CONTAINER_STOPPED
+  CONTAINER_RESTARTED
+  PURCHASE_MADE
+  SUBSCRIPTION_STARTED
+  SUBSCRIPTION_CANCELED
+  PAYMENT_FAILED
+  TEMPLATE_CREATED
+  TEMPLATE_UPDATED
+  SKILL_VERIFIED
+  USER_SUSPENDED
+  TRADE_RECOMMENDED
+  TRADE_APPROVED_BY_HUMAN
+  TRADE_AUTO_EXECUTED
+  TRADE_REJECTED_BY_HUMAN
+  TRADE_LIMIT_REACHED
+  TRADE_CIRCUIT_BREAKER_TRIGGERED
+}

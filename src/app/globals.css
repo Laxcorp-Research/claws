@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #FFFFFF;
+  --bg2: #FBFBFB;
+  --bg3: #F0F0F0;
+  --tx: #0A0A0B;
+  --tx2: #777777;
+  --tx3: #999999;
+  --bd: #EFEFEF;
+  --bd2: #E0E0E0;
+  --ac: #5BA1F5;
+  --acbg: #EEF5FF;
+  --ok: #10b981;
+  --okbg: #dcfce7;
+  --warn: #f59e0b;
+  --warnbg: #FFFCE8;
+  --err: #ef4444;
+  --errbg: #fee2e2;
+}
+
+.dark {
+  --bg: #0A0A0B;
+  --bg2: #141416;
+  --bg3: #1E1E20;
+  --tx: #E5E5E5;
+  --tx2: #999999;
+  --tx3: #666666;
+  --bd: #2A2A2C;
+  --bd2: #3A3A3C;
+  --ac: #5BA1F5;
+  --acbg: #1A2A40;
+  --ok: #34d399;
+  --okbg: #064e3b;
+  --warn: #fbbf24;
+  --warnbg: #451a03;
+  --err: #f87171;
+  --errbg: #450a0a;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tx);
+  background: var(--bg3);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--tx);
+  outline: none;
+  box-shadow: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--tx);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* React Flow overrides — strip default RF styling that conflicts with Design System */
+.react-flow__node {
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.react-flow__edge-path {
+  stroke: var(--bd2) !important;
+  stroke-width: 1.5 !important;
+}
+
+.react-flow__edge-text {
+  font-size: 9px !important;
+  fill: var(--tx2) !important;
+}
+
+.react-flow__handle {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle {
+  opacity: 1;
+}

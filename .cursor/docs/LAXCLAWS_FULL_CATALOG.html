@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claws — Complete Claw Catalog (20 Templates)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>
+:root{--bg:#fff;--bg2:#FBFBFB;--bg3:#F0F0F0;--tx:#0A0A0B;--tx2:#777777;--tx3:#999999;--bd:#EFEFEF;--ac:#5BA1F5;--ok:#10b981;--r:8px;--rl:12px}
+@media(prefers-color-scheme:dark){:root{--bg:#0A0A0B;--bg2:#141416;--bg3:#1E1E20;--tx:#E5E5E5;--tx2:#999999;--tx3:#666666;--bd:#2A2A2C;--ac:#5BA1F5}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg2);color:var(--tx);padding:20px;font-size:13px;line-height:1.5;max-width:1100px;margin:0 auto}
+h1{font-size:24px;font-weight:600;margin-bottom:4px}
+.sub{font-size:13px;color:var(--tx2);margin-bottom:6px}
+.stats{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+.stats span{font-size:12px;color:var(--tx2);background:var(--bg3);padding:4px 12px;border-radius:20px}
+.stats b{color:var(--tx);font-weight:600}
+.cat-header{display:flex;align-items:center;gap:10px;margin:28px 0 12px;padding-top:20px;border-top:2px solid var(--bd)}
+.cat-label{font-size:12px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:4px 14px;border-radius:var(--r);display:inline-block}
+.cat-m{background:#FFF8E7;color:#8A6D00;border:1px solid #FFE9A0}.cat-c{background:#EDFFF3;color:#0D6B32;border:1px solid #B8FFCF}.cat-b{background:#EEF5FF;color:#1A5BBF;border:1px solid #A8CFFF}.cat-v{background:#FFF0EF;color:#8B2018;border:1px solid #FFD4D0}.cat-l{background:#F5F0FF;color:#5B3A99;border:1px solid #E0D0FF}
+.cat-count{font-size:12px;color:var(--tx3)}
+.claw{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);padding:16px 20px;margin-bottom:12px;transition:border-color .15s}
+.claw:hover{border-color:var(--ac)}
+.claw-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px}
+.claw-num{font-size:11px;color:var(--tx3);font-weight:500;margin-right:6px}
+.claw-name{font-size:16px;font-weight:600}
+.claw-price{text-align:right;white-space:nowrap}
+.claw-setup{font-size:15px;font-weight:600;color:var(--ac)}
+.claw-monthly{font-size:11px;color:var(--tx2)}
+.claw-desc{font-size:12px;color:var(--tx2);line-height:1.6;margin:6px 0 10px;max-width:800px}
+.agents-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);margin-bottom:4px}
+.agent-grid{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.agent{font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid var(--bd);color:var(--tx2);background:var(--bg2);display:inline-flex;align-items:center;gap:4px}
+.agent .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.agent.orch{border-color:var(--ac);color:#1d4ed8;background:#eff6ff;font-weight:500}
+.agent.critic{border-color:#8b5cf6;color:#6d28d9;background:#f5f3ff;font-weight:500}
+.agent .model{font-size:9px;color:var(--tx3);margin-left:2px}
+.meta-row{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--tx2);margin-top:6px;padding-top:8px;border-top:1px solid var(--bd)}
+.meta-row .label{font-weight:500;color:var(--tx3);margin-right:2px}
+.legal{font-size:10px;color:#92400e;background:#fef3c7;padding:5px 10px;border-radius:6px;margin-top:8px;border-left:3px solid #f59e0b;display:inline-block}
+.toc{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);padding:14px 18px;margin-bottom:20px}
+.toc-title{font-size:13px;font-weight:600;margin-bottom:6px}
+.toc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 12px}
+.toc-item{font-size:11px;color:var(--tx2);display:flex;justify-content:space-between}
+.toc-item a{color:var(--ac);text-decoration:none;font-weight:500}
+.toc-item a:hover{text-decoration:underline}
+.toc-item .tp{color:var(--tx3);font-size:10px}
+.summary{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);padding:14px 18px;margin-top:28px}
+.summary table{width:100%;border-collapse:collapse;font-size:11px}
+.summary th{text-align:left;font-weight:600;padding:6px 8px;border-bottom:2px solid var(--bd);color:var(--tx)}
+.summary td{padding:6px 8px;border-bottom:1px solid var(--bd)}
+.summary tr:last-child td{border-bottom:none;font-weight:600}
+.summary .cat-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+</style>
+</head>
+<body>
+
+<h1>Claws — Complete Claw Catalog</h1>
+<p class="sub">All 20 pre-built multi-agent AI teams. Each Claw follows the Orchestrator → Workers → Critic pattern.</p>
+<div class="stats">
+<span><b>20</b> Claws</span>
+<span><b>125</b> total agents</span>
+<span><b>5</b> categories</span>
+<span>Price range: <b>$199 – $999</b> setup</span>
+<span>Monthly: <b>$39 – $99</b>/mo</span>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+<div class="toc-title">Quick Navigation</div>
+<div class="toc-grid">
+<div class="toc-item"><a href="#c1">1. Quant Trader</a> <span class="tp">$999</span></div>
+<div class="toc-item"><a href="#c2">2. Freelancer Revenue</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c3">3. E-Commerce Profit</a> <span class="tp">$599</span></div>
+<div class="toc-item"><a href="#c4">4. YouTube Channel</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c5">5. Twitter/X Growth</a> <span class="tp">$349</span></div>
+<div class="toc-item"><a href="#c6">6. Newsletter Empire</a> <span class="tp">$399</span></div>
+<div class="toc-item"><a href="#c7">7. Podcast Studio</a> <span class="tp">$399</span></div>
+<div class="toc-item"><a href="#c8">8. B2B Sales Machine</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c9">9. Agency Operations</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c10">10. Founder's CoS</a> <span class="tp">$399</span></div>
+<div class="toc-item"><a href="#c11">11. SEO Empire</a> <span class="tp">$599</span></div>
+<div class="toc-item"><a href="#c12">12. Real Estate Agent</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c13">13. Recruiter OS</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c14">14. Medical Practice</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c15">15. Law Firm Intake</a> <span class="tp">$499</span></div>
+<div class="toc-item"><a href="#c16">16. Home Services</a> <span class="tp">$399</span></div>
+<div class="toc-item"><a href="#c17">17. Health & Fitness</a> <span class="tp">$299</span></div>
+<div class="toc-item"><a href="#c18">18. Student Accelerator</a> <span class="tp">$199</span></div>
+<div class="toc-item"><a href="#c19">19. Job Hunter OS</a> <span class="tp">$249</span></div>
+<div class="toc-item"><a href="#c20">20. Developer Productivity</a> <span class="tp">$349</span></div>
+</div>
+</div>
+
+<!-- ===================== MONEY-MAKING ===================== -->
+<div class="cat-header">
+<span class="cat-label cat-m">Money-Making</span>
+<span class="cat-count">3 Claws · 20 agents · The Claw pays for itself</span>
+</div>
+
+<div class="claw" id="c1">
+<div class="claw-top">
+<div><span class="claw-num">#1</span><span class="claw-name">Quant Trader</span></div>
+<div class="claw-price"><div class="claw-setup">$999</div><div class="claw-monthly">+ $99/month · 7 agents</div></div>
+</div>
+<div class="claw-desc">AI trading research team. Scans Polymarket, crypto (Binance/Coinbase/Kraken), and US stocks (Alpaca). Identifies signals, backtests strategies, manages risk. Dual execution mode: Alert Only (default) vs Autonomous (opt-in with hard-coded deterministic risk limits enforced at container level).</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Trade Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Market Scanner <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Signal Analyst <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Risk Manager <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Backtester <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Portfolio Tracker <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Trade Thesis Reviewer <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Tavily</span>
+<span><span class="label">Recommended:</span> Polymarket API, Binance API, Alpaca API</span>
+</div>
+<div class="legal">Research &amp; signal intelligence — not financial advice. Human approves all trades. No guaranteed returns.</div>
+</div>
+
+<div class="claw" id="c2">
+<div class="claw-top">
+<div><span class="claw-num">#2</span><span class="claw-name">Freelancer Revenue Engine</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $79/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">Full client lifecycle: lead scan → proposal → project management → invoicing → upsell. 100-point opportunity scoring. Scope creep detection. Collections escalation ladder (Day 0 → Day +30). Capacity management auto-pauses prospecting above 80% utilization.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Revenue Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Lead Hunter <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Proposal Writer <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Project Manager <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Invoice &amp; Collections <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Business Dev Reviewer <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Tavily</span>
+<span><span class="label">Recommended:</span> Gmail, Upwork/LinkedIn, Calendar, Stripe/FreshBooks</span>
+</div>
+</div>
+
+<div class="claw" id="c3">
+<div class="claw-top">
+<div><span class="claw-num">#3</span><span class="claw-name">E-Commerce Profit Maximizer</span></div>
+<div class="claw-price"><div class="claw-setup">$599</div><div class="claw-monthly">+ $89/month · 7 agents</div></div>
+</div>
+<div class="claw-desc">Full store ops: product research → listing SEO → pricing strategy → review management → ad campaigns → inventory alerts. Per-product P&L tracking. Buy Box strategy. ACOS/ROAS optimization with auto-pause at ROAS &lt;1.0 for 48h.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Store Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Product Researcher <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Listing Optimizer <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Pricing Intel <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Review Manager <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Ad Optimizer <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>E-Commerce Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Shopify or Amazon SP-API</span>
+<span><span class="label">Recommended:</span> Tavily, Google Ads, Meta Ads, Keepa</span>
+</div>
+</div>
+
+<!-- ===================== CREATOR ===================== -->
+<div class="cat-header">
+<span class="cat-label cat-c">Creator</span>
+<span class="cat-count">4 Claws · 26 agents · Grow your audience and content empire</span>
+</div>
+
+<div class="claw" id="c4">
+<div class="claw-top">
+<div><span class="claw-num">#4</span><span class="claw-name">YouTube Channel OS</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $79/month · 8 agents</div></div>
+</div>
+<div class="claw-desc">Full content pipeline: trend scanning → idea generation → CTR-scored titles (1-10) + thumbnail briefs → retention-optimized scripts → SEO metadata → comment management. Post-publish monitoring every 6h for 72h. Weekly content planning.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Channel Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Trend Scout <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Idea Generator <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Title &amp; Thumbnail <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Script Builder <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>YouTube SEO <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Community Engine <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Content Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, YouTube Data API</span>
+<span><span class="label">Recommended:</span> Tavily, VidIQ/TubeBuddy, Buffer/Typefully, Calendar</span>
+</div>
+</div>
+
+<div class="claw" id="c5">
+<div class="claw-top">
+<div><span class="claw-num">#5</span><span class="claw-name">Twitter/X Growth Machine</span></div>
+<div class="claw-price"><div class="claw-setup">$349</div><div class="claw-monthly">+ $69/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">5-tweet daily calendar: educational, engagement, thread, conversational, casual. 3-tier engagement targeting (dream accounts, peers, fans). Reply crafting. Ratio detection + viral response protocol.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Twitter Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Trend &amp; Topic Scout <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Content Writer <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Engagement Strategist <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Analytics &amp; Growth <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Social Content Reviewer <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Twitter/X API</span>
+<span><span class="label">Recommended:</span> Typefully/Buffer, Tavily</span>
+</div>
+</div>
+
+<div class="claw" id="c6">
+<div class="claw-top">
+<div><span class="claw-num">#6</span><span class="claw-name">Newsletter Empire</span></div>
+<div class="claw-price"><div class="claw-setup">$399</div><div class="claw-monthly">+ $69/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">Full editorial pipeline: topic research → draft writing in creator's voice → growth (cross-promos, referral programs, lead magnets) → monetization (sponsors, paid subscriptions). Open rate prediction on subject lines. Deliverability crisis handling.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Newsletter Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Topic Researcher <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Draft Writer <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Growth Strategist <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Monetization Optimizer <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Editorial Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Beehiiv/Substack/ConvertKit</span>
+<span><span class="label">Recommended:</span> Twitter, LinkedIn, Buffer, SparkLoop</span>
+</div>
+</div>
+
+<div class="claw" id="c7">
+<div class="claw-top">
+<div><span class="claw-num">#7</span><span class="claw-name">Podcast Production Studio</span></div>
+<div class="claw-price"><div class="claw-setup">$399</div><div class="claw-monthly">+ $69/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">Full episode pipeline: guest scoring + outreach → interview brief with question list → show notes + SEO → 10-20 piece repurposing from single transcript (threads, posts, clips, blog). Guest promotion package generation.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Podcast Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Guest Researcher &amp; Booker <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Episode Planner <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Show Notes &amp; SEO <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Content Repurposer <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Podcast Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Gmail, Calendar</span>
+<span><span class="label">Recommended:</span> Tavily, Twitter, LinkedIn, Buffer, Notion</span>
+</div>
+</div>
+
+<!-- ===================== BUSINESS OPS ===================== -->
+<div class="cat-header">
+<span class="cat-label cat-b">Business Operations</span>
+<span class="cat-count">4 Claws · 27 agents · Run your business on autopilot</span>
+</div>
+
+<div class="claw" id="c8">
+<div class="claw-top">
+<div><span class="claw-num">#8</span><span class="claw-name">B2B Sales Machine</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $89/month · 7 agents</div></div>
+</div>
+<div class="claw-desc">Built from CiaraAI's GTM playbook. ICP definition framework. 5-email sequence structure (pattern interrupt → social proof → value add → urgency → breakup). 7-category reply classification. Real-time hot lead alerts. CAN-SPAM compliance enforced.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Sales Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>ICP Researcher <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Lead Enricher <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Sequence Writer <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Reply Handler <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Pipeline Manager <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Outbound Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Tavily</span>
+<span><span class="label">Recommended:</span> Apollo.io, Clay.com, Instantly.ai, HubSpot/Salesforce, Calendly</span>
+</div>
+</div>
+
+<div class="claw" id="c9">
+<div class="claw-top">
+<div><span class="claw-num">#9</span><span class="claw-name">Agency Operations OS</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $89/month · 7 agents</div></div>
+</div>
+<div class="claw-desc">Multi-client operations: intake + SOW generation → resource allocation → project tracking → client reporting → billing. Utilization tracking (target 75-85%). Per-project profitability monitoring. Scope creep detection with automatic change order drafting.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Agency Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Intake &amp; Scoping <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Resource Allocator <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Client Reporter <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Task Manager <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Finance Tracker <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Agency Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Linear/Asana/ClickUp</span>
+<span><span class="label">Recommended:</span> Slack, Gmail, Calendar, Toggl/Harvest, Stripe/QuickBooks</span>
+</div>
+</div>
+
+<div class="claw" id="c10">
+<div class="claw-top">
+<div><span class="claw-num">#10</span><span class="claw-name">Founder's Chief of Staff</span></div>
+<div class="claw-price"><div class="claw-setup">$399</div><div class="claw-monthly">+ $79/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">Personal operating system: daily 6:30 AM context briefing (urgent items, calendar, messages, action items, metrics) → meeting prep briefs with attendee research → commitment tracking (bi-directional) → executive communication drafting.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Chief of Staff <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Briefing Compiler <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Meeting Prep Agent <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Action Tracker <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Communication Drafter <span class="model">Opus</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Executive Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Gmail/Outlook, Calendar</span>
+<span><span class="label">Recommended:</span> Slack, Linear/Asana, Tavily, LinkedIn, Stripe</span>
+</div>
+</div>
+
+<div class="claw" id="c11">
+<div class="claw-top">
+<div><span class="claw-num">#11</span><span class="claw-name">SEO Empire Builder</span></div>
+<div class="claw-price"><div class="claw-setup">$599</div><div class="claw-monthly">+ $99/month · 7 agents</div></div>
+</div>
+<div class="claw-desc">Full SEO operation: keyword research with topic clustering → E-E-A-T compliant long-form content → technical SEO monitoring → backlink prospecting → daily rank tracking. Content calendar prioritized by quick wins (low KD). YMYL flagged for expert review.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>SEO Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Keyword Strategist <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Content Writer <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Technical SEO Monitor <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Backlink Prospector <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Rank Tracker <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>SEO Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Google Search Console, Google Analytics</span>
+<span><span class="label">Recommended:</span> Ahrefs/SEMrush, Tavily, WordPress/Webflow, Gmail</span>
+</div>
+</div>
+
+<!-- ===================== VERTICAL ===================== -->
+<div class="cat-header">
+<span class="cat-label cat-v">Vertical</span>
+<span class="cat-count">5 Claws · 29 agents · Industry-specific AI with deep domain knowledge</span>
+</div>
+
+<div class="claw" id="c12">
+<div class="claw-top">
+<div><span class="claw-num">#12</span><span class="claw-name">Real Estate Agent OS</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $89/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">60-second lead response. Hot/Warm/Cold scoring. CMA generation from comparable sales. Showing route optimization (max 5/day). Weekly market updates per active buyer. Past client nurture for referrals. Fair Housing compliance enforced.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Listing Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Lead Qualifier <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Market Intel Agent <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Showing Coordinator <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Client Communicator <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Real Estate Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Gmail, Calendar</span>
+<span><span class="label">Recommended:</span> MLS/IDX, Zillow API, Follow Up Boss, Twilio</span>
+</div>
+</div>
+
+<div class="claw" id="c13">
+<div class="claw-top">
+<div><span class="claw-num">#13</span><span class="claw-name">Recruiter OS</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $89/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">Passive + active sourcing with scoring rubric. Resume screening against requirements. Multi-round interview scheduling. Client pipeline reports. Anti-discrimination bias detection (rejects age proxies, school bias, "culture fit" without behavioral evidence).</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Recruiting Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Sourcer <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Screening Agent <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Interview Coordinator <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Client Reporter <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Recruiting Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, LinkedIn, Gmail, Calendar</span>
+<span><span class="label">Recommended:</span> Greenhouse/Lever/Bullhorn, Tavily, Calendly</span>
+</div>
+</div>
+
+<div class="claw" id="c14">
+<div class="claw-top">
+<div><span class="claw-num">#14</span><span class="claw-name">Medical Practice Manager</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $89/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">24/7 patient intake. Confirmation sequences (48h+24h+2h) to reduce no-shows. Recall campaigns for overdue patients. Reactivation for 12+ month lapsed patients. Review solicitation + negative review response drafting.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Practice Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Patient Intake Agent <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Appointment Manager <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Recall &amp; Reactivation <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Review &amp; Reputation <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Healthcare Comm Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, HIPAA SMS (Twilio BAA), Calendar</span>
+<span><span class="label">Recommended:</span> Dentrix/Athena/DrChrono, Google Business</span>
+</div>
+<div class="legal">HIPAA compliance enforced. No PHI in any external communication.</div>
+</div>
+
+<div class="claw" id="c15">
+<div class="claw-top">
+<div><span class="claw-num">#15</span><span class="claw-name">Law Firm Intake OS</span></div>
+<div class="claw-price"><div class="claw-setup">$499</div><div class="claw-monthly">+ $89/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">24/7 intake with emergency triage (arrests, ICE detention, DV → immediate human alert within 15 min). Practice-area qualification. Conflict checking. Consultation scheduling with prep checklist.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Intake Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>First Contact Agent <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Case Qualifier <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Conflict Checker <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Consultation Scheduler <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Legal Comm Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Gmail, Calendar</span>
+<span><span class="label">Recommended:</span> Clio/MyCase, Typeform, DocuSign, Twilio, Google Business</span>
+</div>
+<div class="legal">Zero legal advice from any agent. Critic rejects unauthorized practice of law.</div>
+</div>
+
+<div class="claw" id="c16">
+<div class="claw-top">
+<div><span class="claw-num">#16</span><span class="claw-name">Home Services Dispatcher</span></div>
+<div class="claw-price"><div class="claw-setup">$399</div><div class="claw-monthly">+ $79/month · 5 agents</div></div>
+</div>
+<div class="claw-desc">24/7 call handling with emergency triage: gas leak → evacuate + 911; flooding/no heat → emergency dispatch; CO alarm → evacuate + 911. Service request matching to nearest available tech. Post-service follow-up + review solicitation.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Dispatch Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Call Handler <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Dispatch Coordinator <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Customer Follow-Up <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Service Comm Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Calendar, Twilio</span>
+<span><span class="label">Recommended:</span> ServiceTitan/Housecall Pro, Google Business, Tavily</span>
+</div>
+</div>
+
+<!-- ===================== LIFESTYLE ===================== -->
+<div class="cat-header">
+<span class="cat-label cat-l">Lifestyle</span>
+<span class="cat-count">4 Claws · 23 agents · Personal productivity and growth</span>
+</div>
+
+<div class="claw" id="c17">
+<div class="claw-top">
+<div><span class="claw-num">#17</span><span class="claw-name">Health & Fitness Commander</span></div>
+<div class="claw-price"><div class="claw-setup">$299</div><div class="claw-monthly">+ $49/month · 5 agents</div></div>
+</div>
+<div class="claw-desc">Personalized workout programming with progressive overload. Nutrition planning by goal (cut/bulk/maintain). Habit tracking (sleep, water, steps). Recovery monitoring. Evidence-based only — no bro-science, no fad diets.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Fitness Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Workout Planner <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Nutrition Advisor <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Habit &amp; Recovery <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Health Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API</span>
+<span><span class="label">Recommended:</span> Google Calendar, Apple Health/Google Fit</span>
+</div>
+<div class="legal">Critic rejects eating disorder triggers, extreme deficits, unsupported supplement claims. Medical disclaimer enforced.</div>
+</div>
+
+<div class="claw" id="c18">
+<div class="claw-top">
+<div><span class="claw-num">#18</span><span class="claw-name">Student Accelerator</span></div>
+<div class="claw-price"><div class="claw-setup">$199</div><div class="claw-monthly">+ $39/month · 5 agents</div></div>
+</div>
+<div class="claw-desc">Study scheduling with spaced repetition. Research assistance. Exam prep (practice questions, flashcards, concept maps, knowledge gap identification). Academic integrity enforced: will NOT write essays or answer homework directly.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Study Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Study Planner <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Research Assistant <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Exam Prep Coach <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Academic Integrity Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API</span>
+<span><span class="label">Recommended:</span> Google Calendar, Notion/Google Docs, Tavily</span>
+</div>
+<div class="legal">Academic integrity enforced. Helps students learn — does not do their work.</div>
+</div>
+
+<div class="claw" id="c19">
+<div class="claw-top">
+<div><span class="claw-num">#19</span><span class="claw-name">Job Hunter OS</span></div>
+<div class="claw-price"><div class="claw-setup">$249</div><div class="claw-monthly">+ $49/month · 6 agents</div></div>
+</div>
+<div class="claw-desc">Opportunity scanning. Per-application resume tailoring with ATS keyword optimization. Personalized cover letters. STAR-format interview prep with company + interviewer research. Salary negotiation strategy. Multi-offer comparison.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Job Hunt Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>Opportunity Scout <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Application Crafter <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Interview Coach <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Negotiation Advisor <span class="model">Sonnet</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Job Search Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, Tavily</span>
+<span><span class="label">Recommended:</span> LinkedIn, Gmail, Calendar, Google Docs/Notion</span>
+</div>
+</div>
+
+<div class="claw" id="c20">
+<div class="claw-top">
+<div><span class="claw-num">#20</span><span class="claw-name">Developer Productivity OS</span></div>
+<div class="claw-price"><div class="claw-setup">$349</div><div class="claw-monthly">+ $69/month · 7 agents</div></div>
+</div>
+<div class="claw-desc">Automated PR review with severity tiers (🔴 must-fix / 🟡 should-fix / 🟢 nitpick). Issue triage with effort estimation. API docs + changelog generation. OWASP Top 10 security scanning. Dependency CVE monitoring. Daily standup compilation.</div>
+<div class="agents-label">Agent Team</div>
+<div class="agent-grid">
+<span class="agent orch"><span class="dot" style="background:#5BA1F5"></span>Dev Commander <span class="model">Haiku</span></span>
+<span class="agent"><span class="dot" style="background:#8BFCAE"></span>PR Reviewer <span class="model">Opus</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Issue Triager <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFB1AB"></span>Doc Generator <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#FFDC6E"></span>Security Scanner <span class="model">Sonnet</span></span>
+<span class="agent"><span class="dot" style="background:#5BA1F5"></span>Standup Writer <span class="model">Haiku</span></span>
+<span class="agent critic"><span class="dot" style="background:#FFB1AB"></span>Code Quality Gate <span class="model">Opus</span></span>
+</div>
+<div class="meta-row">
+<span><span class="label">Required:</span> Claude API, GitHub/GitLab</span>
+<span><span class="label">Recommended:</span> Linear/Jira, Slack, Snyk, Notion</span>
+</div>
+</div>
+
+<!-- ===================== SUMMARY TABLE ===================== -->
+<div class="summary">
+<table>
+<thead>
+<tr><th>#</th><th>Name</th><th>Category</th><th>Setup</th><th>Monthly</th><th>Agents</th><th>Required Tools</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>Quant Trader</td><td><span class="cat-dot" style="background:#FFDC6E"></span>Money</td><td>$999</td><td>$99</td><td>7</td><td>Claude, Tavily</td></tr>
+<tr><td>2</td><td>Freelancer Revenue Engine</td><td><span class="cat-dot" style="background:#FFDC6E"></span>Money</td><td>$499</td><td>$79</td><td>6</td><td>Claude, Tavily</td></tr>
+<tr><td>3</td><td>E-Commerce Profit Maximizer</td><td><span class="cat-dot" style="background:#FFDC6E"></span>Money</td><td>$599</td><td>$89</td><td>7</td><td>Claude, Shopify/Amazon</td></tr>
+<tr><td>4</td><td>YouTube Channel OS</td><td><span class="cat-dot" style="background:#8BFCAE"></span>Creator</td><td>$499</td><td>$79</td><td>8</td><td>Claude, YouTube API</td></tr>
+<tr><td>5</td><td>Twitter/X Growth Machine</td><td><span class="cat-dot" style="background:#8BFCAE"></span>Creator</td><td>$349</td><td>$69</td><td>6</td><td>Claude, Twitter API</td></tr>
+<tr><td>6</td><td>Newsletter Empire</td><td><span class="cat-dot" style="background:#8BFCAE"></span>Creator</td><td>$399</td><td>$69</td><td>6</td><td>Claude, Beehiiv/Substack</td></tr>
+<tr><td>7</td><td>Podcast Production Studio</td><td><span class="cat-dot" style="background:#8BFCAE"></span>Creator</td><td>$399</td><td>$69</td><td>6</td><td>Claude, Gmail, Calendar</td></tr>
+<tr><td>8</td><td>B2B Sales Machine</td><td><span class="cat-dot" style="background:#5BA1F5"></span>Biz Ops</td><td>$499</td><td>$89</td><td>7</td><td>Claude, Tavily</td></tr>
+<tr><td>9</td><td>Agency Operations OS</td><td><span class="cat-dot" style="background:#5BA1F5"></span>Biz Ops</td><td>$499</td><td>$89</td><td>7</td><td>Claude, Linear/Asana</td></tr>
+<tr><td>10</td><td>Founder's Chief of Staff</td><td><span class="cat-dot" style="background:#5BA1F5"></span>Biz Ops</td><td>$399</td><td>$79</td><td>6</td><td>Claude, Gmail, Calendar</td></tr>
+<tr><td>11</td><td>SEO Empire Builder</td><td><span class="cat-dot" style="background:#5BA1F5"></span>Biz Ops</td><td>$599</td><td>$99</td><td>7</td><td>Claude, GSC, GA</td></tr>
+<tr><td>12</td><td>Real Estate Agent OS</td><td><span class="cat-dot" style="background:#FFB1AB"></span>Vertical</td><td>$499</td><td>$89</td><td>6</td><td>Claude, Gmail, Calendar</td></tr>
+<tr><td>13</td><td>Recruiter OS</td><td><span class="cat-dot" style="background:#FFB1AB"></span>Vertical</td><td>$499</td><td>$89</td><td>6</td><td>Claude, LinkedIn, Gmail</td></tr>
+<tr><td>14</td><td>Medical Practice Manager</td><td><span class="cat-dot" style="background:#FFB1AB"></span>Vertical</td><td>$499</td><td>$89</td><td>6</td><td>Claude, HIPAA SMS, Cal</td></tr>
+<tr><td>15</td><td>Law Firm Intake OS</td><td><span class="cat-dot" style="background:#FFB1AB"></span>Vertical</td><td>$499</td><td>$89</td><td>6</td><td>Claude, Gmail, Calendar</td></tr>
+<tr><td>16</td><td>Home Services Dispatcher</td><td><span class="cat-dot" style="background:#FFB1AB"></span>Vertical</td><td>$399</td><td>$79</td><td>5</td><td>Claude, Calendar, Twilio</td></tr>
+<tr><td>17</td><td>Health & Fitness Commander</td><td><span class="cat-dot" style="background:#ec4899"></span>Lifestyle</td><td>$299</td><td>$49</td><td>5</td><td>Claude</td></tr>
+<tr><td>18</td><td>Student Accelerator</td><td><span class="cat-dot" style="background:#ec4899"></span>Lifestyle</td><td>$199</td><td>$39</td><td>5</td><td>Claude</td></tr>
+<tr><td>19</td><td>Job Hunter OS</td><td><span class="cat-dot" style="background:#ec4899"></span>Lifestyle</td><td>$249</td><td>$49</td><td>6</td><td>Claude, Tavily</td></tr>
+<tr><td>20</td><td>Developer Productivity OS</td><td><span class="cat-dot" style="background:#ec4899"></span>Lifestyle</td><td>$349</td><td>$69</td><td>7</td><td>Claude, GitHub/GitLab</td></tr>
+<tr><td></td><td><b>TOTAL</b></td><td></td><td></td><td></td><td><b>125</b></td><td></td></tr>
+</tbody>
+</table>
+</div>
+
+</body>
+</html>
