@@ -2,11 +2,12 @@
 
 import { Button } from "@/components/ui/button"
 import { StatusDot } from "@/components/ui/status-dot"
+import type { ReactNode } from "react"
 
 interface ChannelRowProps {
   name: string
   description: string
-  icon: string
+  icon: ReactNode
   status: "connected" | "disconnected" | "connecting"
   alwaysConnected?: boolean
   onConnect: () => void
@@ -17,7 +18,7 @@ export function ChannelRow({ name, description, icon, status, alwaysConnected = 
   return (
     <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--bd)] last:border-b-0">
       <div className="flex items-center gap-2.5">
-        <span className="text-base w-5 text-center">{icon}</span>
+        <span className="w-5 flex items-center justify-center text-[var(--tx2)]">{icon}</span>
         <div>
           <p className="text-xs font-semibold">{name}</p>
           <p className="text-[10px] text-[var(--tx2)]">{description}</p>

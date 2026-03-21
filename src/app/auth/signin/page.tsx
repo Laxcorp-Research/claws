@@ -7,6 +7,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { Mail } from "lucide-react"
 
 function SignInContent() {
   const searchParams = useSearchParams()
@@ -34,13 +35,13 @@ function SignInContent() {
         </p>
 
         {authError && (
-          <AlertBanner variant="error" icon="⚠">
+          <AlertBanner variant="error">
             <span><strong>Authentication failed.</strong> Please try again or use a different method.</span>
           </AlertBanner>
         )}
 
         {magicLinkSent ? (
-          <AlertBanner variant="info" icon="✉">
+          <AlertBanner variant="info" icon={<Mail className="w-4 h-4" />}>
             <p><strong>Check your email.</strong> We sent a magic link to {email}. Click it to sign in.</p>
           </AlertBanner>
         ) : (

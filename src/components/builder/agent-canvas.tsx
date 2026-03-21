@@ -13,6 +13,7 @@ import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
 import { AgentNode } from "./agent-node"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Button } from "@/components/ui/button"
+import { Bot } from "lucide-react"
 
 const nodeTypes: NodeTypes = {
   agentNode: AgentNode as NodeTypes["agentNode"],
@@ -41,7 +42,7 @@ export function AgentCanvas() {
     return (
       <div className="h-full flex items-center justify-center">
         <EmptyState
-          icon="🤖"
+          icon={<Bot className="w-10 h-10" />}
           title="Start building your agent team"
           description="Every Claw starts with an Orchestrator — the manager that coordinates all other agents."
           actions={

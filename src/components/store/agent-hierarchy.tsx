@@ -1,3 +1,5 @@
+import { ArrowDown } from "lucide-react"
+
 interface HierarchyAgent {
   name: string
   role: string
@@ -24,7 +26,7 @@ export function AgentHierarchy({ agents }: AgentHierarchyProps) {
         </div>
       )}
 
-      <div className="text-[var(--tx3)] text-[11px]">↓</div>
+      <ArrowDown className="w-3.5 h-3.5 text-[var(--tx3)]" />
 
       <div className="flex gap-1.5 flex-wrap justify-center">
         {workers.map((worker) => (
@@ -39,7 +41,7 @@ export function AgentHierarchy({ agents }: AgentHierarchyProps) {
         ))}
       </div>
 
-      <div className="text-[var(--tx3)] text-[11px]">↓</div>
+      <ArrowDown className="w-3.5 h-3.5 text-[var(--tx3)]" />
 
       {critic && (
         <div className="bg-[#ede9fe] border-2 border-[#8b5cf6] rounded-[8px] py-2 px-[18px] text-center min-w-[180px]">

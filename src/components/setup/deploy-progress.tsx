@@ -1,5 +1,7 @@
 "use client"
 
+import { Check, X, Circle, Loader2 } from "lucide-react"
+
 interface DeployStep {
   label: string
   status: "complete" | "running" | "pending" | "failed"
@@ -16,11 +18,11 @@ export function DeployProgress({ steps }: DeployProgressProps) {
       <div className="space-y-1">
         {steps.map((step, i) => (
           <div key={i} className="flex items-center gap-2 py-1 text-xs">
-            <span className="w-[18px] text-center">
-              {step.status === "complete" && <span className="text-[var(--ok)]">✓</span>}
-              {step.status === "running" && <span className="text-[var(--tx)]">●</span>}
-              {step.status === "pending" && <span className="text-[var(--tx3)]">○</span>}
-              {step.status === "failed" && <span className="text-[var(--err)] font-semibold">✗</span>}
+            <span className="w-[18px] flex items-center justify-center">
+              {step.status === "complete" && <Check className="w-3.5 h-3.5 text-[var(--ok)]" />}
+              {step.status === "running" && <Loader2 className="w-3.5 h-3.5 text-[var(--tx)] animate-spin" />}
+              {step.status === "pending" && <Circle className="w-3 h-3 text-[var(--tx3)]" />}
+              {step.status === "failed" && <X className="w-3.5 h-3.5 text-[var(--err)]" />}
             </span>
             <span className={step.status === "failed" ? "font-semibold text-[var(--err)]" : step.status === "running" ? "text-[var(--tx)]" : step.status === "complete" ? "text-[var(--tx2)]" : "text-[var(--tx3)]"}>
               {step.label}

@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ALL_TOOLS, getToolByName, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
+import { Check, CheckCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe } from "lucide-react"
 
 interface ApiKeyInfo {
   id: string
@@ -169,7 +170,7 @@ function Step1({ workspaceId }: { workspaceId: string }) {
             <div className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg2)] border border-[var(--bd)] text-xs font-mono text-[var(--tx2)]">
               {existingKey.keyHint}
             </div>
-            <span className="text-[10px] text-[var(--ok)] font-medium">✓ Valid</span>
+            <span className="text-[10px] text-[var(--ok)] font-medium inline-flex items-center gap-0.5"><Check className="w-3 h-3" /> Valid</span>
             <button onClick={() => { setExistingKey(null); setApiKeyInput("") }} className="text-[10px] text-[var(--tx3)] hover:text-[var(--tx)] transition-colors">
               Change
             </button>
@@ -385,7 +386,7 @@ function Step2({ workspaceId }: { workspaceId: string }) {
       const data = await res.json()
       if (data.success) {
         setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const } : t)))
-        console.log(`✓ Test passed for ${tool.name}`)
+        console.log(`Test passed for ${tool.name}`)
       } else {
         setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const } : t)))
       }
@@ -600,7 +601,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       {deploymentStatus === "FAILED" && deploymentError && (
-        <AlertBanner variant="error" icon="⚠">
+        <AlertBanner variant="error">
           <p><strong>Deployment failed.</strong> {deploymentError}</p>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" size="sm" onClick={handleDeploy}>Retry</Button>
@@ -610,13 +611,13 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       {deploymentStatus === "COMPLETED" && (
-        <AlertBanner variant="info" icon="✓">
+        <AlertBanner variant="info" icon={<CheckCircle className="w-4 h-4" />}>
           <p><strong>Deployment successful.</strong> Your Claw is running in the cloud.</p>
         </AlertBanner>
       )}
 
       {exportDownloaded && deploymentStatus !== "COMPLETED" && (
-        <AlertBanner variant="info" icon="📦">
+        <AlertBanner variant="info" icon={<Package className="w-4 h-4" />}>
           <p><strong>Config downloaded.</strong> Deploy on your own infrastructure using these files.</p>
         </AlertBanner>
       )}
@@ -631,13 +632,15 @@ function Step3({ workspaceId }: { workspaceId: string }) {
 
 // ─── Step 4: Connect Channels ───────────────────────────────
 
+const ICON_CLASS = "w-4 h-4"
+
 const CHANNELS = [
-  { id: "web-chat", name: "Web chat", description: "Built-in — always available", icon: "💬", alwaysConnected: true },
-  { id: "whatsapp", name: "WhatsApp", description: "Scan QR code to connect", icon: "📱", alwaysConnected: false },
-  { id: "slack", name: "Slack", description: "Connect via OAuth", icon: "💼", alwaysConnected: false },
-  { id: "telegram", name: "Telegram", description: "Enter bot token from @BotFather", icon: "✈️", alwaysConnected: false },
-  { id: "microsoft-teams", name: "Microsoft Teams", description: "Azure Bot Service setup required", icon: "🏢", alwaysConnected: false },
-  { id: "discord", name: "Discord", description: "Enter bot token from Developer Portal", icon: "🎮", alwaysConnected: false },
+  { id: "web-chat", name: "Web chat", description: "Built-in — always available", icon: <Globe className={ICON_CLASS} />, alwaysConnected: true },
+  { id: "whatsapp", name: "WhatsApp", description: "Scan QR code to connect", icon: <Smartphone className={ICON_CLASS} />, alwaysConnected: false },
+  { id: "slack", name: "Slack", description: "Connect via OAuth", icon: <Hash className={ICON_CLASS} />, alwaysConnected: false },
+  { id: "telegram", name: "Telegram", description: "Enter bot token from @BotFather", icon: <Send className={ICON_CLASS} />, alwaysConnected: false },
+  { id: "microsoft-teams", name: "Microsoft Teams", description: "Azure Bot Service setup required", icon: <Building2 className={ICON_CLASS} />, alwaysConnected: false },
+  { id: "discord", name: "Discord", description: "Enter bot token from Developer Portal", icon: <Gamepad2 className={ICON_CLASS} />, alwaysConnected: false },
 ]
 
 function Step4({ workspaceId }: { workspaceId: string }) {
@@ -717,18 +720,20 @@ function Step5({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="text-center py-[30px] px-5">
-      <div className="text-[32px] mb-2">🎉</div>
+      <div className="flex items-center justify-center w-10 h-10 text-[var(--ok)] mx-auto mb-3">
+        <Sparkles className="w-10 h-10" />
+      </div>
       <h2 className="text-xl font-semibold mb-1.5">Your {wsName} is live!</h2>
       <p className="text-sm text-[var(--tx2)] mb-1">Your agents are starting up now.</p>
 
       <div className="text-left max-w-lg mx-auto bg-[var(--bg2)] rounded-lg p-3.5 mt-4 text-xs text-[var(--tx2)] leading-[1.8]">
         <p className="font-semibold text-[var(--tx)] mb-1">What happens next:</p>
-        <p>🤖 <strong>Next few minutes:</strong> Your Orchestrator introduces itself and confirms all agents are operational.</p>
-        <p>📋 <strong>Tomorrow morning:</strong> Your first daily briefing arrives with status updates and action items.</p>
+        <p className="flex items-start gap-1.5"><Bot className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span><strong>Next few minutes:</strong> Your Orchestrator introduces itself and confirms all agents are operational.</span></p>
+        <p className="flex items-start gap-1.5"><ClipboardList className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span><strong>Tomorrow morning:</strong> Your first daily briefing arrives with status updates and action items.</span></p>
         <p className="mt-2 font-semibold text-[var(--tx)] mb-1">Quick tips:</p>
-        <p>💬 Message your Orchestrator anytime through the connected channels.</p>
-        <p>📊 Check the Dashboard for real-time agent activity and approvals.</p>
-        <p>🔧 Open the Builder to customize agent behavior, skills, and workflows.</p>
+        <p className="flex items-start gap-1.5"><MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Message your Orchestrator anytime through the connected channels.</span></p>
+        <p className="flex items-start gap-1.5"><BarChart3 className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Check the Dashboard for real-time agent activity and approvals.</span></p>
+        <p className="flex items-start gap-1.5"><Wrench className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Open the Builder to customize agent behavior, skills, and workflows.</span></p>
       </div>
 
       <div className="flex gap-2 justify-center mt-4">

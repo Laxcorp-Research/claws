@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { Check } from "lucide-react"
 
 interface WizardStep {
   label: string
@@ -24,7 +25,7 @@ export function WizardProgressBar({ steps }: WizardProgressBarProps) {
               step.status === "upcoming" && "border border-[var(--bd)] text-[var(--tx3)]"
             )}
           >
-            {step.status === "complete" ? "✓" : i + 1}
+            {step.status === "complete" ? <Check className="w-3.5 h-3.5" /> : i + 1}
           </div>
           <span
             className={cn(

@@ -6,8 +6,10 @@ import { useSession } from "next-auth/react"
 import { PageShell } from "@/components/shared/page-shell"
 import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge"
 import { AgentHierarchy } from "@/components/store/agent-hierarchy"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { mapWorkspaceStatus } from "@/lib/utils"
 import Link from "next/link"
 
 interface TemplateDetail {
@@ -26,6 +28,11 @@ interface TemplateDetail {
   legalDisclaimer?: string | null
 }
 
+interface OwnershipData {
+  workspace: { id: string; status: string; name: string } | null
+  count: number
+}
+
 export default function ClawDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -36,6 +43,7 @@ export default function ClawDetailPage() {
   const [loading, setLoading] = useState(true)
   const [purchasing, setPurchasing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ownership, setOwnership] = useState<OwnershipData | null>(null)
 
   useEffect(() => {
     fetch(`/api/templates/${slug}`)
@@ -47,6 +55,26 @@ export default function ClawDetailPage() {
       .catch(() => setError("Failed to load"))
       .finally(() => setLoading(false))
   }, [slug])
+
+  useEffect(() => {
+    if (!claw?.id || !session?.user) {
+      setOwnership(null)
+      return
+    }
+    fetch("/api/workspaces")
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json.data) return
+        const matching = (json.data as Array<{ id: string; status: string; name: string; clawTemplateId: string | null; updatedAt: string }>)
+          .filter((w) => w.clawTemplateId === claw.id)
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        setOwnership({
+          workspace: matching[0] ?? null,
+          count: matching.length,
+        })
+      })
+      .catch(() => { /* ownership check failed silently */ })
+  }, [claw?.id, session?.user])
 
   const handlePurchase = async () => {
     if (!session?.user) {
@@ -123,15 +151,38 @@ export default function ClawDetailPage() {
               {claw.description}
             </div>
           </div>
-          <div className="text-right flex-shrink-0 ml-6">
-            <div className="text-[26px] font-semibold text-[var(--tx)]">${claw.priceSetup.toLocaleString()}</div>
-            <div className="text-[11px] text-[var(--tx2)]">one-time setup</div>
-            <div className="text-[14px] font-medium mt-0.5">+ ${claw.priceMonthly}/month</div>
-            <Button variant="primary" size="lg" className="mt-2.5" onClick={handlePurchase} loading={purchasing}>
-              {session?.user ? "Purchase this Claw" : "Sign in to purchase"}
-            </Button>
-            {error && <p className="text-[10px] text-[var(--err)] mt-1">{error}</p>}
-          </div>
+          {ownership?.workspace ? (
+            <div className="text-right flex-shrink-0 ml-6">
+              <div className="flex items-center gap-1.5 justify-end">
+                <StatusBadge status={mapWorkspaceStatus(ownership.workspace.status)} />
+                <span className="text-[13px] font-medium text-[var(--tx)]">You own this Claw</span>
+              </div>
+              <Link href={`/dashboard/${ownership.workspace.id}`}>
+                <Button variant="primary" size="default" className="mt-2.5 w-full">Open Dashboard</Button>
+              </Link>
+              <Link href={`/builder/${ownership.workspace.id}`}>
+                <Button variant="outline" size="default" className="mt-1.5 w-full">Open Builder</Button>
+              </Link>
+              {ownership.count > 1 && (
+                <Link
+                  href="/my-claws"
+                  className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mt-2 inline-block transition-colors"
+                >
+                  View all {ownership.count} workspaces →
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="text-right flex-shrink-0 ml-6">
+              <div className="text-[26px] font-semibold text-[var(--tx)]">${claw.priceSetup.toLocaleString()}</div>
+              <div className="text-[11px] text-[var(--tx2)]">one-time setup</div>
+              <div className="text-[14px] font-medium mt-0.5">+ ${claw.priceMonthly}/month</div>
+              <Button variant="primary" size="lg" className="mt-2.5" onClick={handlePurchase} loading={purchasing}>
+                {session?.user ? "Purchase this Claw" : "Sign in to purchase"}
+              </Button>
+              {error && <p className="text-[10px] text-[var(--err)] mt-1">{error}</p>}
+            </div>
+          )}
         </div>
 
         <div className="border border-[var(--bd)] rounded-[12px] p-3.5 mb-3.5">

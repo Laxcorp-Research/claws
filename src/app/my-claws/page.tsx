@@ -1,31 +1,78 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { PageShell } from "@/components/shared/page-shell"
 import { PageHeader } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { AlertBanner } from "@/components/ui/alert-banner"
 import { WorkspaceCard } from "@/components/my-claws/workspace-card"
 import { SearchFilterBar } from "@/components/shared/search-filter-bar"
+import { mapWorkspaceStatus, timeAgo } from "@/lib/utils"
+import { Bot, Search } from "lucide-react"
 import Link from "next/link"
 
-const DEMO_WORKSPACES = [
-  { id: "ws_1", name: "B2B Sales Machine", status: "running" as const, agentCount: 7, lastActive: "12 min ago", monthlyCost: "$47.20", source: "From template" },
-  { id: "ws_2", name: "YouTube Channel OS", status: "setup" as const, agentCount: 8, lastActive: undefined, monthlyCost: undefined, source: "From template" },
-  { id: "ws_3", name: "Custom SEO Bot", status: "draft" as const, agentCount: 3, lastActive: "2 days ago", monthlyCost: "$0", source: "Custom" },
-]
+interface ApiWorkspace {
+  id: string
+  name: string
+  status: string
+  updatedAt: string
+  currentMonthApiCost: number
+  clawTemplateId: string | null
+  clawTemplate: { name: string; category: string } | null
+  _count: { agents: number }
+}
 
-// Toggle to test states: "populated" | "empty" | "loading"
-const DEMO_STATE: "populated" | "empty" | "loading" = "populated"
+interface WorkspaceItem {
+  id: string
+  name: string
+  status: "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped"
+  agentCount: number
+  lastActive: string | undefined
+  monthlyCost: string | undefined
+  source: string
+}
+
+function toWorkspaceItem(w: ApiWorkspace): WorkspaceItem {
+  const status = mapWorkspaceStatus(w.status)
+  return {
+    id: w.id,
+    name: w.name,
+    status,
+    agentCount: w._count.agents,
+    lastActive: w.updatedAt ? timeAgo(w.updatedAt) : undefined,
+    monthlyCost: w.currentMonthApiCost > 0 ? `$${w.currentMonthApiCost.toFixed(2)}` : undefined,
+    source: w.clawTemplate ? "From template" : "Custom",
+  }
+}
 
 const FILTERS = ["All", "Running", "Paused", "Error", "Draft", "Setup"]
 
 export default function MyClawsPage() {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [activeFilter, setActiveFilter] = useState("All")
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const workspaces = DEMO_STATE === "empty" ? [] : DEMO_STATE === "loading" ? null : DEMO_WORKSPACES
+  const fetchWorkspaces = useCallback(async () => {
+    setError(null)
+    setWorkspaces(null)
+    try {
+      const res = await fetch("/api/workspaces")
+      if (!res.ok) throw new Error("Failed to fetch")
+      const json = await res.json()
+      const items = ((json.data ?? []) as ApiWorkspace[]).map(toWorkspaceItem)
+      setWorkspaces(items)
+    } catch {
+      setError("Failed to load your Claws")
+      setWorkspaces([])
+    }
+  }, [])
+
+  useEffect(() => { fetchWorkspaces() }, [fetchWorkspaces])
 
   const filtered = useMemo(() => {
     if (!workspaces) return null
@@ -50,13 +97,21 @@ export default function MyClawsPage() {
               <Link href="/store">
                 <Button variant="outline">Browse store</Button>
               </Link>
-              <Button variant="primary">+ Create custom Claw</Button>
+              <Button variant="primary" onClick={() => router.push("/my-claws?create=true")}>+ Create custom Claw</Button>
             </>
           }
         />
 
+        {/* Network error */}
+        {error && (
+          <AlertBanner variant="error" actions={<Button variant="outline" size="sm" onClick={fetchWorkspaces}>Retry</Button>}>
+            <div className="font-medium">{error}</div>
+            <div className="text-[11px] mt-0.5 opacity-80">Something went wrong. Please try again.</div>
+          </AlertBanner>
+        )}
+
         {/* Loading state */}
-        {filtered === null && (
+        {filtered === null && !error && (
           <div className="grid grid-cols-3 gap-2.5">
             <LoadingSkeleton variant="card" />
             <LoadingSkeleton variant="card" />
@@ -65,16 +120,16 @@ export default function MyClawsPage() {
         )}
 
         {/* Empty state */}
-        {filtered && filtered.length === 0 && !search && activeFilter === "All" && (
+        {filtered && filtered.length === 0 && !search && activeFilter === "All" && !error && (
           <EmptyState
-            icon="🤖"
+            icon={<Bot className="w-10 h-10" />}
             title="You don't have any Claws yet"
             description="Browse pre-built agent teams or create your own from scratch."
             bordered
             actions={
               <>
                 <Link href="/store"><Button variant="primary">Browse the store</Button></Link>
-                <Button variant="outline">Create custom Claw</Button>
+                <Button variant="outline" onClick={() => router.push("/my-claws?create=true")}>Create custom Claw</Button>
               </>
             }
           />
@@ -102,9 +157,9 @@ export default function MyClawsPage() {
         )}
 
         {/* Search/filter no results */}
-        {filtered && filtered.length === 0 && (search || activeFilter !== "All") && (
+        {filtered && filtered.length === 0 && (search || activeFilter !== "All") && !error && (
           <EmptyState
-            icon="🔍"
+            icon={<Search className="w-10 h-10" />}
             title="No workspaces match your filters"
             description="Try different search terms or clear your filters."
             actions={

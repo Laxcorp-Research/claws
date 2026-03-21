@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Check } from "lucide-react"
 
 interface ApiKeyModalProps {
   open: boolean
@@ -56,7 +57,7 @@ export function ApiKeyModal({ open, onClose, toolName, helpUrl, keyPlaceholder =
       <div>
         <label className="block text-[11px] font-medium mb-[3px]">API Key</label>
         <Input value={apiKey} onChange={(e) => { setApiKey(e.target.value); setStatus("idle"); setErrorMsg("") }} placeholder={keyPlaceholder} className="font-mono" error={status === "error"} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
-        {status === "success" && <p className="text-[11px] text-[var(--ok)] mt-1">✓ Key validated and saved</p>}
+        {status === "success" && <p className="text-[11px] text-[var(--ok)] mt-1 inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Key validated and saved</p>}
         {status === "error" && <p className="text-[11px] text-[var(--err)] mt-1">{errorMsg}</p>}
         {helpUrl && (
           <p className="text-[11px] text-[var(--tx3)] mt-1">

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
+import { OctagonX, Pause, Unplug, TrendingUp } from "lucide-react"
 import { StatCards } from "@/components/dashboard/stat-cards"
 import { ActivityFeed } from "@/components/dashboard/activity-feed"
 import { AgentStatusList } from "@/components/dashboard/agent-status-list"
@@ -254,7 +255,7 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="max-w-5xl mx-auto px-5 py-6">
-        <AlertBanner variant="error" icon="⚠">{error}</AlertBanner>
+        <AlertBanner variant="error">{error}</AlertBanner>
       </div>
     )
   }
@@ -284,7 +285,7 @@ export default function DashboardPage() {
 
       {/* Alert banners — priority order, show first matching */}
       {isError && !spendLimitReached && (
-        <AlertBanner variant="error" icon="⚠" actions={
+        <AlertBanner variant="error" actions={
           <div className="flex gap-1.5">
             <Button variant="danger" size="xs" onClick={handleResumeAll}>Force restart</Button>
             <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tools</Button>
@@ -295,7 +296,7 @@ export default function DashboardPage() {
       )}
 
       {spendLimitReached && !isError && (
-        <AlertBanner variant="error" icon="🛑" actions={
+        <AlertBanner variant="error" icon={<OctagonX className="w-4 h-4" />} actions={
           <Button variant="primary" size="xs">Increase limit</Button>
         }>
           Monthly API spend limit reached. All agents paused.
@@ -303,7 +304,7 @@ export default function DashboardPage() {
       )}
 
       {isPaused && !isError && !spendLimitReached && (
-        <AlertBanner variant="warning" icon="⏸" actions={
+        <AlertBanner variant="warning" icon={<Pause className="w-4 h-4" />} actions={
           <Button variant="primary" size="xs" onClick={handleResumeAll}>Resume agents</Button>
         }>
           This Claw is paused. Agents stopped. Pending tasks queued.
@@ -311,7 +312,7 @@ export default function DashboardPage() {
       )}
 
       {expiredTools.length > 0 && !isPaused && !isError && !spendLimitReached && (
-        <AlertBanner variant="warning" icon="🔌" actions={
+        <AlertBanner variant="warning" icon={<Unplug className="w-4 h-4" />} actions={
           <div className="flex gap-1.5">
             <Button variant="primary" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Reconnect</Button>
             <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Manage tools</Button>
@@ -322,7 +323,7 @@ export default function DashboardPage() {
       )}
 
       {spendWarning && !isPaused && !isError && !spendLimitReached && expiredTools.length === 0 && (
-        <AlertBanner variant="warning" icon="💰" actions={
+        <AlertBanner variant="warning" icon={<TrendingUp className="w-4 h-4" />} actions={
           <div className="flex gap-1.5">
             <Button variant="outline" size="xs">Increase limit</Button>
             <Button variant="outline" size="xs">Optimize costs</Button>

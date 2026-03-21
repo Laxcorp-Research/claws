@@ -1,10 +1,12 @@
 import { cn } from "@/lib/utils";
+import { AlertTriangle, Info } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface AlertBannerProps {
   variant: "error" | "warning" | "info";
-  icon?: string;
-  children: React.ReactNode;
-  actions?: React.ReactNode;
+  icon?: ReactNode;
+  children: ReactNode;
+  actions?: ReactNode;
 }
 
 const variantClasses = {
@@ -19,7 +21,15 @@ const iconColors = {
   info: "text-[var(--ac)]",
 } as const;
 
+const defaultIcons: Record<string, ReactNode> = {
+  error: <AlertTriangle className="w-4 h-4" />,
+  warning: <AlertTriangle className="w-4 h-4" />,
+  info: <Info className="w-4 h-4" />,
+};
+
 export function AlertBanner({ variant, icon, children, actions }: AlertBannerProps) {
+  const resolvedIcon = icon ?? defaultIcons[variant];
+
   return (
     <div
       className={cn("rounded-lg py-3 px-3.5 mb-3.5 flex items-center justify-center border", variantClasses[variant])}
@@ -27,7 +37,11 @@ export function AlertBanner({ variant, icon, children, actions }: AlertBannerPro
       aria-live={variant === "error" ? "assertive" : "polite"}
     >
       <div className="inline-flex items-center gap-2">
-        {icon && <span className={cn("text-base flex-shrink-0 leading-none", iconColors[variant])} aria-hidden="true">{icon}</span>}
+        {resolvedIcon && (
+          <span className={cn("flex-shrink-0 leading-none", iconColors[variant])} aria-hidden="true">
+            {resolvedIcon}
+          </span>
+        )}
         <div className="text-xs">
           {children}
           {actions && <div className="flex gap-1.5 mt-2">{actions}</div>}

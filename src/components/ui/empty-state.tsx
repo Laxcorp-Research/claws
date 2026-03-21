@@ -1,10 +1,11 @@
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 
 interface EmptyStateProps {
-  icon?: string;
+  icon?: ReactNode;
   title: string;
   description: string;
-  actions?: React.ReactNode;
+  actions?: ReactNode;
   bordered?: boolean;
 }
 
@@ -16,7 +17,11 @@ export function EmptyState({ icon, title, description, actions, bordered }: Empt
         bordered && "border border-dashed border-[var(--bd)] rounded-xl py-5"
       )}
     >
-      {icon && <div className="text-[32px] mb-2">{icon}</div>}
+      {icon && (
+        <div className="flex items-center justify-center w-10 h-10 text-[var(--tx3)] mx-auto mb-3">
+          {icon}
+        </div>
+      )}
       <h3 className="text-base font-semibold text-[var(--tx)] mb-1.5">{title}</h3>
       <p className="text-[13px] mb-3.5">{description}</p>
       {actions && <div className="flex gap-1.5 justify-center">{actions}</div>}

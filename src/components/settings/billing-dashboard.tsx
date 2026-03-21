@@ -67,7 +67,7 @@ export function BillingDashboard() {
       <p className="text-[11px] text-[var(--tx2)] mb-3">Manage your subscription and view usage.</p>
 
       {data.isPastDue && (
-        <AlertBanner variant="error" icon="⚠" actions={
+        <AlertBanner variant="error" actions={
           <Button variant="primary" size="xs" onClick={openPortal}>Update payment method</Button>
         }>
           Payment failed. Update your card to keep Claws running.

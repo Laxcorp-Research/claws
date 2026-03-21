@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { Check } from "lucide-react"
 import { ReactNode } from "react"
 
 interface OnboardingStepProps {
@@ -23,7 +24,7 @@ export function OnboardingStep({ number, title, description, actions, completed,
           disabled ? "border border-[var(--bd)] text-[var(--tx3)]" :
           "bg-[var(--tx)] text-white"
         )}>
-          {completed ? "✓" : number}
+          {completed ? <Check className="w-3.5 h-3.5" /> : number}
         </div>
         <div>
           <h3 className={cn("text-sm font-semibold", disabled && "text-[var(--tx3)]")}>{title}</h3>

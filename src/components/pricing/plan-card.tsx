@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Check, X } from "lucide-react"
 
 interface PlanFeature {
   text: string
@@ -31,8 +32,8 @@ export function PlanCard({ name, price, period, features, featured, ctaLabel, ct
       <ul className="text-left text-xs my-3.5 leading-[2]">
         {features.map((f) => (
           <li key={f.text} className="flex items-center gap-2">
-            <span className={f.included ? "text-[var(--ok)]" : "text-[var(--tx3)]"}>
-              {f.included ? "✓" : "✗"}
+            <span className={cn("flex items-center", f.included ? "text-[var(--ok)]" : "text-[var(--tx3)]")}>
+              {f.included ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
             </span>
             <span className={f.included ? "" : "text-[var(--tx3)]"}>{f.text}</span>
           </li>

@@ -3,14 +3,20 @@
 import { cn } from "@/lib/utils"
 import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
 import { Button } from "@/components/ui/button"
+import { Settings, Mail, Users, Calendar, MessageSquare, Wrench } from "lucide-react"
+import type { ReactNode } from "react"
 
-const CATEGORY_ICONS: Record<string, string> = {
-  CORE: "⚙️",
-  EMAIL: "📧",
-  CRM: "👥",
-  CALENDAR: "📅",
-  MESSAGING: "💬",
+const ICON_CLASS = "w-3 h-3 text-[var(--tx3)]"
+
+const CATEGORY_ICONS: Record<string, ReactNode> = {
+  CORE: <Settings className={ICON_CLASS} />,
+  EMAIL: <Mail className={ICON_CLASS} />,
+  CRM: <Users className={ICON_CLASS} />,
+  CALENDAR: <Calendar className={ICON_CLASS} />,
+  MESSAGING: <MessageSquare className={ICON_CLASS} />,
 }
+
+const DEFAULT_SKILL_ICON = <Wrench className={ICON_CLASS} />
 
 export function AgentSidebar() {
   const { nodes, selectedAgentId, selectAgent, addWorker, addAgent, skills } = useBuilderStore()
@@ -70,7 +76,7 @@ export function AgentSidebar() {
       <div className="space-y-[3px]">
         {skills.map((skill) => (
           <div key={skill.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-[6px] text-[11px] text-[var(--tx2)]">
-            <span className="text-[9px]">{CATEGORY_ICONS[skill.category] || "🔧"}</span>
+            <span className="flex items-center">{CATEGORY_ICONS[skill.category] || DEFAULT_SKILL_ICON}</span>
             <span className="truncate">{skill.name}</span>
           </div>
         ))}

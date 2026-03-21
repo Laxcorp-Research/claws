@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ClawCard, type ClawCardData } from "@/components/store/claw-card"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { cn } from "@/lib/utils"
+import { Package, Search } from "lucide-react"
 
 const CATEGORIES: (ClawCategory | "ALL")[] = ["ALL", "MONEY_MAKING", "CREATOR", "BUSINESS_OPS", "VERTICAL", "LIFESTYLE"]
 
@@ -109,11 +110,17 @@ export default function StorePage() {
           <div className="space-y-2.5">
             <LoadingSkeleton variant="card" count={3} />
           </div>
+        ) : templates.length === 0 ? (
+          <EmptyState
+            icon={<Package className="w-10 h-10" />}
+            title="No Claws available yet"
+            description="Check back soon — new agent teams are being added."
+          />
         ) : filteredClaws.length === 0 ? (
           <EmptyState
-            icon="🔍"
-            title={`No Claws match "${search}"`}
-            description="Try different keywords, or browse all categories."
+            icon={<Search className="w-10 h-10" />}
+            title={search.trim() ? `No Claws match "${search}"` : "No Claws in this category"}
+            description={search.trim() ? "Try different keywords, or browse all categories." : "Try a different category or search for something specific."}
             actions={<Button variant="outline" onClick={() => { setSearch(""); setActiveCategory("ALL") }}>Clear search</Button>}
           />
         ) : (
