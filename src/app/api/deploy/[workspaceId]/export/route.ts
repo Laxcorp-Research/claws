@@ -2,7 +2,6 @@ import { NextRequest } from "next/server"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiError, ERRORS } from "@/lib/api/response"
-import { exportForSelfHosting } from "@/lib/openclaw/deployer"
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -14,6 +13,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   try {
+    const { exportForSelfHosting } = await import("@/lib/openclaw/deployer")
     const zipBuffer = await exportForSelfHosting(workspaceId)
     return new Response(zipBuffer as unknown as BodyInit, {
       headers: {

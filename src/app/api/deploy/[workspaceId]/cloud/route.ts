@@ -2,7 +2,6 @@ import { NextRequest } from "next/server"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
-import { deployToCloud } from "@/lib/openclaw/deployer"
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -16,6 +15,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (workspace?.status === "RUNNING") return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
 
   try {
+    const { deployToCloud } = await import("@/lib/openclaw/deployer")
     const deployment = await deployToCloud(workspaceId)
     return apiSuccess(deployment, 201)
   } catch (err: unknown) {
