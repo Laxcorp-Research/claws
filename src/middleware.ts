@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { apiRateLimit, authRateLimit } from "./lib/rate-limit";
 
 const allowedOrigins = [
   "https://app.buildclaws.ai",
@@ -32,6 +33,10 @@ function isExcludedFromCors(pathname: string): boolean {
   );
 }
 
+function isWebhook(pathname: string): boolean {
+  return pathname.startsWith("/api/dodo-payments/webhook");
+}
+
 function getMatchingOrigin(requestOrigin: string | null): string {
   if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
     return requestOrigin;
@@ -39,9 +44,46 @@ function getMatchingOrigin(requestOrigin: string | null): string {
   return "";
 }
 
+function getClientIp(request: NextRequest): string {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+function addSecurityHeaders(response: NextResponse): NextResponse {
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("X-DNS-Prefetch-Control", "on");
+  response.headers.set(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains"
+  );
+  return response;
+}
+
+function rateLimitResponse(
+  message: string,
+  remaining: number,
+  reset: number
+): NextResponse {
+  return new NextResponse(JSON.stringify({ error: message }), {
+    status: 429,
+    headers: {
+      "Content-Type": "application/json",
+      "X-RateLimit-Remaining": remaining.toString(),
+      "X-RateLimit-Reset": reset.toString(),
+      "Retry-After": Math.ceil((reset - Date.now()) / 1000).toString(),
+    },
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // --- CORS for API routes (except auth and webhooks) ---
   if (pathname.startsWith("/api/") && !isExcludedFromCors(pathname)) {
     const origin = request.headers.get("origin");
     const matchedOrigin = getMatchingOrigin(origin);
@@ -59,6 +101,25 @@ export async function middleware(request: NextRequest) {
       });
     }
 
+    // Rate limit authenticated API routes (skip webhooks)
+    if (!isWebhook(pathname)) {
+      try {
+        const token = await getToken({ req: request });
+        const identifier = token?.sub || getClientIp(request);
+        const { success, remaining, reset } =
+          await apiRateLimit.limit(identifier);
+        if (!success) {
+          return rateLimitResponse(
+            "Rate limit exceeded. Please slow down.",
+            remaining,
+            reset
+          );
+        }
+      } catch {
+        // Redis unavailable — fail open
+      }
+    }
+
     const response = NextResponse.next();
     if (matchedOrigin) {
       response.headers.set("Access-Control-Allow-Origin", matchedOrigin);
@@ -71,9 +132,36 @@ export async function middleware(request: NextRequest) {
         "Content-Type, Authorization"
       );
     }
-    return response;
+    return addSecurityHeaders(response);
   }
 
+  // --- Auth route rate limiting (POST only — sign-in attempts) ---
+  if (
+    pathname.startsWith("/api/auth") &&
+    request.method === "POST" &&
+    !isWebhook(pathname)
+  ) {
+    try {
+      const ip = getClientIp(request);
+      const { success, remaining, reset } = await authRateLimit.limit(ip);
+      if (!success) {
+        return rateLimitResponse(
+          "Too many sign-in attempts. Please try again later.",
+          remaining,
+          reset
+        );
+      }
+    } catch {
+      // Redis unavailable — fail open
+    }
+  }
+
+  // --- Webhook passthrough (no rate limiting, no CORS) ---
+  if (isWebhook(pathname)) {
+    return addSecurityHeaders(NextResponse.next());
+  }
+
+  // --- Auth protection for page routes ---
   if (isProtectedPath(pathname)) {
     const token = await getToken({ req: request });
     if (!token) {
@@ -83,7 +171,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return addSecurityHeaders(NextResponse.next());
 }
 
 export const config = {

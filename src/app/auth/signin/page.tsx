@@ -28,7 +28,7 @@ function SignInContent() {
 
   return (
     <PageShell background="secondary">
-      <div className="max-w-[480px] mx-auto py-8 text-center">
+      <div className="max-w-[540px] mx-auto py-8 text-center">
         <h1 className="text-xl font-semibold mb-1">Welcome to Claws</h1>
         <p className="text-[13px] text-[var(--tx2)] mb-5">
           Sign in to manage your AI agent teams
@@ -42,7 +42,7 @@ function SignInContent() {
 
         {magicLinkSent ? (
           <AlertBanner variant="info" icon={<Mail className="w-4 h-4" />}>
-            <p><strong>Check your email.</strong> We sent a magic link to {email}. Click it to sign in.</p>
+            <p className="whitespace-nowrap"><strong>Check your email.</strong> We sent a magic link to {email}. Click it to sign in.</p>
           </AlertBanner>
         ) : (
           <>
