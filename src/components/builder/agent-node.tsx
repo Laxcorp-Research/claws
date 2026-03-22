@@ -4,6 +4,7 @@ import { memo } from "react"
 import { Handle, Position } from "@xyflow/react"
 import type { NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
+import { Clock } from "lucide-react"
 import type { AgentNodeData } from "@/stores/builder-store"
 
 function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeData }) {
@@ -11,8 +12,11 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
   const isCritic = data.role === "CRITIC"
   const isWorker = data.role === "WORKER"
 
+  const statusLabel = data.healthStatus === "healthy" ? "healthy" : data.healthStatus === "error" ? "error" : "idle"
+
   return (
     <div
+      aria-label={`${data.name}, ${data.role.toLowerCase()} agent, ${statusLabel}`}
       className={cn(
         "bg-[var(--bg)] border rounded-lg px-3 py-2.5 relative select-none shadow-node",
         isOrchestrator && "w-[160px] border-2 border-[var(--ac)] bg-[var(--acbg)]",
@@ -35,6 +39,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
             isOrchestrator && "text-[var(--ac)]",
             isCritic && "text-[#5b21b6]"
           )}
+          aria-hidden="true"
         >
           {data.role}
         </div>
@@ -65,16 +70,19 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
           data.healthStatus === "idle" && "bg-[var(--tx3)]",
           data.healthStatus === "error" && "bg-[var(--err)]"
         )}
+        aria-hidden="true"
       />
 
       {data.skillCount > 0 && (
-        <div className="absolute -top-1.5 -right-1.5 bg-[var(--tx)] text-white text-[8px] font-semibold w-4 h-4 rounded-full flex items-center justify-center">
+        <div className="absolute -top-1.5 -right-1.5 bg-[var(--tx)] text-white text-[8px] font-semibold w-4 h-4 rounded-full flex items-center justify-center" aria-label={`${data.skillCount} skills`}>
           {data.skillCount}
         </div>
       )}
 
       {data.hasHeartbeat && (
-        <div className="text-[8px] mt-1 text-[var(--tx3)]">⏱ Scheduled</div>
+        <div className="text-[8px] mt-1 text-[var(--tx3)] flex items-center gap-0.5">
+          <Clock className="w-2.5 h-2.5" aria-hidden="true" /> Scheduled
+        </div>
       )}
 
       <Handle

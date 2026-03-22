@@ -9,6 +9,7 @@ import { ClawCard, type ClawCardData } from "@/components/store/claw-card"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { cn } from "@/lib/utils"
 import { Package, Search } from "lucide-react"
+import { NetworkError } from "@/components/shared/network-error"
 
 const CATEGORIES: (ClawCategory | "ALL")[] = ["ALL", "MONEY_MAKING", "CREATOR", "BUSINESS_OPS", "VERTICAL", "LIFESTYLE"]
 
@@ -28,17 +29,23 @@ interface TemplateData extends ClawCardData {
 export default function StorePage() {
   const [templates, setTemplates] = useState<TemplateData[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [search, setSearch] = useState("")
   const [activeCategory, setActiveCategory] = useState<ClawCategory | "ALL">("ALL")
 
-  useEffect(() => {
+  const fetchTemplates = () => {
+    setLoading(true)
+    setError(false)
     fetch("/api/templates")
       .then((r) => r.json())
       .then((json) => {
         if (json.success) setTemplates(json.data.templates)
       })
+      .catch(() => setError(true))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { fetchTemplates() }, [])
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -70,7 +77,7 @@ export default function StorePage() {
     <PageShell background="secondary">
       <div className="max-w-5xl mx-auto px-4 py-4">
         <div className="text-center pt-5 pb-4">
-          <div className="text-xl font-semibold text-[var(--tx)]">AI agents that work while you sleep</div>
+          <h1 className="text-xl font-semibold text-[var(--tx)]">AI agents that work while you sleep</h1>
           <div className="text-[13px] text-[var(--tx2)] mt-1 max-w-[500px] mx-auto">
             Pre-built multi-agent teams. Connect your tools, deploy in 10 minutes, monitor from your phone.
           </div>
@@ -79,6 +86,7 @@ export default function StorePage() {
             <input
               type="text"
               placeholder="Search Claws..."
+              aria-label="Search Claws"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="px-3.5 py-2 border border-[var(--bd)] rounded-[8px] bg-[var(--bg)] text-[12px] w-[280px] placeholder:text-[var(--tx3)] focus:outline-none focus:border-[var(--tx)] transition-colors"
@@ -110,6 +118,8 @@ export default function StorePage() {
           <div className="space-y-2.5">
             <LoadingSkeleton variant="card" count={3} />
           </div>
+        ) : error ? (
+          <NetworkError onRetry={fetchTemplates} />
         ) : templates.length === 0 ? (
           <EmptyState
             icon={<Package className="w-10 h-10" />}

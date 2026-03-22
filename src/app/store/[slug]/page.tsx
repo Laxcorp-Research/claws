@@ -146,7 +146,7 @@ export default function ClawDetailPage() {
         <div className="flex justify-between items-start mb-3.5">
           <div>
             <CategoryBadge category={claw.category} />
-            <div className="text-[22px] font-semibold text-[var(--tx)] mt-1.5">{claw.name}</div>
+            <h1 className="text-[22px] font-semibold text-[var(--tx)] mt-1.5">{claw.name}</h1>
             <div className="text-[13px] text-[var(--tx2)] mt-1 max-w-[520px] leading-relaxed">
               {claw.description}
             </div>
@@ -186,13 +186,13 @@ export default function ClawDetailPage() {
         </div>
 
         <div className="border border-[var(--bd)] rounded-[12px] p-3.5 mb-3.5">
-          <div className="text-[13px] font-semibold mb-2.5">Agent team hierarchy</div>
+          <h2 className="text-[13px] font-semibold mb-2.5">Agent team hierarchy</h2>
           <AgentHierarchy agents={claw.agents} />
         </div>
 
         <div className="grid grid-cols-2 gap-2.5 mb-3.5">
           <div className="border border-[var(--bd)] rounded-[12px] p-3.5">
-            <div className="text-[13px] font-semibold mb-2">Required tools</div>
+            <h2 className="text-[13px] font-semibold mb-2">Required tools</h2>
             <div className="flex flex-col gap-1 text-[12px]">
               {claw.tools.required.map((tool) => (
                 <div key={tool.slug} className="flex justify-between">

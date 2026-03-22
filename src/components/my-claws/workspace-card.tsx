@@ -27,7 +27,10 @@ export function WorkspaceCard({ id, name, status, agentCount, lastActive, monthl
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={handleClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleClick() } }}
       className="border border-[var(--bd)] rounded-xl p-3.5 cursor-pointer transition-colors hover:border-[var(--bd2)]"
     >
       <div className="flex justify-between items-start mb-1.5">

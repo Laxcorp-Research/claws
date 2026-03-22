@@ -4,7 +4,7 @@ import { useState, useCallback } from "react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Check } from "lucide-react"
+import { Check, Loader2 } from "lucide-react"
 
 interface ApiKeyModalProps {
   open: boolean
@@ -49,7 +49,7 @@ export function ApiKeyModal({ open, onClose, toolName, helpUrl, keyPlaceholder =
         <>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
           <Button variant="primary" onClick={handleSave} disabled={!apiKey.trim() || status === "validating"}>
-            {status === "validating" ? "Validating..." : "Validate & save"}
+            {status === "validating" ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" /> Validating...</> : "Validate & save"}
           </Button>
         </>
       }
@@ -58,7 +58,12 @@ export function ApiKeyModal({ open, onClose, toolName, helpUrl, keyPlaceholder =
         <label className="block text-[11px] font-medium mb-[3px]">API Key</label>
         <Input value={apiKey} onChange={(e) => { setApiKey(e.target.value); setStatus("idle"); setErrorMsg("") }} placeholder={keyPlaceholder} className="font-mono" error={status === "error"} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
         {status === "success" && <p className="text-[11px] text-[var(--ok)] mt-1 inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Key validated and saved</p>}
-        {status === "error" && <p className="text-[11px] text-[var(--err)] mt-1">{errorMsg}</p>}
+        {status === "error" && (
+          <div className="mt-2 rounded-lg border border-[var(--err)] bg-[var(--errbg)] p-2.5">
+            <p className="text-[11px] font-semibold text-[#991b1b] mb-0.5">Validation failed</p>
+            <p className="text-[11px] text-[#991b1b]">{errorMsg}</p>
+          </div>
+        )}
         {helpUrl && (
           <p className="text-[11px] text-[var(--tx3)] mt-1">
             <a href={helpUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--ac)] hover:text-[var(--tx)] hover:underline transition-colors">Where do I find this? →</a>

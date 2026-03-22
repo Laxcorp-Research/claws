@@ -33,7 +33,7 @@ export function AlertBanner({ variant, icon, children, actions }: AlertBannerPro
   return (
     <div
       className={cn("rounded-lg py-3 px-3.5 mb-3.5 flex items-center justify-center border", variantClasses[variant])}
-      role="alert"
+      role={variant === "error" ? "alert" : "status"}
       aria-live={variant === "error" ? "assertive" : "polite"}
     >
       <div className="inline-flex items-center gap-2">

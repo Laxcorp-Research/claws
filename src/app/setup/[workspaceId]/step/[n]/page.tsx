@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ALL_TOOLS, getToolByName, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
-import { Check, CheckCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe } from "lucide-react"
+import { Check, CheckCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 
 interface ApiKeyInfo {
   id: string
@@ -182,15 +182,30 @@ function Step1({ workspaceId }: { workspaceId: string }) {
                 value={apiKeyInput}
                 onChange={(e) => { setApiKeyInput(e.target.value); setKeyError(null) }}
                 placeholder="sk-ant-api03-..."
+                aria-label="Anthropic API key"
+                aria-invalid={!!keyError}
+                aria-describedby={keyError ? "api-key-error" : undefined}
                 className="flex-1 font-mono"
                 error={!!keyError}
                 onKeyDown={(e) => e.key === "Enter" && handleValidate()}
               />
               <Button variant="primary" onClick={handleValidate} disabled={!apiKeyInput.trim() || isValidating}>
-                {isValidating ? "Validating..." : "Validate"}
+                {isValidating ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" /> Validating...</> : "Validate"}
               </Button>
             </div>
-            {keyError && <p className="text-[10px] text-[var(--err)] mt-1">{keyError}</p>}
+            {keyError && (
+              <div id="api-key-error" className="mt-2 rounded-lg border border-[var(--err)] bg-[var(--errbg)] p-3">
+                <p className="text-[13px] font-semibold text-[#991b1b] mb-1">API key validation failed</p>
+                <p className="text-[11px] text-[#991b1b]">
+                  {keyError}{" "}
+                  Please check your key in the{" "}
+                  <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                    Anthropic dashboard
+                  </a>{" "}
+                  and try again.
+                </p>
+              </div>
+            )}
           </>
         )}
 
@@ -230,6 +245,7 @@ interface ToolState {
   connectionType: "API_KEY" | "OAUTH_COMPOSIO"
   category: string
   status: ToolRowStatus
+  errorMessage?: string
   connectionId?: string
   helpUrl?: string
   keyPlaceholder?: string
@@ -330,15 +346,23 @@ function Step2({ workspaceId }: { workspaceId: string }) {
   }, [apiKeyModal.tool, workspaceId, refreshTools])
 
   const handleOAuthConnect = useCallback(async (tool: ToolState) => {
-    setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connecting" as const } : t)))
-    // Simulated OAuth — in production this opens a Composio popup
+    setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connecting" as const, errorMessage: undefined } : t)))
     console.log(`[Placeholder] OAuth flow for ${tool.name} — would open Composio popup in production`)
     setTimeout(async () => {
-      await fetch(`/api/tools/${workspaceId}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toolSlug: tool.slug, displayName: tool.name, connectionType: "OAUTH_COMPOSIO", composioConnectionId: `demo-${tool.slug}` }),
-      })
-      await refreshTools()
+      try {
+        const res = await fetch(`/api/tools/${workspaceId}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toolSlug: tool.slug, displayName: tool.name, connectionType: "OAUTH_COMPOSIO", composioConnectionId: `demo-${tool.slug}` }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          await refreshTools()
+        } else {
+          setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "OAuth authorization failed. Please try again or use an API key instead." } : t)))
+        }
+      } catch {
+        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "OAuth authorization failed. Please try again or use an API key instead." } : t)))
+      }
     }, 2000)
   }, [workspaceId, refreshTools])
 
@@ -377,7 +401,7 @@ function Step2({ workspaceId }: { workspaceId: string }) {
 
   const handleTest = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return
-    setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connecting" as const } : t)))
+    setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "testing" as const, errorMessage: undefined } : t)))
     try {
       const res = await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -385,13 +409,12 @@ function Step2({ workspaceId }: { workspaceId: string }) {
       })
       const data = await res.json()
       if (data.success) {
-        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const } : t)))
-        console.log(`Test passed for ${tool.name}`)
+        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined } : t)))
       } else {
-        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const } : t)))
+        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "Could not reach the API. The key may have expired or been revoked." } : t)))
       }
     } catch {
-      setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const } : t)))
+      setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "Could not reach the API. The key may have expired or been revoked." } : t)))
     }
   }, [workspaceId])
 
@@ -412,8 +435,10 @@ function Step2({ workspaceId }: { workspaceId: string }) {
             description={tool.category}
             connectionStatus={tool.status}
             connectionType={tool.connectionType}
+            errorMessage={tool.errorMessage}
             onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-            onTest={tool.status === "connected" ? () => handleTest(tool) : undefined}
+            onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+            onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
             onDisconnect={() => handleDisconnect(tool)}
           />
         ))}
@@ -427,10 +452,12 @@ function Step2({ workspaceId }: { workspaceId: string }) {
             description={tool.category}
             connectionStatus={tool.status}
             connectionType={tool.connectionType}
+            errorMessage={tool.errorMessage}
             swappable
             onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+            onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
             onSwap={() => setSwapModal({ open: true, tool })}
-            onTest={tool.status === "connected" ? () => handleTest(tool) : undefined}
+            onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
             onDisconnect={() => handleDisconnect(tool)}
           />
         ))}
@@ -478,33 +505,55 @@ function Step2({ workspaceId }: { workspaceId: string }) {
 
 interface DeployStepItem { label: string; status: "complete" | "running" | "pending" | "failed" }
 
-function mapDeployStatus(status: string | null): DeployStepItem[] {
-  const stages = [
-    { label: "Generating workspace files", key: "GENERATING" },
-    { label: "Provisioning container", key: "PROVISIONING" },
-    { label: "Configuring workspace", key: "CONFIGURING" },
-    { label: "Starting gateway", key: "STARTING" },
-    { label: "Health check", key: "HEALTH_CHECK" },
-    { label: "Connecting channels", key: "WAITING_CHANNELS" },
-    { label: "Complete", key: "COMPLETED" },
-  ]
-  const order = ["GENERATING", "PROVISIONING", "CONFIGURING", "STARTING", "HEALTH_CHECK", "WAITING_CHANNELS", "COMPLETED"]
-  if (!status || status === "PENDING") return stages.map((s, i) => ({ label: s.label, status: i === 0 ? "running" as const : "pending" as const }))
-  const idx = order.indexOf(status)
+const DEPLOY_STAGES = [
+  { label: "Generating workspace files", key: "GENERATING" },
+  { label: "Provisioning container", key: "PROVISIONING" },
+  { label: "Configuring workspace", key: "CONFIGURING" },
+  { label: "Starting gateway", key: "STARTING" },
+  { label: "Health check", key: "HEALTH_CHECK" },
+  { label: "Connecting channels", key: "WAITING_CHANNELS" },
+  { label: "Complete", key: "COMPLETED" },
+]
+
+const DEPLOY_ORDER = DEPLOY_STAGES.map((s) => s.key)
+
+const FAILURE_REASONS: Record<string, string> = {
+  GENERATING: "Failed to generate workspace configuration. This is unusual — please try again.",
+  PROVISIONING: "Could not provision a container. The hosting service may be temporarily unavailable.",
+  CONFIGURING: "Failed to configure agents and tools in the container. Check that all required tools are connected.",
+  STARTING: "Container failed to start. Check your API keys are valid.",
+  HEALTH_CHECK: "Agents are not responding after startup. An API key may be invalid or a tool connection expired.",
+  WAITING_CHANNELS: "Failed to connect communication channels. You can retry or skip and connect them later.",
+}
+
+function mapDeployStatus(status: string | null, failedStage?: string | null): DeployStepItem[] {
+  if (!status || status === "PENDING") return DEPLOY_STAGES.map((s, i) => ({ label: s.label, status: i === 0 ? "running" as const : "pending" as const }))
+
   if (status === "FAILED") {
-    return stages.map((s, i) => {
-      const si = order.indexOf(s.key)
-      if (si < idx) return { label: s.label, status: "complete" as const }
-      if (si === idx) return { label: s.label, status: "failed" as const }
+    const failIdx = failedStage ? DEPLOY_ORDER.indexOf(failedStage) : -1
+    return DEPLOY_STAGES.map((s) => {
+      const si = DEPLOY_ORDER.indexOf(s.key)
+      if (failIdx >= 0) {
+        if (si < failIdx) return { label: s.label, status: "complete" as const }
+        if (si === failIdx) return { label: s.label, status: "failed" as const }
+      }
       return { label: s.label, status: "pending" as const }
     })
   }
-  return stages.map((s, i) => {
-    const si = order.indexOf(s.key)
+
+  const idx = DEPLOY_ORDER.indexOf(status)
+  return DEPLOY_STAGES.map((s) => {
+    const si = DEPLOY_ORDER.indexOf(s.key)
     if (si < idx) return { label: s.label, status: "complete" as const }
     if (si === idx) return { label: s.label, status: status === "COMPLETED" ? "complete" as const : "running" as const }
     return { label: s.label, status: "pending" as const }
   })
+}
+
+function getFailureMessage(failedStage?: string | null, serverError?: string | null): string {
+  if (failedStage && FAILURE_REASONS[failedStage]) return FAILURE_REASONS[failedStage]
+  if (serverError) return serverError
+  return "Deployment failed. Please check your tool connections and API keys, then try again."
 }
 
 function Step3({ workspaceId }: { workspaceId: string }) {
@@ -515,6 +564,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   const [exportDownloaded, setExportDownloaded] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null)
   const [deploymentError, setDeploymentError] = useState<string | null>(null)
+  const [failedStage, setFailedStage] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopPolling = useCallback(() => {
@@ -531,6 +581,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
           const dep = json.data.deployment
           setDeploymentStatus(dep.status)
           if (dep.errorMessage) setDeploymentError(dep.errorMessage)
+          if (dep.failedStage) setFailedStage(dep.failedStage)
           if (dep.status === "COMPLETED" || dep.status === "FAILED") {
             stopPolling()
             setIsDeploying(false)
@@ -551,6 +602,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
           const dep = json.data.deployment
           setDeploymentStatus(dep.status)
           if (dep.errorMessage) setDeploymentError(dep.errorMessage)
+          if (dep.failedStage) setFailedStage(dep.failedStage)
           if (!["COMPLETED", "FAILED"].includes(dep.status)) { setIsDeploying(true); startPolling() }
         }
       } catch {}
@@ -559,7 +611,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   }, [workspaceId, startPolling])
 
   const handleDeploy = useCallback(async () => {
-    setIsDeploying(true); setDeploymentStatus("PENDING"); setDeploymentError(null)
+    setIsDeploying(true); setDeploymentStatus("PENDING"); setDeploymentError(null); setFailedStage(null)
     try {
       const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
       const json = await res.json()
@@ -596,17 +648,22 @@ function Step3({ workspaceId }: { workspaceId: string }) {
 
       {deploymentStatus && (
         <div className="mb-4">
-          <DeployProgress steps={mapDeployStatus(deploymentStatus)} />
+          <DeployProgress
+            steps={mapDeployStatus(deploymentStatus, failedStage)}
+            failureDetail={deploymentStatus === "FAILED" ? getFailureMessage(failedStage, deploymentError) : undefined}
+          />
         </div>
       )}
 
-      {deploymentStatus === "FAILED" && deploymentError && (
-        <AlertBanner variant="error">
-          <p><strong>Deployment failed.</strong> {deploymentError}</p>
-          <div className="flex gap-2 mt-2">
-            <Button variant="outline" size="sm" onClick={handleDeploy}>Retry</Button>
-            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tools</Button>
+      {deploymentStatus === "FAILED" && (
+        <AlertBanner variant="error" actions={
+          <div className="flex gap-1.5">
+            <Button variant="primary" size="sm" onClick={handleDeploy}>Retry deployment</Button>
+            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tool connections</Button>
           </div>
+        }>
+          <p className="font-medium">Deployment failed</p>
+          <p className="mt-0.5 opacity-80">{getFailureMessage(failedStage, deploymentError)}</p>
         </AlertBanner>
       )}
 
@@ -645,7 +702,7 @@ const CHANNELS = [
 
 function Step4({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
-  const [channelStatuses, setChannelStatuses] = useState<Record<string, "connected" | "disconnected" | "connecting">>({
+  const [channelStatuses, setChannelStatuses] = useState<Record<string, "connected" | "disconnected" | "connecting" | "error">>({
     "web-chat": "connected",
     "whatsapp": "disconnected",
     "slack": "disconnected",
@@ -653,15 +710,23 @@ function Step4({ workspaceId }: { workspaceId: string }) {
     "microsoft-teams": "disconnected",
     "discord": "disconnected",
   })
+  const [channelErrors, setChannelErrors] = useState<Record<string, string>>({})
 
   const handleConnect = useCallback(async (channelId: string) => {
     setChannelStatuses((prev) => ({ ...prev, [channelId]: "connecting" }))
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setChannelStatuses((prev) => ({ ...prev, [channelId]: "connected" }))
+    setChannelErrors((prev) => { const next = { ...prev }; delete next[channelId]; return next })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      setChannelStatuses((prev) => ({ ...prev, [channelId]: "connected" }))
+    } catch {
+      setChannelStatuses((prev) => ({ ...prev, [channelId]: "error" }))
+      setChannelErrors((prev) => ({ ...prev, [channelId]: "Connection failed. Please try again." }))
+    }
   }, [])
 
   const handleDisconnect = useCallback((channelId: string) => {
     setChannelStatuses((prev) => ({ ...prev, [channelId]: "disconnected" }))
+    setChannelErrors((prev) => { const next = { ...prev }; delete next[channelId]; return next })
   }, [])
 
   return (
@@ -677,6 +742,7 @@ function Step4({ workspaceId }: { workspaceId: string }) {
             description={channel.description}
             icon={channel.icon}
             status={channelStatuses[channel.id] || "disconnected"}
+            errorMessage={channelErrors[channel.id]}
             alwaysConnected={channel.alwaysConnected}
             onConnect={() => handleConnect(channel.id)}
             onDisconnect={() => handleDisconnect(channel.id)}

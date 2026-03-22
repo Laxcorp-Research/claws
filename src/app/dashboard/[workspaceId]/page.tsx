@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { OctagonX, Pause, Unplug, TrendingUp } from "lucide-react"
 import { StatCards } from "@/components/dashboard/stat-cards"
 import { ActivityFeed } from "@/components/dashboard/activity-feed"
@@ -30,6 +31,7 @@ interface WorkspaceInfo {
   currentMonthApiCost: number
   apiSpendLimit: number
   costAlertThreshold: number
+  lastHealthCheck?: string
 }
 
 interface AgentInfo {
@@ -71,6 +73,15 @@ interface ExpiredTool {
   name: string
 }
 
+interface DashboardAlert {
+  key: string
+  priority: number
+  variant: "error" | "warning"
+  icon?: ReactNode
+  content: ReactNode
+  actions?: ReactNode
+}
+
 const AGENT_COLORS: Record<string, string> = {
   ORCHESTRATOR: "#5BA1F5",
   WORKER: "#8BFCAE",
@@ -83,6 +94,16 @@ const STATS_POLL_MS = 30_000
 function formatTime(isoStr: string) {
   const d = new Date(isoStr)
   return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+}
+
+function relativeTime(isoStr: string | undefined): string {
+  if (!isoStr) return "unknown"
+  const seconds = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000)
+  if (seconds < 60) return "just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`
+  const hours = Math.floor(minutes / 60)
+  return `${hours} hour${hours !== 1 ? "s" : ""} ago`
 }
 
 export default function DashboardPage() {
@@ -231,6 +252,116 @@ export default function DashboardPage() {
   const spendLimitReached = spendPercent >= 100
   const spendWarning = spendPercent >= 80 && spendPercent < 100
 
+  const alerts = useMemo(() => {
+    const list: DashboardAlert[] = []
+
+    if (isError) {
+      list.push({
+        key: "container-error",
+        priority: 0,
+        variant: "error",
+        content: (
+          <>
+            <p className="font-medium">Agent container is not responding</p>
+            <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck)}. Check the agent status panel below.</p>
+          </>
+        ),
+        actions: (
+          <div className="flex gap-1.5">
+            <Button variant="danger" size="xs" onClick={handleResumeAll}>Force restart</Button>
+            <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tools</Button>
+          </div>
+        ),
+      })
+    }
+
+    if (spendLimitReached) {
+      list.push({
+        key: "spend-limit",
+        priority: 1,
+        variant: "error",
+        icon: <OctagonX className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">Monthly API spend limit reached (${spend?.thisMonth.toFixed(0)}/${spend?.limit})</p>
+            <p className="mt-0.5 opacity-80">All agents have been paused to prevent further charges. Resume by increasing your limit or waiting until next month.</p>
+          </>
+        ),
+        actions: <Button variant="primary" size="xs" onClick={() => router.push("/settings?tab=billing")}>Increase limit</Button>,
+      })
+    }
+
+    if (spendWarning) {
+      const dayOfMonth = new Date().getDate()
+      const dailyAvg = dayOfMonth > 0 ? (spend?.thisMonth ?? 0) / dayOfMonth : 0
+      const remaining = (spend?.limit ?? 0) - (spend?.thisMonth ?? 0)
+      const daysRemaining = dailyAvg > 0 ? Math.round(remaining / dailyAvg) : 0
+      list.push({
+        key: "spend-warning",
+        priority: 4,
+        variant: "warning",
+        icon: <TrendingUp className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">API spend at {spendPercent}% of your ${workspace?.apiSpendLimit}/mo limit</p>
+            <p className="mt-0.5 opacity-80">At current usage, you&apos;ll hit the limit in ~{daysRemaining} day{daysRemaining !== 1 ? "s" : ""}.</p>
+          </>
+        ),
+        actions: (
+          <div className="flex gap-1.5">
+            <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Increase limit</Button>
+            <Button variant="outline" size="xs">Optimize costs</Button>
+          </div>
+        ),
+      })
+    }
+
+    if (expiredTools.length > 0) {
+      const toolNames = expiredTools.map((t) => t.name).join(", ")
+      list.push({
+        key: "tools-expired",
+        priority: 3,
+        variant: "warning",
+        icon: <Unplug className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">{expiredTools[0].name} connection expired</p>
+            <p className="mt-0.5 opacity-80">
+              {expiredTools.length === 1
+                ? `Your connection to ${toolNames} has expired. Agents that use it are operating with degraded functionality.`
+                : `${expiredTools.length} tool connections have expired (${toolNames}). Agents may be degraded.`}
+            </p>
+          </>
+        ),
+        actions: (
+          <div className="flex gap-1.5">
+            <Button variant="primary" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Reconnect</Button>
+            <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Manage tools</Button>
+          </div>
+        ),
+      })
+    }
+
+    if (isPaused) {
+      list.push({
+        key: "paused",
+        priority: 5,
+        variant: "warning",
+        icon: <Pause className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">This Claw is paused</p>
+            <p className="mt-0.5 opacity-80">Agents have stopped running. Pending tasks are queued and will resume when you unpause.</p>
+          </>
+        ),
+        actions: <Button variant="primary" size="xs" onClick={handleResumeAll}>Resume agents</Button>,
+      })
+    }
+
+    list.sort((a, b) => a.priority - b.priority)
+    return list
+  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, handleResumeAll])
+
   const costRows = agents.map((a) => ({
     agentName: a.name,
     model: a.model.split("/").pop() ?? a.model,
@@ -241,12 +372,22 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto px-5 py-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-[var(--bg2)] rounded w-48" />
-          <div className="grid grid-cols-4 gap-2">
-            {[1, 2, 3, 4].map((i) => <div key={i} className="h-20 bg-[var(--bg2)] rounded-lg" />)}
+        <div className="h-6 bg-[var(--bg2)] rounded w-48 mb-4" />
+        <div className="grid grid-cols-4 gap-2 mb-3.5">
+          <LoadingSkeleton variant="card" />
+          <LoadingSkeleton variant="card" />
+          <LoadingSkeleton variant="card" />
+          <LoadingSkeleton variant="card" />
+        </div>
+        <div className="grid grid-cols-[1fr_300px] gap-3.5 mb-3.5">
+          <div className="border border-[var(--bd)] rounded-lg p-3 space-y-2">
+            <LoadingSkeleton variant="short" />
+            <LoadingSkeleton variant="line" count={5} />
           </div>
-          <div className="h-64 bg-[var(--bg2)] rounded-lg" />
+          <div className="border border-[var(--bd)] rounded-xl p-3.5 space-y-2">
+            <LoadingSkeleton variant="short" />
+            <LoadingSkeleton variant="line" count={4} />
+          </div>
         </div>
       </div>
     )
@@ -255,7 +396,9 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="max-w-5xl mx-auto px-5 py-6">
-        <AlertBanner variant="error">{error}</AlertBanner>
+        <AlertBanner variant="error" actions={<Button variant="outline" size="sm" onClick={fetchStats}>Retry</Button>}>
+          {error}
+        </AlertBanner>
       </div>
     )
   }
@@ -283,54 +426,14 @@ export default function DashboardPage() {
         }
       />
 
-      {/* Alert banners — priority order, show first matching */}
-      {isError && !spendLimitReached && (
-        <AlertBanner variant="error" actions={
-          <div className="flex gap-1.5">
-            <Button variant="danger" size="xs" onClick={handleResumeAll}>Force restart</Button>
-            <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tools</Button>
-          </div>
-        }>
-          Agent container not responding. Check the agent status panel below.
-        </AlertBanner>
-      )}
-
-      {spendLimitReached && !isError && (
-        <AlertBanner variant="error" icon={<OctagonX className="w-4 h-4" />} actions={
-          <Button variant="primary" size="xs">Increase limit</Button>
-        }>
-          Monthly API spend limit reached. All agents paused.
-        </AlertBanner>
-      )}
-
-      {isPaused && !isError && !spendLimitReached && (
-        <AlertBanner variant="warning" icon={<Pause className="w-4 h-4" />} actions={
-          <Button variant="primary" size="xs" onClick={handleResumeAll}>Resume agents</Button>
-        }>
-          This Claw is paused. Agents stopped. Pending tasks queued.
-        </AlertBanner>
-      )}
-
-      {expiredTools.length > 0 && !isPaused && !isError && !spendLimitReached && (
-        <AlertBanner variant="warning" icon={<Unplug className="w-4 h-4" />} actions={
-          <div className="flex gap-1.5">
-            <Button variant="primary" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Reconnect</Button>
-            <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Manage tools</Button>
-          </div>
-        }>
-          {expiredTools[0].name} connection expired. Agents may be degraded.
-        </AlertBanner>
-      )}
-
-      {spendWarning && !isPaused && !isError && !spendLimitReached && expiredTools.length === 0 && (
-        <AlertBanner variant="warning" icon={<TrendingUp className="w-4 h-4" />} actions={
-          <div className="flex gap-1.5">
-            <Button variant="outline" size="xs">Increase limit</Button>
-            <Button variant="outline" size="xs">Optimize costs</Button>
-          </div>
-        }>
-          API spend at {spendPercent}% of ${workspace?.apiSpendLimit}/mo limit.
-        </AlertBanner>
+      {alerts.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {alerts.map((alert) => (
+            <AlertBanner key={alert.key} variant={alert.variant} icon={alert.icon} actions={alert.actions}>
+              {alert.content}
+            </AlertBanner>
+          ))}
+        </div>
       )}
 
       {stats && (

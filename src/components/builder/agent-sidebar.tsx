@@ -30,7 +30,10 @@ export function AgentSidebar() {
     return (
       <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">Agents</h4>
-        <p className="text-[11px] text-[var(--tx3)] mb-3">Add an Orchestrator to begin.</p>
+        <div className="py-3 text-center">
+          <p className="text-[12px] text-[var(--tx2)]">No agents yet</p>
+          <p className="text-[11px] text-[var(--tx3)] mt-1">Add an Orchestrator to get started</p>
+        </div>
         <Button variant="primary" size="sm" className="w-full text-[10px]" onClick={() => addAgent({ name: "Orchestrator", role: "ORCHESTRATOR" })}>
           + Add Orchestrator
         </Button>
@@ -49,20 +52,22 @@ export function AgentSidebar() {
           const isCritic = agent.role === "CRITIC"
 
           return (
-            <div
+            <button
               key={agent.id}
+              type="button"
               onClick={() => selectAgent(agent.id)}
+              aria-pressed={isSelected}
               className={cn(
-                "flex items-center gap-1.5 py-1.5 px-2 rounded-[6px] cursor-pointer transition-colors",
+                "flex items-center gap-1.5 py-1.5 px-2 rounded-[6px] cursor-pointer transition-colors w-full text-left",
                 isSelected && "bg-[var(--bg3)] text-[var(--tx)] font-semibold",
                 !isSelected && "hover:bg-[var(--bg2)]",
                 isOrch && "bg-[var(--acbg)] text-[var(--ac)] border-l-[3px] border-l-[var(--ac)] font-semibold",
                 isCritic && "border-l-[3px] border-l-[#8b5cf6] font-semibold"
               )}
             >
-              <span className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ backgroundColor: agent.color }} />
+              <span className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ backgroundColor: agent.color }} aria-hidden="true" />
               <span className="truncate">{agent.name}</span>
-            </div>
+            </button>
           )
         })}
       </div>

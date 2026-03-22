@@ -23,7 +23,7 @@ interface AgentStatusListProps {
 export function AgentStatusList({ agents, onPause, onResume, onRestart }: AgentStatusListProps) {
   return (
     <div className="border border-[var(--bd)] rounded-xl p-3.5">
-      <h4 className="text-[13px] font-semibold mb-2.5">Agent status</h4>
+      <h3 className="text-[13px] font-semibold mb-2.5">Agent status</h3>
       <div className="flex flex-col gap-1.5">
         {agents.map((agent) => (
           <AgentStatusRow

@@ -47,7 +47,7 @@ export function ConfirmDialog({
     >
       {warningText && (
         <div className="bg-[var(--errbg)] rounded-[6px] py-2 px-2.5 text-[11px] text-[#991b1b] mb-3 flex items-center gap-1.5">
-          <AlertTriangle className="w-3.5 h-3.5 text-[var(--err)] shrink-0" />
+          <AlertTriangle className="w-3.5 h-3.5 text-[var(--err)] shrink-0" aria-hidden="true" />
           {warningText}
         </div>
       )}

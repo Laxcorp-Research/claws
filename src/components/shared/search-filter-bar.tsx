@@ -25,6 +25,7 @@ export function SearchFilterBar({
       <Input
         variant="search"
         placeholder={searchPlaceholder}
+        aria-label={searchPlaceholder}
         value={searchValue}
         onChange={(e) => onSearchChange(e.target.value)}
         className="max-w-[220px]"

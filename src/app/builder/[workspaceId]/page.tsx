@@ -9,7 +9,9 @@ import { AgentSidebar } from "@/components/builder/agent-sidebar"
 import { PropertiesPanel } from "@/components/builder/properties-panel"
 import { HeartbeatConfig } from "@/components/builder/heartbeat-config"
 import { VersionHistoryPanel } from "@/components/builder/version-history-panel"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useBuilderStore } from "@/stores/builder-store"
+import { Loader2 } from "lucide-react"
 
 export default function BuilderPage() {
   const params = useParams()
@@ -46,8 +48,10 @@ export default function BuilderPage() {
       {/* Builder top bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--bd)] bg-[var(--bg)]">
         <div className="flex items-center gap-2">
+          <h1 className="sr-only">{localName || "Builder"}</h1>
           <input
             type="text"
+            aria-label="Workspace name"
             value={localName}
             onChange={(e) => setLocalName(e.target.value)}
             onBlur={handleNameSave}
@@ -80,10 +84,20 @@ export default function BuilderPage() {
 
       {/* 3-panel grid */}
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-6 h-6 border-2 border-[var(--ac)] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            <p className="text-[11px] text-[var(--tx2)]">Loading workspace...</p>
+        <div className="flex-1 grid grid-cols-[190px_1fr_190px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
+          <div className="border border-[var(--bd)] rounded-lg p-2.5 space-y-2">
+            <LoadingSkeleton variant="short" />
+            <LoadingSkeleton variant="line" />
+            <LoadingSkeleton variant="line" />
+            <LoadingSkeleton variant="line" />
+          </div>
+          <div className="relative bg-[var(--bg2)] border border-dashed border-[var(--bd)] rounded-lg flex items-center justify-center">
+            <Loader2 className="w-6 h-6 text-[var(--tx3)] animate-spin" role="status" aria-label="Loading" />
+          </div>
+          <div className="border border-[var(--bd)] rounded-lg p-2.5 space-y-2">
+            <LoadingSkeleton variant="short" />
+            <LoadingSkeleton variant="line" />
+            <LoadingSkeleton variant="line" />
           </div>
         </div>
       ) : (

@@ -3,7 +3,10 @@ import { Providers } from "@/components/providers"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Claws — Build, Deploy & Manage AI Agent Teams",
+  title: {
+    template: "%s — Claws",
+    default: "Claws — Build, Deploy & Manage AI Agent Teams",
+  },
   description: "The visual platform for building, deploying, and managing autonomous AI agent teams. By Laxcorp Research.",
 }
 

@@ -84,7 +84,6 @@ export function Modal({ open, onClose, title, description, children, footer, siz
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.3)] z-50 flex items-center justify-center"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      aria-hidden="true"
     >
       <div
         ref={boxRef}

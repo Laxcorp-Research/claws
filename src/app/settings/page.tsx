@@ -46,6 +46,7 @@ function SettingsContent() {
   return (
     <PageShell>
       <div className="max-w-3xl mx-auto px-4 py-4">
+        <h1 className="sr-only">Settings</h1>
         <Tabs tabs={TABS} activeTab={activeTab} onTabChange={handleTabChange} />
 
         {activeTab === "account" && user && <AccountSettings user={user} />}

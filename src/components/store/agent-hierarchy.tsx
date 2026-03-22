@@ -26,7 +26,7 @@ export function AgentHierarchy({ agents }: AgentHierarchyProps) {
         </div>
       )}
 
-      <ArrowDown className="w-3.5 h-3.5 text-[var(--tx3)]" />
+      <ArrowDown className="w-3.5 h-3.5 text-[var(--tx3)]" aria-hidden="true" />
 
       <div className="flex gap-1.5 flex-wrap justify-center">
         {workers.map((worker) => (
@@ -41,7 +41,7 @@ export function AgentHierarchy({ agents }: AgentHierarchyProps) {
         ))}
       </div>
 
-      <ArrowDown className="w-3.5 h-3.5 text-[var(--tx3)]" />
+      <ArrowDown className="w-3.5 h-3.5 text-[var(--tx3)]" aria-hidden="true" />
 
       {critic && (
         <div className="bg-[#ede9fe] border-2 border-[#8b5cf6] rounded-[8px] py-2 px-[18px] text-center min-w-[180px]">

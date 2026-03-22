@@ -133,6 +133,7 @@ export function ApiKeyManager() {
               onTest={key ? () => handleTest(provider.key) : undefined}
               onRemove={key ? () => setRemoveId(key.id) : undefined}
               onAdd={!key ? () => { setAddProvider(provider.key); setKeyInput(""); setValidationState("idle") } : undefined}
+              onReplace={key && !key.isValid ? () => { setRemoveId(null); setAddProvider(provider.key); setKeyInput(""); setValidationState("idle") } : undefined}
             />
           )
         })}
