@@ -1,8 +1,8 @@
 "use client"
 
-import { Suspense, useState } from "react"
-import { signIn } from "next-auth/react"
-import { useSearchParams } from "next/navigation"
+import { Suspense, useState, useEffect } from "react"
+import { signIn, useSession } from "next-auth/react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,8 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { Mail } from "lucide-react"
 
 function SignInContent() {
+  const { status } = useSession()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl") || "/my-claws"
   const authError = searchParams.get("error")
@@ -17,6 +19,16 @@ function SignInContent() {
   const [email, setEmail] = useState("")
   const [magicLinkSent, setMagicLinkSent] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/my-claws")
+    }
+  }, [status, router])
+
+  if (status === "loading" || status === "authenticated") {
+    return null
+  }
 
   const handleMagicLink = async () => {
     if (!email.trim()) return
