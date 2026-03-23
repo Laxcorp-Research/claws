@@ -100,10 +100,12 @@ jobs:
           E2E_TEST_MODE: "true"
           ENCRYPTION_MASTER_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           ENCRYPTION_KEY_VERSION: "v1"
-          NEXTAUTH_SECRET: "ci-test-secret"
+          NEXTAUTH_SECRET: "ci-test-secret-ci-test-secret-ci-test-secret"
           NEXTAUTH_URL: "http://localhost:3000"
           DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.TEST_DATABASE_URL }}
+          UPSTASH_REDIS_REST_URL: "https://fake-redis.upstash.io"
+          UPSTASH_REDIS_REST_TOKEN: "fake-token-for-ci"
 
   security:
     name: Security Audit

@@ -47,6 +47,6 @@ test.describe('Navigation & Routing', () => {
     expect(response.status()).toBe(200);
 
     const data = await response.json();
-    expect(data.status).toBe('ok');
+    expect(data.status).toBe('healthy');
   });
 });
