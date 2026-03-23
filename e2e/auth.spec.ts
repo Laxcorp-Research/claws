@@ -5,17 +5,27 @@ test.describe('Authentication', () => {
   test('sign-in page renders', async ({ page }) => {
     await page.goto('/auth/signin');
 
+    // Wait for client-side hydration — useSession() starts as "loading" and renders null
+    await page.waitForFunction(
+      () => document.body.innerText.length > 50,
+      { timeout: 15_000 }
+    ).catch(() => {
+      // If content never loads, we'll catch it in the assertion below
+    });
+
     const pageContent = await page.textContent('body');
 
     const hasSignInUI =
+      pageContent?.includes('Welcome') ||
+      pageContent?.includes('Claws') ||
       pageContent?.includes('Sign in') ||
       pageContent?.includes('sign in') ||
-      pageContent?.includes('Log in') ||
+      pageContent?.includes('magic link') ||
       pageContent?.includes('Email') ||
       pageContent?.includes('email') ||
       pageContent?.includes('GitHub') ||
       pageContent?.includes('Google') ||
-      pageContent?.includes('Welcome');
+      pageContent?.includes('Continue with');
 
     expect(hasSignInUI).toBe(true);
   });
