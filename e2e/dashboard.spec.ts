@@ -41,7 +41,9 @@ test.describe('Dashboard', () => {
     const workspaceId = workspaces.data[0].id;
     await page.goto(`/dashboard/${workspaceId}`);
 
-    await page.waitForLoadState('networkidle');
+    // Don't use networkidle — dashboard has an SSE activity stream that never settles
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(2000);
 
     const bodyText = await page.textContent('body');
     expect(bodyText).not.toContain('Internal Server Error');
