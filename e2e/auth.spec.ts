@@ -1,0 +1,53 @@
+import { test, expect } from '@playwright/test';
+import { signInAsTestUser } from './helpers/auth';
+
+test.describe('Authentication', () => {
+  test('sign-in page renders', async ({ page }) => {
+    await page.goto('/auth/signin');
+
+    // Wait for client-side hydration — useSession() starts as "loading" and renders null
+    await page.waitForFunction(
+      () => document.body.innerText.length > 50,
+      { timeout: 15_000 }
+    ).catch(() => {
+      // If content never loads, we'll catch it in the assertion below
+    });
+
+    const pageContent = await page.textContent('body');
+
+    const hasSignInUI =
+      pageContent?.includes('Welcome') ||
+      pageContent?.includes('Claws') ||
+      pageContent?.includes('Sign in') ||
+      pageContent?.includes('sign in') ||
+      pageContent?.includes('magic link') ||
+      pageContent?.includes('Email') ||
+      pageContent?.includes('email') ||
+      pageContent?.includes('GitHub') ||
+      pageContent?.includes('Google') ||
+      pageContent?.includes('Continue with');
+
+    expect(hasSignInUI).toBe(true);
+  });
+
+  test('unauthenticated user is redirected from protected routes', async ({ page }) => {
+    await page.goto('/my-claws');
+    await page.waitForURL('**/auth/signin**', { timeout: 10_000 });
+    expect(page.url()).toContain('auth/signin');
+  });
+
+  test('test user can sign in and access protected routes', async ({ page }) => {
+    await signInAsTestUser(page);
+
+    expect(page.url()).toContain('/my-claws');
+
+    const pageContent = await page.textContent('body');
+    const hasAuthContent =
+      pageContent?.includes('My Claws') ||
+      pageContent?.includes('Workspace') ||
+      pageContent?.includes('No claws yet') ||
+      pageContent?.includes('Get started');
+
+    expect(hasAuthContent).toBe(true);
+  });
+});
