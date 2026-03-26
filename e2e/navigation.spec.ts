@@ -14,10 +14,13 @@ test.describe('Navigation & Routing', () => {
 
     const content = await page.textContent('body');
     const hasPricingContent =
-      content?.includes('Free') ||
-      content?.includes('Pro') ||
-      content?.includes('Enterprise') ||
       content?.includes('Pricing') ||
+      content?.includes('pricing') ||
+      content?.includes('Standard') ||
+      content?.includes('Business') ||
+      content?.includes('Premium') ||
+      content?.includes('$79') ||
+      content?.includes('$149') ||
       content?.includes('$');
 
     expect(hasPricingContent).toBe(true);
