@@ -88,6 +88,18 @@ const AGENT_COLORS: Record<string, string> = {
   CRITIC: "#A78BFA",
 }
 
+const MODEL_COST_PER_CALL: Record<string, number> = {
+  opus: 0.075,
+  sonnet: 0.015,
+  haiku: 0.001,
+}
+
+const ROLE_CALL_MULTIPLIER: Record<string, number> = {
+  ORCHESTRATOR: 1.5,
+  WORKER: 1.0,
+  CRITIC: 0.6,
+}
+
 const MAX_LOG_ENTRIES = 200
 const STATS_POLL_MS = 30_000
 
@@ -106,6 +118,34 @@ function relativeTime(isoStr: string | undefined): string {
   return `${hours} hour${hours !== 1 ? "s" : ""} ago`
 }
 
+function getModelShortName(model: string): string {
+  const lower = model.toLowerCase()
+  if (lower.includes("opus")) return "Opus"
+  if (lower.includes("haiku")) return "Haiku"
+  if (lower.includes("sonnet")) return "Sonnet"
+  return model.split("/").pop() ?? model
+}
+
+function getModelCostKey(model: string): string {
+  const lower = model.toLowerCase()
+  if (lower.includes("opus")) return "opus"
+  if (lower.includes("haiku")) return "haiku"
+  return "sonnet"
+}
+
+function getEstimatedCosts(agents: AgentInfo[]): { agentName: string; model: string; calls: number; cost: number }[] {
+  const baseCalls = 150
+  return agents.map((a) => {
+    const shortModel = getModelShortName(a.model)
+    const costKey = getModelCostKey(a.model)
+    const costPerCall = MODEL_COST_PER_CALL[costKey] ?? 0.015
+    const multiplier = ROLE_CALL_MULTIPLIER[a.role] ?? 1.0
+    const calls = Math.round(baseCalls * multiplier + (a.name.length * 7) % 100)
+    const cost = Math.round(calls * costPerCall * 100) / 100
+    return { agentName: a.name, model: shortModel, calls, cost }
+  })
+}
+
 export default function DashboardPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const router = useRouter()
@@ -120,6 +160,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [trialInfo, setTrialInfo] = useState<{ trialUsed: boolean; trialEndsAt: string | null; hasActiveSubscription: boolean } | null>(null)
+  const [agentActionLoadingId, setAgentActionLoadingId] = useState<string | null>(null)
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
@@ -232,32 +273,23 @@ export default function DashboardPage() {
     }
   }
 
-  const handleAgentPause = async (agentId: string) => {
-    await fetch(`/api/agents/${workspaceId}/${agentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "PAUSED" }),
-    })
-    fetchStats()
+  const handleAgentControl = async (agentId: string, action: "pause" | "resume" | "restart") => {
+    setAgentActionLoadingId(agentId)
+    try {
+      await fetch(`/api/agents/${workspaceId}/${agentId}/control`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      fetchStats()
+    } finally {
+      setAgentActionLoadingId(null)
+    }
   }
 
-  const handleAgentResume = async (agentId: string) => {
-    await fetch(`/api/agents/${workspaceId}/${agentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "ACTIVE" }),
-    })
-    fetchStats()
-  }
-
-  const handleAgentRestart = async (agentId: string) => {
-    await fetch(`/api/agents/${workspaceId}/${agentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "ACTIVE" }),
-    })
-    fetchStats()
-  }
+  const handleAgentPause = (agentId: string) => handleAgentControl(agentId, "pause")
+  const handleAgentResume = (agentId: string) => handleAgentControl(agentId, "resume")
+  const handleAgentRestart = (agentId: string) => handleAgentControl(agentId, "restart")
 
   const isPaused = workspace?.status === "PAUSED"
   const isError = workspace?.healthStatus === "UNHEALTHY" || workspace?.status === "ERROR"
@@ -419,14 +451,11 @@ export default function DashboardPage() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, handleResumeAll, trialInfo])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo])
 
-  const costRows = agents.map((a) => ({
-    agentName: a.name,
-    model: a.model.split("/").pop() ?? a.model,
-    calls: Math.floor(Math.random() * 500) + 50,
-    cost: (stats?.apiCostThisMonth ?? 0) / Math.max(agents.length, 1) * (a.role === "ORCHESTRATOR" ? 0.3 : a.role === "CRITIC" ? 0.25 : 1),
-  }))
+  const costRows = useMemo(() => getEstimatedCosts(agents), [agents])
+  const costTotal = useMemo(() => costRows.reduce((sum, r) => sum + r.cost, 0), [costRows])
 
   if (loading) {
     return (
@@ -520,7 +549,7 @@ export default function DashboardPage() {
         />
       )}
 
-      <div className="grid grid-cols-[1fr_300px] gap-3.5 mb-3.5">
+      <div className="grid grid-cols-[1fr_280px] gap-3">
         <ActivityFeed
           logs={logs.map((l) => ({
             id: l.id,
@@ -530,24 +559,29 @@ export default function DashboardPage() {
             message: l.action,
           }))}
         />
-        <AgentStatusList
-          agents={agents.map((a) => ({
-            id: a.id,
-            name: a.name,
-            role: a.role,
-            status: a.status,
-          }))}
-          onPause={handleAgentPause}
-          onResume={handleAgentResume}
-          onRestart={handleAgentRestart}
-        />
-      </div>
 
-      <CostBreakdownTable
-        rows={costRows}
-        totalCost={stats?.apiCostThisMonth ?? 0}
-        period={new Date().toLocaleString("default", { month: "long", year: "numeric" })}
-      />
+        <div className="flex flex-col gap-3">
+          <AgentStatusList
+            agents={agents.map((a) => ({
+              id: a.id,
+              name: a.name,
+              role: a.role,
+              status: a.status === "healthy" ? "running" as const : a.status,
+            }))}
+            onPauseAgent={handleAgentPause}
+            onResumeAgent={handleAgentResume}
+            onRestartAgent={handleAgentRestart}
+            actionLoadingId={agentActionLoadingId}
+          />
+
+          <CostBreakdownTable
+            rows={costRows}
+            totalCost={stats?.apiCostThisMonth ?? costTotal}
+            period={new Date().toLocaleString("default", { month: "long", year: "numeric" })}
+            workspaceId={workspaceId}
+          />
+        </div>
+      </div>
     </div>
   )
 }

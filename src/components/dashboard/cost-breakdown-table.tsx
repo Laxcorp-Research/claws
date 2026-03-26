@@ -1,6 +1,9 @@
-import { useMemo } from "react"
+"use client"
 
-interface CostRow {
+import { useMemo } from "react"
+import Link from "next/link"
+
+interface CostBreakdownRow {
   agentName: string
   model: string
   calls: number
@@ -8,17 +11,18 @@ interface CostRow {
 }
 
 interface CostBreakdownTableProps {
-  rows: CostRow[]
+  rows: CostBreakdownRow[]
   totalCost: number
   period: string
-  optimizationTip?: string
+  workspaceId?: string
+  optimizationTip?: string | null
 }
 
-export function CostBreakdownTable({ rows, totalCost, period, optimizationTip }: CostBreakdownTableProps) {
-  const sorted = [...rows].sort((a, b) => b.cost - a.cost)
+export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optimizationTip }: CostBreakdownTableProps) {
+  const sorted = useMemo(() => [...rows].sort((a, b) => b.cost - a.cost), [rows])
 
   const computedTip = useMemo(() => {
-    if (optimizationTip) return optimizationTip
+    if (optimizationTip) return { text: optimizationTip, agentName: "", percentage: 0, model: "" }
     if (rows.length === 0 || totalCost === 0) return null
 
     const topAgent = sorted[0]
@@ -26,47 +30,60 @@ export function CostBreakdownTable({ rows, totalCost, period, optimizationTip }:
     const topPercent = Math.round((topAgent.cost / totalCost) * 100)
 
     if (topPercent > 40) {
-      const model = topAgent.model.toLowerCase()
-      if (model.includes("opus")) {
-        return `💡 ${topAgent.agentName} accounts for ${topPercent}% of costs. Consider switching from Opus to Sonnet — Sonnet handles most tasks well at ~5× lower cost.`
+      return {
+        text: `Your ${topAgent.agentName} (${topAgent.model}) uses ${topPercent}% of your budget. If cost is a concern, try switching it to a cheaper model — but note that output quality may decrease.`,
+        agentName: topAgent.agentName,
+        percentage: topPercent,
+        model: topAgent.model,
       }
-      if (model.includes("sonnet")) {
-        return `💡 ${topAgent.agentName} accounts for ${topPercent}% of costs. Consider switching to Haiku for routine tasks — it's ~15× cheaper than Sonnet.`
-      }
-      return `💡 ${topAgent.agentName} accounts for ${topPercent}% of costs. Review its task frequency or consider a lighter model.`
     }
     return null
   }, [rows, totalCost, optimizationTip, sorted])
 
   return (
-    <div className="border border-[var(--bd)] rounded-xl p-3.5">
-      <div className="flex justify-between items-center mb-2.5">
+    <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
+      <div className="flex justify-between items-center mb-[10px]">
         <h4 className="text-[13px] font-semibold">API cost breakdown — {period}</h4>
         <span className="text-[16px] font-semibold text-[var(--tx)]">${totalCost.toFixed(2)}</span>
       </div>
-      <div className="text-xs">
-        <div className="flex justify-between py-1.5 border-b border-[var(--bd)]">
-          <span className="font-medium">Agent</span>
-          <div className="flex gap-5">
-            <span className="w-[50px] text-right font-medium">Model</span>
-            <span className="w-[50px] text-right font-medium">Calls</span>
-            <span className="w-[60px] text-right font-medium">Cost</span>
+
+      <div>
+        <div className="flex justify-between py-[6px] border-b border-[var(--bd)]">
+          <span className="text-[12px] font-medium">Agent</span>
+          <div className="flex gap-[20px]">
+            <span className="w-[50px] text-right text-[12px] font-medium">Model</span>
+            <span className="w-[50px] text-right text-[12px] font-medium">Calls</span>
+            <span className="w-[60px] text-right text-[12px] font-medium">Cost</span>
           </div>
         </div>
-        {sorted.map((row) => (
-          <div key={row.agentName} className="flex justify-between py-1.5 border-b border-[var(--bd)] last:border-b-0">
-            <span>{row.agentName}</span>
-            <div className="flex gap-5">
+
+        {sorted.map((row, i) => (
+          <div
+            key={row.agentName}
+            className={`flex justify-between py-[6px] ${i < sorted.length - 1 ? "border-b border-[var(--bd)]" : ""}`}
+          >
+            <span className="text-[12px]">{row.agentName}</span>
+            <div className="flex gap-[20px]">
               <span className="w-[50px] text-right text-[var(--tx2)] text-[10px]">{row.model}</span>
-              <span className="w-[50px] text-right">{row.calls.toLocaleString()}</span>
-              <span className="w-[60px] text-right font-semibold">${row.cost.toFixed(2)}</span>
+              <span className="w-[50px] text-right text-[12px]">{row.calls.toLocaleString()}</span>
+              <span className="w-[60px] text-right text-[12px] font-semibold">${row.cost.toFixed(2)}</span>
             </div>
           </div>
         ))}
       </div>
+
       {computedTip && (
-        <div className="text-[11px] bg-[var(--bg2)] rounded-[6px] p-2 mt-2.5 text-[var(--tx2)]">
-          {computedTip}
+        <div className="mt-[10px] bg-[var(--bg2)] rounded-[6px] p-[8px] text-[11px] text-[var(--tx2)]">
+          <span className="font-bold">Cost optimization tip: </span>
+          {computedTip.text}
+          {workspaceId && (
+            <>
+              {" "}
+              <Link href={`/builder/${workspaceId}`} className="text-[var(--ac)]">
+                Change model in Builder →
+              </Link>
+            </>
+          )}
         </div>
       )}
     </div>
