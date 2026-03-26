@@ -31,8 +31,7 @@ const quantTrader: SeedTemplate = {
   flowDescription:
     "Market Scanner monitors markets every 30 min → Signal Analyst evaluates opportunities → Risk Manager enforces position limits → Backtester validates against historical data → Trade Commander presents thesis for human approval → Trade Thesis Reviewer ensures quality.",
   category: "MONEY_MAKING",
-  priceSetup: 999,
-  priceMonthly: 99,
+  price: 299,
   agentCount: 7,
   featured: true,
   sortOrder: 1,
@@ -415,8 +414,7 @@ const freelancerRevenueEngine: SeedTemplate = {
   flowDescription:
     "Lead Hunter scans platforms for opportunities → Proposal Writer crafts personalized proposals → Project Manager tracks deliverables → Invoice & Collections handles billing → Business Development Reviewer quality-gates all client-facing communication.",
   category: "MONEY_MAKING",
-  priceSetup: 499,
-  priceMonthly: 79,
+  price: 199,
   agentCount: 6,
   featured: false,
   sortOrder: 2,
@@ -752,8 +750,7 @@ const ecommerceProfitMaximizer: SeedTemplate = {
   flowDescription:
     "Product Researcher identifies opportunities → Listing Optimizer crafts SEO-optimized listings → Pricing Intel monitors competitors → Review Manager handles reputation → Ad Optimizer manages PPC campaigns → E-Commerce Quality Gate ensures margin safety.",
   category: "MONEY_MAKING",
-  priceSetup: 599,
-  priceMonthly: 89,
+  price: 199,
   agentCount: 7,
   featured: false,
   sortOrder: 3,

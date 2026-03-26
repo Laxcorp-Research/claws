@@ -65,6 +65,14 @@ Worker 2:      #5BA1F5     Worker 6:  #8BFCAE
 Worker 3:      #FFB1AB     Critic:    #A78BFA
 ```
 
+### Trust Tier Colors (marketplace badges)
+```
+OFFICIAL:    bg #FFF8E7, text #8A6D00, border #FFE9A0, icon ★
+VERIFIED:    bg #EDFFF3, text #0D6B32, border #B8FFCF, icon ✓
+SCANNED:     bg #EEF5FF, text #1A5BBF, border #A8CFFF, icon ◐
+UNREVIEWED:  bg #F5F5F5, text #777777, border #E0E0E0, icon ○
+```
+
 ### Color Usage Rules
 ```
 Near-black var(--tx) used for:
@@ -196,7 +204,7 @@ Container:
 Header: display flex, justify-content space-between, align-items flex-start, margin-bottom 4px
   Name: font-size 15px, font-weight 600
   Price: font-size 13px, font-weight 600, color var(--tx), white-space nowrap
-         Format: "$999 + $99/mo"
+         Format: "$299" (one-time template price)
 
 Description: font-size 12px, color var(--tx2), line-height 1.5, margin-bottom 10px
 
@@ -724,30 +732,211 @@ Cells: padding 6px 8px, border-bottom 1px solid var(--bd)
   Select: padding 3px 6px, border-radius 6px, font-size 11px
 ```
 
+## 2.34 Trust Badge
+
+```
+File: src/components/marketplace/trust-badge.tsx
+
+Inline badge — displayed on template/skill cards and detail pages.
+Uses Trust Tier Colors from Section 1.
+
+Variants:
+  OFFICIAL:   ★ Official  — bg #FFF8E7, text #8A6D00, border #FFE9A0
+  VERIFIED:   ✓ Verified  — bg #EDFFF3, text #0D6B32, border #B8FFCF
+  SCANNED:    ◐ Scanned   — bg #EEF5FF, text #1A5BBF, border #A8CFFF
+  UNREVIEWED: ○ Unreviewed — bg #F5F5F5, text #777, border #E0E0E0
+
+Size: font-size 10px, font-weight 600, padding 2px 8px, border-radius 4px, border 1px solid
+Display: inline-flex, align-items center, gap 3px
+Icon: 10px, same color as text
+```
+
+## 2.35 Creator Card
+
+```
+File: src/components/marketplace/creator-card.tsx
+
+Used on: template/skill detail pages, creator profile pages.
+
+Layout: flex, align-items center, gap 10px
+Container: padding 12px 14px, border 1px solid var(--bd), border-radius var(--rl), bg var(--bg)
+
+Avatar: 36px × 36px, border-radius 50%, object-fit cover
+  Fallback: bg var(--bg3), initials centered, font-size 13px, font-weight 600
+Name: font-size 13px, font-weight 600, color var(--tx)
+  Followed by TrustBadge if VERIFIED
+Bio: font-size 11px, color var(--tx2), max 1 line, overflow ellipsis
+Stats row: font-size 10px, color var(--tx3), margin-top 2px
+  Format: "12 templates · 234 installs · 4.8 avg rating"
+  Separator: · (middle dot)
+Link: entire card clickable → /creator/[id]
+```
+
+## 2.36 Review Card
+
+```
+File: src/components/marketplace/review-card.tsx
+
+Used on: template/skill detail pages.
+
+Container: padding 12px 0, border-bottom 1px solid var(--bd)
+  Last item: no border-bottom
+
+Header row: flex, justify-content space-between, align-items center
+  Left: flex, gap 6px
+    User name: font-size 12px, font-weight 600
+    "Verified install" text (if verifiedInstall): font-size 10px, color var(--ok)
+  Right: date, font-size 10px, color var(--tx3)
+
+Stars row: margin-top 2px
+  Filled star: ★ color #FFDC6E (brand gold)
+  Empty star: ☆ color var(--bd)
+  Size: 12px each
+
+Title: font-size 13px, font-weight 600, margin-top 6px (if present)
+Body: font-size 12px, color var(--tx2), line-height 1.5, margin-top 4px
+
+Review list: show 5 reviews by default, "Show more" button at bottom
+  Show more: font-size 12px, color var(--ac), hover color var(--tx), cursor pointer
+Sort: most recent first
+```
+
+## 2.37 Review Stars (Input)
+
+```
+File: src/components/marketplace/review-stars.tsx
+
+Used in: review submission form.
+
+Display: flex, gap 2px
+Stars: 5 × clickable ★, size 20px
+  Unfilled: color var(--bd)
+  Filled: color #FFDC6E (brand gold)
+  Hover: fill stars up to hovered position
+  Click: sets rating value
+```
+
+## 2.38 Skill Card
+
+```
+File: src/components/marketplace/skill-card.tsx
+
+Used on: marketplace skills tab, workspace skill browser.
+
+Container: border 1px solid var(--bd), border-radius var(--rl), padding 12px 14px
+  Hover: border-color var(--bd2)
+  Cursor: pointer (links to /store/skills/[slug])
+
+Layout:
+  Row 1: flex, justify-content space-between
+    Left: emoji (if exists, 16px) + name (font-size 13px, font-weight 600)
+    Right: TrustBadge
+  Row 2: description, font-size 11px, color var(--tx2), max 2 lines, overflow ellipsis, margin-top 4px
+  Row 3: flex, justify-content space-between, margin-top 8px
+    Left: category badge (same style as CategoryBadge but smaller — font-size 9px, padding 1px 6px)
+    Right: install count (font-size 10px, color var(--tx3), "234 installs")
+  Row 4 (if paid): price, font-size 13px, font-weight 700, color var(--tx), margin-top 4px
+    Free: "Free" in font-size 12px, color var(--ok)
+```
+
+## 2.39 Marketplace Tabs
+
+```
+File: src/components/marketplace/marketplace-tabs.tsx
+
+Used on: store/marketplace page. Switches between Templates and Skills.
+
+Container: flex, gap 0, border-bottom 2px solid var(--bd), margin-bottom 16px
+Tab: padding 8px 16px, font-size 13px, font-weight 500, cursor pointer
+  Inactive: color var(--tx2), border-bottom 2px solid transparent
+  Active: color var(--tx), font-weight 600, border-bottom 2px solid var(--tx)
+  Hover (inactive): color var(--tx)
+```
+
+## 2.40 Price Display (Template/Skill Detail)
+
+```
+File: src/components/marketplace/price-display.tsx
+
+Used on: template/skill detail page, right column.
+
+Price: font-size 26px, font-weight 700, color var(--tx)
+  Format: "$199" (one-time template price)
+Label: font-size 11px, color var(--tx2), margin-top 2px
+  Official: "one-time"
+  Community paid: "one-time"  
+  Free: display "Free" in font-size 18px, font-weight 700, color var(--ok) instead of price
+Platform fee note: font-size 11px, color var(--tx3), margin-top 4px
+  Text: "+ $79/mo to run"
+```
+
 ---
 
 # 3. PER-SCREEN LAYOUT SPECS
 
-## Screen 1: Store (/store)
+## Screen 1: Store / Marketplace (/store)
 ```
 Background: var(--bg2), body padding 16px
 Hero: text-align center, padding 20px 0 16px
   Heading: font-size 20px, font-weight 600
   Subtitle: font-size 13px, color var(--tx2), margin-top 4px, max-width 500px centered
   Search: margin-top 12px, width 280px, padding 8px 14px, font-size 12px, border-radius 8px
-  Filters: margin-top 10px, flex gap 6px centered, active=primary 10px/4px 12px, inactive=outline same
-Category section: badge + description (font-size 11px, color var(--tx2), margin-bottom 8px) + ClawCard × N stacked
+MarketplaceTabs: Templates | Skills (see 2.39)
+Filters row (below tabs): flex gap 6px
+  Category pills: active=primary style, inactive=outline
+  Trust tier toggle: "Verified+" or "All"
+  Price toggle: "Free" / "Paid" / "All"
+  Sort dropdown: Popular / Newest / Price ↑ / Price ↓ / Rating
+
+Templates tab content:
+  Section "Official ★": heading (font-size 14px, font-weight 600, flex with "By Claws Team" badge) + ClawCard grid
+  Section "Trending": heading + ClawCard grid (community templates, last 7 days installs)
+  Section "New": heading + ClawCard grid (newest published)
+  Each ClawCard shows: TrustBadge, price (or "Free"), install count, creator name
+
+Skills tab content:
+  Section "Official": heading + SkillCard grid
+  Section "Popular": heading + SkillCard grid
+  Category section headings when filtered
 ```
 
-## Screen 2: Claw Detail (/store/[slug])
+## Screen 2: Template Detail (/store/[slug])
 ```
 Background: var(--bg2), body padding 16px
-Breadcrumb: font-size 11px, color var(--tx2), margin-bottom 10px, "← Back to store"
+Breadcrumb: font-size 11px, color var(--ac), margin-bottom 10px, "← Back to store", hover: color var(--tx)
 Title section: flex space-between
-  Left: CategoryBadge → Name (font-size 22px, font-weight 600, margin-top 6px) → Desc (13px, var(--tx2), max-width 520px, line-height 1.6)
-  Right: Price (26px, 600, var(--tx)) → Label (11px, var(--tx2)) → Monthly (14px, 500) → CTA (margin-top 10px, 8px 28px, 13px)
-Hierarchy card: border var(--bd), border-radius 12px, padding 14px, margin-bottom 14px → AgentHierarchy inside
-Tools grid: grid 1fr 1fr gap 10px, each card border+radius 12px padding 14px, title 13px 600
+  Left: TrustBadge + CategoryBadge (row, gap 6px) → Name (font-size 22px, font-weight 600, margin-top 6px) → Tagline (13px, var(--tx2), max-width 520px, line-height 1.6)
+  Right: PriceDisplay (see 2.40) → CTA button (margin-top 10px, 8px 28px, 13px)
+    If not owned: "Purchase — $199"
+    If owned: "Deploy" (primary) or "Open Builder" (outline)
+
+Agent pills section: padding 14px, border 1px solid var(--bd), border-radius 12px, margin-bottom 14px
+  Heading: "Agents" font-size 13px font-weight 600 margin-bottom 8px
+  Agent pills: flex wrap, gap 6px, each AgentPill component
+
+Tools required section: border+radius 12px padding 14px, margin-bottom 14px
+  Heading: "Tools Required" font-size 13px font-weight 600 margin-bottom 8px
+  List: each tool as a row — icon/emoji + name + connection type ("API Key" / "OAuth") + font-size 11px color var(--tx2)
+
+Estimated costs card: bg var(--bg3), border-radius 12px, padding 14px, margin-bottom 14px
+  Heading: "Estimated Monthly Cost" font-size 13px font-weight 600
+  Row: "LLM (AI models): $40-80/mo" font-size 12px color var(--tx2)
+  Row: "Platform fee: $79/mo" font-size 12px color var(--tx2)
+  Row: "Total: ~$120-160/mo" font-size 12px font-weight 600
+
+Creator card: CreatorCard component (see 2.35), margin-bottom 14px
+  Official templates: "By Claws Team" with ★ Official badge, Claws logo as avatar
+
+Description: font-size 13px, color var(--tx2), line-height 1.6, markdown rendered, margin-bottom 14px
+
+Reviews section: margin-bottom 14px
+  Heading: "Reviews" font-size 13px font-weight 600 + "★ 4.8 (23 reviews)" inline
+  ReviewCard list (see 2.36) — 5 shown, "Show more" if >5
+  "Write a review" button (outline, font-size 12px) — only for verified installers
+
+Similar templates: margin-bottom 14px
+  Heading: "Similar Templates" font-size 13px font-weight 600
+  3 × ClawCard in horizontal row (same category, same price tier)
 ```
 
 ## Screen 3: My Claws (/my-claws)

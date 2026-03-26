@@ -33,7 +33,7 @@
 
 ### What Claws Is
 
-Claws is a web platform that abstracts OpenClaw's CLI-based agent system into a visual interface. Users build multi-agent AI teams through a drag-and-drop builder, deploy them to managed cloud infrastructure or export for self-hosting, purchase pre-built agent templates from a store, and monitor agent activity through a real-time dashboard.
+Claws is a web platform that abstracts OpenClaw's CLI-based agent system into a visual interface. Users build multi-agent AI teams through a drag-and-drop builder, deploy them to managed cloud infrastructure, purchase pre-built agent templates from a store, and monitor agent activity through a real-time dashboard.
 
 ### Design Principles
 
@@ -127,17 +127,22 @@ model User {
   
   // Billing
   dodoCustomerId    String?   @unique
-  subscriptionTier    SubscriptionTier @default(FREE)
+  hasActiveSubscription Boolean @default(false)
   subscriptionId      String?   // Dodo Payments subscription ID
   subscriptionEndsAt  DateTime?
   
   // Limits
-  maxWorkspaces       Int       @default(1)  // FREE=1, PRO=5, ENTERPRISE=unlimited
-  maxAgentsPerWorkspace Int     @default(3)  // FREE=3, PRO=10, ENTERPRISE=50
+  maxWorkspaces       Int       @default(20)
+  maxAgentsPerWorkspace Int     @default(50)
   monthlyApiSpendLimit Float    @default(50.0) // USD
   
   // Onboarding
   onboardingCompleted Boolean   @default(false) // Set true after first onboarding flow
+  
+  // Trial
+  trialUsed       Boolean   @default(false)  // True after first deploy (3-day trial)
+  trialStartedAt  DateTime?
+  trialEndsAt     DateTime?
   
   // Relations
   accounts        Account[]
@@ -146,6 +151,11 @@ model User {
   purchases       Purchase[]
   apiKeys         UserApiKey[]
   auditLogs       AuditLog[]
+  creatorProfile  CreatorProfile?
+  templateReviews TemplateReview[]
+  skillReviews    SkillReview[]
+  templateInstalls TemplateInstall[]
+  skillInstalls   SkillInstall[]
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -154,11 +164,7 @@ model User {
   @@index([dodoCustomerId])
 }
 
-enum SubscriptionTier {
-  FREE
-  PRO
-  ENTERPRISE
-}
+// SubscriptionTier removed — flat pricing: buy template + $79/mo per Claw
 
 model Account {
   id                String  @id @default(cuid())
@@ -246,7 +252,7 @@ model Workspace {
   
   // Deployment state
   status      WorkspaceStatus @default(DRAFT)
-  deploymentType DeploymentType?
+  // deploymentType removed — always cloud
   
   // Container management (cloud deployments only)
   containerId     String?   // Docker container ID
@@ -302,10 +308,7 @@ enum WorkspaceStatus {
   STOPPED            // Stopped (billing issue, limit reached)
 }
 
-enum DeploymentType {
-  CLOUD        // We host the container
-  SELF_HOSTED  // User exports and hosts
-}
+// DeploymentType removed — all deployments are cloud-only
 
 enum HealthStatus {
   HEALTHY
@@ -552,35 +555,60 @@ model ClawTemplate {
   tags        String[]
   
   // Pricing
-  priceSetup  Float  // One-time setup fee in USD
-  priceMonthly Float // Monthly support fee in USD
+  isFree      Boolean @default(false)
+  price       Float?  // null if free; minimum $19 if community paid; $149/$199/$299 for official
+  
+  // Creator (null = Official by Claws team)
+  creatorId   String?
+  creator     CreatorProfile? @relation(fields: [creatorId], references: [id])
+  
+  // Trust & Review
+  trustTier   TrustTier @default(UNREVIEWED)
+  reviewStatus ReviewStatus @default(PENDING)
+  reviewedAt  DateTime?
+  reviewNotes String?
   
   // Display
   agentCount  Int
   previewImage String? // URL to preview image
   featured    Boolean @default(false)
   sortOrder   Int     @default(0)
-  isPublished Boolean @default(true)
+  isPublished Boolean @default(false)  // Must be explicitly published
+  publishedAt DateTime?
   
   // The complete workspace snapshot
   // Contains all agents with their SOUL.md, AGENTS.md, skills, connections
-  // Stored as JSON. When purchased, this gets unpacked into Agent records.
+  // Stored as JSON. When installed, this gets unpacked into Agent records.
   workspaceSnapshot String @db.Text // JSON
   
-  // Metrics
-  purchaseCount Int @default(0)
-  avgRating     Float?
+  // Version compatibility
+  version            Int     @default(1)       // Template version (creator can update)
+  minOpenClawVersion String? // e.g., "2.4.0"
+  testedOnVersion    String? // e.g., "2.5.1"
+  
+  // Cost estimation
+  estimatedMonthlyCost String? // e.g., "$40-80" — creator-provided estimate of LLM costs
+  
+  // Metrics (denormalized)
+  installCount Int    @default(0)
+  avgRating    Float?
   
   // Relations
-  workspaces Workspace[]
-  purchases  Purchase[]
-  reviews    TemplateReview[]
+  workspaces   Workspace[]
+  purchases    Purchase[]
+  reviews      TemplateReview[]
+  installs     TemplateInstall[]
+  sales        MarketplaceSale[]
   
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   
   @@index([category])
   @@index([featured])
+  @@index([trustTier])
+  @@index([isPublished])
+  @@index([creatorId])
+  @@index([installCount])
 }
 
 enum ClawCategory {
@@ -591,19 +619,291 @@ enum ClawCategory {
   LIFESTYLE      // Health, Student, Job Hunter, Developer
 }
 
+enum TrustTier {
+  UNREVIEWED   // Auto-listed, not tested
+  SCANNED      // Automated scan passed (skills only, after Layer 1+2)
+  VERIFIED     // Human-reviewed, confirmed working
+  OFFICIAL     // Built and maintained by Claws team
+}
+
+enum ReviewStatus {
+  PENDING      // In review queue
+  APPROVED     // Passed review → upgraded trust tier
+  REJECTED     // Failed review (with reason). Creator can fix and resubmit → resets to PENDING
+  FLAGGED      // Reported by users
+}
+
 model TemplateReview {
   id             String @id @default(cuid())
   clawTemplateId String
   userId         String
-  rating         Int    // 1-5
-  review         String?
+  
+  rating         Int      // 1-5
+  title          String?
+  body           String?  @db.Text
+  verifiedInstall Boolean @default(false) // True if user has a TemplateInstall record
   
   template ClawTemplate @relation(fields: [clawTemplateId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([clawTemplateId, userId])  // One review per user per template
+  @@index([clawTemplateId])
+}
+
+model TemplateInstall {
+  id         String @id @default(cuid())
+  templateId String
+  userId     String
+  
+  template   ClawTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime @default(now())
+  
+  @@unique([templateId, userId])  // One install record per user per template
+  @@index([templateId])
+  @@index([createdAt])  // For "trending" queries (installs in last 7 days)
+}
+
+// ─── CREATOR PROFILES ──────────────────────────────────
+
+model CreatorProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  displayName String
+  bio         String?  @db.Text
+  avatarUrl   String?
+  websiteUrl  String?
+  twitterUrl  String?
+  githubUrl   String?
+  
+  isActive    Boolean  @default(true)  // Soft-delete: false when creator deletes account
+  agreedToTermsAt DateTime
+  
+  // Dodo payout
+  dodoBeneficiaryId String?  // Dodo Payments beneficiary ID for payouts
+  
+  // Stats (denormalized, updated via triggers/cron)
+  totalInstalls  Int   @default(0)
+  totalTemplates Int   @default(0)
+  totalSkills    Int   @default(0)
+  averageRating  Float @default(0)
+  
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  templates  ClawTemplate[]
+  skills     MarketplaceSkill[]
+  sales      MarketplaceSale[]
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ─── MARKETPLACE SKILLS ────────────────────────────────
+
+model MarketplaceSkill {
+  id           String   @id @default(cuid())
+  
+  // Identity
+  slug         String   @unique
+  name         String
+  description  String   @db.Text  // "When to use / not use" — critical for agent skill matching
+  category     String              // ClawHub-compatible category (see SkillCategory reference)
+  tags         String[]
+  emoji        String?
+  
+  // Content
+  skillMd      String   @db.Text  // The SKILL.md content
+  requiredBins String[]            // e.g., ["curl", "jq", "gh"]
+  requiredEnvVars String[]         // e.g., ["HUBSPOT_API_KEY"]
+  
+  // Creator (null = Official)
+  creatorId    String?
+  creator      CreatorProfile? @relation(fields: [creatorId], references: [id])
+  
+  // Trust & Review
+  trustTier    TrustTier    @default(UNREVIEWED)
+  reviewStatus ReviewStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewNotes  String?
+  
+  // Vetting pipeline results (3 layers)
+  autoScanPassed   Boolean?          // Layer 1: pattern matching
+  autoScanReport   String?  @db.Text // JSON: findings from auto scan
+  sandboxPassed    Boolean?          // Layer 2: sandbox test
+  sandboxReport    String?  @db.Text // JSON: network calls, file access observed
+  
+  // Marketplace
+  isFree       Boolean @default(true)
+  price        Float?  // minimum $5 if paid
+  installCount Int     @default(0)
+  isPublished  Boolean @default(false)
+  publishedAt  DateTime?
+  avgRating    Float?
+  
+  // Version
+  version            Int     @default(1)
+  minOpenClawVersion String?
+  
+  // Relations
+  reviews      SkillReview[]
+  installs     SkillInstall[]
+  sales        MarketplaceSale[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([category])
+  @@index([trustTier])
+  @@index([isPublished])
+  @@index([creatorId])
+  @@index([installCount])
+}
+
+// Skill categories — aligned with ClawHub for ecosystem compatibility
+// Reference list: Communication, CRM, Data, Developer, Email, File Management,
+// Finance, Marketing, Productivity, Search, Security, Social, System, Web
+
+model SkillReview {
+  id       String @id @default(cuid())
+  skillId  String
+  userId   String
+  
+  rating   Int      // 1-5
+  title    String?
+  body     String?  @db.Text
+  verifiedInstall Boolean @default(false)
+  
+  skill    MarketplaceSkill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([skillId, userId])
+  @@index([skillId])
+}
+
+model SkillInstall {
+  id      String @id @default(cuid())
+  skillId String
+  userId  String
+  
+  skill   MarketplaceSkill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   createdAt DateTime @default(now())
   
-  @@unique([clawTemplateId, userId])
-  @@index([clawTemplateId])
+  @@unique([skillId, userId])
+  @@index([skillId])
+  @@index([createdAt])
+}
+
+// ─── MARKETPLACE SALES & PAYOUTS ───────────────────────
+
+model MarketplaceSale {
+  id           String   @id @default(cuid())
+  
+  // What was sold
+  templateId   String?
+  skillId      String?
+  template     ClawTemplate?    @relation(fields: [templateId], references: [id])
+  skill        MarketplaceSkill? @relation(fields: [skillId], references: [id])
+  
+  // Who
+  buyerId      String
+  creatorId    String
+  creator      CreatorProfile @relation(fields: [creatorId], references: [id])
+  
+  // Money
+  amount        Float     // Sale price
+  processingFee Float     // ~3-5% Dodo fee
+  creatorPayout Float     // amount - processingFee
+  
+  // Payout tracking
+  payoutStatus  PayoutStatus @default(PENDING)
+  payoutHeldUntil DateTime? // 7-day hold before release
+  payoutBatchId String?     // Dodo batch payout reference
+  paidAt        DateTime?
+  
+  // Dodo reference
+  dodoPaymentId String? @unique
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([creatorId])
+  @@index([payoutStatus])
+  @@index([createdAt])
+}
+
+enum PayoutStatus {
+  PENDING      // Sale made, in 7-day hold period
+  RELEASABLE   // Hold period passed, ready for next batch
+  PROCESSING   // Included in a Dodo payout batch
+  PAID         // Creator received funds
+  FAILED       // Payout failed
+  REFUNDED     // Sale was refunded, payout cancelled
+}
+
+// ─── REPORTS (User-submitted) ──────────────────────────
+
+model Report {
+  id          String @id @default(cuid())
+  reporterId  String // User who filed the report
+  
+  // What's being reported (one of these)
+  templateId  String?
+  skillId     String?
+  reviewId    String?  // Can report reviews too
+  
+  reason      ReportReason
+  details     String?  @db.Text
+  
+  // Resolution
+  resolved    Boolean  @default(false)
+  resolvedAt  DateTime?
+  resolution  String?  // Admin notes on resolution
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([resolved])
+}
+
+enum ReportReason {
+  MALICIOUS          // Contains malicious code or behavior
+  MISLEADING         // Description doesn't match actual behavior
+  COPYRIGHT          // Copies another template/skill
+  SPAM               // Low effort, promotional
+  INAPPROPRIATE      // Offensive content in prompts
+  BROKEN             // Doesn't work as described
+  NAME_CONFLICT      // Conflicts with official template name
+}
+
+// ─── OPENCLAW VERSION MANAGEMENT ───────────────────────
+
+model OpenClawVersion {
+  id        String   @id @default(cuid())
+  version   String   @unique  // Semver, e.g., "2.5.1"
+  
+  // Status
+  isStable  Boolean  @default(false) // We've tested it, safe to run
+  isLatest  Boolean  @default(false) // Most recent release from OpenClaw
+  isSecurityPatch Boolean @default(false) // Forces update within 48 hours
+  
+  // Image
+  dockerImage String  // ghcr.io/laxcorp/openclaw-runtime:2.5.1
+  
+  // Compatibility notes
+  releaseNotes    String? @db.Text
+  breakingChanges String? @db.Text
+  
+  // Timing
+  releasedAt DateTime   // When OpenClaw released it
+  stableAt   DateTime?  // When we marked it stable
+  
+  createdAt  DateTime @default(now())
 }
 
 // ─── PURCHASES & BILLING ────────────────────────────────
@@ -620,8 +920,8 @@ model Purchase {
   dodoPaymentId String @unique
   dodoBusinessId String?
   
-  // Subscription (for monthly support)
-  subscriptionId  String? // Dodo Payments subscription for monthly support
+  // Platform subscription
+  subscriptionId  String? // Dodo Payments subscription ($79/mo per Claw)
   subscriptionStatus SubscriptionStatus?
   
   status          PurchaseStatus @default(COMPLETED)
@@ -816,6 +1116,23 @@ enum AuditAction {
   SKILL_VERIFIED
   USER_SUSPENDED
   
+  // Marketplace
+  TEMPLATE_PUBLISHED
+  TEMPLATE_UNPUBLISHED
+  TEMPLATE_REVIEW_APPROVED
+  TEMPLATE_REVIEW_REJECTED
+  SKILL_PUBLISHED
+  SKILL_UNPUBLISHED
+  SKILL_REVIEW_APPROVED
+  SKILL_REVIEW_REJECTED
+  SKILL_INSTALLED
+  CREATOR_ENROLLED
+  CREATOR_PAYOUT_SENT
+  REPORT_FILED
+  REPORT_RESOLVED
+  VERSION_PROMOTED_STABLE
+  VERSION_FORCE_UPDATE
+  
   // Trading (Market Intelligence Claw specific)
   TRADE_RECOMMENDED
   TRADE_APPROVED_BY_HUMAN
@@ -857,29 +1174,36 @@ type Permission =
   | 'agent:create'
   | 'agent:update'
   | 'agent:delete'
+  | 'template:publish'   // Any enrolled creator
+  | 'skill:publish'      // Any enrolled creator
   | 'template:create'    // Admin only
   | 'template:update'    // Admin only
+  | 'review:approve'     // Admin only
+  | 'review:reject'      // Admin only
   | 'skill:verify'       // Admin only
 
-const TIER_PERMISSIONS: Record<SubscriptionTier, Permission[]> = {
-  FREE: [
-    'workspace:create', 'workspace:read', 'workspace:update',
-    'agent:create', 'agent:update', 'agent:delete',
-  ],
-  PRO: [
-    ...FREE_PERMISSIONS,
-    'workspace:deploy', 'workspace:delete',
-  ],
-  ENTERPRISE: [
-    ...PRO_PERMISSIONS,
-    // All permissions + priority support + SLA
-  ],
-}
+// No tiers — all paying users get all permissions
+const USER_PERMISSIONS: Permission[] = [
+  'workspace:create', 'workspace:read', 'workspace:update',
+  'workspace:deploy', 'workspace:delete',
+  'agent:create', 'agent:update', 'agent:delete',
+]
 
-const TIER_LIMITS = {
-  FREE:       { maxWorkspaces: 1,  maxAgentsPerWorkspace: 3,  cloudDeploy: false, monthlySpendLimit: 0 },
-  PRO:        { maxWorkspaces: 5,  maxAgentsPerWorkspace: 10, cloudDeploy: true,  monthlySpendLimit: 200 },
-  ENTERPRISE: { maxWorkspaces: 50, maxAgentsPerWorkspace: 50, cloudDeploy: true,  monthlySpendLimit: 2000 },
+// Creators get user permissions plus publishing
+const CREATOR_PERMISSIONS: Permission[] = [
+  ...USER_PERMISSIONS,
+  'template:publish', 'skill:publish',
+]
+
+const PLATFORM_LIMITS = {
+  maxWorkspacesPerUser: 20,
+  maxAgentsPerWorkspace: 50,
+  trialDays: 3,                   // 3-day trial on first deploy
+  monthlyApiSpendLimit: 500,
+  platformFeePerClaw: 79,         // $79/mo per running Claw
+  minCommunityTemplatePrice: 19,  // $19 minimum for paid community templates
+  minCommunitySkillPrice: 5,      // $5 minimum for paid community skills
+  payoutHoldDays: 7,              // 7-day hold before creator payout release
 }
 ```
 
@@ -889,8 +1213,8 @@ const TIER_LIMITS = {
 // middleware.ts
 // Runs on Vercel Edge before every request
 
-const publicPaths = ['/', '/store', '/store/*', '/api/auth/*', '/api/dodo/webhook']
-const authPaths = ['/builder/*', '/dashboard/*', '/deploy/*', '/settings/*', '/api/*']
+const publicPaths = ['/', '/store', '/store/*', '/creator/*', '/pricing', '/api/auth/*', '/api/dodo/webhook', '/api/marketplace/templates', '/api/marketplace/templates/*', '/api/marketplace/skills', '/api/marketplace/skills/*']
+const authPaths = ['/builder/*', '/dashboard/*', '/deploy/*', '/settings/*', '/publish/*', '/api/*']
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -945,8 +1269,7 @@ All API routes are in `/src/app/api/`. Authentication is enforced via middleware
 │
 ├── deploy/
 │   ├── POST   /[workspaceId]/cloud   # Deploy to cloud
-│   ├── POST   /[workspaceId]/export  # Generate export zip
-│   ├── POST   /[workspaceId]/stop    # Stop container
+│   │   ├── POST   /[workspaceId]/stop    # Stop container
 │   ├── POST   /[workspaceId]/restart # Restart container
 │   ├── GET    /[workspaceId]/health  # Container health check
 │   └── GET    /[workspaceId]/logs    # Container logs (paginated)
@@ -960,9 +1283,44 @@ All API routes are in `/src/app/api/`. Authentication is enforced via middleware
 │   └── POST   /custom                # Create custom skill (PRO+)
 │
 ├── templates/
-│   ├── GET    /                      # List store templates
+│   ├── GET    /                      # List store templates (official only — legacy, redirects to marketplace)
 │   ├── GET    /[slug]                # Get template details
 │   └── POST   /[slug]/purchase       # Purchase template (creates workspace)
+│
+├── marketplace/
+│   ├── templates/
+│   │   ├── GET    /                  # List all published templates (filters, search, sort, pagination)
+│   │   │                             # Query params: category, trustTier, isFree, sort, search, cursor, limit
+│   │   ├── GET    /[slug]            # Template detail (includes creator, reviews, install count)
+│   │   ├── POST   /                  # Publish template (creator must be enrolled)
+│   │   │                             # Validates: name not conflicting with Official, skills exist, min price $19
+│   │   ├── PUT    /[slug]            # Update published template (creator only, resets reviewStatus to PENDING)
+│   │   ├── DELETE /[slug]            # Unpublish (creator only — existing installs keep working)
+│   │   ├── GET    /[slug]/reviews    # List reviews (paginated, 10 per page, newest first)
+│   │   ├── POST   /[slug]/reviews    # Submit review (verified install required, one per user)
+│   │   └── POST   /[slug]/report     # Report template
+│   │
+│   └── skills/
+│       ├── GET    /                  # List all published skills (filters, search, sort, pagination)
+│       ├── GET    /[slug]            # Skill detail (includes SKILL.md preview, creator, reviews)
+│       ├── POST   /                  # Publish skill (triggers Layer 1 auto-scan immediately)
+│       │                             # If scan passes: listed as UNREVIEWED. If fails: rejected with reason.
+│       ├── PUT    /[slug]            # Update skill (creator only, re-triggers scan)
+│       ├── DELETE /[slug]            # Unpublish
+│       ├── POST   /[slug]/install    # Install skill to workspace (copies SKILL.md, updates openclaw.json)
+│       ├── GET    /[slug]/reviews    # List reviews
+│       ├── POST   /[slug]/reviews    # Submit review
+│       └── POST   /[slug]/report     # Report skill
+│
+├── creator/
+│   ├── POST   /enroll               # Opt-in: fill profile + agree to terms → instant CreatorProfile
+│   ├── GET    /profile              # Get own creator profile
+│   ├── PUT    /profile              # Update profile (name, bio, avatar, social links)
+│   ├── GET    /[id]                 # Public creator profile (anyone can view)
+│   ├── GET    /earnings             # Earnings dashboard (sales, pending payouts, paid payouts)
+│   ├── GET    /templates            # My published templates with stats
+│   ├── GET    /skills               # My published skills with stats
+│   └── GET    /payout-settings      # Dodo beneficiary status
 │
 ├── dodo/
 │   ├── POST   /checkout              # Create Dodo Payments checkout session
@@ -977,6 +1335,21 @@ All API routes are in `/src/app/api/`. Authentication is enforced via middleware
 │
 └── admin/                             # Admin-only routes
     ├── GET    /stats                  # Platform metrics
+    ├── review-queue/
+    │   ├── GET    /templates          # Templates pending review
+    │   ├── GET    /skills             # Skills pending review
+    │   ├── POST   /templates/[id]/approve  # Approve → upgrade to VERIFIED
+    │   ├── POST   /templates/[id]/reject   # Reject with reason
+    │   ├── POST   /skills/[id]/approve     # Approve → upgrade to VERIFIED
+    │   └── POST   /skills/[id]/reject      # Reject with reason
+    ├── versions/
+    │   ├── GET    /stable             # Current stable OpenClaw version
+    │   ├── GET    /available          # All available versions
+    │   ├── POST   /promote            # Mark a version as stable
+    │   └── POST   /force-update       # Force security patch (stops + redeploys all containers)
+    ├── reports/
+    │   ├── GET    /                    # Unresolved reports
+    │   └── POST   /[id]/resolve       # Resolve report
     ├── PATCH  /templates/[id]         # Update template
     └── PATCH  /skills/[id]/verify     # Verify a skill
 ```
@@ -1001,7 +1374,7 @@ All API routes are in `/src/app/api/`. Authentication is enforced via middleware
   "success": false,
   "error": {
     "code": "WORKSPACE_LIMIT_REACHED",
-    "message": "Free tier allows 1 workspace. Upgrade to Pro for up to 5.",
+    "message": "Maximum 20 workspaces per account. Contact support for higher limits.",
     "statusCode": 403
   },
   "meta": {
@@ -1051,7 +1424,6 @@ Channel Configs (WhatsApp QR sessions, Teams tokens):
   - Same AES-256-GCM encryption
   - Additional: encrypted at rest in S3 for backups
 
-Workspace Exports (self-hosted downloads):
   - Generated zip contains API key placeholders, NOT actual keys
   - User must manually add their keys after download
   - Export zip is signed with HMAC-SHA256 for integrity verification
@@ -1299,6 +1671,78 @@ OpenClaw requires `provider/model-id` format:
 - **MEMORY.md** — Agent-created at runtime. We ensure the `memory/` directory exists with write permissions.
 - **Bundled skills** — ~55 skills ship with OpenClaw (weather, github, etc.). We only generate skills for user-connected tools not already bundled.
 
+### Marketplace Skill Installation (Hot-Add to Running Container)
+
+When a user installs a MarketplaceSkill into a running workspace:
+
+```typescript
+// POST /api/marketplace/skills/[slug]/install
+// 1. Validate: user owns target workspace, skill is published, scan passed
+// 2. Copy SKILL.md content to container filesystem
+// 3. Update openclaw.json skills.entries
+// 4. Gateway auto-reloads config (hot-reload, no restart needed)
+
+async function installSkillToWorkspace(skillSlug: string, workspaceId: string) {
+  const skill = await prisma.marketplaceSkill.findUnique({ where: { slug: skillSlug } })
+  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } })
+  
+  // 1. Create skill directory in container volume
+  //    Path: /home/node/.openclaw/{agentDir}/skills/{skill.slug}/SKILL.md
+  //    Use Docker exec to write file to mounted volume
+  const containerName = workspace.containerName
+  const targetAgents = getAgentsWithSkillAccess(workspaceId) // Determines which agents get this skill
+  
+  for (const agent of targetAgents) {
+    const skillPath = `/home/node/.openclaw/${agent.workspaceDir}/skills/${skill.slug}/SKILL.md`
+    await dockerExec(containerName, `mkdir -p $(dirname ${skillPath})`)
+    await dockerWriteFile(containerName, skillPath, skill.skillMd)
+  }
+  
+  // 2. Update openclaw.json skills.entries with new skill
+  //    Add env vars the skill needs (user must have provided these)
+  const configPath = `/home/node/.openclaw/openclaw.json`
+  const config = await dockerReadJson(containerName, configPath)
+  config.skills.entries[skill.slug] = {
+    enabled: true,
+    env: buildEnvFromRequiredVars(skill.requiredEnvVars, workspace)
+  }
+  await dockerWriteJson(containerName, configPath, config)
+  
+  // 3. Gateway auto-detects config change, reloads skills catalog
+  //    No container restart needed (OpenClaw hot-reloads openclaw.json)
+  
+  // 4. Record install
+  await prisma.skillInstall.create({
+    data: { skillId: skill.id, userId: workspace.userId }
+  })
+  
+  // 5. Update install count
+  await prisma.marketplaceSkill.update({
+    where: { id: skill.id },
+    data: { installCount: { increment: 1 } }
+  })
+}
+```
+
+### Community Template Update Flow
+
+When a creator publishes an update to their template:
+
+```
+1. Creator edits their Claw in builder → clicks "Publish Update"
+2. New workspaceSnapshot captured (v2 of the template)
+3. ClawTemplate.version incremented (1 → 2)
+4. ClawTemplate.reviewStatus reset to PENDING (queued for re-review)
+5. Existing buyers' workspaces are NOT auto-updated
+6. Dashboard shows: "Template update available (v1 → v2)"
+7. Buyer clicks "Apply Update":
+   a. Current workspace config backed up
+   b. New snapshot unpacked over existing agents
+   c. User customizations preserved where possible (API keys, channel tokens stay)
+   d. Container redeployed with new config
+8. If update breaks something: buyer can "Revert to v1" (from backup)
+```
+
 ---
 
 ## 8. Cloud Deployment Engine
@@ -1387,28 +1831,6 @@ SLACK_APP_TOKEN=...            # If configured
 TZ=UTC
 NODE_ENV=production
 NODE_OPTIONS=--max-old-space-size=768
-```
-
-### Self-Hosted Export
-
-For users who choose self-hosted deployment, the generator produces a downloadable zip containing:
-
-```
-laxclaws-export-{workspace-name}/
-├── docker-compose.yml
-├── .env.example
-├── openclaw.json
-├── workspace-orchestrator/
-│   ├── SOUL.md, AGENTS.md, USER.md, IDENTITY.md, TOOLS.md
-│   ├── HEARTBEAT.md, BOOT.md
-│   ├── memory/
-│   └── skills/
-├── workspace-worker-1/
-│   └── ...
-├── workspace-critic/
-│   └── ...
-├── cron/jobs.json
-└── README.md (setup instructions)
 ```
 
 ---
@@ -1668,68 +2090,74 @@ Before a user can activate the Trading Claw:
 **Why Dodo Payments:** Dodo is a Merchant of Record (MoR) — they handle tax compliance, refunds, disputes, and payment processing globally across 150+ countries, 80+ currencies. We don't need to worry about VAT/GST or international tax obligations. They have a dedicated Next.js adaptor (`@dodopayments/nextjs`) with 3 route handlers: Checkout, Customer Portal, and Webhooks.
 
 ```
-COMPLETE PRICING MODEL:
+PRICING MODEL:
 
 ┌─────────────────────────────────────────────────────────────┐
-│ LAYER 1: Platform Plan (monthly subscription)               │
-├────────────┬──────────┬──────────┬─────────────────────────┤
-│            │ FREE     │ PRO $29  │ ENTERPRISE $99          │
-├────────────┼──────────┼──────────┼─────────────────────────┤
-│ Workspaces │ 1        │ 5        │ Unlimited               │
-│ Agents/ws  │ 3        │ 10       │ 50                      │
-│ Cloud host │ No       │ $12/mo   │ Included (free)         │
-│ API limit  │ $50/mo   │ $200/mo  │ Custom                  │
-│ Support    │ Community│ Priority │ Dedicated + SLA         │
-│ Export     │ Yes      │ Yes      │ Yes                     │
-└────────────┴──────────┴──────────┴─────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│ LAYER 2: Claw Purchase (one-time payment per template)      │
+│ 1. TEMPLATE PURCHASE (one-time, yours forever on platform)  │
 ├─────────────────────────────────────────────────────────────┤
-│ $199 - $999 one-time setup fee                              │
+│ Official templates (by Claws team):                         │
+│   Creator + Lifestyle templates:     $149                   │
+│   Business Ops + Vertical templates: $199                   │
+│   Quant Trader:                      $299                   │
+│                                                             │
+│ Community templates (by creators):                          │
+│   Free or paid (minimum $19 for paid)                       │
+│   0% commission — creators keep everything minus processing │
+│   7-day hold before payout release (covers refund window)   │
+│                                                             │
 │ Includes: all agent configs, skills, workspace template     │
-│ User owns the template forever (even if they cancel support)│
+│ User owns the template forever (can redeploy anytime)       │
+│ No export / no self-host — cloud-only                       │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│ LAYER 3: Monthly Support (per-Claw subscription)            │
+│ 2. PLATFORM FEE (monthly, per running Claw)                 │
 ├─────────────────────────────────────────────────────────────┤
-│ $39 - $99/month per active Claw                             │
-│ Includes: template updates, agent improvements, bug fixes   │
-│ Cancellation: workspace remains, stops receiving updates    │
-│ Does NOT include cloud hosting (that's in the platform plan)│
+│ $79/month per Claw — everything included:                   │
+│   Cloud deployment (2Gi RAM, managed container)             │
+│   All channels (Telegram, Discord, Slack, WhatsApp, Web)    │
+│   500+ tool integrations (Composio)                         │
+│   Visual builder (customize agents, tools, settings)        │
+│   Real-time monitoring dashboard                            │
+│   Automatic template updates                                │
+│   Health checks + auto-restart                              │
+│   Priority email support                                    │
+│                                                             │
+│ 3-day free trial on first deploy (any template, free/paid)  │
+│ No free tier. No subscription tiers. No export.             │
+│ If workspace is PAUSED, platform fee is NOT charged         │
+│ Cost to us: ~$16-25/mo per container (DigitalOcean)         │
+│ Our margin: 70-84% depending on scale                       │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│ LAYER 4: Cloud Hosting (per-workspace)                      │
+│ 3. SKILL MARKETPLACE                                        │
 ├─────────────────────────────────────────────────────────────┤
-│ FREE plan: not available (export/self-host only)            │
-│ PRO plan: $12/month per running workspace                   │
-│ ENTERPRISE plan: included in $99/mo (unlimited workspaces)  │
-│ Self-hosted: $0 (user runs container on own infrastructure) │
-│ Metering: if workspace is PAUSED, hosting is NOT charged    │
-│ Cost to us: ~$5-8/mo per container (DigitalOcean/AWS ECS)   │
-│ Our margin on hosting: ~40-60%                              │
+│ Official skills: free (bundled with OpenClaw)                │
+│ Community skills: free or paid (minimum $5 for paid)        │
+│ 0% commission — same model as templates                     │
+│ 3-layer vetting: auto-scan → sandbox → manual review        │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│ LAYER 5: AI Model Costs (user pays directly to provider)    │
+│ 4. AI MODEL COSTS (user pays directly to provider)          │
 ├─────────────────────────────────────────────────────────────┤
 │ User brings their own API keys (Anthropic, OpenAI, Google)  │
 │ We do NOT proxy or mark up AI model costs                   │
-│ Typical monthly cost per Claw: $20-$100                     │
+│ Typical monthly cost per Claw: $30-$90                      │
 │ Enforced by deterministic cost gate at container level       │
-│ Budget limits configured per user's platform plan            │
+│ Budget limit: $500/mo per workspace (configurable)          │
 └─────────────────────────────────────────────────────────────┘
 
-EXAMPLE CUSTOMER COST (Pro plan, 2 Claws):
-  Platform: $29/mo
-  Claw 1 (B2B Sales): $499 one-time + $89/mo support + $12/mo hosting
-  Claw 2 (YouTube): $499 one-time + $79/mo support + $12/mo hosting
+EXAMPLE CUSTOMER COST (2 Claws):
+  Template 1 (B2B Sales, official): $199 one-time
+  Template 2 (Community template): $49 one-time (creator keeps ~$47)
+  Platform: $79/mo × 2 = $158/mo
   AI models: ~$80/mo (user pays Anthropic directly)
   ─────────────────────────────────
-  Month 1: $998 + $29 + $89 + $79 + $24 + $80 = $1,299
-  Month 2+: $29 + $89 + $79 + $24 + $80 = $301/month
+  Day 1:  $199 + $49 = $248 (templates)
+  Day 1-3: $0 (trial, first deploy)
+  Day 4+: $158/mo + $80/mo API = $238/month
 ```
 
 ### Dodo Payments Implementation
@@ -1738,10 +2166,71 @@ EXAMPLE CUSTOMER COST (Pro plan, 2 Claws):
 
 **Products to create in Dodo dashboard (app.dodopayments.com):**
 ```
-1. Claw Template Purchases (one-time products): one per Claw (20 products, $199-$999)
-2. Monthly Support Subscriptions: one per tier ($39, $49, $69, $79, $89, $99/mo)
-3. Cloud Hosting Subscription: $12/mo recurring
-4. Platform Plans: Pro $29/mo, Enterprise $99/mo
+OUR REVENUE (we are the seller):
+  1. "Claws Standard Template" — $149 one-time (Creator + Lifestyle)
+  2. "Claws Business Template" — $199 one-time (Business Ops + Vertical)
+  3. "Claws Premium Template" — $299 one-time (Quant Trader)
+  4. "Claw Platform" — $79/mo recurring subscription
+     - One subscription per active workspace
+     - Created after 3-day trial ends (trial starts on first deploy)
+     - Cancelled when user stops/deletes a Claw
+
+CREATOR REVENUE (marketplace — we facilitate, creator is seller):
+  5. Community template/skill purchases — dynamic pricing (creator sets price)
+     - Processed through Dodo checkout with creator as beneficiary
+     - 7-day hold before payout release
+     - Weekly batch payouts to creators via Dodo Distribution API
+     - We receive $0 from these sales (0% commission)
+```
+
+### Trial Logic
+
+```typescript
+// Triggered on first deploy (any template — free or paid)
+async function handleFirstDeploy(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  
+  if (!user.trialUsed) {
+    const now = new Date()
+    const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000) // 3 days
+    
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        trialUsed: true,
+        trialStartedAt: now,
+        trialEndsAt: trialEnd,
+      }
+    })
+    // Container deploys immediately, no payment needed
+    // After 3 days: Dodo subscription auto-created via webhook or cron check
+  } else {
+    // Not first deploy — require active subscription for this workspace
+    if (!user.hasActiveSubscription) {
+      // Create Dodo checkout for $79/mo subscription
+      throw new ApiError('SUBSCRIPTION_REQUIRED', 402)
+    }
+  }
+}
+```
+
+### Marketplace Sale Flow
+
+```typescript
+// When a community template/skill is purchased:
+// 1. Buyer clicks "Purchase" → Dodo checkout with creator as beneficiary
+// 2. Dodo processes payment
+// 3. Webhook fires onPaymentSucceeded
+// 4. We create:
+//    - TemplateInstall record (marks buyer as installer)
+//    - MarketplaceSale record (amount, processing fee, payout status PENDING)
+//    - Workspace from template snapshot (if template, not skill)
+// 5. payoutHeldUntil = createdAt + 7 days
+// 6. Weekly cron job: find sales where payoutStatus = PENDING AND payoutHeldUntil < now()
+//    → Update to RELEASABLE
+// 7. Weekly cron job: batch all RELEASABLE sales by creator
+//    → Trigger Dodo batch payout to creator's beneficiary account
+//    → Update to PROCESSING, then PAID when confirmed
 ```
 
 **Route handlers:**
@@ -1764,34 +2253,34 @@ export const GET = CustomerPortal({
   environment: process.env.DODO_PAYMENTS_ENVIRONMENT,
 })
 
-// src/app/api/webhook/dodo-payments/route.ts
+// src/app/api/dodo/webhook/route.ts
 import { Webhooks } from "@dodopayments/nextjs"
 
 export const POST = Webhooks({
   webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY!,
   onPaymentSucceeded: async (payload) => {
-    // Claw purchased → create Workspace from template → redirect to setup
+    // Template purchased → create Workspace from template snapshot → start 3-day trial → redirect to setup
   },
   onPaymentFailed: async (payload) => {
     // Purchase failed → show error
   },
   onSubscriptionActive: async (payload) => {
-    // Support or platform plan activated → update user/workspace
+    // Platform subscription activated (after trial) → workspace stays running
   },
   onSubscriptionCancelled: async (payload) => {
-    // Cancelled → enforce limits or stop updates
+    // Cancelled → stop container, set workspace to STOPPED
   },
   onSubscriptionFailed: async (payload) => {
-    // Renewal failed → mark past_due, alert user
+    // Renewal failed → mark past_due, alert user, grace period before stopping
   },
   onSubscriptionExpired: async (payload) => {
-    // Expired → enforce free tier limits
+    // Expired → stop container, set workspace to STOPPED
   },
   onRefundSucceeded: async (payload) => {
-    // Refund → mark purchase refunded, delete workspace if in 7-day window
+    // Refund → stop container, delete workspace if within 7-day window
   },
   onSubscriptionRenewed: async (payload) => {
-    // Renewal success → extend period
+    // Renewal success → extend period, workspace stays running
   },
 })
 ```
@@ -1816,7 +2305,7 @@ We build zero billing UI — Dodo handles it all
 ```
 DODO_PAYMENTS_API_KEY=...           # From Dodo dashboard
 DODO_PAYMENTS_WEBHOOK_KEY=...       # From Dodo dashboard → Webhooks
-DODO_PAYMENTS_RETURN_URL=https://buildclaws.ai/checkout/success
+DODO_PAYMENTS_RETURN_URL=https://app.buildclaws.ai/checkout/success
 DODO_PAYMENTS_ENVIRONMENT=live_mode # or test_mode for staging
 ```
 
@@ -2152,7 +2641,7 @@ DIRECT_URL="postgresql://..."
 
 # Auth
 NEXTAUTH_SECRET="..."
-NEXTAUTH_URL="https://buildclaws.ai"
+NEXTAUTH_URL="https://app.buildclaws.ai"
 GITHUB_CLIENT_ID="..."
 GITHUB_CLIENT_SECRET="..."
 GOOGLE_CLIENT_ID="..."
@@ -2165,7 +2654,7 @@ ENCRYPTION_KEY_VERSION="v1"
 # Dodo Payments
 DODO_PAYMENTS_API_KEY="..."              # From Dodo dashboard
 DODO_PAYMENTS_WEBHOOK_KEY="..."         # From Dodo → Webhooks
-DODO_PAYMENTS_RETURN_URL="https://buildclaws.ai/checkout/success"
+DODO_PAYMENTS_RETURN_URL="https://app.buildclaws.ai/checkout/success"
 
 # Redis
 UPSTASH_REDIS_REST_URL="..."
@@ -2190,8 +2679,7 @@ AXIOM_DATASET="laxclaws-logs"
 
 # Feature Flags
 ENABLE_CLOUD_DEPLOY=true
-ENABLE_SELF_HOSTED_EXPORT=true
-MAX_FREE_WORKSPACES=1
+MAX_WORKSPACES_PER_USER=20
 ```
 
 ---
@@ -2669,7 +3157,7 @@ docs.buildclaws.ai (Mintlify)
 │   │   └── Tool swapping
 │   ├── Deployment
 │   │   ├── Cloud hosting
-│   │   ├── Self-hosting guide
+│   │   ├── Getting started guide
 │   │   └── Troubleshooting
 │   ├── Dashboard
 │   │   ├── Activity feed
@@ -2716,6 +3204,295 @@ docs.buildclaws.ai (Mintlify)
 Documentation is NOT built in Phase 1-4. Prioritize after launch MVP.
 For launch: a single "Getting Started" page and per-Claw setup guides are sufficient.
 The "Docs" nav link points to `https://docs.buildclaws.ai` (Mintlify hosted).
+
+---
+
+## 25. Marketplace Architecture
+
+### Search & Pagination
+
+All marketplace list endpoints (`/api/marketplace/templates`, `/api/marketplace/skills`) support:
+
+```typescript
+// Query parameters
+interface MarketplaceListParams {
+  // Filtering
+  category?: ClawCategory        // Filter by category
+  trustTier?: TrustTier           // Minimum trust tier (e.g., VERIFIED = show VERIFIED + OFFICIAL)
+  isFree?: boolean                // true = free only, false = paid only, omit = all
+  creatorId?: string              // Filter by specific creator
+  
+  // Search — PostgreSQL full-text search on name + description + tags
+  search?: string                 // e.g., "trading crypto"
+  
+  // Sorting
+  sort?: 'popular' | 'newest' | 'price_asc' | 'price_desc' | 'rating'
+  // popular = installCount desc (default)
+  // newest = publishedAt desc
+  // price_asc/desc = price asc/desc (free items sorted first/last)
+  // rating = avgRating desc (minimum 3 reviews to rank)
+  
+  // Pagination — cursor-based (NOT offset)
+  cursor?: string                 // ID of last item from previous page
+  limit?: number                  // Default 20, max 50
+}
+
+// Response includes
+interface MarketplaceListResponse {
+  items: TemplateCard[] | SkillCard[]
+  nextCursor: string | null       // null = no more pages
+  totalCount: number              // For display: "Showing 1-20 of 147"
+}
+```
+
+Required database indexes (already in schema):
+- `@@index([category])`, `@@index([trustTier])`, `@@index([isPublished])`, `@@index([installCount])`
+- Full-text search: create a PostgreSQL `tsvector` index on `name || ' ' || description || ' ' || array_to_string(tags, ' ')`
+
+### Similar Templates Algorithm
+
+Template detail page shows 3 related templates:
+```sql
+-- Same category, same price tier, excluding current template
+-- Price tiers: free (price IS NULL), standard ($1-99), premium ($100+)
+-- Sorted by installCount desc
+-- If < 3 results in same price tier, backfill from same category any tier
+SELECT * FROM "ClawTemplate"
+WHERE category = $currentCategory
+  AND id != $currentId
+  AND "isPublished" = true
+  AND (
+    CASE 
+      WHEN $currentPrice IS NULL THEN price IS NULL
+      WHEN $currentPrice < 100 THEN price > 0 AND price < 100
+      ELSE price >= 100
+    END
+  )
+ORDER BY "installCount" DESC
+LIMIT 3
+```
+
+### Template Name Conflict Validation
+
+On `POST /api/marketplace/templates` (community publish):
+```typescript
+// Reject if name matches any OFFICIAL template (case-insensitive)
+const conflict = await prisma.clawTemplate.findFirst({
+  where: {
+    name: { equals: submittedName, mode: 'insensitive' },
+    trustTier: 'OFFICIAL'
+  }
+})
+if (conflict) throw new ApiError('NAME_CONFLICTS_WITH_OFFICIAL', 409,
+  `Template name "${submittedName}" conflicts with official template "${conflict.name}"`)
+```
+
+### Template Skill Dependency Validation
+
+On template publish, verify all referenced skills exist:
+```typescript
+// Extract skill slugs from workspaceSnapshot
+const snapshot = JSON.parse(template.workspaceSnapshot)
+const referencedSkills = extractSkillSlugs(snapshot) // From all agents' skill assignments
+
+// Check each skill is either bundled (~55 OpenClaw skills) or in our marketplace
+const bundledSlugs = BUNDLED_OPENCLAW_SKILLS // Static list of ~55 slugs
+const marketplaceSkills = await prisma.marketplaceSkill.findMany({
+  where: { slug: { in: referencedSkills }, isPublished: true }
+})
+const availableSlugs = [...bundledSlugs, ...marketplaceSkills.map(s => s.slug)]
+
+const missing = referencedSkills.filter(s => !availableSlugs.includes(s))
+if (missing.length > 0) {
+  throw new ApiError('SKILLS_NOT_AVAILABLE', 400,
+    `Template references skills not available on the platform: ${missing.join(', ')}`)
+}
+```
+
+---
+
+## 26. Skill Vetting Pipeline
+
+### Three-Layer Security Pipeline
+
+Every community skill goes through all 3 layers before reaching "VERIFIED" status. Layer 1 runs on submit (synchronous). Layers 2-3 run asynchronously.
+
+### Layer 1: Automated Scan (on submit, synchronous)
+
+Pattern matching against SKILL.md content. No container needed.
+
+```typescript
+interface ScanResult {
+  passed: boolean
+  findings: ScanFinding[]
+}
+
+interface ScanFinding {
+  severity: 'critical' | 'warning' | 'info'
+  pattern: string
+  line: number
+  description: string
+}
+
+const CRITICAL_PATTERNS = [
+  // Exfiltration
+  /curl.*\$\{?[A-Z_]*KEY/i,           // curl with API key variables
+  /curl.*\$\{?[A-Z_]*TOKEN/i,         // curl with token variables
+  /curl.*\$\{?[A-Z_]*SECRET/i,        // curl with secret variables
+  /wget.*\$\{?[A-Z_]*KEY/i,           // wget with API key variables
+  /base64\s+(encode|decode)/i,         // Base64 operations (obfuscation)
+  /eval\s*\(/,                         // Code execution
+  /\$\(.*\$\{/,                        // Nested command substitution with vars
+  
+  // File access outside workspace
+  /\/etc\/shadow/,                     // System files
+  /\/root\//,                          // Root directory
+  /~\/.ssh/,                           // SSH keys
+  /\.env(?!\s*var)/,                   // .env file access (but allow "env var" text)
+  /\/home\/node\/\.openclaw\/(?!skills)/, // OpenClaw config outside skills dir
+  
+  // Network to unknown hosts  
+  /curl\s+https?:\/\/(?!api\.|www\.)[a-z0-9-]+\.[a-z]{2,}/i, // Outbound to non-API domains
+]
+
+const WARNING_PATTERNS = [
+  /chmod\s+[0-7]*7[0-7]*/,            // World-readable/writable permissions
+  /rm\s+-rf/,                          // Recursive delete
+  />\s*\/dev\/null\s*2>&1/,            // Suppressing errors (hiding activity)
+  /nohup/,                             // Background processes
+  /crontab/,                           // Scheduling (should use OpenClaw's cron)
+]
+```
+
+If any CRITICAL pattern matches → skill is **rejected** immediately with findings shown to creator.
+If only WARNING patterns → skill is listed as **UNREVIEWED** with warnings noted in `autoScanReport`.
+
+### Layer 2: Sandbox Test (async, queued)
+
+```
+1. Spin up a disposable Docker container (same OpenClaw runtime image)
+2. Install the skill: copy SKILL.md to agent skills directory
+3. Create a minimal openclaw.json with one test agent that has this skill
+4. Start the gateway
+5. Send a test prompt that would trigger the skill
+6. Monitor for 60 seconds:
+   - Network calls: log all outbound connections (destination, port, payload size)
+   - File access: log all file reads/writes outside the skill directory
+   - Process spawning: log any child processes created
+   - Memory usage: ensure no memory bomb
+7. Tear down container
+8. Generate sandboxReport JSON with all observed activity
+
+PASS criteria:
+  - No outbound network to domains not declared in requiredEnvVars
+  - No file access outside /home/node/.openclaw/{agent}/skills/{slug}/
+  - No child processes that persist after skill execution completes
+  - Memory stays under 512MB
+
+FAIL criteria:
+  - Any network call to undeclared domain
+  - Any file read of .env, openclaw.json, or other agents' directories
+  - Any attempt to modify SOUL.md, AGENTS.md, or openclaw.json
+```
+
+Container infrastructure: use the same DigitalOcean droplets. Sandbox containers are ephemeral (create, run test, destroy). One sandbox container can run at a time per droplet. Queue additional tests.
+
+### Layer 3: Manual Review (async, queued)
+
+Admin reviews in `/admin/reviews`:
+```
+Checklist:
+  ✓ Description matches actual SKILL.md behavior
+  ✓ requiredBins list is complete and accurate
+  ✓ requiredEnvVars list is complete and accurate
+  ✓ No prompt injection patterns ("ignore previous", "you are now", "system override")
+  ✓ No subtle data exfiltration (e.g., encoding data in URLs, logging to external services)
+  ✓ Skill does what it says it does (basic functional test)
+
+Approve → trustTier upgraded to VERIFIED
+Reject → reviewStatus = REJECTED, creator notified with reason. Creator can fix and resubmit.
+```
+
+### Template Auto-Scan
+
+Community templates also undergo a lighter scan on publish. SOUL.md and AGENTS.md content is checked for:
+
+```typescript
+const TEMPLATE_SCAN_PATTERNS = [
+  // Prompt injection / goal hijacking
+  /ignore (previous|all|your) instructions/i,
+  /you are now/i,
+  /system override/i,
+  /forget everything/i,
+  
+  // Exfiltration instructions
+  /send.*to.*https?:\/\//i,           // Instructions to send data externally
+  /upload.*to/i,                       // Upload instructions
+  /curl.*\$\{?[A-Z_]*KEY/i,           // API key exfiltration via curl
+  
+  // Dangerous tool usage
+  /rm\s+-rf/i,                         // Destructive commands
+  /format.*disk/i,                     // Disk operations
+  /shutdown|reboot/i,                  // System commands
+]
+```
+
+Template scan is advisory only (findings logged in `reviewNotes`). Templates are not auto-rejected because SOUL.md content is more nuanced than skill scripts — legitimate prompts may reference URLs or commands in context.
+
+---
+
+## 27. OpenClaw Version Management
+
+### Version Lifecycle
+
+```
+OpenClaw releases new version (e.g., 2.5.2)
+  │
+  ├─ We pull the release, build our custom Docker image
+  │   ghcr.io/laxcorp/openclaw-runtime:2.5.2
+  │
+  ├─ Run automated compatibility tests:
+  │   - Deploy all 20 official templates against new version
+  │   - Health check passes? Channels connect? Agents respond?
+  │   - Run against 10 most-installed community templates
+  │
+  ├─ If tests pass (typically 2-5 days after release):
+  │   - Mark version as isStable = true in OpenClawVersion table
+  │   - Set isLatest = false on previous stable version
+  │   - All NEW deployments use this version automatically
+  │   - Existing containers stay on their current version
+  │
+  ├─ Dashboard shows: "Update available: 2.5.1 → 2.5.2"
+  │   - User clicks "Update" → container redeployed with new image
+  │   - Or user ignores — their Claw keeps running on old version
+  │
+  └─ SECURITY PATCHES (isSecurityPatch = true):
+      - Forced update within 48 hours
+      - Email notification sent via Resend:
+        "We're updating your Claw to patch a security vulnerability.
+         No action needed — update happens automatically."
+      - Cron job: 48 hours after security version marked stable,
+        find all containers running older versions → stop, update image, restart
+      - forceUpdateAll() in deployer:
+        1. Get all running workspaces on affected versions
+        2. For each: stop container → update containerImage → restart
+        3. Log as SYSTEM activity type in ActivityLog
+        4. Email user confirmation when complete
+```
+
+### Compatibility Field
+
+Templates and skills have `minOpenClawVersion` field:
+```
+Dashboard shows version status per workspace:
+  ✓ "Compatible" — workspace version >= template's minOpenClawVersion
+  ⚠ "Update recommended" — newer stable version available
+  ✗ "Incompatible" — template requires newer version than workspace runs
+
+When displaying templates in marketplace:
+  - If user has running workspaces, show compatibility status
+  - "Works with your version" or "Requires OpenClaw 2.5.0+"
+```
 
 ---
 

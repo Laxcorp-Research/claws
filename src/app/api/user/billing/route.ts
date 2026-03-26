@@ -2,18 +2,6 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 
-const PLAN_PRICES: Record<string, string> = {
-  FREE: "$0/month",
-  PRO: "$29/month",
-  ENTERPRISE: "$99/month",
-}
-
-const PLAN_DISPLAY: Record<string, string> = {
-  FREE: "Free",
-  PRO: "Pro",
-  ENTERPRISE: "Enterprise",
-}
-
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return ERRORS.UNAUTHORIZED()
@@ -21,13 +9,15 @@ export async function GET() {
   const dbUser = await prisma.user.findUnique({
     where: { id: user.id },
     select: {
-      subscriptionTier: true,
+      hasActiveSubscription: true,
+      subscriptionId: true,
       subscriptionEndsAt: true,
+      trialUsed: true,
+      trialStartedAt: true,
+      trialEndsAt: true,
     },
   })
   if (!dbUser) return ERRORS.NOT_FOUND("user")
-
-  const tier = dbUser.subscriptionTier as string
 
   const workspaces = await prisma.workspace.findMany({
     where: { userId: user.id },
@@ -41,12 +31,16 @@ export async function GET() {
   const totalCost = workspaces.reduce((sum, w) => sum + w.currentMonthApiCost, 0)
 
   return apiSuccess({
-    plan: PLAN_DISPLAY[tier] ?? tier,
-    planPrice: PLAN_PRICES[tier] ?? "$0/month",
+    hasActiveSubscription: dbUser.hasActiveSubscription,
+    plan: dbUser.hasActiveSubscription ? "Active" : "Inactive",
+    planPrice: dbUser.hasActiveSubscription ? "$79/mo per Claw" : "No active subscription",
     activeClaws: active.length,
     runningClaws: running,
     pausedClaws: paused,
     thisMonthTotal: Math.round(totalCost * 100) / 100,
+    trialUsed: dbUser.trialUsed,
+    trialStartedAt: dbUser.trialStartedAt?.toISOString() ?? null,
+    trialEndsAt: dbUser.trialEndsAt?.toISOString() ?? null,
     nextBillingDate: dbUser.subscriptionEndsAt ? dbUser.subscriptionEndsAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
     isPastDue: false,
   })

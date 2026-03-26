@@ -19,15 +19,17 @@ model User {
 
   stripeCustomerId    String?   @unique
   dodoCustomerId      String?   @unique
-  subscriptionTier    SubscriptionTier @default(FREE)
+  hasActiveSubscription Boolean @default(false)
   subscriptionId      String?
   subscriptionEndsAt  DateTime?
 
-  maxWorkspaces       Int       @default(1)
-  maxAgentsPerWorkspace Int     @default(3)
   monthlyApiSpendLimit Float    @default(50.0)
 
   onboardingCompleted Boolean   @default(false)
+
+  trialUsed       Boolean   @default(false)
+  trialStartedAt  DateTime?
+  trialEndsAt     DateTime?
 
   accounts        Account[]
   sessions        Session[]
@@ -35,6 +37,11 @@ model User {
   purchases       Purchase[]
   apiKeys         UserApiKey[]
   auditLogs       AuditLog[]
+  creatorProfile   CreatorProfile?
+  templateReviews  TemplateReview[]
+  skillReviews     SkillReview[]
+  templateInstalls TemplateInstall[]
+  skillInstalls    SkillInstall[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -43,11 +50,7 @@ model User {
   @@index([stripeCustomerId])
 }
 
-enum SubscriptionTier {
-  FREE
-  PRO
-  ENTERPRISE
-}
+// SubscriptionTier removed — flat pricing: buy template + $79/mo per Claw
 
 model Account {
   id                String  @id @default(cuid())
@@ -130,7 +133,6 @@ model Workspace {
   description String?
 
   status      WorkspaceStatus @default(DRAFT)
-  deploymentType DeploymentType?
 
   containerId     String?
   containerName   String?
@@ -181,10 +183,7 @@ enum WorkspaceStatus {
   STOPPED
 }
 
-enum DeploymentType {
-  CLOUD
-  SELF_HOSTED
-}
+// DeploymentType removed — cloud-only platform
 
 enum HealthStatus {
   HEALTHY
@@ -351,6 +350,41 @@ enum AgentRole {
   CRITIC
 }
 
+// ─── MARKETPLACE ENUMS ─────────────────────────────────
+
+enum TrustTier {
+  UNREVIEWED
+  SCANNED
+  VERIFIED
+  OFFICIAL
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+enum PayoutStatus {
+  PENDING
+  RELEASABLE
+  PROCESSING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum ReportReason {
+  MALICIOUS
+  MISLEADING
+  COPYRIGHT
+  SPAM
+  INAPPROPRIATE
+  BROKEN
+  NAME_CONFLICT
+}
+
 // ─── TOOL CONNECTIONS ───────────────────────────────────
 
 model ToolConnection {
@@ -434,8 +468,8 @@ model ClawTemplate {
   category    ClawCategory
   tags        String[]
 
-  priceSetup  Float
-  priceMonthly Float
+  price       Float
+  isFree      Boolean @default(false)
 
   agentCount  Int
   previewImage String?
@@ -443,23 +477,43 @@ model ClawTemplate {
   sortOrder   Int     @default(0)
   isPublished Boolean @default(true)
 
+  creatorId   String?
+  creator     CreatorProfile? @relation(fields: [creatorId], references: [id])
+
+  trustTier    TrustTier    @default(UNREVIEWED)
+  reviewStatus ReviewStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewNotes  String?
+
+  version            Int     @default(1)
+  minOpenClawVersion String?
+  testedOnVersion    String?
+
+  estimatedMonthlyCost String?
+
   dodoProductId        String?
-  dodoSupportProductId String?
 
   workspaceSnapshot String @db.Text
 
   purchaseCount Int @default(0)
+  installCount  Int @default(0)
   avgRating     Float?
 
   workspaces Workspace[]
   purchases  Purchase[]
   reviews    TemplateReview[]
+  installs   TemplateInstall[]
+  sales      MarketplaceSale[]
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([category])
   @@index([featured])
+  @@index([trustTier])
+  @@index([isPublished])
+  @@index([creatorId])
+  @@index([installCount])
 }
 
 enum ClawCategory {
@@ -474,12 +528,17 @@ model TemplateReview {
   id             String @id @default(cuid())
   clawTemplateId String
   userId         String
+
   rating         Int
-  review         String?
+  title          String?
+  body           String?  @db.Text
+  verifiedInstall Boolean @default(false)
 
   template ClawTemplate @relation(fields: [clawTemplateId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([clawTemplateId, userId])
   @@index([clawTemplateId])
@@ -707,4 +766,207 @@ enum AuditAction {
   TRADE_REJECTED_BY_HUMAN
   TRADE_LIMIT_REACHED
   TRADE_CIRCUIT_BREAKER_TRIGGERED
+}
+
+// ─── MARKETPLACE ────────────────────────────────────────
+
+model TemplateInstall {
+  id         String @id @default(cuid())
+  templateId String
+  userId     String
+
+  template   ClawTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  @@unique([templateId, userId])
+  @@index([templateId])
+  @@index([createdAt])
+}
+
+model CreatorProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  displayName String
+  bio         String?  @db.Text
+  avatarUrl   String?
+  websiteUrl  String?
+  twitterUrl  String?
+  githubUrl   String?
+
+  isActive    Boolean  @default(true)
+  agreedToTermsAt DateTime
+
+  dodoBeneficiaryId String?
+
+  totalInstalls  Int   @default(0)
+  totalTemplates Int   @default(0)
+  totalSkills    Int   @default(0)
+  averageRating  Float @default(0)
+
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  templates  ClawTemplate[]
+  skills     MarketplaceSkill[]
+  sales      MarketplaceSale[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model MarketplaceSkill {
+  id           String   @id @default(cuid())
+
+  slug         String   @unique
+  name         String
+  description  String   @db.Text
+  category     String
+  tags         String[]
+  emoji        String?
+
+  skillMd      String   @db.Text
+  requiredBins String[]
+  requiredEnvVars String[]
+
+  creatorId    String?
+  creator      CreatorProfile? @relation(fields: [creatorId], references: [id])
+
+  trustTier    TrustTier    @default(UNREVIEWED)
+  reviewStatus ReviewStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewNotes  String?
+
+  autoScanPassed   Boolean?
+  autoScanReport   String?  @db.Text
+  sandboxPassed    Boolean?
+  sandboxReport    String?  @db.Text
+
+  isFree       Boolean @default(true)
+  price        Float?
+  installCount Int     @default(0)
+  isPublished  Boolean @default(false)
+  publishedAt  DateTime?
+  avgRating    Float?
+
+  version            Int     @default(1)
+  minOpenClawVersion String?
+
+  reviews      SkillReview[]
+  installs     SkillInstall[]
+  sales        MarketplaceSale[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category])
+  @@index([trustTier])
+  @@index([isPublished])
+  @@index([creatorId])
+  @@index([installCount])
+}
+
+model SkillReview {
+  id       String @id @default(cuid())
+  skillId  String
+  userId   String
+
+  rating   Int
+  title    String?
+  body     String?  @db.Text
+  verifiedInstall Boolean @default(false)
+
+  skill    MarketplaceSkill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([skillId, userId])
+  @@index([skillId])
+}
+
+model SkillInstall {
+  id      String @id @default(cuid())
+  skillId String
+  userId  String
+
+  skill   MarketplaceSkill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([skillId, userId])
+  @@index([skillId])
+  @@index([createdAt])
+}
+
+model MarketplaceSale {
+  id           String   @id @default(cuid())
+
+  templateId   String?
+  skillId      String?
+  template     ClawTemplate?     @relation(fields: [templateId], references: [id])
+  skill        MarketplaceSkill? @relation(fields: [skillId], references: [id])
+
+  buyerId      String
+  creatorId    String
+  creator      CreatorProfile @relation(fields: [creatorId], references: [id])
+
+  amount        Float
+  processingFee Float
+  creatorPayout Float
+
+  payoutStatus  PayoutStatus @default(PENDING)
+  payoutHeldUntil DateTime?
+  payoutBatchId String?
+  paidAt        DateTime?
+
+  dodoPaymentId String? @unique
+
+  createdAt    DateTime @default(now())
+
+  @@index([creatorId])
+  @@index([payoutStatus])
+  @@index([createdAt])
+}
+
+model Report {
+  id          String @id @default(cuid())
+  reporterId  String
+
+  templateId  String?
+  skillId     String?
+  reviewId    String?
+
+  reason      ReportReason
+  details     String?  @db.Text
+
+  resolved    Boolean  @default(false)
+  resolvedAt  DateTime?
+  resolution  String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([resolved])
+}
+
+model OpenClawVersion {
+  id        String   @id @default(cuid())
+  version   String   @unique
+
+  isStable  Boolean  @default(false)
+  isLatest  Boolean  @default(false)
+  isSecurityPatch Boolean @default(false)
+
+  dockerImage String
+
+  releaseNotes    String? @db.Text
+  breakingChanges String? @db.Text
+
+  releasedAt DateTime
+  stableAt   DateTime?
+  testedAt   DateTime?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

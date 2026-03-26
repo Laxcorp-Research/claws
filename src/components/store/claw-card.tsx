@@ -4,8 +4,7 @@ import { AgentPill } from "@/components/ui/agent-pill"
 export interface ClawCardData {
   name: string
   slug: string
-  priceSetup: number
-  priceMonthly: number
+  price: number
   tagline: string
   flowDescription: string
   legalDisclaimer?: string | null
@@ -23,9 +22,10 @@ export function ClawCard({ claw, index }: { claw: ClawCardData; index?: number }
             )}
             {claw.name}
           </div>
-          <span className="text-[13px] font-semibold text-[var(--tx)] whitespace-nowrap ml-4">
-            ${claw.priceSetup.toLocaleString()} + ${claw.priceMonthly}/mo
-          </span>
+          <div className="text-right whitespace-nowrap ml-4">
+            <span className="text-[13px] font-semibold text-[var(--tx)]">${claw.price}</span>
+            <span className="text-[10px] text-[var(--tx3)] ml-1">one-time</span>
+          </div>
         </div>
 
         <p className="text-[12px] text-[var(--tx2)] leading-normal mb-2.5">

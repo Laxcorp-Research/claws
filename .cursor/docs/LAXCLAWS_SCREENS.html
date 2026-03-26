@@ -27,7 +27,7 @@
 :root{--bg:#fff;--bg2:#FBFBFB;--bg3:#F0F0F0;--tx:#0A0A0B;--tx2:#777777;--tx3:#999999;--bd:#EFEFEF;--bd2:#E0E0E0;--ac:#5BA1F5;--acbg:#EEF5FF;--ok:#10b981;--okbg:#dcfce7;--warn:#f59e0b;--warnbg:#FFFCE8;--err:#ef4444;--errbg:#fee2e2;--r:8px;--rl:12px}
 @media(prefers-color-scheme:dark){:root{--bg:#0A0A0B;--bg2:#141416;--bg3:#1E1E20;--tx:#E5E5E5;--tx2:#999999;--tx3:#666666;--bd:#2A2A2C;--bd2:#3A3A3C;--ac:#5BA1F5;--acbg:#1A2A40;--ok:#34d399;--okbg:#064e3b;--warn:#fbbf24;--warnbg:#451a03;--err:#f87171;--errbg:#450a0a}}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--tx);padding:20px;font-size:13px;line-height:1.5}
+a{color:var(--ac);text-decoration:none;transition:color .15s}a:hover{color:var(--tx)}body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--tx);padding:20px;font-size:13px;line-height:1.5}
 h1{font-size:22px;font-weight:600;margin-bottom:4px}
 .sub{font-size:13px;color:var(--tx2);margin-bottom:28px}
 .screen-section{margin-bottom:40px}
@@ -39,7 +39,7 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 .scr{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);overflow:hidden}
 .top{display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:52px;border-bottom:1px solid var(--bd);background:var(--bg)}
 .logo{font-weight:700;font-size:16px;letter-spacing:-0.5px}.logo{letter-spacing:-0.5px}
-.nav{display:flex;gap:32px;font-size:13px;font-weight:500}.nav a{color:var(--tx2);text-decoration:none;cursor:pointer}.nav a.on{color:var(--tx);font-weight:600}
+.nav{display:flex;gap:32px;font-size:13px;font-weight:500}.nav a{color:var(--tx2);text-decoration:none;cursor:pointer}.nav a:hover{color:var(--tx)}.nav a.on{color:var(--tx);font-weight:600}
 .btn{font-size:11px;padding:5px 14px;border-radius:var(--r);border:none;cursor:pointer;font-weight:500;display:inline-block}
 .bp{background:var(--tx);color:#fff;border-radius:8px}
 .bo{background:transparent;border:1px solid var(--bd);color:var(--tx2)}
@@ -197,34 +197,52 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 <!-- SCREEN 1: STORE (CLAW CATALOG)                                -->
 <!-- ============================================================ -->
 <div class="screen-section">
-<span class="slabel">Screen 1 — Store (Claw catalog)</span>
+<span class="slabel">Screen 1 — Marketplace</span>
 <div class="sarrive"><b>User arrives from:</b> Direct URL, marketing, Google, nav bar "Store" link</div>
-<div class="sactions"><b>Goes to:</b> Click any Claw card → Screen 2 (Claw detail). Sign in → Auth page.</div>
-<div class="sdesc">The main landing page. All 20 Claws grouped by category. Category filter tabs + search bar at top. Each card shows name, price, agent pills, and flow description.</div>
+<div class="sactions"><b>Goes to:</b> Click template card → Screen 2 (Template detail). Click skill card → Screen 15 (Skill detail). Sign in → Auth page.</div>
+<div class="sdesc">The main marketplace. Two tabs: Templates and Skills. Templates tab shows Official (★), Trending, and New sections. Filter by category, free/paid, trust tier. Cursor-based pagination.</div>
 <div class="scr">
 <div class="top">
 <div class="logo">Claws</div>
 <div class="nav"><a class="on">Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
-<button class="btn bp">Sign in</button>
+<div style="display:flex;gap:6px"><a href="#" style="font-size:12px;color:var(--ac);text-decoration:none;font-weight:500">Pricing</a><button class="btn bp">Sign in</button></div>
 </div>
 <div class="body" style="background:var(--bg2)">
 <div style="text-align:center;padding:16px 0 12px">
 <div style="font-size:18px;font-weight:600">AI agents that work while you sleep</div>
-<div style="font-size:12px;color:var(--tx2);margin-top:4px">Pre-built, tested, one-click deploy. Pick a Claw, connect your tools, go.</div>
-<div style="margin-top:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+<div style="font-size:12px;color:var(--tx2);margin-top:4px">Build, customize, and deploy multi-agent AI teams. Browse official and community templates.</div>
+</div>
+
+<!-- Marketplace Tabs -->
+<div style="display:flex;gap:0;border-bottom:2px solid var(--bd);margin-bottom:14px">
+<div style="padding:8px 16px;font-size:13px;font-weight:600;color:var(--tx);border-bottom:2px solid var(--tx);cursor:pointer">Templates</div>
+<div style="padding:8px 16px;font-size:13px;color:var(--tx2);cursor:pointer">Skills</div>
+</div>
+
+<!-- Filters -->
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
 <button class="btn bp" style="font-size:10px;padding:4px 12px">All</button>
 <button class="btn bo" style="font-size:10px;padding:4px 12px">Money-Making</button>
 <button class="btn bo" style="font-size:10px;padding:4px 12px">Creator</button>
 <button class="btn bo" style="font-size:10px;padding:4px 12px">Business Ops</button>
 <button class="btn bo" style="font-size:10px;padding:4px 12px">Vertical</button>
 <button class="btn bo" style="font-size:10px;padding:4px 12px">Lifestyle</button>
-</div>
+<div style="width:1px;height:16px;background:var(--bd);margin:0 4px"></div>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Free</button>
+<button class="btn bo" style="font-size:10px;padding:4px 12px">Paid</button>
+<div style="width:1px;height:16px;background:var(--bd);margin:0 4px"></div>
+<select style="font-size:10px;padding:3px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx)">
+<option>Sort: Popular</option><option>Newest</option><option>Price ↑</option><option>Price ↓</option><option>Rating</option>
+</select>
 </div>
 
-<span class="cat-l cat-m">Money-making Claws</span>
-<div class="catd">Highest perceived value. The Claw pays for itself.</div>
+<!-- Official Section -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+<span style="font-size:14px;font-weight:600">Official</span>
+<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:#FFF8E7;color:#8A6D00;border:1px solid #FFE9A0">★ Official</span>
+</div>
 <div class="claw">
-<div class="claw-h"><div class="claw-n">1. Quant trader</div><div class="claw-p">$999 + $99/mo</div></div>
+<div class="claw-h"><div class="claw-n">1. Quant trader</div><div class="claw-p">$299</div></div>
 <div class="claw-d">Your AI hedge fund analyst. Scans markets, identifies signals, backtests strategies, manages risk, presents trade recommendations. Supports crypto, Polymarket, stock screening.</div>
 <div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Market scanner</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Signal analyst</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Risk manager</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Backtester</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Portfolio tracker</span><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Execution advisor</span></div>
 <div class="flow">Orchestrator coordinates: Market Scanner → Signal Analyst → Risk Manager → Backtester → Execution Advisor presents to human → Portfolio Tracker monitors. Critic reviews all trade theses.</div>
@@ -232,7 +250,7 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 </div>
 
 <div class="claw">
-<div class="claw-h"><div class="claw-n">2. Freelancer revenue engine</div><div class="claw-p">$499 + $79/mo</div></div>
+<div class="claw-h"><div class="claw-n">2. Freelancer revenue engine</div><div class="claw-p">$199</div></div>
 <div class="claw-d">Find clients, send proposals, close deals, manage projects, invoice — automated for freelancers doing $5K-50K/month.</div>
 <div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Lead hunter</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Proposal writer</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Client manager</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Invoice + collections</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Upsell strategist</span></div>
 <div class="flow">Lead Hunter scans gigs → Proposal Writer crafts proposals → Client Manager tracks milestones → Invoice handles billing → Upsell identifies expansion. Critic reviews all outbound.</div>
@@ -241,16 +259,16 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 <div style="font-size:11px;color:var(--tx3);text-align:center;padding:12px">— Showing 2 of 20 Claws. Full catalog continues with Creator, Business Ops, Vertical, Lifestyle categories —</div>
 </div>
 </div>
-<div class="impl"><b>Impl:</b> <code>/store</code>. Components: ClawCatalog, ClawCategorySection, ClawDetailCard. Category filter tabs. Search bar. Each card links to <code>/store/[slug]</code>.</div>
+<div class="impl"><b>Impl:</b> <code>/store</code>. Components: MarketplaceTabs, TemplateSection (Official/Trending/New), SkillSection, ClawCard (with TrustBadge, CreatorCard), SkillCard. Category filter pills, Free/Paid toggle, sort dropdown. Search: PostgreSQL full-text search. Pagination: cursor-based. Each template card links to <code>/store/[slug]</code>. Each skill card links to <code>/store/skills/[slug]</code>.</div>
 </div>
 
 <!-- ============================================================ -->
 <!-- SCREEN 2: CLAW DETAIL PAGE                                    -->
 <!-- ============================================================ -->
 <div class="screen-section">
-<span class="slabel">Screen 2 — Claw detail page</span>
-<div class="sarrive"><b>User arrives from:</b> Clicking a Claw card in the Store (Screen 1)</div>
-<div class="sactions"><b>Goes to:</b> "Purchase" → Stripe checkout → on success → Screen 4 (Setup Step 1). "Back" → Screen 1 (Store). If already owned → Screen 10 (Dashboard) or Screen 9 (Builder).</div>
+<span class="slabel">Screen 2 — Template detail page</span>
+<div class="sarrive"><b>User arrives from:</b> Clicking a template card in the Marketplace (Screen 1)</div>
+<div class="sactions"><b>Goes to:</b> "Purchase" → Dodo checkout → on success → Screen 4 (Setup Step 1). "Back" → Screen 1 (Marketplace). If already owned → Screen 10 (Dashboard) or Screen 9 (Builder). "Write a review" → review modal. Creator name → Screen 16 (Creator Profile).</div>
 <div class="scr">
 <div class="top">
 <div class="logo">Claws</div>
@@ -258,17 +276,23 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 <button class="btn bp">Sign in</button>
 </div>
 <div class="body" style="background:var(--bg2)">
-<div style="font-size:11px;color:var(--tx2);margin-bottom:10px;cursor:pointer">← Back to store</div>
+<div style="font-size:11px;color:var(--ac);margin-bottom:10px;cursor:pointer">← Back to store</div>
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
 <div>
+<div style="display:flex;gap:6px;align-items:center">
+<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:#FFF8E7;color:#8A6D00;border:1px solid #FFE9A0">★ Official</span>
 <span class="cat-l cat-b">Business operations</span>
+</div>
 <div style="font-size:22px;font-weight:600;margin-top:6px">B2B sales machine</div>
 <div style="font-size:13px;color:var(--tx2);margin-top:4px;max-width:520px;line-height:1.6">Your complete outbound engine. ICP research, lead enrichment, personalized sequences, reply handling, pipeline management, deal intelligence.</div>
+<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--tx3)">
+<span>234 installs</span><span>★ 4.8 (23 reviews)</span><span>OpenClaw ≥ 2.4.0</span>
+</div>
 </div>
 <div style="text-align:right">
-<div style="font-size:26px;font-weight:600;color:var(--ac)">$499</div>
+<div style="font-size:26px;font-weight:600;color:var(--tx)">$199</div>
 <div style="font-size:11px;color:var(--tx2)">one-time setup</div>
-<div style="font-size:14px;font-weight:500;margin-top:2px">+ $89/month</div>
+<div style="font-size:14px;font-weight:500;margin-top:2px">$79/mo platform fee after 3-day trial</div>
 <button class="btn bp" style="margin-top:10px;padding:8px 28px;font-size:13px">Purchase this Claw</button>
 </div>
 </div>
@@ -308,9 +332,57 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 </div>
 </div>
 <div class="flow">Daily: Orchestrator delegates → ICP Researcher builds profiles → Lead Enricher pulls from Apollo + Clay → Sequence Writer creates emails → Reply Handler classifies responses → Pipeline Manager updates CRM → Critic reviews ALL outbound before sending. Daily briefing at 8 AM.</div>
+
+<!-- Estimated Cost -->
+<div style="background:var(--bg3);border-radius:var(--rl);padding:14px;margin-top:14px;margin-bottom:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:6px">Estimated Monthly Cost</div>
+<div style="font-size:12px;color:var(--tx2);line-height:1.8">
+LLM (AI models): $40-80/mo<br>
+Platform fee: $79/mo<br>
+<span style="font-weight:600;color:var(--tx)">Total: ~$120-160/mo + one-time template</span>
 </div>
 </div>
-<div class="impl"><b>Impl:</b> <code>/store/[slug]</code>. Components: ClawDetailPage, AgentHierarchyPreview, ToolRequirements, PurchaseButton (Stripe checkout). If already owned: show "Open Dashboard" + "Open Builder" instead of Purchase.</div>
+
+<!-- Creator Card -->
+<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--bd);border-radius:var(--rl);margin-bottom:14px">
+<div style="width:36px;height:36px;border-radius:50%;background:var(--tx);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600">C</div>
+<div>
+<div style="font-size:13px;font-weight:600">Claws Team <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;background:#FFF8E7;color:#8A6D00;border:1px solid #FFE9A0;margin-left:4px">★ Official</span></div>
+<div style="font-size:10px;color:var(--tx3);margin-top:1px">20 templates · 1,240 installs · 4.9 avg rating</div>
+</div>
+</div>
+
+<!-- Reviews -->
+<div style="margin-bottom:14px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<div style="font-size:13px;font-weight:600">Reviews</div>
+<div style="font-size:12px;color:var(--tx2)">★ 4.8 (23 reviews)</div>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid var(--bd)">
+<div style="display:flex;justify-content:space-between;font-size:12px"><span style="font-weight:600">Alex M.</span><span style="color:var(--tx3);font-size:10px">3 days ago</span></div>
+<div style="font-size:12px;color:#FFDC6E;margin-top:2px">★★★★★</div>
+<div style="font-size:12px;color:var(--tx2);margin-top:4px;line-height:1.5">Deployed in 10 minutes. Already booked 3 demos from the outbound sequences it created. Pays for itself in a week.</div>
+</div>
+<div style="padding:10px 0;border-bottom:1px solid var(--bd)">
+<div style="display:flex;justify-content:space-between;font-size:12px"><span style="font-weight:600">Sarah K.</span><span style="color:var(--tx3);font-size:10px">1 week ago</span></div>
+<div style="font-size:12px;color:#FFDC6E;margin-top:2px">★★★★☆</div>
+<div style="font-size:12px;color:var(--tx2);margin-top:4px;line-height:1.5">Great setup, the ICP researcher is solid. Wish it had LinkedIn integration.</div>
+</div>
+<button class="btn bo" style="font-size:11px;margin-top:8px">Show more</button>
+</div>
+
+<!-- Similar Templates -->
+<div style="margin-bottom:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Similar Templates</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;font-size:11px"><div style="font-weight:600">Agency Operations Hub</div><div style="color:var(--tx2);margin-top:2px">$199 · 7 agents</div></div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;font-size:11px"><div style="font-weight:600">Founder's Chief of Staff</div><div style="color:var(--tx2);margin-top:2px">$199 · 6 agents</div></div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;font-size:11px"><div style="font-weight:600">SEO Empire Builder</div><div style="color:var(--tx2);margin-top:2px">$199 · 7 agents</div></div>
+</div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/store/[slug]</code>. Components: TemplateDetailPage, TrustBadge, AgentPills, ToolRequirements, EstimatedCostCard, CreatorCard, ReviewSection (ReviewCard × 5 + load more), SimilarTemplates (3 cards), PurchaseButton (Dodo checkout), ReportButton. If already owned: show "Open Dashboard" + "Open Builder" instead of Purchase. Reviews: only verified installers can write reviews.</div>
 </div>
 
 <!-- ============================================================ -->
@@ -494,7 +566,7 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 <div class="screen-section">
 <span class="slabel">Screen 6 — Setup step 3: Deploy</span>
 <div class="sarrive"><b>User arrives from:</b> Step 2 "Next". Also from Builder "Deploy" button on undeployed workspace.</div>
-<div class="sactions"><b>Goes to:</b> After deploy success → Screen 7 (Channels). "Back" → Screen 5 (Tools). Self-hosted download → stays on page.</div>
+<div class="sactions"><b>Goes to:</b> After deploy success → Screen 7 (Channels). "Back" → Screen 5 (Tools). </div>
 <div class="scr">
 <div class="top">
 <div class="logo">Claws</div>
@@ -514,26 +586,18 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 <div class="step-dot step-todo">5</div><span class="step-label step-label-off">Go live</span>
 </div>
 
-<div style="font-size:15px;font-weight:600;margin-bottom:4px">How should your Claw run?</div>
-<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Choose where your AI agents operate.</div>
+<div style="font-size:15px;font-weight:600;margin-bottom:4px">Deploy your Claw</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Your Claw will run 24/7 on our managed cloud. $79/mo after your 3-day trial.</div>
 
-<div class="deploy-grid" style="margin-bottom:16px">
-<div class="dcard dfeat">
-<div style="font-size:10px;color:var(--ac);font-weight:600;margin-bottom:4px">RECOMMENDED</div>
-<h5 style="color:var(--ac)">Cloud hosted</h5>
-<p>We run it for you. One click. $12/month.</p>
-<p style="font-size:10px;color:var(--ok);margin-top:4px">Zero maintenance · Auto-updates · 99.9% uptime</p>
-<button class="btn bp" style="margin-top:8px">Deploy to cloud</button>
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+<div>
+<div style="font-size:13px;font-weight:600">Cloud deployment</div>
+<div style="font-size:11px;color:var(--tx2);margin-top:2px">Managed container · Auto-updates · Health monitoring · 24/7 uptime</div>
 </div>
-<div class="dcard">
-<h5>Self-hosted</h5>
-<p>Download configs for your own server.</p>
-<p style="font-size:10px;color:var(--tx2);margin-top:4px">Full control · Your infrastructure · No hosting fee</p>
-<button class="btn bo" style="margin-top:8px">Download config package</button>
-</div>
+<button class="btn bp">Deploy</button>
 </div>
 
-<!-- Deployment progress (shown after clicking "Deploy to cloud") -->
+<!-- Deployment progress (shown after clicking "Deploy") -->
 <div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px">
 <div style="font-size:13px;font-weight:600;margin-bottom:8px">Deployment progress</div>
 <div class="prog">
@@ -551,7 +615,7 @@ h1{font-size:22px;font-weight:600;margin-bottom:4px}
 </div>
 </div>
 </div>
-<div class="impl"><b>Impl:</b> <code>/setup/[workspaceId]/step/3</code>. Components: DeploymentOptions, DeployProgress (real-time status via polling). Cloud triggers Docker container creation via <code>/api/deploy/[id]/cloud</code>. Self-hosted triggers zip generation via <code>/api/deploy/[id]/export</code>. "Next" only enabled after COMPLETED status.</div>
+<div class="impl"><b>Impl:</b> <code>/setup/[workspaceId]/step/3</code>. Components: DeploymentOptions, DeployProgress (real-time status via polling). Cloud triggers Docker container creation via <code>/api/deploy/[id]/cloud</code>. "Next" only enabled after COMPLETED status.</div>
 </div>
 
 <!-- ============================================================ -->

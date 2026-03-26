@@ -2,7 +2,8 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
-import { createClawCheckout, createPlanCheckout, createHostingCheckout, PLAN_LIMITS } from "@/lib/dodo-payments"
+import { createClawCheckout, createPlatformSubscription, createCommunityCheckout } from "@/lib/dodo-payments"
+import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 
 export async function POST(req: NextRequest) {
   const sessionUser = await getSessionUser()
@@ -18,83 +19,20 @@ export async function POST(req: NextRequest) {
   if (!user) return ERRORS.NOT_FOUND("User")
 
   try {
+    if (type === "free_template") {
+      return await handleFreeTemplate(body, user)
+    }
+
     if (type === "claw_purchase") {
-      const { templateId } = body
-      if (!templateId) return ERRORS.VALIDATION("templateId required")
-
-      const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
-      if (!template) return ERRORS.NOT_FOUND("Template")
-
-      const wsCount = user.workspaces.length
-      const limit = PLAN_LIMITS[user.subscriptionTier as keyof typeof PLAN_LIMITS]?.maxWorkspaces ?? 1
-      if (wsCount >= limit) return apiError("WORKSPACE_LIMIT", `Workspace limit reached (${limit}). Upgrade your plan.`, 403)
-
-      const existing = await prisma.purchase.findFirst({
-        where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
-      })
-      if (existing) return apiError("ALREADY_OWNED", "You already own this Claw", 409)
-
-      const result = await createClawCheckout({
-        templateId: template.id, templateSlug: template.slug,
-        dodoProductId: template.dodoProductId ?? "",
-        supportProductId: template.dodoSupportProductId ?? undefined,
-        userEmail: user.email, userName: user.name ?? undefined,
-        userId: user.id, dodoCustomerId: user.dodoCustomerId ?? undefined,
-      })
-
-      if (result.mockMode) {
-        const workspace = await createWorkspaceFromTemplate(user.id, template)
-        await prisma.purchase.create({
-          data: { userId: user.id, clawTemplateId: template.id, workspaceId: workspace.id, amountPaid: template.priceSetup, dodoPaymentId: `mock_${Date.now()}`, status: "COMPLETED" },
-        })
-        return apiSuccess({ mockMode: true, redirectUrl: `/setup/${workspace.id}/step/1` })
-      }
-
-      if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
-      return apiSuccess({ checkoutUrl: result.checkoutUrl })
+      return await handleClawPurchase(body, user)
     }
 
-    if (type === "plan_upgrade") {
-      const { plan } = body
-      if (!plan || !["PRO", "ENTERPRISE"].includes(plan)) return ERRORS.VALIDATION("Invalid plan")
-      if (user.subscriptionTier === plan) return apiError("ALREADY_ON_PLAN", "Already on this plan", 409)
-
-      const result = await createPlanCheckout({
-        plan, userEmail: user.email, userName: user.name ?? undefined,
-        userId: user.id, dodoCustomerId: user.dodoCustomerId ?? undefined,
-      })
-
-      if (result.mockMode) {
-        const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS]
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { subscriptionTier: plan, maxWorkspaces: limits.maxWorkspaces, maxAgentsPerWorkspace: limits.maxAgentsPerWorkspace, monthlyApiSpendLimit: limits.monthlyApiSpendLimit },
-        })
-        return apiSuccess({ mockMode: true, redirectUrl: "/settings?tab=billing" })
-      }
-
-      if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
-      return apiSuccess({ checkoutUrl: result.checkoutUrl })
+    if (type === "community_purchase") {
+      return await handleCommunityPurchase(body, user)
     }
 
-    if (type === "cloud_hosting") {
-      const { workspaceId } = body
-      if (!workspaceId) return ERRORS.VALIDATION("workspaceId required")
-
-      const workspace = await prisma.workspace.findFirst({ where: { id: workspaceId, userId: user.id } })
-      if (!workspace) return ERRORS.NOT_FOUND("Workspace")
-
-      if (user.subscriptionTier === "ENTERPRISE") return apiSuccess({ mockMode: true, included: true })
-      if (user.subscriptionTier === "FREE") return apiError("PLAN_REQUIRED", "Cloud hosting requires Pro or Enterprise plan", 403)
-
-      const result = await createHostingCheckout({
-        workspaceId, userEmail: user.email, userName: user.name ?? undefined,
-        userId: user.id, dodoCustomerId: user.dodoCustomerId ?? undefined,
-      })
-
-      if (result.mockMode) return apiSuccess({ mockMode: true })
-      if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
-      return apiSuccess({ checkoutUrl: result.checkoutUrl })
+    if (type === "claw_platform") {
+      return await handleClawPlatform(body, user)
     }
 
     return ERRORS.VALIDATION("Invalid checkout type")
@@ -104,45 +42,178 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function createWorkspaceFromTemplate(userId: string, template: { id: string; slug: string; name: string; description: string | null; workspaceSnapshot: unknown }) {
-  const snapshot = template.workspaceSnapshot as {
-    agents: Array<{ agentSlug: string; name: string; role: string; model: string; soulMd: string; agentsMd: string; heartbeatMd?: string; color?: string; qualityThreshold?: number; positionX?: number; positionY?: number; reportsTo?: string }>
-    connections: Array<{ sourceSlug: string; targetSlug: string; condition: string }>
+async function handleFreeTemplate(
+  body: Record<string, unknown>,
+  user: { id: string },
+) {
+  const { templateId } = body as { templateId?: string }
+  if (!templateId) return ERRORS.VALIDATION("templateId required")
+
+  const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
+  if (!template) return ERRORS.NOT_FOUND("Template")
+  if (!template.isFree) return apiError("NOT_FREE", "This template is not free", 400)
+
+  const existing = await prisma.templateInstall.findUnique({
+    where: { templateId_userId: { templateId: template.id, userId: user.id } },
+  })
+  if (existing) {
+    const ws = await prisma.workspace.findFirst({
+      where: { userId: user.id, clawTemplateId: template.id },
+      orderBy: { createdAt: "desc" },
+    })
+    if (ws) return apiSuccess({ redirectUrl: `/setup/${ws.id}/step/1` })
   }
 
-  const workspace = await prisma.workspace.create({
-    data: { userId, name: template.name, slug: `${template.slug}-${Date.now()}`, description: template.description, status: "SETUP_INCOMPLETE", clawTemplateId: template.id },
+  const { workspaceId } = await createWorkspaceFromTemplate({
+    userId: user.id,
+    templateId: template.id,
   })
 
-  const slugToId: Record<string, string> = {}
-  for (const a of snapshot.agents) {
-    const agent = await prisma.agent.create({
+  return apiSuccess({ redirectUrl: `/setup/${workspaceId}/step/1` })
+}
+
+async function handleClawPurchase(
+  body: Record<string, unknown>,
+  user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
+) {
+  const { templateId } = body as { templateId?: string }
+  if (!templateId) return ERRORS.VALIDATION("templateId required")
+
+  const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
+  if (!template) return ERRORS.NOT_FOUND("Template")
+
+  const existing = await prisma.purchase.findFirst({
+    where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
+  })
+  if (existing) return apiError("ALREADY_OWNED", "You already own this Claw", 409)
+
+  const result = await createClawCheckout({
+    templateId: template.id,
+    templateSlug: template.slug,
+    templatePrice: template.price,
+    dodoProductId: template.dodoProductId ?? "",
+    userEmail: user.email,
+    userName: user.name ?? undefined,
+    userId: user.id,
+    dodoCustomerId: user.dodoCustomerId ?? undefined,
+  })
+
+  if (result.mockMode) {
+    const { workspaceId } = await createWorkspaceFromTemplate({
+      userId: user.id,
+      templateId: template.id,
+    })
+    await prisma.purchase.create({
       data: {
-        workspaceId: workspace.id, agentSlug: a.agentSlug, name: a.name,
-        role: a.role as "ORCHESTRATOR" | "WORKER" | "CRITIC", model: a.model,
-        soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd ?? null,
-        color: a.color ?? "#5BA1F5", qualityThreshold: a.qualityThreshold ?? 8.0,
-        positionX: a.positionX ?? 0, positionY: a.positionY ?? 0,
+        userId: user.id,
+        clawTemplateId: template.id,
+        workspaceId,
+        amountPaid: template.price,
+        dodoPaymentId: `mock_${Date.now()}`,
+        status: "COMPLETED",
       },
     })
-    slugToId[a.agentSlug] = agent.id
+    return apiSuccess({ mockMode: true, redirectUrl: `/setup/${workspaceId}/step/1` })
   }
 
-  for (const a of snapshot.agents) {
-    if (a.reportsTo && slugToId[a.reportsTo]) {
-      await prisma.agent.update({ where: { id: slugToId[a.agentSlug] }, data: { reportsTo: slugToId[a.reportsTo] } })
-    }
+  if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
+  return apiSuccess({ checkoutUrl: result.checkoutUrl })
+}
+
+async function handleCommunityPurchase(
+  body: Record<string, unknown>,
+  user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
+) {
+  const { templateId } = body as { templateId?: string }
+  if (!templateId) return ERRORS.VALIDATION("templateId required")
+
+  const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
+  if (!template) return ERRORS.NOT_FOUND("Template")
+  if (!template.creatorId) return apiError("NOT_COMMUNITY", "This is not a community template", 400)
+  if (template.isFree) return apiError("USE_FREE_FLOW", "Use the free_template checkout type for free templates", 400)
+  if (template.price < 19) return apiError("PRICE_TOO_LOW", "Community template price must be at least $19", 400)
+
+  const existing = await prisma.purchase.findFirst({
+    where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
+  })
+  if (existing) return apiError("ALREADY_OWNED", "You already own this Claw", 409)
+
+  const result = await createCommunityCheckout({
+    templateId: template.id,
+    templateSlug: template.slug,
+    price: template.price,
+    userEmail: user.email,
+    userName: user.name ?? undefined,
+    userId: user.id,
+    creatorId: template.creatorId,
+    dodoCustomerId: user.dodoCustomerId ?? undefined,
+  })
+
+  if (result.mockMode) {
+    const { workspaceId } = await createWorkspaceFromTemplate({
+      userId: user.id,
+      templateId: template.id,
+    })
+
+    await prisma.purchase.create({
+      data: {
+        userId: user.id,
+        clawTemplateId: template.id,
+        workspaceId,
+        amountPaid: template.price,
+        dodoPaymentId: `mock_community_${Date.now()}`,
+        status: "COMPLETED",
+      },
+    })
+
+    const processingFee = Math.round(template.price * 0.035 * 100) / 100
+    await prisma.marketplaceSale.create({
+      data: {
+        templateId: template.id,
+        buyerId: user.id,
+        creatorId: template.creatorId,
+        amount: template.price,
+        processingFee,
+        creatorPayout: Math.round((template.price - processingFee) * 100) / 100,
+        payoutStatus: "PENDING",
+        payoutHeldUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        dodoPaymentId: `mock_sale_${Date.now()}`,
+      },
+    })
+
+    return apiSuccess({ mockMode: true, redirectUrl: `/setup/${workspaceId}/step/1` })
   }
 
-  for (const c of snapshot.connections ?? []) {
-    const src = slugToId[c.sourceSlug]
-    const tgt = slugToId[c.targetSlug]
-    if (src && tgt) {
-      await prisma.agentConnection.create({
-        data: { workspaceId: workspace.id, sourceAgentId: src, targetAgentId: tgt, condition: c.condition as "ON_COMPLETE" | "ON_APPROVAL" | "ON_REJECTION" | "ON_SCHEDULE" | "ON_HUMAN_APPROVE" | "CUSTOM" },
-      })
-    }
+  if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
+  return apiSuccess({ checkoutUrl: result.checkoutUrl })
+}
+
+async function handleClawPlatform(
+  body: Record<string, unknown>,
+  user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
+) {
+  const { workspaceId } = body as { workspaceId?: string }
+  if (!workspaceId) return ERRORS.VALIDATION("workspaceId required")
+
+  const workspace = await prisma.workspace.findFirst({ where: { id: workspaceId, userId: user.id } })
+  if (!workspace) return ERRORS.NOT_FOUND("Workspace")
+
+  const result = await createPlatformSubscription({
+    workspaceId,
+    userEmail: user.email,
+    userName: user.name ?? undefined,
+    userId: user.id,
+    dodoCustomerId: user.dodoCustomerId ?? undefined,
+  })
+
+  if (result.mockMode) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { hasActiveSubscription: true },
+    })
+    return apiSuccess({ mockMode: true })
   }
 
-  return workspace
+  if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
+  return apiSuccess({ checkoutUrl: result.checkoutUrl })
 }

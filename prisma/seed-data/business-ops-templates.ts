@@ -31,8 +31,7 @@ const b2bSalesMachine: SeedTemplate = {
   flowDescription:
     "ICP Researcher profiles ideal customers → Lead Enricher gathers contact data → Sequence Writer crafts personalized outreach → Reply Handler manages conversations → Pipeline Manager tracks deals → Outbound Quality Gate ensures compliance.",
   category: "BUSINESS_OPS",
-  priceSetup: 499,
-  priceMonthly: 89,
+  price: 199,
   agentCount: 7,
   featured: false,
   sortOrder: 8,
@@ -411,8 +410,7 @@ const agencyOperationsOs: SeedTemplate = {
   flowDescription:
     "Intake & Scoping Agent qualifies leads → Resource Allocator assigns team members → Task Manager tracks deliverables → Client Reporter generates status updates → Finance Tracker monitors margins → Agency Quality Gate reviews all client-facing output.",
   category: "BUSINESS_OPS",
-  priceSetup: 499,
-  priceMonthly: 89,
+  price: 199,
   agentCount: 7,
   featured: false,
   sortOrder: 9,
@@ -769,8 +767,7 @@ const foundersChiefOfStaff: SeedTemplate = {
   flowDescription:
     "Briefing Compiler aggregates daily intelligence → Meeting Prep Agent prepares agendas and context → Action Tracker monitors commitments → Communication Drafter handles emails and messages → Executive Quality Gate ensures executive-grade quality.",
   category: "BUSINESS_OPS",
-  priceSetup: 399,
-  priceMonthly: 79,
+  price: 199,
   agentCount: 6,
   featured: false,
   sortOrder: 10,
@@ -1081,8 +1078,7 @@ const seoEmpireBuilder: SeedTemplate = {
   flowDescription:
     "Keyword Strategist identifies opportunities → Content Writer creates optimized articles → Technical SEO Monitor audits site health → Backlink Prospector builds authority → Rank Tracker monitors progress → SEO Quality Gate enforces E-E-A-T compliance.",
   category: "BUSINESS_OPS",
-  priceSetup: 599,
-  priceMonthly: 99,
+  price: 199,
   agentCount: 7,
   featured: false,
   sortOrder: 11,

@@ -8,6 +8,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 
 interface BillingData {
+  hasActiveSubscription: boolean
   plan: string
   planPrice: string
   activeClaws: number
@@ -59,7 +60,7 @@ export function BillingDashboard() {
 
   if (!data) return null
 
-  const isFree = data.plan === "Free"
+  const isInactive = !data.hasActiveSubscription
 
   return (
     <div>
@@ -77,12 +78,12 @@ export function BillingDashboard() {
       <div className="grid grid-cols-3 gap-2 my-2.5">
         <StatCard label="Current plan" value={data.plan} trend={data.planPrice} />
         <StatCard label="Active Claws" value={data.activeClaws} trend={`${data.runningClaws} running, ${data.pausedClaws} paused`} />
-        <StatCard label="This month" value={`$${data.thisMonthTotal.toFixed(0)}`} trend="Support + hosting" />
+        <StatCard label="This month" value={`$${data.thisMonthTotal.toFixed(0)}`} trend="API costs" />
       </div>
 
       <div className="flex gap-1.5 mt-0">
-        {isFree ? (
-          <Button variant="primary" onClick={() => router.push("/pricing")}>Upgrade to Pro</Button>
+        {isInactive ? (
+          <Button variant="primary" onClick={() => router.push("/pricing")}>View pricing</Button>
         ) : (
           <>
             <Button variant="outline" onClick={openPortal} loading={portalLoading}>Manage subscription</Button>

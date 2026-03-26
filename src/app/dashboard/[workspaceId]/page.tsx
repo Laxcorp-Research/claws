@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
-import { OctagonX, Pause, Unplug, TrendingUp } from "lucide-react"
+import { OctagonX, Pause, Unplug, TrendingUp, Clock } from "lucide-react"
 import { StatCards } from "@/components/dashboard/stat-cards"
 import { ActivityFeed } from "@/components/dashboard/activity-feed"
 import { AgentStatusList } from "@/components/dashboard/agent-status-list"
@@ -119,6 +119,7 @@ export default function DashboardPage() {
   const [expiredTools, setExpiredTools] = useState<ExpiredTool[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [trialInfo, setTrialInfo] = useState<{ trialUsed: boolean; trialEndsAt: string | null; hasActiveSubscription: boolean } | null>(null)
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
@@ -153,6 +154,18 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStats()
+    fetch("/api/user/billing")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) {
+          setTrialInfo({
+            trialUsed: json.data.trialUsed,
+            trialEndsAt: json.data.trialEndsAt,
+            hasActiveSubscription: json.data.hasActiveSubscription,
+          })
+        }
+      })
+      .catch(() => {})
     const interval = setInterval(fetchStats, STATS_POLL_MS)
     return () => clearInterval(interval)
   }, [fetchStats])
@@ -342,6 +355,52 @@ export default function DashboardPage() {
       })
     }
 
+    if (trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
+      const trialEnd = trialInfo.trialEndsAt ? new Date(trialInfo.trialEndsAt) : null
+      const now = new Date()
+      const trialActive = trialEnd && trialEnd > now
+
+      if (trialActive) {
+        const msLeft = trialEnd.getTime() - now.getTime()
+        const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000))
+        list.push({
+          key: "trial-active",
+          priority: 2,
+          variant: "warning",
+          icon: <Clock className="w-4 h-4" />,
+          content: (
+            <>
+              <p className="font-medium">Free trial — {daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</p>
+              <p className="mt-0.5 opacity-80">Subscribe to keep your Claws running after the trial ends.</p>
+            </>
+          ),
+          actions: (
+            <Button variant="primary" size="xs" onClick={() => router.push("/pricing")}>
+              Subscribe — $79/mo
+            </Button>
+          ),
+        })
+      } else {
+        list.push({
+          key: "trial-expired",
+          priority: 1,
+          variant: "error",
+          icon: <Clock className="w-4 h-4" />,
+          content: (
+            <>
+              <p className="font-medium">Your trial has ended</p>
+              <p className="mt-0.5 opacity-80">Subscribe to resume your Claws. Your data and configuration are preserved.</p>
+            </>
+          ),
+          actions: (
+            <Button variant="primary" size="xs" onClick={() => router.push("/pricing")}>
+              Subscribe — $79/mo
+            </Button>
+          ),
+        })
+      }
+    }
+
     if (isPaused) {
       list.push({
         key: "paused",
@@ -360,7 +419,7 @@ export default function DashboardPage() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, handleResumeAll])
+  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, handleResumeAll, trialInfo])
 
   const costRows = agents.map((a) => ({
     agentName: a.name,

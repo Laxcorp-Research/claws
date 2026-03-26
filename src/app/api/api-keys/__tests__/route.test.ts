@@ -11,7 +11,7 @@ vi.mock('@/lib/api/auth', () => ({
     id: 'user-test-123',
     email: 'test@example.com',
     name: 'Test User',
-    subscriptionTier: 'FREE',
+    hasActiveSubscription: false,
   }),
 }));
 

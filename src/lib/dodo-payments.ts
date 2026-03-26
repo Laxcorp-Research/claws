@@ -13,18 +13,28 @@ export function getDodoClient(): DodoPayments {
   return client
 }
 
-export const PLATFORM_PLAN_PRODUCTS: Record<string, string> = {
-  PRO: process.env.DODO_PRODUCT_PRO_PLAN || "mock_pro_plan",
-  ENTERPRISE: process.env.DODO_PRODUCT_ENTERPRISE_PLAN || "mock_enterprise_plan",
-}
+export const TEMPLATE_PRODUCTS = {
+  STANDARD: process.env.DODO_PRODUCT_TEMPLATE_149 || "mock_template_149",
+  BUSINESS: process.env.DODO_PRODUCT_TEMPLATE_199 || "mock_template_199",
+  PREMIUM: process.env.DODO_PRODUCT_TEMPLATE_299 || "mock_template_299",
+} as const
 
-export const CLOUD_HOSTING_PRODUCT = process.env.DODO_PRODUCT_CLOUD_HOSTING || "mock_cloud_hosting"
+export const CLAW_PLATFORM_PRODUCT = process.env.DODO_PRODUCT_CLAW_PLATFORM || "mock_claw_platform"
+
+export function getTemplateProductId(price: number): string {
+  switch (price) {
+    case 149: return TEMPLATE_PRODUCTS.STANDARD
+    case 199: return TEMPLATE_PRODUCTS.BUSINESS
+    case 299: return TEMPLATE_PRODUCTS.PREMIUM
+    default: throw new Error(`Unknown template price: ${price}`)
+  }
+}
 
 export async function createClawCheckout(params: {
   templateId: string
   templateSlug: string
+  templatePrice: number
   dodoProductId: string
-  supportProductId?: string
   userEmail: string
   userName?: string
   userId: string
@@ -32,11 +42,8 @@ export async function createClawCheckout(params: {
 }): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
   if (MOCK_MODE) return { checkoutUrl: null, mockMode: true }
 
+  const productId = params.dodoProductId || getTemplateProductId(params.templatePrice)
   const dodo = getDodoClient()
-  const items: Array<{ product_id: string; quantity: number }> = [
-    { product_id: params.dodoProductId, quantity: 1 },
-  ]
-  if (params.supportProductId) items.push({ product_id: params.supportProductId, quantity: 1 })
 
   const payment = await dodo.payments.create({
     billing: { city: "", country: "US", state: "", street: "", zipcode: "" },
@@ -45,7 +52,7 @@ export async function createClawCheckout(params: {
       name: params.userName || params.userEmail,
       ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
-    product_cart: items,
+    product_cart: [{ product_id: productId, quantity: 1 }],
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
     metadata: { userId: params.userId, templateId: params.templateId, templateSlug: params.templateSlug, type: "claw_purchase" },
   })
@@ -53,36 +60,7 @@ export async function createClawCheckout(params: {
   return { checkoutUrl: payment.payment_link ?? null, mockMode: false }
 }
 
-export async function createPlanCheckout(params: {
-  plan: "PRO" | "ENTERPRISE"
-  userEmail: string
-  userName?: string
-  userId: string
-  dodoCustomerId?: string
-}): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
-  if (MOCK_MODE) return { checkoutUrl: null, mockMode: true }
-
-  const productId = PLATFORM_PLAN_PRODUCTS[params.plan]
-  if (!productId) throw new Error(`No Dodo product for plan: ${params.plan}`)
-
-  const dodo = getDodoClient()
-  const subscription = await dodo.subscriptions.create({
-    billing: { city: "", country: "US", state: "", street: "", zipcode: "" },
-    customer: {
-      email: params.userEmail,
-      name: params.userName || params.userEmail,
-      ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
-    },
-    product_id: productId,
-    quantity: 1,
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing`,
-    metadata: { userId: params.userId, type: "plan_upgrade", plan: params.plan },
-  })
-
-  return { checkoutUrl: subscription.payment_link ?? null, mockMode: false }
-}
-
-export async function createHostingCheckout(params: {
+export async function createPlatformSubscription(params: {
   workspaceId: string
   userEmail: string
   userName?: string
@@ -99,13 +77,71 @@ export async function createHostingCheckout(params: {
       name: params.userName || params.userEmail,
       ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
-    product_id: CLOUD_HOSTING_PRODUCT,
+    product_id: CLAW_PLATFORM_PRODUCT,
     quantity: 1,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/setup/${params.workspaceId}/step/3`,
-    metadata: { userId: params.userId, workspaceId: params.workspaceId, type: "cloud_hosting" },
+    metadata: { userId: params.userId, workspaceId: params.workspaceId, type: "claw_platform" },
   })
 
   return { checkoutUrl: subscription.payment_link ?? null, mockMode: false }
+}
+
+export async function createCommunityCheckout(params: {
+  templateId: string
+  templateSlug: string
+  price: number
+  userEmail: string
+  userName?: string
+  userId: string
+  creatorId: string
+  dodoCustomerId?: string
+}): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
+  if (MOCK_MODE) return { checkoutUrl: null, mockMode: true }
+
+  const dodo = getDodoClient()
+
+  const payment = await dodo.payments.create({
+    billing: { city: "", country: "US", state: "", street: "", zipcode: "" },
+    customer: {
+      email: params.userEmail,
+      name: params.userName || params.userEmail,
+      ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
+    },
+    product_cart: [{ product_id: params.templateId, quantity: 1 }],
+    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
+    metadata: {
+      userId: params.userId,
+      templateId: params.templateId,
+      templateSlug: params.templateSlug,
+      creatorId: params.creatorId,
+      type: "community_purchase",
+    },
+  })
+
+  return { checkoutUrl: payment.payment_link ?? null, mockMode: false }
+}
+
+export function checkDeployEligibility(user: {
+  trialUsed: boolean
+  trialStartedAt: Date | null
+  trialEndsAt: Date | null
+  hasActiveSubscription: boolean
+}): { canDeploy: boolean; reason: string; needsSubscription: boolean; isFirstDeploy: boolean } {
+  const now = new Date()
+
+  if (!user.trialUsed) {
+    return { canDeploy: true, reason: "first_deploy_trial", needsSubscription: false, isFirstDeploy: true }
+  }
+
+  if (user.trialEndsAt && user.trialEndsAt > now) {
+    return { canDeploy: true, reason: "trial_active", needsSubscription: false, isFirstDeploy: false }
+  }
+
+  if (user.hasActiveSubscription) {
+    return { canDeploy: true, reason: "subscribed", needsSubscription: false, isFirstDeploy: false }
+  }
+
+  return { canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false }
 }
 
 export async function getPortalUrl(dodoCustomerId: string): Promise<string | null> {
@@ -114,11 +150,3 @@ export async function getPortalUrl(dodoCustomerId: string): Promise<string | nul
   const portal = await (dodo.customers as unknown as Record<string, Function>).createCustomerPortalSession(dodoCustomerId)
   return (portal as Record<string, string>).link ?? null
 }
-
-export const PLAN_LIMITS = {
-  FREE: { maxWorkspaces: 1, maxAgentsPerWorkspace: 3, monthlyApiSpendLimit: 50, cloudHosting: false },
-  PRO: { maxWorkspaces: 5, maxAgentsPerWorkspace: 10, monthlyApiSpendLimit: 200, cloudHosting: true },
-  ENTERPRISE: { maxWorkspaces: 999, maxAgentsPerWorkspace: 50, monthlyApiSpendLimit: 10000, cloudHosting: true },
-} as const
-
-export type PlanTier = keyof typeof PLAN_LIMITS

@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     create: {
       email: 'e2e-test@buildclaws.ai',
       name: 'E2E Test User',
-      subscriptionTier: 'PRO',
+      hasActiveSubscription: true,
     },
   });
 

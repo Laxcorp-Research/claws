@@ -258,7 +258,6 @@ export async function deployToCloud(workspaceId: string): Promise<{
         gatewayToken: encrypt(generated.gatewayToken),
         healthStatus: 'HEALTHY',
         lastHealthCheck: new Date(),
-        deploymentType: 'CLOUD',
       },
     });
 
@@ -276,169 +275,6 @@ export async function deployToCloud(workspaceId: string): Promise<{
     });
     throw error;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Export for Self-Hosting
-// ---------------------------------------------------------------------------
-
-/**
- * Generates a downloadable zip containing everything needed to self-host.
- * The user extracts this, sets env vars, and runs docker-compose up.
- */
-export async function exportForSelfHosting(workspaceId: string): Promise<Buffer> {
-  const generated = await generateWorkspace(workspaceId);
-  const archiver = await import('archiver');
-  const { PassThrough } = await import('stream');
-
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const passthrough = new PassThrough();
-    passthrough.on('data', (chunk: Buffer) => chunks.push(chunk));
-    passthrough.on('end', () => resolve(Buffer.concat(chunks)));
-    passthrough.on('error', reject);
-
-    const archive = archiver.default('zip', { zlib: { level: 9 } });
-    archive.pipe(passthrough);
-
-    // docker-compose.yml
-    archive.append(generateDockerCompose(), { name: 'docker-compose.yml' });
-
-    // .env.example (user fills in their keys)
-    archive.append(generateEnvExample(generated), { name: '.env.example' });
-
-    // README
-    archive.append(generateSelfHostReadme(), { name: 'README.md' });
-
-    // openclaw config
-    archive.append(generated['openclaw.json'], {
-      name: 'config/openclaw.json',
-    });
-
-    // Workspace files for each agent
-    for (const [dirName, files] of Object.entries(generated.workspaces)) {
-      for (const [fileName, content] of Object.entries(files)) {
-        if (fileName === 'skills' && typeof content === 'object') {
-          for (const [skillName, skillFiles] of Object.entries(content as Record<string, any>)) {
-            archive.append(skillFiles['SKILL.md'], {
-              name: `${dirName}/skills/${skillName}/SKILL.md`,
-            });
-          }
-        } else if (typeof content === 'string') {
-          archive.append(content, { name: `${dirName}/${fileName}` });
-        }
-      }
-    }
-
-    // Cron jobs
-    if (generated['cron/jobs.json'] !== '[]') {
-      archive.append(generated['cron/jobs.json'], { name: 'config/cron/jobs.json' });
-    }
-
-    archive.finalize();
-  });
-}
-
-function generateDockerCompose(): string {
-  return `# Claws Self-Hosted Deployment
-# 1. Copy .env.example to .env and fill in your API keys
-# 2. Run: docker-compose up -d
-# 3. Check health: curl http://localhost:18789/healthz
-
-services:
-  openclaw:
-    image: ${OPENCLAW_IMAGE}
-    env_file: .env
-    volumes:
-      - openclaw-data:/home/node/.openclaw
-    ports:
-      - "\${GATEWAY_PORT:-18789}:18789"
-    init: true
-    restart: unless-stopped
-    command: ["node", "openclaw.mjs", "gateway", "--bind", "lan", "--port", "18789"]
-    healthcheck:
-      test: ["CMD", "node", "-e",
-        "fetch('http://127.0.0.1:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-volumes:
-  openclaw-data:
-`;
-}
-
-function generateEnvExample(generated: GeneratedWorkspace): string {
-  return `# Claws Self-Hosted Configuration
-# Fill in your API keys and tokens below.
-
-# Gateway auth token (auto-generated, change if you want)
-OPENCLAW_GATEWAY_TOKEN=${generated.gatewayToken}
-
-# AI Provider Keys (at least one required)
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-# OPENAI_API_KEY=sk-your-key-here
-# GEMINI_API_KEY=your-key-here
-
-# Channel Tokens (optional — add the ones you want to use)
-# TELEGRAM_BOT_TOKEN=your-bot-token
-# DISCORD_BOT_TOKEN=your-bot-token
-# SLACK_BOT_TOKEN=xoxb-your-token
-# SLACK_APP_TOKEN=xapp-your-token
-
-# Timezone
-TZ=UTC
-
-# Node.js settings
-NODE_ENV=production
-NODE_OPTIONS=--max-old-space-size=768
-
-# Port (default 18789)
-GATEWAY_PORT=18789
-`;
-}
-
-function generateSelfHostReadme(): string {
-  return `# Claws Self-Hosted Deployment
-
-## Quick Start
-
-1. Install Docker and Docker Compose
-2. Copy \`.env.example\` to \`.env\` and fill in your API keys
-3. Run \`docker-compose up -d\`
-4. Check health: \`curl http://localhost:18789/healthz\`
-5. Access WebChat: Open \`http://localhost:18789\` in your browser
-
-## Configuration
-
-- \`config/openclaw.json\` — Agent configuration (hot-reloaded on change)
-- \`workspace-*/\` — Agent workspace files (SOUL.md, AGENTS.md, skills, etc.)
-- \`.env\` — API keys and tokens
-
-## Updating Config
-
-Edit \`config/openclaw.json\` — the gateway watches for changes and auto-reloads.
-No restart needed for most config changes.
-
-## Health Checks
-
-- \`GET /healthz\` — Is the gateway process alive?
-- \`GET /readyz\` — Are all channels connected?
-
-## Logs
-
-\`\`\`bash
-docker-compose logs -f openclaw
-\`\`\`
-
-## Stopping
-
-\`\`\`bash
-docker-compose down       # Stop (keeps data)
-docker-compose down -v    # Stop and delete all data
-\`\`\`
-`;
 }
 
 // ---------------------------------------------------------------------------
@@ -549,7 +385,7 @@ export async function destroyDeployment(workspaceId: string): Promise<void> {
 
 export async function healthCheckAllContainers(): Promise<void> {
   const runningWorkspaces = await prisma.workspace.findMany({
-    where: { status: 'RUNNING', deploymentType: 'CLOUD' },
+    where: { status: 'RUNNING' },
     select: { id: true, containerId: true, hostPort: true, userId: true },
   });
 

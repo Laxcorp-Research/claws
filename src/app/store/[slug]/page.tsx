@@ -19,8 +19,9 @@ interface TemplateDetail {
   tagline: string
   description: string
   category: ClawCategory
-  priceSetup: number
-  priceMonthly: number
+  price: number
+  isFree: boolean
+  creatorId: string | null
   agentCount: number
   agents: { name: string; agentSlug: string; role: string; color: string; model: string; roleDescription: string }[]
   tools: { required: { name: string; slug: string }[]; recommended: { name: string; slug: string; alternatives?: string[] }[] }
@@ -86,10 +87,17 @@ export default function ClawDetailPage() {
     setPurchasing(true)
     setError(null)
     try {
+      let checkoutType = "claw_purchase"
+      if (claw.isFree) {
+        checkoutType = "free_template"
+      } else if (claw.creatorId) {
+        checkoutType = "community_purchase"
+      }
+
       const res = await fetch("/api/dodo-payments/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "claw_purchase", templateId: claw.id }),
+        body: JSON.stringify({ type: checkoutType, templateId: claw.id }),
       })
       const data = await res.json()
 
@@ -98,7 +106,7 @@ export default function ClawDetailPage() {
         return
       }
 
-      if (data.data?.mockMode && data.data?.redirectUrl) {
+      if (data.data?.redirectUrl) {
         router.push(data.data.redirectUrl)
         return
       }
@@ -174,11 +182,21 @@ export default function ClawDetailPage() {
             </div>
           ) : (
             <div className="text-right flex-shrink-0 ml-6">
-              <div className="text-[26px] font-semibold text-[var(--tx)]">${claw.priceSetup.toLocaleString()}</div>
-              <div className="text-[11px] text-[var(--tx2)]">one-time setup</div>
-              <div className="text-[14px] font-medium mt-0.5">+ ${claw.priceMonthly}/month</div>
+              {claw.isFree ? (
+                <div className="text-[26px] font-semibold text-[var(--ok)]">Free</div>
+              ) : (
+                <>
+                  <div className="text-[26px] font-semibold text-[var(--tx)]">${claw.price.toLocaleString()}</div>
+                  <div className="text-[11px] text-[var(--tx2)]">one-time</div>
+                </>
+              )}
+              <div className="text-[10px] text-[var(--tx3)] mt-0.5">+ $79/mo platform fee when running</div>
               <Button variant="primary" size="lg" className="mt-2.5" onClick={handlePurchase} loading={purchasing}>
-                {session?.user ? "Purchase this Claw" : "Sign in to purchase"}
+                {!session?.user
+                  ? "Sign in to purchase"
+                  : claw.isFree
+                    ? "Install — Free"
+                    : `Purchase — $${claw.price.toLocaleString()}`}
               </Button>
               {error && <p className="text-[10px] text-[var(--err)] mt-1">{error}</p>}
             </div>

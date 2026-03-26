@@ -29,8 +29,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
     flowDescription:
       "Lead Qualifier scores incoming prospects → Market Intel Agent provides CMAs → Showing Coordinator manages appointments → Client Communicator handles follow-ups → Real Estate Quality Gate ensures Fair Housing compliance.",
     category: "VERTICAL",
-    priceSetup: 499,
-    priceMonthly: 89,
+    price: 199,
     agentCount: 6,
     featured: false,
     sortOrder: 12,
@@ -339,8 +338,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
     flowDescription:
       "Sourcer identifies candidates → Screening Agent evaluates qualifications → Interview Coordinator manages scheduling → Client Reporter generates status updates → Recruiting Quality Gate enforces anti-bias standards.",
     category: "VERTICAL",
-    priceSetup: 499,
-    priceMonthly: 89,
+    price: 199,
     agentCount: 6,
     featured: false,
     sortOrder: 13,
@@ -652,8 +650,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
     flowDescription:
       "Patient Intake Agent handles new patient registration → Appointment Manager coordinates scheduling → Recall & Reactivation Agent brings back lapsed patients → Review & Reputation Manager builds online presence → Healthcare Communication Gate enforces HIPAA compliance.",
     category: "VERTICAL",
-    priceSetup: 499,
-    priceMonthly: 89,
+    price: 199,
     agentCount: 6,
     featured: false,
     sortOrder: 14,
@@ -958,8 +955,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
     flowDescription:
       "First Contact Agent handles inquiries → Case Qualifier evaluates potential cases → Conflict Checker runs conflict checks → Consultation Scheduler books consultations → Legal Communication Gate ensures no unauthorized legal advice.",
     category: "VERTICAL",
-    priceSetup: 499,
-    priceMonthly: 89,
+    price: 199,
     agentCount: 6,
     featured: false,
     sortOrder: 15,
@@ -1263,8 +1259,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
     flowDescription:
       "Call Handler captures service requests → Dispatch Coordinator assigns technicians → Customer Follow-Up Agent confirms satisfaction → Service Communication Gate reviews all communications.",
     category: "VERTICAL",
-    priceSetup: 399,
-    priceMonthly: 79,
+    price: 199,
     agentCount: 5,
     featured: false,
     sortOrder: 16,

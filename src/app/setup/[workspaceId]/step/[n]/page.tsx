@@ -10,7 +10,7 @@ import { ApiKeyModal } from "@/components/setup/api-key-modal"
 import { ToolSwapModal } from "@/components/setup/tool-swap-modal"
 import { BrowseToolsModal } from "@/components/setup/browse-tools-modal"
 import { CustomApiModal } from "@/components/setup/custom-api-modal"
-import { DeployOptions } from "@/components/setup/deploy-options"
+
 import { DeployProgress } from "@/components/setup/deploy-progress"
 import { ChannelList } from "@/components/setup/channel-list"
 import { ChannelRow } from "@/components/setup/channel-row"
@@ -556,16 +556,44 @@ function getFailureMessage(failedStage?: string | null, serverError?: string | n
   return "Deployment failed. Please check your tool connections and API keys, then try again."
 }
 
+interface DeployEligibility {
+  canDeploy: boolean
+  reason: string
+  needsSubscription: boolean
+  isFirstDeploy: boolean
+}
+
 function Step3({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
-  const [deployOption, setDeployOption] = useState<"cloud" | "self-hosted">("cloud")
   const [isDeploying, setIsDeploying] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
-  const [exportDownloaded, setExportDownloaded] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null)
   const [deploymentError, setDeploymentError] = useState<string | null>(null)
   const [failedStage, setFailedStage] = useState<string | null>(null)
+  const [eligibility, setEligibility] = useState<DeployEligibility | null>(null)
+  const [subscribing, setSubscribing] = useState(false)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    async function fetchEligibility() {
+      try {
+        const res = await fetch("/api/user/billing")
+        const json = await res.json()
+        if (!json.success) return
+        const d = json.data
+        const now = new Date()
+        if (!d.trialUsed) {
+          setEligibility({ canDeploy: true, reason: "first_deploy_trial", needsSubscription: false, isFirstDeploy: true })
+        } else if (d.trialEndsAt && new Date(d.trialEndsAt) > now) {
+          setEligibility({ canDeploy: true, reason: "trial_active", needsSubscription: false, isFirstDeploy: false })
+        } else if (d.hasActiveSubscription) {
+          setEligibility({ canDeploy: true, reason: "subscribed", needsSubscription: false, isFirstDeploy: false })
+        } else {
+          setEligibility({ canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false })
+        }
+      } catch {}
+    }
+    fetchEligibility()
+  }, [])
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
@@ -616,35 +644,71 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
       const json = await res.json()
       if (json.success) { startPolling() }
-      else { setDeploymentError(json.error?.message || "Failed to start deployment"); setIsDeploying(false) }
+      else {
+        if (json.error?.code === "SUBSCRIPTION_REQUIRED") {
+          setEligibility({ canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false })
+        }
+        setDeploymentError(json.error?.message || "Failed to start deployment")
+        setIsDeploying(false)
+      }
     } catch { setDeploymentError("Network error"); setIsDeploying(false) }
   }, [workspaceId, startPolling])
 
-  const handleDownload = useCallback(async () => {
-    setIsDownloading(true)
+  const handleSubscribe = useCallback(async () => {
+    setSubscribing(true)
     try {
-      const res = await fetch(`/api/deploy/${workspaceId}/export`, { method: "POST" })
+      const res = await fetch("/api/dodo-payments/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "claw_platform", workspaceId }),
+      })
       const json = await res.json()
-      if (json.success) {
-        const blob = new Blob([JSON.stringify(json.data.files, null, 2)], { type: "application/json" })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url; a.download = `openclaw-workspace-${workspaceId}.json`; a.click()
-        URL.revokeObjectURL(url)
-        setExportDownloaded(true)
+      if (json.data?.checkoutUrl) {
+        window.location.href = json.data.checkoutUrl
+      } else if (json.data?.mockMode) {
+        setEligibility({ canDeploy: true, reason: "subscribed", needsSubscription: false, isFirstDeploy: false })
       }
     } catch {}
-    setIsDownloading(false)
+    setSubscribing(false)
   }, [workspaceId])
 
-  const canProceed = deploymentStatus === "COMPLETED" || exportDownloaded
+  const canProceed = deploymentStatus === "COMPLETED"
+  const needsSub = eligibility?.needsSubscription === true
+
+  function getDeployButtonLabel() {
+    if (isDeploying) return "Deploying..."
+    if (eligibility?.isFirstDeploy) return "Deploy — 3-day free trial"
+    return "Deploy"
+  }
 
   return (
     <>
-      <h2 className="text-[15px] font-semibold mb-0.5">How should your Claw run?</h2>
-      <p className="text-[11px] text-[var(--tx2)] mb-3.5">Choose cloud hosting for zero-maintenance operation, or download configs to run on your own infrastructure.</p>
+      <h2 className="text-[15px] font-semibold mb-0.5">Deploy your Claw</h2>
+      <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
+      {eligibility?.isFirstDeploy ? (
+        <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">3-day free trial — no payment required. $79/mo after trial.</p>
+      ) : (
+        <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
+      )}
 
-      <DeployOptions selected={deployOption} onSelect={setDeployOption} onDeploy={handleDeploy} onDownload={handleDownload} isDeploying={isDeploying} isDownloading={isDownloading} />
+      {needsSub && !deploymentStatus && (
+        <AlertBanner variant="warning">
+          <p className="font-medium">Your 3-day trial has ended</p>
+          <p className="mt-0.5 opacity-80">Subscribe to the Claw Platform ($79/mo) to deploy and run your Claws.</p>
+        </AlertBanner>
+      )}
+
+      {!deploymentStatus && (
+        needsSub ? (
+          <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
+            Subscribe to Deploy — $79/mo
+          </Button>
+        ) : (
+          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !eligibility}>
+            {getDeployButtonLabel()}
+          </Button>
+        )
+      )}
 
       {deploymentStatus && (
         <div className="mb-4">
@@ -670,12 +734,6 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       {deploymentStatus === "COMPLETED" && (
         <AlertBanner variant="info" icon={<CheckCircle className="w-4 h-4" />}>
           <p><strong>Deployment successful.</strong> Your Claw is running in the cloud.</p>
-        </AlertBanner>
-      )}
-
-      {exportDownloaded && deploymentStatus !== "COMPLETED" && (
-        <AlertBanner variant="info" icon={<Package className="w-4 h-4" />}>
-          <p><strong>Config downloaded.</strong> Deploy on your own infrastructure using these files.</p>
         </AlertBanner>
       )}
 

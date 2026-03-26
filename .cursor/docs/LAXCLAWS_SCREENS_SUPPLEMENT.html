@@ -41,7 +41,7 @@
 :root{--bg:#fff;--bg2:#FBFBFB;--bg3:#F0F0F0;--tx:#0A0A0B;--tx2:#777777;--tx3:#999999;--bd:#EFEFEF;--bd2:#E0E0E0;--ac:#5BA1F5;--acbg:#EEF5FF;--ok:#10b981;--okbg:#dcfce7;--warn:#f59e0b;--warnbg:#FFFCE8;--err:#ef4444;--errbg:#fee2e2;--r:8px;--rl:12px}
 @media(prefers-color-scheme:dark){:root{--bg:#0A0A0B;--bg2:#141416;--bg3:#1E1E20;--tx:#E5E5E5;--tx2:#999999;--tx3:#666666;--bd:#2A2A2C;--bd2:#3A3A3C;--ac:#5BA1F5;--acbg:#1A2A40;--ok:#34d399;--okbg:#064e3b;--warn:#fbbf24;--warnbg:#451a03;--err:#f87171;--errbg:#450a0a}}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--tx);padding:20px;font-size:13px;line-height:1.5}
+a{color:var(--ac);text-decoration:none;transition:color .15s}a:hover{color:var(--tx)}body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--tx);padding:20px;font-size:13px;line-height:1.5}
 h1{font-size:22px;font-weight:600;margin-bottom:4px}
 h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top:2px solid var(--bd)}
 .sub{font-size:13px;color:var(--tx2);margin-bottom:28px}
@@ -56,7 +56,7 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 .scr{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rl);overflow:hidden}
 .top{display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:52px;border-bottom:1px solid var(--bd);background:var(--bg)}
 .logo{font-weight:700;font-size:16px;letter-spacing:-0.5px}.logo{letter-spacing:-0.5px}
-.nav{display:flex;gap:32px;font-size:13px;font-weight:500}.nav a{color:var(--tx2);text-decoration:none;cursor:pointer}.nav a.on{color:var(--tx);font-weight:600}
+.nav{display:flex;gap:32px;font-size:13px;font-weight:500}.nav a{color:var(--tx2);text-decoration:none;cursor:pointer}.nav a:hover{color:var(--tx)}.nav a.on{color:var(--tx);font-weight:600}
 .btn{font-size:11px;padding:5px 14px;border-radius:var(--r);border:none;cursor:pointer;font-weight:500;display:inline-block}
 .bp{background:var(--tx);color:#fff;border-radius:8px}
 .bo{background:transparent;border:1px solid var(--bd);color:var(--tx2)}
@@ -180,7 +180,7 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 <span class="cat-l cat-m">Money-making Claws</span>
 <div style="font-size:11px;color:var(--tx2);margin-bottom:8px">The Claw pays for itself. Trading, freelancing, e-commerce.</div>
 <div class="claw">
-<div class="claw-h"><div class="claw-n">Quant Trader</div><div class="claw-p">$999 + $99/mo</div></div>
+<div class="claw-h"><div class="claw-n">Quant Trader</div><div class="claw-p">$299</div></div>
 <div class="claw-d">AI trading research team. Scans Polymarket, crypto, and US stocks. Identifies signals, backtests, manages risk. Alert-only or autonomous execution within hard limits.</div>
 <div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Market Scanner</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Signal Analyst</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Risk Manager</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Backtester</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Portfolio Tracker</span><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Execution Advisor</span><span class="pill" style="border-color:#E5DAFF;color:#6B3FA0"><span class="pdot" style="background:#FFB1AB"></span>Trade Thesis Reviewer</span></div>
 <div class="legal">Research & signal intelligence — not financial advice. Human approves all trades.</div>
@@ -190,7 +190,7 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 <span class="cat-l cat-c">Creator Claws</span>
 <div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Grow your audience and content empire. YouTube, Twitter, newsletters, podcasts.</div>
 <div class="claw">
-<div class="claw-h"><div class="claw-n">YouTube Channel OS</div><div class="claw-p">$499 + $79/mo</div></div>
+<div class="claw-h"><div class="claw-n">YouTube Channel OS</div><div class="claw-p">$149</div></div>
 <div class="claw-d">Full content pipeline: trend scanning → idea generation → CTR-scored titles + thumbnail briefs → retention-optimized scripts → SEO metadata → comment management. 8 agents.</div>
 <div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Trend Scout</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Idea Generator</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Title & Thumbnail</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Script Builder</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>SEO Optimizer</span><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Community Engine</span></div>
 </div>
@@ -199,7 +199,7 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 <span class="cat-l cat-b">Business Operations Claws</span>
 <div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Run your business operations on autopilot. Sales, agency, executive support, SEO.</div>
 <div class="claw">
-<div class="claw-h"><div class="claw-n">B2B Sales Machine</div><div class="claw-p">$499 + $89/mo</div></div>
+<div class="claw-h"><div class="claw-n">B2B Sales Machine</div><div class="claw-p">$199</div></div>
 <div class="claw-d">Complete outbound engine. ICP research, lead enrichment, personalized 5-email sequences, reply handling with 7-category classification, CRM pipeline management. Built from a proven GTM playbook.</div>
 <div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>ICP Researcher</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Lead Enricher</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Sequence Writer</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Reply Handler</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Pipeline Manager</span></div>
 </div>
@@ -208,7 +208,7 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 <span class="cat-l cat-v">Vertical Claws</span>
 <div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Industry-specific AI with deep domain knowledge. Real estate, recruiting, medical, legal, home services.</div>
 <div class="claw">
-<div class="claw-h"><div class="claw-n">Medical Practice Manager</div><div class="claw-p">$499 + $89/mo</div></div>
+<div class="claw-h"><div class="claw-n">Medical Practice Manager</div><div class="claw-p">$199</div></div>
 <div class="claw-d">24/7 patient intake, appointment management, no-show reduction (48h+24h+2h reminders), recall campaigns for overdue patients, review management. HIPAA-compliant — every agent enforces PHI protection.</div>
 <div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Patient Intake</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Appointment Mgr</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Recall Agent</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Review Manager</span></div>
 <div class="legal">HIPAA compliance enforced. No PHI in any external communication.</div>
@@ -218,7 +218,7 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 <span class="cat-l cat-lf">Lifestyle Claws</span>
 <div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Personal productivity and growth. Fitness, studying, job hunting, developer tools.</div>
 <div class="claw">
-<div class="claw-h"><div class="claw-n">Job Hunter OS</div><div class="claw-p">$249 + $49/mo</div></div>
+<div class="claw-h"><div class="claw-n">Job Hunter OS</div><div class="claw-p">$149</div></div>
 <div class="claw-d">Complete job search system. Opportunity scanning, per-application resume tailoring with ATS optimization, personalized cover letters, STAR interview prep, salary negotiation coaching.</div>
 <div class="pills"><span class="pill"><span class="pdot" style="background:#8BFCAE"></span>Opportunity Scout</span><span class="pill"><span class="pdot" style="background:#5BA1F5"></span>Application Crafter</span><span class="pill"><span class="pdot" style="background:#FFB1AB"></span>Interview Coach</span><span class="pill"><span class="pdot" style="background:#FFDC6E"></span>Negotiation Advisor</span></div>
 </div>
@@ -235,9 +235,9 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 <h2>M1: New Screens</h2>
 
 <div class="screen-section">
-<span class="slabel">Screen 12 — Pricing (platform plans)</span>
-<div class="sarrive"><b>User arrives from:</b> Nav "Pricing" link, Store page CTA, or "Upgrade" prompt when hitting plan limits.</div>
-<div class="sactions"><b>Goes to:</b> "Get started" → Auth (Screen 13). "Upgrade" → Stripe checkout. "Contact sales" → email.</div>
+<span class="slabel">Screen 12 — Pricing</span>
+<div class="sarrive"><b>User arrives from:</b> Nav "Pricing" link, Store page CTA.</div>
+<div class="sactions"><b>Goes to:</b> "Browse templates" → Store (Screen 1). "Sign in" → Auth (Screen 13).</div>
 <div class="scr">
 <div class="top">
 <div class="logo">Claws</div>
@@ -245,76 +245,69 @@ h2{font-size:17px;font-weight:600;margin:28px 0 12px;padding-top:20px;border-top
 <div style="display:flex;gap:6px"><a href="#" style="font-size:12px;color:var(--ac);text-decoration:none;font-weight:500">Pricing</a><button class="btn bp">Sign in</button></div>
 </div>
 <div class="body" style="text-align:center">
-<div style="font-size:20px;font-weight:600;margin-bottom:4px">Simple, transparent pricing</div>
-<div style="font-size:13px;color:var(--tx2);margin-bottom:20px">Claws are purchased individually. The platform plan determines how many you can run.</div>
+<div style="font-size:20px;font-weight:600;margin-bottom:4px">Simple pricing</div>
+<div style="font-size:13px;color:var(--tx2);margin-bottom:20px">Buy a template. Pay monthly to run it. No tiers. No hidden fees.</div>
 
-<div class="plan-grid">
-<div class="plan">
-<div class="plan-name">Free</div>
-<div class="plan-price">$0</div>
-<div class="plan-period">forever</div>
-<div class="plan-features">
-<span class="check">✓</span> 1 workspace<br>
-<span class="check">✓</span> 3 agents per workspace<br>
-<span class="check">✓</span> Export configs (self-hosted only)<br>
-<span class="check">✓</span> Community support<br>
-<span class="cross">✗</span> Cloud deployment<br>
-<span class="cross">✗</span> Priority support<br>
-<span class="cross">✗</span> $50/mo API spend limit
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:20px 24px;text-align:left;margin-bottom:14px">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px">Platform fee — per running Claw</div>
+<div style="display:flex;align-items:baseline;gap:6px">
+<span style="font-size:36px;font-weight:700">$79</span>
+<span style="font-size:14px;color:var(--tx2)">/month</span>
 </div>
-<button class="btn bo" style="width:100%;padding:10px">Get started free</button>
+<div style="border-top:1px solid var(--bd);margin-top:14px;padding-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:var(--tx2)">
+<div><span style="color:#0D6B32">✓</span> Cloud deployment (2Gi RAM)</div>
+<div><span style="color:#0D6B32">✓</span> All channels (Telegram, Discord, Slack, WhatsApp)</div>
+<div><span style="color:#0D6B32">✓</span> 500+ tool integrations</div>
+<div><span style="color:#0D6B32">✓</span> Visual builder</div>
+<div><span style="color:#0D6B32">✓</span> Real-time monitoring</div>
+<div><span style="color:#0D6B32">✓</span> Automatic updates</div>
+<div><span style="color:#0D6B32">✓</span> Health checks + auto-restart</div>
+<div><span style="color:#0D6B32">✓</span> Priority support</div>
 </div>
-
-<div class="plan plan-feat">
-<div style="font-size:10px;color:var(--ac);font-weight:600;margin-bottom:4px">MOST POPULAR</div>
-<div class="plan-name">Pro</div>
-<div class="plan-price">$29</div>
-<div class="plan-period">per month</div>
-<div class="plan-features">
-<span class="check">✓</span> 5 workspaces<br>
-<span class="check">✓</span> 10 agents per workspace<br>
-<span class="check">✓</span> Cloud deployment ($12/mo each)<br>
-<span class="check">✓</span> Priority support<br>
-<span class="check">✓</span> All templates<br>
-<span class="check">✓</span> $200/mo API spend limit<br>
-<span class="cross">✗</span> SLA
-</div>
-<button class="btn bp" style="width:100%;padding:10px">Upgrade to Pro</button>
-</div>
-
-<div class="plan">
-<div class="plan-name">Enterprise</div>
-<div class="plan-price">$99</div>
-<div class="plan-period">per month</div>
-<div class="plan-features">
-<span class="check">✓</span> Unlimited workspaces<br>
-<span class="check">✓</span> 50 agents per workspace<br>
-<span class="check">✓</span> Cloud deployment (included)<br>
-<span class="check">✓</span> Dedicated support<br>
-<span class="check">✓</span> All templates<br>
-<span class="check">✓</span> Custom API spend limit<br>
-<span class="check">✓</span> 99.9% SLA
-</div>
-<button class="btn bo" style="width:100%;padding:10px">Contact sales</button>
+<div style="margin-top:12px;padding:8px 12px;background:var(--bg2);border-radius:var(--r);font-size:11px;color:var(--tx2)">
+Running 2 Claws? $158/mo. Three? $237/mo. Linear, predictable. 10+ Claws? Contact us.
 </div>
 </div>
 
-<!-- M5: Hosting pricing clarification -->
+<div style="text-align:left;margin-bottom:8px">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--tx3);margin-bottom:4px">Templates — one-time purchase, yours forever</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:left;margin-bottom:14px">
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px 14px">
+<div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:#EDFFF3;color:#0D6B32;border:1px solid #B8FFCF;display:inline-block;margin-bottom:6px">Standard</div>
+<div style="font-size:22px;font-weight:700">$149</div>
+<div style="font-size:11px;color:var(--tx3);margin-top:2px">8 templates</div>
+<div style="font-size:11px;color:var(--tx2);margin-top:6px">Creator + Lifestyle</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px 14px">
+<div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:#EEF5FF;color:#1A5BBF;border:1px solid #A8CFFF;display:inline-block;margin-bottom:6px">Business</div>
+<div style="font-size:22px;font-weight:700">$199</div>
+<div style="font-size:11px;color:var(--tx3);margin-top:2px">11 templates</div>
+<div style="font-size:11px;color:var(--tx2);margin-top:6px">Business Ops + Vertical</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px 14px">
+<div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:#FFF8E7;color:#8A6D00;border:1px solid #FFE9A0;display:inline-block;margin-bottom:6px">Premium</div>
+<div style="font-size:22px;font-weight:700">$299</div>
+<div style="font-size:11px;color:var(--tx3);margin-top:2px">1 template</div>
+<div style="font-size:11px;color:var(--tx2);margin-top:6px">Quant Trader</div>
+</div>
+</div>
+
 <div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;text-align:left;margin-bottom:14px">
 <div style="font-size:13px;font-weight:600;margin-bottom:6px">How pricing works</div>
 <div style="font-size:12px;color:var(--tx2);line-height:1.8">
-<b>Platform plan</b> ($0-$99/mo) — How many Claws you can run simultaneously.<br>
-<b>Claw purchase</b> ($199-$999 one-time) — Buy each Claw template. Includes the agent configurations, skills, and support updates.<br>
-<b>Monthly support</b> ($39-$99/mo per Claw) — Ongoing template updates, priority support, and agent improvements.<br>
-<b>Cloud hosting</b> ($12/mo per workspace) — We run your agents 24/7. Included free in Enterprise. Optional in Pro (self-host for free).<br>
-<b>AI model costs</b> — You bring your own API keys (Claude, OpenAI, Gemini). You pay the AI provider directly. Typical cost: $20-$100/mo depending on usage.
+<b>1. Template purchase</b> — $149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform.<br>
+<b>2. Platform fee</b> — $79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates.<br>
+<b>3. AI model costs</b> — You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30-90/mo.<br>
+<b>4. 3-day free trial</b> — Your first template purchase includes a free trial. No platform fee until day 4.
 </div>
 </div>
 
-<div style="font-size:12px;color:var(--tx2)">All Claw purchases include a 7-day money-back guarantee. No questions asked.</div>
+<div style="font-size:12px;color:var(--tx2)">3-day free trial on your first purchase. No platform fee charged until day 4.</div>
 </div>
 </div>
-<div class="impl"><b>Impl:</b> <code>/pricing</code>. Components: PricingPage, PlanCard (3 tiers), PricingFAQ. "Get started free" → <code>/auth/signup</code>. "Upgrade" → Stripe checkout for subscription. "Contact sales" → mailto link. Pricing data can be hardcoded initially.</div>
+<div class="impl"><b>Impl:</b> <code>/pricing</code>. Components: PricingPage, PlatformFeeCard, TemplateTierCards, PricingFAQ. "Browse templates" → <code>/store</code>. Pricing data hardcoded. No tiers, no plan selection.</div>
 </div>
 
 
@@ -823,6 +816,270 @@ Continue with Google
 <div class="impl"><b>Impl:</b> Component: AgentStatusList (enhanced). Each worker shows: health status (running/paused/error), last active timestamp, pause/resume button. Orchestrator and Critic rows don't show pause button (enforced — they're required). Pausing a worker: sends command to container, tasks for that worker are queued. Resuming: worker processes queued tasks. Error state shows: error message, retry countdown, restart button. Critic row shows pass rate (approval %).</div>
 </div>
 
+
+<!-- ============================================================ -->
+<!-- SCREEN 15: SKILL DETAIL PAGE                                  -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 15 — Skill detail page</span>
+<div class="sarrive"><b>User arrives from:</b> Clicking a skill card in the Marketplace Skills tab (Screen 1)</div>
+<div class="sactions"><b>Goes to:</b> "Install to Workspace" → workspace selector modal. Creator name → Screen 16. "Back" → Screen 1 Skills tab.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a class="on">Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px"><a href="#" style="font-size:12px;color:var(--ac);text-decoration:none;font-weight:500">Pricing</a><button class="btn bp">Sign in</button></div>
+</div>
+<div class="body" style="background:var(--bg2)">
+<div style="font-size:11px;color:var(--ac);margin-bottom:10px;cursor:pointer">← Back to skills</div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+<div>
+<div style="display:flex;gap:6px;align-items:center">
+<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:#EDFFF3;color:#0D6B32;border:1px solid #B8FFCF">✓ Verified</span>
+<span style="font-size:10px;padding:2px 8px;border-radius:4px;background:#EEF5FF;color:#1A5BBF;border:1px solid #A8CFFF">CRM</span>
+<span style="font-size:10px;color:var(--tx3)">456 installs</span>
+</div>
+<div style="font-size:22px;font-weight:600;margin-top:6px">🔗 HubSpot Contact Sync</div>
+<div style="font-size:13px;color:var(--tx2);margin-top:4px;max-width:520px;line-height:1.6">Syncs lead data between OpenClaw memory and HubSpot CRM. Creates contacts, updates deal stages, logs activities. Use when agent needs to read/write CRM data.</div>
+</div>
+<div style="text-align:right">
+<div style="font-size:18px;font-weight:700;color:var(--ok)">Free</div>
+<button class="btn bp" style="margin-top:10px;padding:8px 24px;font-size:13px">Install to Workspace</button>
+</div>
+</div>
+<!-- SKILL.md Preview -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;margin-bottom:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Instructions (SKILL.md)</div>
+<div style="font-size:12px;color:var(--tx2);line-height:1.6;max-height:300px;overflow-y:auto;font-family:monospace;background:var(--bg3);padding:10px;border-radius:var(--r)">
+When the user or agent needs to sync contact data with HubSpot CRM:<br><br>
+1. Use the HUBSPOT_API_KEY environment variable to authenticate<br>
+2. Search for existing contact by email before creating new<br>
+3. Map agent memory fields to HubSpot properties...<br><br>
+<span style="color:var(--tx3)">[Preview truncated — full content visible after install]</span>
+</div>
+</div>
+<!-- Requirements -->
+<div style="border:1px solid var(--bd);border-radius:var(--rl);padding:14px;margin-bottom:14px">
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Requirements</div>
+<div style="font-size:12px;color:var(--tx2)">
+<span style="font-weight:500">Binaries:</span> curl, jq<br>
+<span style="font-weight:500">Environment variables:</span> <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:11px">HUBSPOT_API_KEY</code>
+</div>
+</div>
+<!-- Creator -->
+<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--bd);border-radius:var(--rl);margin-bottom:14px">
+<div style="width:36px;height:36px;border-radius:50%;background:#5BA1F5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">JR</div>
+<div>
+<div style="font-size:13px;font-weight:600">Jake Rivera</div>
+<div style="font-size:10px;color:var(--tx3);margin-top:1px">8 skills · 1,200 installs · 4.7 avg rating</div>
+</div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/store/skills/[slug]</code>. Components: SkillDetailPage, TrustBadge, SkillMdPreview (rendered markdown), RequirementsCard, CreatorCard, ReviewSection, InstallModal (workspace selector). API: <code>GET /api/marketplace/skills/[slug]</code>, <code>POST /api/marketplace/skills/[slug]/install</code>.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 16: CREATOR PROFILE (PUBLIC)                           -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 16 — Creator profile (public)</span>
+<div class="sarrive"><b>User arrives from:</b> Clicking creator name on a template/skill detail page</div>
+<div class="sactions"><b>Goes to:</b> Click any template → Screen 2. Click any skill → Screen 15.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a class="on">Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px"><a href="#" style="font-size:12px;color:var(--ac);text-decoration:none;font-weight:500">Pricing</a><button class="btn bp">Sign in</button></div>
+</div>
+<div class="body" style="background:var(--bg2)">
+<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:16px">
+<div style="width:64px;height:64px;border-radius:50%;background:#5BA1F5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;flex-shrink:0">JR</div>
+<div>
+<div style="display:flex;gap:8px;align-items:center">
+<div style="font-size:20px;font-weight:600">Jake Rivera</div>
+<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:#EDFFF3;color:#0D6B32;border:1px solid #B8FFCF">✓ Verified</span>
+</div>
+<div style="font-size:13px;color:var(--tx2);margin-top:4px;line-height:1.5">CRM integration specialist. Building OpenClaw skills since January 2026.</div>
+<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--ac)">
+<a href="#" style="text-decoration:none;color:var(--ac)">@jakerivera</a>
+<a href="#" style="text-decoration:none;color:var(--ac)">github.com/jakedev</a>
+</div>
+</div>
+</div>
+<!-- Stats -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;text-align:center">
+<div style="font-size:18px;font-weight:700">3</div><div style="font-size:10px;color:var(--tx3)">Templates</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;text-align:center">
+<div style="font-size:18px;font-weight:700">8</div><div style="font-size:10px;color:var(--tx3)">Skills</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;text-align:center">
+<div style="font-size:18px;font-weight:700">1,200</div><div style="font-size:10px;color:var(--tx3)">Installs</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;text-align:center">
+<div style="font-size:18px;font-weight:700">★ 4.7</div><div style="font-size:10px;color:var(--tx3)">Avg Rating</div>
+</div>
+</div>
+<div style="font-size:14px;font-weight:600;margin-bottom:8px">Templates</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:16px">
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;margin-bottom:6px">
+<div style="display:flex;justify-content:space-between"><span style="font-weight:600">CRM Power Suite</span><span style="font-weight:600">$49</span></div>
+<div style="font-size:10px;color:var(--tx3);margin-top:2px">5 agents · 89 installs · ★ 4.6</div>
+</div>
+</div>
+<div style="font-size:14px;font-weight:600;margin-bottom:8px">Skills</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:8px"><div style="font-size:12px;font-weight:600">🔗 HubSpot Sync</div><div style="font-size:10px;color:var(--tx3)">Free · 456 installs</div></div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:8px"><div style="font-size:12px;font-weight:600">📊 Salesforce Pipe</div><div style="font-size:10px;color:var(--tx3)">$5 · 234 installs</div></div>
+</div>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/creator/[id]</code>. Public page, no auth required. Components: CreatorProfileHeader, StatCard × 4, TemplateGrid, SkillGrid. API: <code>GET /api/creator/[id]</code>.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 17: CREATOR DASHBOARD                                  -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 17 — Creator dashboard (/settings/creator)</span>
+<div class="sarrive"><b>User arrives from:</b> Settings nav "Creator" tab, user avatar dropdown "Creator Dashboard"</div>
+<div class="sactions"><b>Goes to:</b> "Publish New" → Screen 18/19. "View in Marketplace" → Screen 2/15.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px;align-items:center"><div style="width:28px;height:28px;border-radius:50%;background:var(--tx);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">CS</div></div>
+</div>
+<div class="body">
+<div class="tabs"><div class="tab">Account</div><div class="tab">API Keys</div><div class="tab">Billing</div><div class="tab">Security</div><div class="tab on">Creator</div></div>
+
+<!-- Earnings -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px;text-align:center">
+<div style="font-size:22px;font-weight:700">$1,234</div><div style="font-size:10px;color:var(--tx3)">Total Earned</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px;text-align:center">
+<div style="font-size:22px;font-weight:700">$89</div><div style="font-size:10px;color:var(--tx3)">Pending Payout</div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:12px;text-align:center">
+<div style="font-size:22px;font-weight:700">Mar 28</div><div style="font-size:10px;color:var(--tx3)">Next Payout</div>
+</div>
+</div>
+
+<!-- Published Templates -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<div style="font-size:14px;font-weight:600">My Templates</div>
+<button class="btn bp" style="font-size:10px;padding:4px 12px">Publish New</button>
+</div>
+<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:14px">
+<tr style="border-bottom:1px solid var(--bd)"><th style="text-align:left;padding:6px;color:var(--tx2)">Name</th><th style="text-align:left;padding:6px;color:var(--tx2)">Status</th><th style="text-align:left;padding:6px;color:var(--tx2)">Trust</th><th style="text-align:right;padding:6px;color:var(--tx2)">Installs</th><th style="text-align:right;padding:6px;color:var(--tx2)">Revenue</th></tr>
+<tr style="border-bottom:1px solid var(--bd)"><td style="padding:6px;font-weight:500">CRM Power Suite</td><td style="padding:6px"><span style="color:var(--ok)">Published</span></td><td style="padding:6px"><span style="font-size:10px;padding:1px 6px;border-radius:4px;background:#EDFFF3;color:#0D6B32;border:1px solid #B8FFCF">✓ Verified</span></td><td style="padding:6px;text-align:right">89</td><td style="padding:6px;text-align:right">$834</td></tr>
+<tr><td style="padding:6px;font-weight:500">Email Automator</td><td style="padding:6px"><span style="color:var(--warn)">Under Review</span></td><td style="padding:6px"><span style="font-size:10px;padding:1px 6px;border-radius:4px;background:#F5F5F5;color:#777;border:1px solid #E0E0E0">○ Unreviewed</span></td><td style="padding:6px;text-align:right">12</td><td style="padding:6px;text-align:right">$0</td></tr>
+</table>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/settings/creator</code>. Tab inside settings layout. If not enrolled: show enrollment CTA. If enrolled: ProfileEditor, EarningsStats, PublishedTemplatesTable, PublishedSkillsTable. API: <code>GET /api/creator/profile</code>, <code>GET /api/creator/earnings</code>, <code>GET /api/creator/templates</code>.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 18: PUBLISH TEMPLATE FLOW                              -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 18 — Publish template flow</span>
+<div class="sarrive"><b>User arrives from:</b> Builder "Publish" button, Creator Dashboard "Publish New" button</div>
+<div class="sactions"><b>Goes to:</b> On success → marketplace listing. If not enrolled → enrollment form first.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px;align-items:center"><div style="width:28px;height:28px;border-radius:50%;background:var(--tx);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">CS</div></div>
+</div>
+<div class="body">
+<!-- Step indicator -->
+<div style="display:flex;gap:4px;align-items:center;margin-bottom:16px;font-size:11px">
+<span style="background:var(--tx);color:#fff;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600">1</span><span style="font-weight:600">Details</span>
+<div style="flex:1;height:2px;background:var(--bd);margin:0 4px"></div>
+<span style="background:var(--bg3);color:var(--tx3);width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center">2</span><span style="color:var(--tx3)">Pricing</span>
+<div style="flex:1;height:2px;background:var(--bd);margin:0 4px"></div>
+<span style="background:var(--bg3);color:var(--tx3);width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center">3</span><span style="color:var(--tx3)">Preview</span>
+<div style="flex:1;height:2px;background:var(--bd);margin:0 4px"></div>
+<span style="background:var(--bg3);color:var(--tx3);width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center">4</span><span style="color:var(--tx3)">Submit</span>
+</div>
+<div style="font-size:16px;font-weight:600;margin-bottom:12px">Template Details</div>
+<div style="display:flex;flex-direction:column;gap:10px;max-width:500px">
+<div><label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Name</label><input class="prop-in" placeholder="e.g., Social Media Manager"></div>
+<div><label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Tagline</label><input class="prop-in" placeholder="One sentence about what this Claw does"></div>
+<div><label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Category</label><select class="prop-in"><option>Money-Making</option><option>Creator</option><option>Business Ops</option><option>Vertical</option><option>Lifestyle</option></select></div>
+<div><label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Description (markdown)</label><textarea class="prop-ta" style="height:100px" placeholder="Full description..."></textarea></div>
+<div><label style="font-size:11px;font-weight:500;display:block;margin-bottom:3px">Estimated Monthly LLM Cost</label><input class="prop-in" placeholder="e.g., $40-80"></div>
+</div>
+<button class="btn bp" style="margin-top:14px">Next: Pricing →</button>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/publish/template</code>. 4-step wizard. Pre-check: user must be enrolled creator (redirect to enrollment if not). Workspace snapshot captured from builder state. Validations: name conflict check vs Official templates, skill dependency check. Auto-scan runs on submit. API: <code>POST /api/marketplace/templates</code>.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 19: PUBLISH SKILL FLOW                                 -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 19 — Publish skill flow</span>
+<div class="sarrive"><b>User arrives from:</b> Creator Dashboard "Publish New" (skills tab)</div>
+<div class="sactions"><b>Goes to:</b> On scan pass → marketplace listing. On scan fail → error with findings.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>My Claws</a><a>Builder</a><a>Docs</a></div>
+<div style="display:flex;gap:6px;align-items:center"><div style="width:28px;height:28px;border-radius:50%;background:var(--tx);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">CS</div></div>
+</div>
+<div class="body">
+<div style="font-size:16px;font-weight:600;margin-bottom:4px">Skill Instructions (Step 2 of 4)</div>
+<div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Write the SKILL.md content your agent will follow.</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;height:300px">
+<div>
+<div style="font-size:10px;font-weight:500;color:var(--tx2);margin-bottom:4px">SKILL.md Editor</div>
+<textarea class="prop-ta" style="height:280px;font-size:11px" placeholder="When the user needs to...&#10;&#10;1. First, check if...&#10;2. Then call..."></textarea>
+</div>
+<div>
+<div style="font-size:10px;font-weight:500;color:var(--tx2);margin-bottom:4px">Preview</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;height:280px;overflow-y:auto;font-size:11px;color:var(--tx2);line-height:1.6">
+<em style="color:var(--tx3)">Markdown preview will appear here as you type...</em>
+</div>
+</div>
+</div>
+<button class="btn bp" style="margin-top:14px">Next: Pricing →</button>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/publish/skill</code>. 4-step wizard. Step 2 is split-pane markdown editor. On submit: Layer 1 auto-scan runs synchronously — if CRITICAL pattern found, rejected with findings. If pass: listed as UNREVIEWED, Layer 2 (sandbox) + Layer 3 (manual review) queued. API: <code>POST /api/marketplace/skills</code>.</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 20: ADMIN REVIEW QUEUE                                 -->
+<!-- ============================================================ -->
+<div class="screen-section">
+<span class="slabel">Screen 20 — Admin review queue</span>
+<div class="sarrive"><b>User arrives from:</b> Admin nav (admin users only)</div>
+<div class="sactions"><b>Goes to:</b> "Approve" → template/skill upgraded to Verified. "Reject" → creator notified.</div>
+<div class="scr">
+<div class="top">
+<div class="logo">Claws</div>
+<div class="nav"><a>Store</a><a>Admin</a></div>
+<div style="display:flex;gap:6px;align-items:center"><div style="width:28px;height:28px;border-radius:50%;background:var(--tx);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">CS</div></div>
+</div>
+<div class="body">
+<div style="font-size:16px;font-weight:600;margin-bottom:12px">Review Queue</div>
+<div class="tabs"><div class="tab on">Templates (3)</div><div class="tab">Skills (7)</div></div>
+<table style="width:100%;font-size:11px;border-collapse:collapse">
+<tr style="border-bottom:1px solid var(--bd)"><th style="text-align:left;padding:6px;color:var(--tx2)">Name</th><th style="text-align:left;padding:6px;color:var(--tx2)">Creator</th><th style="text-align:left;padding:6px;color:var(--tx2)">Submitted</th><th style="text-align:left;padding:6px;color:var(--tx2)">Auto-Scan</th><th style="text-align:left;padding:6px;color:var(--tx2)">Sandbox</th><th style="text-align:right;padding:6px;color:var(--tx2)">Actions</th></tr>
+<tr style="border-bottom:1px solid var(--bd)"><td style="padding:6px;font-weight:500">Email Automator</td><td style="padding:6px">Jake R.</td><td style="padding:6px;color:var(--tx3)">2 hrs ago</td><td style="padding:6px;color:var(--ok)">✓ Pass</td><td style="padding:6px;color:var(--tx3)">—</td><td style="padding:6px;text-align:right"><button class="btn bp" style="font-size:9px;padding:2px 8px">Approve</button> <button class="btn bo" style="font-size:9px;padding:2px 8px">Reject</button> <button class="btn bo" style="font-size:9px;padding:2px 8px">View</button></td></tr>
+<tr style="border-bottom:1px solid var(--bd)"><td style="padding:6px;font-weight:500">Sales Dashboard</td><td style="padding:6px">Maria S.</td><td style="padding:6px;color:var(--tx3)">5 hrs ago</td><td style="padding:6px;color:var(--ok)">✓ Pass</td><td style="padding:6px;color:var(--tx3)">—</td><td style="padding:6px;text-align:right"><button class="btn bp" style="font-size:9px;padding:2px 8px">Approve</button> <button class="btn bo" style="font-size:9px;padding:2px 8px">Reject</button> <button class="btn bo" style="font-size:9px;padding:2px 8px">View</button></td></tr>
+</table>
+</div>
+</div>
+<div class="impl"><b>Impl:</b> <code>/admin/reviews</code>. Admin-only page (middleware check). Tabs: Templates | Skills. Table with pending items. "View" opens side panel with full content + scan reports. Approve → <code>POST /api/admin/review-queue/{type}/{id}/approve</code>. Reject → modal with reason → <code>POST /api/admin/review-queue/{type}/{id}/reject</code>. Creator notified via Resend email.</div>
+</div>
 
 <!-- ============================================================ -->
 <!-- ADDITIONAL: SEARCH EMPTY STATE FOR STORE                      -->

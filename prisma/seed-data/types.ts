@@ -49,8 +49,7 @@ export interface SeedTemplate {
   description: string
   flowDescription: string
   category: "MONEY_MAKING" | "CREATOR" | "BUSINESS_OPS" | "VERTICAL" | "LIFESTYLE"
-  priceSetup: number
-  priceMonthly: number
+  price: number
   agentCount: number
   featured: boolean
   sortOrder: number

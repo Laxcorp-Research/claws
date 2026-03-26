@@ -23,7 +23,6 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
     name: 'Test Claw',
     slug: 'test-claw',
     status: 'DRAFT',
-    deploymentType: 'CLOUD',
     userId: 'user-1',
     clawTemplateId: 'tpl-1',
     timezone: 'America/New_York',

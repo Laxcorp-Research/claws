@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import DodoPayments from "dodopayments"
 import { prisma } from "@/lib/db"
-import { PLAN_LIMITS } from "@/lib/dodo-payments"
+import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 
 const webhookClient = new DodoPayments({
   bearerToken: process.env.DODO_PAYMENTS_API_KEY || "placeholder",
@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
 
 async function handlePaymentSucceeded(data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
   try {
-    if (metadata.type !== "claw_purchase" || !metadata.userId || !metadata.templateId) return
+    const isPurchase = metadata.type === "claw_purchase" || metadata.type === "community_purchase"
+    if (!isPurchase || !metadata.userId || !metadata.templateId) return
 
     const paymentId = data?.payment_id as string
     if (!paymentId) return
@@ -71,31 +72,55 @@ async function handlePaymentSucceeded(data: Record<string, unknown> | undefined,
     const existing = await prisma.purchase.findFirst({ where: { dodoPaymentId: paymentId } })
     if (existing) return
 
-    const template = await prisma.clawTemplate.findUnique({ where: { id: metadata.templateId } })
-    if (!template) { console.error(`[Webhook] Template not found: ${metadata.templateId}`); return }
+    const { workspaceId } = await createWorkspaceFromTemplate({
+      userId: metadata.userId,
+      templateId: metadata.templateId,
+    })
 
-    const workspace = await createWorkspaceFromWebhook(metadata.userId, template)
+    const template = await prisma.clawTemplate.findUnique({ where: { id: metadata.templateId } })
 
     await prisma.purchase.create({
       data: {
-        userId: metadata.userId, clawTemplateId: metadata.templateId, workspaceId: workspace.id,
-        amountPaid: (data?.total_amount as number) ? ((data?.total_amount as number) / 100) : template.priceSetup,
-        currency: (data?.currency as string) ?? "usd", dodoPaymentId: paymentId, status: "COMPLETED",
+        userId: metadata.userId,
+        clawTemplateId: metadata.templateId,
+        workspaceId,
+        amountPaid: (data?.total_amount as number) ? ((data?.total_amount as number) / 100) : (template?.price ?? 0),
+        currency: (data?.currency as string) ?? "usd",
+        dodoPaymentId: paymentId,
+        status: "COMPLETED",
       },
     })
+
+    if (metadata.type === "community_purchase" && metadata.creatorId && template?.price && template.creatorId) {
+      const processingFee = Math.round(template.price * 0.035 * 100) / 100
+      await prisma.marketplaceSale.create({
+        data: {
+          templateId: metadata.templateId,
+          buyerId: metadata.userId,
+          creatorId: template.creatorId,
+          amount: template.price,
+          processingFee,
+          creatorPayout: Math.round((template.price - processingFee) * 100) / 100,
+          payoutStatus: "PENDING",
+          payoutHeldUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          dodoPaymentId: paymentId,
+        },
+      })
+    }
 
     const customerId = (data?.customer as Record<string, string>)?.customer_id
     if (customerId) {
       await prisma.user.update({ where: { id: metadata.userId }, data: { dodoCustomerId: customerId } })
     }
 
-    console.log(`[Webhook] Claw purchased: ${template.slug} → workspace ${workspace.id}`)
+    console.log(`[Webhook] Claw purchased: ${template?.slug ?? metadata.templateId} → workspace ${workspaceId}`)
   } catch (error) { console.error("[Webhook] onPaymentSucceeded error:", error) }
 }
 
 async function handlePaymentFailed(data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
   try {
-    if (metadata.type === "claw_purchase" && metadata.userId && metadata.templateId) {
+    const isPurchase = metadata.type === "claw_purchase" || metadata.type === "community_purchase"
+    if (isPurchase && metadata.userId && metadata.templateId) {
       await prisma.purchase.create({
         data: { userId: metadata.userId, clawTemplateId: metadata.templateId, amountPaid: 0, dodoPaymentId: data?.payment_id as string, status: "FAILED" },
       })
@@ -107,21 +132,15 @@ async function handleSubscriptionActive(data: Record<string, unknown> | undefine
   try {
     const subscriptionId = data?.subscription_id as string
 
-    if (metadata.type === "plan_upgrade" && metadata.userId && metadata.plan) {
-      const plan = metadata.plan as keyof typeof PLAN_LIMITS
-      const limits = PLAN_LIMITS[plan]
-      if (limits) {
-        const customerId = (data?.customer as Record<string, string>)?.customer_id
-        await prisma.user.update({
-          where: { id: metadata.userId },
-          data: {
-            subscriptionTier: plan, subscriptionId,
-            maxWorkspaces: limits.maxWorkspaces, maxAgentsPerWorkspace: limits.maxAgentsPerWorkspace,
-            monthlyApiSpendLimit: limits.monthlyApiSpendLimit,
-            ...(customerId ? { dodoCustomerId: customerId } : {}),
-          },
-        })
-      }
+    if (metadata.type === "claw_platform" && metadata.userId) {
+      const customerId = (data?.customer as Record<string, string>)?.customer_id
+      await prisma.user.update({
+        where: { id: metadata.userId },
+        data: {
+          hasActiveSubscription: true, subscriptionId,
+          ...(customerId ? { dodoCustomerId: customerId } : {}),
+        },
+      })
     }
 
     if (metadata.type === "claw_purchase" && metadata.userId) {
@@ -136,6 +155,14 @@ async function handleSubscriptionActive(data: Record<string, unknown> | undefine
 async function handleSubscriptionCancelled(data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
   try {
     const subscriptionId = data?.subscription_id as string
+
+    if (metadata.type === "claw_platform" && metadata.userId) {
+      await prisma.user.update({
+        where: { id: metadata.userId },
+        data: { hasActiveSubscription: false },
+      })
+    }
+
     if (metadata.type === "claw_purchase") {
       const purchase = await prisma.purchase.findFirst({ where: { subscriptionId } })
       if (purchase) await prisma.purchase.update({ where: { id: purchase.id }, data: { subscriptionStatus: "CANCELED" } })
@@ -145,10 +172,10 @@ async function handleSubscriptionCancelled(data: Record<string, unknown> | undef
 
 async function handleSubscriptionFailed(_data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
   try {
-    if (metadata.type === "plan_upgrade" && metadata.userId) {
-      await prisma.user.update({ where: { id: metadata.userId }, data: { subscriptionTier: "FREE" } })
+    if (metadata.type === "claw_platform" && metadata.userId) {
+      await prisma.user.update({ where: { id: metadata.userId }, data: { hasActiveSubscription: false } })
     }
-    if (metadata.type === "cloud_hosting" && metadata.workspaceId) {
+    if (metadata.type === "claw_platform" && metadata.workspaceId) {
       await prisma.workspace.update({ where: { id: metadata.workspaceId }, data: { status: "PAUSED" } })
     }
   } catch (error) { console.error("[Webhook] onSubscriptionFailed error:", error) }
@@ -156,11 +183,10 @@ async function handleSubscriptionFailed(_data: Record<string, unknown> | undefin
 
 async function handleSubscriptionExpired(_data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
   try {
-    if (metadata.type === "plan_upgrade" && metadata.userId) {
-      const free = PLAN_LIMITS.FREE
+    if (metadata.type === "claw_platform" && metadata.userId) {
       await prisma.user.update({
         where: { id: metadata.userId },
-        data: { subscriptionTier: "FREE", subscriptionId: null, subscriptionEndsAt: null, maxWorkspaces: free.maxWorkspaces, maxAgentsPerWorkspace: free.maxAgentsPerWorkspace, monthlyApiSpendLimit: free.monthlyApiSpendLimit },
+        data: { hasActiveSubscription: false, subscriptionId: null, subscriptionEndsAt: null },
       })
     }
   } catch (error) { console.error("[Webhook] onSubscriptionExpired error:", error) }
@@ -178,34 +204,4 @@ async function handleRefundSucceeded(data: Record<string, unknown> | undefined) 
       if (days <= 7) await prisma.workspace.delete({ where: { id: purchase.workspaceId } })
     }
   } catch (error) { console.error("[Webhook] onRefundSucceeded error:", error) }
-}
-
-async function createWorkspaceFromWebhook(userId: string, template: { id: string; slug: string; name: string; description: string | null; workspaceSnapshot: unknown }) {
-  const snapshot = template.workspaceSnapshot as {
-    agents: Array<{ agentSlug: string; name: string; role: string; model: string; soulMd: string; agentsMd: string; heartbeatMd?: string; color?: string; qualityThreshold?: number; positionX?: number; positionY?: number; reportsTo?: string }>
-    connections: Array<{ sourceSlug: string; targetSlug: string; condition: string }>
-  }
-
-  const workspace = await prisma.workspace.create({
-    data: { userId, name: template.name, slug: `${template.slug}-${Date.now()}`, description: template.description, status: "SETUP_INCOMPLETE", clawTemplateId: template.id },
-  })
-
-  const slugToId: Record<string, string> = {}
-  for (const a of snapshot.agents) {
-    const agent = await prisma.agent.create({
-      data: { workspaceId: workspace.id, agentSlug: a.agentSlug, name: a.name, role: a.role as "ORCHESTRATOR" | "WORKER" | "CRITIC", model: a.model, soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd ?? null, color: a.color ?? "#5BA1F5", qualityThreshold: a.qualityThreshold ?? 8.0, positionX: a.positionX ?? 0, positionY: a.positionY ?? 0 },
-    })
-    slugToId[a.agentSlug] = agent.id
-  }
-
-  for (const a of snapshot.agents) {
-    if (a.reportsTo && slugToId[a.reportsTo]) await prisma.agent.update({ where: { id: slugToId[a.agentSlug] }, data: { reportsTo: slugToId[a.reportsTo] } })
-  }
-
-  for (const c of snapshot.connections ?? []) {
-    const src = slugToId[c.sourceSlug]; const tgt = slugToId[c.targetSlug]
-    if (src && tgt) await prisma.agentConnection.create({ data: { workspaceId: workspace.id, sourceAgentId: src, targetAgentId: tgt, condition: c.condition as "ON_COMPLETE" | "ON_APPROVAL" | "ON_REJECTION" | "ON_SCHEDULE" | "ON_HUMAN_APPROVE" | "CUSTOM" } })
-  }
-
-  return workspace
 }
