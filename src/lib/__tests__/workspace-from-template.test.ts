@@ -87,6 +87,17 @@ describe('createWorkspaceFromTemplate', () => {
     );
   });
 
+  it('propagates transaction failure (no partial state)', async () => {
+    (prismaMock.$transaction as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB connection lost'),
+    );
+    (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
+
+    await expect(
+      createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' }),
+    ).rejects.toThrow('DB connection lost');
+  });
+
   it('handles templates with no connections gracefully', async () => {
     const noConnTemplate = {
       ...MOCK_TEMPLATE,

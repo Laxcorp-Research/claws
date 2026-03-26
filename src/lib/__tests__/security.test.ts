@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { prismaMock } from '@/test/helpers/mock-prisma';
 import { createMockRequest } from '@/test/helpers/mock-request';
 
@@ -11,6 +11,10 @@ const mockVerifyOwnership = vi.fn();
 vi.mock('@/lib/api/ownership', () => ({ verifyWorkspaceOwnership: (...args: unknown[]) => mockVerifyOwnership(...args) }));
 
 describe('Security: Auth enforcement on API routes', () => {
+  beforeEach(() => {
+    mockGetSessionUser.mockReset();
+    mockVerifyOwnership.mockReset();
+  });
   describe('Agent routes require authentication', () => {
     it('GET /api/agents/[workspaceId] returns 401 when unauthenticated', async () => {
       const { GET } = await import('@/app/api/agents/[workspaceId]/route');

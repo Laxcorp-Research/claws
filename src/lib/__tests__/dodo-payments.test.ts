@@ -82,20 +82,19 @@ describe('checkDeployEligibility', () => {
 });
 
 describe('getTemplateProductId', () => {
-  it('returns STANDARD for $149', () => {
+  it('returns STANDARD product ID for $149', () => {
     const id = getTemplateProductId(149);
-    expect(id).toBeDefined();
-    expect(typeof id).toBe('string');
+    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_149 || 'mock_template_149');
   });
 
-  it('returns BUSINESS for $199', () => {
+  it('returns BUSINESS product ID for $199', () => {
     const id = getTemplateProductId(199);
-    expect(id).toBeDefined();
+    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_199 || 'mock_template_199');
   });
 
-  it('returns PREMIUM for $299', () => {
+  it('returns PREMIUM product ID for $299', () => {
     const id = getTemplateProductId(299);
-    expect(id).toBeDefined();
+    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_299 || 'mock_template_299');
   });
 
   it('throws for unknown price', () => {

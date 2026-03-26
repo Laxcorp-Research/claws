@@ -145,7 +145,7 @@ describe('POST /api/dodo-payments/checkout', () => {
       expect(json.data.checkoutUrl).toBe('https://pay.dodo.com/community');
     });
 
-    it('creates MarketplaceSale in mock mode', async () => {
+    it('creates MarketplaceSale in mock mode with correct fee math', async () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_COMMUNITY_TEMPLATE);
@@ -158,15 +158,15 @@ describe('POST /api/dodo-payments/checkout', () => {
       const res = await callCheckout({ type: 'community_purchase', templateId: 'tpl-comm' });
       const json = await res.json();
       expect(json.data.mockMode).toBe(true);
-      expect(prismaMock.marketplaceSale.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            creatorId: 'creator-1',
-            amount: 49,
-            payoutStatus: 'PENDING',
-          }),
-        }),
-      );
+
+      const saleCall = (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(saleCall.data.creatorId).toBe('creator-1');
+      expect(saleCall.data.amount).toBe(49);
+      expect(saleCall.data.payoutStatus).toBe('PENDING');
+      expect(saleCall.data.processingFee).toBeCloseTo(49 * 0.035, 2);
+      expect(saleCall.data.creatorPayout).toBeCloseTo(49 - 49 * 0.035, 2);
+      expect(saleCall.data.processingFee + saleCall.data.creatorPayout).toBeCloseTo(49, 1);
+      expect(saleCall.data.payoutHeldUntil).toBeInstanceOf(Date);
     });
 
     it('rejects when template has no creatorId', async () => {
@@ -222,6 +222,30 @@ describe('POST /api/dodo-payments/checkout', () => {
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       const res = await callCheckout({ type: 'claw_platform' });
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('error handling', () => {
+    it('returns 500 when Dodo SDK throws', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
+      (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      mockCreateClawCheckout.mockRejectedValue(new Error('Dodo API connection refused'));
+
+      const res = await callCheckout({ type: 'claw_purchase', templateId: 'tpl-1' });
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.error.code).toBe('CHECKOUT_FAILED');
+    });
+
+    it('returns 404 when template does not exist', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      const res = await callCheckout({ type: 'claw_purchase', templateId: 'tpl-ghost' });
+      expect(res.status).toBe(404);
     });
   });
 });

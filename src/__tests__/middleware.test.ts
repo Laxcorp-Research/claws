@@ -57,9 +57,17 @@ describe('Middleware', () => {
       expect(res.headers.get('X-Frame-Options')).toBe('DENY');
     });
 
-    it('sets security headers on protected page routes', async () => {
+    it('sets security headers on protected page routes when authenticated', async () => {
+      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1' });
       const res = await middleware(createReq('/my-claws'));
-      expect(res.headers.get('X-Frame-Options') || res.status === 307).toBeTruthy();
+      expect(res.status).toBe(200);
+      expect(res.headers.get('X-Frame-Options')).toBe('DENY');
+    });
+
+    it('redirect response from protected route still reaches client securely', async () => {
+      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      const res = await middleware(createReq('/my-claws'));
+      expect(res.status).toBe(307);
     });
   });
 

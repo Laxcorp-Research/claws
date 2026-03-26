@@ -61,15 +61,15 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
 
     const res = await callRoute('ws-1');
     expect(res.status).toBe(201);
-    expect(prismaMock.user.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          trialUsed: true,
-          trialStartedAt: expect.any(Date),
-          trialEndsAt: expect.any(Date),
-        }),
-      }),
-    );
+
+    const updateCall = (prismaMock.user.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(updateCall.data.trialUsed).toBe(true);
+    expect(updateCall.data.trialStartedAt).toBeInstanceOf(Date);
+    expect(updateCall.data.trialEndsAt).toBeInstanceOf(Date);
+
+    const trialDurationMs = updateCall.data.trialEndsAt.getTime() - updateCall.data.trialStartedAt.getTime();
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    expect(trialDurationMs).toBeCloseTo(threeDaysMs, -3);
   });
 
   it('returns 402 when trial expired and no subscription', async () => {
