@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   ReactFlow,
   Background,
@@ -33,6 +33,10 @@ export function AgentCanvas() {
   } = useBuilderStore()
 
   const [showKeyboardHint, setShowKeyboardHint] = useState(false)
+
+  const prefersReducedMotion = useMemo(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  , [])
 
   useEffect(() => {
     try {
@@ -98,7 +102,7 @@ export function AgentCanvas() {
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{
-          animated: true,
+          animated: !prefersReducedMotion,
           style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
         }}
       >
@@ -120,6 +124,23 @@ export function AgentCanvas() {
           zoomable={false}
         />
       </ReactFlow>
+
+      {nodes.length > 0 && (
+        <div className="sr-only" aria-label="Agent connections summary">
+          <h3>Connections</h3>
+          <ul>
+            {edges.map((edge) => {
+              const src = nodes.find((n) => n.id === edge.source)
+              const tgt = nodes.find((n) => n.id === edge.target)
+              return (
+                <li key={edge.id}>
+                  {(src?.data as AgentNodeData)?.name ?? edge.source} connects to {(tgt?.data as AgentNodeData)?.name ?? edge.target}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       {showKeyboardHint && nodes.length > 0 && (
         <div

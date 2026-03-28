@@ -13,7 +13,8 @@ const variantClasses = {
 
 export function LoadingSkeleton({ variant, count = 1 }: LoadingSkeletonProps) {
   return (
-    <>
+    <div role="status" aria-label="Loading content">
+      <span className="sr-only">Loading...</span>
       {Array.from({ length: count }, (_, i) => (
         <div
           key={i}
@@ -23,6 +24,6 @@ export function LoadingSkeleton({ variant, count = 1 }: LoadingSkeletonProps) {
           )}
         />
       ))}
-    </>
+    </div>
   );
 }

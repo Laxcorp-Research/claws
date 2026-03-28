@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { useBuilderStore } from "@/stores/builder-store"
 import { Button } from "@/components/ui/button"
+import { X } from "lucide-react"
 
 interface VersionHistoryPanelProps {
   open: boolean
@@ -22,8 +23,8 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
     <div className="absolute top-0 right-0 bottom-0 w-[260px] bg-[var(--bg)] border-l border-[var(--bd)] z-20 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-2.5 py-2 border-b border-[var(--bd)]">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Version History</h4>
-        <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)] text-sm" aria-label="Close history">
-          ✕
+        <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)]" aria-label="Close history">
+          <X className="w-3.5 h-3.5" />
         </button>
       </div>
 

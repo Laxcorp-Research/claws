@@ -13,13 +13,15 @@ interface ApiKey {
   keyHint: string
   isValid: boolean
   lastUsedAt: string | null
+  lastError: string | null
   createdAt: string
 }
 
 const PROVIDERS = [
-  { key: "ANTHROPIC", name: "Anthropic (Claude)", placeholder: "sk-ant-api03-..." },
-  { key: "OPENAI", name: "OpenAI (GPT)", placeholder: "sk-proj-..." },
-  { key: "GOOGLE", name: "Google (Gemini)", placeholder: "AIza..." },
+  { key: "ANTHROPIC", name: "Anthropic (Claude)", shortName: "Anthropic", placeholder: "sk-ant-api03-...", helpUrl: "https://console.anthropic.com/settings/keys" },
+  { key: "OPENAI", name: "OpenAI (GPT)", shortName: "OpenAI", placeholder: "sk-proj-...", helpUrl: "https://platform.openai.com/api-keys" },
+  { key: "GOOGLE", name: "Google (Gemini)", shortName: "Google", placeholder: "AIza...", helpUrl: "https://aistudio.google.com/apikey" },
+  { key: "OPENROUTER", name: "OpenRouter", shortName: "OpenRouter", placeholder: "sk-or-v1-...", helpUrl: "https://openrouter.ai/keys" },
 ] as const
 
 export function ApiKeyManager() {
@@ -29,7 +31,7 @@ export function ApiKeyManager() {
   const [keyInput, setKeyInput] = useState("")
   const [validationState, setValidationState] = useState<"idle" | "validating" | "success" | "error">("idle")
   const [validationError, setValidationError] = useState("")
-  const [testingProvider, setTestingProvider] = useState<string | null>(null)
+  const [testingId, setTestingId] = useState<string | null>(null)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
 
@@ -72,18 +74,13 @@ export function ApiKeyManager() {
     }
   }
 
-  const handleTest = async (provider: string) => {
-    setTestingProvider(provider)
+  const handleTest = async (keyId: string) => {
+    setTestingId(keyId)
     try {
-      const res = await fetch("/api/api-keys/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
-      })
-      await res.json()
-      fetchKeys()
+      await fetch(`/api/api-keys/${keyId}/validate`, { method: "POST" })
+      await fetchKeys()
     } finally {
-      setTestingProvider(null)
+      setTestingId(null)
     }
   }
 
@@ -92,14 +89,27 @@ export function ApiKeyManager() {
     setRemoving(true)
     try {
       await fetch(`/api/api-keys/${removeId}`, { method: "DELETE" })
-      fetchKeys()
+      await fetchKeys()
     } finally {
       setRemoving(false)
       setRemoveId(null)
     }
   }
 
-  const providerInfo = (key: string) => PROVIDERS.find((p) => p.key === key)
+  const openAddModal = (providerKey: string) => {
+    setAddProvider(providerKey)
+    setKeyInput("")
+    setValidationState("idle")
+    setValidationError("")
+  }
+
+  const closeAddModal = () => {
+    setAddProvider(null)
+    setKeyInput("")
+    setValidationState("idle")
+  }
+
+  const providerInfo = PROVIDERS.find((p) => p.key === addProvider)
 
   if (loading) {
     return (
@@ -113,27 +123,37 @@ export function ApiKeyManager() {
   return (
     <div>
       <h2 className="text-[14px] font-semibold mb-[2px]">AI model API keys</h2>
-      <p className="text-[11px] text-[var(--tx2)] mb-3">
-        These keys are encrypted with AES-256-GCM and stored securely. They power the AI models in all your Claws.
+      <p className="text-[11px] text-[var(--tx2)] mb-[12px]">
+        These power all your Claws. Each Claw&apos;s agents can use a different model — configure that in the builder or during setup.
       </p>
 
-      <div className="border border-[var(--bd)] rounded-xl overflow-hidden">
+      <div className="border border-[var(--bd)] rounded-[12px] overflow-hidden">
         {PROVIDERS.map((provider) => {
           const key = keys.find((k) => k.provider === provider.key)
+          const status: "connected" | "disconnected" | "invalid" = key
+            ? (key.isValid ? "connected" : "invalid")
+            : "disconnected"
+
           return (
             <ApiKeyRow
               key={provider.key}
               provider={provider.key}
-              displayName={provider.name}
-              isConnected={!!key}
+              name={provider.name}
+              status={status}
               keyHint={key?.keyHint}
-              addedDate={key ? new Date(key.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : undefined}
-              isValid={key?.isValid ?? false}
-              isTesting={testingProvider === provider.key}
-              onTest={key ? () => handleTest(provider.key) : undefined}
-              onRemove={key ? () => setRemoveId(key.id) : undefined}
-              onAdd={!key ? () => { setAddProvider(provider.key); setKeyInput(""); setValidationState("idle") } : undefined}
-              onReplace={key && !key.isValid ? () => { setRemoveId(null); setAddProvider(provider.key); setKeyInput(""); setValidationState("idle") } : undefined}
+              lastUsedAt={
+                key?.lastUsedAt
+                  ? `Last used: ${new Date(key.lastUsedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                  : key
+                    ? `Added ${new Date(key.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                    : undefined
+              }
+              lastError={key?.lastError ?? undefined}
+              onAdd={() => openAddModal(provider.key)}
+              onTest={key ? () => handleTest(key.id) : () => {}}
+              onRemove={key ? () => setRemoveId(key.id) : () => {}}
+              onUpdate={() => openAddModal(provider.key)}
+              isTestLoading={testingId === key?.id}
             />
           )
         })}
@@ -141,23 +161,31 @@ export function ApiKeyManager() {
 
       <Modal
         open={!!addProvider}
-        onClose={() => { setAddProvider(null); setKeyInput(""); setValidationState("idle") }}
-        title={`Connect ${providerInfo(addProvider ?? "")?.name ?? "Provider"}`}
-        description="Your API key is encrypted with AES-256-GCM before storage. We never store keys in plaintext."
+        onClose={closeAddModal}
+        title={`Connect ${providerInfo?.name ?? "Provider"}`}
+        description="Enter your API key. We encrypt it with AES-256-GCM before storing."
+        size="sm"
         footer={
           <>
-            <Button variant="outline" onClick={() => { setAddProvider(null); setKeyInput(""); setValidationState("idle") }}>Cancel</Button>
-            <Button variant="primary" onClick={handleAdd} loading={validationState === "validating"} disabled={!keyInput.trim()}>Validate & save</Button>
+            <Button variant="outline" onClick={closeAddModal}>Cancel</Button>
+            <Button
+              variant="primary"
+              onClick={handleAdd}
+              loading={validationState === "validating"}
+              disabled={!keyInput.trim()}
+            >
+              Validate &amp; save
+            </Button>
           </>
         }
       >
         <div>
-          <label className="text-[11px] font-medium block mb-[3px]">API key</label>
+          <label className="text-[11px] font-medium block mb-[4px]">API key</label>
           <input
             type="password"
             value={keyInput}
-            onChange={(e) => { setKeyInput(e.target.value); setValidationState("idle") }}
-            placeholder={providerInfo(addProvider ?? "")?.placeholder ?? "Enter API key..."}
+            onChange={(e) => { setKeyInput(e.target.value); if (validationState === "error") setValidationState("idle") }}
+            placeholder={providerInfo?.placeholder ?? "Enter API key..."}
             className="w-full px-2.5 py-2 border border-[var(--bd)] rounded-[6px] text-[12px] font-mono bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]"
           />
           {validationState === "validating" && (
@@ -167,20 +195,25 @@ export function ApiKeyManager() {
             </p>
           )}
           {validationState === "success" && (
-            <p className="text-[11px] text-[var(--ok)] mt-1.5">API key validated. Connection active.</p>
+            <p className="text-[11px] text-[var(--ok)] mt-1.5">Connected successfully</p>
           )}
           {validationState === "error" && (
-            <p className="text-[11px] text-[var(--err)] mt-1.5">{validationError || "Invalid API key. Please check and try again."}</p>
+            <p className="text-[11px] text-[var(--err)] mt-1.5">
+              {validationError || "Invalid API key. Please check and try again."}
+            </p>
           )}
-          <p className="text-[11px] text-[var(--tx3)] mt-2">
-            <a href={
-              addProvider === "ANTHROPIC" ? "https://console.anthropic.com/settings/keys" :
-              addProvider === "OPENAI" ? "https://platform.openai.com/api-keys" :
-              "https://aistudio.google.com/app/apikey"
-            } target="_blank" rel="noopener noreferrer" className="text-[var(--ac)] hover:text-[var(--tx)] hover:underline transition-colors">
-              Where do I find my API key? →
-            </a>
-          </p>
+          {providerInfo?.helpUrl && (
+            <p className="text-[11px] text-[var(--tx3)] mt-2">
+              <a
+                href={providerInfo.helpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--ac)] hover:underline"
+              >
+                Where do I find my {providerInfo.shortName} API key? →
+              </a>
+            </p>
+          )}
         </div>
       </Modal>
 

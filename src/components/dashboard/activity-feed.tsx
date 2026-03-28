@@ -18,7 +18,7 @@ export function ActivityFeed({ logs }: ActivityFeedProps) {
   return (
     <div className="border border-[var(--bd)] rounded-lg p-3">
       <h3 className="text-[13px] font-semibold mb-2">Live agent activity</h3>
-      <div className="max-h-[400px] overflow-y-auto" aria-live="polite" aria-atomic="false">
+      <div className="max-h-[400px] overflow-y-auto" role="log" aria-live="polite" aria-relevant="additions" aria-label="Live agent activity feed">
         {logs.length === 0 ? (
           <p className="text-[11px] text-[var(--tx3)] text-center py-4">No activity yet. Your agents will appear here once they start working.</p>
         ) : (

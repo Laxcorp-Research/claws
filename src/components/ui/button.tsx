@@ -28,6 +28,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled || loading}
+        aria-busy={loading || undefined}
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors border-none cursor-pointer",
           variantClasses[variant],
@@ -39,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {loading && (
-          <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5 flex-shrink-0" />
+          <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5 flex-shrink-0" aria-hidden="true" />
         )}
         {children}
       </button>

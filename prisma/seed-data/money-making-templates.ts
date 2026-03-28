@@ -414,7 +414,7 @@ const freelancerRevenueEngine: SeedTemplate = {
   flowDescription:
     "Lead Hunter scans platforms for opportunities → Proposal Writer crafts personalized proposals → Project Manager tracks deliverables → Invoice & Collections handles billing → Business Development Reviewer quality-gates all client-facing communication.",
   category: "MONEY_MAKING",
-  price: 199,
+  price: 149,
   agentCount: 6,
   featured: false,
   sortOrder: 2,

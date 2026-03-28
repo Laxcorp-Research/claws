@@ -1,87 +1,109 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { AlertTriangle, Check, Loader2 } from "lucide-react"
-
-const PROVIDER_URLS: Record<string, string> = {
-  ANTHROPIC: "https://console.anthropic.com",
-  OPENAI: "https://platform.openai.com/api-keys",
-  GOOGLE: "https://aistudio.google.com/apikey",
-}
 
 interface ApiKeyRowProps {
   provider: string
-  displayName: string
-  isConnected: boolean
+  name: string
+  status: "connected" | "disconnected" | "invalid"
   keyHint?: string
-  addedDate?: string
-  isValid?: boolean
-  isTesting?: boolean
-  onTest?: () => void
-  onRemove?: () => void
-  onAdd?: () => void
-  onReplace?: () => void
+  lastUsedAt?: string
+  lastError?: string
+  onAdd: () => void
+  onTest: () => void
+  onRemove: () => void
+  onUpdate: () => void
+  isTestLoading?: boolean
 }
 
-export function ApiKeyRow({ provider, displayName, isConnected, keyHint, addedDate, isValid, isTesting, onTest, onRemove, onAdd, onReplace }: ApiKeyRowProps) {
-  const isInvalid = isConnected && !isValid && !isTesting
-  const dashboardUrl = PROVIDER_URLS[provider]
-
+export function ApiKeyRow({
+  name,
+  status,
+  keyHint,
+  lastUsedAt,
+  lastError,
+  onAdd,
+  onTest,
+  onRemove,
+  onUpdate,
+  isTestLoading,
+}: ApiKeyRowProps) {
   return (
-    <div className="px-3 py-2.5 border-b border-[var(--bd)] last:border-b-0">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          {isInvalid ? (
-            <AlertTriangle className="w-3.5 h-3.5 text-[var(--err)] shrink-0" aria-hidden="true" />
-          ) : (
-            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${!isConnected ? "bg-[var(--tx3)]" : isValid ? "bg-[var(--ok)]" : "bg-[var(--tx3)]"}`} aria-hidden="true" />
-          )}
-          <div>
-            <div className="text-[12px] font-medium">{displayName}</div>
-            <div className="text-[11px] text-[var(--tx2)]">
-              {isConnected ? `${keyHint ?? "***"} · ${addedDate ?? ""}` : "Not connected"}
-            </div>
+    <div className="flex items-center justify-between p-[8px_10px] border-b border-[var(--bd)] last:border-b-0">
+      <div className="flex items-center gap-[8px]">
+        <div
+          className={`w-[8px] h-[8px] rounded-full flex-shrink-0 ${
+            status === "connected"
+              ? "bg-[var(--ok)]"
+              : status === "invalid"
+                ? "bg-[var(--err)]"
+                : "border-2 border-[var(--bd)] bg-transparent"
+          }`}
+          aria-hidden="true"
+        />
+        <div>
+          <div className="text-[12px] font-semibold">{name}</div>
+          <div className="text-[10px] text-[var(--tx2)]">
+            {status === "connected" && (
+              <span>{keyHint ?? "***"} · {lastUsedAt ?? ""}</span>
+            )}
+            {status === "disconnected" && (
+              <span>Not connected</span>
+            )}
+            {status === "invalid" && (
+              <span className="text-[var(--err)]">Invalid — {lastError ?? "key failed validation"}</span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          {isTesting && (
-            <span className="flex items-center gap-1 text-[10px] text-[var(--tx2)]">
-              <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-              Testing...
-            </span>
-          )}
-          {isConnected && !isTesting && isValid && (
-            <>
-              <span className="text-[10px] text-[var(--ok)] font-medium mr-1 inline-flex items-center gap-0.5">
-                <Check className="w-3 h-3" /> Valid
-              </span>
-              {onTest && <Button variant="ghost" size="xs" onClick={onTest}>Test</Button>}
-              {onRemove && <button onClick={onRemove} className="text-[9px] px-1.5 py-px rounded text-[var(--err)] hover:bg-[var(--bg2)] transition-colors">Remove</button>}
-            </>
-          )}
-          {isInvalid && (
-            <>
-              <span className="text-[10px] text-[var(--err)] font-medium mr-1">Invalid</span>
-              {onTest && <Button variant="ghost" size="xs" onClick={onTest}>Retest</Button>}
-              {onReplace && <Button variant="outline" size="xs" onClick={onReplace}>Replace key</Button>}
-              {onRemove && <button onClick={onRemove} className="text-[9px] px-1.5 py-px rounded text-[var(--err)] hover:bg-[var(--bg2)] transition-colors">Remove</button>}
-            </>
-          )}
-          {!isConnected && !isTesting && onAdd && (
-            <Button variant="primary" size="sm" onClick={onAdd}>Add API key</Button>
-          )}
-        </div>
       </div>
-      {isInvalid && dashboardUrl && (
-        <p className="text-[11px] text-[var(--err)] mt-1.5 ml-[22px]">
-          This key failed validation. It may have expired or been revoked.{" "}
-          Check your{" "}
-          <a href={dashboardUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
-            {displayName.split(" (")[0]} dashboard
-          </a>{" "}
-          and replace it.
-        </p>
-      )}
+
+      <div className="flex items-center gap-[4px]">
+        {status === "connected" && (
+          <>
+            <span className="text-[10px] text-[var(--ok)] font-medium mr-0.5">Valid</span>
+            <Button
+              variant="ghost"
+              className="text-[9px] px-[6px] py-[2px] h-auto"
+              onClick={onTest}
+              loading={isTestLoading}
+              disabled={isTestLoading}
+            >
+              Test
+            </Button>
+            <button
+              onClick={onRemove}
+              className="text-[9px] px-[6px] py-[2px] rounded text-[var(--err)] hover:bg-[var(--bg2)] transition-colors"
+            >
+              Remove
+            </button>
+          </>
+        )}
+
+        {status === "disconnected" && (
+          <Button
+            variant="primary"
+            size="sm"
+            className="text-[10px] px-[10px] py-[3px]"
+            onClick={onAdd}
+          >
+            Add API key
+          </Button>
+        )}
+
+        {status === "invalid" && (
+          <>
+            <span className="text-[10px] text-[var(--err)] font-medium mr-0.5">Invalid</span>
+            <Button
+              variant="primary"
+              size="sm"
+              className="text-[10px] px-[10px] py-[3px]"
+              onClick={onUpdate}
+            >
+              Update
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

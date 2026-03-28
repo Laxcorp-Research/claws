@@ -49,6 +49,8 @@ async function main() {
         featured: template.featured,
         sortOrder: template.sortOrder,
         isPublished: true,
+        trustTier: "OFFICIAL",
+        reviewStatus: "APPROVED",
         workspaceSnapshot,
       },
     })
@@ -83,7 +85,25 @@ async function main() {
     console.log(`  ✅ Skill: ${skill.name}`)
   }
 
-  console.log(`\n🎉 Seeded ${ALL_TEMPLATES.length} templates + ${ALL_SKILLS.length} skills`)
+  console.log(`  Seeded ${ALL_SKILLS.length} skills\n`)
+
+  await prisma.openClawVersion.deleteMany()
+  console.log("  Cleared existing OpenClaw versions")
+
+  await prisma.openClawVersion.create({
+    data: {
+      version: "2.5.0",
+      isStable: true,
+      isLatest: true,
+      isSecurityPatch: false,
+      dockerImage: "ghcr.io/openclaw/openclaw:2.5.0",
+      releaseNotes: "Initial stable release for Claws platform launch.",
+      releasedAt: new Date(),
+    },
+  })
+  console.log("  ✅ OpenClawVersion: 2.5.0 (stable)")
+
+  console.log(`\n🎉 Seeded ${ALL_TEMPLATES.length} templates + ${ALL_SKILLS.length} skills + 1 OpenClaw version`)
 }
 
 main()

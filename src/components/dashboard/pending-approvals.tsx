@@ -109,7 +109,7 @@ export function PendingApprovals({ approvals, onApprove, onReject }: PendingAppr
           onChange={(e) => setRejectFeedback(e.target.value)}
           placeholder="Optional feedback for the agent..."
           rows={3}
-          className="w-full border border-[var(--bd)] rounded-[6px] bg-[var(--bg)] text-[var(--tx)] text-[11px] p-2 resize-none focus:outline-none focus:border-[var(--ac)]"
+          className="w-full border border-[var(--bd)] rounded-[6px] bg-[var(--bg)] text-[var(--tx)] text-[11px] p-2 resize-none focus:outline-none focus:border-[var(--tx)]"
         />
       </Modal>
     </>

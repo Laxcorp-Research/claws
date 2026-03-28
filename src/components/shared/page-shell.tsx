@@ -15,7 +15,7 @@ export function PageShell({ background = "primary", children }: PageShellProps) 
         Skip to main content
       </a>
       <TopBar />
-      <main id="main-content" className={`flex-1 ${background === "secondary" ? "bg-[var(--bg2)]" : "bg-[var(--bg)]"}`}>
+      <main id="main-content" tabIndex={-1} className={`flex-1 ${background === "secondary" ? "bg-[var(--bg2)]" : "bg-[var(--bg)]"}`}>
         {children}
       </main>
     </div>
