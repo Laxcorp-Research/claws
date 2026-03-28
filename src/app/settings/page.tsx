@@ -9,7 +9,7 @@ import { ApiKeyManager } from "@/components/settings/api-key-manager"
 import { BillingDashboard } from "@/components/settings/billing-dashboard"
 import { SecuritySettings } from "@/components/settings/security-settings"
 import { cn } from "@/lib/utils"
-import { Palette } from "lucide-react"
+import { CreatorDashboard } from "@/components/settings/creator-dashboard"
 
 const TABS = [
   { id: "account", label: "Account" },
@@ -20,19 +20,6 @@ const TABS = [
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
-
-function CreatorPlaceholder() {
-  return (
-    <div className="text-center py-[40px]">
-      <Palette className="w-10 h-10 text-[var(--tx3)] mx-auto" />
-      <h3 className="text-[15px] font-semibold mt-[8px] mb-[4px]">Creator Dashboard</h3>
-      <p className="text-[12px] text-[var(--tx2)] mb-[12px] max-w-[360px] mx-auto">
-        Publish templates and skills to the marketplace. Earn money from your creations with 0% commission.
-      </p>
-      <p className="text-[11px] text-[var(--tx3)]">Coming soon</p>
-    </div>
-  )
-}
 
 function SettingsContent() {
   const searchParams = useSearchParams()
@@ -128,7 +115,7 @@ function SettingsContent() {
           {activeTab === "api-keys" && <ApiKeyManager />}
           {activeTab === "billing" && <BillingDashboard />}
           {activeTab === "security" && <SecuritySettings />}
-          {activeTab === "creator" && <CreatorPlaceholder />}
+          {activeTab === "creator" && <CreatorDashboard />}
         </div>
       </div>
     </PageShell>

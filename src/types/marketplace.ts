@@ -60,3 +60,62 @@ export interface MarketplaceFilters {
   sort: SortOption
   search: string
 }
+
+export interface TemplateReviewData {
+  id: string
+  userName: string
+  rating: number
+  title: string | null
+  body: string | null
+  verifiedInstall: boolean
+  createdAt: string
+}
+
+export interface TemplateDetailData {
+  template: MarketplaceTemplate & {
+    version?: number
+    workspaceSnapshot?: string
+  }
+  reviews: TemplateReviewData[]
+  reviewCount: number
+  installCount: number
+  similar: Array<{
+    id: string
+    name: string
+    slug: string
+    tagline: string
+    price: number
+    category: string
+    trustTier: TrustTier
+    installCount: number
+    avgRating: number | null
+  }>
+  ownership: {
+    owned: boolean
+    workspaceId: string | null
+    workspaceStatus: string | null
+    hasInstall: boolean
+  } | null
+}
+
+export interface ReportFormData {
+  reason: string
+  details: string
+}
+
+export interface SkillDetailData {
+  skill: MarketplaceSkill & {
+    skillMd: string
+    requiredBins: string[]
+    requiredEnvVars: string[]
+    minOpenClawVersion: string | null
+    publishedAt: string | null
+  }
+  reviews: TemplateReviewData[]
+  reviewCount: number
+  installStatus: {
+    installed: boolean
+    hasRunningWorkspaces: boolean
+    workspaces: Array<{ id: string; name: string }>
+  } | null
+}

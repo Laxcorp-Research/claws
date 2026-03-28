@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { apiSuccess, apiError } from "@/lib/api/response"
+import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
+import { getSessionUser } from "@/lib/api/auth"
 import { Prisma, TrustTier, ClawCategory } from "@/generated/prisma/client"
+import { scanTemplate } from "@/lib/marketplace/template-scan"
+import { validateSkillDependencies } from "@/lib/marketplace/skill-dependency"
+import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 
 interface SnapshotAgent {
   name: string
@@ -183,5 +187,176 @@ function formatTemplate(t: {
     agents,
     flowDescription,
     legalDisclaimer,
+  }
+}
+
+const VALID_CATEGORIES: ClawCategory[] = ["MONEY_MAKING", "CREATOR", "BUSINESS_OPS", "VERTICAL", "LIFESTYLE"]
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getSessionUser()
+    if (!user) return ERRORS.UNAUTHORIZED()
+
+    const creatorProfile = await prisma.creatorProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    })
+    if (!creatorProfile) {
+      return apiError("NOT_ENROLLED", "You must be enrolled as a creator to publish templates", 403)
+    }
+
+    const body = await request.json()
+    const {
+      name, tagline, description, category, tags,
+      estimatedMonthlyCost, isFree, price, workspaceId,
+    } = body as {
+      name?: string; tagline?: string; description?: string; category?: string
+      tags?: string[]; estimatedMonthlyCost?: string; isFree?: boolean
+      price?: number; workspaceId?: string
+    }
+
+    if (!name || name.trim().length < 3) return ERRORS.VALIDATION("Name is required (minimum 3 characters)")
+    if (name.trim().length > 100) return ERRORS.VALIDATION("Name must be 100 characters or less")
+    if (!tagline || tagline.trim().length < 5) return ERRORS.VALIDATION("Tagline is required (minimum 5 characters)")
+    if (tagline.trim().length > 100) return ERRORS.VALIDATION("Tagline must be 100 characters or less")
+    if (!description || description.trim().length < 20) return ERRORS.VALIDATION("Description is required (minimum 20 characters)")
+    if (description.length > 5000) return ERRORS.VALIDATION("Description must be 5000 characters or less")
+    if (!category || !VALID_CATEGORIES.includes(category as ClawCategory)) {
+      return ERRORS.VALIDATION(`Category must be one of: ${VALID_CATEGORIES.join(", ")}`)
+    }
+    if (tags && (!Array.isArray(tags) || tags.length > 5)) return ERRORS.VALIDATION("Tags must be an array of up to 5 strings")
+    if (tags && tags.some((t) => typeof t !== "string" || t.length > 30)) return ERRORS.VALIDATION("Each tag must be 30 characters or less")
+    if (!isFree && price != null) {
+      if (typeof price !== "number" || price < 19) return ERRORS.VALIDATION("Paid templates must cost at least $19")
+      if (price > 9999) return ERRORS.VALIDATION("Price cannot exceed $9,999")
+    }
+
+    const nameConflict = await prisma.clawTemplate.findFirst({
+      where: { name: { equals: name.trim(), mode: "insensitive" }, trustTier: "OFFICIAL" },
+      select: { name: true },
+    })
+    if (nameConflict) {
+      return apiError("NAME_CONFLICT", `Template name "${name.trim()}" conflicts with official template "${nameConflict.name}"`, 409)
+    }
+
+    if (!workspaceId || typeof workspaceId !== "string") return ERRORS.VALIDATION("workspaceId is required")
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      include: {
+        agents: {
+          include: { skills: { include: { skill: true } } },
+        },
+        connections: true,
+        toolConnections: true,
+      },
+    })
+
+    if (!workspace || workspace.userId !== user.id) {
+      return apiError("FORBIDDEN", "Workspace not found or access denied", 403)
+    }
+    if (workspace.agents.length === 0) {
+      return ERRORS.VALIDATION("Workspace has no agents. Add agents in the builder before publishing.")
+    }
+
+    const workspaceSnapshot = JSON.stringify({
+      agents: workspace.agents.map((a) => ({
+        name: a.name,
+        agentSlug: a.agentSlug,
+        role: a.role,
+        roleDescription: a.roleDescription,
+        description: a.description,
+        color: a.color,
+        icon: a.icon,
+        soulMd: a.soulMd,
+        agentsMd: a.agentsMd,
+        heartbeatMd: a.heartbeatMd,
+        toolsMd: a.toolsMd,
+        userMd: a.userMd,
+        identityMd: a.identityMd,
+        model: a.model,
+        fallbackModel: a.fallbackModel,
+        reportsTo: a.reportsTo,
+        maxRetries: a.maxRetries,
+        qualityThreshold: a.qualityThreshold,
+        positionX: a.positionX,
+        positionY: a.positionY,
+        skills: a.skills.map((s) => ({
+          slug: s.skill.slug,
+          name: s.skill.name,
+          configOverrides: s.configOverrides,
+        })),
+      })),
+      connections: workspace.connections.map((c) => ({
+        sourceAgentId: c.sourceAgentId,
+        targetAgentId: c.targetAgentId,
+        sourceSlug: workspace.agents.find((a) => a.id === c.sourceAgentId)?.agentSlug,
+        targetSlug: workspace.agents.find((a) => a.id === c.targetAgentId)?.agentSlug,
+        condition: c.condition,
+        conditionExpr: c.conditionExpr,
+        label: c.label,
+      })),
+      tools: workspace.toolConnections.map((t) => ({
+        slug: t.toolSlug,
+        name: t.displayName,
+        connectionType: t.connectionType,
+        required: true,
+      })),
+    })
+
+    const parsedSnapshot = JSON.parse(workspaceSnapshot) as Record<string, unknown>
+    const skillCheck = await validateSkillDependencies(parsedSnapshot)
+    if (!skillCheck.valid) {
+      return ERRORS.VALIDATION(`Template references unavailable skills: ${skillCheck.missing.join(", ")}`)
+    }
+
+    const scanResult = scanTemplate(
+      workspace.agents.map((a) => ({ name: a.name, soulMd: a.soulMd, agentsMd: a.agentsMd }))
+    )
+
+    const slug = await generateUniqueSlug(name.trim(), prisma.clawTemplate)
+
+    const template = await prisma.clawTemplate.create({
+      data: {
+        name: name.trim(),
+        slug,
+        tagline: tagline.trim(),
+        description: description.trim(),
+        category: category as ClawCategory,
+        tags: tags?.map((t) => t.trim()) ?? [],
+        estimatedMonthlyCost: estimatedMonthlyCost?.trim() ?? null,
+        isFree: !!isFree,
+        price: isFree ? 0 : (price ?? 0),
+        creatorId: creatorProfile.id,
+        trustTier: "UNREVIEWED",
+        reviewStatus: "PENDING",
+        isPublished: true,
+        agentCount: workspace.agents.length,
+        workspaceSnapshot,
+        version: 1,
+        reviewNotes: scanResult.hasWarnings
+          ? JSON.stringify({ autoScan: scanResult.findings })
+          : null,
+      },
+    })
+
+    await prisma.creatorProfile.update({
+      where: { id: creatorProfile.id },
+      data: { totalTemplates: { increment: 1 } },
+    })
+
+    return apiSuccess({
+      templateId: template.id,
+      slug: template.slug,
+      isPublished: true,
+      scanResult: {
+        passed: scanResult.passed,
+        hasWarnings: scanResult.hasWarnings,
+        findingCount: scanResult.findings.length,
+      },
+    }, 201)
+  } catch (error) {
+    console.error("Template publish error:", error)
+    return apiError("PUBLISH_ERROR", "Failed to publish template", 500)
   }
 }

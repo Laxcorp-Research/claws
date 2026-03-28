@@ -11,7 +11,7 @@ import { HeartbeatConfig } from "@/components/builder/heartbeat-config"
 import { VersionHistoryPanel } from "@/components/builder/version-history-panel"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useBuilderStore } from "@/stores/builder-store"
-import { Loader2 } from "lucide-react"
+import { Loader2, Send } from "lucide-react"
 
 export default function BuilderPage() {
   const params = useParams()
@@ -72,9 +72,8 @@ export default function BuilderPage() {
           <Button variant="outline" size="sm" className="text-[10px]" onClick={() => router.push(`/dashboard/${workspaceId}`)}>
             Dashboard
           </Button>
-          {/* TODO: Wire Test Run in Phase 3 */}
-          <Button variant="outline" size="sm" className="text-[10px]" disabled>
-            Test Run
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => router.push(`/publish/template?workspaceId=${workspaceId}`)}>
+            <Send size={10} className="mr-1" aria-hidden="true" /> Publish
           </Button>
           <Button variant="primary" size="sm" className="text-[10px]" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>
             Deploy
