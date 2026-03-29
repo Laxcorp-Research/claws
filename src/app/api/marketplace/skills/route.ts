@@ -1,7 +1,10 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { apiSuccess, apiError } from "@/lib/api/response"
+import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
+import { getSessionUser } from "@/lib/api/auth"
 import { Prisma, TrustTier } from "@/generated/prisma/client"
+import { scanSkillContent } from "@/lib/marketplace/skill-scan"
+import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,6 +17,7 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get("sort") || "popular"
     const cursor = searchParams.get("cursor") || undefined
     const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 50)
+    const section = searchParams.get("section") || undefined
 
     const where: Prisma.MarketplaceSkillWhereInput = {
       isPublished: true,
@@ -23,7 +27,9 @@ export async function GET(request: NextRequest) {
       where.category = category
     }
 
-    if (trustTier) {
+    if (section === "official") {
+      where.trustTier = "OFFICIAL"
+    } else if (trustTier) {
       const tierHierarchy: Record<string, string[]> = {
         OFFICIAL: ["OFFICIAL"],
         VERIFIED: ["VERIFIED", "OFFICIAL"],
@@ -100,5 +106,116 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Marketplace skills error:", error)
     return apiError("MARKETPLACE_ERROR", "Failed to fetch skills", 500)
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getSessionUser()
+    if (!user) return ERRORS.UNAUTHORIZED()
+
+    const creatorProfile = await prisma.creatorProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    })
+    if (!creatorProfile) {
+      return apiError("NOT_ENROLLED", "You must be enrolled as a creator to publish skills", 403)
+    }
+
+    const body = await request.json()
+    const {
+      name, emoji, description, category, tags,
+      requiredBins, requiredEnvVars, skillMd, isFree, price,
+    } = body as {
+      name?: string; emoji?: string; description?: string; category?: string
+      tags?: string[]; requiredBins?: string[]; requiredEnvVars?: string[]
+      skillMd?: string; isFree?: boolean; price?: number
+    }
+
+    if (!name || name.trim().length < 2) return ERRORS.VALIDATION("Name is required (minimum 2 characters)")
+    if (name.trim().length > 80) return ERRORS.VALIDATION("Name must be 80 characters or less")
+    if (emoji && emoji.length > 4) return ERRORS.VALIDATION("Emoji must be a single emoji character")
+    if (!description || description.trim().length < 10) return ERRORS.VALIDATION("Description is required (minimum 10 characters)")
+    if (description.length > 1000) return ERRORS.VALIDATION("Description must be 1000 characters or less")
+    if (!category || typeof category !== "string" || category.trim().length === 0) return ERRORS.VALIDATION("Category is required")
+    if (tags && (!Array.isArray(tags) || tags.length > 5)) return ERRORS.VALIDATION("Tags must be an array of up to 5 strings")
+    if (tags && tags.some((t) => typeof t !== "string" || t.length > 30)) return ERRORS.VALIDATION("Each tag must be 30 characters or less")
+    if (requiredBins && (!Array.isArray(requiredBins) || requiredBins.length > 20)) return ERRORS.VALIDATION("Maximum 20 required binaries")
+    if (requiredBins && requiredBins.some((b) => typeof b !== "string" || b.length > 50)) return ERRORS.VALIDATION("Each binary name must be 50 characters or less")
+    if (requiredEnvVars && (!Array.isArray(requiredEnvVars) || requiredEnvVars.length > 20)) return ERRORS.VALIDATION("Maximum 20 required environment variables")
+    if (requiredEnvVars) {
+      const envVarPattern = /^[A-Z][A-Z0-9_]*$/
+      const invalid = requiredEnvVars.filter((v) => typeof v !== "string" || !envVarPattern.test(v))
+      if (invalid.length > 0) return ERRORS.VALIDATION(`Environment variable names must be UPPER_SNAKE_CASE. Invalid: ${invalid.join(", ")}`)
+    }
+    if (!skillMd || skillMd.trim().length < 20) return ERRORS.VALIDATION("SKILL.md content is required (minimum 20 characters)")
+    if (skillMd.length > 50000) return ERRORS.VALIDATION("SKILL.md content must be 50,000 characters or less")
+    if (!isFree && price != null) {
+      if (typeof price !== "number" || price < 5) return ERRORS.VALIDATION("Paid skills must cost at least $5")
+      if (price > 999) return ERRORS.VALIDATION("Price cannot exceed $999")
+    }
+
+    const scanResult = scanSkillContent(skillMd)
+
+    if (!scanResult.passed) {
+      return NextResponse.json({
+        success: false,
+        error: { code: "SCAN_FAILED", message: "Auto-scan failed: security issues found in SKILL.md content", statusCode: 422 },
+        scanPassed: false,
+        findings: scanResult.findings,
+      }, { status: 422 })
+    }
+
+    const slug = await generateUniqueSlug(name.trim(), prisma.marketplaceSkill)
+
+    const skill = await prisma.marketplaceSkill.create({
+      data: {
+        slug,
+        name: name.trim(),
+        emoji: emoji?.trim() || null,
+        description: description.trim(),
+        category,
+        tags: tags?.map((t) => t.trim()) ?? [],
+        skillMd: skillMd.trim(),
+        requiredBins: requiredBins?.map((b) => b.trim()) ?? [],
+        requiredEnvVars: requiredEnvVars?.map((v) => v.trim()) ?? [],
+        creatorId: creatorProfile.id,
+        isFree: !!isFree,
+        price: isFree ? null : (price ?? null),
+        trustTier: "UNREVIEWED",
+        reviewStatus: "PENDING",
+        isPublished: true,
+        publishedAt: new Date(),
+        version: 1,
+        autoScanPassed: scanResult.passed,
+        autoScanReport: scanResult.findings.length > 0 ? JSON.stringify(scanResult.findings) : null,
+        sandboxPassed: null,
+        sandboxReport: null,
+      },
+    })
+
+    await prisma.creatorProfile.update({
+      where: { id: creatorProfile.id },
+      data: { totalSkills: { increment: 1 } },
+    })
+
+    // TODO: Queue Layer 2 sandbox test (requires Tier 3 container infra)
+    console.log(`[TODO] Queue Layer 2 sandbox test for skill: ${skill.slug} (${skill.id})`)
+
+    return apiSuccess({
+      skillId: skill.id,
+      slug: skill.slug,
+      isPublished: true,
+      scanResult: {
+        passed: scanResult.passed,
+        hasCritical: scanResult.hasCritical,
+        hasWarnings: scanResult.hasWarnings,
+        findingCount: scanResult.findings.length,
+        findings: scanResult.hasWarnings ? scanResult.findings : [],
+      },
+    }, 201)
+  } catch (error) {
+    console.error("Skill publish error:", error)
+    return apiError("PUBLISH_ERROR", "Failed to publish skill", 500)
   }
 }

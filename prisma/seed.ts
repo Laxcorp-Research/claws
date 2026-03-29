@@ -45,6 +45,7 @@ async function main() {
         description: template.description,
         category: template.category,
         price: template.price,
+        isFree: template.price === 0,
         agentCount: template.agentCount,
         featured: template.featured,
         sortOrder: template.sortOrder,

@@ -442,7 +442,7 @@ Platform fee: $79/mo<br>
 <!-- ============================================================ -->
 <div class="screen-section">
 <span class="slabel">Screen 4 — Setup step 1: AI models</span>
-<div class="sarrive"><b>User arrives from:</b> Stripe checkout success (after purchasing Claw). Or from My Claws clicking a setup-incomplete workspace.</div>
+<div class="sarrive"><b>User arrives from:</b> Dodo Payments checkout success (after purchasing template). Or from My Claws clicking a setup-incomplete workspace.</div>
 <div class="sactions"><b>Goes to:</b> "Next" → Screen 5 (Connect tools). "Back" → not applicable (first step).</div>
 <div class="scr">
 <div class="top">
@@ -841,7 +841,7 @@ Platform fee: $79/mo<br>
 <div class="screen-section">
 <span class="slabel">Screen 11 — Settings</span>
 <div class="sarrive"><b>User arrives from:</b> User avatar dropdown in nav → "Settings", "API Keys", or "Billing".</div>
-<div class="sactions"><b>Goes to:</b> Tab navigation within settings. "Manage subscription" → Stripe billing portal (external).</div>
+<div class="sactions"><b>Goes to:</b> Tab navigation within settings. "Manage subscription" → Dodo Payments billing portal (external). "Creator" tab → creator dashboard (Screen 17).</div>
 <div class="scr">
 <div class="top">
 <div class="logo">Claws</div>
@@ -856,6 +856,7 @@ Platform fee: $79/mo<br>
 <div class="tab on">API keys</div>
 <div class="tab">Billing</div>
 <div class="tab">Security</div>
+<div class="tab">Creator</div>
 </div>
 
 <div style="font-size:14px;font-weight:600;margin-bottom:2px">AI model API keys</div>
@@ -868,15 +869,21 @@ Platform fee: $79/mo<br>
 </div>
 
 <div style="margin-top:16px;font-size:14px;font-weight:600;margin-bottom:2px">Billing summary</div>
+<div style="font-size:11px;color:var(--tx2);margin-bottom:10px">You pay $79/mo per running Claw. No tiers, no surprises.</div>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0">
-<div class="stat"><div class="stat-l">Current plan</div><div class="stat-v" style="font-size:15px">Pro</div><div style="font-size:10px;color:var(--tx2)">$29/month</div></div>
-<div class="stat"><div class="stat-l">Active Claws</div><div class="stat-v" style="font-size:15px">3</div><div style="font-size:10px;color:var(--tx2)">2 running, 1 paused</div></div>
-<div class="stat"><div class="stat-l">This month</div><div class="stat-v" style="font-size:15px">$289</div><div style="font-size:10px;color:var(--tx2)">Support + hosting</div></div>
+<div class="stat"><div class="stat-l">Active Claws</div><div class="stat-v" style="font-size:15px">2</div><div style="font-size:10px;color:var(--tx2)">$79/mo each</div></div>
+<div class="stat"><div class="stat-l">Monthly total</div><div class="stat-v" style="font-size:15px">$158</div><div style="font-size:10px;color:var(--tx2)">Platform fees</div></div>
+<div class="stat"><div class="stat-l">Trial status</div><div class="stat-v" style="font-size:15px">Used</div><div style="font-size:10px;color:var(--tx2)">Started Mar 12</div></div>
+</div>
+<div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px;margin:10px 0">
+<div style="font-size:12px;font-weight:600;margin-bottom:6px">Active subscriptions</div>
+<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--bd)"><span>B2B Sales Machine</span><span style="color:var(--ok)">Running · $79/mo · Next: Apr 12</span></div>
+<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0"><span>YouTube Channel OS</span><span style="color:var(--ok)">Running · $79/mo · Next: Apr 12</span></div>
 </div>
 <div style="display:flex;gap:6px"><button class="btn bo">Manage subscription</button><button class="btn bo">View invoices</button></div>
 </div>
 </div>
-<div class="impl"><b>Impl:</b> <code>/settings</code> with sub-routes <code>/settings/api-keys</code>, <code>/settings/billing</code>, <code>/settings/security</code>. Components: AccountSettings, ApiKeyManager, BillingDashboard (Stripe portal), SecuritySettings. Tabs route between sub-pages. API keys stored encrypted in UserApiKey model.</div>
+<div class="impl"><b>Impl:</b> <code>/settings</code> with sub-routes <code>/settings/api-keys</code>, <code>/settings/billing</code>, <code>/settings/security</code>, <code>/settings/creator</code>. Components: AccountSettings, ApiKeyManager, BillingDashboard (Dodo Payments portal), SecuritySettings, CreatorDashboard. Tabs route between sub-pages. API keys stored encrypted in UserApiKey model.</div>
 </div>
 
 </body>

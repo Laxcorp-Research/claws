@@ -20,6 +20,8 @@ interface UseMarketplaceResult<T> {
   isLoadingMore: boolean
 }
 
+const EMPTY_ITEMS: never[] = []
+
 export function useMarketplace<T>(
   filters: MarketplaceFilters,
   options: UseMarketplaceOptions
@@ -32,31 +34,34 @@ export function useMarketplace<T>(
   const [totalCount, setTotalCount] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
 
+  const { category, priceFilter, sort, search } = filters
+  const { type, section, initialLimit = 20, enabled = true } = options
+
   const buildUrl = useCallback(
     (cursor?: string) => {
-      const endpoint = options.type === "templates"
+      const endpoint = type === "templates"
         ? "/api/marketplace/templates"
         : "/api/marketplace/skills"
 
       const params = new URLSearchParams()
-      if (filters.category) params.set("category", filters.category)
-      if (filters.priceFilter === "free") params.set("isFree", "true")
-      if (filters.priceFilter === "paid") params.set("isFree", "false")
-      if (filters.sort) params.set("sort", filters.sort)
-      if (filters.search) params.set("search", filters.search)
-      if (options.section) params.set("section", options.section)
+      if (category) params.set("category", category)
+      if (priceFilter === "free") params.set("isFree", "true")
+      if (priceFilter === "paid") params.set("isFree", "false")
+      if (sort) params.set("sort", sort)
+      if (search) params.set("search", search)
+      if (section) params.set("section", section)
       if (cursor) params.set("cursor", cursor)
-      params.set("limit", String(options.initialLimit ?? 20))
+      params.set("limit", String(initialLimit))
 
       return `${endpoint}?${params.toString()}`
     },
-    [filters, options.type, options.section, options.initialLimit]
+    [category, priceFilter, sort, search, type, section, initialLimit]
   )
 
   useEffect(() => {
-    if (options.enabled === false) {
+    if (!enabled) {
       setIsLoading(false)
-      setItems([])
+      setItems(EMPTY_ITEMS)
       return
     }
 
@@ -74,7 +79,7 @@ export function useMarketplace<T>(
       })
       .then((json) => {
         const payload = json.data ?? json
-        setItems(payload.items ?? [])
+        setItems(payload.items ?? EMPTY_ITEMS)
         setNextCursor(payload.nextCursor ?? null)
         setTotalCount(payload.totalCount ?? 0)
         setIsLoading(false)
@@ -86,7 +91,7 @@ export function useMarketplace<T>(
       })
 
     return () => controller.abort()
-  }, [buildUrl, options.enabled])
+  }, [buildUrl, enabled])
 
   const loadMore = useCallback(() => {
     if (!nextCursor || isLoadingMore) return

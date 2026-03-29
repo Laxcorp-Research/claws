@@ -544,26 +544,48 @@ Item: display flex, gap 8px, padding 4px 0, font-size 12px
 Props: steps[{label, status: "complete"|"running"|"pending"|"failed"}]
 ```
 
-## 2.24 Plan Card
+## 2.24 Platform Fee Card
 
 ```
-File: src/components/pricing/plan-card.tsx
+File: src/components/pricing/platform-fee-card.tsx
 
-Container: border 1px solid var(--bd), border-radius 12px, padding 20px, text-align center
-Featured: border 2px solid var(--tx)
-Featured label: font-size 10px, color var(--tx), font-weight 600, margin-bottom 4px
+Container: border 2px solid var(--tx), border-radius 12px, padding 20px, text-align center
 
-Name: font-size 18px, font-weight 600, margin-bottom 4px
-Price: font-size 28px, font-weight 600, color var(--tx)
-Period: font-size 12px, color var(--tx2)
+Label: font-size 11px, font-weight 600, letter-spacing 0.5px, text-transform uppercase, color var(--tx3), margin-bottom 4px
+  Text: "Platform fee — per running Claw"
+Price: font-size 32px, font-weight 700, color var(--tx)
+  Text: "$79"
+Period: font-size 13px, color var(--tx2)
+  Text: "per month, per running Claw"
 
-Features: text-align left, font-size 12px, margin 14px 0, line-height 2.0
-  Check: color var(--ok)
-  Cross: color var(--tx3)
+Features: text-align left, font-size 12px, color var(--tx2), margin-top 12px, line-height 1.8
+  All items prefixed with ✓ in color var(--ok)
+  "Cloud hosting, all channels, 500+ integrations, visual builder,
+   monitoring, auto-restart, template updates, priority support"
 
-CTA: width 100%, padding 10px
+Multi-note: font-size 12px, color var(--tx2), margin-top 12px
+  "One Claw? $79/mo. Two? $158/mo. Three? $237/mo."
+```
 
-Props: name, price, period, features[{text,included}], featured?, ctaLabel, ctaVariant, onCta
+## 2.24b Template Tier Card
+
+```
+File: src/components/pricing/template-tier-card.tsx
+
+Container: border 1px solid var(--bd), border-radius var(--r), padding 12px 14px
+  Hover: border-color var(--bd2)
+
+Badge: uses category badge style (see Trust Tier Colors)
+  Standard: bg #EDFFF3, text #0D6B32, border #B8FFCF
+  Business:  bg #EEF5FF, text #1A5BBF, border #A8CFFF
+  Premium:   bg #FFF8E7, text #8A6D00, border #FFE9A0
+  Size: font-size 11px, font-weight 600, padding 2px 8px, border-radius 4px
+
+Price: font-size 22px, font-weight 700, margin-top 6px
+Count: font-size 11px, color var(--tx3), margin-top 2px (e.g., "8 templates")
+Label: font-size 11px, color var(--tx2), margin-top 6px (e.g., "Creator + Lifestyle")
+
+Props: tier ("Standard" | "Business" | "Premium"), price, count, label
 ```
 
 ## 2.25 Input Fields
@@ -991,8 +1013,14 @@ Billing: title 14px 600 mb 2px, stat grid 3 cols (not 4) gap 8px, stat value 15p
 ```
 Background: var(--bg), body padding 16px text-align center
 Title: 20px 600 mb 4px, subtitle 13px var(--tx2) mb 20px
-Plan grid: grid 3 cols gap 14px mb 14px → PlanCard × 3
+Platform fee card: border 2px solid var(--tx), border-radius 12px, padding 20px, text-center
+  Price: 32px 700, label 13px var(--tx2), features 12px var(--tx2) text-left mt 12px
+  Multi-claw note: 12px var(--tx2) mt 12px
+Template tiers: grid 3 cols gap 8px mb 14px
+  Each: border var(--bd) radius var(--r) padding 12px 14px, badge + price 22px 700 + count 11px var(--tx3) + label 11px var(--tx2)
 Explainer: border var(--bd) radius 12px padding 14px text-left, title 13px 600 mb 6px, body 12px var(--tx2) line-height 1.8
+Trial note: 12px var(--tx2) mt 12px
+No PlanCard component. No tiers. Static page.
 ```
 
 ## Screen 13: Auth

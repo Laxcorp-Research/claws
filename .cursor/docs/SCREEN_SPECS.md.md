@@ -514,8 +514,22 @@ TAB: API Keys
 
 TAB: Billing
   ├─ h2(text-title mb-0.5) → "Billing summary"
-  ├─ div(grid grid-cols-3 gap-2 my-2.5) → StatCard × 3 (plan, active claws, this month)
-  └─ div(flex gap-1.5) → Button(outline)"Manage subscription" + Button(outline)"View invoices"
+  ├─ p(text-micro text-content-secondary mb-3) → "You pay $79/mo per running Claw. No tiers, no surprises."
+  │
+  ├─ div(grid grid-cols-3 gap-2 my-2.5)
+  │  ├─ StatCard(label="Active Claws", value=N, trend="$79/mo each")
+  │  ├─ StatCard(label="Monthly total", value="$XX", trend="Platform fees only")
+  │  └─ StatCard(label="Trial status", value="Active" | "Used" | "Available",
+  │     trend="Expires {date}" | "Started {date}" | "3 days on first deploy")
+  │
+  ├─ div(border border-[var(--bd)] rounded-[var(--r)] p-3 mb-3)  # Active subscriptions
+  │  ├─ h3(text-body-medium mb-2) → "Active subscriptions"
+  │  └─ div(flex flex-col gap-1.5)
+  │     └─ per workspace: name + StatusBadge + "$79/mo" + next billing date
+  │
+  └─ div(flex gap-1.5)
+     ├─ Button(outline)"Manage subscription"  → Dodo Payments portal
+     └─ Button(outline)"View invoices"        → Dodo Payments portal
 
 TAB: Account
   Basic profile form: name, email, avatar
@@ -526,24 +540,55 @@ TAB: Security
 
 ---
 
-## SCREEN 12: /pricing — Platform Plans
+## SCREEN 12: /pricing — Platform Pricing
 
 ```
 PageShell
   └─ div(max-w-4xl mx-auto px-4 py-6 text-center)
-     ├─ h1(text-display mb-1) → "Simple, transparent pricing"
-     ├─ p(text-body text-content-secondary mb-5) → subtitle
+     ├─ h1(text-display mb-1) → "Simple pricing"
+     ├─ p(text-body text-content-secondary mb-5) → "Buy a template. Pay monthly to run it. No tiers."
      │
-     ├─ div(grid grid-cols-3 gap-3.5)                   # Plan cards
-     │  ├─ PlanCard(name="Free", price="$0", period="forever", features=[{text:"1 workspace",included:true}, ...], ctaLabel="Get started free", ctaVariant="outline")
-     │  ├─ PlanCard(name="Pro", price="$29", period="per month", featured=true, features=[...], ctaLabel="Upgrade to Pro", ctaVariant="primary")
-     │  └─ PlanCard(name="Enterprise", price="$99", period="per month", features=[...], ctaLabel="Contact sales", ctaVariant="outline")
+     ├─ div(border-2 border-[var(--tx)] rounded-[var(--rl)] p-5 mb-4 text-center)  # Platform fee card
+     │  ├─ p(text-[11px] font-semibold tracking-wide uppercase text-[var(--tx3)] mb-1) → "Platform fee"
+     │  ├─ div(text-[32px] font-bold) → "$79"
+     │  ├─ p(text-[13px] text-[var(--tx2)]) → "per month, per running Claw"
+     │  ├─ div(text-left text-[12px] text-[var(--tx2)] mt-3 leading-relaxed)  # Feature list
+     │  │  "Everything included: cloud hosting, all channels, 500+ tool integrations,
+     │  │   visual builder, real-time monitoring, auto-restart, template updates, priority support"
+     │  └─ p(text-[12px] text-[var(--tx2)] mt-3) → "One Claw? $79/mo. Two? $158/mo. Three? $237/mo. Linear, predictable. 10+ Claws? Contact us."
      │
-     ├─ Card(padding="lg" className="text-left mt-5")   # Pricing explainer
-     │  ├─ h3(text-body-medium mb-1.5) → "How pricing works"
-     │  └─ p(text-caption text-content-secondary leading-loose) → 5-layer explanation
+     ├─ p(text-[11px] font-semibold tracking-wide uppercase text-[var(--tx3)] mb-2 text-left) → "Templates — one-time purchase, yours forever"
      │
-     └─ p(text-caption text-content-secondary mt-3) → "3-day free trial on your first deploy. No platform fee charged until day 4."
+     ├─ div(grid grid-cols-3 gap-2 mb-4)               # Template tier cards
+     │  ├─ div(border border-[var(--bd)] rounded-[var(--r)] p-[12px_14px])
+     │  │  ├─ Badge(green) → "Standard"
+     │  │  ├─ div(text-[22px] font-bold) → "$149"
+     │  │  ├─ p(text-[11px] text-[var(--tx3)] mt-[2px]) → "8 templates"
+     │  │  └─ p(text-[11px] text-[var(--tx2)] mt-[6px]) → "Creator + Lifestyle"
+     │  ├─ div(border border-[var(--bd)] rounded-[var(--r)] p-[12px_14px])
+     │  │  ├─ Badge(blue) → "Business"
+     │  │  ├─ div(text-[22px] font-bold) → "$199"
+     │  │  ├─ p(text-[11px] text-[var(--tx3)] mt-[2px]) → "11 templates"
+     │  │  └─ p(text-[11px] text-[var(--tx2)] mt-[6px]) → "Business Ops + Vertical"
+     │  └─ div(border border-[var(--bd)] rounded-[var(--r)] p-[12px_14px])
+     │     ├─ Badge(gold) → "Premium"
+     │     ├─ div(text-[22px] font-bold) → "$299"
+     │     ├─ p(text-[11px] text-[var(--tx3)] mt-[2px]) → "1 template"
+     │     └─ p(text-[11px] text-[var(--tx2)] mt-[6px]) → "Quant Trader"
+     │
+     ├─ div(border border-[var(--bd)] rounded-[var(--rl)] p-[14px] text-left mb-4)  # How pricing works
+     │  ├─ h3(text-[13px] font-semibold mb-[6px]) → "How pricing works"
+     │  └─ p(text-[12px] text-[var(--tx2)] leading-relaxed)
+     │     "1. Template purchase — $149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform.
+     │      2. Platform fee — $79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates.
+     │      3. AI model costs — You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30-90/mo.
+     │      4. 3-day free trial — Your first deploy includes a free trial. No platform fee until day 4."
+     │
+     └─ p(text-[12px] text-[var(--tx2)]) → "3-day free trial on your first deploy. No platform fee charged until day 4."
+
+NO STATES (static page, no toggles, no annual pricing)
+
+DATA SOURCE: Hardcoded. No API calls needed.
 ```
 
 ---
