@@ -51,13 +51,13 @@ export function MarketplaceFilters({
   const categories = mode === "templates" ? TEMPLATE_CATEGORIES : SKILL_CATEGORIES
 
   return (
-    <div className="flex gap-[6px] items-center mt-2 mb-3 flex-wrap" role="toolbar" aria-label="Filter options">
+    <div className="flex gap-[6px] items-center mt-2 mb-3 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" role="toolbar" aria-label="Filter options">
       {categories.map((cat) => (
         <button
           key={cat.value}
           onClick={() => onCategoryChange(cat.value)}
           className={cn(
-            "px-3 py-1 text-[10px] font-medium rounded-[8px] border transition-colors",
+            "px-3 py-1 text-[10px] font-medium rounded-[8px] border transition-colors shrink-0",
             activeCategory === cat.value
               ? "bg-[var(--tx)] text-[var(--bg)] border-[var(--tx)]"
               : "bg-[var(--bg)] text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]"
@@ -75,7 +75,7 @@ export function MarketplaceFilters({
           key={filter}
           onClick={() => onPriceFilterChange(priceFilter === filter ? "" : filter)}
           className={cn(
-            "px-3 py-1 text-[10px] font-medium rounded-[8px] border transition-colors capitalize",
+            "px-3 py-1 text-[10px] font-medium rounded-[8px] border transition-colors capitalize shrink-0",
             priceFilter === filter
               ? "bg-[var(--tx)] text-[var(--bg)] border-[var(--tx)]"
               : "bg-[var(--bg)] text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]"

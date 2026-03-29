@@ -27,6 +27,17 @@ function toClawCard(t: MarketplaceTemplate): ClawCardData {
   }
 }
 
+function SectionHeader({ title, count, badge }: { title: string; count?: number; badge?: React.ReactNode }) {
+  return (
+    <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-[var(--bd)]">
+      <h2 className="text-[14px] font-semibold text-[var(--tx)]">
+        {title}{count !== undefined && count > 0 && <span className="text-[var(--tx3)] font-normal"> · {count}</span>}
+      </h2>
+      {badge}
+    </div>
+  )
+}
+
 function TemplateSection({
   title,
   badge,
@@ -54,10 +65,7 @@ function TemplateSection({
 
   return (
     <section className="mb-6">
-      <div className="flex justify-between items-center mb-2">
-        <h2 className="text-sm font-semibold text-[var(--tx)]">{title}</h2>
-        {badge}
-      </div>
+      <SectionHeader title={title} count={templates.length} badge={badge} />
       {isLoading ? (
         <TemplateSkeleton />
       ) : error ? (
@@ -66,7 +74,7 @@ function TemplateSection({
         <p className="text-[12px] text-[var(--tx3)]">{emptyText ?? "No templates found."}</p>
       ) : (
         <>
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {templates.map((t) => (
               <ClawCard
                 key={t.id}
@@ -94,11 +102,11 @@ function TemplateSection({
 
 function TemplateSkeleton() {
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="border border-[var(--bd)] rounded-[12px] p-4">
+        <div key={i} className="border border-[var(--bd)] rounded-[12px] p-3.5">
           <div className="h-4 bg-[var(--bg3)] rounded w-1/3 mb-2 animate-pulse" />
-          <div className="h-3 bg-[var(--bg3)] rounded w-2/3 mb-3 animate-pulse" />
+          <div className="h-3 bg-[var(--bg3)] rounded w-2/3 mb-2 animate-pulse" />
           <div className="flex gap-2">
             <div className="h-5 bg-[var(--bg3)] rounded w-16 animate-pulse" />
             <div className="h-5 bg-[var(--bg3)] rounded w-16 animate-pulse" />
@@ -122,6 +130,8 @@ function SkillSkeleton() {
   )
 }
 
+const INITIAL_OFFICIAL_SKILLS = 6
+
 function StoreContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -133,6 +143,7 @@ function StoreContent() {
   const searchQuery = searchParams.get("search") || ""
 
   const [searchInput, setSearchInput] = useState(searchQuery)
+  const [showAllOfficial, setShowAllOfficial] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const updateParams = useCallback(
@@ -198,6 +209,7 @@ function StoreContent() {
   const handleTabChange = (tab: "templates" | "skills") => {
     updateParams({ tab, category: "", price: "", sort: "popular", search: "" })
     setSearchInput("")
+    setShowAllOfficial(false)
   }
 
   const handleSearchChange = (value: string) => {
@@ -213,15 +225,23 @@ function StoreContent() {
     updateParams({ search: "" })
   }
 
+  const totalTemplateCount = official.totalCount + trending.totalCount + newTemplates.totalCount
+  const totalSkillCount = officialSkills.totalCount + popularSkills.totalCount
+
+  const displayedOfficialSkills = showAllOfficial
+    ? officialSkills.items
+    : officialSkills.items.slice(0, INITIAL_OFFICIAL_SKILLS)
+
   return (
     <PageShell background="secondary">
       <div className="max-w-5xl mx-auto px-4 py-4">
-        <div className="text-center pt-5 pb-4">
+        {/* Hero — compact */}
+        <div className="text-center pt-3 pb-2">
           <h1 className="text-xl font-semibold text-[var(--tx)]">AI agents that work while you sleep</h1>
           <p className="text-[13px] text-[var(--tx2)] mt-1 max-w-lg mx-auto">
             Build, customize, and deploy multi-agent AI teams. Browse official and community templates.
           </p>
-          <div className="mt-3 max-w-[280px] mx-auto">
+          <div className="mt-2 max-w-[280px] mx-auto">
             <input
               type="text"
               placeholder="Search templates and skills..."
@@ -234,6 +254,15 @@ function StoreContent() {
         </div>
 
         <MarketplaceTabs active={activeTab} onTabChange={handleTabChange} />
+
+        {/* Total count */}
+        {!isSearchActive && (
+          <p className="text-[11px] text-[var(--tx3)] -mt-2 mb-1">
+            {isTemplatesTab
+              ? `${totalTemplateCount > 0 ? totalTemplateCount.toLocaleString() : "—"} templates`
+              : `${totalSkillCount > 0 ? totalSkillCount.toLocaleString() : "—"} skills`}
+          </p>
+        )}
 
         <MarketplaceFilters
           mode={activeTab}
@@ -262,7 +291,7 @@ function StoreContent() {
                   />
                 ) : (
                   <>
-                    <div className="space-y-2.5">
+                    <div className="space-y-2">
                       {templateSearch.items.map((t) => (
                         <ClawCard
                           key={t.id}
@@ -370,8 +399,9 @@ function StoreContent() {
               </section>
             ) : (
               <>
+                {/* Official skills — collapsed by default */}
                 <section className="mb-6">
-                  <h2 className="text-sm font-semibold text-[var(--tx)] mb-2">Official</h2>
+                  <SectionHeader title="Official" count={officialSkills.totalCount} badge={<TrustBadge tier="OFFICIAL" />} />
                   {officialSkills.isLoading ? (
                     <SkillSkeleton />
                   ) : officialSkills.error ? (
@@ -379,17 +409,28 @@ function StoreContent() {
                   ) : officialSkills.items.length === 0 ? (
                     <p className="text-[12px] text-[var(--tx3)]">No official skills in this category.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {officialSkills.items.map((skill) => (
-                        <SkillCard key={skill.id} skill={skill} />
-                      ))}
-                    </div>
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {displayedOfficialSkills.map((skill) => (
+                          <SkillCard key={skill.id} skill={skill} />
+                        ))}
+                      </div>
+                      {!showAllOfficial && officialSkills.items.length > INITIAL_OFFICIAL_SKILLS && (
+                        <button
+                          className="text-[12px] text-[var(--ac)] mt-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
+                          onClick={() => setShowAllOfficial(true)}
+                        >
+                          Show all {officialSkills.items.length} official skills
+                        </button>
+                      )}
+                    </>
                   )}
                 </section>
 
+                {/* Popular skills — main section with load more */}
                 {(popularSkills.isLoading || popularSkills.items.length > 0) && (
                   <section className="mb-6">
-                    <h2 className="text-sm font-semibold text-[var(--tx)] mb-2">Popular</h2>
+                    <SectionHeader title="Popular" count={popularSkills.totalCount} />
                     {popularSkills.isLoading ? (
                       <SkillSkeleton />
                     ) : (
@@ -402,7 +443,7 @@ function StoreContent() {
                         {popularSkills.nextCursor && (
                           <div className="text-center mt-4">
                             <Button variant="outline" onClick={popularSkills.loadMore} loading={popularSkills.isLoadingMore}>
-                              Load more
+                              Load more skills
                             </Button>
                           </div>
                         )}
@@ -424,7 +465,7 @@ export default function StorePage() {
     <Suspense fallback={
       <PageShell background="secondary">
         <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="text-center pt-5 pb-4">
+          <div className="text-center pt-3 pb-2">
             <div className="h-6 bg-[var(--bg3)] rounded w-64 mx-auto mb-2" />
             <div className="h-4 bg-[var(--bg3)] rounded w-96 mx-auto" />
           </div>
