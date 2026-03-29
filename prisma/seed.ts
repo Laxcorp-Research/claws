@@ -8,6 +8,7 @@ import { PrismaClient } from "../src/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { ALL_TEMPLATES } from "./seed-data"
 import { ALL_SKILLS } from "./seed-data/skills-index"
+import { MARKETPLACE_SKILLS_CATALOG, generateSkillMd, installCountForSlug } from "./seed-data/marketplace-skills"
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" })
 const prisma = new PrismaClient({ adapter })
@@ -91,6 +92,40 @@ async function main() {
 
   console.log(`  Seeded ${ALL_SKILLS.length} skills\n`)
 
+  await prisma.skillReview.deleteMany()
+  await prisma.skillInstall.deleteMany()
+  await prisma.marketplaceSkill.deleteMany()
+  console.log("  Cleared existing marketplace skills")
+
+  for (const skill of MARKETPLACE_SKILLS_CATALOG) {
+    await prisma.marketplaceSkill.create({
+      data: {
+        slug: skill.slug,
+        name: skill.name,
+        description: skill.description,
+        category: skill.category,
+        tags: skill.tags,
+        emoji: skill.emoji,
+        skillMd: generateSkillMd(skill),
+        requiredBins: skill.requiredBins,
+        requiredEnvVars: skill.requiredEnvVars,
+        trustTier: skill.trustTier,
+        reviewStatus: "APPROVED",
+        isPublished: true,
+        isFree: skill.isFree,
+        price: skill.price,
+        autoScanPassed: true,
+        autoScanReport: JSON.stringify({ findings: [], passed: true }),
+        publishedAt: new Date(),
+        creatorId: null,
+        installCount: installCountForSlug(skill.slug),
+      },
+    })
+    console.log(`  ✅ MktSkill: ${skill.name}`)
+  }
+
+  console.log(`  Seeded ${MARKETPLACE_SKILLS_CATALOG.length} marketplace skills\n`)
+
   await prisma.openClawVersion.deleteMany()
   console.log("  Cleared existing OpenClaw versions")
 
@@ -107,7 +142,7 @@ async function main() {
   })
   console.log("  ✅ OpenClawVersion: 2.5.0 (stable)")
 
-  console.log(`\n🎉 Seeded ${ALL_TEMPLATES.length} templates + ${ALL_SKILLS.length} skills + 1 OpenClaw version`)
+  console.log(`\n🎉 Seeded ${ALL_TEMPLATES.length} templates + ${ALL_SKILLS.length} skills + ${MARKETPLACE_SKILLS_CATALOG.length} marketplace skills + 1 OpenClaw version`)
 }
 
 main()
