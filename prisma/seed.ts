@@ -1,5 +1,8 @@
 import dotenv from "dotenv"
-dotenv.config({ path: ".env.local" })
+
+if (!process.env.DATABASE_URL) {
+  dotenv.config({ path: ".env.local" })
+}
 
 import { PrismaClient } from "../src/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
