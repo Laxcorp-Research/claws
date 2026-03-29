@@ -53,6 +53,9 @@ test-results/
 *.tsbuildinfo
 next-env.d.ts
 
+# Sync cache
+.sync-cache/
+
 # Vercel
 .vercel
 
