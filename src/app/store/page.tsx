@@ -177,7 +177,7 @@ function StoreContent() {
 
   const newTemplates = useMarketplace<MarketplaceTemplate>(
     { ...filtersNoSearch, sort: "newest" },
-    { type: "templates", initialLimit: 10, enabled: isTemplatesTab && !isSearchActive }
+    { type: "templates", section: "new", initialLimit: 10, enabled: isTemplatesTab && !isSearchActive }
   )
 
   const templateSearch = useMarketplace<MarketplaceTemplate>(

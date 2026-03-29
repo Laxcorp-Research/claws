@@ -66,6 +66,10 @@ export async function GET(request: NextRequest) {
       ]
     }
 
+    if (section === "new") {
+      where.trustTier = { not: "OFFICIAL" }
+    }
+
     if (section === "trending") {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
