@@ -14,19 +14,19 @@ const TEMPLATE_CATEGORIES = [
 
 const SKILL_CATEGORIES = [
   { value: "", label: "All" },
-  { value: "CORE", label: "Core" },
+  { value: "Developer", label: "Developer" },
+  { value: "Productivity", label: "Productivity" },
+  { value: "System", label: "System" },
+  { value: "Search", label: "Search" },
+  { value: "Communication", label: "Communication" },
+  { value: "Marketing", label: "Marketing" },
+  { value: "Data", label: "Data" },
   { value: "CRM", label: "CRM" },
-  { value: "EMAIL_SENDER", label: "Email" },
-  { value: "SOCIAL", label: "Social" },
-  { value: "CALENDAR", label: "Calendar" },
-  { value: "PROJECT_MGMT", label: "Project Mgmt" },
-  { value: "ANALYTICS", label: "Analytics" },
-  { value: "SEARCH", label: "Search" },
-  { value: "FINANCE", label: "Finance" },
-  { value: "TRADING", label: "Trading" },
-  { value: "CONTENT", label: "Content" },
-  { value: "COMMUNICATION", label: "Communication" },
-  { value: "SECURITY", label: "Security" },
+  { value: "Email", label: "Email" },
+  { value: "Finance", label: "Finance" },
+  { value: "Security", label: "Security" },
+  { value: "Social", label: "Social" },
+  { value: "Web", label: "Web" },
 ] as const
 
 interface MarketplaceFiltersProps {
