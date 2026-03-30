@@ -41,11 +41,17 @@ export default function PricingPage() {
           </p>
           <div className="text-[32px] font-bold text-[var(--tx)]">$79</div>
           <p className="text-[13px] text-[var(--tx2)]">per month, per running Claw</p>
-          <div className="text-left text-[12px] text-[var(--tx2)] mt-3 leading-relaxed">
-            Everything included: cloud hosting, all channels, 500+ tool integrations,
-            visual builder, real-time monitoring, auto-restart, template updates, priority support
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-left text-[12px] text-[var(--tx2)] mt-4">
+            <span>Cloud hosting (2Gi RAM, managed)</span>
+            <span>All channels (Telegram, Slack, Discord, WhatsApp)</span>
+            <span>500+ tool integrations</span>
+            <span>Visual builder</span>
+            <span>Real-time monitoring dashboard</span>
+            <span>Auto-restart + health checks</span>
+            <span>Template updates</span>
+            <span>Priority email support</span>
           </div>
-          <p className="text-[12px] text-[var(--tx2)] mt-3">
+          <p className="text-[12px] text-[var(--tx2)] mt-4 pt-3 border-t border-[var(--bd)]">
             One Claw? $79/mo. Two? $158/mo. Three? $237/mo. Linear, predictable. 10+ Claws? Contact us.
           </p>
         </div>
@@ -82,12 +88,20 @@ export default function PricingPage() {
         {/* How pricing works */}
         <div className="border border-[var(--bd)] rounded-[12px] p-[14px] text-left mb-4">
           <h3 className="text-[13px] font-semibold text-[var(--tx)] mb-[6px]">How pricing works</h3>
-          <p className="text-[12px] text-[var(--tx2)] leading-relaxed">
-            <strong>1. Template purchase</strong> — $149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform.
-            {" "}<strong>2. Platform fee</strong> — $79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates.
-            {" "}<strong>3. AI model costs</strong> — You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30–90/mo.
-            {" "}<strong>4. 3-day free trial</strong> — Your first deploy includes a free trial. No platform fee until day 4.
-          </p>
+          <div className="text-[12px] text-[var(--tx2)] space-y-2.5">
+            <p>
+              <strong className="text-[var(--tx)]">1. Template purchase</strong> — $149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform.
+            </p>
+            <p>
+              <strong className="text-[var(--tx)]">2. Platform fee</strong> — $79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates.
+            </p>
+            <p>
+              <strong className="text-[var(--tx)]">3. AI model costs</strong> — You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30–90/mo.
+            </p>
+            <p>
+              <strong className="text-[var(--tx)]">4. 3-day free trial</strong> — Your first deploy includes a free trial. No platform fee until day 4.
+            </p>
+          </div>
         </div>
 
         {/* Footer */}
