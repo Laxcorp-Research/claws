@@ -5,7 +5,7 @@ import type { MarketplaceFilters } from "@/types/marketplace"
 
 interface UseMarketplaceOptions {
   type: "templates" | "skills"
-  section?: "official" | "trending" | "new"
+  section?: "official" | "trending" | "new" | "popular"
   initialLimit?: number
   enabled?: boolean
 }

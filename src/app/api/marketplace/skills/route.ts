@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
 
     if (section === "official") {
       where.trustTier = "OFFICIAL"
+    } else if (section === "popular") {
+      where.trustTier = { not: "OFFICIAL" }
     } else if (trustTier) {
       const tierHierarchy: Record<string, string[]> = {
         OFFICIAL: ["OFFICIAL"],

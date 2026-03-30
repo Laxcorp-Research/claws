@@ -49,6 +49,7 @@ function TemplateSection({
   loadMore,
   isLoadingMore,
   defaultCreatorName,
+  hideTrustBadge,
 }: {
   title: string
   badge?: React.ReactNode
@@ -60,6 +61,7 @@ function TemplateSection({
   loadMore: () => void
   isLoadingMore: boolean
   defaultCreatorName?: string
+  hideTrustBadge?: boolean
 }) {
   if (!isLoading && templates.length === 0 && !error && !emptyText) return null
 
@@ -80,6 +82,7 @@ function TemplateSection({
                 key={t.id}
                 claw={toClawCard(t)}
                 trustTier={t.trustTier}
+                hideTrustBadge={hideTrustBadge}
                 installCount={t.installCount}
                 avgRating={t.avgRating}
                 creatorName={defaultCreatorName ?? t.creator?.displayName ?? null}
@@ -203,7 +206,7 @@ function StoreContent() {
 
   const popularSkills = useMarketplace<MarketplaceSkill>(
     filters,
-    { type: "skills", initialLimit: 20, enabled: isSkillsTab }
+    { type: "skills", section: "popular", initialLimit: 20, enabled: isSkillsTab }
   )
 
   const handleTabChange = (tab: "templates" | "skills") => {
@@ -255,12 +258,12 @@ function StoreContent() {
 
         <MarketplaceTabs active={activeTab} onTabChange={handleTabChange} />
 
-        {/* Total count */}
-        {!isSearchActive && (
+        {/* Total count — only show after data loaded */}
+        {!isSearchActive && !(isTemplatesTab ? official.isLoading : officialSkills.isLoading) && (
           <p className="text-[11px] text-[var(--tx3)] -mt-2 mb-1">
             {isTemplatesTab
-              ? `${totalTemplateCount > 0 ? totalTemplateCount.toLocaleString() : "—"} templates`
-              : `${totalSkillCount > 0 ? totalSkillCount.toLocaleString() : "—"} skills`}
+              ? `${totalTemplateCount.toLocaleString()} templates`
+              : `${totalSkillCount.toLocaleString()} skills`}
           </p>
         )}
 
@@ -327,6 +330,7 @@ function StoreContent() {
                   loadMore={official.loadMore}
                   isLoadingMore={official.isLoadingMore}
                   defaultCreatorName="Claws Team"
+                  hideTrustBadge
                 />
 
                 {(trending.isLoading || trending.items.length > 0) && (
@@ -412,7 +416,7 @@ function StoreContent() {
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {displayedOfficialSkills.map((skill) => (
-                          <SkillCard key={skill.id} skill={skill} />
+                          <SkillCard key={skill.id} skill={skill} hideTrustBadge />
                         ))}
                       </div>
                       {!showAllOfficial && officialSkills.items.length > INITIAL_OFFICIAL_SKILLS && (

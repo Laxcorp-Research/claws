@@ -16,9 +16,10 @@ interface SkillCardProps {
     isFree: boolean
     price?: number | null
   }
+  hideTrustBadge?: boolean
 }
 
-export function SkillCard({ skill }: SkillCardProps) {
+export function SkillCard({ skill, hideTrustBadge }: SkillCardProps) {
   return (
     <Link
       href={`/store/skills/${skill.slug}`}
@@ -28,7 +29,7 @@ export function SkillCard({ skill }: SkillCardProps) {
         <span className="text-[13px] font-semibold text-[var(--tx)]">
           {skill.name}
         </span>
-        <TrustBadge tier={skill.trustTier} />
+        {!hideTrustBadge && <TrustBadge tier={skill.trustTier} />}
       </div>
 
       <p className="text-[11px] text-[var(--tx2)] mt-1 line-clamp-2">

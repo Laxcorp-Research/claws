@@ -19,13 +19,14 @@ interface ClawCardProps {
   claw: ClawCardData
   index?: number
   trustTier?: TrustTier
+  hideTrustBadge?: boolean
   installCount?: number
   avgRating?: number | null
   creatorName?: string | null
   creatorId?: string | null
 }
 
-export function ClawCard({ claw, index, trustTier, installCount, avgRating, creatorName }: ClawCardProps) {
+export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount, avgRating, creatorName }: ClawCardProps) {
   const workers = claw.agents.filter((a) => a.role !== "ORCHESTRATOR")
   const visibleAgents = workers.slice(0, MAX_VISIBLE_PILLS)
   const remainingCount = workers.length - MAX_VISIBLE_PILLS
@@ -41,7 +42,7 @@ export function ClawCard({ claw, index, trustTier, installCount, avgRating, crea
               )}
               {claw.name}
             </span>
-            {trustTier && <TrustBadge tier={trustTier} />}
+            {trustTier && !hideTrustBadge && <TrustBadge tier={trustTier} />}
           </div>
           <div className="text-right whitespace-nowrap ml-4 shrink-0">
             <span className="text-[13px] font-semibold text-[var(--tx)]">${claw.price}</span>
