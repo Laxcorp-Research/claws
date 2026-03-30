@@ -65,5 +65,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Audit reports
+audit-report-*.json
+
 # Sentry
 .sentryclirc
