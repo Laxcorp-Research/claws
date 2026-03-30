@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Check, ArrowRight } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 
 const TIERS = [
@@ -8,6 +9,7 @@ const TIERS = [
     count: "8 templates",
     subtitle: "Creator + Lifestyle",
     badge: { bg: "#EDFFF3", text: "#0D6B32", border: "#B8FFCF" },
+    browseLink: "/store?category=CREATOR",
   },
   {
     label: "Business",
@@ -15,6 +17,7 @@ const TIERS = [
     count: "11 templates",
     subtitle: "Business Ops + Vertical",
     badge: { bg: "#EEF5FF", text: "#1A5BBF", border: "#A8CFFF" },
+    browseLink: "/store?category=BUSINESS_OPS",
   },
   {
     label: "Premium",
@@ -22,8 +25,27 @@ const TIERS = [
     count: "1 template",
     subtitle: "Quant Trader",
     badge: { bg: "#FFF8E7", text: "#8A6D00", border: "#FFE9A0" },
+    browseLink: "/store/quant-trader",
   },
 ] as const
+
+const FEATURES = [
+  "Cloud hosting (2Gi RAM, managed)",
+  "All channels (Telegram, Slack, Discord, WhatsApp)",
+  "500+ tool integrations",
+  "Visual builder",
+  "Real-time monitoring dashboard",
+  "Auto-restart + health checks",
+  "Template updates",
+  "Priority email support",
+]
+
+const STEPS = [
+  { num: "1", label: "Template purchase", text: "$149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform." },
+  { num: "2", label: "Platform fee", text: "$79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates." },
+  { num: "3", label: "AI model costs", text: "You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30\u201390/mo." },
+  { num: "4", label: "3-day free trial", text: "Your first deploy includes a free trial. No platform fee until day 4." },
+]
 
 export default function PricingPage() {
   return (
@@ -35,24 +57,22 @@ export default function PricingPage() {
         </p>
 
         {/* Platform fee card */}
-        <div className="border-2 border-[var(--tx)] rounded-[12px] p-5 mb-4 text-center">
+        <div className="border-2 border-[var(--tx)] rounded-[12px] p-5 mb-5 text-center bg-gradient-to-b from-[var(--bg)] to-[var(--bg2)]">
           <p className="text-[11px] font-semibold tracking-widest uppercase text-[var(--tx3)] mb-1">
             Platform fee
           </p>
           <div className="text-[32px] font-bold text-[var(--tx)]">$79</div>
           <p className="text-[13px] text-[var(--tx2)]">per month, per running Claw</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-left text-[12px] text-[var(--tx2)] mt-4">
-            <span>Cloud hosting (2Gi RAM, managed)</span>
-            <span>All channels (Telegram, Slack, Discord, WhatsApp)</span>
-            <span>500+ tool integrations</span>
-            <span>Visual builder</span>
-            <span>Real-time monitoring dashboard</span>
-            <span>Auto-restart + health checks</span>
-            <span>Template updates</span>
-            <span>Priority email support</span>
+            {FEATURES.map((feature) => (
+              <span key={feature} className="flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-[var(--ok)] flex-shrink-0" />
+                {feature}
+              </span>
+            ))}
           </div>
           <p className="text-[12px] text-[var(--tx2)] mt-4 pt-3 border-t border-[var(--bd)]">
-            One Claw? $79/mo. Two? $158/mo. Three? $237/mo. Linear, predictable. 10+ Claws? Contact us.
+            One Claw is $79/mo. Two is $158/mo. Simple math, no volume tricks. Running 10+? Let&apos;s talk.
           </p>
         </div>
 
@@ -66,7 +86,7 @@ export default function PricingPage() {
           {TIERS.map((tier) => (
             <div
               key={tier.label}
-              className="border border-[var(--bd)] rounded-[var(--r)] p-[12px_14px] text-left"
+              className="border border-[var(--bd)] rounded-[var(--r)] p-[14px_16px] text-center"
             >
               <span
                 className="text-[11px] font-semibold py-[2px] px-[8px] rounded-[4px] inline-block border"
@@ -78,9 +98,15 @@ export default function PricingPage() {
               >
                 {tier.label}
               </span>
-              <div className="text-[22px] font-bold text-[var(--tx)] mt-[6px]">{tier.price}</div>
+              <div className="text-[22px] font-bold text-[var(--tx)] mt-2">{tier.price}</div>
               <p className="text-[11px] text-[var(--tx3)] mt-[2px]">{tier.count}</p>
-              <p className="text-[11px] text-[var(--tx2)] mt-[6px]">{tier.subtitle}</p>
+              <p className="text-[11px] text-[var(--tx2)] mt-[4px]">{tier.subtitle}</p>
+              <Link
+                href={tier.browseLink}
+                className="text-[11px] text-[var(--ac)] mt-3 inline-block hover:underline"
+              >
+                Browse templates →
+              </Link>
             </div>
           ))}
         </div>
@@ -88,29 +114,33 @@ export default function PricingPage() {
         {/* How pricing works */}
         <div className="border border-[var(--bd)] rounded-[12px] p-[14px] text-left mb-4">
           <h3 className="text-[13px] font-semibold text-[var(--tx)] mb-[6px]">How pricing works</h3>
-          <div className="text-[12px] text-[var(--tx2)] space-y-2.5">
-            <p>
-              <strong className="text-[var(--tx)]">1. Template purchase</strong> — $149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform.
-            </p>
-            <p>
-              <strong className="text-[var(--tx)]">2. Platform fee</strong> — $79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates.
-            </p>
-            <p>
-              <strong className="text-[var(--tx)]">3. AI model costs</strong> — You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30–90/mo.
-            </p>
-            <p>
-              <strong className="text-[var(--tx)]">4. 3-day free trial</strong> — Your first deploy includes a free trial. No platform fee until day 4.
-            </p>
+          <div className="text-[12px] text-[var(--tx2)] space-y-3">
+            {STEPS.map((step) => (
+              <div key={step.num} className="flex gap-3 items-start">
+                <span className="flex-shrink-0 w-[22px] h-[22px] rounded-full bg-[var(--bg2)] border border-[var(--bd)] flex items-center justify-center text-[11px] font-semibold text-[var(--tx)]">
+                  {step.num}
+                </span>
+                <p>
+                  <strong className="text-[var(--tx)]">{step.label}</strong> — {step.text}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="text-[12px] text-[var(--tx2)]">
-          3-day free trial on your first deploy. No platform fee charged until day 4.
-        </p>
-        <Link href="/store" className="text-[13px] text-[var(--ac)] hover:underline mt-2 inline-block">
-          Browse templates →
-        </Link>
+        {/* CTA */}
+        <div className="mt-5 flex flex-col items-center gap-2">
+          <Link
+            href="/store"
+            className="inline-flex items-center gap-2 bg-[var(--tx)] text-white px-6 py-2.5 rounded-[8px] text-[13px] font-medium hover:opacity-90 transition-opacity"
+          >
+            Browse templates
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+          <p className="text-[11px] text-[var(--tx3)]">
+            No credit card required to browse. 3-day free trial on first deploy.
+          </p>
+        </div>
       </div>
     </PageShell>
   )
