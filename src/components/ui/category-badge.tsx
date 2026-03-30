@@ -16,7 +16,7 @@ export function CategoryBadge({ category }: CategoryBadgeProps) {
   const s = styles[category];
   return (
     <span
-      className="inline-block text-[11px] font-semibold tracking-[0.5px] uppercase py-[3px] px-3 rounded-lg mb-1.5"
+      className="inline-flex items-center text-[10px] font-semibold tracking-[0.5px] uppercase py-[2px] px-2 rounded-[4px] leading-tight"
       style={{ background: s.bg, color: s.text, border: `1px solid ${s.border}` }}
     >
       {s.label}

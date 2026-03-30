@@ -8,7 +8,7 @@ import { PrismaClient } from "../src/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { ALL_TEMPLATES } from "./seed-data"
 import { ALL_SKILLS } from "./seed-data/skills-index"
-import { MARKETPLACE_SKILLS_CATALOG, generateSkillMd, installCountForSlug } from "./seed-data/marketplace-skills"
+import { MARKETPLACE_SKILLS_CATALOG, generateSkillMd } from "./seed-data/marketplace-skills"
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" })
 const prisma = new PrismaClient({ adapter })
@@ -112,13 +112,13 @@ async function main() {
         trustTier: skill.trustTier,
         reviewStatus: "APPROVED",
         isPublished: true,
-        isFree: skill.isFree,
-        price: skill.price,
+        isFree: true,
+        price: null,
         autoScanPassed: true,
         autoScanReport: JSON.stringify({ findings: [], passed: true }),
         publishedAt: new Date(),
         creatorId: null,
-        installCount: installCountForSlug(skill.slug),
+        installCount: 0,
       },
     })
     console.log(`  ✅ MktSkill: ${skill.name}`)
