@@ -92,14 +92,32 @@ async function main() {
 
   console.log(`  Seeded ${ALL_SKILLS.length} skills\n`)
 
-  await prisma.skillReview.deleteMany()
-  await prisma.skillInstall.deleteMany()
-  await prisma.marketplaceSkill.deleteMany()
-  console.log("  Cleared existing marketplace skills")
+  const seedSlugs = MARKETPLACE_SKILLS_CATALOG.map(s => s.slug)
+  await prisma.skillReview.deleteMany({ where: { skill: { slug: { in: seedSlugs } } } })
+  await prisma.skillInstall.deleteMany({ where: { skill: { slug: { in: seedSlugs } } } })
+  await prisma.marketplaceSkill.deleteMany({ where: { slug: { in: seedSlugs } } })
+  console.log(`  Cleared ${seedSlugs.length} seed marketplace skills (preserved ClawHub)`)
 
   for (const skill of MARKETPLACE_SKILLS_CATALOG) {
-    await prisma.marketplaceSkill.create({
-      data: {
+    await prisma.marketplaceSkill.upsert({
+      where: { slug: skill.slug },
+      update: {
+        name: skill.name,
+        description: skill.description,
+        category: skill.category,
+        tags: skill.tags,
+        emoji: skill.emoji,
+        skillMd: generateSkillMd(skill),
+        requiredBins: skill.requiredBins,
+        requiredEnvVars: skill.requiredEnvVars,
+        trustTier: skill.trustTier,
+        reviewStatus: "APPROVED",
+        isPublished: true,
+        isFree: true,
+        price: null,
+        installCount: 0,
+      },
+      create: {
         slug: skill.slug,
         name: skill.name,
         description: skill.description,
