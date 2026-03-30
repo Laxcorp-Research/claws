@@ -258,12 +258,16 @@ function StoreContent() {
 
         <MarketplaceTabs active={activeTab} onTabChange={handleTabChange} />
 
-        {/* Total count — only show after data loaded */}
-        {!isSearchActive && !(isTemplatesTab ? official.isLoading : officialSkills.isLoading) && (
-          <p className="text-[11px] text-[var(--tx3)] -mt-2 mb-1">
-            {isTemplatesTab
-              ? `${totalTemplateCount.toLocaleString()} templates`
-              : `${totalSkillCount.toLocaleString()} skills`}
+        {/* Total count — always rendered to prevent layout shift */}
+        {!isSearchActive && (
+          <p className="text-[11px] text-[var(--tx3)] -mt-2 mb-1 h-[16px]">
+            {(isTemplatesTab ? official.isLoading : officialSkills.isLoading) ? (
+              <span className="inline-block w-[80px] h-[12px] bg-[var(--bg3)] rounded animate-pulse" />
+            ) : (
+              isTemplatesTab
+                ? `${totalTemplateCount.toLocaleString()} templates`
+                : `${totalSkillCount.toLocaleString()} skills`
+            )}
           </p>
         )}
 
