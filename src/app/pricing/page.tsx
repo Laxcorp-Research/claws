@@ -1,149 +1,102 @@
-"use client"
-
-import { useState } from "react"
+import Link from "next/link"
 import { PageShell } from "@/components/shared/page-shell"
-import { PricingCard } from "@/components/pricing/plan-card"
 
-const STANDARD_TEMPLATES = [
-  "YouTube Channel OS",
-  "Twitter/X Growth Machine",
-  "Newsletter Empire",
-  "Podcast Production Studio",
-  "Health & Fitness Commander",
-  "Student Accelerator",
-  "Job Hunter OS",
-  "Developer Productivity OS",
-]
-
-const BUSINESS_TEMPLATES = [
-  "B2B Sales Machine",
-  "Agency Operations OS",
-  "Founder's Chief of Staff",
-  "SEO Empire Builder",
-  "Real Estate Agent OS",
-  "Recruiter OS",
-  "Medical Practice Manager",
-  "Law Firm Intake OS",
-  "Home Services Dispatcher",
-  "Freelancer Revenue Engine",
-  "E-Commerce Profit Maximizer",
-]
-
-const PREMIUM_TEMPLATES = [
-  "Quant Trader — multi-market trading intelligence",
-]
-
-const PLATFORM_FEATURES = [
-  "Cloud deployment (2Gi RAM, managed container)",
-  "All channels (Telegram, Discord, Slack, WhatsApp, Web)",
-  "500+ tool integrations",
-  "Visual builder",
-  "Real-time monitoring dashboard",
-  "Auto-restart + health checks",
-  "Priority email support",
-]
-
-const FAQ_ITEMS = [
-  { q: "Do I need my own API keys?", a: "Yes, you bring your own Anthropic/OpenAI keys. You control your costs directly with the provider." },
-  { q: "Can I run multiple Claws?", a: "Yes, each running Claw is $79/mo. Paused Claws don't cost anything." },
-  { q: "What's the free trial?", a: "3 days free on your first Claw. Full access, no restrictions." },
-  { q: "Can I customize my Claw?", a: "Yes, the visual builder lets you edit agents, tools, and workflows after purchase." },
-  { q: "What if I want a refund?", a: "7-day refund policy on all template purchases. No questions asked." },
-]
+const TIERS = [
+  {
+    label: "Standard",
+    price: "$149",
+    count: "8 templates",
+    subtitle: "Creator + Lifestyle",
+    badge: { bg: "#EDFFF3", text: "#0D6B32", border: "#B8FFCF" },
+  },
+  {
+    label: "Business",
+    price: "$199",
+    count: "11 templates",
+    subtitle: "Business Ops + Vertical",
+    badge: { bg: "#EEF5FF", text: "#1A5BBF", border: "#A8CFFF" },
+  },
+  {
+    label: "Premium",
+    price: "$299",
+    count: "1 template",
+    subtitle: "Quant Trader",
+    badge: { bg: "#FFF8E7", text: "#8A6D00", border: "#FFE9A0" },
+  },
+] as const
 
 export default function PricingPage() {
-  const [openFaq, setOpenFaq] = useState<number | null>(null)
-
   return (
     <PageShell background="primary">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="text-center mb-6">
-          <h1 className="text-xl font-semibold text-[var(--tx)]">Simple, transparent pricing</h1>
-          <p className="text-[13px] text-[var(--tx2)] mt-1">
-            Buy a Claw. Deploy it. Pay only for what's running.
+      <div className="max-w-4xl mx-auto px-4 py-6 text-center">
+        <h1 className="text-[20px] font-semibold text-[var(--tx)] mb-1">Simple pricing</h1>
+        <p className="text-[13px] text-[var(--tx2)] mb-5">
+          Buy a template. Pay monthly to run it. No tiers.
+        </p>
+
+        {/* Platform fee card */}
+        <div className="border-2 border-[var(--tx)] rounded-[12px] p-5 mb-4 text-center">
+          <p className="text-[11px] font-semibold tracking-widest uppercase text-[var(--tx3)] mb-1">
+            Platform fee
+          </p>
+          <div className="text-[32px] font-bold text-[var(--tx)]">$79</div>
+          <p className="text-[13px] text-[var(--tx2)]">per month, per running Claw</p>
+          <div className="text-left text-[12px] text-[var(--tx2)] mt-3 leading-relaxed">
+            Everything included: cloud hosting, all channels, 500+ tool integrations,
+            visual builder, real-time monitoring, auto-restart, template updates, priority support
+          </div>
+          <p className="text-[12px] text-[var(--tx2)] mt-3">
+            One Claw? $79/mo. Two? $158/mo. Three? $237/mo. Linear, predictable. 10+ Claws? Contact us.
           </p>
         </div>
 
-        <div className="border border-[var(--bd)] rounded-xl p-4 mb-6">
-          <h2 className="text-[14px] font-semibold text-[var(--tx)] mb-3 text-center">How Claws works</h2>
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div>
-              <div className="text-[22px] font-semibold text-[var(--tx)]">1</div>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">Pick a Claw from the store ($149–$299, one-time)</p>
+        {/* Template tier label */}
+        <p className="text-[11px] font-semibold tracking-widest uppercase text-[var(--tx3)] mb-2 text-left">
+          Templates — one-time purchase, yours forever
+        </p>
+
+        {/* Template tier cards */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          {TIERS.map((tier) => (
+            <div
+              key={tier.label}
+              className="border border-[var(--bd)] rounded-[var(--r)] p-[12px_14px] text-left"
+            >
+              <span
+                className="text-[11px] font-semibold py-[2px] px-[8px] rounded-[4px] inline-block border"
+                style={{
+                  backgroundColor: tier.badge.bg,
+                  color: tier.badge.text,
+                  borderColor: tier.badge.border,
+                }}
+              >
+                {tier.label}
+              </span>
+              <div className="text-[22px] font-bold text-[var(--tx)] mt-[6px]">{tier.price}</div>
+              <p className="text-[11px] text-[var(--tx3)] mt-[2px]">{tier.count}</p>
+              <p className="text-[11px] text-[var(--tx2)] mt-[6px]">{tier.subtitle}</p>
             </div>
-            <div>
-              <div className="text-[22px] font-semibold text-[var(--tx)]">2</div>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">Set up your AI keys and tools (you own your API keys)</p>
-            </div>
-            <div>
-              <div className="text-[22px] font-semibold text-[var(--tx)]">3</div>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">Deploy and run ($79/mo per running Claw — everything included)</p>
-            </div>
-          </div>
+          ))}
         </div>
 
-        <h2 className="text-[14px] font-semibold text-[var(--tx)] mb-3 text-center">Template pricing</h2>
-        <div className="grid grid-cols-3 gap-3.5 mb-6">
-          <PricingCard
-            tier="Standard"
-            price={149}
-            tagline="Perfect for creators and personal productivity"
-            templates={STANDARD_TEMPLATES}
-          />
-          <PricingCard
-            tier="Business"
-            price={199}
-            tagline="Built for revenue and operations"
-            templates={BUSINESS_TEMPLATES}
-            featured
-          />
-          <PricingCard
-            tier="Premium"
-            price={299}
-            tagline="Advanced multi-market trading intelligence"
-            templates={PREMIUM_TEMPLATES}
-          />
+        {/* How pricing works */}
+        <div className="border border-[var(--bd)] rounded-[12px] p-[14px] text-left mb-4">
+          <h3 className="text-[13px] font-semibold text-[var(--tx)] mb-[6px]">How pricing works</h3>
+          <p className="text-[12px] text-[var(--tx2)] leading-relaxed">
+            <strong>1. Template purchase</strong> — $149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform.
+            {" "}<strong>2. Platform fee</strong> — $79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates.
+            {" "}<strong>3. AI model costs</strong> — You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30–90/mo.
+            {" "}<strong>4. 3-day free trial</strong> — Your first deploy includes a free trial. No platform fee until day 4.
+          </p>
         </div>
 
-        <div className="border border-[var(--bd)] rounded-xl p-4 mb-6">
-          <div className="text-center mb-3">
-            <h2 className="text-[14px] font-semibold text-[var(--tx)]">$79/month per running Claw</h2>
-            <p className="text-[11px] text-[var(--tx3)]">Everything included. No hidden fees.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 max-w-md mx-auto">
-            {PLATFORM_FEATURES.map((feature) => (
-              <p key={feature} className="text-[12px] text-[var(--tx2)]">
-                {feature}
-              </p>
-            ))}
-          </div>
-          <div className="text-center mt-3 space-y-1">
-            <p className="text-[12px] font-medium text-[var(--ac)]">3-day free trial on your first Claw</p>
-            <p className="text-[11px] text-[var(--tx3)]">Pause or cancel anytime — only pay for running Claws</p>
-          </div>
-        </div>
-
-        <div className="border border-[var(--bd)] rounded-xl p-4 mb-4">
-          <h2 className="text-[14px] font-semibold text-[var(--tx)] mb-3 text-center">Frequently asked questions</h2>
-          <div className="divide-y divide-[var(--bd)]">
-            {FAQ_ITEMS.map((item, i) => (
-              <div key={i} className="py-2.5">
-                <button
-                  className="w-full text-left flex justify-between items-center"
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                >
-                  <span className="text-[13px] font-medium text-[var(--tx)]">{item.q}</span>
-                  <span className="text-[var(--tx3)] text-xs ml-2">{openFaq === i ? "−" : "+"}</span>
-                </button>
-                {openFaq === i && (
-                  <p className="text-[12px] text-[var(--tx2)] mt-1.5">{item.a}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-xs text-[var(--tx3)] text-center">7-day money-back guarantee on all purchases.</p>
+        {/* Footer */}
+        <p className="text-[12px] text-[var(--tx2)]">
+          3-day free trial on your first deploy. No platform fee charged until day 4.
+        </p>
+        <Link href="/store" className="text-[13px] text-[var(--ac)] hover:underline mt-2 inline-block">
+          Browse templates →
+        </Link>
       </div>
     </PageShell>
   )
