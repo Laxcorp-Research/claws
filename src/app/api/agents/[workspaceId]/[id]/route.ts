@@ -27,6 +27,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ wo
   }
 
   const agent = await prisma.agent.update({ where: { id }, data: updates })
+
+  if (Array.isArray(body.skillIds)) {
+    await prisma.agentSkill.deleteMany({ where: { agentId: id } })
+    if (body.skillIds.length > 0) {
+      await prisma.agentSkill.createMany({
+        data: (body.skillIds as string[]).map((skillId: string) => ({ agentId: id, skillId })),
+        skipDuplicates: true,
+      })
+    }
+  }
+
   return apiSuccess(agent)
 }
 

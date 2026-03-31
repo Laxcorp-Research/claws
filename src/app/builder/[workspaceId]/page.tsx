@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { Modal } from "@/components/ui/modal"
 import { AgentCanvas } from "@/components/builder/agent-canvas"
 import { AgentSidebar } from "@/components/builder/agent-sidebar"
 import { PropertiesPanel } from "@/components/builder/properties-panel"
@@ -11,15 +12,18 @@ import { HeartbeatConfig } from "@/components/builder/heartbeat-config"
 import { VersionHistoryPanel } from "@/components/builder/version-history-panel"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useBuilderStore } from "@/stores/builder-store"
-import { Loader2, Send } from "lucide-react"
+import { Loader2, Send, Save, Check, ArrowLeft } from "lucide-react"
 
 export default function BuilderPage() {
   const params = useParams()
   const router = useRouter()
   const workspaceId = params.workspaceId as string
-  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading } = useBuilderStore()
+  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, saveWorkspace } = useBuilderStore()
   const [showHistory, setShowHistory] = useState(false)
   const [localName, setLocalName] = useState(workspaceName)
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)
 
   useEffect(() => {
     loadWorkspace(workspaceId)
@@ -28,6 +32,17 @@ export default function BuilderPage() {
   useEffect(() => {
     setLocalName(workspaceName)
   }, [workspaceName])
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (useBuilderStore.getState().isDirty) {
+        e.preventDefault()
+        e.returnValue = ""
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+  }, [])
 
   const handleNameSave = async () => {
     if (localName === workspaceName || !localName.trim()) return
@@ -41,6 +56,24 @@ export default function BuilderPage() {
     } catch (err) {
       console.error("Failed to save workspace name:", err)
     }
+  }
+
+  const handleSave = useCallback(async () => {
+    await saveWorkspace()
+    setHistoryRefreshKey(prev => prev + 1)
+  }, [saveWorkspace])
+
+  function handleNavigate(path: string) {
+    if (useBuilderStore.getState().isDirty) {
+      setPendingNavigation(path)
+      setShowUnsavedDialog(true)
+    } else {
+      router.push(path)
+    }
+  }
+
+  function handleBack() {
+    handleNavigate("/my-claws")
   }
 
   return (
@@ -59,23 +92,49 @@ export default function BuilderPage() {
             className="text-sm font-semibold bg-transparent border border-transparent hover:border-[var(--bd)] focus:border-[var(--tx)] rounded-[6px] px-2 py-[3px] outline-none text-[var(--tx)] w-[200px]"
           />
           <StatusBadge status={workspaceStatus === "RUNNING" ? "running" : workspaceStatus === "DRAFT" ? "draft" : "setup"} />
-          {isSaving && <span className="text-[10px] text-[var(--tx3)]">Saving...</span>}
-          {!isSaving && isDirty && <span className="text-[10px] text-[var(--tx3)]">Unsaved changes</span>}
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-[6px]">
+          <Button
+            size="sm"
+            variant={isDirty ? "primary" : "outline"}
+            onClick={handleSave}
+            disabled={!isDirty || isSaving}
+            className={`text-[10px] ${!isDirty ? "opacity-50" : ""}`}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-[14px] h-[14px] animate-spin mr-[4px]" />
+                Saving...
+              </>
+            ) : isDirty ? (
+              <>
+                <Save className="w-[14px] h-[14px] mr-[4px]" />
+                Save
+              </>
+            ) : (
+              <>
+                <Check className="w-[14px] h-[14px] mr-[4px]" />
+                Saved
+              </>
+            )}
+          </Button>
+          <Button variant="ghost" size="sm" className="text-[10px]" onClick={handleBack}>
+            <ArrowLeft className="w-[14px] h-[14px] mr-[4px]" />
+            My Claws
+          </Button>
           <Button variant="ghost" size="sm" className="text-[10px]" onClick={() => setShowHistory(!showHistory)}>
             History
           </Button>
-          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/2`)}>
             Manage Tools
           </Button>
-          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => router.push(`/dashboard/${workspaceId}`)}>
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/dashboard/${workspaceId}`)}>
             Dashboard
           </Button>
-          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => router.push(`/publish/template?workspaceId=${workspaceId}`)}>
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/publish/template?workspaceId=${workspaceId}`)}>
             <Send size={10} className="mr-1" aria-hidden="true" /> Publish
           </Button>
-          <Button variant="primary" size="sm" className="text-[10px]" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>
+          <Button variant="primary" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/3`)}>
             Deploy
           </Button>
         </div>
@@ -105,11 +164,49 @@ export default function BuilderPage() {
           <div className="relative bg-[var(--bg2)] border border-dashed border-[var(--bd)] rounded-lg overflow-hidden">
             <AgentCanvas />
             <HeartbeatConfig />
-            <VersionHistoryPanel open={showHistory} onClose={() => setShowHistory(false)} />
+            <VersionHistoryPanel open={showHistory} onClose={() => setShowHistory(false)} refreshKey={historyRefreshKey} />
           </div>
           <PropertiesPanel />
         </div>
       )}
+
+      {/* Unsaved changes dialog */}
+      <Modal
+        open={showUnsavedDialog}
+        onClose={() => setShowUnsavedDialog(false)}
+        title="Unsaved changes"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setShowUnsavedDialog(false)
+                if (pendingNavigation) router.push(pendingNavigation)
+              }}
+            >
+              Discard
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={isSaving}
+              onClick={async () => {
+                await handleSave()
+                setShowUnsavedDialog(false)
+                if (pendingNavigation) router.push(pendingNavigation)
+              }}
+            >
+              Save & leave
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-[var(--tx2)]">
+          You have unsaved changes. Do you want to save before leaving?
+        </p>
+      </Modal>
     </div>
   )
 }
