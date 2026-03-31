@@ -21,6 +21,7 @@ const protectedPaths = [
   "/settings",
   "/onboarding",
   "/publish",
+  "/admin",
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -185,5 +186,6 @@ export const config = {
     "/settings/:path*",
     "/onboarding/:path*",
     "/publish/:path*",
+    "/admin/:path*",
   ],
 };

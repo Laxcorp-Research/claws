@@ -29,6 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
       startedAt: deployment.startedAt,
       completedAt: deployment.completedAt,
       containerId: deployment.containerId,
+      containerImage: deployment.containerImage,
     },
   })
 }

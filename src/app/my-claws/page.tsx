@@ -56,6 +56,32 @@ export default function MyClawsPage() {
   const [activeFilter, setActiveFilter] = useState("All")
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
+
+  async function handleCreateCustomClaw() {
+    if (isCreating) return
+    setIsCreating(true)
+    try {
+      const res = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "My Custom Claw" }),
+      })
+      if (!res.ok) {
+        const json = await res.json()
+        throw new Error(json?.error?.message || "Failed to create workspace")
+      }
+      const data = await res.json()
+      const workspaceId = data.data?.id || data.id
+      if (workspaceId) {
+        router.push(`/builder/${workspaceId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create custom Claw:", err)
+    } finally {
+      setIsCreating(false)
+    }
+  }
 
   const fetchWorkspaces = useCallback(async () => {
     setError(null)
@@ -97,7 +123,9 @@ export default function MyClawsPage() {
               <Link href="/store">
                 <Button variant="outline">Browse store</Button>
               </Link>
-              <Button variant="primary" onClick={() => router.push("/my-claws?create=true")}>+ Create custom Claw</Button>
+              <Button variant="primary" loading={isCreating} onClick={handleCreateCustomClaw}>
+                {isCreating ? "Creating..." : "+ Create custom Claw"}
+              </Button>
             </>
           }
         />
@@ -129,7 +157,9 @@ export default function MyClawsPage() {
             actions={
               <>
                 <Link href="/store"><Button variant="primary">Browse the store</Button></Link>
-                <Button variant="outline" onClick={() => router.push("/my-claws?create=true")}>Create custom Claw</Button>
+                <Button variant="outline" loading={isCreating} onClick={handleCreateCustomClaw}>
+                  {isCreating ? "Creating..." : "Create custom Claw"}
+                </Button>
               </>
             }
           />

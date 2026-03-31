@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { useState, useRef, useEffect, useCallback } from "react"
+import { User, Key, CreditCard, Lock, Store, Upload, Wrench, Shield, LogOut, type LucideIcon } from "lucide-react"
 
 interface NavItem {
   label: string
@@ -28,10 +29,26 @@ export function TopBar() {
   const { data: session } = useSession()
   const pathname = usePathname()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const menuItemsRef = useRef<HTMLElement[]>([])
 
-  const navItems = session ? authNavItems : publicNavItems
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    fetch("/api/admin/check")
+      .then(res => res.json())
+      .then(json => {
+        if (!cancelled && json.data?.isAdmin) setIsAdmin(true)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [session])
+
+  const baseNavItems = session ? authNavItems : publicNavItems
+  const navItems = isAdmin
+    ? [...baseNavItems, { label: "Admin", href: "/admin/reviews" }]
+    : baseNavItems
 
   const closeDropdown = useCallback(() => setDropdownOpen(false), [])
 
@@ -65,8 +82,27 @@ export function TopBar() {
     }
   }
 
-  const setMenuItemRef = (index: number) => (el: HTMLAnchorElement | HTMLButtonElement | null) => {
-    if (el) menuItemsRef.current[index] = el
+  let menuIdx = 0
+  const nextMenuRef = () => {
+    const idx = menuIdx++
+    return (el: HTMLAnchorElement | HTMLButtonElement | null) => {
+      if (el) menuItemsRef.current[idx] = el
+    }
+  }
+
+  function DropdownLink({ href, icon: Icon, label }: { href: string; icon: LucideIcon; label: string }) {
+    return (
+      <Link
+        ref={nextMenuRef()}
+        href={href}
+        role="menuitem"
+        className="flex items-center gap-[8px] px-3 py-1.5 text-[12px] text-[var(--tx2)] hover:bg-[var(--bg2)] transition-colors"
+        onClick={closeDropdown}
+      >
+        <Icon className="w-[14px] h-[14px] flex-shrink-0" />
+        {label}
+      </Link>
+    )
   }
 
   return (
@@ -110,7 +146,7 @@ export function TopBar() {
       {session ? (
         <div className="relative" ref={dropdownRef}>
           <button
-            onClick={() => setDropdownOpen(!dropdownOpen)}
+            onClick={() => { setDropdownOpen(!dropdownOpen); menuIdx = 0 }}
             className="w-7 h-7 rounded-full bg-[var(--tx)] text-white text-[11px] font-semibold flex items-center justify-center"
             aria-label="User menu"
             aria-expanded={dropdownOpen}
@@ -120,7 +156,7 @@ export function TopBar() {
           </button>
           {dropdownOpen && (
             <div
-              className="absolute right-0 top-full mt-1.5 w-48 bg-[var(--bg)] border border-[var(--bd)] rounded-lg shadow-modal py-1 z-50"
+              className="absolute right-0 top-full mt-1.5 w-52 bg-[var(--bg)] border border-[var(--bd)] rounded-lg shadow-modal py-1 z-50"
               role="menu"
               aria-label="User options"
               onKeyDown={handleDropdownKeyDown}
@@ -129,27 +165,38 @@ export function TopBar() {
                 <p className="text-[12px] font-medium truncate">{session.user?.name || "User"}</p>
                 <p className="text-[10px] text-[var(--tx2)] truncate mt-0.5">{session.user?.email}</p>
               </div>
+
               <div className="py-1">
-                <Link ref={setMenuItemRef(0)} href="/settings?tab=account" role="menuitem" className="block px-3 py-1.5 text-[12px] text-[var(--tx2)] hover:bg-[var(--bg2)] transition-colors" onClick={closeDropdown}>
-                  Account
-                </Link>
-                <Link ref={setMenuItemRef(1)} href="/settings?tab=api-keys" role="menuitem" className="block px-3 py-1.5 text-[12px] text-[var(--tx2)] hover:bg-[var(--bg2)] transition-colors" onClick={closeDropdown}>
-                  API Keys
-                </Link>
-                <Link ref={setMenuItemRef(2)} href="/settings?tab=billing" role="menuitem" className="block px-3 py-1.5 text-[12px] text-[var(--tx2)] hover:bg-[var(--bg2)] transition-colors" onClick={closeDropdown}>
-                  Billing
-                </Link>
-                <Link ref={setMenuItemRef(3)} href="/settings?tab=security" role="menuitem" className="block px-3 py-1.5 text-[12px] text-[var(--tx2)] hover:bg-[var(--bg2)] transition-colors" onClick={closeDropdown}>
-                  Security
-                </Link>
+                <DropdownLink href="/settings?tab=account" icon={User} label="Account" />
+                <DropdownLink href="/settings?tab=api-keys" icon={Key} label="API Keys" />
+                <DropdownLink href="/settings?tab=billing" icon={CreditCard} label="Billing" />
+                <DropdownLink href="/settings?tab=security" icon={Lock} label="Security" />
               </div>
+
+              <div className="border-t border-[var(--bd)] my-[4px]" />
+              <div className="py-[2px]">
+                <DropdownLink href="/settings?tab=creator" icon={Store} label="Creator Dashboard" />
+                <DropdownLink href="/publish/template" icon={Upload} label="Publish Template" />
+                <DropdownLink href="/publish/skill" icon={Wrench} label="Publish Skill" />
+              </div>
+
+              {isAdmin && (
+                <>
+                  <div className="border-t border-[var(--bd)] my-[4px]" />
+                  <div className="py-[2px]">
+                    <DropdownLink href="/admin/reviews" icon={Shield} label="Admin" />
+                  </div>
+                </>
+              )}
+
               <div className="border-t border-[var(--bd)] pt-1">
                 <button
-                  ref={setMenuItemRef(4)}
+                  ref={nextMenuRef()}
                   onClick={() => signOut()}
                   role="menuitem"
-                  className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--err)] hover:bg-[var(--bg2)] transition-colors"
+                  className="w-full text-left flex items-center gap-[8px] px-3 py-1.5 text-[12px] text-[var(--err)] hover:bg-[var(--bg2)] transition-colors"
                 >
+                  <LogOut className="w-[14px] h-[14px] flex-shrink-0" />
                   Sign out
                 </button>
               </div>

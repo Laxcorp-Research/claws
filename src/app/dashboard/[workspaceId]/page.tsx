@@ -12,6 +12,7 @@ import { ActivityFeed } from "@/components/dashboard/activity-feed"
 import { AgentStatusList } from "@/components/dashboard/agent-status-list"
 import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
 import { PendingApprovals } from "@/components/dashboard/pending-approvals"
+import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 
 interface DashboardStats {
   agentsRunning: number
@@ -161,6 +162,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [trialInfo, setTrialInfo] = useState<{ trialUsed: boolean; trialEndsAt: string | null; hasActiveSubscription: boolean } | null>(null)
   const [agentActionLoadingId, setAgentActionLoadingId] = useState<string | null>(null)
+  const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
@@ -193,8 +195,20 @@ export default function DashboardPage() {
     }
   }, [workspaceId, router])
 
+  const fetchDeploymentImage = useCallback(() => {
+    fetch(`/api/deploy/${workspaceId}/status`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data?.deployment?.containerImage) {
+          setDeploymentImage(json.data.deployment.containerImage)
+        }
+      })
+      .catch(() => {})
+  }, [workspaceId])
+
   useEffect(() => {
     fetchStats()
+    fetchDeploymentImage()
     fetch("/api/user/billing")
       .then((r) => r.json())
       .then((json) => {
@@ -209,7 +223,7 @@ export default function DashboardPage() {
       .catch(() => {})
     const interval = setInterval(fetchStats, STATS_POLL_MS)
     return () => clearInterval(interval)
-  }, [fetchStats])
+  }, [fetchStats, fetchDeploymentImage])
 
   useEffect(() => {
     const es = new EventSource(`/api/activity/${workspaceId}/stream`)
@@ -522,6 +536,14 @@ export default function DashboardPage() {
             </AlertBanner>
           ))}
         </div>
+      )}
+
+      {deploymentImage && (
+        <VersionUpdateBanner
+          workspaceId={workspaceId}
+          currentImage={deploymentImage}
+          onUpdated={() => { fetchStats(); fetchDeploymentImage() }}
+        />
       )}
 
       {stats && (

@@ -481,9 +481,10 @@ model ClawTemplate {
   creator     CreatorProfile? @relation(fields: [creatorId], references: [id])
 
   trustTier    TrustTier    @default(UNREVIEWED)
-  reviewStatus ReviewStatus @default(PENDING)
-  reviewedAt   DateTime?
-  reviewNotes  String?
+  reviewStatus    ReviewStatus @default(PENDING)
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  rejectionReason String?
 
   version            Int     @default(1)
   minOpenClawVersion String?
@@ -831,10 +832,11 @@ model MarketplaceSkill {
   creatorId    String?
   creator      CreatorProfile? @relation(fields: [creatorId], references: [id])
 
-  trustTier    TrustTier    @default(UNREVIEWED)
-  reviewStatus ReviewStatus @default(PENDING)
-  reviewedAt   DateTime?
-  reviewNotes  String?
+  trustTier       TrustTier    @default(UNREVIEWED)
+  reviewStatus    ReviewStatus @default(PENDING)
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  rejectionReason String?
 
   autoScanPassed   Boolean?
   autoScanReport   String?  @db.Text
