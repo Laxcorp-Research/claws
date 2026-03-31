@@ -4,8 +4,10 @@ import { cn } from "@/lib/utils"
 import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
 import { MarkdownEditor } from "./markdown-editor"
 import { SkillPicker } from "./skill-picker"
-
+import { CustomSelect } from "./custom-select"
 import { AI_MODELS } from "@/lib/models"
+
+const MODEL_OPTIONS = AI_MODELS.map(m => ({ value: m.value, label: m.label }))
 
 export function PropertiesPanel() {
   const { nodes, selectedAgentId, updateAgentProperty, deleteAgent } = useBuilderStore()
@@ -26,6 +28,11 @@ export function PropertiesPanel() {
   const isCritic = agent.role === "CRITIC"
   const canDelete = !isOrch && !isCritic
   const otherAgents = nodes.filter((n) => n.id !== selectedAgentId)
+
+  const agentOptions = [
+    { value: "", label: "None" },
+    ...otherAgents.map((n) => ({ value: n.id, label: (n.data as AgentNodeData).name })),
+  ]
 
   return (
     <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
@@ -60,15 +67,11 @@ export function PropertiesPanel() {
       {/* Model */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Model</label>
-        <select
+        <CustomSelect
           value={agent.model}
-          onChange={(e) => updateAgentProperty(selectedAgentId!, "model", e.target.value)}
-          className="w-full px-2 py-[5px] border border-[var(--bd)] rounded-[6px] text-[10px] bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]"
-        >
-          {AI_MODELS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+          onChange={(val) => updateAgentProperty(selectedAgentId!, "model", val)}
+          options={MODEL_OPTIONS}
+        />
       </div>
 
       {/* SOUL.md */}
@@ -93,31 +96,21 @@ export function PropertiesPanel() {
       {/* Reports To */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Reports to</label>
-        <select
+        <CustomSelect
           value={agent.reportsTo || ""}
-          onChange={(e) => updateAgentProperty(selectedAgentId!, "reportsTo", e.target.value)}
-          className="w-full px-2 py-[5px] border border-[var(--bd)] rounded-[6px] text-[10px] bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]"
-        >
-          <option value="">None</option>
-          {otherAgents.map((n) => (
-            <option key={n.id} value={n.id}>{(n.data as AgentNodeData).name}</option>
-          ))}
-        </select>
+          onChange={(val) => updateAgentProperty(selectedAgentId!, "reportsTo", val || undefined)}
+          options={agentOptions}
+        />
       </div>
 
       {/* Outputs To */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Outputs to</label>
-        <select
+        <CustomSelect
           value={(agent.outputsTo as string) || ""}
-          onChange={(e) => updateAgentProperty(selectedAgentId!, "outputsTo", e.target.value)}
-          className="w-full px-2 py-[5px] border border-[var(--bd)] rounded-[6px] text-[10px] bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]"
-        >
-          <option value="">None</option>
-          {otherAgents.map((n) => (
-            <option key={n.id} value={n.id}>{(n.data as AgentNodeData).name}</option>
-          ))}
-        </select>
+          onChange={(val) => updateAgentProperty(selectedAgentId!, "outputsTo", val || undefined)}
+          options={agentOptions}
+        />
       </div>
 
       {/* Critic: Quality Threshold */}
@@ -146,7 +139,7 @@ export function PropertiesPanel() {
       {canDelete && (
         <button
           onClick={() => deleteAgent(selectedAgentId!)}
-          className="w-full mt-3 py-1.5 text-[10px] text-[var(--err)] border border-[var(--err)] rounded-[6px] hover:bg-[var(--errbg)] transition-colors"
+          className="w-full mt-3 py-1.5 text-[10px] text-[var(--err)] border border-[var(--err)] rounded-[6px] hover:bg-[var(--errbg)] transition-colors cursor-pointer bg-transparent"
         >
           Remove agent
         </button>

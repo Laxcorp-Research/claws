@@ -1,6 +1,7 @@
 "use client"
 
 import { useBuilderStore } from "@/stores/builder-store"
+import { CustomSelect } from "./custom-select"
 
 const FREQUENCY_OPTIONS = [
   { value: "hourly", label: "Every hour" },
@@ -31,28 +32,22 @@ export function HeartbeatConfig() {
 
   return (
     <div className="absolute bottom-2 left-1.5 right-1.5 bg-[var(--bg)] border border-[var(--bd)] rounded-[6px] px-2.5 py-1.5 flex items-center gap-2 text-[10px] z-10">
-      <span className="text-[var(--tx2)] font-medium">Run every:</span>
-      <select
+      <span className="text-[var(--tx2)] font-medium flex-shrink-0">Run every:</span>
+      <CustomSelect
         value={heartbeatSchedule.frequency}
-        onChange={(e) => setHeartbeatSchedule({ frequency: e.target.value })}
-        className="px-1.5 py-[3px] border border-[var(--bd)] rounded-[6px] text-[10px] bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]"
-      >
-        {FREQUENCY_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
+        onChange={(val) => setHeartbeatSchedule({ frequency: val })}
+        options={FREQUENCY_OPTIONS}
+        className="min-w-[110px]"
+      />
       {showTime && (
         <>
-          <span className="text-[var(--tx2)]">at</span>
-          <select
+          <span className="text-[var(--tx2)] flex-shrink-0">at</span>
+          <CustomSelect
             value={heartbeatSchedule.time}
-            onChange={(e) => setHeartbeatSchedule({ time: e.target.value })}
-            className="px-1.5 py-[3px] border border-[var(--bd)] rounded-[6px] text-[10px] bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]"
-          >
-            {TIME_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+            onChange={(val) => setHeartbeatSchedule({ time: val })}
+            options={TIME_OPTIONS}
+            className="min-w-[90px]"
+          />
         </>
       )}
     </div>

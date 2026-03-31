@@ -100,6 +100,7 @@ interface BuilderState {
   toggleSkill: (agentId: string, skillId: string) => void
   setHeartbeatSchedule: (schedule: Partial<{ frequency: string; time: string }>) => void
   removeConnection: (id: string) => void
+  addSkill: (skill: SkillItem) => void
   loadFromSnapshot: (nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[]) => void
   markDirty: () => void
   markSaved: () => void
@@ -264,6 +265,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   },
   removeConnection: (id) => {
     set((s) => ({ edges: s.edges.filter((e) => e.id !== id), isDirty: true }))
+  },
+  addSkill: (skill) => {
+    set((s) => {
+      if (s.skills.some(sk => sk.id === skill.id)) return s
+      return { skills: [...s.skills, skill] }
+    })
   },
   loadFromSnapshot: (nodes, edges) => set({ nodes, edges, isDirty: false, selectedAgentId: null }),
   markDirty: () => set({ isDirty: true }),

@@ -1,25 +1,33 @@
 "use client"
 
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
 import { Button } from "@/components/ui/button"
-import { Settings, Mail, Users, Calendar, MessageSquare, Wrench } from "lucide-react"
+import { Settings, Mail, Users, Calendar, MessageSquare, Wrench, Check, Plus } from "lucide-react"
 import type { ReactNode } from "react"
+import { MarketplaceSkillsModal } from "./marketplace-skills-modal"
 
-const ICON_CLASS = "w-3 h-3 text-[var(--tx3)]"
+const ICON_CLASS = "w-3.5 h-3.5 flex-shrink-0"
 
 const CATEGORY_ICONS: Record<string, ReactNode> = {
-  CORE: <Settings className={ICON_CLASS} />,
-  EMAIL: <Mail className={ICON_CLASS} />,
-  CRM: <Users className={ICON_CLASS} />,
-  CALENDAR: <Calendar className={ICON_CLASS} />,
-  MESSAGING: <MessageSquare className={ICON_CLASS} />,
+  CORE: <Settings className={`${ICON_CLASS} text-[var(--tx3)]`} />,
+  EMAIL: <Mail className={`${ICON_CLASS} text-[var(--tx3)]`} />,
+  EMAIL_SENDER: <Mail className={`${ICON_CLASS} text-[var(--tx3)]`} />,
+  EMAIL_READER: <Mail className={`${ICON_CLASS} text-[var(--tx3)]`} />,
+  CRM: <Users className={`${ICON_CLASS} text-[var(--tx3)]`} />,
+  CALENDAR: <Calendar className={`${ICON_CLASS} text-[var(--tx3)]`} />,
+  COMMUNICATION: <MessageSquare className={`${ICON_CLASS} text-[var(--tx3)]`} />,
 }
 
-const DEFAULT_SKILL_ICON = <Wrench className={ICON_CLASS} />
+const DEFAULT_SKILL_ICON = <Wrench className={`${ICON_CLASS} text-[var(--tx3)]`} />
 
 export function AgentSidebar() {
-  const { nodes, selectedAgentId, selectAgent, addWorker, addAgent, skills } = useBuilderStore()
+  const { nodes, selectedAgentId, selectAgent, addWorker, addAgent, skills, toggleSkill, addSkill } = useBuilderStore()
+  const [showMarketplace, setShowMarketplace] = useState(false)
+
+  const selectedNode = nodes.find(n => n.id === selectedAgentId)
+  const agentSkillIds: string[] = (selectedNode?.data as AgentNodeData)?.agentSkillIds || []
 
   const agents = nodes.map((n) => {
     const d = n.data as AgentNodeData
@@ -76,16 +84,59 @@ export function AgentSidebar() {
         + Add worker
       </Button>
 
-      <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2 mt-4">Skills</h4>
+      <div className="flex items-center justify-between mb-[6px] mt-4">
+        <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Skills</h4>
+        {selectedNode && (
+          <span className="text-[9px] text-[var(--tx3)] truncate max-w-[100px]">
+            {(selectedNode.data as AgentNodeData).name}
+          </span>
+        )}
+      </div>
 
       <div className="space-y-[3px]">
-        {skills.map((skill) => (
-          <div key={skill.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-[6px] text-[11px] text-[var(--tx2)]">
-            <span className="flex items-center">{CATEGORY_ICONS[skill.category] || DEFAULT_SKILL_ICON}</span>
-            <span className="truncate">{skill.name}</span>
-          </div>
-        ))}
+        {skills.map((skill) => {
+          const isAssigned = agentSkillIds.includes(skill.id)
+          const isDisabled = !selectedAgentId
+
+          return (
+            <button
+              key={skill.id}
+              type="button"
+              onClick={() => { if (selectedAgentId) toggleSkill(selectedAgentId, skill.id) }}
+              disabled={isDisabled}
+              className={cn(
+                "w-full flex items-center gap-[6px] px-[8px] py-[6px] rounded-[6px] text-[11px] text-left transition-colors border-none",
+                isDisabled && "opacity-40 cursor-not-allowed bg-transparent",
+                !isDisabled && isAssigned && "bg-[var(--acbg)] text-[var(--ac)] font-medium cursor-pointer",
+                !isDisabled && !isAssigned && "text-[var(--tx2)] hover:bg-[var(--bg2)] cursor-pointer bg-transparent"
+              )}
+            >
+              <span className="flex items-center">{CATEGORY_ICONS[skill.category] || DEFAULT_SKILL_ICON}</span>
+              <span className="flex-1 truncate">{skill.name}</span>
+              {isAssigned && <Check className="w-[12px] h-[12px] text-[var(--ac)] flex-shrink-0" />}
+            </button>
+          )
+        })}
       </div>
+
+      {!selectedAgentId && skills.length > 0 && (
+        <p className="text-[10px] text-[var(--tx3)] mt-[6px] px-[8px]">Select an agent to manage skills</p>
+      )}
+
+      <button
+        onClick={() => setShowMarketplace(true)}
+        className="w-full flex items-center gap-[6px] px-[8px] py-[6px] rounded-[6px] text-[11px] text-[var(--ac)] hover:bg-[var(--acbg)] transition-colors mt-[4px] cursor-pointer border-none bg-transparent"
+      >
+        <Plus className="w-[14px] h-[14px]" />
+        Browse marketplace
+      </button>
+
+      <MarketplaceSkillsModal
+        isOpen={showMarketplace}
+        onClose={() => setShowMarketplace(false)}
+        existingSkillIds={skills.map(s => s.id)}
+        onInstall={(skill) => addSkill({ id: skill.id, name: skill.name, category: skill.category })}
+      />
     </div>
   )
 }
