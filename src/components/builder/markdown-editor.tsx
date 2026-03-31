@@ -4,15 +4,17 @@ import { useState } from "react"
 import { Maximize2 } from "lucide-react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
+import { Tooltip } from "./tooltip"
 
 interface MarkdownEditorProps {
   label: string
+  tooltip?: string
   value: string
   onChange: (value: string) => void
   placeholder?: string
 }
 
-export function MarkdownEditor({ label, value, onChange, placeholder }: MarkdownEditorProps) {
+export function MarkdownEditor({ label, tooltip, value, onChange, placeholder }: MarkdownEditorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [draft, setDraft] = useState(value)
 
@@ -28,7 +30,10 @@ export function MarkdownEditor({ label, value, onChange, placeholder }: Markdown
 
   return (
     <div className="mb-2.5">
-      <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">{label}</label>
+      <div className="flex items-center gap-[4px] mb-[3px]">
+        <label className="text-[10px] text-[var(--tx2)] font-medium">{label}</label>
+        {tooltip && <Tooltip text={tooltip} />}
+      </div>
       <div className="relative">
         <textarea
           value={value}

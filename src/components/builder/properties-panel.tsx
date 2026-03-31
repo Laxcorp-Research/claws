@@ -5,6 +5,7 @@ import { useBuilderStore, type AgentNodeData, type ConnectionEdgeData } from "@/
 import { MarkdownEditor } from "./markdown-editor"
 import { SkillPicker } from "./skill-picker"
 import { CustomSelect } from "./custom-select"
+import { Tooltip } from "./tooltip"
 import { AI_MODELS } from "@/lib/models"
 
 const MODEL_OPTIONS = AI_MODELS.map(m => ({ value: m.value, label: m.label }))
@@ -16,6 +17,15 @@ const CONDITION_OPTIONS = [
   { value: "ON_SCHEDULE", label: "On schedule" },
   { value: "ON_HUMAN_APPROVE", label: "On human approval" },
 ]
+
+function Label({ text, tooltip }: { text: string; tooltip: string }) {
+  return (
+    <div className="flex items-center gap-[4px] mb-[3px]">
+      <label className="text-[10px] text-[var(--tx2)] font-medium">{text}</label>
+      <Tooltip text={tooltip} />
+    </div>
+  )
+}
 
 function ConnectionPanel() {
   const { nodes, edges, selectedEdgeId, updateConnectionCondition, removeConnection } = useBuilderStore()
@@ -44,7 +54,7 @@ function ConnectionPanel() {
       </div>
 
       <div className="mb-2.5">
-        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Condition</label>
+        <Label text="Condition" tooltip="When this connection activates. 'On complete' fires after the source agent finishes. 'On human approval' waits for a human to approve first." />
         <CustomSelect
           value={condition}
           onChange={(val) => updateConnectionCondition(selectedEdgeId!, val)}
@@ -98,7 +108,7 @@ export function PropertiesPanel() {
       </h4>
 
       <div className="mb-2.5">
-        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Role</label>
+        <Label text="Role" tooltip="Orchestrator coordinates all agents. Workers execute tasks. Critic reviews quality." />
         <span className={cn(
           "inline-block text-[10px] font-semibold px-2 py-[2px] rounded-[6px]",
           isOrch && "bg-[var(--acbg)] text-[var(--ac)]",
@@ -120,7 +130,7 @@ export function PropertiesPanel() {
       </div>
 
       <div className="mb-2.5">
-        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Model</label>
+        <Label text="Model" tooltip="The AI model this agent uses. Haiku is fast and cheap. Sonnet balances speed and quality. Opus is most capable but costs more." />
         <CustomSelect
           value={agent.model}
           onChange={(val) => updateAgentProperty(selectedAgentId!, "model", val)}
@@ -130,6 +140,7 @@ export function PropertiesPanel() {
 
       <MarkdownEditor
         label="SOUL.md"
+        tooltip="Defines who this agent is — its identity, personality, and core purpose. Think of it as the agent's character sheet."
         value={agent.soulMd || ""}
         onChange={(val) => updateAgentProperty(selectedAgentId!, "soulMd", val)}
         placeholder="Agent identity and personality..."
@@ -137,15 +148,19 @@ export function PropertiesPanel() {
 
       <MarkdownEditor
         label="AGENTS.md"
+        tooltip="Step-by-step operating procedures this agent follows. Like a detailed SOP — what to do, in what order, with what tools."
         value={agent.agentsMd || ""}
         onChange={(val) => updateAgentProperty(selectedAgentId!, "agentsMd", val)}
         placeholder="Operating procedures..."
       />
 
-      <SkillPicker agentId={selectedAgentId!} />
+      <div className="mb-2.5">
+        <Label text="Skills" tooltip="Tools and capabilities available to this agent. Each skill gives the agent instructions for using a specific tool." />
+        <SkillPicker agentId={selectedAgentId!} />
+      </div>
 
       <div className="mb-2.5">
-        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Reports to</label>
+        <Label text="Reports to" tooltip="Which agent this one reports its work to. Typically Workers report to the Orchestrator." />
         <CustomSelect
           value={agent.reportsTo || ""}
           onChange={(val) => updateAgentProperty(selectedAgentId!, "reportsTo", val || undefined)}
@@ -154,7 +169,7 @@ export function PropertiesPanel() {
       </div>
 
       <div className="mb-2.5">
-        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Outputs to</label>
+        <Label text="Outputs to" tooltip="Where this agent sends its completed work. Usually the Critic for review, or another Worker for the next step." />
         <CustomSelect
           value={(agent.outputsTo as string) || ""}
           onChange={(val) => updateAgentProperty(selectedAgentId!, "outputsTo", val || undefined)}
@@ -164,9 +179,7 @@ export function PropertiesPanel() {
 
       {isCritic && (
         <div className="mb-2.5">
-          <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">
-            Quality threshold: {agent.qualityThreshold ?? 8.0}
-          </label>
+          <Label text={`Quality threshold: ${agent.qualityThreshold ?? 8.0}`} tooltip="Minimum score (1-10) for work to be approved. Below this, the Critic sends it back for revision. Default 8.0 works well for most cases." />
           <input
             type="range"
             min={1}

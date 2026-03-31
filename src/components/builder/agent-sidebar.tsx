@@ -2,29 +2,17 @@
 
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
+import { useBuilderStore, type AgentNodeData, type SkillItem } from "@/stores/builder-store"
 import { Button } from "@/components/ui/button"
-import { Settings, Mail, Users, Calendar, MessageSquare, Wrench, Check, Plus } from "lucide-react"
-import type { ReactNode } from "react"
+import { CheckSquare, Square, Plus } from "lucide-react"
 import { MarketplaceSkillsModal } from "./marketplace-skills-modal"
-
-const ICON_CLASS = "w-3.5 h-3.5 flex-shrink-0"
-
-const CATEGORY_ICONS: Record<string, ReactNode> = {
-  CORE: <Settings className={`${ICON_CLASS} text-[var(--tx3)]`} />,
-  EMAIL: <Mail className={`${ICON_CLASS} text-[var(--tx3)]`} />,
-  EMAIL_SENDER: <Mail className={`${ICON_CLASS} text-[var(--tx3)]`} />,
-  EMAIL_READER: <Mail className={`${ICON_CLASS} text-[var(--tx3)]`} />,
-  CRM: <Users className={`${ICON_CLASS} text-[var(--tx3)]`} />,
-  CALENDAR: <Calendar className={`${ICON_CLASS} text-[var(--tx3)]`} />,
-  COMMUNICATION: <MessageSquare className={`${ICON_CLASS} text-[var(--tx3)]`} />,
-}
-
-const DEFAULT_SKILL_ICON = <Wrench className={`${ICON_CLASS} text-[var(--tx3)]`} />
+import { SkillPreviewPanel } from "./skill-preview-panel"
+import { Tooltip } from "./tooltip"
 
 export function AgentSidebar() {
   const { nodes, selectedAgentId, selectAgent, addWorker, addAgent, skills, toggleSkill, addSkill } = useBuilderStore()
   const [showMarketplace, setShowMarketplace] = useState(false)
+  const [previewSkill, setPreviewSkill] = useState<SkillItem | null>(null)
 
   const selectedNode = nodes.find(n => n.id === selectedAgentId)
   const agentSkillIds: string[] = (selectedNode?.data as AgentNodeData)?.agentSkillIds || []
@@ -51,7 +39,10 @@ export function AgentSidebar() {
 
   return (
     <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
-      <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">Agents</h4>
+      <div className="flex items-center gap-[4px] mb-2">
+        <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Agents</h4>
+        <Tooltip text="Your AI team. Every Claw has 1 Orchestrator (manager), Workers (task executors), and 1 Critic (quality reviewer)." />
+      </div>
 
       <div className="space-y-[3px]">
         {agents.map((agent) => {
@@ -84,10 +75,11 @@ export function AgentSidebar() {
         + Add worker
       </Button>
 
-      <div className="flex items-center justify-between mb-[6px] mt-4">
+      <div className="flex items-center gap-[4px] mt-4 mb-[6px]">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Skills</h4>
+        <Tooltip text="Skills give agents the ability to use tools. Select an agent, then toggle skills on/off. Blue = assigned to this agent." />
         {selectedNode && (
-          <span className="text-[9px] text-[var(--tx3)] truncate max-w-[100px]">
+          <span className="text-[9px] text-[var(--tx3)] truncate max-w-[80px] ml-auto">
             {(selectedNode.data as AgentNodeData).name}
           </span>
         )}
@@ -99,31 +91,54 @@ export function AgentSidebar() {
           const isDisabled = !selectedAgentId
 
           return (
-            <button
+            <div
               key={skill.id}
-              type="button"
-              onClick={() => { if (selectedAgentId) toggleSkill(selectedAgentId, skill.id) }}
-              disabled={isDisabled}
               className={cn(
-                "w-full flex items-center gap-[6px] px-[8px] py-[6px] rounded-[6px] text-[11px] text-left transition-colors border-none",
-                isDisabled && "opacity-40 cursor-not-allowed bg-transparent",
-                !isDisabled && isAssigned && "bg-[var(--acbg)] text-[var(--ac)] font-medium cursor-pointer",
-                !isDisabled && !isAssigned && "text-[var(--tx2)] hover:bg-[var(--bg2)] cursor-pointer bg-transparent"
+                "flex items-center rounded-[6px] text-[11px] transition-colors",
+                isDisabled && "opacity-40",
+                isAssigned && "bg-[var(--acbg)]"
               )}
             >
-              <span className="flex items-center">{CATEGORY_ICONS[skill.category] || DEFAULT_SKILL_ICON}</span>
-              <span className="flex-1 truncate">{skill.name}</span>
-              {isAssigned && <Check className="w-[12px] h-[12px] text-[var(--ac)] flex-shrink-0" />}
-            </button>
+              <button
+                type="button"
+                onClick={() => !isDisabled && setPreviewSkill(previewSkill?.id === skill.id ? null : skill)}
+                className={cn(
+                  "flex-1 flex items-center gap-[6px] px-[8px] py-[5px] text-left truncate border-none bg-transparent",
+                  isAssigned ? "text-[var(--ac)] font-medium" : "text-[var(--tx2)]",
+                  !isDisabled ? "hover:underline cursor-pointer" : "cursor-not-allowed"
+                )}
+                disabled={isDisabled}
+              >
+                <span className="truncate">{skill.name}</span>
+              </button>
+
+              {!isDisabled && (
+                <button
+                  type="button"
+                  onClick={() => toggleSkill(selectedAgentId!, skill.id)}
+                  className="flex-shrink-0 w-[28px] h-[28px] flex items-center justify-center rounded-[4px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
+                  title={isAssigned ? "Remove from agent" : "Add to agent"}
+                >
+                  {isAssigned ? (
+                    <CheckSquare className="w-[14px] h-[14px] text-[var(--ac)]" />
+                  ) : (
+                    <Square className="w-[14px] h-[14px] text-[var(--tx3)]" />
+                  )}
+                </button>
+              )}
+            </div>
           )
         })}
       </div>
+
+      <SkillPreviewPanel skill={previewSkill} onClose={() => setPreviewSkill(null)} />
 
       {!selectedAgentId && skills.length > 0 && (
         <p className="text-[10px] text-[var(--tx3)] mt-[6px] px-[8px]">Select an agent to manage skills</p>
       )}
 
       <button
+        type="button"
         onClick={() => setShowMarketplace(true)}
         className="w-full flex items-center gap-[6px] px-[8px] py-[6px] rounded-[6px] text-[11px] text-[var(--ac)] hover:bg-[var(--acbg)] transition-colors mt-[4px] cursor-pointer border-none bg-transparent"
       >
