@@ -57,27 +57,33 @@ export default function MyClawsPage() {
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   async function handleCreateCustomClaw() {
     if (isCreating) return
     setIsCreating(true)
+    setCreateError(null)
     try {
+      const count = workspaces?.length ?? 0
+      const name = `My Claw ${count + 1}`
       const res = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "My Custom Claw" }),
+        body: JSON.stringify({ name }),
       })
-      if (!res.ok) {
-        const json = await res.json()
-        throw new Error(json?.error?.message || "Failed to create workspace")
-      }
       const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `Failed to create workspace (${res.status})`)
+      }
       const workspaceId = data.data?.id || data.id
       if (workspaceId) {
         router.push(`/builder/${workspaceId}`)
+      } else {
+        throw new Error("No workspace ID returned")
       }
     } catch (err) {
       console.error("Failed to create custom Claw:", err)
+      setCreateError(err instanceof Error ? err.message : "Failed to create workspace")
     } finally {
       setIsCreating(false)
     }
@@ -129,6 +135,10 @@ export default function MyClawsPage() {
             </>
           }
         />
+
+        {createError && (
+          <p className="text-[12px] text-[var(--err)] mb-2">{createError}</p>
+        )}
 
         {/* Network error */}
         {error && (

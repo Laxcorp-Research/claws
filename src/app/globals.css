@@ -121,3 +121,7 @@ select:focus {
 .react-flow__node.selected .react-flow__handle {
   opacity: 1;
 }
+
+.react-flow__panel.bottom.center {
+  display: none !important;
+}

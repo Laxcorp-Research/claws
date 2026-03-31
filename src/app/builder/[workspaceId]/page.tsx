@@ -20,7 +20,7 @@ export default function BuilderPage() {
   const workspaceId = params.workspaceId as string
   const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, saveWorkspace, revertToLastSaved } = useBuilderStore()
   const [showHistory, setShowHistory] = useState(false)
-  const [localName, setLocalName] = useState(workspaceName)
+  const [localName, setLocalName] = useState("")
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)

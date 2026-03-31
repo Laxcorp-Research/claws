@@ -4,13 +4,12 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { useBuilderStore, type AgentNodeData, type SkillItem } from "@/stores/builder-store"
 import { Button } from "@/components/ui/button"
-import { CheckSquare, Square, Plus } from "lucide-react"
+import { Plus, X, ExternalLink } from "lucide-react"
 import { MarketplaceSkillsModal } from "./marketplace-skills-modal"
-import { SkillPreviewPanel } from "./skill-preview-panel"
 import { Tooltip } from "./tooltip"
 
 export function AgentSidebar() {
-  const { nodes, selectedAgentId, selectAgent, addWorker, addAgent, skills, toggleSkill, addSkill } = useBuilderStore()
+  const { nodes, selectedAgentId, selectAgent, addWorker, addAgent, skills, addSkill } = useBuilderStore()
   const [showMarketplace, setShowMarketplace] = useState(false)
   const [previewSkill, setPreviewSkill] = useState<SkillItem | null>(null)
 
@@ -24,7 +23,7 @@ export function AgentSidebar() {
 
   if (nodes.length === 0) {
     return (
-      <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
+      <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px] h-full">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">Agents</h4>
         <div className="py-3 text-center">
           <p className="text-[12px] text-[var(--tx2)]">No agents yet</p>
@@ -38,7 +37,7 @@ export function AgentSidebar() {
   }
 
   return (
-    <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
+    <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px] h-full">
       <div className="flex items-center gap-[4px] mb-2">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Agents</h4>
         <Tooltip text="Your AI team. Every Claw has 1 Orchestrator (manager), Workers (task executors), and 1 Critic (quality reviewer)." />
@@ -57,7 +56,7 @@ export function AgentSidebar() {
               onClick={() => selectAgent(agent.id)}
               aria-pressed={isSelected}
               className={cn(
-                "flex items-center gap-1.5 py-1.5 px-2 rounded-[6px] cursor-pointer transition-colors w-full text-left",
+                "flex items-center gap-1.5 py-1.5 px-2 rounded-[6px] cursor-pointer transition-colors w-full text-left border-none bg-transparent",
                 isSelected && "bg-[var(--bg3)] text-[var(--tx)] font-semibold",
                 !isSelected && "hover:bg-[var(--bg2)]",
                 isOrch && "bg-[var(--acbg)] text-[var(--ac)] border-l-[3px] border-l-[var(--ac)] font-semibold",
@@ -77,7 +76,7 @@ export function AgentSidebar() {
 
       <div className="flex items-center gap-[4px] mt-4 mb-[6px]">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Skills</h4>
-        <Tooltip text="Skills give agents the ability to use tools. Select an agent, then toggle skills on/off. Blue = assigned to this agent." />
+        <Tooltip text="Skills give agents abilities. Assign skills to agents in the properties panel on the right." />
         {selectedNode && (
           <span className="text-[9px] text-[var(--tx3)] truncate max-w-[80px] ml-auto">
             {(selectedNode.data as AgentNodeData).name}
@@ -85,53 +84,58 @@ export function AgentSidebar() {
         )}
       </div>
 
-      <div className="space-y-[3px]">
-        {skills.map((skill) => {
-          const isAssigned = agentSkillIds.includes(skill.id)
-          const isDisabled = !selectedAgentId
-
-          return (
-            <div
-              key={skill.id}
-              className={cn(
-                "flex items-center rounded-[6px] text-[11px] transition-colors",
-                isDisabled && "opacity-40",
-                isAssigned && "bg-[var(--acbg)]"
-              )}
-            >
+      {skills.length === 0 ? (
+        <p className="text-[10px] text-[var(--tx3)] px-[4px]">No skills added yet</p>
+      ) : (
+        <div className="space-y-[3px]">
+          {skills.map((skill) => {
+            const isAssigned = agentSkillIds.includes(skill.id)
+            return (
               <button
+                key={skill.id}
                 type="button"
-                onClick={() => !isDisabled && setPreviewSkill(previewSkill?.id === skill.id ? null : skill)}
+                onClick={() => setPreviewSkill(previewSkill?.id === skill.id ? null : skill)}
                 className={cn(
-                  "flex-1 flex items-center gap-[6px] px-[8px] py-[5px] text-left truncate border-none bg-transparent",
-                  isAssigned ? "text-[var(--ac)] font-medium" : "text-[var(--tx2)]",
-                  !isDisabled ? "hover:underline cursor-pointer" : "cursor-not-allowed"
+                  "w-full flex items-center gap-[6px] px-[8px] py-[5px] rounded-[6px] text-[11px] text-left transition-colors border-none bg-transparent hover:bg-[var(--bg2)] cursor-pointer",
+                  isAssigned && "text-[var(--ac)] font-medium",
+                  !isAssigned && "text-[var(--tx2)]"
                 )}
-                disabled={isDisabled}
               >
-                <span className="truncate">{skill.name}</span>
+                <span className="truncate flex-1">{skill.name}</span>
+                {isAssigned && (
+                  <span className="text-[9px] text-[var(--ac)] flex-shrink-0">assigned</span>
+                )}
               </button>
+            )
+          })}
+        </div>
+      )}
 
-              {!isDisabled && (
-                <button
-                  type="button"
-                  onClick={() => toggleSkill(selectedAgentId!, skill.id)}
-                  className="flex-shrink-0 w-[28px] h-[28px] flex items-center justify-center rounded-[4px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
-                  title={isAssigned ? "Remove from agent" : "Add to agent"}
-                >
-                  {isAssigned ? (
-                    <CheckSquare className="w-[14px] h-[14px] text-[var(--ac)]" />
-                  ) : (
-                    <Square className="w-[14px] h-[14px] text-[var(--tx3)]" />
-                  )}
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      <SkillPreviewPanel skill={previewSkill} onClose={() => setPreviewSkill(null)} />
+      {previewSkill && (
+        <div className="border border-[var(--bd)] rounded-[6px] p-[8px] mt-[6px] bg-[var(--bg)] relative">
+          <button
+            onClick={() => setPreviewSkill(null)}
+            className="absolute top-[6px] right-[6px] p-[2px] rounded-[3px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
+            aria-label="Close preview"
+          >
+            <X className="w-[10px] h-[10px] text-[var(--tx3)]" />
+          </button>
+          <div className="text-[11px] font-medium text-[var(--tx)] mb-[2px] pr-[16px]">{previewSkill.name}</div>
+          <span className="text-[9px] text-[var(--tx3)] uppercase">{previewSkill.category}</span>
+          <p className="text-[10px] text-[var(--tx2)] leading-[1.4] mt-[4px]">
+            Click to assign/unassign skills in the Properties panel on the right.
+          </p>
+          <a
+            href={`/store/skills/${previewSkill.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac)] hover:underline mt-[4px]"
+          >
+            View full details
+            <ExternalLink className="w-[10px] h-[10px]" />
+          </a>
+        </div>
+      )}
 
       {!selectedAgentId && skills.length > 0 && (
         <p className="text-[10px] text-[var(--tx3)] mt-[6px] px-[8px]">Select an agent to manage skills</p>

@@ -100,10 +100,10 @@ interface BuilderState {
   setLeftPanelTab: (tab: "agents" | "skills") => void
   selectAgent: (id: string | null) => void
   selectEdge: (id: string | null) => void
-  addAgent: (agent: Partial<AgentNodeData> & { name: string; role: AgentRole }) => void
-  addWorker: () => void
-  removeAgent: (id: string) => void
-  deleteAgent: (id: string) => void
+  addAgent: (opts?: { name?: string; role?: AgentRole; model?: string; soulMd?: string; agentsMd?: string }) => Promise<void>
+  addWorker: () => Promise<void>
+  removeAgent: (id: string) => Promise<void>
+  deleteAgent: (id: string) => Promise<void>
   updateAgent: (id: string, updates: Partial<AgentNodeData>) => void
   updateAgentProperty: (id: string, key: string, value: unknown) => void
   toggleSkill: (agentId: string, skillId: string) => void
@@ -141,8 +141,6 @@ function getDefaultPosition(role: AgentRole, existingNodes: Node[]): { x: number
     case "WORKER": return { x: 80 + workerCount * 160, y: 220 }
   }
 }
-
-let nextNodeId = 100
 
 function hasPositionChanges(changes: NodeChange<Node<AgentNodeData>>[]): boolean {
   return changes.some(c => c.type === "position" && "dragging" in c && !c.dragging)
@@ -214,61 +212,120 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   selectAgent: (id) => set({ selectedAgentId: id, selectedEdgeId: null }),
   selectEdge: (id) => set({ selectedEdgeId: id, selectedAgentId: null }),
 
-  addAgent: (agent) => {
+  // Creates agent in DB first, then adds to local state with the real DB ID
+  addAgent: async (opts) => {
     const s = get()
-    if (agent.role === "ORCHESTRATOR" && s.nodes.some((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")) return
-    if (agent.role === "CRITIC" && s.nodes.some((n) => (n.data as AgentNodeData).role === "CRITIC")) return
+    if (!s.workspaceId) return
 
-    const workerIndex = s.nodes.filter((n) => (n.data as AgentNodeData).role === "WORKER").length
-    const color = agent.role === "ORCHESTRATOR" ? "#5BA1F5" : agent.role === "CRITIC" ? "#A78BFA" : agent.color || WORKER_COLORS[workerIndex % WORKER_COLORS.length]
-    const id = `agent-${nextNodeId++}`
-    const position = getDefaultPosition(agent.role, s.nodes)
+    const role: AgentRole = (opts?.role as AgentRole) || "WORKER"
+    if (role === "ORCHESTRATOR" && s.nodes.some((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")) return
+    if (role === "CRITIC" && s.nodes.some((n) => (n.data as AgentNodeData).role === "CRITIC")) return
 
-    const newNode: Node<AgentNodeData> = {
-      id, type: "agentNode", position,
-      data: {
-        agentId: id, name: agent.name, role: agent.role, color,
-        model: agent.model || DEFAULT_MODEL[agent.role] || "anthropic/claude-sonnet-4-6",
-        soulMd: agent.soulMd || "", agentsMd: agent.agentsMd || "",
-        skillCount: 0, agentSkillIds: [],
-        hasHeartbeat: agent.hasHeartbeat || false, healthStatus: "idle",
-        qualityThreshold: agent.role === "CRITIC" ? 8.0 : undefined,
-      },
-    }
-    set((s) => ({ nodes: [...s.nodes, newNode], selectedAgentId: id, selectedEdgeId: null, isDirty: s.isSaving ? s.isDirty : true }))
-  },
-
-  addWorker: () => {
-    const s = get()
     const workerCount = s.nodes.filter((n) => (n.data as AgentNodeData).role === "WORKER").length
-    const orchId = s.nodes.find((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")?.id
-    const id = `agent-${nextNodeId++}`
-    const color = WORKER_COLORS[workerCount % WORKER_COLORS.length]
-    const position = getDefaultPosition("WORKER", s.nodes)
+    const defaultName = role === "WORKER" ? `Worker ${workerCount + 1}` : role === "CRITIC" ? "Quality Critic" : "Orchestrator"
+    const name = opts?.name || defaultName
+    const position = getDefaultPosition(role, s.nodes)
+    const color = role === "ORCHESTRATOR" ? "#5BA1F5" : role === "CRITIC" ? "#A78BFA" : WORKER_COLORS[workerCount % WORKER_COLORS.length]
 
-    const newNode: Node<AgentNodeData> = {
-      id, type: "agentNode", position,
-      data: { agentId: id, name: `Worker ${workerCount + 1}`, role: "WORKER", color, model: DEFAULT_MODEL.WORKER, soulMd: "", agentsMd: "", skillCount: 0, agentSkillIds: [], hasHeartbeat: false, healthStatus: "idle" },
+    try {
+      const res = await fetch(`/api/agents/${s.workspaceId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          role,
+          model: opts?.model || DEFAULT_MODEL[role] || "anthropic/claude-sonnet-4-6",
+          color,
+          soulMd: opts?.soulMd || "",
+          agentsMd: opts?.agentsMd || "",
+          positionX: position.x,
+          positionY: position.y,
+          qualityThreshold: role === "CRITIC" ? 8.0 : undefined,
+        }),
+      })
+      if (!res.ok) {
+        console.error("Failed to create agent:", res.status)
+        return
+      }
+      const json = await res.json()
+      const agent = json.data
+
+      const newNode: Node<AgentNodeData> = {
+        id: agent.id,
+        type: "agentNode",
+        position: { x: agent.positionX ?? position.x, y: agent.positionY ?? position.y },
+        data: {
+          agentId: agent.id, name: agent.name, role: agent.role as AgentRole, color: agent.color || color,
+          model: agent.model, soulMd: agent.soulMd || "", agentsMd: agent.agentsMd || "",
+          skillCount: 0, agentSkillIds: [],
+          hasHeartbeat: !!(agent.heartbeatMd), healthStatus: "idle",
+          qualityThreshold: agent.qualityThreshold ?? undefined,
+        },
+      }
+
+      // If worker and orchestrator exists, auto-create a connection
+      const orchId = get().nodes.find((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")?.id
+      const newEdges: Edge<ConnectionEdgeData>[] = []
+      if (role === "WORKER" && orchId) {
+        try {
+          const connRes = await fetch(`/api/connections/${s.workspaceId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sourceAgentId: orchId, targetAgentId: agent.id, condition: "ON_COMPLETE" }),
+          })
+          if (connRes.ok) {
+            const connJson = await connRes.json()
+            const conn = connJson.data
+            newEdges.push({
+              id: conn.id, source: orchId, target: agent.id,
+              type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
+            })
+          }
+        } catch { /* connection creation is optional */ }
+      }
+
+      set((state) => ({
+        nodes: [...state.nodes, newNode],
+        edges: newEdges.length > 0 ? [...state.edges, ...newEdges] : state.edges,
+        selectedAgentId: agent.id,
+        selectedEdgeId: null,
+      }))
+    } catch (error) {
+      console.error("Failed to create agent:", error)
     }
-    const newEdges: Edge<ConnectionEdgeData>[] = []
-    if (orchId) {
-      newEdges.push({ id: `edge-${Date.now()}`, source: orchId, target: id, type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true })
-    }
-    set((s) => ({ nodes: [...s.nodes, newNode], edges: [...s.edges, ...newEdges], selectedAgentId: id, selectedEdgeId: null, isDirty: s.isSaving ? s.isDirty : true }))
   },
 
-  removeAgent: (id) => {
-    const node = get().nodes.find((n) => n.id === id)
+  addWorker: async () => {
+    await get().addAgent({ role: "WORKER" })
+  },
+
+  // Deletes from DB then removes from local state
+  removeAgent: async (id) => {
+    const s = get()
+    if (!s.workspaceId) return
+    const node = s.nodes.find((n) => n.id === id)
     if (!node) return
     const d = node.data as AgentNodeData
     if (d.role === "ORCHESTRATOR" || d.role === "CRITIC") return
-    set((s) => ({
-      nodes: s.nodes.filter((n) => n.id !== id), edges: s.edges.filter((e) => e.source !== id && e.target !== id),
-      selectedAgentId: s.selectedAgentId === id ? null : s.selectedAgentId,
-      isDirty: s.isSaving ? s.isDirty : true,
+
+    try {
+      const res = await fetch(`/api/agents/${s.workspaceId}/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        console.error("Failed to delete agent:", res.status)
+        return
+      }
+    } catch (error) {
+      console.error("Failed to delete agent:", error)
+      return
+    }
+
+    set((state) => ({
+      nodes: state.nodes.filter((n) => n.id !== id),
+      edges: state.edges.filter((e) => e.source !== id && e.target !== id),
+      selectedAgentId: state.selectedAgentId === id ? null : state.selectedAgentId,
     }))
   },
-  deleteAgent: (id) => get().removeAgent(id),
+  deleteAgent: async (id) => { await get().removeAgent(id) },
 
   updateAgent: (id, updates) => {
     set((s) => ({
@@ -289,7 +346,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         const data = n.data as AgentNodeData
         const current = data.agentSkillIds || []
         const updated = current.includes(skillId)
-          ? current.filter((id: string) => id !== skillId)
+          ? current.filter((sid: string) => sid !== skillId)
           : [...current, skillId]
         return { ...n, data: { ...data, agentSkillIds: updated, skillCount: updated.length } }
       }),
@@ -323,13 +380,15 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     })
   },
   revertToLastSaved: () => {
-    const { lastSavedState } = get()
-    if (lastSavedState) {
+    const s = get()
+    if (s._positionTimeoutId) clearTimeout(s._positionTimeoutId)
+    if (s.lastSavedState) {
       set({
-        nodes: JSON.parse(JSON.stringify(lastSavedState.nodes)),
-        edges: JSON.parse(JSON.stringify(lastSavedState.edges)),
-        workspaceName: lastSavedState.workspaceName,
+        nodes: JSON.parse(JSON.stringify(s.lastSavedState.nodes)),
+        edges: JSON.parse(JSON.stringify(s.lastSavedState.edges)),
+        workspaceName: s.lastSavedState.workspaceName,
         isDirty: false,
+        _positionTimeoutId: null,
         selectedAgentId: null,
         selectedEdgeId: null,
       })
@@ -339,8 +398,21 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   markDirty: () => set((s) => ({ isDirty: s.isSaving ? s.isDirty : true })),
   markSaved: () => set({ isDirty: false, isSaving: false, lastSavedAt: new Date() }),
 
+  // Full reset before loading to prevent state bleed between workspaces
   loadWorkspace: async (workspaceId) => {
-    set({ isLoading: true, workspaceId })
+    const prevTimeout = get()._positionTimeoutId
+    if (prevTimeout) clearTimeout(prevTimeout)
+
+    set({
+      isLoading: true, workspaceId,
+      nodes: [], edges: [], skills: [], snapshots: [],
+      selectedAgentId: null, selectedEdgeId: null,
+      workspaceName: "", workspaceStatus: "DRAFT",
+      isDirty: false, isSaving: false,
+      lastSavedAt: null, lastSavedState: null, _positionTimeoutId: null,
+      heartbeatSchedule: { frequency: "daily", time: "08:00" },
+    })
+
     try {
       const [wsRes, skillsRes] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}`),
@@ -394,48 +466,47 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     }
   },
 
+  // Save with proper error handling + queueMicrotask to fix isDirty race
   saveWorkspace: async () => {
     const s = get()
-    if (!s.workspaceId || !s.isDirty || s.isSaving) return
+    if (!s.workspaceId || s.isSaving) return
     set({ isSaving: true })
 
     try {
+      const wid = s.workspaceId
+
       // 1. Save workspace name
-      await fetch(`/api/workspaces/${s.workspaceId}`, {
+      const nameRes = await fetch(`/api/workspaces/${wid}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: s.workspaceName }),
       })
+      if (!nameRes.ok) throw new Error(`Workspace name save failed: ${nameRes.status}`)
 
-      // 2. Save positions
-      const positions = s.nodes.map((n) => ({ id: n.id, positionX: n.position.x, positionY: n.position.y }))
-      await fetch(`/api/agents/${s.workspaceId}/bulk-position`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positions }),
-      })
-
-      // 3. Save each agent's properties + skills
+      // 2. Save each agent's properties + positions + skills
       for (const node of s.nodes) {
         const d = node.data as AgentNodeData
-        await fetch(`/api/agents/${s.workspaceId}/${node.id}`, {
+        const patchRes = await fetch(`/api/agents/${wid}/${node.id}`, {
           method: "PATCH", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: d.name, model: d.model, soulMd: d.soulMd, agentsMd: d.agentsMd,
+            name: d.name, model: d.model, soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
+            positionX: node.position.x, positionY: node.position.y,
             qualityThreshold: d.qualityThreshold, reportsTo: d.reportsTo || null,
             skillIds: d.agentSkillIds || [],
           }),
         })
+        if (!patchRes.ok) throw new Error(`Agent save failed for ${d.name}: ${patchRes.status}`)
       }
 
-      // 4. Sync connections
-      const connRes = await fetch(`/api/connections/${s.workspaceId}`)
+      // 3. Sync connections
+      const connRes = await fetch(`/api/connections/${wid}`)
       const connJson = await connRes.json()
       const dbConnections: { id: string }[] = connJson.data || []
-
-      const currentEdgeIds = new Set(s.edges.map(e => e.id))
       const dbIds = new Set(dbConnections.map(c => c.id))
+      const localEdgeIds = new Set(s.edges.map(e => e.id))
 
       for (const conn of dbConnections) {
-        if (!currentEdgeIds.has(conn.id)) {
-          await fetch(`/api/connections/${s.workspaceId}/${conn.id}`, { method: "DELETE" })
+        if (!localEdgeIds.has(conn.id)) {
+          await fetch(`/api/connections/${wid}/${conn.id}`, { method: "DELETE" })
         }
       }
 
@@ -443,7 +514,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       for (let i = 0; i < updatedEdges.length; i++) {
         const edge = updatedEdges[i]
         if (!dbIds.has(edge.id)) {
-          const res = await fetch(`/api/connections/${s.workspaceId}`, {
+          const createRes = await fetch(`/api/connections/${wid}`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               sourceAgentId: edge.source, targetAgentId: edge.target,
@@ -451,26 +522,29 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
               label: edge.data?.label || null,
             }),
           })
-          const json = await res.json()
-          if (json.success && json.data?.id) {
-            updatedEdges[i] = { ...edge, id: json.data.id }
+          if (createRes.ok) {
+            const created = await createRes.json()
+            if (created.data?.id) updatedEdges[i] = { ...edge, id: created.data.id }
           }
         }
       }
 
-      // 5. Create a MANUAL_SAVE snapshot
-      await fetch(`/api/workspaces/${s.workspaceId}/snapshots`, {
+      // 4. Create MANUAL_SAVE snapshot
+      await fetch(`/api/workspaces/${wid}/snapshots`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trigger: "MANUAL_SAVE" }),
       })
 
+      // 5. Update edges + capture saved state, then reset flags via microtask
       const currentName = get().workspaceName
+      const currentNodes = get().nodes
       set({
         edges: updatedEdges,
-        isDirty: false,
-        isSaving: false,
         lastSavedAt: new Date(),
-        lastSavedState: cloneState(updatedEdges.length ? get().nodes : s.nodes, updatedEdges, currentName),
+        lastSavedState: cloneState(currentNodes, updatedEdges, currentName),
+      })
+      queueMicrotask(() => {
+        set({ isDirty: false, isSaving: false })
       })
     } catch (err) {
       console.error("Save failed:", err)
