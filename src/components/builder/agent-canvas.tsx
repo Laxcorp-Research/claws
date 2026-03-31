@@ -8,7 +8,7 @@ import {
   MiniMap,
   BackgroundVariant,
 } from "@xyflow/react"
-import type { NodeTypes, Node } from "@xyflow/react"
+import type { NodeTypes, Node, Edge } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
 import { AgentNode } from "./agent-node"
@@ -29,6 +29,7 @@ export function AgentCanvas() {
     onEdgesChange,
     onConnect,
     selectAgent,
+    selectEdge,
     addAgent,
   } = useBuilderStore()
 
@@ -53,6 +54,10 @@ export function AgentCanvas() {
 
   const handleNodeClick = (_: React.MouseEvent, node: Node) => {
     selectAgent(node.id)
+  }
+
+  const handleEdgeClick = (_: React.MouseEvent, edge: Edge) => {
+    selectEdge(edge.id)
   }
 
   const handlePaneClick = () => {
@@ -94,6 +99,7 @@ export function AgentCanvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={handleNodeClick}
+        onEdgeClick={handleEdgeClick}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         nodesFocusable

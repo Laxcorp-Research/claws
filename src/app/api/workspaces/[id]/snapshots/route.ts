@@ -63,5 +63,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       label: (body as Record<string, string>).label || null,
     },
   })
+
+  await prisma.workspace.update({ where: { id }, data: { updatedAt: new Date() } })
+
   return apiSuccess(snapshot, 201)
 }

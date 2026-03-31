@@ -11,45 +11,42 @@ const FREQUENCY_OPTIONS = [
   { value: "weekday", label: "Weekdays only" },
 ]
 
-function buildTimeOptions(): { value: string; label: string }[] {
-  const opts: { value: string; label: string }[] = []
-  for (let h = 0; h < 24; h++) {
-    for (const m of ["00", "30"]) {
-      const val = `${String(h).padStart(2, "0")}:${m}`
-      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-      const ampm = h < 12 ? "AM" : "PM"
-      opts.push({ value: val, label: `${h12}:${m} ${ampm}` })
-    }
-  }
-  return opts
-}
-
-const TIME_OPTIONS = buildTimeOptions()
+const TIME_OPTIONS = [
+  { value: "06:00", label: "6:00 AM" },
+  { value: "07:00", label: "7:00 AM" },
+  { value: "08:00", label: "8:00 AM" },
+  { value: "09:00", label: "9:00 AM" },
+  { value: "10:00", label: "10:00 AM" },
+  { value: "12:00", label: "12:00 PM" },
+  { value: "14:00", label: "2:00 PM" },
+  { value: "16:00", label: "4:00 PM" },
+  { value: "18:00", label: "6:00 PM" },
+  { value: "20:00", label: "8:00 PM" },
+]
 
 export function HeartbeatConfig() {
   const { heartbeatSchedule, setHeartbeatSchedule } = useBuilderStore()
   const showTime = heartbeatSchedule.frequency !== "hourly"
 
   return (
-    <div className="absolute bottom-2 left-1.5 right-1.5 bg-[var(--bg)] border border-[var(--bd)] rounded-[6px] px-2.5 py-1.5 flex items-center gap-2 text-[10px] z-10">
-      <span className="text-[var(--tx2)] font-medium flex-shrink-0">Run every:</span>
-      <CustomSelect
-        value={heartbeatSchedule.frequency}
-        onChange={(val) => setHeartbeatSchedule({ frequency: val })}
-        options={FREQUENCY_OPTIONS}
-        className="min-w-[110px]"
-      />
-      {showTime && (
-        <>
-          <span className="text-[var(--tx2)] flex-shrink-0">at</span>
+    <div>
+      <div className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-[6px]">
+        Heartbeat
+      </div>
+      <div className="flex flex-col gap-[6px]">
+        <CustomSelect
+          value={heartbeatSchedule.frequency}
+          onChange={(val) => setHeartbeatSchedule({ frequency: val })}
+          options={FREQUENCY_OPTIONS}
+        />
+        {showTime && (
           <CustomSelect
             value={heartbeatSchedule.time}
             onChange={(val) => setHeartbeatSchedule({ time: val })}
             options={TIME_OPTIONS}
-            className="min-w-[90px]"
           />
-        </>
-      )}
+        )}
+      </div>
     </div>
   )
 }

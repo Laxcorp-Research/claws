@@ -18,7 +18,9 @@ interface CustomSelectProps {
 
 export function CustomSelect({ value, onChange, options, placeholder, className }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [openUpward, setOpenUpward] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -30,11 +32,20 @@ export function CustomSelect({ value, onChange, options, placeholder, className 
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      setOpenUpward(spaceBelow < 220)
+    }
+  }, [isOpen])
+
   const selectedLabel = options.find(o => o.value === value)?.label || placeholder || "Select..."
 
   return (
     <div className={`relative ${className || ""}`} ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between gap-[4px] border border-[var(--bd)] rounded-[6px] px-[8px] py-[5px] text-[11px] bg-[var(--bg)] text-[var(--tx)] cursor-pointer hover:border-[var(--tx3)] transition-colors"
@@ -46,7 +57,9 @@ export function CustomSelect({ value, onChange, options, placeholder, className 
 
       {isOpen && (
         <div
-          className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 bg-[var(--bg)] border border-[var(--bd)] rounded-[8px] shadow-modal py-[4px] max-h-[200px] overflow-y-auto"
+          className={`absolute z-50 left-0 right-0 bg-[var(--bg)] border border-[var(--bd)] rounded-[8px] shadow-modal py-[4px] max-h-[200px] overflow-y-auto ${
+            openUpward ? "bottom-[calc(100%+4px)]" : "top-[calc(100%+4px)]"
+          }`}
           role="listbox"
         >
           {options.map(option => (

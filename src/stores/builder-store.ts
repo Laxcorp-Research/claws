@@ -60,6 +60,12 @@ export interface SnapshotItem {
   createdAt: string
 }
 
+interface SavedState {
+  nodes: Node<AgentNodeData>[]
+  edges: Edge<ConnectionEdgeData>[]
+  workspaceName: string
+}
+
 interface BuilderState {
   workspaceId: string | null
   workspaceName: string
@@ -70,6 +76,7 @@ interface BuilderState {
   edges: Edge<ConnectionEdgeData>[]
 
   selectedAgentId: string | null
+  selectedEdgeId: string | null
   leftPanelTab: "agents" | "skills"
 
   skills: SkillItem[]
@@ -78,6 +85,7 @@ interface BuilderState {
   isDirty: boolean
   isSaving: boolean
   lastSavedAt: Date | null
+  lastSavedState: SavedState | null
   _positionTimeoutId: ReturnType<typeof setTimeout> | null
 
   snapshots: SnapshotItem[]
@@ -91,6 +99,7 @@ interface BuilderState {
   setWorkspaceName: (name: string) => void
   setLeftPanelTab: (tab: "agents" | "skills") => void
   selectAgent: (id: string | null) => void
+  selectEdge: (id: string | null) => void
   addAgent: (agent: Partial<AgentNodeData> & { name: string; role: AgentRole }) => void
   addWorker: () => void
   removeAgent: (id: string) => void
@@ -100,7 +109,9 @@ interface BuilderState {
   toggleSkill: (agentId: string, skillId: string) => void
   setHeartbeatSchedule: (schedule: Partial<{ frequency: string; time: string }>) => void
   removeConnection: (id: string) => void
+  updateConnectionCondition: (edgeId: string, condition: string) => void
   addSkill: (skill: SkillItem) => void
+  revertToLastSaved: () => void
   loadFromSnapshot: (nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[]) => void
   markDirty: () => void
   markSaved: () => void
@@ -113,6 +124,14 @@ interface BuilderState {
 }
 
 const WORKER_COLORS = ["#8BFCAE", "#5BA1F5", "#FFB1AB", "#FFDC6E", "#FFB1AB", "#8BFCAE"]
+
+const CONDITION_LABELS: Record<string, string> = {
+  ON_COMPLETE: "On complete",
+  ON_APPROVAL: "On approval",
+  ON_REJECTION: "On rejection",
+  ON_SCHEDULE: "On schedule",
+  ON_HUMAN_APPROVE: "On human approval",
+}
 
 function getDefaultPosition(role: AgentRole, existingNodes: Node[]): { x: number; y: number } {
   const workerCount = existingNodes.filter((n) => (n.data as AgentNodeData).role === "WORKER").length
@@ -133,6 +152,10 @@ function hasContentChanges(changes: NodeChange<Node<AgentNodeData>>[]): boolean 
   return changes.some(c => c.type !== "position" && c.type !== "dimensions" && c.type !== "select")
 }
 
+function cloneState(nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[], name: string): SavedState {
+  return { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)), workspaceName: name }
+}
+
 export const useBuilderStore = create<BuilderState>((set, get) => ({
   workspaceId: null,
   workspaceName: "",
@@ -143,6 +166,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   edges: [],
 
   selectedAgentId: null,
+  selectedEdgeId: null,
   leftPanelTab: "agents",
 
   skills: [],
@@ -151,16 +175,17 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   isDirty: false,
   isSaving: false,
   lastSavedAt: null,
+  lastSavedState: null,
   _positionTimeoutId: null,
 
   snapshots: [],
   isLoadingSnapshots: false,
 
   onNodesChange: (changes) => {
-    set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) as Node<AgentNodeData>[] }))
-    if (hasContentChanges(changes)) {
-      set({ isDirty: true })
-    }
+    set((s) => ({
+      nodes: applyNodeChanges(changes, s.nodes) as Node<AgentNodeData>[],
+      isDirty: hasContentChanges(changes) ? (s.isSaving ? s.isDirty : true) : s.isDirty,
+    }))
     if (hasPositionChanges(changes)) {
       const s = get()
       if (s._positionTimeoutId) clearTimeout(s._positionTimeoutId)
@@ -169,7 +194,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     }
   },
   onEdgesChange: (changes) => {
-    set((s) => ({ edges: applyEdgeChanges(changes, s.edges) as Edge<ConnectionEdgeData>[], isDirty: true }))
+    set((s) => ({
+      edges: applyEdgeChanges(changes, s.edges) as Edge<ConnectionEdgeData>[],
+      isDirty: s.isSaving ? s.isDirty : true,
+    }))
   },
   onConnect: (connection: Connection) => {
     const newEdge: Edge<ConnectionEdgeData> = {
@@ -177,13 +205,14 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       sourceHandle: connection.sourceHandle ?? undefined, targetHandle: connection.targetHandle ?? undefined,
       type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
     }
-    set((s) => ({ edges: addEdge(newEdge, s.edges) as Edge<ConnectionEdgeData>[], isDirty: true }))
+    set((s) => ({ edges: addEdge(newEdge, s.edges) as Edge<ConnectionEdgeData>[], isDirty: s.isSaving ? s.isDirty : true }))
   },
 
   setWorkspace: (id, name, status) => set({ workspaceId: id, workspaceName: name, workspaceStatus: status }),
-  setWorkspaceName: (name) => set({ workspaceName: name, isDirty: true }),
+  setWorkspaceName: (name) => set((s) => ({ workspaceName: name, isDirty: s.isSaving ? s.isDirty : true })),
   setLeftPanelTab: (tab) => set({ leftPanelTab: tab }),
-  selectAgent: (id) => set({ selectedAgentId: id }),
+  selectAgent: (id) => set({ selectedAgentId: id, selectedEdgeId: null }),
+  selectEdge: (id) => set({ selectedEdgeId: id, selectedAgentId: null }),
 
   addAgent: (agent) => {
     const s = get()
@@ -206,7 +235,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         qualityThreshold: agent.role === "CRITIC" ? 8.0 : undefined,
       },
     }
-    set((s) => ({ nodes: [...s.nodes, newNode], selectedAgentId: id, isDirty: true }))
+    set((s) => ({ nodes: [...s.nodes, newNode], selectedAgentId: id, selectedEdgeId: null, isDirty: s.isSaving ? s.isDirty : true }))
   },
 
   addWorker: () => {
@@ -225,7 +254,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     if (orchId) {
       newEdges.push({ id: `edge-${Date.now()}`, source: orchId, target: id, type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true })
     }
-    set((s) => ({ nodes: [...s.nodes, newNode], edges: [...s.edges, ...newEdges], selectedAgentId: id, isDirty: true }))
+    set((s) => ({ nodes: [...s.nodes, newNode], edges: [...s.edges, ...newEdges], selectedAgentId: id, selectedEdgeId: null, isDirty: s.isSaving ? s.isDirty : true }))
   },
 
   removeAgent: (id) => {
@@ -235,16 +264,23 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     if (d.role === "ORCHESTRATOR" || d.role === "CRITIC") return
     set((s) => ({
       nodes: s.nodes.filter((n) => n.id !== id), edges: s.edges.filter((e) => e.source !== id && e.target !== id),
-      selectedAgentId: s.selectedAgentId === id ? null : s.selectedAgentId, isDirty: true,
+      selectedAgentId: s.selectedAgentId === id ? null : s.selectedAgentId,
+      isDirty: s.isSaving ? s.isDirty : true,
     }))
   },
   deleteAgent: (id) => get().removeAgent(id),
 
   updateAgent: (id, updates) => {
-    set((s) => ({ nodes: s.nodes.map((n) => n.id === id ? { ...n, data: { ...(n.data as AgentNodeData), ...updates } } : n), isDirty: true }))
+    set((s) => ({
+      nodes: s.nodes.map((n) => n.id === id ? { ...n, data: { ...(n.data as AgentNodeData), ...updates } } : n),
+      isDirty: s.isSaving ? s.isDirty : true,
+    }))
   },
   updateAgentProperty: (id, key, value) => {
-    set((s) => ({ nodes: s.nodes.map((n) => n.id === id ? { ...n, data: { ...(n.data as AgentNodeData), [key]: value } } : n), isDirty: true }))
+    set((s) => ({
+      nodes: s.nodes.map((n) => n.id === id ? { ...n, data: { ...(n.data as AgentNodeData), [key]: value } } : n),
+      isDirty: s.isSaving ? s.isDirty : true,
+    }))
   },
   toggleSkill: (agentId, skillId) => {
     set((s) => ({
@@ -257,14 +293,28 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
           : [...current, skillId]
         return { ...n, data: { ...data, agentSkillIds: updated, skillCount: updated.length } }
       }),
-      isDirty: true,
+      isDirty: s.isSaving ? s.isDirty : true,
     }))
   },
   setHeartbeatSchedule: (schedule) => {
-    set((s) => ({ heartbeatSchedule: { ...s.heartbeatSchedule, ...schedule }, isDirty: true }))
+    set((s) => ({ heartbeatSchedule: { ...s.heartbeatSchedule, ...schedule }, isDirty: s.isSaving ? s.isDirty : true }))
   },
   removeConnection: (id) => {
-    set((s) => ({ edges: s.edges.filter((e) => e.id !== id), isDirty: true }))
+    set((s) => ({
+      edges: s.edges.filter((e) => e.id !== id),
+      selectedEdgeId: s.selectedEdgeId === id ? null : s.selectedEdgeId,
+      isDirty: s.isSaving ? s.isDirty : true,
+    }))
+  },
+  updateConnectionCondition: (edgeId, condition) => {
+    set((s) => ({
+      edges: s.edges.map(e =>
+        e.id === edgeId
+          ? { ...e, data: { ...(e.data as ConnectionEdgeData), condition: condition as ConnectionCondition }, label: CONDITION_LABELS[condition] || condition }
+          : e
+      ),
+      isDirty: s.isSaving ? s.isDirty : true,
+    }))
   },
   addSkill: (skill) => {
     set((s) => {
@@ -272,8 +322,21 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       return { skills: [...s.skills, skill] }
     })
   },
-  loadFromSnapshot: (nodes, edges) => set({ nodes, edges, isDirty: false, selectedAgentId: null }),
-  markDirty: () => set({ isDirty: true }),
+  revertToLastSaved: () => {
+    const { lastSavedState } = get()
+    if (lastSavedState) {
+      set({
+        nodes: JSON.parse(JSON.stringify(lastSavedState.nodes)),
+        edges: JSON.parse(JSON.stringify(lastSavedState.edges)),
+        workspaceName: lastSavedState.workspaceName,
+        isDirty: false,
+        selectedAgentId: null,
+        selectedEdgeId: null,
+      })
+    }
+  },
+  loadFromSnapshot: (nodes, edges) => set({ nodes, edges, isDirty: false, selectedAgentId: null, selectedEdgeId: null }),
+  markDirty: () => set((s) => ({ isDirty: s.isSaving ? s.isDirty : true })),
   markSaved: () => set({ isDirty: false, isSaving: false, lastSavedAt: new Date() }),
 
   loadWorkspace: async (workspaceId) => {
@@ -306,7 +369,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
       const edges: Edge<ConnectionEdgeData>[] = (ws.connections || []).map((c: Record<string, unknown>) => ({
         id: c.id as string, source: c.sourceAgentId as string, target: c.targetAgentId as string,
-        label: (c.label as string) || ((c.condition as string) || "ON_COMPLETE").replace(/_/g, " ").toLowerCase(),
+        label: (c.label as string) || CONDITION_LABELS[(c.condition as string) || "ON_COMPLETE"] || "On complete",
         type: "default", animated: true,
         data: { condition: (c.condition as ConnectionCondition) || "ON_COMPLETE", label: (c.label as string) || "" },
       }))
@@ -319,9 +382,11 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         }))
       }
 
+      const name = ws.name as string
       set({
-        nodes, edges, workspaceId, workspaceName: ws.name as string, workspaceStatus: ws.status as string,
-        skills: availableSkills, isLoading: false, isDirty: false, selectedAgentId: null,
+        nodes, edges, workspaceId, workspaceName: name, workspaceStatus: ws.status as string,
+        skills: availableSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
+        lastSavedState: cloneState(nodes, edges, name),
       })
     } catch (err) {
       console.error("Failed to load workspace:", err)
@@ -335,13 +400,19 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set({ isSaving: true })
 
     try {
-      // 1. Save positions
+      // 1. Save workspace name
+      await fetch(`/api/workspaces/${s.workspaceId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: s.workspaceName }),
+      })
+
+      // 2. Save positions
       const positions = s.nodes.map((n) => ({ id: n.id, positionX: n.position.x, positionY: n.position.y }))
       await fetch(`/api/agents/${s.workspaceId}/bulk-position`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positions }),
       })
 
-      // 2. Save each agent's properties + skills
+      // 3. Save each agent's properties + skills
       for (const node of s.nodes) {
         const d = node.data as AgentNodeData
         await fetch(`/api/agents/${s.workspaceId}/${node.id}`, {
@@ -354,7 +425,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         })
       }
 
-      // 3. Sync connections: fetch current DB connections, diff, create/delete
+      // 4. Sync connections
       const connRes = await fetch(`/api/connections/${s.workspaceId}`)
       const connJson = await connRes.json()
       const dbConnections: { id: string }[] = connJson.data || []
@@ -362,14 +433,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       const currentEdgeIds = new Set(s.edges.map(e => e.id))
       const dbIds = new Set(dbConnections.map(c => c.id))
 
-      // Delete connections that were removed
       for (const conn of dbConnections) {
         if (!currentEdgeIds.has(conn.id)) {
           await fetch(`/api/connections/${s.workspaceId}/${conn.id}`, { method: "DELETE" })
         }
       }
 
-      // Create connections that are new (temp IDs not in DB)
       const updatedEdges = [...s.edges]
       for (let i = 0; i < updatedEdges.length; i++) {
         const edge = updatedEdges[i]
@@ -389,13 +458,20 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         }
       }
 
-      // 4. Create a MANUAL_SAVE snapshot
+      // 5. Create a MANUAL_SAVE snapshot
       await fetch(`/api/workspaces/${s.workspaceId}/snapshots`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trigger: "MANUAL_SAVE" }),
       })
 
-      set({ edges: updatedEdges, isDirty: false, isSaving: false, lastSavedAt: new Date() })
+      const currentName = get().workspaceName
+      set({
+        edges: updatedEdges,
+        isDirty: false,
+        isSaving: false,
+        lastSavedAt: new Date(),
+        lastSavedState: cloneState(updatedEdges.length ? get().nodes : s.nodes, updatedEdges, currentName),
+      })
     } catch (err) {
       console.error("Save failed:", err)
       set({ isSaving: false })

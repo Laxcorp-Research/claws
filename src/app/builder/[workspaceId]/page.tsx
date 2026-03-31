@@ -18,7 +18,7 @@ export default function BuilderPage() {
   const params = useParams()
   const router = useRouter()
   const workspaceId = params.workspaceId as string
-  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, saveWorkspace } = useBuilderStore()
+  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, saveWorkspace, revertToLastSaved } = useBuilderStore()
   const [showHistory, setShowHistory] = useState(false)
   const [localName, setLocalName] = useState(workspaceName)
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
@@ -160,10 +160,16 @@ export default function BuilderPage() {
         </div>
       ) : (
         <div className="flex-1 grid grid-cols-[190px_1fr_190px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
-          <AgentSidebar />
+          <div className="flex flex-col gap-2.5 min-h-0">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <AgentSidebar />
+            </div>
+            <div className="border border-[var(--bd)] rounded-lg p-2.5 flex-shrink-0">
+              <HeartbeatConfig />
+            </div>
+          </div>
           <div className="relative bg-[var(--bg2)] border border-dashed border-[var(--bd)] rounded-lg overflow-hidden">
             <AgentCanvas />
-            <HeartbeatConfig />
             <VersionHistoryPanel open={showHistory} onClose={() => setShowHistory(false)} refreshKey={historyRefreshKey} />
           </div>
           <PropertiesPanel />
@@ -182,6 +188,7 @@ export default function BuilderPage() {
               variant="outline"
               size="sm"
               onClick={() => {
+                revertToLastSaved()
                 setShowUnsavedDialog(false)
                 if (pendingNavigation) router.push(pendingNavigation)
               }}

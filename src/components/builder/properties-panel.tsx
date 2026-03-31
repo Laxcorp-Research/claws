@@ -1,7 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
+import { useBuilderStore, type AgentNodeData, type ConnectionEdgeData } from "@/stores/builder-store"
 import { MarkdownEditor } from "./markdown-editor"
 import { SkillPicker } from "./skill-picker"
 import { CustomSelect } from "./custom-select"
@@ -9,8 +9,65 @@ import { AI_MODELS } from "@/lib/models"
 
 const MODEL_OPTIONS = AI_MODELS.map(m => ({ value: m.value, label: m.label }))
 
+const CONDITION_OPTIONS = [
+  { value: "ON_COMPLETE", label: "On complete" },
+  { value: "ON_APPROVAL", label: "On approval" },
+  { value: "ON_REJECTION", label: "On rejection" },
+  { value: "ON_SCHEDULE", label: "On schedule" },
+  { value: "ON_HUMAN_APPROVE", label: "On human approval" },
+]
+
+function ConnectionPanel() {
+  const { nodes, edges, selectedEdgeId, updateConnectionCondition, removeConnection } = useBuilderStore()
+
+  const edge = edges.find(e => e.id === selectedEdgeId)
+  if (!edge) return null
+
+  const sourceNode = nodes.find(n => n.id === edge.source)
+  const targetNode = nodes.find(n => n.id === edge.target)
+  const sourceName = (sourceNode?.data as AgentNodeData)?.name || "Unknown"
+  const targetName = (targetNode?.data as AgentNodeData)?.name || "Unknown"
+  const condition = (edge.data as ConnectionEdgeData)?.condition || "ON_COMPLETE"
+
+  return (
+    <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
+      <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">Connection</h4>
+
+      <div className="mb-2.5">
+        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">From</label>
+        <div className="text-[11px] text-[var(--tx)] px-[8px] py-[5px] bg-[var(--bg2)] rounded-[6px]">{sourceName}</div>
+      </div>
+
+      <div className="mb-2.5">
+        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">To</label>
+        <div className="text-[11px] text-[var(--tx)] px-[8px] py-[5px] bg-[var(--bg2)] rounded-[6px]">{targetName}</div>
+      </div>
+
+      <div className="mb-2.5">
+        <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Condition</label>
+        <CustomSelect
+          value={condition}
+          onChange={(val) => updateConnectionCondition(selectedEdgeId!, val)}
+          options={CONDITION_OPTIONS}
+        />
+      </div>
+
+      <button
+        onClick={() => removeConnection(selectedEdgeId!)}
+        className="w-full mt-3 py-1.5 text-[10px] text-[var(--err)] border border-[var(--err)] rounded-[6px] hover:bg-[var(--errbg)] transition-colors cursor-pointer bg-transparent"
+      >
+        Remove connection
+      </button>
+    </div>
+  )
+}
+
 export function PropertiesPanel() {
-  const { nodes, selectedAgentId, updateAgentProperty, deleteAgent } = useBuilderStore()
+  const { nodes, selectedAgentId, selectedEdgeId, updateAgentProperty, deleteAgent } = useBuilderStore()
+
+  if (selectedEdgeId) {
+    return <ConnectionPanel />
+  }
 
   const selectedNode = nodes.find((n) => n.id === selectedAgentId)
 
@@ -40,7 +97,6 @@ export function PropertiesPanel() {
         Properties — {agent.name}
       </h4>
 
-      {/* Role */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Role</label>
         <span className={cn(
@@ -53,7 +109,6 @@ export function PropertiesPanel() {
         </span>
       </div>
 
-      {/* Name */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Name</label>
         <input
@@ -64,7 +119,6 @@ export function PropertiesPanel() {
         />
       </div>
 
-      {/* Model */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Model</label>
         <CustomSelect
@@ -74,7 +128,6 @@ export function PropertiesPanel() {
         />
       </div>
 
-      {/* SOUL.md */}
       <MarkdownEditor
         label="SOUL.md"
         value={agent.soulMd || ""}
@@ -82,7 +135,6 @@ export function PropertiesPanel() {
         placeholder="Agent identity and personality..."
       />
 
-      {/* AGENTS.md */}
       <MarkdownEditor
         label="AGENTS.md"
         value={agent.agentsMd || ""}
@@ -90,10 +142,8 @@ export function PropertiesPanel() {
         placeholder="Operating procedures..."
       />
 
-      {/* Skills */}
       <SkillPicker agentId={selectedAgentId!} />
 
-      {/* Reports To */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Reports to</label>
         <CustomSelect
@@ -103,7 +153,6 @@ export function PropertiesPanel() {
         />
       </div>
 
-      {/* Outputs To */}
       <div className="mb-2.5">
         <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Outputs to</label>
         <CustomSelect
@@ -113,7 +162,6 @@ export function PropertiesPanel() {
         />
       </div>
 
-      {/* Critic: Quality Threshold */}
       {isCritic && (
         <div className="mb-2.5">
           <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">
@@ -135,7 +183,6 @@ export function PropertiesPanel() {
         </div>
       )}
 
-      {/* Delete (workers only) */}
       {canDelete && (
         <button
           onClick={() => deleteAgent(selectedAgentId!)}
