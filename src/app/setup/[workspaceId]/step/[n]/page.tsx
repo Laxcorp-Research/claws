@@ -51,7 +51,7 @@ function getProgressSteps(current: number) {
   }))
 }
 
-function Step1({ workspaceId }: { workspaceId: string }) {
+function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
   const router = useRouter()
   const [apiKeyInput, setApiKeyInput] = useState("")
   const [existingKey, setExistingKey] = useState<ApiKeyInfo | null>(null)
@@ -135,13 +135,14 @@ function Step1({ workspaceId }: { workspaceId: string }) {
           })
         )
       )
-      router.push(`/setup/${workspaceId}/step/2`)
+      const fromParam = isFromBuilder ? "?from=builder" : ""
+      router.push(`/setup/${workspaceId}/step/2${fromParam}`)
     } catch (e) {
       console.error("Failed to save models:", e)
     } finally {
       setIsSavingModels(false)
     }
-  }, [agents, workspaceId, router])
+  }, [agents, workspaceId, router, isFromBuilder])
 
   const hasValidKey = existingKey?.isValid === true
 
@@ -228,8 +229,13 @@ function Step1({ workspaceId }: { workspaceId: string }) {
         Sonnet 4.6 for tasks (Workers), Opus 4.6 for judgment (Critic). Pre-filled above — override only if needed.
       </div>
 
-      {/* Next */}
-      <div className="flex justify-end">
+      {/* Navigation */}
+      <div className="flex justify-between">
+        {isFromBuilder ? (
+          <Button variant="outline" onClick={() => router.push(`/builder/${workspaceId}`)}>← Back to Builder</Button>
+        ) : (
+          <div />
+        )}
         <Button variant="primary" onClick={handleNext} disabled={!hasValidKey || isSavingModels}>
           {isSavingModels ? "Saving..." : "Next: Connect tools →"}
         </Button>
@@ -515,6 +521,7 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         </div>
       )}
 
+
       {/* Modals */}
       <ApiKeyModal
         open={apiKeyModal.open}
@@ -602,7 +609,7 @@ interface DeployEligibility {
   isFirstDeploy: boolean
 }
 
-function Step3({ workspaceId }: { workspaceId: string }) {
+function Step3({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
   const router = useRouter()
   const [isDeploying, setIsDeploying] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null)
@@ -762,7 +769,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         <AlertBanner variant="error" actions={
           <div className="flex gap-1.5">
             <Button variant="primary" size="sm" onClick={handleDeploy}>Retry deployment</Button>
-            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tool connections</Button>
+            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2${isFromBuilder ? "?from=builder" : ""}`)}>Check tool connections</Button>
           </div>
         }>
           <p className="font-medium">Deployment failed</p>
@@ -777,8 +784,8 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       <div className="flex justify-between mt-4">
-        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>← Back</Button>
-        <Button variant="primary" disabled={!canProceed} onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>Next: Channels →</Button>
+        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/2${isFromBuilder ? "?from=builder" : ""}`)}>← Back</Button>
+        <Button variant="primary" disabled={!canProceed} onClick={() => router.push(`/setup/${workspaceId}/step/4${isFromBuilder ? "?from=builder" : ""}`)}>Next: Channels →</Button>
       </div>
     </>
   )
@@ -797,7 +804,7 @@ const CHANNELS = [
   { id: "discord", name: "Discord", description: "Enter bot token from Developer Portal", icon: <Gamepad2 className={ICON_CLASS} />, alwaysConnected: false },
 ]
 
-function Step4({ workspaceId }: { workspaceId: string }) {
+function Step4({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
   const router = useRouter()
   const [channelStatuses, setChannelStatuses] = useState<Record<string, "connected" | "disconnected" | "connecting" | "error">>({
     "web-chat": "connected",
@@ -848,7 +855,7 @@ function Step4({ workspaceId }: { workspaceId: string }) {
       </ChannelList>
 
       <div className="flex justify-between mt-3.5">
-        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>← Back</Button>
+        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/3${isFromBuilder ? "?from=builder" : ""}`)}>← Back</Button>
         <Button variant="primary" onClick={() => router.push(`/setup/${workspaceId}/step/5`)}>Next: Go live →</Button>
       </div>
     </>
@@ -966,17 +973,17 @@ export default function SetupStepPage() {
       <div className="mb-[10px]">
         <Link
           href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-          className="text-[12px] text-[var(--tx2)] hover:text-[var(--tx)] flex items-center gap-[4px] w-fit"
+          className="text-[12px] text-[var(--ac)] hover:text-[var(--tx)] flex items-center gap-[4px] w-fit"
         >
           <ArrowLeft className="w-[14px] h-[14px]" />
           {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
         </Link>
       </div>
       {showWizardChrome && <WizardProgressBar steps={progressSteps} />}
-      {stepNum === 1 ? <Step1 workspaceId={workspaceId} />
+      {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
         : stepNum === 2 ? <Step2 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-        : stepNum === 3 ? <Step3 workspaceId={workspaceId} />
-        : stepNum === 4 ? <Step4 workspaceId={workspaceId} />
+        : stepNum === 3 ? <Step3 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
+        : stepNum === 4 ? <Step4 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
         : stepNum === 5 ? <Step5 workspaceId={workspaceId} />
         : <StepPlaceholder step={stepNum} workspaceId={workspaceId} />}
     </div>
