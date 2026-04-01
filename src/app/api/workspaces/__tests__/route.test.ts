@@ -96,12 +96,28 @@ describe('POST /api/workspaces', () => {
     expect(res.status).toBe(400);
   });
 
-  it('creates an empty workspace (no default agents)', async () => {
+  it('creates a workspace with default Orchestrator + Critic + connection', async () => {
     (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
     (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 'ws-new', name: 'New Claw', slug: 'new-claw', status: 'DRAFT',
-    });
+
+    const mockTx = {
+      workspace: { create: vi.fn().mockResolvedValue({ id: 'ws-new', name: 'New Claw', slug: 'new-claw' }) },
+      agent: { create: vi.fn()
+        .mockResolvedValueOnce({ id: 'orch-1' })
+        .mockResolvedValueOnce({ id: 'critic-1' }) },
+      agentConnection: { create: vi.fn().mockResolvedValue({ id: 'conn-1' }) },
+    };
+    (prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx)
+    );
+
+    (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'ws-new', name: 'New Claw', slug: 'new-claw',
+        agents: [{ id: 'orch-1', role: 'ORCHESTRATOR' }, { id: 'critic-1', role: 'CRITIC' }],
+        connections: [{ id: 'conn-1', sourceAgentId: 'orch-1', targetAgentId: 'critic-1' }],
+      });
 
     const req = createMockRequest('http://localhost:3000/api/workspaces', {
       method: 'POST',
@@ -112,7 +128,7 @@ describe('POST /api/workspaces', () => {
 
     expect(status).toBe(201);
     expect(data.success).toBe(true);
-    expect(data.data.agents).toEqual([]);
-    expect(data.data.connections).toEqual([]);
+    expect(mockTx.agent.create).toHaveBeenCalledTimes(2);
+    expect(mockTx.agentConnection.create).toHaveBeenCalledTimes(1);
   });
 });
