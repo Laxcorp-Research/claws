@@ -419,11 +419,19 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         fetch("/api/skills"),
       ])
 
+      if (!wsRes.ok) {
+        const text = await wsRes.text().catch(() => "")
+        throw new Error(`Workspace API returned ${wsRes.status}: ${text.slice(0, 200)}`)
+      }
+
       const wsJson = await wsRes.json()
       if (!wsJson.success) throw new Error(wsJson.error?.message || "Failed to load workspace")
 
       const ws = wsJson.data
       if (!ws) throw new Error("Workspace data is null")
+      if (!Array.isArray(ws.agents)) {
+        console.warn("loadWorkspace: ws.agents is not an array, got:", typeof ws.agents, ws.agents)
+      }
 
       const roleDefaults: Record<string, { x: number; y: number }> = {
         ORCHESTRATOR: { x: 300, y: 40 },
