@@ -75,13 +75,13 @@ describe('POST /api/workspaces', () => {
     expect(res.status).toBe(401);
   });
 
-  it('enforces workspace limit (5 max)', async () => {
-    (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(5);
+  it('enforces workspace limit (20 max)', async () => {
+    (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(20);
     (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     const req = createMockRequest('http://localhost:3000/api/workspaces', {
       method: 'POST',
-      body: { name: 'Sixth Claw' },
+      body: { name: 'Over Limit Claw' },
     });
     const res = await POST(req);
     expect(res.status).toBe(403);

@@ -23,7 +23,7 @@ export const ERRORS = {
   FORBIDDEN: () => apiError("FORBIDDEN", "You do not have access to this resource", 403),
   NOT_FOUND: (resource: string) => apiError(`${resource.toUpperCase()}_NOT_FOUND`, `${resource} not found`, 404),
   VALIDATION: (message: string) => apiError("VALIDATION_ERROR", message, 400),
-  WORKSPACE_LIMIT: () => apiError("WORKSPACE_LIMIT_REACHED", "Workspace limit reached for your plan. Upgrade for more.", 403),
+  WORKSPACE_LIMIT: (limit = 20) => apiError("WORKSPACE_LIMIT_REACHED", `You've reached the maximum of ${limit} workspaces. Delete unused ones to create more.`, 403),
   AGENT_LIMIT: () => apiError("AGENT_LIMIT_REACHED", "Agent limit reached for your plan.", 403),
   ROLE_PROTECTED: (role: string) => apiError("ROLE_PROTECTED", `Cannot delete the ${role}. Every Claw needs exactly one.`, 400),
 } as const

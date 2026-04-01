@@ -32,8 +32,9 @@ export async function POST(req: NextRequest) {
     return ERRORS.VALIDATION("Name is required and must be under 64 characters")
   }
 
+  const MAX_WORKSPACES = 20
   const workspaceCount = await prisma.workspace.count({ where: { userId: user.id } })
-  if (workspaceCount >= 5) return ERRORS.WORKSPACE_LIMIT()
+  if (workspaceCount >= MAX_WORKSPACES) return ERRORS.WORKSPACE_LIMIT(MAX_WORKSPACES)
 
   const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
   const existing = await prisma.workspace.findUnique({
