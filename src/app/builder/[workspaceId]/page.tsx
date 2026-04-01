@@ -18,7 +18,7 @@ export default function BuilderPage() {
   const params = useParams()
   const router = useRouter()
   const workspaceId = params.workspaceId as string
-  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, saveWorkspace, revertToLastSaved } = useBuilderStore()
+  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, lastSavedAt, saveWorkspace, revertToLastSaved } = useBuilderStore()
   const [showHistory, setShowHistory] = useState(false)
   const [localName, setLocalName] = useState("")
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
@@ -94,30 +94,22 @@ export default function BuilderPage() {
           <StatusBadge status={workspaceStatus === "RUNNING" ? "running" : workspaceStatus === "DRAFT" ? "draft" : "setup"} />
         </div>
         <div className="flex items-center gap-[6px]">
-          <Button
-            size="sm"
-            variant={isDirty ? "primary" : "outline"}
-            onClick={handleSave}
-            disabled={!isDirty || isSaving}
-            className={`text-[10px] ${!isDirty ? "opacity-50" : ""}`}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-[14px] h-[14px] animate-spin mr-[4px]" />
-                Saving...
-              </>
-            ) : isDirty ? (
-              <>
-                <Save className="w-[14px] h-[14px] mr-[4px]" />
-                Save
-              </>
-            ) : (
-              <>
-                <Check className="w-[14px] h-[14px] mr-[4px]" />
-                Saved
-              </>
-            )}
-          </Button>
+          {isSaving ? (
+            <Button size="sm" variant="outline" disabled className="text-[10px]">
+              <Loader2 className="w-[14px] h-[14px] animate-spin mr-[4px]" />
+              Saving...
+            </Button>
+          ) : isDirty ? (
+            <Button size="sm" variant="primary" onClick={handleSave} className="text-[10px]">
+              <Save className="w-[14px] h-[14px] mr-[4px]" />
+              Save
+            </Button>
+          ) : lastSavedAt ? (
+            <Button size="sm" variant="outline" disabled className="text-[10px] opacity-50">
+              <Check className="w-[14px] h-[14px] mr-[4px]" />
+              Saved
+            </Button>
+          ) : null}
           <Button variant="ghost" size="sm" className="text-[10px]" onClick={handleBack}>
             <ArrowLeft className="w-[14px] h-[14px] mr-[4px]" />
             My Claws

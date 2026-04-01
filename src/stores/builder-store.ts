@@ -422,14 +422,38 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       if (!wsJson.success) throw new Error(wsJson.error?.message || "Failed to load workspace")
 
       const ws = wsJson.data
-      const nodes: Node<AgentNodeData>[] = (ws.agents || []).map((a: Record<string, unknown>) => {
+      if (!ws) throw new Error("Workspace data is null")
+
+      const roleDefaults: Record<string, { x: number; y: number }> = {
+        ORCHESTRATOR: { x: 300, y: 40 },
+        CRITIC: { x: 300, y: 400 },
+      }
+      let workerIdx = 0
+
+      const agents = Array.isArray(ws.agents) ? ws.agents : []
+      console.log("[LOAD] Raw agents from API:", agents.length, agents.map((a: Record<string, unknown>) => ({ id: a.id, role: a.role, positionX: a.positionX, positionY: a.positionY })))
+
+      const nodes: Node<AgentNodeData>[] = agents.map((a: Record<string, unknown>) => {
         const agentSkills = Array.isArray(a.skills) ? a.skills as { skillId: string }[] : []
+        const role = a.role as AgentRole
+
+        let position = { x: (a.positionX as number) || 0, y: (a.positionY as number) || 0 }
+        if (position.x === 0 && position.y === 0) {
+          if (role in roleDefaults) {
+            position = roleDefaults[role]
+          } else {
+            position = { x: 80 + workerIdx * 160, y: 220 }
+            workerIdx++
+          }
+        }
+        if (role === "WORKER") workerIdx++
+
         return {
           id: a.id as string, type: "agentNode",
-          position: { x: a.positionX as number, y: a.positionY as number },
+          position,
           data: {
-            agentId: a.id as string, name: a.name as string, role: a.role as AgentRole, color: a.color as string,
-            model: a.model as string,
+            agentId: a.id as string, name: a.name as string, role, color: (a.color as string) || "#8BFCAE",
+            model: (a.model as string) || "anthropic/claude-sonnet-4-6",
             skillCount: agentSkills.length,
             agentSkillIds: agentSkills.map(s => s.skillId),
             hasHeartbeat: !!(a.heartbeatMd), healthStatus: "idle" as const,
@@ -454,14 +478,16 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         }))
       }
 
-      const name = ws.name as string
+      const name = (ws.name as string) || ""
+      console.log("[LOAD] Mapped nodes:", nodes.length, "edges:", edges.length, "name:", name)
+
       set({
-        nodes, edges, workspaceId, workspaceName: name, workspaceStatus: ws.status as string,
+        nodes, edges, workspaceId, workspaceName: name, workspaceStatus: (ws.status as string) || "DRAFT",
         skills: availableSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
         lastSavedState: cloneState(nodes, edges, name),
       })
     } catch (err) {
-      console.error("Failed to load workspace:", err)
+      console.error("[LOAD] Failed to load workspace:", err)
       set({ isLoading: false })
     }
   },

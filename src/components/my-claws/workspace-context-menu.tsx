@@ -75,7 +75,7 @@ export function WorkspaceContextMenu({
     <div className="relative" ref={menuRef}>
       <button
         onClick={(e) => { e.stopPropagation(); e.preventDefault(); setIsOpen(!isOpen) }}
-        className="p-[6px] rounded-[6px] opacity-0 group-hover:opacity-100 hover:bg-[var(--bg2)] transition-all cursor-pointer border-none bg-transparent"
+        className="p-[6px] rounded-[6px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
         aria-label="Workspace options"
       >
         <MoreHorizontal className="w-[16px] h-[16px] text-[var(--tx3)]" />
