@@ -96,27 +96,12 @@ describe('POST /api/workspaces', () => {
     expect(res.status).toBe(400);
   });
 
-  it('creates a blank workspace with default agents', async () => {
+  it('creates an empty workspace (no default agents)', async () => {
     (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
     (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-
-    const mockTx = {
-      workspace: { create: vi.fn().mockResolvedValue({ id: 'ws-new', name: 'New Claw', slug: 'new-claw' }) },
-      agent: { create: vi.fn().mockResolvedValue({ id: 'agent-new' }) },
-    };
-    (prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx)
-    );
-
-    (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: 'ws-new',
-        name: 'New Claw',
-        slug: 'new-claw',
-        agents: [],
-        connections: [],
-      });
+    (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'ws-new', name: 'New Claw', slug: 'new-claw', status: 'DRAFT',
+    });
 
     const req = createMockRequest('http://localhost:3000/api/workspaces', {
       method: 'POST',
@@ -127,6 +112,7 @@ describe('POST /api/workspaces', () => {
 
     expect(status).toBe(201);
     expect(data.success).toBe(true);
-    expect(mockTx.agent.create).toHaveBeenCalledTimes(2);
+    expect(data.data.agents).toEqual([]);
+    expect(data.data.connections).toEqual([]);
   });
 });

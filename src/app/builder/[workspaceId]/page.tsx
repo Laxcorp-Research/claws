@@ -12,13 +12,13 @@ import { HeartbeatConfig } from "@/components/builder/heartbeat-config"
 import { VersionHistoryPanel } from "@/components/builder/version-history-panel"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useBuilderStore } from "@/stores/builder-store"
-import { Loader2, Send, Save, Check, ArrowLeft } from "lucide-react"
+import { Loader2, Send, Save, Check, ArrowLeft, AlertTriangle } from "lucide-react"
 
 export default function BuilderPage() {
   const params = useParams()
   const router = useRouter()
   const workspaceId = params.workspaceId as string
-  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, lastSavedAt, saveWorkspace, revertToLastSaved } = useBuilderStore()
+  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, lastSavedAt, saveWorkspace, revertToLastSaved, hasDraftRecovery, draftTimestamp, restoreDraft, dismissDraft } = useBuilderStore()
   const [showHistory, setShowHistory] = useState(false)
   const [localName, setLocalName] = useState("")
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
@@ -131,6 +131,31 @@ export default function BuilderPage() {
           </Button>
         </div>
       </div>
+
+      {hasDraftRecovery && (
+        <div className="bg-[var(--warnbg)] border-b border-[var(--warn)] px-[14px] py-[8px] flex items-center justify-between">
+          <div className="flex items-center gap-[8px]">
+            <AlertTriangle className="w-[14px] h-[14px] text-[var(--warn)] flex-shrink-0" />
+            <span className="text-[12px] text-[#92400e]">
+              You have unsaved changes from {draftTimestamp ? new Date(draftTimestamp).toLocaleString() : "a previous session"}.
+            </span>
+          </div>
+          <div className="flex items-center gap-[6px]">
+            <button
+              onClick={dismissDraft}
+              className="px-[10px] py-[4px] text-[11px] text-[var(--tx2)] border border-[var(--bd)] rounded-[4px] hover:bg-[var(--bg2)] cursor-pointer bg-transparent"
+            >
+              Discard
+            </button>
+            <button
+              onClick={restoreDraft}
+              className="px-[10px] py-[4px] text-[11px] text-white bg-[var(--warn)] rounded-[4px] hover:opacity-90 cursor-pointer border-none"
+            >
+              Restore changes
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 3-panel grid */}
       {isLoading ? (

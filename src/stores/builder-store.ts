@@ -88,6 +88,10 @@ interface BuilderState {
   lastSavedState: SavedState | null
   _positionTimeoutId: ReturnType<typeof setTimeout> | null
 
+  hasDraftRecovery: boolean
+  draftTimestamp: number | null
+  _draftIntervalId: ReturnType<typeof setInterval> | null
+
   snapshots: SnapshotItem[]
   isLoadingSnapshots: boolean
 
@@ -100,10 +104,10 @@ interface BuilderState {
   setLeftPanelTab: (tab: "agents" | "skills") => void
   selectAgent: (id: string | null) => void
   selectEdge: (id: string | null) => void
-  addAgent: (opts?: { name?: string; role?: AgentRole; model?: string; soulMd?: string; agentsMd?: string }) => Promise<void>
-  addWorker: () => Promise<void>
-  removeAgent: (id: string) => Promise<void>
-  deleteAgent: (id: string) => Promise<void>
+  addAgent: (opts?: { name?: string; role?: AgentRole; model?: string; soulMd?: string; agentsMd?: string }) => void
+  addWorker: () => void
+  removeAgent: (id: string) => void
+  deleteAgent: (id: string) => void
   updateAgent: (id: string, updates: Partial<AgentNodeData>) => void
   updateAgentProperty: (id: string, key: string, value: unknown) => void
   toggleSkill: (agentId: string, skillId: string) => void
@@ -115,6 +119,9 @@ interface BuilderState {
   loadFromSnapshot: (nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[]) => void
   markDirty: () => void
   markSaved: () => void
+
+  restoreDraft: () => void
+  dismissDraft: () => void
 
   loadWorkspace: (workspaceId: string) => Promise<void>
   saveWorkspace: () => Promise<void>
@@ -154,6 +161,26 @@ function cloneState(nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData
   return { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)), workspaceName: name }
 }
 
+function draftKey(workspaceId: string) {
+  return `claws-draft-${workspaceId}`
+}
+
+function saveDraftToLocal(workspaceId: string, state: { nodes: Node<AgentNodeData>[]; edges: Edge<ConnectionEdgeData>[]; workspaceName: string; timestamp: number }) {
+  try { localStorage.setItem(draftKey(workspaceId), JSON.stringify(state)) } catch { /* full or unavailable */ }
+}
+
+function loadDraftFromLocal(workspaceId: string): { nodes: Node<AgentNodeData>[]; edges: Edge<ConnectionEdgeData>[]; workspaceName: string; timestamp: number } | null {
+  try {
+    const raw = localStorage.getItem(draftKey(workspaceId))
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch { return null }
+}
+
+function clearDraftFromLocal(workspaceId: string) {
+  try { localStorage.removeItem(draftKey(workspaceId)) } catch { /* noop */ }
+}
+
 export const useBuilderStore = create<BuilderState>((set, get) => ({
   workspaceId: null,
   workspaceName: "",
@@ -175,6 +202,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   lastSavedAt: null,
   lastSavedState: null,
   _positionTimeoutId: null,
+
+  hasDraftRecovery: false,
+  draftTimestamp: null,
+  _draftIntervalId: null,
 
   snapshots: [],
   isLoadingSnapshots: false,
@@ -199,7 +230,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   },
   onConnect: (connection: Connection) => {
     const newEdge: Edge<ConnectionEdgeData> = {
-      id: `edge-${Date.now()}`, source: connection.source, target: connection.target,
+      id: `temp-edge-${Date.now()}`, source: connection.source, target: connection.target,
       sourceHandle: connection.sourceHandle ?? undefined, targetHandle: connection.targetHandle ?? undefined,
       type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
     }
@@ -212,8 +243,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   selectAgent: (id) => set({ selectedAgentId: id, selectedEdgeId: null }),
   selectEdge: (id) => set({ selectedEdgeId: id, selectedAgentId: null }),
 
-  // Creates agent in DB first, then adds to local state with the real DB ID
-  addAgent: async (opts) => {
+  addAgent: (opts) => {
     const s = get()
     if (!s.workspaceId) return
 
@@ -227,105 +257,64 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     const position = getDefaultPosition(role, s.nodes)
     const color = role === "ORCHESTRATOR" ? "#5BA1F5" : role === "CRITIC" ? "#A78BFA" : WORKER_COLORS[workerCount % WORKER_COLORS.length]
 
-    try {
-      const res = await fetch(`/api/agents/${s.workspaceId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          role,
-          model: opts?.model || DEFAULT_MODEL[role] || "anthropic/claude-sonnet-4-6",
-          color,
-          soulMd: opts?.soulMd || "",
-          agentsMd: opts?.agentsMd || "",
-          positionX: position.x,
-          positionY: position.y,
-          qualityThreshold: role === "CRITIC" ? 8.0 : undefined,
-        }),
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+
+    const newNode: Node<AgentNodeData> = {
+      id: tempId,
+      type: "agentNode",
+      position,
+      data: {
+        agentId: tempId, name, role, color,
+        model: opts?.model || DEFAULT_MODEL[role] || "anthropic/claude-sonnet-4-6",
+        soulMd: opts?.soulMd || "", agentsMd: opts?.agentsMd || "",
+        skillCount: 0, agentSkillIds: [],
+        hasHeartbeat: false, healthStatus: "idle",
+        qualityThreshold: role === "CRITIC" ? 8.0 : undefined,
+      },
+    }
+
+    const orchNode = s.nodes.find((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")
+    const newEdges: Edge<ConnectionEdgeData>[] = []
+    if (role === "WORKER" && orchNode) {
+      newEdges.push({
+        id: `temp-edge-${Date.now()}`,
+        source: orchNode.id, target: tempId,
+        type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
       })
-      if (!res.ok) {
-        console.error("Failed to create agent:", res.status)
-        return
-      }
-      const json = await res.json()
-      const agent = json.data
+    }
 
-      const newNode: Node<AgentNodeData> = {
-        id: agent.id,
-        type: "agentNode",
-        position: { x: agent.positionX ?? position.x, y: agent.positionY ?? position.y },
-        data: {
-          agentId: agent.id, name: agent.name, role: agent.role as AgentRole, color: agent.color || color,
-          model: agent.model, soulMd: agent.soulMd || "", agentsMd: agent.agentsMd || "",
-          skillCount: 0, agentSkillIds: [],
-          hasHeartbeat: !!(agent.heartbeatMd), healthStatus: "idle",
-          qualityThreshold: agent.qualityThreshold ?? undefined,
-        },
-      }
+    set({
+      nodes: [...s.nodes, newNode],
+      edges: newEdges.length > 0 ? [...s.edges, ...newEdges] : s.edges,
+      isDirty: true,
+      selectedAgentId: tempId,
+      selectedEdgeId: null,
+    })
 
-      // If worker and orchestrator exists, auto-create a connection
-      const orchId = get().nodes.find((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")?.id
-      const newEdges: Edge<ConnectionEdgeData>[] = []
-      if (role === "WORKER" && orchId) {
-        try {
-          const connRes = await fetch(`/api/connections/${s.workspaceId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sourceAgentId: orchId, targetAgentId: agent.id, condition: "ON_COMPLETE" }),
-          })
-          if (connRes.ok) {
-            const connJson = await connRes.json()
-            const conn = connJson.data
-            newEdges.push({
-              id: conn.id, source: orchId, target: agent.id,
-              type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
-            })
-          }
-        } catch { /* connection creation is optional */ }
-      }
-
-      set((state) => ({
-        nodes: [...state.nodes, newNode],
-        edges: newEdges.length > 0 ? [...state.edges, ...newEdges] : state.edges,
-        selectedAgentId: agent.id,
-        selectedEdgeId: null,
-      }))
-    } catch (error) {
-      console.error("Failed to create agent:", error)
+    if (role === "ORCHESTRATOR" && !s.nodes.some((n) => (n.data as AgentNodeData).role === "CRITIC")) {
+      setTimeout(() => get().addAgent({ role: "CRITIC" }), 50)
     }
   },
 
-  addWorker: async () => {
-    await get().addAgent({ role: "WORKER" })
+  addWorker: () => {
+    get().addAgent({ role: "WORKER" })
   },
 
-  // Deletes from DB then removes from local state
-  removeAgent: async (id) => {
+  removeAgent: (id) => {
     const s = get()
-    if (!s.workspaceId) return
     const node = s.nodes.find((n) => n.id === id)
     if (!node) return
     const d = node.data as AgentNodeData
     if (d.role === "ORCHESTRATOR" || d.role === "CRITIC") return
 
-    try {
-      const res = await fetch(`/api/agents/${s.workspaceId}/${id}`, { method: "DELETE" })
-      if (!res.ok) {
-        console.error("Failed to delete agent:", res.status)
-        return
-      }
-    } catch (error) {
-      console.error("Failed to delete agent:", error)
-      return
-    }
-
-    set((state) => ({
-      nodes: state.nodes.filter((n) => n.id !== id),
-      edges: state.edges.filter((e) => e.source !== id && e.target !== id),
-      selectedAgentId: state.selectedAgentId === id ? null : state.selectedAgentId,
-    }))
+    set({
+      nodes: s.nodes.filter((n) => n.id !== id),
+      edges: s.edges.filter((e) => e.source !== id && e.target !== id),
+      selectedAgentId: s.selectedAgentId === id ? null : s.selectedAgentId,
+      isDirty: true,
+    })
   },
-  deleteAgent: async (id) => { await get().removeAgent(id) },
+  deleteAgent: (id) => { get().removeAgent(id) },
 
   updateAgent: (id, updates) => {
     set((s) => ({
@@ -398,10 +387,33 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   markDirty: () => set((s) => ({ isDirty: s.isSaving ? s.isDirty : true })),
   markSaved: () => set({ isDirty: false, isSaving: false, lastSavedAt: new Date() }),
 
-  // Full reset before loading to prevent state bleed between workspaces
+  restoreDraft: () => {
+    const s = get()
+    if (!s.workspaceId) return
+    const draft = loadDraftFromLocal(s.workspaceId)
+    if (draft) {
+      set({
+        nodes: draft.nodes as Node<AgentNodeData>[],
+        edges: draft.edges as Edge<ConnectionEdgeData>[],
+        workspaceName: draft.workspaceName,
+        isDirty: true,
+        hasDraftRecovery: false,
+        draftTimestamp: null,
+      })
+    }
+  },
+
+  dismissDraft: () => {
+    const s = get()
+    if (s.workspaceId) clearDraftFromLocal(s.workspaceId)
+    set({ hasDraftRecovery: false, draftTimestamp: null })
+  },
+
   loadWorkspace: async (workspaceId) => {
     const prevTimeout = get()._positionTimeoutId
     if (prevTimeout) clearTimeout(prevTimeout)
+    const prevInterval = get()._draftIntervalId
+    if (prevInterval) clearInterval(prevInterval)
 
     set({
       isLoading: true, workspaceId,
@@ -410,6 +422,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       workspaceName: "", workspaceStatus: "DRAFT",
       isDirty: false, isSaving: false,
       lastSavedAt: null, lastSavedState: null, _positionTimeoutId: null,
+      hasDraftRecovery: false, draftTimestamp: null, _draftIntervalId: null,
       heartbeatSchedule: { frequency: "daily", time: "08:00" },
     })
 
@@ -429,9 +442,6 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
       const ws = wsJson.data
       if (!ws) throw new Error("Workspace data is null")
-      if (!Array.isArray(ws.agents)) {
-        console.warn("loadWorkspace: ws.agents is not an array, got:", typeof ws.agents, ws.agents)
-      }
 
       const roleDefaults: Record<string, { x: number; y: number }> = {
         ORCHESTRATOR: { x: 300, y: 40 },
@@ -506,13 +516,35 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         skills: availableSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
         lastSavedState: cloneState(nodes, edges, name),
       })
+
+      // Check for localStorage draft recovery
+      const draft = loadDraftFromLocal(workspaceId)
+      const dbTimestamp = ws.updatedAt ? new Date(ws.updatedAt as string).getTime() : 0
+      if (draft && draft.timestamp > dbTimestamp) {
+        set({ hasDraftRecovery: true, draftTimestamp: draft.timestamp })
+      } else {
+        clearDraftFromLocal(workspaceId)
+      }
+
+      // Start auto-draft interval (every 5s when dirty)
+      const intervalId = setInterval(() => {
+        const current = get()
+        if (current.isDirty && current.workspaceId) {
+          saveDraftToLocal(current.workspaceId, {
+            nodes: current.nodes,
+            edges: current.edges,
+            workspaceName: current.workspaceName,
+            timestamp: Date.now(),
+          })
+        }
+      }, 5000)
+      set({ _draftIntervalId: intervalId })
     } catch (err) {
       console.error("Failed to load workspace:", err)
       set({ isLoading: false })
     }
   },
 
-  // Save with proper error handling + queueMicrotask to fix isDirty race
   saveWorkspace: async () => {
     const s = get()
     if (!s.workspaceId || s.isSaving) return
@@ -528,38 +560,81 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       })
       if (!nameRes.ok) throw new Error(`Workspace name save failed: ${nameRes.status}`)
 
-      // 2. Save each agent's properties + positions + skills
+      // 2. Fetch current DB agents to diff
+      const dbAgentsRes = await fetch(`/api/agents/${wid}`)
+      const dbAgentsJson = await dbAgentsRes.json()
+      const dbAgents: { id: string }[] = Array.isArray(dbAgentsJson.data) ? dbAgentsJson.data : []
+      const dbAgentIds = new Set(dbAgents.map(a => a.id))
+
+      const idMap = new Map<string, string>()
+
+      // 3. Create new agents (temp IDs) or update existing ones
       for (const node of s.nodes) {
         const d = node.data as AgentNodeData
-        const patchRes = await fetch(`/api/agents/${wid}/${node.id}`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: d.name, model: d.model, soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
-            positionX: node.position.x, positionY: node.position.y,
-            qualityThreshold: d.qualityThreshold, reportsTo: d.reportsTo || null,
-            skillIds: d.agentSkillIds || [],
-          }),
-        })
-        if (!patchRes.ok) throw new Error(`Agent save failed for ${d.name}: ${patchRes.status}`)
-      }
+        const isTemp = node.id.startsWith("temp-")
 
-      // 3. Sync connections
-      const connRes = await fetch(`/api/connections/${wid}`)
-      const connJson = await connRes.json()
-      const dbConnections: { id: string }[] = connJson.data || []
-      const dbIds = new Set(dbConnections.map(c => c.id))
-      const localEdgeIds = new Set(s.edges.map(e => e.id))
-
-      for (const conn of dbConnections) {
-        if (!localEdgeIds.has(conn.id)) {
-          await fetch(`/api/connections/${wid}/${conn.id}`, { method: "DELETE" })
+        if (isTemp) {
+          const createRes = await fetch(`/api/agents/${wid}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: d.name, role: d.role, model: d.model, color: d.color,
+              soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
+              positionX: node.position.x, positionY: node.position.y,
+              qualityThreshold: d.qualityThreshold,
+            }),
+          })
+          if (!createRes.ok) throw new Error(`Failed to create agent ${d.name}: ${createRes.status}`)
+          const created = await createRes.json()
+          const realId = created.data?.id || created.id
+          if (realId) idMap.set(node.id, realId)
+        } else {
+          const patchRes = await fetch(`/api/agents/${wid}/${node.id}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: d.name, model: d.model, soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
+              positionX: node.position.x, positionY: node.position.y,
+              qualityThreshold: d.qualityThreshold, reportsTo: d.reportsTo || null,
+              skillIds: d.agentSkillIds || [],
+            }),
+          })
+          if (!patchRes.ok) throw new Error(`Failed to update agent ${d.name}: ${patchRes.status}`)
         }
       }
 
-      const updatedEdges = [...s.edges]
+      // 4. Delete agents in DB but removed locally
+      const localNodeIds = new Set(s.nodes.map(n => n.id))
+      for (const dbAgent of dbAgents) {
+        if (!localNodeIds.has(dbAgent.id)) {
+          await fetch(`/api/agents/${wid}/${dbAgent.id}`, { method: "DELETE" })
+        }
+      }
+
+      // 5. Replace temp IDs with real DB IDs in nodes
+      let updatedNodes = s.nodes.map(n => {
+        const realId = idMap.get(n.id)
+        if (realId) {
+          return { ...n, id: realId, data: { ...(n.data as AgentNodeData), agentId: realId } }
+        }
+        return n
+      }) as Node<AgentNodeData>[]
+
+      // 6. Replace temp IDs in edges
+      let updatedEdges = s.edges.map(e => ({
+        ...e,
+        source: idMap.get(e.source) || e.source,
+        target: idMap.get(e.target) || e.target,
+      })) as Edge<ConnectionEdgeData>[]
+
+      // 7. Sync connections — diff local edges vs DB
+      const connRes = await fetch(`/api/connections/${wid}`)
+      const connJson = await connRes.json()
+      const dbConnections: { id: string }[] = Array.isArray(connJson.data) ? connJson.data : []
+      const dbConnIds = new Set(dbConnections.map(c => c.id))
+
       for (let i = 0; i < updatedEdges.length; i++) {
         const edge = updatedEdges[i]
-        if (!dbIds.has(edge.id)) {
+        const isTemp = edge.id.startsWith("temp-") || edge.id.startsWith("edge-")
+        if (isTemp || !dbConnIds.has(edge.id)) {
           const createRes = await fetch(`/api/connections/${wid}`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -570,28 +645,38 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
           })
           if (createRes.ok) {
             const created = await createRes.json()
-            if (created.data?.id) updatedEdges[i] = { ...edge, id: created.data.id }
+            const newId = created.data?.id || created.id
+            if (newId) updatedEdges[i] = { ...edge, id: newId }
           }
         }
       }
 
-      // 4. Create MANUAL_SAVE snapshot
+      const localEdgeIds = new Set(updatedEdges.map(e => e.id))
+      for (const dbConn of dbConnections) {
+        if (!localEdgeIds.has(dbConn.id)) {
+          await fetch(`/api/connections/${wid}/${dbConn.id}`, { method: "DELETE" })
+        }
+      }
+
+      // 8. Create MANUAL_SAVE snapshot
       await fetch(`/api/workspaces/${wid}/snapshots`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trigger: "MANUAL_SAVE" }),
       })
 
-      // 5. Update edges + capture saved state, then reset flags via microtask
+      // 9. Update local state with real IDs and reset flags
       const currentName = get().workspaceName
-      const currentNodes = get().nodes
       set({
+        nodes: updatedNodes,
         edges: updatedEdges,
         lastSavedAt: new Date(),
-        lastSavedState: cloneState(currentNodes, updatedEdges, currentName),
+        lastSavedState: cloneState(updatedNodes, updatedEdges, currentName),
       })
       queueMicrotask(() => {
         set({ isDirty: false, isSaving: false })
       })
+
+      if (wid) clearDraftFromLocal(wid)
     } catch (err) {
       console.error("Save failed:", err)
       set({ isSaving: false })
@@ -601,6 +686,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   savePositionsOnly: async () => {
     const s = get()
     if (!s.workspaceId || s.isDirty) return
+    const hasTemp = s.nodes.some(n => n.id.startsWith("temp-"))
+    if (hasTemp) return
     try {
       const positions = s.nodes.map((n) => ({ id: n.id, positionX: n.position.x, positionY: n.position.y }))
       await fetch(`/api/agents/${s.workspaceId}/bulk-position`, {

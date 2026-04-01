@@ -2,7 +2,6 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
-import { DEFAULT_MODEL } from "@/lib/models"
 
 export async function GET() {
   const user = await getSessionUser()
@@ -99,34 +98,9 @@ export async function POST(req: NextRequest) {
     return apiSuccess(full, 201)
   }
 
-  // Blank workspace with default Orchestrator + Critic
-  const workspace = await prisma.$transaction(async (tx) => {
-    const ws = await tx.workspace.create({
-      data: { userId: user.id, name, slug, status: "DRAFT" },
-    })
-    await tx.agent.create({
-      data: {
-        workspaceId: ws.id, name: "Orchestrator", agentSlug: "orchestrator", role: "ORCHESTRATOR",
-        color: "#5BA1F5", model: DEFAULT_MODEL.ORCHESTRATOR,
-        soulMd: "# Orchestrator\n\nYou are the team manager. Delegate tasks to workers, collect results, and present approved work to the human.",
-        agentsMd: "# Team\n\nCoordinate with all workers and the critic.", positionX: 300, positionY: 50,
-      },
-    })
-    await tx.agent.create({
-      data: {
-        workspaceId: ws.id, name: "Quality Critic", agentSlug: "critic", role: "CRITIC",
-        color: "#8b5cf6", model: DEFAULT_MODEL.CRITIC,
-        soulMd: "# Critic\n\nYou review all work from the team. Score 1-10 and provide actionable feedback.",
-        agentsMd: "# Review Standards\n\nApply consistent quality standards across all outputs.",
-        positionX: 300, positionY: 400, qualityThreshold: 8.0,
-      },
-    })
-    return ws
+  const workspace = await prisma.workspace.create({
+    data: { userId: user.id, name, slug, status: "DRAFT" },
   })
 
-  const full = await prisma.workspace.findUnique({
-    where: { id: workspace.id },
-    include: { agents: { orderBy: { createdAt: "asc" } }, connections: true },
-  })
-  return apiSuccess(full, 201)
+  return apiSuccess({ id: workspace.id, name: workspace.name, slug: workspace.slug, status: workspace.status, agents: [], connections: [] }, 201)
 }
