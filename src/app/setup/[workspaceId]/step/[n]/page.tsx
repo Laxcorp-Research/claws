@@ -1046,29 +1046,16 @@ export default function SetupStepPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
-      {showWizardChrome ? (
-        <div className="flex items-center mb-[14px]">
-          <Link
-            href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-            className="text-[12px] text-[var(--ac)] hover:underline flex items-center gap-[4px] flex-shrink-0"
-          >
-            <ArrowLeft className="w-[14px] h-[14px]" />
-            {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
-          </Link>
-          <div className="flex-1 flex justify-center">
-            <WizardProgressBar steps={progressSteps} />
-          </div>
-          <div className="w-[120px] flex-shrink-0" />
-        </div>
-      ) : (
-        <div className="mb-[10px]">
-          <Link
-            href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-            className="text-[12px] text-[var(--ac)] hover:underline flex items-center gap-[4px] w-fit"
-          >
-            <ArrowLeft className="w-[14px] h-[14px]" />
-            {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
-          </Link>
+      <Link
+        href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
+        className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-[10px] inline-flex items-center gap-1"
+      >
+        <ArrowLeft size={12} aria-hidden="true" />
+        {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
+      </Link>
+      {showWizardChrome && (
+        <div className="mb-[14px]">
+          <WizardProgressBar steps={progressSteps} />
         </div>
       )}
       {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
