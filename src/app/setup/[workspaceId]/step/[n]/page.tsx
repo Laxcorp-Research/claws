@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
 import { ToolConnectionList } from "@/components/setup/tool-connection-list"
@@ -20,7 +21,7 @@ import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ALL_TOOLS, getToolByName, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
-import { Check, CheckCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
+import { Check, CheckCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
 
 interface ApiKeyInfo {
   id: string
@@ -252,7 +253,7 @@ interface ToolState {
   required: boolean
 }
 
-function Step2({ workspaceId }: { workspaceId: string }) {
+function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
   const router = useRouter()
   const [tools, setTools] = useState<ToolState[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -424,57 +425,95 @@ function Step2({ workspaceId }: { workspaceId: string }) {
 
   return (
     <>
-      <h2 className="text-[15px] font-semibold mb-0.5">Connect your tools</h2>
-      <p className="text-xs text-[var(--tx2)] mb-3.5">Connect the services your agents need to do their job.</p>
+      <h2 className="text-[15px] font-semibold mb-0.5">{isFromBuilder ? "Manage Tools" : "Connect your tools"}</h2>
+      <p className="text-xs text-[var(--tx2)] mb-3.5">
+        {isFromBuilder
+          ? "Connect the services your agents need. API keys are encrypted with AES-256-GCM."
+          : "Connect the services your agents need to do their job."}
+      </p>
 
-      <ToolConnectionList title="Required tools" subtitle="Must be connected before deployment">
-        {requiredTools.map((tool) => (
-          <ToolRow
-            key={tool.slug}
-            name={tool.name}
-            description={tool.category}
-            connectionStatus={tool.status}
-            connectionType={tool.connectionType}
-            errorMessage={tool.errorMessage}
-            onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-            onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-            onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
-            onDisconnect={() => handleDisconnect(tool)}
-          />
-        ))}
-      </ToolConnectionList>
+      {(requiredTools.length > 0 || recommendedTools.length > 0) && (
+        <div className="bg-[var(--bg2)] rounded-[8px] p-[10px] mb-[10px]">
+          <p className="text-[12px] text-[var(--tx2)] leading-[1.5]">
+            Tools are external services your agents connect to — APIs, CRMs, email providers, and more.
+            Each connection gives your agents the ability to interact with that service on your behalf.
+            API keys are encrypted with AES-256-GCM and never stored in plaintext.
+          </p>
+        </div>
+      )}
 
-      <ToolConnectionList title="Recommended tools" subtitle="Pre-selected. Connect or swap for an alternative.">
-        {recommendedTools.map((tool) => (
-          <ToolRow
-            key={tool.slug}
-            name={tool.name}
-            description={tool.category}
-            connectionStatus={tool.status}
-            connectionType={tool.connectionType}
-            errorMessage={tool.errorMessage}
-            swappable
-            onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-            onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-            onSwap={() => setSwapModal({ open: true, tool })}
-            onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
-            onDisconnect={() => handleDisconnect(tool)}
-          />
-        ))}
-      </ToolConnectionList>
+      {requiredTools.length === 0 && recommendedTools.length === 0 && (
+        <div className="text-center py-[30px] border border-dashed border-[var(--bd)] rounded-[12px] mb-3.5">
+          <Wrench className="w-[24px] h-[24px] text-[var(--tx3)] mx-auto mb-[8px]" />
+          <h3 className="text-[14px] font-semibold text-[var(--tx)] mb-[4px]">No tools configured yet</h3>
+          <p className="text-[12px] text-[var(--tx2)] mb-[10px] max-w-[300px] mx-auto">
+            Your custom Claw doesn&apos;t have pre-configured tools. Browse the catalog to add tools your agents can use.
+          </p>
+          <Button variant="outline" onClick={() => setBrowseModal(true)}>
+            Browse available tools
+          </Button>
+        </div>
+      )}
+
+      {requiredTools.length > 0 && (
+        <ToolConnectionList title="Required tools" subtitle="Must be connected before deployment">
+          {requiredTools.map((tool) => (
+            <ToolRow
+              key={tool.slug}
+              name={tool.name}
+              description={tool.category}
+              connectionStatus={tool.status}
+              connectionType={tool.connectionType}
+              errorMessage={tool.errorMessage}
+              onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+              onDisconnect={() => handleDisconnect(tool)}
+            />
+          ))}
+        </ToolConnectionList>
+      )}
+
+      {recommendedTools.length > 0 && (
+        <ToolConnectionList title="Recommended tools" subtitle="Pre-selected. Connect or swap for an alternative.">
+          {recommendedTools.map((tool) => (
+            <ToolRow
+              key={tool.slug}
+              name={tool.name}
+              description={tool.category}
+              connectionStatus={tool.status}
+              connectionType={tool.connectionType}
+              errorMessage={tool.errorMessage}
+              swappable
+              onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onSwap={() => setSwapModal({ open: true, tool })}
+              onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+              onDisconnect={() => handleDisconnect(tool)}
+            />
+          ))}
+        </ToolConnectionList>
+      )}
 
       <div className="flex gap-2.5 mb-3.5">
-        <Button variant="outline" className="flex-1 text-[11px] py-2" onClick={() => setBrowseModal(true)}>+ Browse 500+ tools (Composio)</Button>
+        <Button variant="outline" className="flex-1 text-[11px] py-2" onClick={() => setBrowseModal(true)}>+ Browse available tools</Button>
         <Button variant="outline" className="flex-1 text-[11px] py-2" onClick={() => setCustomApiModal(true)}>+ Connect custom API</Button>
       </div>
 
-      <div className="flex justify-between">
-        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/1`)}>← Back</Button>
-        <div className="flex gap-1.5">
-          <Button variant="outline" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Skip optional</Button>
-          <Button variant="primary" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Next: Deploy →</Button>
+      {isFromBuilder ? (
+        <div className="flex justify-between">
+          <Button variant="outline" onClick={() => router.push(`/builder/${workspaceId}`)}>← Back to Builder</Button>
+          <Button variant="primary" onClick={() => router.push(`/builder/${workspaceId}`)}>Done</Button>
         </div>
-      </div>
+      ) : (
+        <div className="flex justify-between">
+          <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/1`)}>← Back</Button>
+          <div className="flex gap-1.5">
+            <Button variant="outline" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Skip optional</Button>
+            <Button variant="primary" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Next: Deploy →</Button>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <ApiKeyModal
@@ -897,12 +936,14 @@ function StepPlaceholder({ step, workspaceId }: { step: number; workspaceId: str
 
 export default function SetupStepPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const workspaceId = params.workspaceId as string
   const stepNum = parseInt(params.n as string, 10)
+  const isFromBuilder = searchParams.get("from") === "builder"
 
   if (isNaN(stepNum) || stepNum < 1 || stepNum > 5) {
     return (
-      <div className="text-center py-10">
+      <div className="max-w-2xl mx-auto px-4 py-4 text-center py-10">
         <p className="text-sm text-[var(--tx2)]">Invalid step. Please go back to your workspace.</p>
       </div>
     )
@@ -918,15 +959,26 @@ export default function SetupStepPage() {
       ]
     : getProgressSteps(stepNum)
 
+  const showWizardChrome = !(stepNum === 2 && isFromBuilder)
+
   return (
-    <>
-      <WizardProgressBar steps={progressSteps} />
+    <div className="max-w-2xl mx-auto px-4 py-4">
+      <div className="mb-[10px]">
+        <Link
+          href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
+          className="text-[12px] text-[var(--tx2)] hover:text-[var(--tx)] flex items-center gap-[4px] w-fit"
+        >
+          <ArrowLeft className="w-[14px] h-[14px]" />
+          {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
+        </Link>
+      </div>
+      {showWizardChrome && <WizardProgressBar steps={progressSteps} />}
       {stepNum === 1 ? <Step1 workspaceId={workspaceId} />
-        : stepNum === 2 ? <Step2 workspaceId={workspaceId} />
+        : stepNum === 2 ? <Step2 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
         : stepNum === 3 ? <Step3 workspaceId={workspaceId} />
         : stepNum === 4 ? <Step4 workspaceId={workspaceId} />
         : stepNum === 5 ? <Step5 workspaceId={workspaceId} />
         : <StepPlaceholder step={stepNum} workspaceId={workspaceId} />}
-    </>
+    </div>
   )
 }

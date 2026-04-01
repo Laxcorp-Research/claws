@@ -1,6 +1,7 @@
 "use client"
 
 import { AI_MODELS } from "@/lib/models"
+import { CustomSelect } from "@/components/ui/custom-select"
 
 interface AgentModelRow {
   id: string
@@ -19,6 +20,11 @@ const ROLE_COLORS: Record<string, string> = {
   WORKER: "text-[var(--tx2)]",
   CRITIC: "text-[#5b21b6]",
 }
+
+const MODEL_OPTIONS = AI_MODELS.map(m => ({
+  value: m.value,
+  label: `${m.label} (${m.provider}) — ~$${m.costPer1kCalls}/call`,
+}))
 
 export function ModelSelectionTable({ agents, onModelChange }: ModelSelectionTableProps) {
   return (
@@ -41,15 +47,11 @@ export function ModelSelectionTable({ agents, onModelChange }: ModelSelectionTab
                 {agent.role.charAt(0) + agent.role.slice(1).toLowerCase()}
               </td>
               <td className="px-2 py-1.5">
-                <select
+                <CustomSelect
                   value={agent.model}
-                  onChange={(e) => onModelChange(agent.id, e.target.value)}
-                  className="px-1.5 py-[3px] rounded-md text-[11px] border border-[var(--bd)] bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]"
-                >
-                  {AI_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label} ({m.provider}) — ~${m.costPer1kCalls}/call</option>
-                  ))}
-                </select>
+                  onChange={(val) => onModelChange(agent.id, val)}
+                  options={MODEL_OPTIONS}
+                />
               </td>
               <td className="px-2 py-1.5 text-right text-[var(--tx3)] text-[10px]">
                 {selected ? `~$${selected.costPer1kCalls}/call` : "—"}

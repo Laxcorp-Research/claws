@@ -31,7 +31,7 @@ export function BrowseToolsModal({ open, onClose, connectedSlugs, onConnect }: B
       open={open}
       onClose={onClose}
       title="Browse tools"
-      description="Connect any of 500+ tools via Composio."
+      description={`Browse ${ALL_TOOLS.length} available tools. More integrations coming soon.`}
       size="lg"
       footer={
         <div className="flex items-center justify-between w-full">
