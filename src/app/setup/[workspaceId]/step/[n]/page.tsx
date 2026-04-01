@@ -276,12 +276,6 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       {/* Model Selection Table */}
       {agents.length > 0 && <ModelSelectionTable agents={agents} onModelChange={handleModelChange} />}
 
-      {/* Recommendations */}
-      <div className="bg-[var(--bg2)] rounded-lg p-2.5 text-xs text-[var(--tx2)] mb-3.5 leading-relaxed">
-        <strong className="text-[var(--tx)]">Recommended:</strong> Haiku 4.5 for routing (Orchestrator),
-        Sonnet 4.6 for tasks (Workers), Opus 4.6 for judgment (Critic). Pre-filled above — override only if needed.
-      </div>
-
       {/* Navigation */}
       <div className="flex justify-between">
         {isFromBuilder ? (
@@ -1048,7 +1042,7 @@ export default function SetupStepPage() {
     <div className="max-w-2xl mx-auto px-4 py-4">
       <Link
         href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-        className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-[10px] inline-flex items-center gap-1"
+        className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-[6px] inline-flex items-center gap-1 transition-colors"
       >
         <ArrowLeft size={12} aria-hidden="true" />
         {isFromBuilder ? "Back to Builder" : "Back to My Claws"}

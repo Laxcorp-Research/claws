@@ -110,10 +110,10 @@ export default function BuilderPage() {
               Saved
             </Button>
           ) : null}
-          <Button variant="ghost" size="sm" className="text-[10px]" onClick={handleBack}>
-            <ArrowLeft className="w-[14px] h-[14px] mr-[4px]" />
+          <button onClick={handleBack} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] flex items-center gap-1 transition-colors cursor-pointer bg-transparent border-none">
+            <ArrowLeft size={12} />
             My Claws
-          </Button>
+          </button>
           <Button variant="ghost" size="sm" className="text-[10px]" onClick={() => setShowHistory(!showHistory)}>
             History
           </Button>
