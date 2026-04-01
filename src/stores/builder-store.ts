@@ -418,6 +418,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         fetch(`/api/workspaces/${workspaceId}`),
         fetch("/api/skills"),
       ])
+
       const wsJson = await wsRes.json()
       if (!wsJson.success) throw new Error(wsJson.error?.message || "Failed to load workspace")
 
@@ -431,7 +432,6 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       let workerIdx = 0
 
       const agents = Array.isArray(ws.agents) ? ws.agents : []
-      console.log("[LOAD] Raw agents from API:", agents.length, agents.map((a: Record<string, unknown>) => ({ id: a.id, role: a.role, positionX: a.positionX, positionY: a.positionY })))
 
       const nodes: Node<AgentNodeData>[] = agents.map((a: Record<string, unknown>) => {
         const agentSkills = Array.isArray(a.skills) ? a.skills as { skillId: string }[] : []
@@ -479,7 +479,6 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       }
 
       const name = (ws.name as string) || ""
-      console.log("[LOAD] Mapped nodes:", nodes.length, "edges:", edges.length, "name:", name)
 
       set({
         nodes, edges, workspaceId, workspaceName: name, workspaceStatus: (ws.status as string) || "DRAFT",
@@ -487,7 +486,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         lastSavedState: cloneState(nodes, edges, name),
       })
     } catch (err) {
-      console.error("[LOAD] Failed to load workspace:", err)
+      console.error("Failed to load workspace:", err)
       set({ isLoading: false })
     }
   },
@@ -580,7 +579,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
   savePositionsOnly: async () => {
     const s = get()
-    if (!s.workspaceId) return
+    if (!s.workspaceId || s.isDirty) return
     try {
       const positions = s.nodes.map((n) => ({ id: n.id, positionX: n.position.x, positionY: n.position.y }))
       await fetch(`/api/agents/${s.workspaceId}/bulk-position`, {

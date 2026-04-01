@@ -137,7 +137,7 @@ function Item({ icon: Icon, label, onClick, danger, disabled, hint }: {
 }) {
   return (
     <button
-      onClick={disabled ? undefined : onClick}
+      onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!disabled) onClick() }}
       disabled={disabled}
       role="menuitem"
       className={`w-full text-left px-[12px] py-[6px] text-[12px] flex items-center gap-[8px] transition-colors border-none bg-transparent cursor-pointer ${
