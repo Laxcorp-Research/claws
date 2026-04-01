@@ -11,7 +11,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { WorkspaceCard } from "@/components/my-claws/workspace-card"
 import { SearchFilterBar } from "@/components/shared/search-filter-bar"
 import { mapWorkspaceStatus, timeAgo } from "@/lib/utils"
-import { Bot, Search } from "lucide-react"
+import { Bot, Search, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 interface ApiWorkspace {
@@ -58,6 +58,26 @@ export default function MyClawsPage() {
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  async function handleDelete() {
+    if (!deleteTarget || isDeleting) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/workspaces/${deleteTarget.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error?.message || `Failed to delete (${res.status})`)
+      }
+      setWorkspaces(prev => prev ? prev.filter(w => w.id !== deleteTarget.id) : prev)
+      setDeleteTarget(null)
+    } catch (err) {
+      console.error("Failed to delete workspace:", err)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   async function handleCreateCustomClaw() {
     if (isCreating) return
@@ -191,7 +211,7 @@ export default function MyClawsPage() {
         {filtered && filtered.length > 0 && (
           <div className="grid grid-cols-3 gap-2.5">
             {filtered.map((w) => (
-              <WorkspaceCard key={w.id} {...w} />
+              <WorkspaceCard key={w.id} {...w} onDelete={(id, name) => setDeleteTarget({ id, name })} />
             ))}
           </div>
         )}
@@ -210,6 +230,43 @@ export default function MyClawsPage() {
           />
         )}
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => { if (!isDeleting) setDeleteTarget(null) }} />
+          <div className="relative bg-[var(--bg)] border border-[var(--bd)] rounded-[12px] p-[20px] shadow-modal max-w-[360px] w-full mx-[16px]">
+            <h3 className="text-[15px] font-semibold text-[var(--tx)] mb-[6px]">Delete workspace</h3>
+            <div className="bg-[var(--errbg)] border border-[var(--err)] rounded-[6px] p-[10px] mb-[14px]">
+              <p className="text-[11px] text-[#991b1b]">
+                <span className="font-semibold">&ldquo;{deleteTarget.name}&rdquo;</span> and all its agents, connections, and version history will be permanently deleted. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-[6px] justify-end">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+                className="px-[12px] py-[6px] text-[12px] text-[var(--tx2)] border border-[var(--bd)] rounded-[6px] hover:bg-[var(--bg2)] transition-colors disabled:opacity-50 cursor-pointer bg-transparent"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-[12px] py-[6px] text-[12px] text-white bg-[var(--err)] rounded-[6px] hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-[4px] cursor-pointer border-none"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-[12px] h-[12px] animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete permanently"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   )
 }
