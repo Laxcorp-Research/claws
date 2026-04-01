@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { Trash2 } from "lucide-react"
+import { WorkspaceContextMenu } from "./workspace-context-menu"
 
 type WorkspaceStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped"
 
@@ -10,14 +10,22 @@ interface WorkspaceCardProps {
   id: string
   name: string
   status: WorkspaceStatus
+  apiStatus: string
   agentCount: number
+  agentRoles: string[]
   lastActive?: string
   monthlyCost?: string
   source: string
-  onDelete?: (id: string, name: string) => void
+  isCreatorEnrolled: boolean
+  onRename: (id: string, currentName: string) => void
+  onDuplicate: (id: string) => void
+  onDelete: (id: string, name: string) => void
 }
 
-export function WorkspaceCard({ id, name, status, agentCount, lastActive, monthlyCost, source, onDelete }: WorkspaceCardProps) {
+export function WorkspaceCard({
+  id, name, status, apiStatus, agentCount, agentRoles, lastActive, monthlyCost, source,
+  isCreatorEnrolled, onRename, onDuplicate, onDelete,
+}: WorkspaceCardProps) {
   const router = useRouter()
 
   const handleClick = () => {
@@ -36,7 +44,7 @@ export function WorkspaceCard({ id, name, status, agentCount, lastActive, monthl
       className="group relative border border-[var(--bd)] rounded-xl p-3.5 cursor-pointer transition-colors hover:border-[var(--bd2)]"
     >
       <div className="flex justify-between items-start mb-1.5">
-        <h3 className="text-sm font-semibold">{name}</h3>
+        <h3 className="text-sm font-semibold pr-6">{name}</h3>
         <StatusBadge status={status} />
       </div>
       <p className="text-[11px] text-[var(--tx2)]">{agentCount} agents · {source}</p>
@@ -45,16 +53,18 @@ export function WorkspaceCard({ id, name, status, agentCount, lastActive, monthl
         {monthlyCost && <span>{monthlyCost} this month</span>}
       </div>
 
-      {onDelete && (
-        <button
-          onClick={(e) => { e.stopPropagation(); e.preventDefault(); onDelete(id, name) }}
-          className="absolute top-[10px] right-[10px] p-[6px] rounded-[6px] opacity-0 group-hover:opacity-100 hover:bg-[var(--errbg)] transition-all cursor-pointer border-none bg-transparent"
-          aria-label={`Delete ${name}`}
-          title="Delete"
-        >
-          <Trash2 className="w-[14px] h-[14px] text-[var(--tx3)] hover:text-[var(--err)]" />
-        </button>
-      )}
+      <div className="absolute top-[8px] right-[8px]">
+        <WorkspaceContextMenu
+          workspaceId={id}
+          workspaceName={name}
+          status={apiStatus}
+          agentRoles={agentRoles}
+          isCreatorEnrolled={isCreatorEnrolled}
+          onRename={onRename}
+          onDuplicate={onDuplicate}
+          onDelete={onDelete}
+        />
+      </div>
     </div>
   )
 }

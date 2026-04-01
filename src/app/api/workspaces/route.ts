@@ -12,6 +12,7 @@ export async function GET() {
     where: { userId: user.id },
     include: {
       _count: { select: { agents: true } },
+      agents: { select: { role: true } },
       clawTemplate: { select: { name: true, category: true } },
     },
     orderBy: { updatedAt: "desc" },
