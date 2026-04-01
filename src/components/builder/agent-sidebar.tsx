@@ -121,10 +121,10 @@ export function AgentSidebar() {
                     </div>
                     <span className="text-[9px] text-[var(--tx3)] uppercase">{skill.category}</span>
                     <p className="text-[10px] text-[var(--tx2)] leading-[1.4] mt-[4px]">
-                      Click to assign/unassign skills in the Properties panel on the right.
+                      {skill.description || "No description available."}
                     </p>
                     <a
-                      href={`/store/skills/${skill.id}`}
+                      href={`/store/skills/${skill.slug || skill.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac)] hover:underline mt-[4px]"
@@ -157,7 +157,7 @@ export function AgentSidebar() {
         isOpen={showMarketplace}
         onClose={() => setShowMarketplace(false)}
         existingSkillIds={skills.map(s => s.id)}
-        onInstall={(skill) => addSkill({ id: skill.id, name: skill.name, category: skill.category })}
+        onInstall={(skill) => addSkill({ id: skill.id, name: skill.name, slug: skill.slug || skill.id, category: skill.category, description: skill.description || "" })}
       />
     </div>
   )

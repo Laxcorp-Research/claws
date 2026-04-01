@@ -49,7 +49,9 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
 export interface SkillItem {
   id: string
   name: string
+  slug: string
   category: string
+  description: string
 }
 
 export interface SnapshotItem {
@@ -64,6 +66,7 @@ interface SavedState {
   nodes: Node<AgentNodeData>[]
   edges: Edge<ConnectionEdgeData>[]
   workspaceName: string
+  skills: SkillItem[]
 }
 
 interface BuilderState {
@@ -157,19 +160,27 @@ function hasContentChanges(changes: NodeChange<Node<AgentNodeData>>[]): boolean 
   return changes.some(c => c.type !== "position" && c.type !== "dimensions" && c.type !== "select")
 }
 
-function cloneState(nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[], name: string): SavedState {
-  return { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)), workspaceName: name }
+function cloneState(nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[], name: string, skills: SkillItem[] = []): SavedState {
+  return { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)), workspaceName: name, skills: JSON.parse(JSON.stringify(skills)) }
 }
 
 function draftKey(workspaceId: string) {
   return `claws-draft-${workspaceId}`
 }
 
-function saveDraftToLocal(workspaceId: string, state: { nodes: Node<AgentNodeData>[]; edges: Edge<ConnectionEdgeData>[]; workspaceName: string; timestamp: number }) {
+interface DraftState {
+  nodes: Node<AgentNodeData>[]
+  edges: Edge<ConnectionEdgeData>[]
+  workspaceName: string
+  skills: SkillItem[]
+  timestamp: number
+}
+
+function saveDraftToLocal(workspaceId: string, state: DraftState) {
   try { localStorage.setItem(draftKey(workspaceId), JSON.stringify(state)) } catch { /* full or unavailable */ }
 }
 
-function loadDraftFromLocal(workspaceId: string): { nodes: Node<AgentNodeData>[]; edges: Edge<ConnectionEdgeData>[]; workspaceName: string; timestamp: number } | null {
+function loadDraftFromLocal(workspaceId: string): DraftState | null {
   try {
     const raw = localStorage.getItem(draftKey(workspaceId))
     if (!raw) return null
@@ -365,19 +376,23 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   addSkill: (skill) => {
     set((s) => {
       if (s.skills.some(sk => sk.id === skill.id)) return s
-      return { skills: [...s.skills, skill] }
+      return { skills: [...s.skills, skill], isDirty: s.isSaving ? s.isDirty : true }
     })
   },
   revertToLastSaved: () => {
     const s = get()
     if (s._positionTimeoutId) clearTimeout(s._positionTimeoutId)
+    if (s.workspaceId) clearDraftFromLocal(s.workspaceId)
     if (s.lastSavedState) {
       set({
         nodes: JSON.parse(JSON.stringify(s.lastSavedState.nodes)),
         edges: JSON.parse(JSON.stringify(s.lastSavedState.edges)),
         workspaceName: s.lastSavedState.workspaceName,
+        skills: JSON.parse(JSON.stringify(s.lastSavedState.skills || [])),
         isDirty: false,
         _positionTimeoutId: null,
+        hasDraftRecovery: false,
+        draftTimestamp: null,
         selectedAgentId: null,
         selectedEdgeId: null,
       })
@@ -396,6 +411,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         nodes: draft.nodes as Node<AgentNodeData>[],
         edges: draft.edges as Edge<ConnectionEdgeData>[],
         workspaceName: draft.workspaceName,
+        skills: (draft.skills || []) as SkillItem[],
         isDirty: true,
         hasDraftRecovery: false,
         draftTimestamp: null,
@@ -427,10 +443,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     })
 
     try {
-      const [wsRes, skillsRes] = await Promise.all([
-        fetch(`/api/workspaces/${workspaceId}`),
-        fetch("/api/skills"),
-      ])
+      const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
 
       if (!wsRes.ok) {
         const text = await wsRes.text().catch(() => "")
@@ -488,33 +501,32 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         data: { condition: (c.condition as ConnectionCondition) || "ON_COMPLETE", label: (c.label as string) || "" },
       }))
 
-      const assignedSkillIds = new Set<string>()
+      const skillsMap = new Map<string, SkillItem>()
       for (const a of agents) {
         const aSkills = (a as Record<string, unknown>).skills
         if (Array.isArray(aSkills)) {
-          for (const as_ of aSkills as { skillId?: string; id?: string }[]) {
-            const sid = as_.skillId || as_.id
-            if (sid) assignedSkillIds.add(sid)
+          for (const as_ of aSkills as { skillId?: string; id?: string; skill?: Record<string, unknown> }[]) {
+            const sk = as_.skill
+            if (sk && typeof sk === "object" && !skillsMap.has(sk.id as string)) {
+              skillsMap.set(sk.id as string, {
+                id: sk.id as string,
+                name: (sk.name as string) || "",
+                slug: (sk.slug as string) || (sk.id as string),
+                category: (sk.category as string) || "",
+                description: (sk.description as string) || "",
+              })
+            }
           }
         }
       }
-
-      let availableSkills: SkillItem[] = []
-      if (assignedSkillIds.size > 0 && skillsRes.ok) {
-        const skillsJson = await skillsRes.json()
-        const rawSkills = skillsJson.data?.skills ?? skillsJson.data ?? []
-        const skillsArr = Array.isArray(rawSkills) ? rawSkills : []
-        availableSkills = (skillsArr as { id: string; name: string; category: string }[])
-          .filter(s => assignedSkillIds.has(s.id))
-          .map(s => ({ id: s.id, name: s.name, category: s.category }))
-      }
+      const workspaceSkills = Array.from(skillsMap.values())
 
       const name = (ws.name as string) || ""
 
       set({
         nodes, edges, workspaceId, workspaceName: name, workspaceStatus: (ws.status as string) || "DRAFT",
-        skills: availableSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
-        lastSavedState: cloneState(nodes, edges, name),
+        skills: workspaceSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
+        lastSavedState: cloneState(nodes, edges, name, workspaceSkills),
       })
 
       // Check for localStorage draft recovery
@@ -534,6 +546,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
             nodes: current.nodes,
             edges: current.edges,
             workspaceName: current.workspaceName,
+            skills: current.skills,
             timestamp: Date.now(),
           })
         }
@@ -666,11 +679,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
       // 9. Update local state with real IDs and reset flags
       const currentName = get().workspaceName
+      const currentSkills = get().skills
       set({
         nodes: updatedNodes,
         edges: updatedEdges,
         lastSavedAt: new Date(),
-        lastSavedState: cloneState(updatedNodes, updatedEdges, currentName),
+        lastSavedState: cloneState(updatedNodes, updatedEdges, currentName, currentSkills),
       })
       queueMicrotask(() => {
         set({ isDirty: false, isSaving: false })

@@ -9,7 +9,7 @@ interface MarketplaceSkillsModalProps {
   isOpen: boolean
   onClose: () => void
   existingSkillIds: string[]
-  onInstall: (skill: { id: string; name: string; slug: string; category: string }) => void
+  onInstall: (skill: { id: string; name: string; slug: string; category: string; description: string }) => void
 }
 
 interface MarketplaceSkillItem {
@@ -88,7 +88,7 @@ export function MarketplaceSkillsModal({ isOpen, onClose, existingSkillIds, onIn
   }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleInstall(skill: MarketplaceSkillItem) {
-    onInstall({ id: skill.id, name: skill.name, slug: skill.slug, category: skill.category })
+    onInstall({ id: skill.id, name: skill.name, slug: skill.slug, category: skill.category, description: skill.description || "" })
     setAddedIds(prev => new Set([...prev, skill.id]))
   }
 
