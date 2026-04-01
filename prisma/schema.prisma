@@ -115,6 +115,26 @@ model UserApiKey {
   @@index([userId])
 }
 
+model WorkspaceApiKey {
+  id            String      @id @default(cuid())
+  workspaceId   String
+  provider      ApiProvider
+
+  encryptedKey  String
+  keyHint       String
+
+  isValid       Boolean     @default(false)
+  lastValidatedAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, provider])
+  @@index([workspaceId])
+}
+
 enum ApiProvider {
   ANTHROPIC
   OPENAI
@@ -163,6 +183,7 @@ model Workspace {
   customToolConnections CustomToolConnection[]
   snapshots   WorkspaceSnapshot[]
   auditLogs   AuditLog[]
+  apiKeyOverrides WorkspaceApiKey[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

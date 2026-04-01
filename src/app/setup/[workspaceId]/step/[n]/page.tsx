@@ -17,19 +17,10 @@ import { ChannelList } from "@/components/setup/channel-list"
 import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ALL_TOOLS, getToolByName, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
-import { Check, CheckCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
-
-interface ApiKeyInfo {
-  id: string
-  provider: string
-  keyHint: string
-  label: string | null
-  isValid: boolean
-}
+import { Check, CheckCircle, XCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
 
 interface AgentRow {
   id: string
@@ -51,28 +42,75 @@ function getProgressSteps(current: number) {
   }))
 }
 
+interface ProviderStatus {
+  provider: string
+  hasGlobalKey: boolean
+  globalKeyHint: string | null
+  globalKeyValid: boolean
+  hasOverride: boolean
+  overrideKeyHint: string | null
+  overrideKeyValid: boolean
+  hasKey: boolean
+  effectiveSource: "override" | "global" | "none"
+}
+
+const PROVIDER_NAMES: Record<string, string> = {
+  ANTHROPIC: "Anthropic (Claude)",
+  OPENAI: "OpenAI (GPT)",
+  GOOGLE: "Google (Gemini)",
+  OPENROUTER: "OpenRouter",
+  OLLAMA: "Ollama (Local)",
+}
+
+const PROVIDER_HELP: Record<string, string> = {
+  ANTHROPIC: "https://console.anthropic.com/settings/keys",
+  OPENAI: "https://platform.openai.com/api-keys",
+  GOOGLE: "https://aistudio.google.com/apikey",
+  OPENROUTER: "https://openrouter.ai/keys",
+}
+
+const PROVIDER_PLACEHOLDER: Record<string, string> = {
+  ANTHROPIC: "sk-ant-api03-...",
+  OPENAI: "sk-...",
+  GOOGLE: "AIza...",
+  OPENROUTER: "sk-or-...",
+}
+
+function getRequiredProviders(agents: AgentRow[]): string[] {
+  const providers = new Set<string>()
+  for (const a of agents) {
+    const m = a.model || "anthropic/claude-sonnet-4-6"
+    if (m.startsWith("anthropic/")) providers.add("ANTHROPIC")
+    else if (m.startsWith("openai/")) providers.add("OPENAI")
+    else if (m.startsWith("google/")) providers.add("GOOGLE")
+    else if (m.startsWith("openrouter/")) providers.add("OPENROUTER")
+  }
+  if (providers.size === 0) providers.add("ANTHROPIC")
+  return Array.from(providers)
+}
+
 function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
   const router = useRouter()
-  const [apiKeyInput, setApiKeyInput] = useState("")
-  const [existingKey, setExistingKey] = useState<ApiKeyInfo | null>(null)
   const [agents, setAgents] = useState<AgentRow[]>([])
+  const [keyStatus, setKeyStatus] = useState<ProviderStatus[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isValidating, setIsValidating] = useState(false)
-  const [keyError, setKeyError] = useState<string | null>(null)
   const [isSavingModels, setIsSavingModels] = useState(false)
+  const [overrideModal, setOverrideModal] = useState<{ provider: string; providerName: string } | null>(null)
+
+  const fetchKeyStatus = useCallback(async () => {
+    const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`)
+    const data = await res.json()
+    if (data.success) setKeyStatus(data.data || [])
+  }, [workspaceId])
 
   useEffect(() => {
     async function load() {
       setIsLoading(true)
       try {
-        const keysRes = await fetch("/api/api-keys")
-        const keysData = await keysRes.json()
-        if (keysData.success) {
-          const anthropicKey = keysData.data.find((k: ApiKeyInfo) => k.provider === "ANTHROPIC")
-          if (anthropicKey) setExistingKey(anthropicKey)
-        }
-
-        const agentsRes = await fetch(`/api/agents/${workspaceId}`)
+        const [agentsRes] = await Promise.all([
+          fetch(`/api/agents/${workspaceId}`),
+          fetchKeyStatus(),
+        ])
         const agentsData = await agentsRes.json()
         if (agentsData.success) {
           setAgents(
@@ -88,37 +126,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       }
     }
     load()
-  }, [workspaceId])
-
-  const handleValidate = useCallback(async () => {
-    if (!apiKeyInput.trim()) return
-    setIsValidating(true)
-    setKeyError(null)
-
-    try {
-      const saveRes = await fetch("/api/api-keys", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "ANTHROPIC", apiKey: apiKeyInput.trim() }),
-      })
-      const saveData = await saveRes.json()
-      if (!saveData.success) { setKeyError(saveData.error?.message || "Failed to save key"); return }
-
-      const valRes = await fetch(`/api/api-keys/${saveData.data.id}/validate`, { method: "POST" })
-      const valData = await valRes.json()
-
-      if (valData.success && valData.data.valid) {
-        setExistingKey(saveData.data)
-        setApiKeyInput("")
-        setKeyError(null)
-      } else {
-        setKeyError(valData.data?.error || "This API key is invalid. Check it and try again.")
-      }
-    } catch {
-      setKeyError("Network error. Please try again.")
-    } finally {
-      setIsValidating(false)
-    }
-  }, [apiKeyInput])
+  }, [workspaceId, fetchKeyStatus])
 
   const handleModelChange = useCallback((agentId: string, model: string) => {
     setAgents((prev) => prev.map((a) => (a.id === agentId ? { ...a, model } : a)))
@@ -144,7 +152,20 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     }
   }, [agents, workspaceId, router, isFromBuilder])
 
-  const hasValidKey = existingKey?.isValid === true
+  const handleRemoveOverride = useCallback(async (provider: string) => {
+    await fetch(`/api/workspaces/${workspaceId}/api-keys`, {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider }),
+    })
+    await fetchKeyStatus()
+  }, [workspaceId, fetchKeyStatus])
+
+  const requiredProviders = useMemo(() => getRequiredProviders(agents), [agents])
+
+  const allProvidersConfigured = requiredProviders.every(p => {
+    const s = keyStatus.find(k => k.provider === p)
+    return s?.hasKey
+  })
 
   if (isLoading) {
     return (
@@ -160,63 +181,81 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">Choose AI models for your agents</h2>
       <p className="text-xs text-[var(--tx2)] mb-3.5">
-        Your agents need an AI model API key to think. Start with Anthropic — you can add others later.
+        Your agents need API keys to think. Configure keys for each provider your agents use.
       </p>
 
-      {/* API Key Card */}
-      <div className={`border rounded-xl p-3.5 mb-3.5 ${keyError ? "border-[var(--err)]" : "border-[var(--bd)]"}`}>
-        <h3 className="text-sm font-medium mb-1.5">Your Anthropic API key</h3>
+      {/* Provider Key Cards */}
+      <div className="border border-[var(--bd)] rounded-xl mb-3.5 overflow-hidden">
+        {requiredProviders.map((provider) => {
+          const status = keyStatus.find(k => k.provider === provider)
+          const providerName = PROVIDER_NAMES[provider] || provider
+          const usingAgents = agents.filter(a => {
+            const m = a.model || ""
+            return m.startsWith(`${provider.toLowerCase()}/`)
+          })
 
-        {existingKey && hasValidKey ? (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg2)] border border-[var(--bd)] text-xs font-mono text-[var(--tx2)]">
-              {existingKey.keyHint}
-            </div>
-            <span className="text-[10px] text-[var(--ok)] font-medium inline-flex items-center gap-0.5"><Check className="w-3 h-3" /> Valid</span>
-            <button onClick={() => { setExistingKey(null); setApiKeyInput("") }} className="text-[10px] text-[var(--tx3)] hover:text-[var(--tx)] transition-colors">
-              Change
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="flex gap-2 items-center">
-              <Input
-                value={apiKeyInput}
-                onChange={(e) => { setApiKeyInput(e.target.value); setKeyError(null) }}
-                placeholder="sk-ant-api03-..."
-                aria-label="Anthropic API key"
-                aria-invalid={!!keyError}
-                aria-describedby={keyError ? "api-key-error" : undefined}
-                className="flex-1 font-mono"
-                error={!!keyError}
-                onKeyDown={(e) => e.key === "Enter" && handleValidate()}
-              />
-              <Button variant="primary" onClick={handleValidate} disabled={!apiKeyInput.trim() || isValidating}>
-                {isValidating ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" /> Validating...</> : "Validate"}
-              </Button>
-            </div>
-            {keyError && (
-              <div id="api-key-error" className="mt-2 rounded-lg border border-[var(--err)] bg-[var(--errbg)] p-3">
-                <p className="text-[13px] font-semibold text-[#991b1b] mb-1">API key validation failed</p>
-                <p className="text-[11px] text-[#991b1b]">
-                  {keyError}{" "}
-                  Please check your key in the{" "}
-                  <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
-                    Anthropic dashboard
-                  </a>{" "}
-                  and try again.
-                </p>
+          return (
+            <div key={provider} className="flex items-center justify-between px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
+              <div className="min-w-0">
+                <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
+                {usingAgents.length > 0 && (
+                  <div className="text-[11px] text-[var(--tx3)] mt-[2px] truncate">
+                    Used by: {usingAgents.map(a => a.name).join(", ")}
+                  </div>
+                )}
               </div>
-            )}
-          </>
-        )}
+              <div className="flex items-center gap-[8px] flex-shrink-0 ml-[10px]">
+                {status?.hasKey ? (
+                  <>
+                    <div className="flex items-center gap-[4px]">
+                      <CheckCircle className="w-[14px] h-[14px] text-[var(--ok)]" />
+                      <span className="text-[11px] text-[var(--ok)]">
+                        {status.effectiveSource === "override"
+                          ? `Custom key (${status.overrideKeyHint})`
+                          : `Global key (${status.globalKeyHint})`
+                        }
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setOverrideModal({ provider, providerName })}
+                      className="text-[11px] text-[var(--ac)] hover:underline cursor-pointer bg-transparent border-none"
+                    >
+                      {status.hasOverride ? "Change key" : "Use different key"}
+                    </button>
+                    {status.hasOverride && (
+                      <button
+                        onClick={() => handleRemoveOverride(provider)}
+                        className="text-[11px] text-[var(--tx3)] hover:text-[var(--err)] cursor-pointer bg-transparent border-none"
+                      >
+                        Use global
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-[4px]">
+                      <XCircle className="w-[14px] h-[14px] text-[var(--err)]" />
+                      <span className="text-[11px] text-[var(--err)]">No key</span>
+                    </div>
+                    <button
+                      onClick={() => setOverrideModal({ provider, providerName })}
+                      className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none"
+                    >
+                      Enter API key
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
 
-        <p className="text-[10px] text-[var(--tx3)] mt-1">
-          Get your key from{" "}
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-[var(--ac)] hover:text-[var(--tx)] hover:underline transition-colors">
-            console.anthropic.com
-          </a>
-          . Encrypted with AES-256-GCM. Never stored in plaintext.
+      <div className="bg-[var(--bg2)] rounded-[8px] p-[10px] mb-3.5">
+        <p className="text-[12px] text-[var(--tx2)] leading-[1.5]">
+          Keys from Settings are used by default for all Claws.
+          You can override with a different key for this specific Claw to track usage separately.
+          All keys are encrypted with AES-256-GCM and never stored in plaintext.
         </p>
       </div>
 
@@ -236,10 +275,33 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         ) : (
           <div />
         )}
-        <Button variant="primary" onClick={handleNext} disabled={!hasValidKey || isSavingModels}>
+        <Button variant="primary" onClick={handleNext} disabled={!allProvidersConfigured || isSavingModels}>
           {isSavingModels ? "Saving..." : "Next: Connect tools →"}
         </Button>
       </div>
+
+      {/* Override Modal */}
+      {overrideModal && (
+        <ApiKeyModal
+          open={true}
+          onClose={() => setOverrideModal(null)}
+          toolName={overrideModal.providerName}
+          helpUrl={PROVIDER_HELP[overrideModal.provider]}
+          keyPlaceholder={PROVIDER_PLACEHOLDER[overrideModal.provider]}
+          onSave={async (apiKey) => {
+            const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ provider: overrideModal.provider, apiKey }),
+            })
+            const data = await res.json()
+            if (res.ok && data.success) {
+              await fetchKeyStatus()
+              return { success: true }
+            }
+            return { success: false, error: data.error?.message || "Invalid API key" }
+          }}
+        />
+      )}
     </>
   )
 }
