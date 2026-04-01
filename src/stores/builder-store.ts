@@ -481,7 +481,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       let availableSkills: SkillItem[] = []
       if (skillsRes.ok) {
         const skillsJson = await skillsRes.json()
-        availableSkills = ((skillsJson.data || []) as { id: string; name: string; category: string }[]).map(s => ({
+        const rawSkills = skillsJson.data?.skills ?? skillsJson.data ?? []
+        const skillsArr = Array.isArray(rawSkills) ? rawSkills : []
+        availableSkills = (skillsArr as { id: string; name: string; category: string }[]).map(s => ({
           id: s.id, name: s.name, category: s.category,
         }))
       }
