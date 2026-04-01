@@ -90,50 +90,53 @@ export function AgentSidebar() {
         <div className="space-y-[3px]">
           {skills.map((skill) => {
             const isAssigned = agentSkillIds.includes(skill.id)
+            const isPreview = previewSkill?.id === skill.id
             return (
-              <button
-                key={skill.id}
-                type="button"
-                onClick={() => setPreviewSkill(previewSkill?.id === skill.id ? null : skill)}
-                className={cn(
-                  "w-full flex items-center gap-[6px] px-[8px] py-[5px] rounded-[6px] text-[11px] text-left transition-colors border-none bg-transparent hover:bg-[var(--bg2)] cursor-pointer",
-                  isAssigned && "text-[var(--ac)] font-medium",
-                  !isAssigned && "text-[var(--tx2)]"
+              <div key={skill.id}>
+                <button
+                  type="button"
+                  onClick={() => setPreviewSkill(isPreview ? null : skill)}
+                  className={cn(
+                    "w-full flex items-center gap-[6px] px-[8px] py-[5px] rounded-[6px] text-[11px] text-left transition-colors border-none bg-transparent hover:bg-[var(--bg2)] cursor-pointer",
+                    isAssigned && "text-[var(--ac)] font-medium",
+                    !isAssigned && "text-[var(--tx2)]"
+                  )}
+                >
+                  <span className="truncate flex-1">{skill.name}</span>
+                  {isAssigned && (
+                    <span className="text-[9px] text-[var(--ac)] flex-shrink-0">assigned</span>
+                  )}
+                </button>
+                {isPreview && (
+                  <div className="border border-[var(--bd)] rounded-[6px] p-[8px] mt-[2px] mb-[4px] bg-[var(--bg)]">
+                    <div className="flex items-center justify-between mb-[4px]">
+                      <span className="text-[11px] font-medium text-[var(--tx)]">{skill.name}</span>
+                      <button
+                        onClick={() => setPreviewSkill(null)}
+                        className="p-[2px] rounded-[3px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
+                        aria-label="Close preview"
+                      >
+                        <X className="w-[10px] h-[10px] text-[var(--tx3)]" />
+                      </button>
+                    </div>
+                    <span className="text-[9px] text-[var(--tx3)] uppercase">{skill.category}</span>
+                    <p className="text-[10px] text-[var(--tx2)] leading-[1.4] mt-[4px]">
+                      Click to assign/unassign skills in the Properties panel on the right.
+                    </p>
+                    <a
+                      href={`/store/skills/${skill.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac)] hover:underline mt-[4px]"
+                    >
+                      View full details
+                      <ExternalLink className="w-[10px] h-[10px]" />
+                    </a>
+                  </div>
                 )}
-              >
-                <span className="truncate flex-1">{skill.name}</span>
-                {isAssigned && (
-                  <span className="text-[9px] text-[var(--ac)] flex-shrink-0">assigned</span>
-                )}
-              </button>
+              </div>
             )
           })}
-        </div>
-      )}
-
-      {previewSkill && (
-        <div className="border border-[var(--bd)] rounded-[6px] p-[8px] mt-[6px] bg-[var(--bg)] relative">
-          <button
-            onClick={() => setPreviewSkill(null)}
-            className="absolute top-[6px] right-[6px] p-[2px] rounded-[3px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
-            aria-label="Close preview"
-          >
-            <X className="w-[10px] h-[10px] text-[var(--tx3)]" />
-          </button>
-          <div className="text-[11px] font-medium text-[var(--tx)] mb-[2px] pr-[16px]">{previewSkill.name}</div>
-          <span className="text-[9px] text-[var(--tx3)] uppercase">{previewSkill.category}</span>
-          <p className="text-[10px] text-[var(--tx2)] leading-[1.4] mt-[4px]">
-            Click to assign/unassign skills in the Properties panel on the right.
-          </p>
-          <a
-            href={`/store/skills/${previewSkill.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac)] hover:underline mt-[4px]"
-          >
-            View full details
-            <ExternalLink className="w-[10px] h-[10px]" />
-          </a>
         </div>
       )}
 

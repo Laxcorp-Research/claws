@@ -134,7 +134,7 @@ export default function BuilderPage() {
 
       {/* 3-panel grid */}
       {isLoading ? (
-        <div className="flex-1 grid grid-cols-[190px_1fr_190px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
+        <div className="flex-1 grid grid-cols-[220px_1fr_260px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
           <div className="border border-[var(--bd)] rounded-lg p-2.5 space-y-2">
             <LoadingSkeleton variant="short" />
             <LoadingSkeleton variant="line" />
@@ -151,7 +151,7 @@ export default function BuilderPage() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-[190px_1fr_190px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
+        <div className="flex-1 grid grid-cols-[220px_1fr_260px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
           <div className="flex flex-col gap-2.5 min-h-0">
             <div className="flex-1 min-h-0 overflow-hidden">
               <AgentSidebar />

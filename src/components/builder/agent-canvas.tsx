@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useMemo } from "react"
 import {
   ReactFlow,
   Background,
@@ -13,13 +13,11 @@ import "@xyflow/react/dist/style.css"
 import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
 import { AgentNode } from "./agent-node"
 import { Button } from "@/components/ui/button"
-import { Bot, Keyboard, X } from "lucide-react"
+import { Bot } from "lucide-react"
 
 const nodeTypes: NodeTypes = {
   agentNode: AgentNode as NodeTypes["agentNode"],
 }
-
-const HINT_STORAGE_KEY = "claws-keyboard-hint-dismissed"
 
 export function AgentCanvas() {
   const {
@@ -33,24 +31,9 @@ export function AgentCanvas() {
     addAgent,
   } = useBuilderStore()
 
-  const [showKeyboardHint, setShowKeyboardHint] = useState(false)
-
   const prefersReducedMotion = useMemo(() =>
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   , [])
-
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(HINT_STORAGE_KEY) !== "true") {
-        setShowKeyboardHint(true)
-      }
-    } catch { /* localStorage unavailable */ }
-  }, [])
-
-  const dismissHint = useCallback(() => {
-    setShowKeyboardHint(false)
-    try { localStorage.setItem(HINT_STORAGE_KEY, "true") } catch { /* noop */ }
-  }, [])
 
   const handleNodeClick = (_: React.MouseEvent, node: Node) => {
     selectAgent(node.id)
@@ -148,22 +131,6 @@ export function AgentCanvas() {
         </div>
       )}
 
-      {showKeyboardHint && nodes.length > 0 && (
-        <div
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[var(--bg)] border border-[var(--bd)] rounded-lg px-3 py-2 text-[11px] text-[var(--tx2)] flex items-center gap-2 z-10"
-          role="note"
-        >
-          <Keyboard className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          <span>Arrow keys to pan, Tab to navigate agents, Enter to select</span>
-          <button
-            onClick={dismissHint}
-            className="ml-2 text-[var(--tx3)] hover:text-[var(--tx)]"
-            aria-label="Dismiss keyboard navigation hint"
-          >
-            <X className="w-3 h-3" aria-hidden="true" />
-          </button>
-        </div>
-      )}
     </div>
   )
 }
