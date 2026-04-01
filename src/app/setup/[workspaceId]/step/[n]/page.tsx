@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ALL_TOOLS, getToolByName, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
-import { Check, CheckCircle, XCircle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
+import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
 
 interface AgentRow {
   id: string
@@ -164,7 +164,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
 
   const allProvidersConfigured = requiredProviders.every(p => {
     const s = keyStatus.find(k => k.provider === p)
-    return s?.hasKey
+    if (!s?.hasKey) return false
+    if (s.effectiveSource === "override") return s.overrideKeyValid
+    return s.globalKeyValid
   })
 
   if (isLoading) {
@@ -207,15 +209,27 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
               <div className="flex items-center gap-[8px] flex-shrink-0 ml-[10px]">
                 {status?.hasKey ? (
                   <>
-                    <div className="flex items-center gap-[4px]">
-                      <CheckCircle className="w-[14px] h-[14px] text-[var(--ok)]" />
-                      <span className="text-[11px] text-[var(--ok)]">
-                        {status.effectiveSource === "override"
-                          ? `Custom key (${status.overrideKeyHint})`
-                          : `Global key (${status.globalKeyHint})`
-                        }
-                      </span>
-                    </div>
+                    {(status.effectiveSource === "override" ? status.overrideKeyValid : status.globalKeyValid) ? (
+                      <div className="flex items-center gap-[4px]">
+                        <CheckCircle className="w-[14px] h-[14px] text-[var(--ok)]" />
+                        <span className="text-[11px] text-[var(--ok)]">
+                          {status.effectiveSource === "override"
+                            ? `Custom key (${status.overrideKeyHint})`
+                            : `Global key (${status.globalKeyHint})`
+                          }
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-[4px]">
+                        <AlertTriangle className="w-[14px] h-[14px] text-[var(--warn)]" />
+                        <span className="text-[11px] text-[var(--warn)]">
+                          {status.effectiveSource === "override"
+                            ? `Custom key invalid (${status.overrideKeyHint})`
+                            : `Global key invalid (${status.globalKeyHint})`
+                          }
+                        </span>
+                      </div>
+                    )}
                     <button
                       onClick={() => setOverrideModal({ provider, providerName })}
                       className="text-[11px] text-[var(--ac)] hover:underline cursor-pointer bg-transparent border-none"
@@ -1032,16 +1046,31 @@ export default function SetupStepPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
-      <div className="mb-[10px]">
-        <Link
-          href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-          className="text-[12px] text-[var(--ac)] hover:text-[var(--tx)] flex items-center gap-[4px] w-fit"
-        >
-          <ArrowLeft className="w-[14px] h-[14px]" />
-          {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
-        </Link>
-      </div>
-      {showWizardChrome && <WizardProgressBar steps={progressSteps} />}
+      {showWizardChrome ? (
+        <div className="flex items-center mb-[14px]">
+          <Link
+            href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
+            className="text-[12px] text-[var(--ac)] hover:underline flex items-center gap-[4px] flex-shrink-0"
+          >
+            <ArrowLeft className="w-[14px] h-[14px]" />
+            {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
+          </Link>
+          <div className="flex-1 flex justify-center">
+            <WizardProgressBar steps={progressSteps} />
+          </div>
+          <div className="w-[120px] flex-shrink-0" />
+        </div>
+      ) : (
+        <div className="mb-[10px]">
+          <Link
+            href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
+            className="text-[12px] text-[var(--ac)] hover:underline flex items-center gap-[4px] w-fit"
+          >
+            <ArrowLeft className="w-[14px] h-[14px]" />
+            {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
+          </Link>
+        </div>
+      )}
       {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
         : stepNum === 2 ? <Step2 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
         : stepNum === 3 ? <Step3 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
