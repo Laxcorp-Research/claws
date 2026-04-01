@@ -87,9 +87,38 @@ export function MarketplaceSkillsModal({ isOpen, onClose, existingSkillIds, onIn
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
   }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleInstall(skill: MarketplaceSkillItem) {
-    onInstall({ id: skill.id, name: skill.name, slug: skill.slug, category: skill.category, description: skill.description || "" })
-    setAddedIds(prev => new Set([...prev, skill.id]))
+  const [bridging, setBridging] = useState<string | null>(null)
+
+  async function handleInstall(skill: MarketplaceSkillItem) {
+    setBridging(skill.id)
+    try {
+      const res = await fetch("/api/skills/from-marketplace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marketplaceSkillId: skill.id }),
+      })
+
+      if (!res.ok) {
+        console.error("Failed to bridge skill:", res.status)
+        return
+      }
+
+      const json = await res.json()
+      const bridged = json.data || json
+
+      onInstall({
+        id: bridged.id,
+        name: bridged.name || skill.name,
+        slug: bridged.slug || skill.slug,
+        category: bridged.category || skill.category,
+        description: bridged.description || skill.description || "",
+      })
+      setAddedIds(prev => new Set([...prev, skill.id]))
+    } catch (err) {
+      console.error("Failed to add skill:", err)
+    } finally {
+      setBridging(null)
+    }
   }
 
   if (!isOpen) return null
@@ -162,9 +191,9 @@ export function MarketplaceSkillsModal({ isOpen, onClose, existingSkillIds, onIn
                           Added
                         </span>
                       ) : (
-                        <Button size="sm" variant="outline" onClick={() => handleInstall(skill)} className="flex-shrink-0">
+                        <Button size="sm" variant="outline" onClick={() => handleInstall(skill)} disabled={bridging === skill.id} className="flex-shrink-0">
                           <Plus className="w-[12px] h-[12px] mr-[3px]" />
-                          Add
+                          {bridging === skill.id ? "Adding..." : "Add"}
                         </Button>
                       )}
                     </div>
