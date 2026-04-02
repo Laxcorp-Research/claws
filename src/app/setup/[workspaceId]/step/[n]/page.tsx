@@ -1044,7 +1044,7 @@ export default function SetupStepPage() {
         <div className="flex items-center mb-[14px]">
           <Link
             href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-            className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 flex-shrink-0 transition-colors"
+            className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 flex-shrink-0 transition-colors mr-[16px]"
           >
             <ArrowLeft size={12} aria-hidden="true" />
             {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
@@ -1054,7 +1054,7 @@ export default function SetupStepPage() {
               <div className="flex-1 flex justify-center">
                 <WizardProgressBar steps={progressSteps} />
               </div>
-              <div className="w-[100px] flex-shrink-0" />
+              <div className="w-[116px] flex-shrink-0" />
             </>
           )}
         </div>
