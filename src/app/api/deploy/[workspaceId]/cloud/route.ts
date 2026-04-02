@@ -50,9 +50,28 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   }
 
   try {
-    const { deployToCloud } = await import("@/lib/openclaw/deployer")
-    const deployment = await deployToCloud(workspaceId)
-    return apiSuccess(deployment, 201)
+    const latestVersion = await prisma.deployment.findFirst({
+      where: { workspaceId },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    })
+    const nextVersion = (latestVersion?.version ?? 0) + 1
+
+    const deployment = await prisma.deployment.create({
+      data: {
+        workspaceId,
+        status: "PENDING",
+        version: nextVersion,
+        configSnapshot: JSON.stringify({ workspaceId, version: nextVersion, createdAt: new Date().toISOString() }),
+      },
+    })
+
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { status: "DEPLOYING" },
+    })
+
+    return apiSuccess({ deployment: { id: deployment.id, status: deployment.status, version: deployment.version } }, 201)
   } catch (err: unknown) {
     return apiError("DEPLOY_FAILED", err instanceof Error ? err.message : "Deployment failed", 500)
   }

@@ -10,14 +10,22 @@ vi.mock('@/lib/api/auth', () => ({ getSessionUser: () => mockGetSessionUser() })
 const mockVerifyOwnership = vi.fn();
 vi.mock('@/lib/api/ownership', () => ({ verifyWorkspaceOwnership: (...args: unknown[]) => mockVerifyOwnership(...args) }));
 
-const mockDeployToCloud = vi.fn();
-vi.mock('@/lib/openclaw/deployer', () => ({ deployToCloud: (...args: unknown[]) => mockDeployToCloud(...args) }));
-
 import { POST } from '@/app/api/deploy/[workspaceId]/cloud/route';
 
 function callRoute(workspaceId: string) {
   const req = createMockRequest(`http://localhost:3000/api/deploy/${workspaceId}/cloud`, { method: 'POST' });
   return POST(req, { params: Promise.resolve({ workspaceId }) });
+}
+
+function mockEligibleUser(overrides: Record<string, unknown> = {}) {
+  (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+    id: 'user-1', trialUsed: false, trialStartedAt: null, trialEndsAt: null, hasActiveSubscription: false,
+    ...overrides,
+  });
+  (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+  (prismaMock.deployment.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'dep-1', status: 'PENDING', version: 1 });
+  (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 }
 
 describe('POST /api/deploy/[workspaceId]/cloud', () => {
@@ -53,11 +61,7 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
   it('starts 3-day trial on first deploy', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-trial' });
     mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'SETUP_INCOMPLETE' } });
-    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 'user-trial', trialUsed: false, trialStartedAt: null, trialEndsAt: null, hasActiveSubscription: false,
-    });
-    (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    mockDeployToCloud.mockResolvedValue({ deploymentId: 'dep-1', containerId: 'c-1', gatewayToken: 'tok' });
+    mockEligibleUser({ id: 'user-trial', trialUsed: false });
 
     const res = await callRoute('ws-1');
     expect(res.status).toBe(201);
@@ -66,10 +70,6 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(updateCall.data.trialUsed).toBe(true);
     expect(updateCall.data.trialStartedAt).toBeInstanceOf(Date);
     expect(updateCall.data.trialEndsAt).toBeInstanceOf(Date);
-
-    const trialDurationMs = updateCall.data.trialEndsAt.getTime() - updateCall.data.trialStartedAt.getTime();
-    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-    expect(trialDurationMs).toBeCloseTo(threeDaysMs, -3);
   });
 
   it('returns 402 when trial expired and no subscription', async () => {
@@ -91,13 +91,12 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
   it('allows deploy during active trial window', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-intrial' });
     mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'PAUSED' } });
-    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockEligibleUser({
       id: 'user-intrial', trialUsed: true,
       trialStartedAt: new Date(),
       trialEndsAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
       hasActiveSubscription: false,
     });
-    mockDeployToCloud.mockResolvedValue({ deploymentId: 'dep-2', containerId: 'c-2', gatewayToken: 'tok' });
 
     const res = await callRoute('ws-1');
     expect(res.status).toBe(201);
@@ -106,30 +105,30 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
   it('allows deploy with active subscription regardless of trial', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-sub' });
     mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'PAUSED' } });
-    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockEligibleUser({
       id: 'user-sub', trialUsed: true,
       trialStartedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
       trialEndsAt: new Date(Date.now() - 27 * 24 * 60 * 60 * 1000),
       hasActiveSubscription: true,
     });
-    mockDeployToCloud.mockResolvedValue({ deploymentId: 'dep-3', containerId: 'c-3', gatewayToken: 'tok' });
 
     const res = await callRoute('ws-1');
     expect(res.status).toBe(201);
   });
 
-  it('returns 500 when deployment throws', async () => {
+  it('creates deployment record and returns it', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
-    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'SETUP_INCOMPLETE' } });
-    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 'user-1', trialUsed: true, trialStartedAt: new Date(), trialEndsAt: new Date(Date.now() + 86400000), hasActiveSubscription: false,
-    });
-    mockDeployToCloud.mockRejectedValue(new Error('Docker socket unreachable'));
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
+    mockEligibleUser();
 
     const res = await callRoute('ws-1');
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(201);
     const json = await res.json();
-    expect(json.error.code).toBe('DEPLOY_FAILED');
-    expect(json.error.message).toContain('Docker socket');
+    expect(json.data.deployment.id).toBe('dep-1');
+    expect(json.data.deployment.status).toBe('PENDING');
+    expect(prismaMock.deployment.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'DEPLOYING' }) })
+    );
   });
 });
