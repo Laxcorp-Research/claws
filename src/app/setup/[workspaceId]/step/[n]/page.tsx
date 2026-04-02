@@ -873,7 +873,7 @@ function Step3({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       )}
 
       <div className="flex justify-between mt-4">
-        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/2${isFromBuilder ? "?from=builder" : ""}`)}>← Back</Button>
+        <Button variant="outline" disabled={isDeploying} className={isDeploying ? "opacity-50" : ""} onClick={() => router.push(`/setup/${workspaceId}/step/2${isFromBuilder ? "?from=builder" : ""}`)}>← Back</Button>
         <Button variant="primary" disabled={!canProceed} onClick={() => router.push(`/setup/${workspaceId}/step/4${isFromBuilder ? "?from=builder" : ""}`)}>Next: Channels →</Button>
       </div>
     </>

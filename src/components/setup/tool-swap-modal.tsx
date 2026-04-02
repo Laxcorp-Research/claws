@@ -22,14 +22,23 @@ export function ToolSwapModal({ open, onClose, category, currentTool, alternativ
       size="md"
       footer={<Button variant="outline" onClick={onClose}>Cancel</Button>}
     >
-      <div className="flex gap-1.5 flex-wrap">
-        {alternatives.map((tool) => (
-          <button key={tool.slug} onClick={() => { onSelect(tool); onClose() }} className="border border-[var(--bd)] rounded-lg px-3 py-1.5 bg-[var(--bg)] text-[11px] hover:border-[var(--bd2)] transition-colors">
-            {tool.name}
-          </button>
-        ))}
-      </div>
-      <p className="text-[10px] text-[var(--tx3)] mt-2">All alternatives work identically. Your agents adapt automatically.</p>
+      {alternatives.length === 0 ? (
+        <div className="py-[16px] text-center">
+          <p className="text-[13px] text-[var(--tx2)]">No alternatives available for this category.</p>
+          <p className="text-[11px] text-[var(--tx3)] mt-[4px]">You can add a custom tool via &ldquo;+ Connect custom API&rdquo; on the tools page.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-[6px] flex-wrap">
+            {alternatives.map((tool) => (
+              <button key={tool.slug} onClick={() => { onSelect(tool); onClose() }} className="border border-[var(--bd)] rounded-lg px-3 py-1.5 bg-[var(--bg)] text-[11px] hover:border-[var(--bd2)] transition-colors cursor-pointer">
+                {tool.name}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-[var(--tx3)] mt-2">All alternatives work identically. Your agents adapt automatically.</p>
+        </>
+      )}
     </Modal>
   )
 }

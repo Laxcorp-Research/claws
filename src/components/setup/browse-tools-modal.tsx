@@ -59,7 +59,7 @@ export function BrowseToolsModal({ open, onClose, connectedSlugs, onConnect, wor
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tools..." className="mb-2.5" />
           <div className="flex gap-1.5 flex-wrap mb-2.5">
             {TOOL_CATEGORIES.filter((_, i) => i < 10).map((cat) => (
-              <button key={cat} onClick={() => setActiveCategory(cat)} className={`text-[10px] px-2 py-[3px] rounded-md border transition-colors cursor-pointer bg-transparent ${activeCategory === cat ? "bg-[var(--tx)] text-white border-[var(--tx)]" : "border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)]"}`}>
+              <button key={cat} onClick={() => setActiveCategory(cat)} className={`text-[11px] font-medium px-[10px] py-[3px] rounded-[8px] border transition-colors cursor-pointer ${activeCategory === cat ? "bg-[var(--tx)] text-[var(--bg)] border-[var(--tx)]" : "bg-transparent text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]"}`}>
                 {cat}
               </button>
             ))}
