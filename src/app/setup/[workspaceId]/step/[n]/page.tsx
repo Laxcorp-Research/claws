@@ -381,7 +381,34 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
             }
           })
 
-        setTools([...buildToolState(requiredNames, true), ...buildToolState(recommendedNames, false)])
+        const allTools = [...buildToolState(requiredNames, true), ...buildToolState(recommendedNames, false)]
+
+        const AI_SLUG_TO_PROVIDER: Record<string, string> = {
+          anthropic_api: "ANTHROPIC", claude_api: "ANTHROPIC",
+          openai_api: "OPENAI", google_ai: "GOOGLE",
+        }
+
+        try {
+          const keysRes = await fetch(`/api/workspaces/${workspaceId}/api-keys`)
+          const keysData = await keysRes.json()
+          if (keysData.success && Array.isArray(keysData.data)) {
+            const keyStatus = keysData.data as Array<{ provider: string; hasKey: boolean; globalKeyValid: boolean; overrideKeyValid: boolean; effectiveSource: string; globalKeyHint: string | null; overrideKeyHint: string | null }>
+            for (let i = 0; i < allTools.length; i++) {
+              const provider = AI_SLUG_TO_PROVIDER[allTools[i].slug]
+              if (provider) {
+                const ks = keyStatus.find(k => k.provider === provider)
+                if (ks?.hasKey) {
+                  const isValid = ks.effectiveSource === "override" ? ks.overrideKeyValid : ks.globalKeyValid
+                  if (isValid) {
+                    allTools[i] = { ...allTools[i], status: "connected" as const, connectionId: `apikey-${provider}` }
+                  }
+                }
+              }
+            }
+          }
+        } catch { /* key status check is optional */ }
+
+        setTools(allTools)
       } catch (e) {
         console.error("Failed to load tools:", e)
       } finally {
@@ -448,17 +475,9 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     setTools((prev) => prev.map((t) => (t.slug === swapModal.tool!.slug ? { ...t, slug: newTool.slug, name: newTool.name, connectionType: newTool.connectionType, category: newTool.category, helpUrl: newTool.helpUrl, keyPlaceholder: newTool.keyPlaceholder, status: "disconnected" as const, connectionId: undefined } : t)))
   }, [swapModal.tool])
 
-  const handleBrowseConnect = useCallback((tool: ToolDefinition) => {
-    if (tool.connectionType === "API_KEY") {
-      setBrowseModal(false)
-      const toolState: ToolState = { slug: tool.slug, name: tool.name, connectionType: tool.connectionType, category: tool.category, status: "disconnected", helpUrl: tool.helpUrl, keyPlaceholder: tool.keyPlaceholder, required: false }
-      setApiKeyModal({ open: true, tool: toolState })
-    } else {
-      setBrowseModal(false)
-      const toolState: ToolState = { slug: tool.slug, name: tool.name, connectionType: tool.connectionType, category: tool.category, status: "disconnected", required: false }
-      handleOAuthConnect(toolState)
-    }
-  }, [handleOAuthConnect])
+  const handleBrowseConnect = useCallback(async () => {
+    await refreshTools()
+  }, [refreshTools])
 
   const handleCustomSave = useCallback(async (data: { name: string; baseUrl: string; authType: string; credential: string; description: string }): Promise<{ success: boolean; error?: string }> => {
     try {
@@ -609,7 +628,7 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         alternatives={swapModal.tool ? getToolsByCategory(swapModal.tool.category).filter((t) => t.slug !== swapModal.tool!.slug) : []}
         onSelect={handleSwapSelect}
       />
-      <BrowseToolsModal open={browseModal} onClose={() => setBrowseModal(false)} connectedSlugs={connectedSlugs} onConnect={handleBrowseConnect} />
+      <BrowseToolsModal open={browseModal} onClose={() => setBrowseModal(false)} connectedSlugs={connectedSlugs} onConnect={handleBrowseConnect} workspaceId={workspaceId} />
       <CustomApiModal open={customApiModal} onClose={() => setCustomApiModal(false)} onSave={handleCustomSave} />
     </>
   )

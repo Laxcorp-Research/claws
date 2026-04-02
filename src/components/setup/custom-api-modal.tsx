@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { CustomSelect } from "@/components/ui/custom-select"
 
 interface CustomApiModalProps {
   open: boolean
@@ -11,7 +12,7 @@ interface CustomApiModalProps {
   onSave: (data: { name: string; baseUrl: string; authType: string; credential: string; description: string }) => Promise<{ success: boolean; error?: string }>
 }
 
-const AUTH_TYPES = [
+const AUTH_TYPE_OPTIONS = [
   { value: "API_KEY_HEADER", label: "API Key (header)" },
   { value: "BEARER_TOKEN", label: "Bearer Token" },
   { value: "BASIC_AUTH", label: "Basic Auth" },
@@ -69,9 +70,11 @@ export function CustomApiModal({ open, onClose, onSave }: CustomApiModalProps) {
         </div>
         <div>
           <label className="block text-[11px] font-medium mb-[3px]">Auth type</label>
-          <select value={authType} onChange={(e) => setAuthType(e.target.value)} className="w-full px-2.5 py-2 border border-[var(--bd)] rounded-md text-xs bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)]">
-            {AUTH_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
+          <CustomSelect
+            value={authType}
+            onChange={(value) => setAuthType(value)}
+            options={AUTH_TYPE_OPTIONS}
+          />
         </div>
         <div>
           <label className="block text-[11px] font-medium mb-[3px]">Credential</label>
