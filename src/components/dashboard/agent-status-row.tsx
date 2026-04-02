@@ -92,21 +92,21 @@ export function AgentStatusRow({
     : "text-[var(--tx3)]"
 
   return (
-    <div className={cn("flex items-center justify-between p-[8px_10px] rounded-[6px]", rowBg[status] ?? rowBg.offline)}>
-      <div className="flex items-center gap-2">
+    <div className={cn("flex items-center justify-between px-[12px] py-[10px] rounded-[6px] gap-[12px]", rowBg[status] ?? rowBg.offline)}>
+      <div className="flex items-center gap-2 min-w-0">
         <div className={cn("w-2 h-2 rounded-full flex-shrink-0", statusDotColor[status] ?? statusDotColor.offline)} />
-        <div>
-          <div className="flex items-center gap-1.5">
+        <div className="min-w-0">
+          <div className="mb-[2px]">
             <span className={cn("text-[12px] font-semibold", role === "CRITIC" && "text-[#5b21b6]")}>{name}</span>
           </div>
-          <div className="text-[10px] text-[var(--tx2)]">
+          <div className="text-[10px] text-[var(--tx2)] truncate">
             {buildMeta(role, normalizedStatus, lastActive, errorMessage, retryIn, queuedTasks, passRate)}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <span className={cn("text-[10px] font-medium", statusColor)}>{statusLabel}</span>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <span className={cn("text-[10px] font-medium whitespace-nowrap", statusColor)}>{statusLabel}</span>
 
         {canPause && isRunning(status) && onPause && (
           <Button

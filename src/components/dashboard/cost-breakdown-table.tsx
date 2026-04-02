@@ -44,33 +44,35 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
     <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
       <div className="flex justify-between items-center mb-[10px]">
         <h4 className="text-[13px] font-semibold">API cost breakdown - {period}</h4>
-        <span className="text-[16px] font-semibold text-[var(--tx)]">${totalCost.toFixed(2)}</span>
+        <span className="text-[16px] font-semibold text-[var(--tx)] whitespace-nowrap ml-[16px]">${totalCost.toFixed(2)}</span>
       </div>
 
-      <div>
-        <div className="flex justify-between py-[6px] border-b border-[var(--bd)]">
-          <span className="text-[12px] font-medium">Agent</span>
-          <div className="flex gap-[20px]">
-            <span className="w-[50px] text-right text-[12px] font-medium">Model</span>
-            <span className="w-[50px] text-right text-[12px] font-medium">Calls</span>
-            <span className="w-[60px] text-right text-[12px] font-medium">Cost</span>
-          </div>
-        </div>
-
-        {sorted.map((row, i) => (
-          <div
-            key={row.agentName}
-            className={`flex justify-between py-[6px] ${i < sorted.length - 1 ? "border-b border-[var(--bd)]" : ""}`}
-          >
-            <span className="text-[12px]">{row.agentName}</span>
-            <div className="flex gap-[20px]">
-              <span className="w-[50px] text-right text-[var(--tx2)] text-[10px]">{row.model}</span>
-              <span className="w-[50px] text-right text-[12px]">{row.calls.toLocaleString()}</span>
-              <span className="w-[60px] text-right text-[12px] font-semibold">${row.cost.toFixed(2)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <table className="w-full text-[12px]" style={{ tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "35%" }} />
+          <col style={{ width: "25%" }} />
+          <col style={{ width: "20%" }} />
+          <col style={{ width: "20%" }} />
+        </colgroup>
+        <thead>
+          <tr className="border-b border-[var(--bd)]">
+            <th className="text-left font-medium py-[6px] pr-[8px]">Agent</th>
+            <th className="text-left font-medium py-[6px] pr-[8px]">Model</th>
+            <th className="text-right font-medium py-[6px] pr-[8px]">Calls</th>
+            <th className="text-right font-medium py-[6px]">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row, i) => (
+            <tr key={row.agentName} className={i < sorted.length - 1 ? "border-b border-[var(--bd)]" : ""}>
+              <td className="py-[6px] pr-[8px] truncate whitespace-nowrap overflow-hidden">{row.agentName}</td>
+              <td className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] truncate whitespace-nowrap overflow-hidden">{row.model}</td>
+              <td className="py-[6px] pr-[8px] text-right whitespace-nowrap">{row.calls.toLocaleString()}</td>
+              <td className="py-[6px] text-right font-semibold whitespace-nowrap">${row.cost.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       {computedTip && (
         <div className="mt-[10px] bg-[var(--bg2)] rounded-[6px] p-[8px] text-[11px] text-[var(--tx2)]">
@@ -80,7 +82,7 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
             <>
               {" "}
               <Link href={`/builder/${workspaceId}`} className="text-[var(--ac)]">
-                Change model in Builder →
+                Change model in Builder
               </Link>
             </>
           )}

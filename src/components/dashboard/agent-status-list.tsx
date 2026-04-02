@@ -52,7 +52,7 @@ export function AgentStatusList({
           />
         ))}
       </div>
-      <p className="text-[10px] text-[var(--tx3)] mt-[8px]">
+      <p className="text-[10px] text-[var(--tx3)] mt-[12px]">
         Note: Orchestrator and Critic cannot be paused individually - they&apos;re essential for Claw operation. Use &quot;Pause all&quot; to stop the entire Claw.
       </p>
     </div>
