@@ -13,14 +13,14 @@ export interface SkillScanResult {
 }
 
 const CRITICAL_PATTERNS: Array<{ pattern: RegExp; description: string }> = [
-  { pattern: /curl.*\$\{?[A-Z_]*KEY/i, description: "curl command with API key variable — potential key exfiltration" },
-  { pattern: /curl.*\$\{?[A-Z_]*TOKEN/i, description: "curl command with token variable — potential token exfiltration" },
-  { pattern: /curl.*\$\{?[A-Z_]*SECRET/i, description: "curl command with secret variable — potential secret exfiltration" },
-  { pattern: /wget.*\$\{?[A-Z_]*KEY/i, description: "wget command with API key variable — potential key exfiltration" },
-  { pattern: /base64\s+(encode|decode)/i, description: "Base64 encode/decode operations — potential data obfuscation" },
-  { pattern: /eval\s*\(/, description: "eval() call — arbitrary code execution" },
-  { pattern: /\$\(.*\$\{/, description: "Nested command substitution with variables — potential injection" },
-  { pattern: /\/etc\/shadow/, description: "Access to /etc/shadow — system password file" },
+  { pattern: /curl.*\$\{?[A-Z_]*KEY/i, description: "curl command with API key variable - potential key exfiltration" },
+  { pattern: /curl.*\$\{?[A-Z_]*TOKEN/i, description: "curl command with token variable - potential token exfiltration" },
+  { pattern: /curl.*\$\{?[A-Z_]*SECRET/i, description: "curl command with secret variable - potential secret exfiltration" },
+  { pattern: /wget.*\$\{?[A-Z_]*KEY/i, description: "wget command with API key variable - potential key exfiltration" },
+  { pattern: /base64\s+(encode|decode)/i, description: "Base64 encode/decode operations - potential data obfuscation" },
+  { pattern: /eval\s*\(/, description: "eval() call - arbitrary code execution" },
+  { pattern: /\$\(.*\$\{/, description: "Nested command substitution with variables - potential injection" },
+  { pattern: /\/etc\/shadow/, description: "Access to /etc/shadow - system password file" },
   { pattern: /\/root\//, description: "Access to /root/ directory" },
   { pattern: /~\/.ssh/, description: "Access to SSH keys directory" },
   { pattern: /\.env(?!\s*var)/i, description: "Access to .env file (credentials)" },
@@ -31,9 +31,9 @@ const CRITICAL_PATTERNS: Array<{ pattern: RegExp; description: string }> = [
 const WARNING_PATTERNS: Array<{ pattern: RegExp; description: string }> = [
   { pattern: /chmod\s+[0-7]*7[0-7]*/, description: "World-readable/writable permission change" },
   { pattern: /rm\s+-rf/, description: "Recursive delete command" },
-  { pattern: />\s*\/dev\/null\s*2>&1/, description: "Error suppression — may hide malicious activity" },
-  { pattern: /nohup/, description: "Background process — may persist after skill execution" },
-  { pattern: /crontab/, description: "Crontab modification — should use OpenClaw's cron system instead" },
+  { pattern: />\s*\/dev\/null\s*2>&1/, description: "Error suppression - may hide malicious activity" },
+  { pattern: /nohup/, description: "Background process - may persist after skill execution" },
+  { pattern: /crontab/, description: "Crontab modification - should use OpenClaw's cron system instead" },
 ]
 
 export function scanSkillContent(skillMd: string): SkillScanResult {

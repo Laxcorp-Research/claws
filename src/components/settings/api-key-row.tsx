@@ -51,7 +51,7 @@ export function ApiKeyRow({
               <span>Not connected</span>
             )}
             {status === "invalid" && (
-              <span className="text-[var(--err)]">Invalid — {lastError ?? "key failed validation"}</span>
+              <span className="text-[var(--err)]">Invalid - {lastError ?? "key failed validation"}</span>
             )}
           </div>
         </div>

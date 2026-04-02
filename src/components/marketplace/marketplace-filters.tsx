@@ -113,7 +113,7 @@ export function MarketplaceFilters({
 
   return (
     <div className="mt-2 mb-3" role="toolbar" aria-label="Filter options">
-      {/* Row 1: Category pills — allowed to wrap */}
+      {/* Row 1: Category pills - allowed to wrap */}
       <div className="flex flex-wrap items-center gap-[6px] mb-2">
         {categories.map((cat) => (
           <button

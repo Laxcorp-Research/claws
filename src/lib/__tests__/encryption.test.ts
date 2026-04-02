@@ -16,7 +16,7 @@ describe('encryption', () => {
     });
 
     it('encrypts and decrypts unicode content', () => {
-      const plaintext = '日本語テスト 🔑 émojis';
+      const plaintext = '�-�本語テスト 🔑 émojis';
       const encrypted = encrypt(plaintext);
       expect(decrypt(encrypted)).toBe(plaintext);
     });

@@ -23,7 +23,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 const MODEL_OPTIONS = AI_MODELS.map(m => ({
   value: m.value,
-  label: `${m.label} (${m.provider}) — ~$${m.costPer1kCalls}/call`,
+  label: `${m.label} (${m.provider}) - ~$${m.costPer1kCalls}/call`,
 }))
 
 export function ModelSelectionTable({ agents, onModelChange }: ModelSelectionTableProps) {
@@ -54,7 +54,7 @@ export function ModelSelectionTable({ agents, onModelChange }: ModelSelectionTab
                 />
               </td>
               <td className="px-2 py-1.5 text-right text-[var(--tx3)] text-[10px]">
-                {selected ? `~$${selected.costPer1kCalls}/call` : "—"}
+                {selected ? `~$${selected.costPer1kCalls}/call` : "-"}
               </td>
             </tr>
           )

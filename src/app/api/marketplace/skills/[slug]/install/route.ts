@@ -67,7 +67,7 @@ export async function POST(
   } else {
     console.warn(
       `[SKILL_INSTALL] Skill "${skill.slug}" installed to workspace "${workspace.id}" ` +
-      `(DB only — no container available)`
+      `(DB only - no container available)`
     )
   }
 

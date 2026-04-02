@@ -50,7 +50,7 @@ export async function POST(
       agentSlug: originalRequest.agentSlug,
       action: action === "approve"
         ? `Human approved: ${originalRequest.action}`
-        : `Human rejected: ${originalRequest.action}${feedback ? ` — "${feedback}"` : ""}`,
+        : `Human rejected: ${originalRequest.action}${feedback ? ` - "${feedback}"` : ""}`,
       actionType: action === "approve" ? "HUMAN_APPROVE" : "HUMAN_REJECT",
       metadata: JSON.stringify({
         originalRequestId: activityLogId,

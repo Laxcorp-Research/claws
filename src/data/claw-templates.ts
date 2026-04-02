@@ -27,23 +27,23 @@ export interface ClawTemplate {
 export const CATEGORY_META: Record<ClawCategory, { label: string; description: string }> = {
   MONEY_MAKING: {
     label: "Money-Making",
-    description: "AI teams that directly generate revenue — trading, freelancing, and e-commerce.",
+    description: "AI teams that directly generate revenue - trading, freelancing, and e-commerce.",
   },
   CREATOR: {
     label: "Creator",
-    description: "Content creation machines — YouTube, Twitter, newsletters, and podcasts.",
+    description: "Content creation machines - YouTube, Twitter, newsletters, and podcasts.",
   },
   BUSINESS_OPS: {
     label: "Business Ops",
-    description: "Operational excellence — sales, agency management, SEO, and executive support.",
+    description: "Operational excellence - sales, agency management, SEO, and executive support.",
   },
   VERTICAL: {
     label: "Vertical",
-    description: "Industry-specific teams — real estate, recruiting, medical, legal, and home services.",
+    description: "Industry-specific teams - real estate, recruiting, medical, legal, and home services.",
   },
   LIFESTYLE: {
     label: "Lifestyle",
-    description: "Personal productivity — fitness, studying, job hunting, and developer tools.",
+    description: "Personal productivity - fitness, studying, job hunting, and developer tools.",
   },
 }
 
@@ -97,7 +97,7 @@ export const CLAW_TEMPLATES: ClawTemplate[] = [
     category: "MONEY_MAKING",
     price: 199,
     agentCount: 7,
-    tagline: "Full store operations — product research to ad optimization",
+    tagline: "Full store operations - product research to ad optimization",
     description: "A 7-agent team covering product research, listing SEO, dynamic pricing, review management, and ad campaigns. Per-product P&L tracking. Buy Box strategy. Auto-pauses ads when ROAS drops below 1.0 for 48 hours.",
     agents: [
       { name: "Store Commander", role: "ORCHESTRATOR", color: "#5BA1F5", model: "anthropic/claude-haiku-4-5" },
@@ -162,7 +162,7 @@ export const CLAW_TEMPLATES: ClawTemplate[] = [
     category: "CREATOR",
     price: 149,
     agentCount: 6,
-    tagline: "Full editorial pipeline — research to monetization",
+    tagline: "Full editorial pipeline - research to monetization",
     description: "A 6-agent editorial team handling topic research, draft writing in your voice, growth strategies (cross-promos, referrals, lead magnets), and monetization (sponsors, paid subs). Open rate prediction on subject lines. Deliverability crisis handling.",
     agents: [
       { name: "Newsletter Commander", role: "ORCHESTRATOR", color: "#5BA1F5", model: "anthropic/claude-haiku-4-5" },
@@ -246,7 +246,7 @@ export const CLAW_TEMPLATES: ClawTemplate[] = [
     category: "BUSINESS_OPS",
     price: 199,
     agentCount: 6,
-    tagline: "Your personal operating system — briefings, prep, tracking",
+    tagline: "Your personal operating system - briefings, prep, tracking",
     description: "A 6-agent personal ops team delivering daily 6:30 AM context briefings, meeting prep with attendee research, bi-directional commitment tracking, and executive communication drafting.",
     agents: [
       { name: "Chief of Staff", role: "ORCHESTRATOR", color: "#5BA1F5", model: "anthropic/claude-haiku-4-5" },
@@ -266,7 +266,7 @@ export const CLAW_TEMPLATES: ClawTemplate[] = [
     category: "BUSINESS_OPS",
     price: 199,
     agentCount: 7,
-    tagline: "Full SEO operation — keywords to backlinks to rankings",
+    tagline: "Full SEO operation - keywords to backlinks to rankings",
     description: "A 7-agent SEO team handling keyword research with topic clustering, E-E-A-T compliant long-form content, technical SEO monitoring, backlink prospecting, and daily rank tracking. Prioritizes quick wins (low KD). YMYL content flagged for expert review.",
     agents: [
       { name: "SEO Commander", role: "ORCHESTRATOR", color: "#5BA1F5", model: "anthropic/claude-haiku-4-5" },
@@ -391,7 +391,7 @@ export const CLAW_TEMPLATES: ClawTemplate[] = [
     price: 149,
     agentCount: 5,
     tagline: "Evidence-based workouts, nutrition, and habit tracking",
-    description: "A 5-agent fitness team for personalized workout programming with progressive overload, nutrition planning by goal (cut/bulk/maintain), habit tracking, and recovery monitoring. Evidence-based only — no bro-science. Medical disclaimer enforced.",
+    description: "A 5-agent fitness team for personalized workout programming with progressive overload, nutrition planning by goal (cut/bulk/maintain), habit tracking, and recovery monitoring. Evidence-based only - no bro-science. Medical disclaimer enforced.",
     agents: [
       { name: "Fitness Commander", role: "ORCHESTRATOR", color: "#5BA1F5", model: "anthropic/claude-haiku-4-5" },
       { name: "Workout Planner", role: "WORKER", color: "#8BFCAE", model: "anthropic/claude-sonnet-4-6" },
@@ -410,7 +410,7 @@ export const CLAW_TEMPLATES: ClawTemplate[] = [
     price: 149,
     agentCount: 5,
     tagline: "Study planning, research assistance, exam prep",
-    description: "A 5-agent study team for study scheduling with spaced repetition, research assistance (literature search, source evaluation), and exam prep (practice questions, flashcards, concept maps). Academic integrity enforced — will NOT write essays or answer homework directly.",
+    description: "A 5-agent study team for study scheduling with spaced repetition, research assistance (literature search, source evaluation), and exam prep (practice questions, flashcards, concept maps). Academic integrity enforced - will NOT write essays or answer homework directly.",
     agents: [
       { name: "Study Commander", role: "ORCHESTRATOR", color: "#5BA1F5", model: "anthropic/claude-haiku-4-5" },
       { name: "Study Planner", role: "WORKER", color: "#8BFCAE", model: "anthropic/claude-sonnet-4-6" },
@@ -428,7 +428,7 @@ export const CLAW_TEMPLATES: ClawTemplate[] = [
     category: "LIFESTYLE",
     price: 149,
     agentCount: 6,
-    tagline: "Scan → apply → prep → negotiate — full job search pipeline",
+    tagline: "Scan → apply → prep → negotiate - full job search pipeline",
     description: "A 6-agent job search team for opportunity scanning, per-application resume tailoring with ATS optimization, personalized cover letters, STAR-format interview prep, and salary negotiation strategy. Multi-offer comparison.",
     agents: [
       { name: "Job Hunt Commander", role: "ORCHESTRATOR", color: "#5BA1F5", model: "anthropic/claude-haiku-4-5" },

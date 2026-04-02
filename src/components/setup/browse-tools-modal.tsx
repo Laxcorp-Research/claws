@@ -81,7 +81,7 @@ export function BrowseToolsModal({ open, onClose, connectedSlugs, onConnect, wor
                     <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>
                   ) : tool.connectionType === "OAUTH_COMPOSIO" ? (
                     <span className="text-[10px] text-[var(--tx3)] px-[8px] py-[3px] border border-[var(--bd)] rounded-[4px]">
-                      OAuth — Coming soon
+                      OAuth - Coming soon
                     </span>
                   ) : (
                     <button onClick={() => handleToolClick(tool)} className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none">Connect</button>

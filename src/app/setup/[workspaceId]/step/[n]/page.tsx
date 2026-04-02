@@ -451,7 +451,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
   const handleOAuthConnect = useCallback(async (tool: ToolState) => {
     setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connecting" as const, errorMessage: undefined } : t)))
-    console.log(`[Placeholder] OAuth flow for ${tool.name} — would open Composio popup in production`)
+    console.log(`[Placeholder] OAuth flow for ${tool.name} - would open Composio popup in production`)
     setTimeout(async () => {
       try {
         const res = await fetch(`/api/tools/${workspaceId}`, {
@@ -542,7 +542,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       {(requiredTools.length > 0 || recommendedTools.length > 0) && (
         <div className="bg-[var(--bg2)] rounded-[8px] p-[10px] mb-[10px]">
           <p className="text-[12px] text-[var(--tx2)] leading-[1.5]">
-            Tools are external services your agents connect to — APIs, CRMs, email providers, and more.
+            Tools are external services your agents connect to - APIs, CRMs, email providers, and more.
             Each connection gives your agents the ability to interact with that service on your behalf.
             API keys are encrypted with AES-256-GCM and never stored in plaintext.
           </p>
@@ -662,7 +662,7 @@ const DEPLOY_STAGES = [
 const DEPLOY_ORDER = DEPLOY_STAGES.map((s) => s.key)
 
 const FAILURE_REASONS: Record<string, string> = {
-  GENERATING: "Failed to generate workspace configuration. This is unusual — please try again.",
+  GENERATING: "Failed to generate workspace configuration. This is unusual - please try again.",
   PROVISIONING: "Could not provision a container. The hosting service may be temporarily unavailable.",
   CONFIGURING: "Failed to configure agents and tools in the container. Check that all required tools are connected.",
   STARTING: "Container failed to start. Check your API keys are valid.",
@@ -821,7 +821,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
 
   function getDeployButtonLabel() {
     if (isDeploying) return "Deploying..."
-    if (eligibility?.isFirstDeploy) return "Deploy — 3-day free trial"
+    if (eligibility?.isFirstDeploy) return "Deploy - 3-day free trial"
     return "Deploy"
   }
 
@@ -830,7 +830,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       <h2 className="text-[15px] font-semibold mb-0.5">Deploy your Claw</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
       {eligibility?.isFirstDeploy ? (
-        <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">3-day free trial — no payment required. $79/mo after trial.</p>
+        <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">3-day free trial - no payment required. $79/mo after trial.</p>
       ) : (
         <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
       )}
@@ -845,7 +845,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       {!deploymentStatus && (
         needsSub ? (
           <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
-            Subscribe to Deploy — $79/mo
+            Subscribe to Deploy - $79/mo
           </Button>
         ) : (
           <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !eligibility}>
@@ -894,7 +894,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
 const ICON_CLASS = "w-4 h-4"
 
 const CHANNELS = [
-  { id: "web-chat", name: "Web chat", description: "Built-in — always available", icon: <Globe className={ICON_CLASS} />, alwaysConnected: true },
+  { id: "web-chat", name: "Web chat", description: "Built-in - always available", icon: <Globe className={ICON_CLASS} />, alwaysConnected: true },
   { id: "whatsapp", name: "WhatsApp", description: "Scan QR code to connect", icon: <Smartphone className={ICON_CLASS} />, alwaysConnected: false },
   { id: "slack", name: "Slack", description: "Connect via OAuth", icon: <Hash className={ICON_CLASS} />, alwaysConnected: false },
   { id: "telegram", name: "Telegram", description: "Enter bot token from @BotFather", icon: <Send className={ICON_CLASS} />, alwaysConnected: false },

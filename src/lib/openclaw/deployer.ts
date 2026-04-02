@@ -1,4 +1,4 @@
-// @ts-nocheck — Depends on Docker/container infrastructure not available in web context
+// @ts-nocheck - Depends on Docker/container infrastructure not available in web context
 // lib/openclaw/deployer.ts
 // ============================================================================
 // Container lifecycle management for Claws workspaces.
@@ -12,7 +12,7 @@
 //   3. State dir: /home/node/.openclaw (default for `node` user)
 //   4. Runs as non-root user `node` (uid 1000)
 //   5. Health: /healthz (liveness) + /readyz (readiness with channel checks)
-//   6. Persistent volume required (NOT tmpfs — agent writes memory files)
+//   6. Persistent volume required (NOT tmpfs - agent writes memory files)
 //   7. Gateway token via OPENCLAW_GATEWAY_TOKEN env var
 //   8. Config hot-reload: edit openclaw.json in volume → auto-applied
 //   9. init: true for PID 1 signal handling
@@ -194,7 +194,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
           MaximumRetryCount: 5,
         },
 
-        // Isolated network — containers can't reach each other
+        // Isolated network - containers can't reach each other
         NetworkMode: CONTAINER_NETWORK,
 
         // Port mapping for external access (health checks, monitoring, WhatsApp QR)
@@ -241,7 +241,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
       } catch {
         // Channels may not connect immediately (e.g., WhatsApp needs QR scan)
         // Mark as running but note the channel status
-        console.warn(`[deploy] Readiness check timed out for ${workspaceId} — channels may need configuration`);
+        console.warn(`[deploy] Readiness check timed out for ${workspaceId} - channels may need configuration`);
       }
     }
 
@@ -333,7 +333,7 @@ export async function redeployWorkspace(workspaceId: string): Promise<void> {
   if (workspace.containerId && workspace.status === 'RUNNING') {
     const generated = await generateWorkspace(workspaceId);
 
-    // Update config file in the volume — triggers hot-reload
+    // Update config file in the volume - triggers hot-reload
     const container = docker.getContainer(workspace.containerId);
     await copyWorkspaceToContainer(workspace.containerId, generated);
 
@@ -528,7 +528,7 @@ async function buildTarStream(generated: GeneratedWorkspace): Promise<Readable> 
 
   // Per-agent workspace directories
   for (const [dirName, files] of Object.entries(generated.workspaces)) {
-    // Create memory/ subdirectory (empty — agent populates it)
+    // Create memory/ subdirectory (empty - agent populates it)
     pack.entry({ name: `${dirName}/memory`, type: 'directory', mode: 0o755 });
 
     for (const [fileName, content] of Object.entries(files)) {
@@ -647,7 +647,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Initialization — ensure network exists on module load
+// Initialization - ensure network exists on module load
 // ---------------------------------------------------------------------------
 
 ensureNetwork().catch(err => {

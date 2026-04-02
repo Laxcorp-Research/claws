@@ -118,7 +118,7 @@ export async function middleware(request: NextRequest) {
           );
         }
       } catch {
-        // Redis unavailable — fail open
+        // Redis unavailable - fail open
       }
     }
 
@@ -137,7 +137,7 @@ export async function middleware(request: NextRequest) {
     return addSecurityHeaders(response);
   }
 
-  // --- Auth route rate limiting (POST only — sign-in attempts) ---
+  // --- Auth route rate limiting (POST only - sign-in attempts) ---
   if (
     pathname.startsWith("/api/auth") &&
     request.method === "POST" &&
@@ -154,7 +154,7 @@ export async function middleware(request: NextRequest) {
         );
       }
     } catch {
-      // Redis unavailable — fail open
+      // Redis unavailable - fail open
     }
   }
 

@@ -340,8 +340,8 @@ export default function TemplateDetailPage() {
                   {!session?.user
                     ? "Sign in to purchase"
                     : template.isFree
-                      ? "Install — Free"
-                      : `Purchase — $${template.price}`}
+                      ? "Install - Free"
+                      : `Purchase - $${template.price}`}
                 </Button>
                 {purchaseError && <p className="text-[10px] text-[var(--err)] mt-1">{purchaseError}</p>}
               </>

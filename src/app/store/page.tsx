@@ -238,7 +238,7 @@ function StoreContent() {
   return (
     <PageShell background="secondary">
       <div className="max-w-5xl mx-auto px-4 py-4">
-        {/* Hero — compact */}
+        {/* Hero - compact */}
         <div className="text-center pt-3 pb-2">
           <h1 className="text-xl font-semibold text-[var(--tx)]">AI agents that work while you sleep</h1>
           <p className="text-[13px] text-[var(--tx2)] mt-1 max-w-lg mx-auto">
@@ -258,7 +258,7 @@ function StoreContent() {
 
         <MarketplaceTabs active={activeTab} onTabChange={handleTabChange} />
 
-        {/* Total count — always rendered to prevent layout shift */}
+        {/* Total count - always rendered to prevent layout shift */}
         {!isSearchActive && (
           <p className="text-[11px] text-[var(--tx3)] -mt-2 mb-1 h-[16px]">
             {(isTemplatesTab ? official.isLoading : officialSkills.isLoading) ? (
@@ -365,7 +365,7 @@ function StoreContent() {
                   <EmptyState
                     icon={<Package className="w-10 h-10" />}
                     title="No templates available"
-                    description="Check back soon — new agent teams are being added."
+                    description="Check back soon - new agent teams are being added."
                   />
                 )}
               </>
@@ -407,7 +407,7 @@ function StoreContent() {
               </section>
             ) : (
               <>
-                {/* Official skills — collapsed by default */}
+                {/* Official skills - collapsed by default */}
                 <section className="mb-6">
                   <SectionHeader title="Official" count={officialSkills.totalCount} badge={<TrustBadge tier="OFFICIAL" />} />
                   {officialSkills.isLoading ? (
@@ -435,7 +435,7 @@ function StoreContent() {
                   )}
                 </section>
 
-                {/* Popular skills — main section with load more */}
+                {/* Popular skills - main section with load more */}
                 {(popularSkills.isLoading || popularSkills.items.length > 0) && (
                   <section className="mb-6">
                     <SectionHeader title="Popular" count={popularSkills.totalCount} />

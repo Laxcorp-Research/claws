@@ -55,7 +55,7 @@ export function AgentCanvas() {
             <Bot className="w-10 h-10" aria-hidden="true" />
           </div>
           <h3 className="text-[16px] font-semibold text-[var(--tx)] mb-1">Start building your agent team</h3>
-          <p className="text-[12px] text-[var(--tx2)] mb-3.5">Every Claw starts with an Orchestrator — the manager that coordinates your other agents.</p>
+          <p className="text-[12px] text-[var(--tx2)] mb-3.5">Every Claw starts with an Orchestrator - the manager that coordinates your other agents.</p>
           <Button
             variant="primary"
             onClick={() => addAgent({ name: "Orchestrator", role: "ORCHESTRATOR" })}

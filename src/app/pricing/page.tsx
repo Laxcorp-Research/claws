@@ -78,7 +78,7 @@ export default function PricingPage() {
 
         {/* Template tier label */}
         <p className="text-[11px] font-semibold tracking-widest uppercase text-[var(--tx3)] mb-2 text-left">
-          Templates — one-time purchase, yours forever
+          Templates - one-time purchase, yours forever
         </p>
 
         {/* Template tier cards */}
@@ -121,7 +121,7 @@ export default function PricingPage() {
                   {step.num}
                 </span>
                 <p>
-                  <strong className="text-[var(--tx)]">{step.label}</strong> — {step.text}
+                  <strong className="text-[var(--tx)]">{step.label}</strong> - {step.text}
                 </p>
               </div>
             ))}

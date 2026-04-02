@@ -58,7 +58,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, s
               {connectionType === "API_KEY" && onConnect && <button onClick={onConnect} className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity">Enter API key</button>}
               {connectionType === "OAUTH_COMPOSIO" && (
                 <span className="text-[10px] text-[var(--tx3)] px-[8px] py-[3px] border border-[var(--bd)] rounded-[4px]">
-                  OAuth — Coming soon
+                  OAuth - Coming soon
                 </span>
               )}
               {swappable && onSwap && <button onClick={onSwap} className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)] transition-colors">Swap</button>}

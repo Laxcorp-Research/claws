@@ -416,13 +416,13 @@ export default function DashboardPage() {
           icon: <Clock className="w-4 h-4" />,
           content: (
             <>
-              <p className="font-medium">Free trial — {daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</p>
+              <p className="font-medium">Free trial - {daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</p>
               <p className="mt-0.5 opacity-80">Subscribe to keep your Claws running after the trial ends.</p>
             </>
           ),
           actions: (
             <Button variant="primary" size="xs" onClick={() => router.push("/pricing")}>
-              Subscribe — $79/mo
+              Subscribe - $79/mo
             </Button>
           ),
         })
@@ -440,7 +440,7 @@ export default function DashboardPage() {
           ),
           actions: (
             <Button variant="primary" size="xs" onClick={() => router.push("/pricing")}>
-              Subscribe — $79/mo
+              Subscribe - $79/mo
             </Button>
           ),
         })

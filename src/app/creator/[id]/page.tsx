@@ -173,7 +173,7 @@ export default function CreatorProfilePage() {
             value={
               profile.averageRating > 0
                 ? profile.averageRating.toFixed(1)
-                : "—"
+                : "-"
             }
           />
         </div>

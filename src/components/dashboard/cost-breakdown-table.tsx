@@ -31,7 +31,7 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
 
     if (topPercent > 40) {
       return {
-        text: `Your ${topAgent.agentName} (${topAgent.model}) uses ${topPercent}% of your budget. If cost is a concern, try switching it to a cheaper model — but note that output quality may decrease.`,
+        text: `Your ${topAgent.agentName} (${topAgent.model}) uses ${topPercent}% of your budget. If cost is a concern, try switching it to a cheaper model - but note that output quality may decrease.`,
         agentName: topAgent.agentName,
         percentage: topPercent,
         model: topAgent.model,
@@ -43,7 +43,7 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
   return (
     <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
       <div className="flex justify-between items-center mb-[10px]">
-        <h4 className="text-[13px] font-semibold">API cost breakdown — {period}</h4>
+        <h4 className="text-[13px] font-semibold">API cost breakdown - {period}</h4>
         <span className="text-[16px] font-semibold text-[var(--tx)]">${totalCost.toFixed(2)}</span>
       </div>
 

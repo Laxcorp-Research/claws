@@ -122,7 +122,7 @@ export function BillingDashboard() {
           variant="warning"
           actions={
             <Button variant="primary" size="sm" onClick={() => router.push("/pricing")}>
-              Subscribe — $79/mo
+              Subscribe - $79/mo
             </Button>
           }
         >

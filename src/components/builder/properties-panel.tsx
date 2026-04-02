@@ -104,7 +104,7 @@ export function PropertiesPanel() {
   return (
     <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
       <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">
-        Properties — {agent.name}
+        Properties - {agent.name}
       </h4>
 
       <div className="mb-2.5">
@@ -140,7 +140,7 @@ export function PropertiesPanel() {
 
       <MarkdownEditor
         label="SOUL.md"
-        tooltip="Defines who this agent is — its identity, personality, and core purpose. Think of it as the agent's character sheet."
+        tooltip="Defines who this agent is - its identity, personality, and core purpose. Think of it as the agent's character sheet."
         value={agent.soulMd || ""}
         onChange={(val) => updateAgentProperty(selectedAgentId!, "soulMd", val)}
         placeholder="Agent identity and personality..."
@@ -148,7 +148,7 @@ export function PropertiesPanel() {
 
       <MarkdownEditor
         label="AGENTS.md"
-        tooltip="Step-by-step operating procedures this agent follows. Like a detailed SOP — what to do, in what order, with what tools."
+        tooltip="Step-by-step operating procedures this agent follows. Like a detailed SOP - what to do, in what order, with what tools."
         value={agent.agentsMd || ""}
         onChange={(val) => updateAgentProperty(selectedAgentId!, "agentsMd", val)}
         placeholder="Operating procedures..."

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { encode } from 'next-auth/jwt';
 
 /**
- * TEST ONLY — creates a JWT session cookie for E2E testing.
+ * TEST ONLY - creates a JWT session cookie for E2E testing.
  * Only available when E2E_TEST_MODE=true.
  * DO NOT enable in production.
  */

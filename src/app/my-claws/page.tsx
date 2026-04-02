@@ -278,7 +278,7 @@ export default function MyClawsPage() {
         )}
       </div>
 
-      {/* Delete confirmation — type name to confirm */}
+      {/* Delete confirmation - type name to confirm */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/30" onClick={() => { if (!isDeleting) { setDeleteTarget(null); setDeleteConfirmText("") } }} />

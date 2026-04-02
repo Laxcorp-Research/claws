@@ -224,7 +224,7 @@ export function CreatorDashboard() {
       <div className="grid grid-cols-3 gap-2">
         <StatCard label="Total Earned" value={earnings ? `$${earnings.totalEarned.toFixed(0)}` : "$0"} />
         <StatCard label="Pending Payout" value={earnings ? `$${earnings.pendingPayout.toFixed(0)}` : "$0"} />
-        <StatCard label="Next Payout" value={earnings?.nextPayoutDate ? new Date(earnings.nextPayoutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"} />
+        <StatCard label="Next Payout" value={earnings?.nextPayoutDate ? new Date(earnings.nextPayoutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "-"} />
       </div>
 
       <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">

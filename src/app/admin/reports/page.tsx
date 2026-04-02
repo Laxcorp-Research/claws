@@ -196,7 +196,7 @@ export default function AdminReportsPage() {
           setResolution("")
         }}
         title="Resolve Report"
-        description={resolveItem ? `${resolveItem.itemName} — ${REASON_LABELS[resolveItem.reason] || resolveItem.reason}` : undefined}
+        description={resolveItem ? `${resolveItem.itemName} - ${REASON_LABELS[resolveItem.reason] || resolveItem.reason}` : undefined}
         footer={
           <>
             <Button

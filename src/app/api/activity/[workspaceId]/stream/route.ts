@@ -68,7 +68,7 @@ export async function GET(
             }
           }
         } catch {
-          // DB unavailable — skip this tick
+          // DB unavailable - skip this tick
         }
       }, 2000)
 

@@ -124,7 +124,7 @@ export function ApiKeyManager() {
     <div>
       <h2 className="text-[14px] font-semibold mb-[2px]">AI model API keys</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-[4px]">
-        These power all your Claws. Each Claw&apos;s agents can use a different model — configure that in the builder or during setup.
+        These power all your Claws. Each Claw&apos;s agents can use a different model - configure that in the builder or during setup.
       </p>
       <p className="text-[11px] text-[var(--tx3)] mb-[12px]">
         Individual Claws can override with different keys in their setup wizard if you want to track usage separately.
