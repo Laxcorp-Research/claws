@@ -117,7 +117,7 @@ export default function BuilderPage() {
           <Button variant="ghost" size="sm" className="text-[10px]" onClick={() => setShowHistory(!showHistory)}>
             History
           </Button>
-          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/2?from=builder`)}>
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/2?from=builder&mode=manage`)}>
             Manage Tools
           </Button>
           <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/dashboard/${workspaceId}`)}>
@@ -126,7 +126,7 @@ export default function BuilderPage() {
           <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/publish/template?workspaceId=${workspaceId}`)}>
             <Send size={10} className="mr-1" aria-hidden="true" /> Publish
           </Button>
-          <Button variant="primary" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/1`)}>
+          <Button variant="primary" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/1?from=builder`)}>
             Deploy
           </Button>
         </div>

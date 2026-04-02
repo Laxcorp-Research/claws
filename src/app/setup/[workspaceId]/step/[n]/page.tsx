@@ -143,13 +143,14 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           })
         )
       )
-      router.push(`/setup/${workspaceId}/step/2`)
+      const fromParam = isFromBuilder ? "?from=builder" : ""
+      router.push(`/setup/${workspaceId}/step/2${fromParam}`)
     } catch (e) {
       console.error("Failed to save models:", e)
     } finally {
       setIsSavingModels(false)
     }
-  }, [agents, workspaceId, router])
+  }, [agents, workspaceId, router, isFromBuilder])
 
   const handleRemoveOverride = useCallback(async (provider: string) => {
     await fetch(`/api/workspaces/${workspaceId}/api-keys`, {
@@ -328,7 +329,7 @@ interface ToolState {
   required: boolean
 }
 
-function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
+function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isManageMode?: boolean }) {
   const router = useRouter()
   const [tools, setTools] = useState<ToolState[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -531,9 +532,9 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
 
   return (
     <>
-      <h2 className="text-[15px] font-semibold mb-0.5">{isFromBuilder ? "Manage Tools" : "Connect your tools"}</h2>
+      <h2 className="text-[15px] font-semibold mb-0.5">{isManageMode ? "Manage Tools" : "Connect your tools"}</h2>
       <p className="text-xs text-[var(--tx2)] mb-3.5">
-        {isFromBuilder
+        {isManageMode
           ? "Connect the services your agents need. API keys are encrypted with AES-256-GCM."
           : "Connect the services your agents need to do their job."}
       </p>
@@ -606,7 +607,7 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         <Button variant="outline" className="flex-1 text-[11px] py-2" onClick={() => setCustomApiModal(true)}>+ Connect custom API</Button>
       </div>
 
-      {isFromBuilder ? (
+      {isManageMode ? (
         <div className="flex justify-between">
           <Button variant="outline" onClick={() => router.push(`/builder/${workspaceId}`)}>← Back to Builder</Button>
           <Button variant="primary" onClick={() => router.push(`/builder/${workspaceId}`)}>Done</Button>
@@ -1044,6 +1045,7 @@ export default function SetupStepPage() {
   const workspaceId = params.workspaceId as string
   const stepNum = parseInt(params.n as string, 10)
   const isFromBuilder = searchParams.get("from") === "builder"
+  const isManageMode = searchParams.get("mode") === "manage"
 
   if (isNaN(stepNum) || stepNum < 1 || stepNum > 5) {
     return (
@@ -1063,7 +1065,7 @@ export default function SetupStepPage() {
       ]
     : getProgressSteps(stepNum)
 
-  const showWizardChrome = !(stepNum === 2 && isFromBuilder)
+  const showWizardChrome = !(stepNum === 2 && isManageMode)
 
   return (
     <>
@@ -1088,7 +1090,7 @@ export default function SetupStepPage() {
       </div>
       <div className="max-w-2xl mx-auto px-4 pb-4">
         {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-          : stepNum === 2 ? <Step2 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
+          : stepNum === 2 ? <Step2 workspaceId={workspaceId} isManageMode={isManageMode} />
           : stepNum === 3 ? <Step3 workspaceId={workspaceId} />
           : stepNum === 4 ? <Step4 workspaceId={workspaceId} />
           : stepNum === 5 ? <Step5 workspaceId={workspaceId} />
