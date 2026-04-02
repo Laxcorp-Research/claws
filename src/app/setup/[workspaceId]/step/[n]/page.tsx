@@ -1039,25 +1039,34 @@ export default function SetupStepPage() {
   const showWizardChrome = !(stepNum === 2 && isFromBuilder)
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-4">
-      <Link
-        href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-        className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-[6px] inline-flex items-center gap-1 transition-colors"
-      >
-        <ArrowLeft size={12} aria-hidden="true" />
-        {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
-      </Link>
-      {showWizardChrome && (
-        <div className="mb-[14px]">
-          <WizardProgressBar steps={progressSteps} />
+    <>
+      <div className="max-w-3xl mx-auto px-4 pt-4">
+        <div className="flex items-center mb-[14px]">
+          <Link
+            href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
+            className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 flex-shrink-0 transition-colors"
+          >
+            <ArrowLeft size={12} aria-hidden="true" />
+            {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
+          </Link>
+          {showWizardChrome && (
+            <>
+              <div className="flex-1 flex justify-center">
+                <WizardProgressBar steps={progressSteps} />
+              </div>
+              <div className="w-[100px] flex-shrink-0" />
+            </>
+          )}
         </div>
-      )}
-      {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-        : stepNum === 2 ? <Step2 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-        : stepNum === 3 ? <Step3 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-        : stepNum === 4 ? <Step4 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-        : stepNum === 5 ? <Step5 workspaceId={workspaceId} />
-        : <StepPlaceholder step={stepNum} workspaceId={workspaceId} />}
-    </div>
+      </div>
+      <div className="max-w-2xl mx-auto px-4 pb-4">
+        {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
+          : stepNum === 2 ? <Step2 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
+          : stepNum === 3 ? <Step3 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
+          : stepNum === 4 ? <Step4 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
+          : stepNum === 5 ? <Step5 workspaceId={workspaceId} />
+          : <StepPlaceholder step={stepNum} workspaceId={workspaceId} />}
+      </div>
+    </>
   )
 }
