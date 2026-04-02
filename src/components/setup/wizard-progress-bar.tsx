@@ -14,7 +14,7 @@ interface WizardProgressBarProps {
 
 export function WizardProgressBar({ steps }: WizardProgressBarProps) {
   return (
-    <div className="flex items-center justify-center mb-5 flex-wrap">
+    <div className="flex items-center justify-center">
       {steps.map((step, i) => (
         <div key={step.label} className="flex items-center">
           <div
