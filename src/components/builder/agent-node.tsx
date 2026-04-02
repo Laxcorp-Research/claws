@@ -50,6 +50,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
           "text-[11px] font-semibold mb-0.5 truncate",
           isCritic && "text-[#5b21b6]"
         )}
+        title={data.name}
       >
         {data.name}
       </div>
@@ -59,6 +60,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
           "text-[9px] truncate",
           isCritic ? "text-[#7c3aed]" : "text-[var(--tx2)]"
         )}
+        title={data.model}
       >
         {data.model}
       </div>

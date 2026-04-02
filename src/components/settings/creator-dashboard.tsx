@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { StatCard } from "@/components/ui/stat-card"
+import { formatCurrencyRounded } from "@/lib/utils/format"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
 import type { TrustTier } from "@/types/marketplace"
 
@@ -222,8 +223,8 @@ export function CreatorDashboard() {
   return (
     <div className="space-y-[14px]">
       <div className="grid grid-cols-3 gap-2">
-        <StatCard label="Total Earned" value={earnings ? `$${earnings.totalEarned.toFixed(0)}` : "$0"} />
-        <StatCard label="Pending Payout" value={earnings ? `$${earnings.pendingPayout.toFixed(0)}` : "$0"} />
+        <StatCard label="Total Earned" value={earnings ? formatCurrencyRounded(earnings.totalEarned) : "$0"} />
+        <StatCard label="Pending Payout" value={earnings ? formatCurrencyRounded(earnings.pendingPayout) : "$0"} />
         <StatCard label="Next Payout" value={earnings?.nextPayoutDate ? new Date(earnings.nextPayoutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "-"} />
       </div>
 
@@ -294,7 +295,7 @@ export function CreatorDashboard() {
                     </td>
                     <td className="p-[6px]"><TrustBadge tier={t.trustTier} /></td>
                     <td className="p-[6px] text-right">{t.installCount}</td>
-                    <td className="p-[6px] text-right font-medium">${t.revenue.toFixed(0)}</td>
+                    <td className="p-[6px] text-right font-medium">{formatCurrencyRounded(t.revenue)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -335,7 +336,7 @@ export function CreatorDashboard() {
                     </td>
                     <td className="p-[6px]"><TrustBadge tier={s.trustTier} /></td>
                     <td className="p-[6px] text-right">{s.installCount}</td>
-                    <td className="p-[6px] text-right font-medium">${(s.revenue ?? 0).toFixed(0)}</td>
+                    <td className="p-[6px] text-right font-medium">{formatCurrencyRounded(s.revenue ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>

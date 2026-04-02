@@ -51,7 +51,7 @@ export function CustomSelect({ value, onChange, options, placeholder, className 
         className="w-full flex items-center justify-between gap-[4px] border border-[var(--bd)] rounded-[6px] px-[8px] py-[5px] text-[11px] bg-[var(--bg)] text-[var(--tx)] cursor-pointer hover:border-[var(--tx3)] transition-colors"
         onKeyDown={(e) => { if (e.key === "Escape") setIsOpen(false) }}
       >
-        <span className="truncate">{selectedLabel}</span>
+        <span className="truncate" title={selectedLabel}>{selectedLabel}</span>
         <ChevronDown className={`w-[12px] h-[12px] text-[var(--tx3)] flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 

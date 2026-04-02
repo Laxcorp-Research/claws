@@ -8,6 +8,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { formatCurrency } from "@/lib/utils/format"
 
 const STEPS = ["Details", "SKILL.md", "Pricing", "Submit"] as const
 
@@ -290,7 +291,7 @@ function PublishSkillContent() {
                   {!isFree && (
                     <div className="mt-2">
                       <Input type="number" value={price} onChange={(e) => setPrice(e.target.value ? Number(e.target.value) : "")} placeholder="9" min={5} />
-                      <p className="text-[10px] text-[var(--tx3)] mt-1">Minimum $5. {typeof price === "number" && price >= 5 && `You receive ~$${(price * 0.96).toFixed(2)} per sale.`}</p>
+                      <p className="text-[10px] text-[var(--tx3)] mt-1">Minimum $5. {typeof price === "number" && price >= 5 && `You receive ~${formatCurrency(price * 0.96)} per sale.`}</p>
                     </div>
                   )}
                 </div>

@@ -99,7 +99,7 @@ export function AgentStatusRow({
           <div className="mb-[2px]">
             <span className={cn("text-[12px] font-semibold", role === "CRITIC" && "text-[#5b21b6]")}>{name}</span>
           </div>
-          <div className="text-[10px] text-[var(--tx2)] truncate">
+          <div className="text-[10px] text-[var(--tx2)] truncate" title={`${role === "ORCHESTRATOR" ? "Orchestrator" : role === "CRITIC" ? "Critic" : "Worker"} · ${normalizedStatus}`}>
             {buildMeta(role, normalizedStatus, lastActive, errorMessage, retryIn, queuedTasks, passRate)}
           </div>
         </div>

@@ -28,7 +28,7 @@ export function CreatorCard({ creator, isOfficial }: CreatorCardProps) {
             <span className="text-[13px] font-semibold text-[var(--tx)]">Claws Team</span>
             <TrustBadge tier="OFFICIAL" />
           </div>
-          <p className="text-[11px] text-[var(--tx2)] truncate">
+          <p className="text-[11px] text-[var(--tx2)] truncate" title="Official templates by the Claws team">
             Official templates by the Claws team
           </p>
         </div>
@@ -63,7 +63,7 @@ export function CreatorCard({ creator, isOfficial }: CreatorCardProps) {
           {creator.displayName}
         </span>
         {creator.bio && (
-          <p className="text-[11px] text-[var(--tx2)] truncate">{creator.bio}</p>
+          <p className="text-[11px] text-[var(--tx2)] truncate" title={creator.bio}>{creator.bio}</p>
         )}
         {stats && (
           <p className="text-[10px] text-[var(--tx3)] mt-[2px]">{stats}</p>

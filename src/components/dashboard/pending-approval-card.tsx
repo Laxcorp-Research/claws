@@ -34,10 +34,10 @@ export function PendingApprovalCard({
           <span className="text-[11px] font-semibold" style={{ color: agentColor }}>
             {agentName}
           </span>
-          <span className="text-[11px] font-medium text-[var(--tx)] truncate">{title}</span>
+          <span className="text-[11px] font-medium text-[var(--tx)] truncate" title={title}>{title}</span>
         </div>
         {description && (
-          <p className="text-[10px] text-[var(--tx2)] mt-[2px] truncate">{description}</p>
+          <p className="text-[10px] text-[var(--tx2)] mt-[2px] truncate" title={description}>{description}</p>
         )}
         <span className="text-[10px] text-[var(--tx3)] mt-[2px]">{timestamp}</span>
       </div>

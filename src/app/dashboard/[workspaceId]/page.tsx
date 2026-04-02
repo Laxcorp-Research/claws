@@ -13,6 +13,7 @@ import { AgentStatusList } from "@/components/dashboard/agent-status-list"
 import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
 import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
+import { formatCurrencyRounded } from "@/lib/utils/format"
 
 interface DashboardStats {
   agentsRunning: number
@@ -342,7 +343,7 @@ export default function DashboardPage() {
         icon: <OctagonX className="w-4 h-4" />,
         content: (
           <>
-            <p className="font-medium">Monthly API spend limit reached (${spend?.thisMonth.toFixed(0)}/${spend?.limit})</p>
+            <p className="font-medium">Monthly API spend limit reached ({formatCurrencyRounded(spend?.thisMonth ?? 0)}/{formatCurrencyRounded(spend?.limit ?? 0)})</p>
             <p className="mt-0.5 opacity-80">All agents have been paused to prevent further charges. Resume by increasing your limit or waiting until next month.</p>
           </>
         ),

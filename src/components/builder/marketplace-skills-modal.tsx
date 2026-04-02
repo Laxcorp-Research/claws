@@ -179,10 +179,10 @@ export function MarketplaceSkillsModal({ isOpen, onClose, existingSkillIds, onIn
                         className="flex-1 min-w-0 mr-[10px] text-left border-none bg-transparent cursor-pointer p-0"
                       >
                         <div className="flex items-center gap-[6px]">
-                          <span className="text-[12px] font-medium text-[var(--tx)] truncate hover:underline">{skill.name}</span>
+                          <span className="text-[12px] font-medium text-[var(--tx)] truncate hover:underline" title={skill.name}>{skill.name}</span>
                           <span className="text-[9px] text-[var(--tx3)] uppercase flex-shrink-0">{skill.category}</span>
                         </div>
-                        <div className="text-[11px] text-[var(--tx3)] truncate mt-[1px]">{skill.description}</div>
+                        <div className="text-[11px] text-[var(--tx3)] truncate mt-[1px]" title={skill.description}>{skill.description}</div>
                       </button>
 
                       {isAdded ? (

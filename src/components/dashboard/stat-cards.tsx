@@ -2,6 +2,7 @@
 
 import { StatCard } from "@/components/ui/stat-card"
 import { cn } from "@/lib/utils"
+import { formatCurrency, formatCurrencyRounded } from "@/lib/utils/format"
 
 interface StatCardsProps {
   agentsRunning: number
@@ -34,8 +35,8 @@ export function StatCards({ agentsRunning, agentsPaused, tasksToday, tasksYester
       />
       <StatCard
         label={`API cost (${month})`}
-        value={`$${apiCostThisMonth.toFixed(2)}`}
-        trend={`On track: $${apiCostProjected.toFixed(0)}/mo`}
+        value={formatCurrency(apiCostThisMonth)}
+        trend={`On track: ${formatCurrencyRounded(apiCostProjected)}/mo`}
       />
       <StatCard
         label="Pending review"

@@ -11,6 +11,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { WorkspaceCard } from "@/components/my-claws/workspace-card"
 import { SearchFilterBar } from "@/components/shared/search-filter-bar"
 import { mapWorkspaceStatus, timeAgo } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils/format"
 import { Bot, Search, Loader2 } from "lucide-react"
 import Link from "next/link"
 
@@ -48,7 +49,7 @@ function toWorkspaceItem(w: ApiWorkspace): WorkspaceItem {
     agentCount: w._count.agents,
     agentRoles: w.agents?.map(a => a.role) || [],
     lastActive: w.updatedAt ? timeAgo(w.updatedAt) : undefined,
-    monthlyCost: w.currentMonthApiCost > 0 ? `$${w.currentMonthApiCost.toFixed(2)}` : undefined,
+    monthlyCost: w.currentMonthApiCost > 0 ? formatCurrency(w.currentMonthApiCost) : undefined,
     source: w.clawTemplate ? "From template" : "Custom",
   }
 }

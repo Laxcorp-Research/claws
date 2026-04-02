@@ -64,7 +64,7 @@ export function AgentSidebar() {
               )}
             >
               <span className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ backgroundColor: agent.color }} aria-hidden="true" />
-              <span className="truncate">{agent.name}</span>
+              <span className="truncate" title={agent.name}>{agent.name}</span>
             </button>
           )
         })}
@@ -78,7 +78,7 @@ export function AgentSidebar() {
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Skills</h4>
         <Tooltip text="Skills give agents abilities. Assign skills to agents in the properties panel on the right." />
         {selectedNode && (
-          <span className="text-[9px] text-[var(--tx3)] truncate max-w-[80px] ml-auto">
+          <span className="text-[9px] text-[var(--tx3)] truncate max-w-[80px] ml-auto" title={(selectedNode.data as AgentNodeData).name}>
             {(selectedNode.data as AgentNodeData).name}
           </span>
         )}
@@ -102,7 +102,7 @@ export function AgentSidebar() {
                     !isAssigned && "text-[var(--tx2)]"
                   )}
                 >
-                  <span className="truncate flex-1">{skill.name}</span>
+                  <span className="truncate flex-1" title={skill.name}>{skill.name}</span>
                   {isAssigned && (
                     <span className="text-[9px] text-[var(--ac)] flex-shrink-0">assigned</span>
                   )}

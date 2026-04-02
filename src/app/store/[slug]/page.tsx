@@ -486,7 +486,7 @@ export default function TemplateDetailPage() {
                   className="border border-[var(--bd)] rounded-[12px] p-[10px] hover:border-[var(--bd2)] transition-colors"
                 >
                   <div className="text-[12px] font-semibold text-[var(--tx)]">{t.name}</div>
-                  <div className="text-[10px] text-[var(--tx2)] mt-[2px] truncate">{t.tagline}</div>
+                  <div className="text-[10px] text-[var(--tx2)] mt-[2px] truncate" title={t.tagline}>{t.tagline}</div>
                   <div className="text-[10px] text-[var(--tx3)] mt-1">
                     ${t.price} · {t.installCount} installs
                   </div>

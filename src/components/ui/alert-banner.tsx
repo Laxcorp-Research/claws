@@ -32,12 +32,12 @@ export function AlertBanner({ variant, icon, children, actions }: AlertBannerPro
 
   return (
     <div
-      className={cn("rounded-lg py-3 px-3.5 mb-3.5 flex items-center gap-[10px] border", variantClasses[variant])}
+      className={cn("rounded-lg py-3 px-3.5 mb-3.5 flex items-start gap-[10px] border", variantClasses[variant])}
       role={variant === "error" ? "alert" : "status"}
       aria-live={variant === "error" ? "assertive" : "polite"}
     >
       {resolvedIcon && (
-        <span className={cn("flex-shrink-0 leading-none", iconColors[variant])} aria-hidden="true">
+        <span className={cn("flex-shrink-0 leading-none mt-[2px]", iconColors[variant])} aria-hidden="true">
           {resolvedIcon}
         </span>
       )}

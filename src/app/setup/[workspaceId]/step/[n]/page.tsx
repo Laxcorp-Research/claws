@@ -201,7 +201,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
               <div className="min-w-0">
                 <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
                 {usingAgents.length > 0 && (
-                  <div className="text-[11px] text-[var(--tx3)] mt-[2px] truncate">
+                  <div className="text-[11px] text-[var(--tx3)] mt-[2px] truncate" title={`Used by: ${usingAgents.map(a => a.name).join(", ")}`}>
                     Used by: {usingAgents.map(a => a.name).join(", ")}
                   </div>
                 )}

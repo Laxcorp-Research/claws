@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { ArrowUpCircle, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AlertBanner } from "@/components/ui/alert-banner"
 
 interface VersionUpdateBannerProps {
   workspaceId: string
@@ -67,35 +68,31 @@ export function VersionUpdateBanner({ workspaceId, currentImage, onUpdated }: Ve
 
   if (isSecurity) {
     return (
-      <div className="bg-[var(--errbg)] border border-[var(--err)] rounded-[8px] p-[12px_14px] flex items-start gap-[8px] mb-[14px]" role="alert">
-        <ShieldAlert className="w-4 h-4 text-[var(--err)] flex-shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-semibold text-[#991b1b]">Security update available</p>
-          <p className="text-[12px] text-[#991b1b] mt-0.5">
-            A security patch is available ({currentVer} &rarr; v{stableVer}). Your Claw will be automatically updated within 48 hours. Update now to apply immediately.
-          </p>
-          {updateError && <p className="text-[11px] text-[var(--err)] mt-1">{updateError}</p>}
-        </div>
-        <Button size="sm" variant="danger" loading={isUpdating} onClick={handleUpdate}>
-          Update now
-        </Button>
-      </div>
+      <AlertBanner
+        variant="error"
+        icon={<ShieldAlert className="w-4 h-4" />}
+        actions={<Button variant="danger" size="xs" loading={isUpdating} onClick={handleUpdate}>Update now</Button>}
+      >
+        <p className="font-medium">Security update available</p>
+        <p className="mt-0.5 opacity-80">
+          A security patch is available ({currentVer} &rarr; v{stableVer}). Your Claw will be automatically updated within 48 hours. Update now to apply immediately.
+        </p>
+        {updateError && <p className="text-[11px] text-[var(--err)] mt-1">{updateError}</p>}
+      </AlertBanner>
     )
   }
 
   return (
-    <div className="bg-[var(--warnbg)] border border-[var(--warn)] rounded-[8px] p-[12px_14px] flex items-start gap-[8px] mb-[14px]" role="status">
-      <ArrowUpCircle className="w-4 h-4 text-[var(--warn)] flex-shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-semibold text-[#92400e]">Update available</p>
-        <p className="text-[12px] text-[#92400e] mt-0.5">
-          A newer version of OpenClaw is available ({currentVer} &rarr; v{stableVer}). Update to get the latest improvements and security fixes.
-        </p>
-        {updateError && <p className="text-[11px] text-[var(--err)] mt-1">{updateError}</p>}
-      </div>
-      <Button size="sm" variant="primary" loading={isUpdating} onClick={handleUpdate}>
-        Update now
-      </Button>
-    </div>
+    <AlertBanner
+      variant="warning"
+      icon={<ArrowUpCircle className="w-4 h-4" />}
+      actions={<Button variant="primary" size="xs" loading={isUpdating} onClick={handleUpdate}>Update now</Button>}
+    >
+      <p className="font-medium">Update available</p>
+      <p className="mt-0.5 opacity-80">
+        A newer version of OpenClaw is available ({currentVer} &rarr; v{stableVer}). Update to get the latest improvements and security fixes.
+      </p>
+      {updateError && <p className="text-[11px] text-[var(--err)] mt-1">{updateError}</p>}
+    </AlertBanner>
   )
 }

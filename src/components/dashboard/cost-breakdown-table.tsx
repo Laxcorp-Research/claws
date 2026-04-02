@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import Link from "next/link"
+import { formatCurrency } from "@/lib/utils/format"
 
 interface CostBreakdownRow {
   agentName: string
@@ -16,6 +17,18 @@ interface CostBreakdownTableProps {
   period: string
   workspaceId?: string
   optimizationTip?: string | null
+}
+
+function abbreviateMonth(period: string): string {
+  const date = new Date(period)
+  if (!isNaN(date.getTime())) {
+    return date.toLocaleString("en", { month: "short", year: "numeric" })
+  }
+  const parts = period.split(" ")
+  if (parts.length === 2 && parts[0].length > 3) {
+    return parts[0].substring(0, 3) + " " + parts[1]
+  }
+  return period
 }
 
 export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optimizationTip }: CostBreakdownTableProps) {
@@ -43,8 +56,8 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
   return (
     <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
       <div className="flex justify-between items-center mb-[10px]">
-        <h4 className="text-[13px] font-semibold">API cost breakdown - {period}</h4>
-        <span className="text-[16px] font-semibold text-[var(--tx)] whitespace-nowrap ml-[16px]">${totalCost.toFixed(2)}</span>
+        <h4 className="text-[13px] font-semibold whitespace-nowrap">API costs — {abbreviateMonth(period)}</h4>
+        <span className="text-[16px] font-semibold text-[var(--tx)] whitespace-nowrap ml-[12px]">{formatCurrency(totalCost)}</span>
       </div>
 
       <table className="w-full text-[12px]" style={{ tableLayout: "fixed" }}>
@@ -65,10 +78,10 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
         <tbody>
           {sorted.map((row, i) => (
             <tr key={row.agentName} className={i < sorted.length - 1 ? "border-b border-[var(--bd)]" : ""}>
-              <td className="py-[6px] pr-[8px] truncate whitespace-nowrap overflow-hidden">{row.agentName}</td>
-              <td className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] truncate whitespace-nowrap overflow-hidden">{row.model}</td>
+              <td className="py-[6px] pr-[8px] truncate whitespace-nowrap overflow-hidden" title={row.agentName}>{row.agentName}</td>
+              <td className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] truncate whitespace-nowrap overflow-hidden" title={row.model}>{row.model}</td>
               <td className="py-[6px] pr-[8px] text-right whitespace-nowrap">{row.calls.toLocaleString()}</td>
-              <td className="py-[6px] text-right font-semibold whitespace-nowrap">${row.cost.toFixed(2)}</td>
+              <td className="py-[6px] text-right font-semibold whitespace-nowrap">{formatCurrency(row.cost)}</td>
             </tr>
           ))}
         </tbody>

@@ -36,7 +36,7 @@ export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount,
       <div className="bg-[var(--bg)] border border-[var(--bd)] rounded-[12px] px-4 py-3 hover:border-[var(--bd2)] transition-[border-color] duration-150 cursor-pointer">
         <div className="flex justify-between items-start mb-1">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[15px] font-semibold text-[var(--tx)] truncate">
+            <span className="text-[15px] font-semibold text-[var(--tx)] truncate" title={claw.name}>
               {index !== undefined && (
                 <span className="text-[var(--tx2)] font-semibold">{index}. </span>
               )}

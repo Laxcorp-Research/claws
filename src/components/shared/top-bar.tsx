@@ -162,8 +162,8 @@ export function TopBar() {
               onKeyDown={handleDropdownKeyDown}
             >
               <div className="px-3 py-2 border-b border-[var(--bd)]">
-                <p className="text-[12px] font-medium truncate">{session.user?.name || "User"}</p>
-                <p className="text-[10px] text-[var(--tx2)] truncate mt-0.5">{session.user?.email}</p>
+                <p className="text-[12px] font-medium truncate" title={session.user?.name || "User"}>{session.user?.name || "User"}</p>
+                <p className="text-[10px] text-[var(--tx2)] truncate mt-0.5" title={session.user?.email ?? undefined}>{session.user?.email}</p>
               </div>
 
               <div className="py-1">
