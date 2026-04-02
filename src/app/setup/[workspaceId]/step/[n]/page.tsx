@@ -1041,7 +1041,7 @@ export default function SetupStepPage() {
   return (
     <>
       <div className="max-w-4xl mx-auto px-4 pt-4">
-        <div className="flex items-center mb-[14px]">
+        <div className="flex items-center mb-[24px]">
           <Link
             href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
             className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 flex-shrink-0 transition-colors mr-[16px] leading-none"
