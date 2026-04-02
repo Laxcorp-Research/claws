@@ -18,7 +18,7 @@ import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
-import { ALL_TOOLS, getToolByName, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
 
@@ -361,20 +361,54 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
         const toolsRes = await fetch(`/api/tools/${workspaceId}`)
         const toolsData = await toolsRes.json()
-        const existingConnections: Array<{ toolSlug: string; status: string; id: string }> = toolsData.success ? toolsData.data.connections : []
+        const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string }> = toolsData.success ? toolsData.data.connections : []
 
         const buildToolState = (names: string[], required: boolean): ToolState[] =>
           names.map((name) => {
             const def = getToolByName(name)
-            const slug = def?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "_")
-            const existing = existingConnections.find((c) => c.toolSlug === slug)
+            const templateSlug = def?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+            const templateCategory = def?.category || "CORE"
+
+            const directMatch = existingConnections.find((c) => c.toolSlug === templateSlug)
+            if (directMatch) {
+              return {
+                slug: templateSlug,
+                name: def?.name || name,
+                connectionType: def?.connectionType || "API_KEY",
+                category: templateCategory,
+                status: directMatch.status === "CONNECTED" ? "connected" as const : "disconnected" as const,
+                connectionId: directMatch.id,
+                helpUrl: def?.helpUrl,
+                keyPlaceholder: def?.keyPlaceholder,
+                required,
+              }
+            }
+
+            const swapMatch = existingConnections.find((c) => {
+              const connDef = getToolBySlug(c.toolSlug)
+              return connDef && connDef.category === templateCategory && c.toolSlug !== templateSlug
+            })
+            if (swapMatch) {
+              const swapDef = getToolBySlug(swapMatch.toolSlug)
+              return {
+                slug: swapMatch.toolSlug,
+                name: swapDef?.name || swapMatch.displayName || name,
+                connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO",
+                category: templateCategory,
+                status: swapMatch.status === "CONNECTED" ? "connected" as const : "disconnected" as const,
+                connectionId: swapMatch.id,
+                helpUrl: swapDef?.helpUrl,
+                keyPlaceholder: swapDef?.keyPlaceholder,
+                required,
+              }
+            }
+
             return {
-              slug,
+              slug: templateSlug,
               name: def?.name || name,
               connectionType: def?.connectionType || "API_KEY",
-              category: def?.category || "CORE",
-              status: existing?.status === "CONNECTED" ? "connected" as const : "disconnected" as const,
-              connectionId: existing?.id,
+              category: templateCategory,
+              status: "disconnected" as const,
               helpUrl: def?.helpUrl,
               keyPlaceholder: def?.keyPlaceholder,
               required,
@@ -474,18 +508,29 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!swapModal.tool) return
     const oldTool = swapModal.tool
 
-    if (oldTool.connectionId) {
+    if (oldTool.connectionId && !oldTool.connectionId.startsWith("apikey-")) {
       await fetch(`/api/tools/${workspaceId}/${oldTool.connectionId}`, { method: "DELETE" }).catch(() => {})
     }
 
-    await fetch(`/api/tools/${workspaceId}`, {
+    const res = await fetch(`/api/tools/${workspaceId}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ toolSlug: newTool.slug, displayName: newTool.name, connectionType: newTool.connectionType }),
-    }).catch(() => {})
+    })
+    const json = await res.json()
+    const newConnectionId = json.data?.id
 
-    setTools((prev) => prev.map((t) => (t.slug === oldTool.slug ? { ...t, slug: newTool.slug, name: newTool.name, connectionType: newTool.connectionType, category: newTool.category, helpUrl: newTool.helpUrl, keyPlaceholder: newTool.keyPlaceholder, status: "disconnected" as const, connectionId: undefined } : t)))
-    await refreshTools()
-  }, [swapModal.tool, workspaceId, refreshTools])
+    setTools((prev) => prev.map((t) => (t.slug === oldTool.slug ? {
+      ...t,
+      slug: newTool.slug,
+      name: newTool.name,
+      connectionType: newTool.connectionType,
+      category: newTool.category || oldTool.category,
+      helpUrl: newTool.helpUrl,
+      keyPlaceholder: newTool.keyPlaceholder,
+      status: "disconnected" as const,
+      connectionId: newConnectionId || undefined,
+    } : t)))
+  }, [swapModal.tool, workspaceId])
 
   const handleBrowseConnect = useCallback(async () => {
     await refreshTools()
