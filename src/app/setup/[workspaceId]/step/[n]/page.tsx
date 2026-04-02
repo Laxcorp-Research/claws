@@ -143,14 +143,13 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           })
         )
       )
-      const fromParam = isFromBuilder ? "?from=builder" : ""
-      router.push(`/setup/${workspaceId}/step/2${fromParam}`)
+      router.push(`/setup/${workspaceId}/step/2`)
     } catch (e) {
       console.error("Failed to save models:", e)
     } finally {
       setIsSavingModels(false)
     }
-  }, [agents, workspaceId, router, isFromBuilder])
+  }, [agents, workspaceId, router])
 
   const handleRemoveOverride = useCallback(async (provider: string) => {
     await fetch(`/api/workspaces/${workspaceId}/api-keys`, {
@@ -470,10 +469,22 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     }, 2000)
   }, [workspaceId, refreshTools])
 
-  const handleSwapSelect = useCallback((newTool: ToolDefinition) => {
+  const handleSwapSelect = useCallback(async (newTool: ToolDefinition) => {
     if (!swapModal.tool) return
-    setTools((prev) => prev.map((t) => (t.slug === swapModal.tool!.slug ? { ...t, slug: newTool.slug, name: newTool.name, connectionType: newTool.connectionType, category: newTool.category, helpUrl: newTool.helpUrl, keyPlaceholder: newTool.keyPlaceholder, status: "disconnected" as const, connectionId: undefined } : t)))
-  }, [swapModal.tool])
+    const oldTool = swapModal.tool
+
+    if (oldTool.connectionId) {
+      await fetch(`/api/tools/${workspaceId}/${oldTool.connectionId}`, { method: "DELETE" }).catch(() => {})
+    }
+
+    await fetch(`/api/tools/${workspaceId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ toolSlug: newTool.slug, displayName: newTool.name, connectionType: newTool.connectionType }),
+    }).catch(() => {})
+
+    setTools((prev) => prev.map((t) => (t.slug === oldTool.slug ? { ...t, slug: newTool.slug, name: newTool.name, connectionType: newTool.connectionType, category: newTool.category, helpUrl: newTool.helpUrl, keyPlaceholder: newTool.keyPlaceholder, status: "disconnected" as const, connectionId: undefined } : t)))
+    await refreshTools()
+  }, [swapModal.tool, workspaceId, refreshTools])
 
   const handleBrowseConnect = useCallback(async () => {
     await refreshTools()
@@ -603,10 +614,7 @@ function Step2({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       ) : (
         <div className="flex justify-between">
           <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/1`)}>← Back</Button>
-          <div className="flex gap-1.5">
-            <Button variant="outline" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Skip optional</Button>
-            <Button variant="primary" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Next: Deploy →</Button>
-          </div>
+          <Button variant="primary" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Next: Deploy →</Button>
         </div>
       )}
 
@@ -698,7 +706,7 @@ interface DeployEligibility {
   isFirstDeploy: boolean
 }
 
-function Step3({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
+function Step3({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
   const [isDeploying, setIsDeploying] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null)
@@ -858,7 +866,7 @@ function Step3({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         <AlertBanner variant="error" actions={
           <div className="flex gap-1.5">
             <Button variant="primary" size="sm" onClick={handleDeploy}>Retry deployment</Button>
-            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2${isFromBuilder ? "?from=builder" : ""}`)}>Check tool connections</Button>
+            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tool connections</Button>
           </div>
         }>
           <p className="font-medium">Deployment failed</p>
@@ -873,8 +881,8 @@ function Step3({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       )}
 
       <div className="flex justify-between mt-4">
-        <Button variant="outline" disabled={isDeploying} className={isDeploying ? "opacity-50" : ""} onClick={() => router.push(`/setup/${workspaceId}/step/2${isFromBuilder ? "?from=builder" : ""}`)}>← Back</Button>
-        <Button variant="primary" disabled={!canProceed} onClick={() => router.push(`/setup/${workspaceId}/step/4${isFromBuilder ? "?from=builder" : ""}`)}>Next: Channels →</Button>
+        <Button variant="outline" disabled={isDeploying} className={isDeploying ? "opacity-50" : ""} onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>← Back</Button>
+        <Button variant="primary" disabled={!canProceed} onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>Next: Channels →</Button>
       </div>
     </>
   )
@@ -893,7 +901,7 @@ const CHANNELS = [
   { id: "discord", name: "Discord", description: "Enter bot token from Developer Portal", icon: <Gamepad2 className={ICON_CLASS} />, alwaysConnected: false },
 ]
 
-function Step4({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
+function Step4({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
   const [channelStatuses, setChannelStatuses] = useState<Record<string, "connected" | "disconnected" | "connecting" | "error">>({
     "web-chat": "connected",
@@ -944,7 +952,7 @@ function Step4({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       </ChannelList>
 
       <div className="flex justify-between mt-3.5">
-        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/3${isFromBuilder ? "?from=builder" : ""}`)}>← Back</Button>
+        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>← Back</Button>
         <Button variant="primary" onClick={() => router.push(`/setup/${workspaceId}/step/5`)}>Next: Go live →</Button>
       </div>
     </>
@@ -1081,8 +1089,8 @@ export default function SetupStepPage() {
       <div className="max-w-2xl mx-auto px-4 pb-4">
         {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
           : stepNum === 2 ? <Step2 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-          : stepNum === 3 ? <Step3 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
-          : stepNum === 4 ? <Step4 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
+          : stepNum === 3 ? <Step3 workspaceId={workspaceId} />
+          : stepNum === 4 ? <Step4 workspaceId={workspaceId} />
           : stepNum === 5 ? <Step5 workspaceId={workspaceId} />
           : <StepPlaceholder step={stepNum} workspaceId={workspaceId} />}
       </div>
