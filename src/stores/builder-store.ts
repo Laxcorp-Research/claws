@@ -287,7 +287,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       const tRole = (tgtNode.data as AgentNodeData).role
       if (sRole === "ORCHESTRATOR" && tRole !== "WORKER") return
       if (sRole === "WORKER" && tRole !== "CRITIC" && tRole !== "WORKER") return
-      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR") return
+      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR" && tRole !== "WORKER") return
 
       const newEdge: Edge<ConnectionEdgeData> = {
         id: `temp-edge-${Date.now()}`, source: connection.source, target: connection.target,
@@ -421,7 +421,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       const tRole = (tgtNode.data as AgentNodeData).role
       if (sRole === "ORCHESTRATOR" && tRole !== "WORKER") return
       if (sRole === "WORKER" && tRole !== "CRITIC" && tRole !== "WORKER") return
-      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR") return
+      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR" && tRole !== "WORKER") return
 
       const cond = (condition as ConnectionCondition) || "ON_COMPLETE"
       const label = CONDITION_LABELS[cond] || "On complete"

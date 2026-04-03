@@ -120,7 +120,7 @@ export function PropertiesPanel() {
   const outputsToOptions = isOrch
     ? roleFilteredOptions(r => r === "WORKER", outgoingEdge?.target)
     : isCritic
-      ? roleFilteredOptions(r => r === "ORCHESTRATOR", outgoingEdge?.target)
+      ? roleFilteredOptions(r => r === "ORCHESTRATOR" || r === "WORKER", outgoingEdge?.target)
       : roleFilteredOptions(r => r === "CRITIC" || r === "WORKER", outgoingEdge?.target)
 
   function handleReportsToChange(newParentId: string) {
