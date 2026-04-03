@@ -8,6 +8,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { CustomSelect } from "@/components/ui/custom-select"
 import { TrustBadge, PriceDisplay, CreatorCard } from "@/components/marketplace"
 
 const STEPS = ["Details", "Pricing", "Preview", "Submit"] as const
@@ -54,6 +55,7 @@ function PublishContent() {
   const [isFree, setIsFree] = useState(true)
   const [price, setPrice] = useState<number | "">("")
 
+  const [attemptedNext, setAttemptedNext] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishSuccess, setPublishSuccess] = useState(false)
@@ -177,10 +179,7 @@ function PublishContent() {
             <h2 className="text-[16px] font-semibold text-[var(--tx)]">Template Details</h2>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Workspace to publish *</label>
-              <select value={selectedWorkspaceId} onChange={(e) => setSelectedWorkspaceId(e.target.value)} className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] focus:border-[var(--tx)] focus:outline-none">
-                <option value="">Select a workspace...</option>
-                {workspaces.map((ws) => <option key={ws.id} value={ws.id}>{ws.name} ({ws.agentCount} agents)</option>)}
-              </select>
+              <CustomSelect value={selectedWorkspaceId} onChange={setSelectedWorkspaceId} placeholder="Select a workspace..." options={workspaces.map((ws) => ({ value: ws.id, label: `${ws.name} (${ws.agentCount} agents)` }))} />
               {workspaces.length === 0 && <p className="text-[11px] text-[var(--tx3)] mt-1">No workspaces with agents found. <Link href="/my-claws" className="text-[var(--ac)]">Build a Claw first.</Link></p>}
             </div>
             <div>
@@ -196,14 +195,13 @@ function PublishContent() {
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Description *</label>
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Full description of your template" maxLength={5000} rows={5} className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] resize-none focus:border-[var(--tx)] focus:outline-none" />
-              <p className="text-[10px] text-[var(--tx3)] mt-1">{description.length}/5000</p>
+              <p className={`text-[10px] mt-1 ${description.length > 0 && description.length < 20 ? "text-[var(--err)]" : "text-[var(--tx3)]"}`}>
+                {description.length > 0 && description.length < 20 ? `Minimum 20 characters required (${description.length}/20)` : `${description.length}/5000`}
+              </p>
             </div>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Category *</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] focus:border-[var(--tx)] focus:outline-none">
-                <option value="">Select category...</option>
-                {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+              <CustomSelect value={category} onChange={setCategory} placeholder="Select category..." options={CATEGORIES} />
             </div>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Tags <span className="text-[var(--tx3)]">(up to 5)</span></label>
@@ -248,8 +246,16 @@ function PublishContent() {
                   <p className="text-[11px] text-[var(--tx2)]">Set a price. You keep 100% minus ~3-5% processing.</p>
                   {!isFree && (
                     <div className="mt-2">
-                      <Input type="number" value={price} onChange={(e) => setPrice(e.target.value ? Number(e.target.value) : "")} placeholder="49" min={19} />
-                      <p className="text-[10px] text-[var(--tx3)] mt-1">Minimum $19. {typeof price === "number" && price >= 19 && `You receive ~$${Math.round(price * 0.96)} per sale.`}</p>
+                      <Input type="number" value={price} onChange={(e) => { const v = e.target.value ? Number(e.target.value) : ""; if (typeof v === "number" && v < 0) return; setPrice(v) }} placeholder="49" min={0} />
+                      {typeof price === "number" && price === 0 && (
+                        <p className="text-[10px] text-[var(--err)] mt-1">Paid templates must have a price greater than $0. Choose &quot;Free&quot; for free templates.</p>
+                      )}
+                      {typeof price === "number" && price > 0 && price < 19 && (
+                        <p className="text-[10px] text-[var(--err)] mt-1">Minimum price is $19 for paid templates.</p>
+                      )}
+                      {(price === "" || (typeof price === "number" && price >= 19)) && (
+                        <p className="text-[10px] text-[var(--tx3)] mt-1">Minimum $19. {typeof price === "number" && price >= 19 && `You receive ~$${Math.round(price * 0.96)} per sale.`}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -325,13 +331,30 @@ function PublishContent() {
 
         {/* Navigation */}
         {!publishSuccess && (
-          <div className="flex justify-between mt-4">
-            <Button variant="outline" onClick={() => setCurrentStep(Math.max(0, currentStep - 1))} disabled={currentStep === 0}>Back</Button>
-            {currentStep < 3 && (
-              <Button onClick={() => setCurrentStep(currentStep + 1)} disabled={!canProceed()}>
-                Next: {STEPS[currentStep + 1]} →
-              </Button>
+          <div className="mt-4">
+            {attemptedNext && !canProceed() && currentStep === 0 && (
+              <p className="text-[11px] text-[var(--err)] mb-2">
+                {!selectedWorkspaceId && "Select a workspace. "}
+                {name.trim().length < 3 && "Name must be at least 3 characters. "}
+                {nameAvailable !== true && name.trim().length >= 3 && "Name is not available. "}
+                {tagline.trim().length < 5 && "Tagline must be at least 5 characters. "}
+                {description.trim().length < 20 && "Description must be at least 20 characters. "}
+                {!category && "Select a category. "}
+              </p>
             )}
+            {attemptedNext && !canProceed() && currentStep === 1 && !isFree && (
+              <p className="text-[11px] text-[var(--err)] mb-2">
+                {(typeof price !== "number" || price < 19) && "Set a price of at least $19, or choose Free."}
+              </p>
+            )}
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={() => { setCurrentStep(Math.max(0, currentStep - 1)); setAttemptedNext(false) }} disabled={currentStep === 0}>Back</Button>
+              {currentStep < 3 && (
+                <Button onClick={() => { if (canProceed()) { setCurrentStep(currentStep + 1); setAttemptedNext(false) } else { setAttemptedNext(true) } }}>
+                  Next: {STEPS[currentStep + 1]} →
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>

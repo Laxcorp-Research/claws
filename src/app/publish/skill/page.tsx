@@ -8,6 +8,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { CustomSelect } from "@/components/ui/custom-select"
 import { formatCurrency } from "@/lib/utils/format"
 
 const STEPS = ["Details", "SKILL.md", "Pricing", "Submit"] as const
@@ -57,6 +58,7 @@ function PublishSkillContent() {
   const [isFree, setIsFree] = useState(true)
   const [price, setPrice] = useState<number | "">("")
 
+  const [attemptedNext, setAttemptedNext] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishSuccess, setPublishSuccess] = useState(false)
@@ -168,14 +170,13 @@ function PublishSkillContent() {
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Description *</label>
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What does this skill do? When should an agent use it?" maxLength={1000} rows={3} className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] resize-none focus:border-[var(--tx)] focus:outline-none" />
-              <p className="text-[10px] text-[var(--tx3)] mt-1">{description.length}/1000</p>
+              <p className={`text-[10px] mt-1 ${description.length > 0 && description.length < 10 ? "text-[var(--err)]" : "text-[var(--tx3)]"}`}>
+                {description.length > 0 && description.length < 10 ? `Minimum 10 characters required (${description.length}/10)` : `${description.length}/1000`}
+              </p>
             </div>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Category *</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] focus:border-[var(--tx)] focus:outline-none">
-                <option value="">Select category...</option>
-                {SKILL_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+              <CustomSelect value={category} onChange={setCategory} placeholder="Select category..." options={SKILL_CATEGORIES} />
             </div>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Tags <span className="text-[var(--tx3)]">(up to 5)</span></label>
@@ -290,8 +291,16 @@ function PublishSkillContent() {
                   <p className="text-[11px] text-[var(--tx2)]">Set a price. You keep 100% minus ~3-5% processing.</p>
                   {!isFree && (
                     <div className="mt-2">
-                      <Input type="number" value={price} onChange={(e) => setPrice(e.target.value ? Number(e.target.value) : "")} placeholder="9" min={5} />
-                      <p className="text-[10px] text-[var(--tx3)] mt-1">Minimum $5. {typeof price === "number" && price >= 5 && `You receive ~${formatCurrency(price * 0.96)} per sale.`}</p>
+                      <Input type="number" value={price} onChange={(e) => { const v = e.target.value ? Number(e.target.value) : ""; if (typeof v === "number" && v < 0) return; setPrice(v) }} placeholder="9" min={0} />
+                      {typeof price === "number" && price === 0 && (
+                        <p className="text-[10px] text-[var(--err)] mt-1">Paid skills must have a price greater than $0. Choose &quot;Free&quot; for free skills.</p>
+                      )}
+                      {typeof price === "number" && price > 0 && price < 5 && (
+                        <p className="text-[10px] text-[var(--err)] mt-1">Minimum price is $5 for paid skills.</p>
+                      )}
+                      {(price === "" || (typeof price === "number" && price >= 5)) && (
+                        <p className="text-[10px] text-[var(--tx3)] mt-1">Minimum $5. {typeof price === "number" && price >= 5 && `You receive ~${formatCurrency(price * 0.96)} per sale.`}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -370,13 +379,32 @@ function PublishSkillContent() {
 
         {/* Navigation */}
         {!publishSuccess && !scanFailed && (
-          <div className="flex justify-between mt-4">
-            <Button variant="outline" onClick={() => setCurrentStep(Math.max(0, currentStep - 1))} disabled={currentStep === 0}>Back</Button>
-            {currentStep < 3 && (
-              <Button onClick={() => setCurrentStep(currentStep + 1)} disabled={!canProceed()}>
-                Next: {STEPS[currentStep + 1]} →
-              </Button>
+          <div className="mt-4">
+            {attemptedNext && !canProceed() && currentStep === 0 && (
+              <p className="text-[11px] text-[var(--err)] mb-2">
+                {name.trim().length < 2 && "Name must be at least 2 characters. "}
+                {description.trim().length < 10 && "Description must be at least 10 characters. "}
+                {!category && "Select a category. "}
+              </p>
             )}
+            {attemptedNext && !canProceed() && currentStep === 1 && (
+              <p className="text-[11px] text-[var(--err)] mb-2">
+                {skillMd.trim().length < 20 && "SKILL.md must be at least 20 characters."}
+              </p>
+            )}
+            {attemptedNext && !canProceed() && currentStep === 2 && !isFree && (
+              <p className="text-[11px] text-[var(--err)] mb-2">
+                {(typeof price !== "number" || price < 5) && "Set a price of at least $5, or choose Free."}
+              </p>
+            )}
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={() => { setCurrentStep(Math.max(0, currentStep - 1)); setAttemptedNext(false) }} disabled={currentStep === 0}>Back</Button>
+              {currentStep < 3 && (
+                <Button onClick={() => { if (canProceed()) { setCurrentStep(currentStep + 1); setAttemptedNext(false) } else { setAttemptedNext(true) } }}>
+                  Next: {STEPS[currentStep + 1]} →
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>

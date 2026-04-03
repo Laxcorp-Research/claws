@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/modal"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
+import { CustomSelect } from "@/components/ui/custom-select"
 
 interface SkillData {
   id: string
@@ -376,17 +377,12 @@ export default function SkillDetailPage() {
             {installError && <AlertBanner variant="error">{installError}</AlertBanner>}
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Choose workspace</label>
-              <select
+              <CustomSelect
                 value={selectedWorkspaceId}
-                onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-                className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] focus:border-[var(--tx)] focus:outline-none"
-                aria-label="Select workspace"
-              >
-                <option value="">Select a workspace...</option>
-                {installStatus?.workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>{ws.name}</option>
-                ))}
-              </select>
+                onChange={setSelectedWorkspaceId}
+                placeholder="Select a workspace..."
+                options={installStatus?.workspaces.map((ws) => ({ value: ws.id, label: ws.name })) || []}
+              />
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <Button variant="outline" onClick={() => setShowInstallModal(false)}>Cancel</Button>

@@ -14,6 +14,7 @@ import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge
 import { StatusBadge } from "@/components/ui/status-badge"
 import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
+import { CustomSelect } from "@/components/ui/custom-select"
 import { mapWorkspaceStatus } from "@/lib/utils"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 
@@ -558,20 +559,20 @@ export default function TemplateDetailPage() {
             <div className="space-y-3">
               <div>
                 <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Reason</label>
-                <select
+                <CustomSelect
                   value={reportReason}
-                  onChange={(e) => setReportReason(e.target.value)}
-                  className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] focus:border-[var(--tx)] focus:outline-none"
-                >
-                  <option value="">Select a reason...</option>
-                  <option value="MALICIOUS">Malicious content</option>
-                  <option value="MISLEADING">Misleading description</option>
-                  <option value="COPYRIGHT">Copyright violation</option>
-                  <option value="SPAM">Spam</option>
-                  <option value="INAPPROPRIATE">Inappropriate content</option>
-                  <option value="BROKEN">Broken / doesn&apos;t work</option>
-                  <option value="NAME_CONFLICT">Name conflict</option>
-                </select>
+                  onChange={setReportReason}
+                  placeholder="Select a reason..."
+                  options={[
+                    { value: "MALICIOUS", label: "Malicious content" },
+                    { value: "MISLEADING", label: "Misleading description" },
+                    { value: "COPYRIGHT", label: "Copyright violation" },
+                    { value: "SPAM", label: "Spam" },
+                    { value: "INAPPROPRIATE", label: "Inappropriate content" },
+                    { value: "BROKEN", label: "Broken / doesn't work" },
+                    { value: "NAME_CONFLICT", label: "Name conflict" },
+                  ]}
+                />
               </div>
               <div>
                 <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Details <span className="text-[var(--tx3)]">(optional)</span></label>
