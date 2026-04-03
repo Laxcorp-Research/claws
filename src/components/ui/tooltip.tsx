@@ -19,7 +19,7 @@ export function Tooltip({
   side = "top",
 }: TooltipProps) {
   const [show, setShow] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0, actualSide: side })
+  const [pos, setPos] = useState({ top: 0, left: 0, actualSide: side, caretLeft: 0 })
   const [mounted, setMounted] = useState(false)
   const triggerRef = useRef<HTMLDivElement>(null)
   const showTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -43,11 +43,13 @@ export function Tooltip({
       actualSide = "bottom"
     }
 
-    let left = rect.left + rect.width / 2 - maxWidth / 2
+    const triggerCenter = rect.left + rect.width / 2
+    let left = triggerCenter - maxWidth / 2
     left = Math.max(pad, left)
     left = Math.min(window.innerWidth - maxWidth - pad, left)
+    const caretLeft = Math.max(12, Math.min(triggerCenter - left, maxWidth - 12))
 
-    setPos({ top, left, actualSide })
+    setPos({ top, left, actualSide, caretLeft })
   }, [side, maxWidth])
 
   const handleEnter = useCallback(() => {
@@ -96,11 +98,12 @@ export function Tooltip({
             >
               {content}
               <div
-                className={`absolute left-1/2 -translate-x-1/2 border-[4px] border-transparent ${
+                className={`absolute border-[4px] border-transparent ${
                   pos.actualSide === "top"
                     ? "top-full border-t-[var(--tx)]"
                     : "bottom-full border-b-[var(--tx)]"
                 }`}
+                style={{ left: pos.caretLeft, transform: "translateX(-50%)" }}
               />
             </div>
           </div>,
