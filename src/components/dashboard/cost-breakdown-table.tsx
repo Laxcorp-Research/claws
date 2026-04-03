@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import Link from "next/link"
 import { formatCurrency } from "@/lib/utils/format"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface CostBreakdownRow {
   agentName: string
@@ -78,8 +79,8 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
         <tbody>
           {sorted.map((row, i) => (
             <tr key={row.agentName} className={i < sorted.length - 1 ? "border-b border-[var(--bd)]" : ""}>
-              <td className="py-[6px] pr-[8px] truncate whitespace-nowrap overflow-hidden" title={row.agentName}>{row.agentName}</td>
-              <td className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] truncate whitespace-nowrap overflow-hidden" title={row.model}>{row.model}</td>
+              <TruncateWithTooltip className="py-[6px] pr-[8px] whitespace-nowrap overflow-hidden" as="td">{row.agentName}</TruncateWithTooltip>
+              <TruncateWithTooltip className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] whitespace-nowrap overflow-hidden" as="td">{row.model}</TruncateWithTooltip>
               <td className="py-[6px] pr-[8px] text-right whitespace-nowrap">{row.calls.toLocaleString()}</td>
               <td className="py-[6px] text-right font-semibold whitespace-nowrap">{formatCurrency(row.cost)}</td>
             </tr>

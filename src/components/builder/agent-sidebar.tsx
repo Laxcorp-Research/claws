@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Plus, X, ExternalLink } from "lucide-react"
 import { MarketplaceSkillsModal } from "./marketplace-skills-modal"
 import { Tooltip } from "./tooltip"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 export function AgentSidebar() {
   const { nodes, selectedAgentId, selectAgent, addWorker, addAgent, skills, addSkill } = useBuilderStore()
@@ -64,7 +65,7 @@ export function AgentSidebar() {
               )}
             >
               <span className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ backgroundColor: agent.color }} aria-hidden="true" />
-              <span className="truncate" title={agent.name}>{agent.name}</span>
+              <TruncateWithTooltip>{agent.name}</TruncateWithTooltip>
             </button>
           )
         })}
@@ -78,9 +79,9 @@ export function AgentSidebar() {
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Skills</h4>
         <Tooltip text="Skills give agents abilities. Assign skills to agents in the properties panel on the right." />
         {selectedNode && (
-          <span className="text-[9px] text-[var(--tx3)] truncate max-w-[80px] ml-auto" title={(selectedNode.data as AgentNodeData).name}>
+          <TruncateWithTooltip className="text-[9px] text-[var(--tx3)] max-w-[80px] ml-auto">
             {(selectedNode.data as AgentNodeData).name}
-          </span>
+          </TruncateWithTooltip>
         )}
       </div>
 
@@ -102,7 +103,7 @@ export function AgentSidebar() {
                     !isAssigned && "text-[var(--tx2)]"
                   )}
                 >
-                  <span className="truncate flex-1" title={skill.name}>{skill.name}</span>
+                  <TruncateWithTooltip className="flex-1">{skill.name}</TruncateWithTooltip>
                   {isAssigned && (
                     <span className="text-[9px] text-[var(--ac)] flex-shrink-0">assigned</span>
                   )}

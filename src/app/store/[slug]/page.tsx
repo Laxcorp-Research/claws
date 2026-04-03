@@ -13,6 +13,7 @@ import { AgentPill } from "@/components/ui/agent-pill"
 import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { mapWorkspaceStatus } from "@/lib/utils"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 
@@ -486,7 +487,7 @@ export default function TemplateDetailPage() {
                   className="border border-[var(--bd)] rounded-[12px] p-[10px] hover:border-[var(--bd2)] transition-colors"
                 >
                   <div className="text-[12px] font-semibold text-[var(--tx)]">{t.name}</div>
-                  <div className="text-[10px] text-[var(--tx2)] mt-[2px] truncate" title={t.tagline}>{t.tagline}</div>
+                  <TruncateWithTooltip className="text-[10px] text-[var(--tx2)] mt-[2px]" as="div">{t.tagline}</TruncateWithTooltip>
                   <div className="text-[10px] text-[var(--tx3)] mt-1">
                     ${t.price} · {t.installCount} installs
                   </div>

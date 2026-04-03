@@ -6,6 +6,8 @@ import type { NodeProps } from "@xyflow/react"
 import { cn } from "@/lib/utils"
 import { Clock } from "lucide-react"
 import type { AgentNodeData } from "@/stores/builder-store"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
+import { getModelDisplayName } from "@/lib/utils/format"
 
 function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeData }) {
   const isOrchestrator = data.role === "ORCHESTRATOR"
@@ -45,25 +47,25 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
         </div>
       )}
 
-      <div
+      <TruncateWithTooltip
         className={cn(
-          "text-[11px] font-semibold mb-0.5 truncate",
+          "text-[11px] font-semibold mb-0.5",
           isCritic && "text-[#5b21b6]"
         )}
-        title={data.name}
+        as="div"
       >
         {data.name}
-      </div>
+      </TruncateWithTooltip>
 
-      <div
+      <TruncateWithTooltip
         className={cn(
-          "text-[9px] truncate",
+          "text-[9px]",
           isCritic ? "text-[#7c3aed]" : "text-[var(--tx2)]"
         )}
-        title={data.model}
+        as="div"
       >
-        {data.model}
-      </div>
+        {getModelDisplayName(data.model)}
+      </TruncateWithTooltip>
 
       <div
         className={cn(

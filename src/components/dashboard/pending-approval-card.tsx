@@ -1,6 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface PendingApprovalCardProps {
   id: string
@@ -34,10 +35,10 @@ export function PendingApprovalCard({
           <span className="text-[11px] font-semibold" style={{ color: agentColor }}>
             {agentName}
           </span>
-          <span className="text-[11px] font-medium text-[var(--tx)] truncate" title={title}>{title}</span>
+          <TruncateWithTooltip className="text-[11px] font-medium text-[var(--tx)]">{title}</TruncateWithTooltip>
         </div>
         {description && (
-          <p className="text-[10px] text-[var(--tx2)] mt-[2px] truncate" title={description}>{description}</p>
+          <TruncateWithTooltip className="text-[10px] text-[var(--tx2)] mt-[2px]" as="p">{description}</TruncateWithTooltip>
         )}
         <span className="text-[10px] text-[var(--tx3)] mt-[2px]">{timestamp}</span>
       </div>

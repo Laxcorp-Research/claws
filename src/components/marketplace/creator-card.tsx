@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { TrustBadge } from "./trust-badge"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface CreatorCardProps {
   creator: {
@@ -28,9 +29,9 @@ export function CreatorCard({ creator, isOfficial }: CreatorCardProps) {
             <span className="text-[13px] font-semibold text-[var(--tx)]">Claws Team</span>
             <TrustBadge tier="OFFICIAL" />
           </div>
-          <p className="text-[11px] text-[var(--tx2)] truncate" title="Official templates by the Claws team">
-            Official templates by the Claws team
-          </p>
+          <TruncateWithTooltip className="text-[11px] text-[var(--tx2)]" as="p">
+            {"Official templates by the Claws team"}
+          </TruncateWithTooltip>
         </div>
       </div>
     )
@@ -63,7 +64,7 @@ export function CreatorCard({ creator, isOfficial }: CreatorCardProps) {
           {creator.displayName}
         </span>
         {creator.bio && (
-          <p className="text-[11px] text-[var(--tx2)] truncate" title={creator.bio}>{creator.bio}</p>
+          <TruncateWithTooltip className="text-[11px] text-[var(--tx2)]" as="p">{creator.bio || ""}</TruncateWithTooltip>
         )}
         {stats && (
           <p className="text-[10px] text-[var(--tx3)] mt-[2px]">{stats}</p>

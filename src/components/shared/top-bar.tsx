@@ -6,6 +6,7 @@ import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { User, Key, CreditCard, Lock, Store, Upload, Wrench, Shield, LogOut, type LucideIcon } from "lucide-react"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface NavItem {
   label: string
@@ -162,8 +163,8 @@ export function TopBar() {
               onKeyDown={handleDropdownKeyDown}
             >
               <div className="px-3 py-2 border-b border-[var(--bd)]">
-                <p className="text-[12px] font-medium truncate" title={session.user?.name || "User"}>{session.user?.name || "User"}</p>
-                <p className="text-[10px] text-[var(--tx2)] truncate mt-0.5" title={session.user?.email ?? undefined}>{session.user?.email}</p>
+                <TruncateWithTooltip className="text-[12px] font-medium" as="p">{session.user?.name || "User"}</TruncateWithTooltip>
+                <TruncateWithTooltip className="text-[10px] text-[var(--tx2)] mt-0.5" as="p">{session.user?.email || ""}</TruncateWithTooltip>
               </div>
 
               <div className="py-1">

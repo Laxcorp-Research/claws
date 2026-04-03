@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface AgentStatusRowProps {
   name: string
@@ -41,26 +42,32 @@ function isRunning(s: string) {
   return s === "running" || s === "healthy"
 }
 
-function buildMeta(role: string, status: string, lastActive?: string, errorMessage?: string, retryIn?: string, queuedTasks?: number, passRate?: number) {
+function buildMetaText(role: string, status: string, lastActive?: string, errorMessage?: string, retryIn?: string, queuedTasks?: number, passRate?: number): string {
   const roleName = role === "ORCHESTRATOR" ? "Orchestrator" : role === "CRITIC" ? "Critic" : "Worker"
 
   if (status === "error" && errorMessage) {
     const parts = [`${roleName} · Error: ${errorMessage}`]
     if (retryIn) parts.push(retryIn)
-    return <span className="text-[#991b1b]">{parts.join(" · ")}</span>
+    return parts.join(" · ")
   }
 
   if (status === "paused") {
     const parts = [`${roleName} · Paused by you`]
     if (queuedTasks !== undefined && queuedTasks > 0) parts.push(`${queuedTasks} queued tasks`)
-    return <span className="text-[#92400e]">{parts.join(" · ")}</span>
+    return parts.join(" · ")
   }
 
   if (role === "CRITIC" && passRate !== undefined) {
-    return <span>{roleName} · Last review: {lastActive ?? "unknown"} · Pass rate: {passRate}%</span>
+    return `${roleName} · Last review: ${lastActive ?? "unknown"} · Pass rate: ${passRate}%`
   }
 
-  return <span>{roleName} · Last active: {lastActive ?? "unknown"}</span>
+  return `${roleName} · Last active: ${lastActive ?? "unknown"}`
+}
+
+function getMetaColor(status: string): string {
+  if (status === "error") return "text-[#991b1b]"
+  if (status === "paused") return "text-[#92400e]"
+  return "text-[var(--tx2)]"
 }
 
 export function AgentStatusRow({
@@ -99,9 +106,9 @@ export function AgentStatusRow({
           <div className="mb-[2px]">
             <span className={cn("text-[12px] font-semibold", role === "CRITIC" && "text-[#5b21b6]")}>{name}</span>
           </div>
-          <div className="text-[10px] text-[var(--tx2)] truncate" title={`${role === "ORCHESTRATOR" ? "Orchestrator" : role === "CRITIC" ? "Critic" : "Worker"} · ${normalizedStatus}`}>
-            {buildMeta(role, normalizedStatus, lastActive, errorMessage, retryIn, queuedTasks, passRate)}
-          </div>
+          <TruncateWithTooltip className={cn("text-[10px]", getMetaColor(normalizedStatus))} as="div">
+            {buildMetaText(role, normalizedStatus, lastActive, errorMessage, retryIn, queuedTasks, passRate)}
+          </TruncateWithTooltip>
         </div>
       </div>
 

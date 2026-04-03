@@ -13,7 +13,7 @@ import { AgentStatusList } from "@/components/dashboard/agent-status-list"
 import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
 import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
-import { formatCurrencyRounded } from "@/lib/utils/format"
+import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 
 interface DashboardStats {
   agentsRunning: number
@@ -121,11 +121,7 @@ function relativeTime(isoStr: string | undefined): string {
 }
 
 function getModelShortName(model: string): string {
-  const lower = model.toLowerCase()
-  if (lower.includes("opus")) return "Opus"
-  if (lower.includes("haiku")) return "Haiku"
-  if (lower.includes("sonnet")) return "Sonnet"
-  return model.split("/").pop() ?? model
+  return getModelDisplayName(model)
 }
 
 function getModelCostKey(model: string): string {

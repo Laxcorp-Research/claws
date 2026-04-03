@@ -18,6 +18,7 @@ import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
@@ -201,9 +202,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
               <div className="min-w-0">
                 <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
                 {usingAgents.length > 0 && (
-                  <div className="text-[11px] text-[var(--tx3)] mt-[2px] truncate" title={`Used by: ${usingAgents.map(a => a.name).join(", ")}`}>
-                    Used by: {usingAgents.map(a => a.name).join(", ")}
-                  </div>
+                  <TruncateWithTooltip className="text-[11px] text-[var(--tx3)] mt-[2px]" as="div">
+                    {`Used by: ${usingAgents.map(a => a.name).join(", ")}`}
+                  </TruncateWithTooltip>
                 )}
               </div>
               <div className="flex items-center gap-[8px] flex-shrink-0 ml-[10px]">

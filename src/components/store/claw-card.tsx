@@ -2,6 +2,7 @@ import Link from "next/link"
 import { AgentPill } from "@/components/ui/agent-pill"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
 import type { TrustTier } from "@/types/marketplace"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 const MAX_VISIBLE_PILLS = 4
 
@@ -36,12 +37,9 @@ export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount,
       <div className="bg-[var(--bg)] border border-[var(--bd)] rounded-[12px] px-4 py-3 hover:border-[var(--bd2)] transition-[border-color] duration-150 cursor-pointer">
         <div className="flex justify-between items-start mb-1">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[15px] font-semibold text-[var(--tx)] truncate" title={claw.name}>
-              {index !== undefined && (
-                <span className="text-[var(--tx2)] font-semibold">{index}. </span>
-              )}
-              {claw.name}
-            </span>
+            <TruncateWithTooltip className="text-[15px] font-semibold text-[var(--tx)]">
+              {index !== undefined ? `${index}. ${claw.name}` : claw.name}
+            </TruncateWithTooltip>
             {trustTier && !hideTrustBadge && <TrustBadge tier={trustTier} />}
           </div>
           <div className="text-right whitespace-nowrap ml-4 shrink-0">

@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { useBuilderStore } from "@/stores/builder-store"
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface VersionHistoryPanelProps {
   open: boolean
@@ -60,7 +61,7 @@ export function VersionHistoryPanel({ open, onClose, refreshKey }: VersionHistor
                       : "Labeled"}
                   </span>
                 </div>
-                {snap.label && <p className="text-[10px] text-[var(--tx2)] mb-1 truncate" title={snap.label}>{snap.label}</p>}
+                {snap.label && <TruncateWithTooltip className="text-[10px] text-[var(--tx2)] mb-1" as="p">{snap.label}</TruncateWithTooltip>}
                 <div className="flex items-center justify-between">
                   <span className="text-[9px] text-[var(--tx3)]">
                     {new Date(snap.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
