@@ -79,15 +79,12 @@ export default function BuilderPage() {
   return (
     <div className="flex flex-col h-screen bg-[var(--bg)]">
       {/* Builder top bar */}
-      <div className="flex items-center px-3 py-2 border-b border-[var(--bd)] bg-[var(--bg)]">
-        <div className="flex-shrink-0">
-          <button onClick={handleBack} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 transition-colors cursor-pointer bg-transparent border-none">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--bd)] bg-[var(--bg)]">
+        <div className="flex items-center gap-[10px] min-w-0">
+          <button onClick={handleBack} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 transition-colors cursor-pointer bg-transparent border-none flex-shrink-0">
             <ArrowLeft size={12} />
             My Claws
           </button>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
           <h1 className="sr-only">{localName || "Builder"}</h1>
           <input
             type="text"
@@ -96,7 +93,7 @@ export default function BuilderPage() {
             onChange={(e) => setLocalName(e.target.value)}
             onBlur={handleNameSave}
             onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
-            className="text-[14px] font-semibold bg-transparent border border-transparent hover:border-[var(--bd)] focus:border-[var(--tx)] rounded-[6px] px-2 py-[3px] outline-none text-[var(--tx)] text-center max-w-[200px]"
+            className="text-[14px] font-semibold bg-transparent border border-transparent hover:border-[var(--bd)] focus:border-[var(--tx)] rounded-[6px] px-2 py-[3px] outline-none text-[var(--tx)] min-w-0"
           />
           <StatusBadge status={workspaceStatus === "RUNNING" ? "running" : workspaceStatus === "DRAFT" ? "draft" : "setup"} />
         </div>
