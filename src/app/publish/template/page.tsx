@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TrustBadge, PriceDisplay, CreatorCard } from "@/components/marketplace"
+import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 
 const STEPS = ["Details", "Pricing", "Preview", "Submit"] as const
 const CATEGORIES = [
@@ -60,6 +61,8 @@ function PublishContent() {
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishSuccess, setPublishSuccess] = useState(false)
   const [publishedSlug, setPublishedSlug] = useState<string | null>(null)
+  const [scanFailed, setScanFailed] = useState(false)
+  const [scanFindings, setScanFindings] = useState<Array<{ severity: string; agentName: string; file: string; line: number; description: string; matchedText: string }>>([])
 
   const nameCheckTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -121,6 +124,8 @@ function PublishContent() {
   const handlePublish = async () => {
     setIsPublishing(true)
     setPublishError(null)
+    setScanFailed(false)
+    setScanFindings([])
     try {
       const res = await fetch("/api/marketplace/templates", {
         method: "POST",
@@ -132,6 +137,12 @@ function PublishContent() {
         }),
       })
       const json = await res.json()
+      if (res.status === 422) {
+        setScanFailed(true)
+        setScanFindings(json.allFindings ?? json.findings ?? [])
+        setIsPublishing(false)
+        return
+      }
       if (!res.ok) { throw new Error(json.error?.message ?? json.data?.error ?? "Publishing failed") }
       const d = json.data ?? json
       setPublishedSlug(d.slug)
@@ -158,19 +169,11 @@ function PublishContent() {
   return (
     <PageShell>
       <div className="max-w-2xl mx-auto px-4 py-4">
-        {/* Progress bar */}
-        <div className="flex items-center gap-2 mb-6">
-          {STEPS.map((step, i) => (
-            <div key={step} className="flex items-center gap-2">
-              <div className={`flex items-center gap-1 text-[11px] font-medium ${i < currentStep ? "text-[var(--ok)]" : i === currentStep ? "text-[var(--tx)]" : "text-[var(--tx3)]"}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${i < currentStep ? "bg-[var(--ok)] text-white" : i === currentStep ? "bg-[var(--tx)] text-[var(--bg)]" : "bg-[var(--bg3)] text-[var(--tx3)]"}`}>
-                  {i < currentStep ? <Check size={10} aria-hidden="true" /> : i + 1}
-                </div>
-                {step}
-              </div>
-              {i < STEPS.length - 1 && <ChevronRight size={12} className="text-[var(--tx3)]" aria-hidden="true" />}
-            </div>
-          ))}
+        <div className="mb-6">
+          <WizardProgressBar steps={STEPS.map((label, i) => ({
+            label,
+            status: i < currentStep ? "complete" as const : i === currentStep ? "current" as const : "upcoming" as const,
+          }))} />
         </div>
 
         {/* Step 1: Details */}
@@ -303,6 +306,32 @@ function PublishContent() {
                 <Link href="/settings?tab=creator"><Button variant="outline">Creator Dashboard</Button></Link>
               </div>
             </div>
+          ) : scanFailed ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-[var(--err)]">
+                <AlertTriangle size={20} aria-hidden="true" />
+                <h2 className="text-[16px] font-semibold">Auto-scan found security issues</h2>
+              </div>
+              <p className="text-[12px] text-[var(--tx2)]">Your template contains patterns that could pose security risks. Fix the issues below in your workspace and resubmit.</p>
+              <div className="border border-[var(--err)] rounded-[12px] overflow-hidden">
+                {scanFindings.map((f, i) => (
+                  <div key={i} className={`flex items-start gap-2 px-3 py-2 text-[11px] ${i < scanFindings.length - 1 ? "border-b border-[var(--bd)]" : ""}`}>
+                    <span className={`shrink-0 mt-[2px] ${f.severity === "critical" ? "text-[var(--err)]" : "text-[var(--warn)]"}`}>
+                      <AlertTriangle size={12} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <span className={`font-semibold uppercase text-[9px] ${f.severity === "critical" ? "text-[var(--err)]" : "text-[var(--warn)]"}`}>{f.severity}</span>
+                      <span className="text-[var(--tx3)] ml-2">{f.agentName} - {f.file} line {f.line}</span>
+                      <p className="text-[var(--tx2)] mt-[2px]">{f.description}</p>
+                      {f.matchedText && <code className="text-[9px] text-[var(--tx3)] bg-[var(--bg2)] px-1 py-[1px] rounded mt-[2px] block truncate">{f.matchedText}</code>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" onClick={() => { setScanFailed(false); setScanFindings([]); setCurrentStep(0) }}>
+                Fix and Resubmit
+              </Button>
+            </div>
           ) : (
             <div className="space-y-3">
               <h2 className="text-[16px] font-semibold text-[var(--tx)]">Publish Your Template</h2>
@@ -330,7 +359,7 @@ function PublishContent() {
         )}
 
         {/* Navigation */}
-        {!publishSuccess && (
+        {!publishSuccess && !scanFailed && (
           <div className="mt-4">
             {attemptedNext && !canProceed() && currentStep === 0 && (
               <p className="text-[11px] text-[var(--err)] mb-2">

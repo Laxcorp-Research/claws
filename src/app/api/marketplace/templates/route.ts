@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
@@ -315,8 +315,22 @@ export async function POST(request: NextRequest) {
     }
 
     const scanResult = scanTemplate(
-      workspace.agents.map((a) => ({ name: a.name, soulMd: a.soulMd, agentsMd: a.agentsMd }))
+      workspace.agents.map((a) => ({ name: a.name, soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd || undefined }))
     )
+
+    if (!scanResult.passed) {
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "SCAN_FAILED",
+          message: "Auto-scan failed: security issues found in template content",
+          statusCode: 422,
+        },
+        scanPassed: false,
+        findings: scanResult.findings.filter(f => f.severity === "critical"),
+        allFindings: scanResult.findings,
+      }, { status: 422 })
+    }
 
     const slug = await generateUniqueSlug(name.trim(), prisma.clawTemplate)
 
@@ -338,6 +352,8 @@ export async function POST(request: NextRequest) {
         agentCount: workspace.agents.length,
         workspaceSnapshot,
         version: 1,
+        autoScanPassed: scanResult.passed,
+        autoScanReport: scanResult.findings.length > 0 ? JSON.stringify(scanResult) : null,
         reviewNotes: scanResult.hasWarnings
           ? JSON.stringify({ autoScan: scanResult.findings })
           : null,

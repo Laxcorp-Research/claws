@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { CustomSelect } from "@/components/ui/custom-select"
+import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { formatCurrency } from "@/lib/utils/format"
 
 const STEPS = ["Details", "SKILL.md", "Pricing", "Submit"] as const
@@ -140,19 +141,11 @@ function PublishSkillContent() {
   return (
     <PageShell>
       <div className="max-w-2xl mx-auto px-4 py-4">
-        {/* Progress bar */}
-        <div className="flex items-center gap-2 mb-6">
-          {STEPS.map((step, i) => (
-            <div key={step} className="flex items-center gap-2">
-              <div className={`flex items-center gap-1 text-[11px] font-medium ${i < currentStep ? "text-[var(--ok)]" : i === currentStep ? "text-[var(--tx)]" : "text-[var(--tx3)]"}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${i < currentStep ? "bg-[var(--ok)] text-white" : i === currentStep ? "bg-[var(--tx)] text-[var(--bg)]" : "bg-[var(--bg3)] text-[var(--tx3)]"}`}>
-                  {i < currentStep ? <Check size={10} aria-hidden="true" /> : i + 1}
-                </div>
-                {step}
-              </div>
-              {i < STEPS.length - 1 && <ChevronRight size={12} className="text-[var(--tx3)]" aria-hidden="true" />}
-            </div>
-          ))}
+        <div className="mb-6">
+          <WizardProgressBar steps={STEPS.map((label, i) => ({
+            label,
+            status: i < currentStep ? "complete" as const : i === currentStep ? "current" as const : "upcoming" as const,
+          }))} />
         </div>
 
         {/* Step 1: Details */}

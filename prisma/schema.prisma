@@ -507,6 +507,9 @@ model ClawTemplate {
   reviewNotes     String?
   rejectionReason String?
 
+  autoScanPassed  Boolean?
+  autoScanReport  String?   @db.Text
+
   version            Int     @default(1)
   minOpenClawVersion String?
   testedOnVersion    String?
