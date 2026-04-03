@@ -4,6 +4,7 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
 import { Prisma, TrustTier } from "@/generated/prisma/client"
 import { scanSkillContent } from "@/lib/marketplace/skill-scan"
+import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 
 export async function GET(request: NextRequest) {
@@ -165,6 +166,24 @@ export async function POST(request: NextRequest) {
         error: { code: "SCAN_FAILED", message: "Auto-scan failed: security issues found in SKILL.md content", statusCode: 422 },
         scanPassed: false,
         findings: scanResult.findings,
+      }, { status: 422 })
+    }
+
+    const llmResult = await runLLMSecurityReview([{
+      name: name.trim(),
+      role: "SKILL",
+      soulMd: skillMd,
+      agentsMd: "",
+    }])
+
+    if (llmResult.safe === false) {
+      return NextResponse.json({
+        success: false,
+        error: { code: "SCAN_FAILED", message: "AI security review found critical issues in SKILL.md content", statusCode: 422 },
+        scanPassed: false,
+        findings: llmResult.findings.filter(f => f.severity === "critical").map(f => ({
+          severity: f.severity, pattern: "LLM review", line: 0, description: `${f.description} (${f.evidence})`,
+        })),
       }, { status: 422 })
     }
 

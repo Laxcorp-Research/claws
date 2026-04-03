@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { apiSuccess, apiError } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
 import { scanTemplate } from "@/lib/marketplace/template-scan"
+import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,9 +19,7 @@ export async function POST(request: NextRequest) {
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      include: {
-        agents: true,
-      },
+      include: { agents: true },
     })
 
     if (!workspace || workspace.userId !== user.id) {
@@ -31,16 +30,56 @@ export async function POST(request: NextRequest) {
       return apiError("VALIDATION", "Workspace has no agents", 400)
     }
 
-    const scanResult = scanTemplate(
-      workspace.agents.map((a) => ({
-        name: a.name,
-        soulMd: a.soulMd,
-        agentsMd: a.agentsMd,
-        heartbeatMd: a.heartbeatMd || undefined,
-      }))
-    )
+    const agentData = workspace.agents.map((a) => ({
+      name: a.name,
+      role: a.role,
+      soulMd: a.soulMd,
+      agentsMd: a.agentsMd,
+      heartbeatMd: a.heartbeatMd || undefined,
+    }))
 
-    return apiSuccess({ scanResult })
+    const regexResult = scanTemplate(agentData)
+
+    let llmResult = null
+    if (regexResult.passed) {
+      llmResult = await runLLMSecurityReview(agentData)
+    }
+
+    const overallPassed = regexResult.passed && (llmResult?.safe !== false)
+
+    const combinedFindings = [
+      ...regexResult.findings,
+      ...(llmResult?.findings || []).map((f) => ({
+        severity: f.severity,
+        agentName: f.agentName,
+        file: f.file,
+        line: 0,
+        pattern: "LLM review",
+        description: f.description,
+        matchedText: f.evidence,
+      })),
+    ]
+
+    return apiSuccess({
+      scanResult: {
+        passed: overallPassed,
+        findings: combinedFindings,
+        scannedAgents: agentData.length,
+        totalFindings: combinedFindings.length,
+        criticalCount: combinedFindings.filter((f) => f.severity === "critical").length,
+        warningCount: combinedFindings.filter((f) => f.severity === "warning").length,
+        hasCritical: combinedFindings.some((f) => f.severity === "critical"),
+        hasWarnings: combinedFindings.some((f) => f.severity === "warning"),
+        regexResult: {
+          passed: regexResult.passed,
+          criticalCount: regexResult.criticalCount,
+          warningCount: regexResult.warningCount,
+        },
+        llmResult: llmResult
+          ? { safe: llmResult.safe, riskLevel: llmResult.riskLevel, summary: llmResult.summary }
+          : null,
+      },
+    })
   } catch (error) {
     console.error("Scan preview error:", error)
     return apiError("SCAN_ERROR", "Failed to run security scan", 500)

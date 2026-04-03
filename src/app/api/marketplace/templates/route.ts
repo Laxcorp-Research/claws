@@ -4,6 +4,7 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
 import { Prisma, TrustTier, ClawCategory } from "@/generated/prisma/client"
 import { scanTemplate } from "@/lib/marketplace/template-scan"
+import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 import { validateSkillDependencies } from "@/lib/marketplace/skill-dependency"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 
@@ -332,6 +333,28 @@ export async function POST(request: NextRequest) {
       }, { status: 422 })
     }
 
+    const llmResult = await runLLMSecurityReview(
+      workspace.agents.map((a) => ({ name: a.name, role: a.role, soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd || undefined }))
+    )
+
+    if (llmResult.safe === false) {
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "SCAN_FAILED",
+          message: "AI security review found critical issues in template content",
+          statusCode: 422,
+        },
+        scanPassed: false,
+        findings: llmResult.findings.filter(f => f.severity === "critical").map(f => ({
+          severity: f.severity, agentName: f.agentName, file: f.file, line: 0, pattern: "LLM review", description: f.description, matchedText: f.evidence,
+        })),
+        allFindings: [...scanResult.findings, ...llmResult.findings.map(f => ({
+          severity: f.severity, agentName: f.agentName, file: f.file, line: 0, pattern: "LLM review", description: f.description, matchedText: f.evidence,
+        }))],
+      }, { status: 422 })
+    }
+
     const slug = await generateUniqueSlug(name.trim(), prisma.clawTemplate)
 
     const template = await prisma.clawTemplate.create({
@@ -352,10 +375,13 @@ export async function POST(request: NextRequest) {
         agentCount: workspace.agents.length,
         workspaceSnapshot,
         version: 1,
-        autoScanPassed: scanResult.passed,
-        autoScanReport: scanResult.findings.length > 0 ? JSON.stringify(scanResult) : null,
-        reviewNotes: scanResult.hasWarnings
-          ? JSON.stringify({ autoScan: scanResult.findings })
+        autoScanPassed: true,
+        autoScanReport: JSON.stringify({
+          regex: { passed: scanResult.passed, findings: scanResult.findings },
+          llm: { safe: llmResult.safe, riskLevel: llmResult.riskLevel, summary: llmResult.summary, findings: llmResult.findings },
+        }),
+        reviewNotes: (scanResult.hasWarnings || llmResult.findings.length > 0)
+          ? JSON.stringify({ autoScan: scanResult.findings, llmReview: llmResult.findings })
           : null,
       },
     })

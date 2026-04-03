@@ -67,7 +67,7 @@ function PublishContent() {
 
   const [scanStep, setScanStep] = useState(0)
   const [scanComplete, setScanComplete] = useState(false)
-  const [scanResult, setScanResult] = useState<{ passed: boolean; criticalCount: number; warningCount: number; findings: Array<{ severity: string; agentName: string; file: string; line: number; description: string; matchedText: string }> } | null>(null)
+  const [scanResult, setScanResult] = useState<{ passed: boolean; criticalCount: number; warningCount: number; findings: Array<{ severity: string; agentName: string; file: string; line: number; description: string; matchedText: string }>; llmResult?: { safe: boolean; riskLevel: string; summary: string } | null } | null>(null)
   const [scanError, setScanError] = useState(false)
   const scanRanRef = useRef(false)
 
@@ -121,10 +121,8 @@ function PublishContent() {
   const SCAN_STEPS = [
     "Validating template details",
     "Building workspace snapshot",
-    "Scanning SOUL.md files",
-    "Scanning AGENTS.md files",
-    "Scanning HEARTBEAT.md files",
-    "Checking for security patterns",
+    "Running pattern scan",
+    "AI security review",
     "Generating scan report",
   ]
 
@@ -409,6 +407,9 @@ function PublishContent() {
                     <CheckCircle className="w-[16px] h-[16px] text-[var(--ok)]" />
                     <span className="text-[13px] font-semibold text-[var(--ok)]">Security scan passed</span>
                   </div>
+                  {scanResult.llmResult?.summary && (
+                    <p className="text-[11px] text-[var(--tx2)] mt-[4px]">{scanResult.llmResult.summary}</p>
+                  )}
                   {scanResult.warningCount > 0 && (
                     <p className="text-[12px] text-[#92400e] mt-[4px]">{scanResult.warningCount} warning(s) - review recommended but not blocking</p>
                   )}
