@@ -7,6 +7,8 @@ import { scanSkillContent } from "@/lib/marketplace/skill-scan"
 import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 
+export const maxDuration = 30
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)

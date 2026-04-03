@@ -14,6 +14,8 @@ interface SnapshotAgent {
   color: string
 }
 
+export const maxDuration = 30
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -80,10 +82,12 @@ export async function GET(request: NextRequest) {
 
       const trending = await prisma.clawTemplate.findMany({
         where,
-        include: {
-          creator: {
-            select: { id: true, displayName: true, avatarUrl: true },
-          },
+        select: {
+          id: true, name: true, slug: true, tagline: true, description: true,
+          category: true, price: true, isFree: true, trustTier: true,
+          installCount: true, avgRating: true, estimatedMonthlyCost: true,
+          workspaceSnapshot: true,
+          creator: { select: { id: true, displayName: true, avatarUrl: true } },
           _count: {
             select: {
               installs: { where: { createdAt: { gte: sevenDaysAgo } } },
@@ -118,10 +122,12 @@ export async function GET(request: NextRequest) {
 
     const templates = await prisma.clawTemplate.findMany({
       where,
-      include: {
-        creator: {
-          select: { id: true, displayName: true, avatarUrl: true },
-        },
+      select: {
+        id: true, name: true, slug: true, tagline: true, description: true,
+        category: true, price: true, isFree: true, trustTier: true,
+        installCount: true, avgRating: true, estimatedMonthlyCost: true,
+        workspaceSnapshot: true,
+        creator: { select: { id: true, displayName: true, avatarUrl: true } },
       },
       orderBy,
       take: limit + 1,
