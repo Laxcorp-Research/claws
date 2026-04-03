@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Maximize2 } from "lucide-react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
-import { Tooltip } from "./tooltip"
+import { HelpTooltip } from "@/components/ui/help-tooltip"
 
 interface MarkdownEditorProps {
   label: string
@@ -32,7 +32,7 @@ export function MarkdownEditor({ label, tooltip, value, onChange, placeholder }:
     <div className="mb-2.5">
       <div className="flex items-center gap-[4px] mb-[3px]">
         <label className="text-[10px] text-[var(--tx2)] font-medium">{label}</label>
-        {tooltip && <Tooltip text={tooltip} />}
+        {tooltip && <HelpTooltip text={tooltip} />}
       </div>
       <div className="relative border border-[var(--bd)] rounded-[6px] overflow-hidden focus-within:border-[var(--tx)]">
         <textarea

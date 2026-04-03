@@ -2,7 +2,7 @@
 
 import { useBuilderStore } from "@/stores/builder-store"
 import { CustomSelect } from "./custom-select"
-import { Tooltip } from "./tooltip"
+import { HelpTooltip } from "@/components/ui/help-tooltip"
 
 const FREQUENCY_OPTIONS = [
   { value: "hourly", label: "Every hour" },
@@ -33,7 +33,7 @@ export function HeartbeatConfig() {
     <div>
       <div className="flex items-center gap-[4px] mb-[6px]">
         <div className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Heartbeat</div>
-        <Tooltip text="How often the Orchestrator wakes up and runs its task checklist. Daily at 8 AM is a good default for most business Claws." />
+        <HelpTooltip text="How often the Orchestrator wakes up and runs its task checklist. Daily at 8 AM is a good default for most business Claws." />
       </div>
       <div className="flex flex-col gap-[6px]">
         <CustomSelect

@@ -5,7 +5,7 @@ import { useBuilderStore, type AgentNodeData, type ConnectionEdgeData } from "@/
 import { MarkdownEditor } from "./markdown-editor"
 import { SkillPicker } from "./skill-picker"
 import { CustomSelect } from "./custom-select"
-import { Tooltip } from "./tooltip"
+import { HelpTooltip } from "@/components/ui/help-tooltip"
 import { AI_MODELS } from "@/lib/models"
 
 const MODEL_OPTIONS = AI_MODELS.map(m => ({ value: m.value, label: m.label }))
@@ -22,7 +22,7 @@ function Label({ text, tooltip }: { text: string; tooltip: string }) {
   return (
     <div className="flex items-center gap-[4px] mb-[3px]">
       <label className="text-[10px] text-[var(--tx2)] font-medium">{text}</label>
-      <Tooltip text={tooltip} />
+      <HelpTooltip text={tooltip} />
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { useBuilderStore, type AgentNodeData, type SkillItem } from "@/stores/bu
 import { Button } from "@/components/ui/button"
 import { Plus, X, ExternalLink } from "lucide-react"
 import { MarketplaceSkillsModal } from "./marketplace-skills-modal"
-import { Tooltip } from "./tooltip"
+import { HelpTooltip } from "@/components/ui/help-tooltip"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 export function AgentSidebar() {
@@ -41,7 +41,7 @@ export function AgentSidebar() {
     <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px] h-full">
       <div className="flex items-center gap-[4px] mb-2">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Agents</h4>
-        <Tooltip text="Your AI team. Every Claw has 1 Orchestrator (manager), Workers (task executors), and 1 Critic (quality reviewer)." />
+        <HelpTooltip text="Your AI team. Every Claw has 1 Orchestrator (manager), Workers (task executors), and 1 Critic (quality reviewer)." />
       </div>
 
       <div className="space-y-[3px]">
@@ -77,7 +77,7 @@ export function AgentSidebar() {
 
       <div className="flex items-center gap-[4px] mt-4 mb-[6px]">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Skills</h4>
-        <Tooltip text="Skills give agents abilities. Assign skills to agents in the properties panel on the right." />
+        <HelpTooltip text="Skills give agents abilities. Assign skills to agents in the properties panel on the right." />
         {selectedNode && (
           <TruncateWithTooltip className="text-[9px] text-[var(--tx3)] max-w-[80px] ml-auto">
             {(selectedNode.data as AgentNodeData).name}
