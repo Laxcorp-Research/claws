@@ -73,7 +73,7 @@ function ConnectionPanel() {
 }
 
 export function PropertiesPanel() {
-  const { nodes, selectedAgentId, selectedEdgeId, updateAgentProperty, deleteAgent } = useBuilderStore()
+  const { nodes, edges, selectedAgentId, selectedEdgeId, updateAgentProperty, deleteAgent, addConnection, removeConnection: removeConn, updateConnection } = useBuilderStore()
 
   if (selectedEdgeId) {
     return <ConnectionPanel />
@@ -100,6 +100,37 @@ export function PropertiesPanel() {
     { value: "", label: "None" },
     ...otherAgents.map((n) => ({ value: n.id, label: (n.data as AgentNodeData).name })),
   ]
+
+  const incomingEdge = edges.find(e => e.target === selectedAgentId)
+  const outgoingEdge = edges.find(e => e.source === selectedAgentId)
+
+  function handleReportsToChange(newParentId: string) {
+    if (!selectedAgentId) return
+    if (newParentId === selectedAgentId) return
+
+    if (!newParentId) {
+      if (incomingEdge) removeConn(incomingEdge.id)
+    } else if (incomingEdge) {
+      updateConnection(incomingEdge.id, { source: newParentId })
+    } else {
+      addConnection({ source: newParentId, target: selectedAgentId })
+    }
+    updateAgentProperty(selectedAgentId, "reportsTo", newParentId || undefined)
+  }
+
+  function handleOutputsToChange(newTargetId: string) {
+    if (!selectedAgentId) return
+    if (newTargetId === selectedAgentId) return
+
+    if (!newTargetId) {
+      if (outgoingEdge) removeConn(outgoingEdge.id)
+    } else if (outgoingEdge) {
+      updateConnection(outgoingEdge.id, { target: newTargetId })
+    } else {
+      addConnection({ source: selectedAgentId, target: newTargetId })
+    }
+    updateAgentProperty(selectedAgentId, "outputsTo", newTargetId || undefined)
+  }
 
   return (
     <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
@@ -162,8 +193,8 @@ export function PropertiesPanel() {
       <div className="mb-2.5">
         <Label text="Reports to" tooltip="Which agent this one reports its work to. Typically Workers report to the Orchestrator." />
         <CustomSelect
-          value={agent.reportsTo || ""}
-          onChange={(val) => updateAgentProperty(selectedAgentId!, "reportsTo", val || undefined)}
+          value={incomingEdge?.source || ""}
+          onChange={(val) => handleReportsToChange(val)}
           options={agentOptions}
         />
       </div>
@@ -171,8 +202,8 @@ export function PropertiesPanel() {
       <div className="mb-2.5">
         <Label text="Outputs to" tooltip="Where this agent sends its completed work. Usually the Critic for review, or another Worker for the next step." />
         <CustomSelect
-          value={(agent.outputsTo as string) || ""}
-          onChange={(val) => updateAgentProperty(selectedAgentId!, "outputsTo", val || undefined)}
+          value={outgoingEdge?.target || ""}
+          onChange={(val) => handleOutputsToChange(val)}
           options={agentOptions}
         />
       </div>

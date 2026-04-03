@@ -113,7 +113,9 @@ interface BuilderState {
   updateAgentProperty: (id: string, key: string, value: unknown) => void
   toggleSkill: (agentId: string, skillId: string) => void
   setHeartbeatSchedule: (schedule: Partial<{ frequency: string; time: string }>) => void
+  addConnection: (data: { source: string; target: string; condition?: string }) => void
   removeConnection: (id: string) => void
+  updateConnection: (edgeId: string, updates: { source?: string; target?: string }) => void
   updateConnectionCondition: (edgeId: string, condition: string) => void
   addSkill: (skill: SkillItem) => void
   revertToLastSaved: () => void
@@ -171,7 +173,7 @@ function computeIsDirty(state: { nodes: Node<AgentNodeData>[]; edges: Edge<Conne
     const sd = saved.data as AgentNodeData
     if (d.name !== sd.name || d.model !== sd.model || d.role !== sd.role) return true
     if (d.soulMd !== sd.soulMd || d.agentsMd !== sd.agentsMd) return true
-    if (d.reportsTo !== sd.reportsTo || d.qualityThreshold !== sd.qualityThreshold) return true
+    if (d.reportsTo !== sd.reportsTo || d.outputsTo !== sd.outputsTo || d.qualityThreshold !== sd.qualityThreshold) return true
     if (JSON.stringify(d.agentSkillIds || []) !== JSON.stringify(sd.agentSkillIds || [])) return true
     if (Math.round(node.position.x) !== Math.round(saved.position.x)) return true
     if (Math.round(node.position.y) !== Math.round(saved.position.y)) return true
@@ -184,6 +186,7 @@ function computeIsDirty(state: { nodes: Node<AgentNodeData>[]; edges: Edge<Conne
   for (const edge of state.edges) {
     const saved = ss.edges.find(e => e.id === edge.id)
     if (!saved) return true
+    if (edge.source !== saved.source || edge.target !== saved.target) return true
     if ((edge.data as ConnectionEdgeData)?.condition !== (saved.data as ConnectionEdgeData)?.condition) return true
   }
 
@@ -393,10 +396,42 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     setHeartbeatSchedule: (schedule) => {
       set((s) => ({ heartbeatSchedule: { ...s.heartbeatSchedule, ...schedule } }))
     },
+    addConnection: ({ source, target, condition }) => {
+      if (source === target) return
+      const s = get()
+      if (s.edges.some(e => e.source === source && e.target === target)) return
+      const cond = (condition as ConnectionCondition) || "ON_COMPLETE"
+      const label = CONDITION_LABELS[cond] || "On complete"
+      const newEdge: Edge<ConnectionEdgeData> = {
+        id: `temp-edge-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        source, target,
+        type: "default", animated: true,
+        data: { condition: cond, label },
+        label,
+      }
+      set({ edges: [...s.edges, newEdge] })
+      recheckDirty()
+    },
     removeConnection: (id) => {
       set((s) => ({
         edges: s.edges.filter((e) => e.id !== id),
         selectedEdgeId: s.selectedEdgeId === id ? null : s.selectedEdgeId,
+      }))
+      recheckDirty()
+    },
+    updateConnection: (edgeId, updates) => {
+      const s = get()
+      if (updates.source && updates.source === updates.target) return
+      const edge = s.edges.find(e => e.id === edgeId)
+      if (!edge) return
+      const newSource = updates.source || edge.source
+      const newTarget = updates.target || edge.target
+      if (newSource === newTarget) return
+      if (s.edges.some(e => e.id !== edgeId && e.source === newSource && e.target === newTarget)) return
+      set((s2) => ({
+        edges: s2.edges.map(e =>
+          e.id === edgeId ? { ...e, ...updates } : e
+        ),
       }))
       recheckDirty()
     },
