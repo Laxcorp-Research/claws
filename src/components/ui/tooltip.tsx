@@ -33,6 +33,7 @@ export function Tooltip({
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
     const gap = 6
+    const pad = 8
 
     let top = rect.top - gap
     let actualSide: "top" | "bottom" = side
@@ -42,8 +43,12 @@ export function Tooltip({
       actualSide = "bottom"
     }
 
-    setPos({ top, left: rect.left + rect.width / 2, actualSide })
-  }, [side])
+    let left = rect.left + rect.width / 2 - maxWidth / 2
+    left = Math.max(pad, left)
+    left = Math.min(window.innerWidth - maxWidth - pad, left)
+
+    setPos({ top, left, actualSide })
+  }, [side, maxWidth])
 
   const handleEnter = useCallback(() => {
     clearTimeout(hideTimeout.current)
@@ -66,7 +71,7 @@ export function Tooltip({
   }, [])
 
   const transform =
-    pos.actualSide === "top" ? "translate(-50%, -100%)" : "translate(-50%, 0%)"
+    pos.actualSide === "top" ? "translateY(-100%)" : "translateY(0%)"
 
   return (
     <>
