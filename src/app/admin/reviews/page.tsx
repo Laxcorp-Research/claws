@@ -63,17 +63,48 @@ function parseSnapshot(raw: string): { agents: SnapshotAgent[]; connections: Sna
   }
 }
 
-function parseScanFindings(template: ReviewTemplate): Array<{ severity: string; agentName?: string; file?: string; line?: number; description: string; matchedText?: string; location?: string }> {
+interface ParsedScanReport {
+  findings: Array<{ severity: string; agentName?: string; file?: string; line?: number; description: string; matchedText?: string; location?: string; regexValidation?: string; evidence?: string; recommendation?: string }>
+  llmSummary: string | null
+  llmRiskLevel: string | null
+}
+
+function parseScanReport(template: ReviewTemplate): ParsedScanReport {
   const report = template.autoScanReport || template.reviewNotes
-  if (!report) return []
+  if (!report) return { findings: [], llmSummary: null, llmRiskLevel: null }
   try {
     const parsed = JSON.parse(report)
-    if (Array.isArray(parsed.findings)) return parsed.findings
-    if (parsed.autoScan && Array.isArray(parsed.autoScan)) return parsed.autoScan
-    if (Array.isArray(parsed)) return parsed
-    return []
+    const findings: ParsedScanReport["findings"] = []
+    let llmSummary: string | null = null
+    let llmRiskLevel: string | null = null
+
+    if (parsed.regex?.findings) {
+      for (const f of parsed.regex.findings) findings.push({ ...f, source: "regex" })
+    }
+    if (parsed.llm) {
+      llmSummary = parsed.llm.summary || null
+      llmRiskLevel = parsed.llm.riskLevel || null
+      if (parsed.llm.findings) {
+        for (const f of parsed.llm.findings) findings.push({ ...f, source: "llm" })
+      }
+    }
+    if (findings.length === 0) {
+      if (parsed.autoScan && Array.isArray(parsed.autoScan)) {
+        for (const f of parsed.autoScan) findings.push(f)
+      }
+      if (parsed.llmReview && Array.isArray(parsed.llmReview)) {
+        for (const f of parsed.llmReview) findings.push({ ...f, source: "llm" })
+      }
+    }
+    if (findings.length === 0 && Array.isArray(parsed.findings)) {
+      return { findings: parsed.findings, llmSummary, llmRiskLevel }
+    }
+    if (findings.length === 0 && Array.isArray(parsed)) {
+      return { findings: parsed, llmSummary, llmRiskLevel }
+    }
+    return { findings, llmSummary, llmRiskLevel }
   } catch {
-    return []
+    return { findings: [], llmSummary: null, llmRiskLevel: null }
   }
 }
 
@@ -200,7 +231,7 @@ function DetailPanel({ item, onClose, onApprove, onReject, actionLoading }: {
   const skill = isSkill(item) ? item : null
 
   const snapshot = template?.workspaceSnapshot ? parseSnapshot(template.workspaceSnapshot) : null
-  const scanFindings = template ? parseScanFindings(template) : []
+  const scanReport = template ? parseScanReport(template) : { findings: [], llmSummary: null, llmRiskLevel: null }
 
   return (
     <>
@@ -242,25 +273,39 @@ function DetailPanel({ item, onClose, onApprove, onReject, actionLoading }: {
               <div className="bg-[var(--bg2)] border border-[var(--bd)] rounded-[8px] p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <ScanStatus passed={template.autoScanPassed} />
-                  {template.autoScanPassed === true && scanFindings.length > 0 && (
-                    <span className="text-[10px] text-[var(--warn)] ml-2">({scanFindings.length} warnings)</span>
+                  {scanReport.llmRiskLevel && (
+                    <span className={`text-[10px] ml-2 ${scanReport.llmRiskLevel === "safe" || scanReport.llmRiskLevel === "low" ? "text-[var(--ok)]" : scanReport.llmRiskLevel === "medium" ? "text-[var(--warn)]" : "text-[var(--err)]"}`}>
+                      AI: {scanReport.llmRiskLevel}
+                    </span>
                   )}
                 </div>
-                {scanFindings.length > 0 && (
-                  <div className="space-y-1 mt-2">
-                    {scanFindings.map((f, i) => (
-                      <div key={i} className="flex items-start gap-2 text-[10px]">
-                        <span className={f.severity === "critical" ? "text-[var(--err)]" : "text-[var(--warn)]"}>
-                          {f.severity === "critical" ? <XCircle className="w-3 h-3 inline" /> : <Circle className="w-3 h-3 inline" />}
-                        </span>
-                        <span className="text-[var(--tx2)]">
-                          <span className="font-semibold uppercase text-[9px]">{f.severity}</span>
-                          {f.agentName && <span className="text-[var(--tx3)] ml-1">{f.agentName}</span>}
-                          {f.file && <span className="text-[var(--tx3)] ml-1">{f.file}</span>}
-                          {f.line && <span className="text-[var(--tx3)] ml-1">L{f.line}</span>}
-                          {f.location && <span className="text-[var(--tx3)] ml-1">{f.location}</span>}
-                          {" - "}{f.description}
-                        </span>
+                {scanReport.llmSummary && (
+                  <p className="text-[11px] text-[var(--tx2)] mb-2 italic">{scanReport.llmSummary}</p>
+                )}
+                {scanReport.findings.length > 0 && (
+                  <div className="space-y-1.5 mt-2">
+                    {scanReport.findings.map((f, i) => (
+                      <div key={i} className="text-[10px]">
+                        <div className="flex items-start gap-2">
+                          <span className={f.severity === "critical" ? "text-[var(--err)]" : f.severity === "warning" ? "text-[var(--warn)]" : "text-[var(--tx3)]"}>
+                            {f.severity === "critical" ? <XCircle className="w-3 h-3 inline" /> : <Circle className="w-3 h-3 inline" />}
+                          </span>
+                          <span className="text-[var(--tx2)]">
+                            <span className="font-semibold uppercase text-[9px]">{f.severity}</span>
+                            {f.agentName && <span className="text-[var(--tx3)] ml-1">{f.agentName}</span>}
+                            {f.file && <span className="text-[var(--tx3)] ml-1">{f.file}</span>}
+                            {f.line ? <span className="text-[var(--tx3)] ml-1">L{f.line}</span> : null}
+                            {f.location && <span className="text-[var(--tx3)] ml-1">{f.location}</span>}
+                            {" - "}{f.description}
+                          </span>
+                        </div>
+                        {f.regexValidation && (
+                          <div className={`ml-5 mt-[2px] text-[9px] italic ${f.regexValidation.startsWith("FALSE POSITIVE") ? "text-[var(--ok)]" : "text-[var(--err)]"}`}>
+                            AI: {f.regexValidation}
+                          </div>
+                        )}
+                        {f.evidence && <div className="ml-5 mt-[2px] text-[9px] text-[var(--tx3)]">Evidence: {f.evidence}</div>}
+                        {f.recommendation && <div className="ml-5 mt-[2px] text-[9px] text-[var(--tx3)]">Recommendation: {f.recommendation}</div>}
                       </div>
                     ))}
                   </div>

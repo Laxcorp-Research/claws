@@ -162,30 +162,37 @@ export async function POST(request: NextRequest) {
 
     const scanResult = scanSkillContent(skillMd)
 
-    if (!scanResult.passed) {
-      return NextResponse.json({
-        success: false,
-        error: { code: "SCAN_FAILED", message: "Auto-scan failed: security issues found in SKILL.md content", statusCode: 422 },
-        scanPassed: false,
-        findings: scanResult.findings,
-      }, { status: 422 })
-    }
+    const skillRegexFindings = scanResult.findings.map(f => ({
+      severity: f.severity as "critical" | "warning",
+      agentName: name.trim(),
+      file: "SKILL.md",
+      line: f.line,
+      pattern: f.pattern,
+      description: f.description,
+      matchedText: "",
+    }))
 
     const llmResult = await runLLMSecurityReview([{
       name: name.trim(),
       role: "SKILL",
       soulMd: skillMd,
       agentsMd: "",
-    }])
+    }], skillRegexFindings)
 
-    if (llmResult.safe === false) {
+    const llmAvailable = llmResult.summary !== "" && !llmResult.summary.startsWith("LLM review unavailable") && !llmResult.summary.startsWith("LLM security review skipped")
+    const overallPassed = llmAvailable ? llmResult.safe : scanResult.passed
+
+    if (!overallPassed) {
       return NextResponse.json({
         success: false,
-        error: { code: "SCAN_FAILED", message: "AI security review found critical issues in SKILL.md content", statusCode: 422 },
+        error: { code: "SCAN_FAILED", message: "Security scan found issues in SKILL.md content", statusCode: 422 },
         scanPassed: false,
-        findings: llmResult.findings.filter(f => f.severity === "critical").map(f => ({
-          severity: f.severity, pattern: "LLM review", line: 0, description: `${f.description} (${f.evidence})`,
-        })),
+        findings: [
+          ...scanResult.findings,
+          ...llmResult.findings.filter(f => !f.regexValidation && f.severity === "critical").map(f => ({
+            severity: f.severity, pattern: "AI review", line: 0, description: `${f.description} (${f.evidence})`,
+          })),
+        ],
       }, { status: 422 })
     }
 

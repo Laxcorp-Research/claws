@@ -321,43 +321,33 @@ export async function POST(request: NextRequest) {
       return ERRORS.VALIDATION(`Template references unavailable skills: ${skillCheck.missing.join(", ")}`)
     }
 
-    const scanResult = scanTemplate(
-      workspace.agents.map((a) => ({ name: a.name, soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd || undefined }))
-    )
+    const agentsForScan = workspace.agents.map((a) => ({
+      name: a.name, role: a.role, soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd || undefined,
+    }))
 
-    if (!scanResult.passed) {
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: "SCAN_FAILED",
-          message: "Auto-scan failed: security issues found in template content",
-          statusCode: 422,
-        },
-        scanPassed: false,
-        findings: scanResult.findings.filter(f => f.severity === "critical"),
-        allFindings: scanResult.findings,
-      }, { status: 422 })
-    }
+    const scanResult = scanTemplate(agentsForScan)
+    const llmResult = await runLLMSecurityReview(agentsForScan, scanResult.findings)
 
-    const llmResult = await runLLMSecurityReview(
-      workspace.agents.map((a) => ({ name: a.name, role: a.role, soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd || undefined }))
-    )
+    const llmAvailable = llmResult.summary !== "" && !llmResult.summary.startsWith("LLM review unavailable") && !llmResult.summary.startsWith("LLM security review skipped")
+    const overallPassed = llmAvailable ? llmResult.safe : scanResult.passed
 
-    if (llmResult.safe === false) {
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: "SCAN_FAILED",
-          message: "AI security review found critical issues in template content",
-          statusCode: 422,
-        },
-        scanPassed: false,
-        findings: llmResult.findings.filter(f => f.severity === "critical").map(f => ({
-          severity: f.severity, agentName: f.agentName, file: f.file, line: 0, pattern: "LLM review", description: f.description, matchedText: f.evidence,
+    if (!overallPassed) {
+      const allFindings = [
+        ...scanResult.findings,
+        ...llmResult.findings.filter(f => !f.regexValidation).map(f => ({
+          severity: f.severity, agentName: f.agentName, file: f.file, line: 0, pattern: "AI review" as const, description: f.description, matchedText: f.evidence,
         })),
-        allFindings: [...scanResult.findings, ...llmResult.findings.map(f => ({
-          severity: f.severity, agentName: f.agentName, file: f.file, line: 0, pattern: "LLM review", description: f.description, matchedText: f.evidence,
-        }))],
+      ]
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: "SCAN_FAILED",
+          message: "Security scan found critical issues in template content",
+          statusCode: 422,
+        },
+        scanPassed: false,
+        findings: allFindings.filter(f => f.severity === "critical"),
+        allFindings,
       }, { status: 422 })
     }
 
@@ -381,12 +371,12 @@ export async function POST(request: NextRequest) {
         agentCount: workspace.agents.length,
         workspaceSnapshot,
         version: 1,
-        autoScanPassed: true,
+        autoScanPassed: overallPassed,
         autoScanReport: JSON.stringify({
           regex: { passed: scanResult.passed, findings: scanResult.findings },
-          llm: { safe: llmResult.safe, riskLevel: llmResult.riskLevel, summary: llmResult.summary, findings: llmResult.findings },
+          llm: { safe: llmResult.safe, riskLevel: llmResult.riskLevel, summary: llmResult.summary, findings: llmResult.findings, available: llmAvailable },
         }),
-        reviewNotes: (scanResult.hasWarnings || llmResult.findings.length > 0)
+        reviewNotes: (scanResult.findings.length > 0 || llmResult.findings.length > 0)
           ? JSON.stringify({ autoScan: scanResult.findings, llmReview: llmResult.findings })
           : null,
       },

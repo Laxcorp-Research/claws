@@ -5,6 +5,8 @@ import { getSessionUser } from "@/lib/api/auth"
 import { scanTemplate } from "@/lib/marketplace/template-scan"
 import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 
+export const maxDuration = 60
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser()
@@ -40,24 +42,27 @@ export async function POST(request: NextRequest) {
 
     const regexResult = scanTemplate(agentData)
 
-    let llmResult = null
-    if (regexResult.passed) {
-      llmResult = await runLLMSecurityReview(agentData)
-    }
+    const llmResult = await runLLMSecurityReview(agentData, regexResult.findings)
 
-    const overallPassed = regexResult.passed && (llmResult?.safe !== false)
+    const llmAvailable = llmResult.summary !== "" && !llmResult.summary.startsWith("LLM review unavailable") && !llmResult.summary.startsWith("LLM security review skipped")
+    const overallPassed = llmAvailable ? llmResult.safe : regexResult.passed
 
     const combinedFindings = [
-      ...regexResult.findings,
-      ...(llmResult?.findings || []).map((f) => ({
-        severity: f.severity,
-        agentName: f.agentName,
-        file: f.file,
-        line: 0,
-        pattern: "LLM review",
-        description: f.description,
-        matchedText: f.evidence,
+      ...regexResult.findings.map(f => ({
+        ...f,
+        regexValidation: llmResult.findings.find(lf => lf.regexValidation && lf.evidence === f.matchedText)?.regexValidation || undefined,
       })),
+      ...(llmResult.findings || [])
+        .filter(f => !f.regexValidation)
+        .map((f) => ({
+          severity: f.severity,
+          agentName: f.agentName,
+          file: f.file,
+          line: 0,
+          pattern: "AI review",
+          description: f.description,
+          matchedText: f.evidence,
+        })),
     ]
 
     return apiSuccess({
@@ -75,9 +80,12 @@ export async function POST(request: NextRequest) {
           criticalCount: regexResult.criticalCount,
           warningCount: regexResult.warningCount,
         },
-        llmResult: llmResult
-          ? { safe: llmResult.safe, riskLevel: llmResult.riskLevel, summary: llmResult.summary }
-          : null,
+        llmResult: {
+          safe: llmResult.safe,
+          riskLevel: llmResult.riskLevel,
+          summary: llmResult.summary,
+          available: llmAvailable,
+        },
       },
     })
   } catch (error) {
