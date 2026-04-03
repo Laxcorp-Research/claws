@@ -3,7 +3,8 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Check, ChevronRight, AlertTriangle, Info, Send } from "lucide-react"
+import { Check, ChevronRight, AlertTriangle, Info, Send, Loader2, Circle, XCircle, CheckCircle } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -64,6 +65,12 @@ function PublishContent() {
   const [scanFailed, setScanFailed] = useState(false)
   const [scanFindings, setScanFindings] = useState<Array<{ severity: string; agentName: string; file: string; line: number; description: string; matchedText: string }>>([])
 
+  const [scanStep, setScanStep] = useState(0)
+  const [scanComplete, setScanComplete] = useState(false)
+  const [scanResult, setScanResult] = useState<{ passed: boolean; criticalCount: number; warningCount: number; findings: Array<{ severity: string; agentName: string; file: string; line: number; description: string; matchedText: string }> } | null>(null)
+  const [scanError, setScanError] = useState(false)
+  const scanRanRef = useRef(false)
+
   const nameCheckTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
@@ -111,12 +118,67 @@ function PublishContent() {
     if (t && tags.length < 5 && !tags.includes(t)) { setTags([...tags, t]); setTagInput("") }
   }
 
+  const SCAN_STEPS = [
+    "Validating template details",
+    "Building workspace snapshot",
+    "Scanning SOUL.md files",
+    "Scanning AGENTS.md files",
+    "Scanning HEARTBEAT.md files",
+    "Checking for security patterns",
+    "Generating scan report",
+  ]
+
+  const runScan = useCallback(async () => {
+    setScanStep(0)
+    setScanComplete(false)
+    setScanResult(null)
+    setScanError(false)
+    setScanFailed(false)
+    setScanFindings([])
+
+    for (let i = 0; i < SCAN_STEPS.length - 1; i++) {
+      setScanStep(i)
+      await new Promise(r => setTimeout(r, 500))
+    }
+    setScanStep(SCAN_STEPS.length - 1)
+
+    try {
+      const res = await fetch("/api/marketplace/templates/scan-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: selectedWorkspaceId }),
+      })
+      if (!res.ok) { setScanError(true); return }
+      const json = await res.json()
+      const result = json.data?.scanResult ?? json.scanResult
+      setScanResult(result)
+      if (result && !result.passed) {
+        setScanFailed(true)
+        setScanFindings(result.findings || [])
+      }
+    } catch {
+      setScanError(true)
+    } finally {
+      setScanComplete(true)
+    }
+  }, [selectedWorkspaceId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (currentStep === 3 && !scanRanRef.current && selectedWorkspaceId) {
+      scanRanRef.current = true
+      runScan()
+    }
+    if (currentStep !== 3) {
+      scanRanRef.current = false
+    }
+  }, [currentStep, selectedWorkspaceId, runScan])
+
   const canProceed = (): boolean => {
     switch (currentStep) {
       case 0: return name.trim().length >= 3 && nameAvailable === true && tagline.trim().length >= 5 && description.trim().length >= 20 && !!category && !!selectedWorkspaceId
       case 1: return isFree || (typeof price === "number" && price >= 19)
       case 2: return true
-      case 3: return !isPublishing
+      case 3: return !isPublishing && scanComplete && !!scanResult?.passed
       default: return false
     }
   }
@@ -306,54 +368,110 @@ function PublishContent() {
                 <Link href="/settings?tab=creator"><Button variant="outline">Creator Dashboard</Button></Link>
               </div>
             </div>
-          ) : scanFailed ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-[var(--err)]">
-                <AlertTriangle size={20} aria-hidden="true" />
-                <h2 className="text-[16px] font-semibold">Auto-scan found security issues</h2>
-              </div>
-              <p className="text-[12px] text-[var(--tx2)]">Your template contains patterns that could pose security risks. Fix the issues below in your workspace and resubmit.</p>
-              <div className="border border-[var(--err)] rounded-[12px] overflow-hidden">
-                {scanFindings.map((f, i) => (
-                  <div key={i} className={`flex items-start gap-2 px-3 py-2 text-[11px] ${i < scanFindings.length - 1 ? "border-b border-[var(--bd)]" : ""}`}>
-                    <span className={`shrink-0 mt-[2px] ${f.severity === "critical" ? "text-[var(--err)]" : "text-[var(--warn)]"}`}>
-                      <AlertTriangle size={12} aria-hidden="true" />
-                    </span>
-                    <div>
-                      <span className={`font-semibold uppercase text-[9px] ${f.severity === "critical" ? "text-[var(--err)]" : "text-[var(--warn)]"}`}>{f.severity}</span>
-                      <span className="text-[var(--tx3)] ml-2">{f.agentName} - {f.file} line {f.line}</span>
-                      <p className="text-[var(--tx2)] mt-[2px]">{f.description}</p>
-                      {f.matchedText && <code className="text-[9px] text-[var(--tx3)] bg-[var(--bg2)] px-1 py-[1px] rounded mt-[2px] block truncate">{f.matchedText}</code>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Button variant="outline" onClick={() => { setScanFailed(false); setScanFindings([]); setCurrentStep(0) }}>
-                Fix and Resubmit
-              </Button>
-            </div>
           ) : (
             <div className="space-y-3">
-              <h2 className="text-[16px] font-semibold text-[var(--tx)]">Publish Your Template</h2>
-              {publishError && <AlertBanner variant="error">{publishError}</AlertBanner>}
-              <div className="border border-[var(--bd)] rounded-[12px] p-4 space-y-2">
-                {[
-                  ["Name", name],
-                  ["Category", CATEGORIES.find((c) => c.value === category)?.label ?? category],
-                  ["Price", isFree ? "Free" : `$${price}`],
-                  ["Workspace", workspaces.find((w) => w.id === selectedWorkspaceId)?.name ?? ""],
-                ].map(([label, val]) => (
-                  <div key={label} className="flex items-center gap-2 text-[12px]">
-                    <Check size={14} className="text-[var(--ok)]" aria-hidden="true" />
-                    <span className="font-medium text-[var(--tx)]">{label}:</span>
-                    <span className="text-[var(--tx2)]">{val}</span>
-                  </div>
-                ))}
+              <h2 className="text-[16px] font-semibold text-[var(--tx)]">Security Scan & Publish</h2>
+
+              {/* Scan Progress Steps */}
+              <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
+                <h3 className="text-[13px] font-semibold text-[var(--tx)] mb-[10px]">Security scan</h3>
+                <div className="flex flex-col gap-[8px]">
+                  {SCAN_STEPS.map((step, i) => {
+                    let status: "done" | "current" | "pending" | "failed" = "pending"
+                    if (scanComplete) {
+                      if (scanResult && !scanResult.passed && i === SCAN_STEPS.length - 1) status = "failed"
+                      else if (scanError && i === SCAN_STEPS.length - 1) status = "failed"
+                      else status = "done"
+                    } else if (i < scanStep) {
+                      status = "done"
+                    } else if (i === scanStep) {
+                      status = "current"
+                    }
+                    return (
+                      <div key={i} className="flex items-center gap-[8px]">
+                        {status === "done" && <CheckCircle className="w-[16px] h-[16px] text-[var(--ok)] flex-shrink-0" />}
+                        {status === "current" && <Loader2 className="w-[16px] h-[16px] animate-spin text-[var(--tx2)] flex-shrink-0" />}
+                        {status === "pending" && <Circle className="w-[16px] h-[16px] text-[var(--tx3)] flex-shrink-0" />}
+                        {status === "failed" && <XCircle className="w-[16px] h-[16px] text-[var(--err)] flex-shrink-0" />}
+                        <span className={cn("text-[12px]", status === "pending" ? "text-[var(--tx3)]" : status === "failed" ? "text-[var(--err)]" : "text-[var(--tx)]")}>
+                          {step}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <p className="text-[11px] text-[var(--tx3)]">By publishing, you agree to the Creator Terms.</p>
-              <Button className="w-full" onClick={handlePublish} loading={isPublishing}>
-                <Send size={14} className="mr-1" aria-hidden="true" /> Publish Template
-              </Button>
+
+              {/* Scan Results */}
+              {scanComplete && scanResult?.passed && (
+                <div className="border border-[var(--ok)] rounded-[12px] p-[14px] bg-[var(--okbg)]">
+                  <div className="flex items-center gap-[8px]">
+                    <CheckCircle className="w-[16px] h-[16px] text-[var(--ok)]" />
+                    <span className="text-[13px] font-semibold text-[var(--ok)]">Security scan passed</span>
+                  </div>
+                  {scanResult.warningCount > 0 && (
+                    <p className="text-[12px] text-[#92400e] mt-[4px]">{scanResult.warningCount} warning(s) - review recommended but not blocking</p>
+                  )}
+                </div>
+              )}
+
+              {scanComplete && scanResult && !scanResult.passed && (
+                <div className="border border-[var(--err)] rounded-[12px] p-[14px] bg-[var(--errbg)]">
+                  <h3 className="text-[13px] font-semibold text-[var(--err)] mb-[8px]">{scanResult.criticalCount} critical issue(s) found</h3>
+                  <p className="text-[12px] text-[var(--tx2)] mb-[10px]">Fix these issues in your workspace and resubmit.</p>
+                  {scanResult.findings.filter(f => f.severity === "critical").map((f, i) => (
+                    <div key={i} className="border border-[var(--err)] rounded-[8px] p-[10px] mb-[6px] bg-[var(--bg)]">
+                      <div className="text-[11px]">
+                        <span className="font-semibold text-[var(--err)]">CRITICAL</span>
+                        <span className="text-[var(--tx2)] ml-[8px]">{f.agentName} - {f.file} line {f.line}</span>
+                      </div>
+                      <div className="text-[12px] mt-[2px] text-[var(--tx)]">{f.description}</div>
+                      {f.matchedText && <code className="text-[10px] text-[var(--tx3)] mt-[2px] block truncate">{f.matchedText}</code>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {scanComplete && scanError && (
+                <AlertBanner variant="error">Failed to run security scan. Please try again.</AlertBanner>
+              )}
+
+              {/* Template Details Checklist */}
+              {scanComplete && scanResult?.passed && (
+                <>
+                  {publishError && <AlertBanner variant="error">{publishError}</AlertBanner>}
+                  <div className="border border-[var(--bd)] rounded-[12px] p-4 space-y-2">
+                    {[
+                      ["Name", name],
+                      ["Category", CATEGORIES.find((c) => c.value === category)?.label ?? category],
+                      ["Price", isFree ? "Free" : `$${price}`],
+                      ["Workspace", workspaces.find((w) => w.id === selectedWorkspaceId)?.name ?? ""],
+                    ].map(([label, val]) => (
+                      <div key={label} className="flex items-center gap-2 text-[12px]">
+                        <Check size={14} className="text-[var(--ok)]" aria-hidden="true" />
+                        <span className="font-medium text-[var(--tx)]">{label}:</span>
+                        <span className="text-[var(--tx2)]">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-[var(--tx3)]">By publishing, you agree to the Creator Terms.</p>
+                  <Button className="w-full" onClick={handlePublish} loading={isPublishing}>
+                    <Send size={14} className="mr-1" aria-hidden="true" /> Publish Template
+                  </Button>
+                </>
+              )}
+
+              {scanComplete && scanResult && !scanResult.passed && (
+                <Button variant="outline" onClick={() => { setScanFailed(false); setScanFindings([]); scanRanRef.current = false; setCurrentStep(0) }}>
+                  Fix and Resubmit
+                </Button>
+              )}
+
+              {scanComplete && scanError && (
+                <Button variant="outline" onClick={() => { scanRanRef.current = false; runScan() }}>
+                  Retry Scan
+                </Button>
+              )}
             </div>
           )
         )}
