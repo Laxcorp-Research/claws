@@ -276,12 +276,25 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       if (!isSelectionOnly) recheckDirty()
     },
     onConnect: (connection: Connection) => {
+      const s = get()
+      if (connection.source === connection.target) return
+      if (s.edges.some(e => e.source === connection.source && e.target === connection.target)) return
+
+      const srcNode = s.nodes.find(n => n.id === connection.source)
+      const tgtNode = s.nodes.find(n => n.id === connection.target)
+      if (!srcNode || !tgtNode) return
+      const sRole = (srcNode.data as AgentNodeData).role
+      const tRole = (tgtNode.data as AgentNodeData).role
+      if (sRole === "ORCHESTRATOR" && tRole !== "WORKER") return
+      if (sRole === "WORKER" && tRole !== "CRITIC" && tRole !== "WORKER") return
+      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR") return
+
       const newEdge: Edge<ConnectionEdgeData> = {
         id: `temp-edge-${Date.now()}`, source: connection.source, target: connection.target,
         sourceHandle: connection.sourceHandle ?? undefined, targetHandle: connection.targetHandle ?? undefined,
         type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
       }
-      set((s) => ({ edges: addEdge(newEdge, s.edges) as Edge<ConnectionEdgeData>[] }))
+      set((s2) => ({ edges: addEdge(newEdge, s2.edges) as Edge<ConnectionEdgeData>[] }))
       recheckDirty()
     },
 
@@ -400,6 +413,16 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       if (source === target) return
       const s = get()
       if (s.edges.some(e => e.source === source && e.target === target)) return
+
+      const srcNode = s.nodes.find(n => n.id === source)
+      const tgtNode = s.nodes.find(n => n.id === target)
+      if (!srcNode || !tgtNode) return
+      const sRole = (srcNode.data as AgentNodeData).role
+      const tRole = (tgtNode.data as AgentNodeData).role
+      if (sRole === "ORCHESTRATOR" && tRole !== "WORKER") return
+      if (sRole === "WORKER" && tRole !== "CRITIC" && tRole !== "WORKER") return
+      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR") return
+
       const cond = (condition as ConnectionCondition) || "ON_COMPLETE"
       const label = CONDITION_LABELS[cond] || "On complete"
       const newEdge: Edge<ConnectionEdgeData> = {
