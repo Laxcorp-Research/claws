@@ -34,12 +34,12 @@ export function MarkdownEditor({ label, tooltip, value, onChange, placeholder }:
         <label className="text-[10px] text-[var(--tx2)] font-medium">{label}</label>
         {tooltip && <Tooltip text={tooltip} />}
       </div>
-      <div className="relative">
+      <div className="relative border border-[var(--bd)] rounded-[6px] overflow-hidden focus-within:border-[var(--tx)]">
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full h-[58px] px-2 py-[5px] border border-[var(--bd)] rounded-[6px] text-[10px] font-mono bg-[var(--bg)] text-[var(--tx)] resize-none focus:outline-none focus:border-[var(--tx)]"
+          className="w-full h-[58px] px-2 py-[5px] text-[10px] font-mono bg-[var(--bg)] text-[var(--tx)] resize-none focus:outline-none border-none"
         />
         <button
           onClick={handleOpen}
@@ -67,7 +67,7 @@ export function MarkdownEditor({ label, tooltip, value, onChange, placeholder }:
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={placeholder}
-          className="w-full h-[400px] p-[12px] text-[13px] font-mono border border-[var(--bd)] rounded-[8px] bg-[var(--bg)] text-[var(--tx)] resize-y focus:border-[var(--tx)] focus:outline-none leading-relaxed"
+          className="w-full h-[400px] min-h-[300px] p-[12px] text-[13px] font-mono border border-[var(--bd)] rounded-[8px] bg-[var(--bg)] text-[var(--tx)] resize-vertical focus:border-[var(--tx)] focus:outline-none leading-relaxed"
           autoFocus
         />
       </Modal>

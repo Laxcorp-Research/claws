@@ -79,8 +79,15 @@ export default function BuilderPage() {
   return (
     <div className="flex flex-col h-screen bg-[var(--bg)]">
       {/* Builder top bar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--bd)] bg-[var(--bg)]">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center px-3 py-2 border-b border-[var(--bd)] bg-[var(--bg)]">
+        <div className="flex-shrink-0">
+          <button onClick={handleBack} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 transition-colors cursor-pointer bg-transparent border-none">
+            <ArrowLeft size={12} />
+            My Claws
+          </button>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
           <h1 className="sr-only">{localName || "Builder"}</h1>
           <input
             type="text"
@@ -89,11 +96,24 @@ export default function BuilderPage() {
             onChange={(e) => setLocalName(e.target.value)}
             onBlur={handleNameSave}
             onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
-            className="text-sm font-semibold bg-transparent border border-transparent hover:border-[var(--bd)] focus:border-[var(--tx)] rounded-[6px] px-2 py-[3px] outline-none text-[var(--tx)] w-[200px]"
+            className="text-[14px] font-semibold bg-transparent border border-transparent hover:border-[var(--bd)] focus:border-[var(--tx)] rounded-[6px] px-2 py-[3px] outline-none text-[var(--tx)] text-center max-w-[200px]"
           />
           <StatusBadge status={workspaceStatus === "RUNNING" ? "running" : workspaceStatus === "DRAFT" ? "draft" : "setup"} />
         </div>
-        <div className="flex items-center gap-[6px]">
+
+        <div className="flex items-center gap-[6px] flex-shrink-0">
+          <Button variant="ghost" size="sm" className="text-[10px]" onClick={() => setShowHistory(!showHistory)}>
+            History
+          </Button>
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/2?from=builder&mode=manage`)}>
+            Manage Tools
+          </Button>
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/dashboard/${workspaceId}`)}>
+            Dashboard
+          </Button>
+          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/publish/template?workspaceId=${workspaceId}`)}>
+            <Send size={10} className="mr-1" aria-hidden="true" /> Publish
+          </Button>
           {isSaving ? (
             <Button size="sm" variant="outline" disabled className="text-[10px]">
               <Loader2 className="w-[14px] h-[14px] animate-spin mr-[4px]" />
@@ -110,22 +130,6 @@ export default function BuilderPage() {
               Saved
             </Button>
           ) : null}
-          <button onClick={handleBack} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] flex items-center gap-1 transition-colors cursor-pointer bg-transparent border-none">
-            <ArrowLeft size={12} />
-            My Claws
-          </button>
-          <Button variant="ghost" size="sm" className="text-[10px]" onClick={() => setShowHistory(!showHistory)}>
-            History
-          </Button>
-          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/2?from=builder&mode=manage`)}>
-            Manage Tools
-          </Button>
-          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/dashboard/${workspaceId}`)}>
-            Dashboard
-          </Button>
-          <Button variant="outline" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/publish/template?workspaceId=${workspaceId}`)}>
-            <Send size={10} className="mr-1" aria-hidden="true" /> Publish
-          </Button>
           <Button variant="primary" size="sm" className="text-[10px]" onClick={() => handleNavigate(`/setup/${workspaceId}/step/1?from=builder`)}>
             Deploy
           </Button>
