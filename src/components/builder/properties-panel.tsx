@@ -96,13 +96,32 @@ export function PropertiesPanel() {
   const canDelete = !isOrch && !isCritic
   const otherAgents = nodes.filter((n) => n.id !== selectedAgentId)
 
-  const agentOptions = [
-    { value: "", label: "None" },
-    ...otherAgents.map((n) => ({ value: n.id, label: (n.data as AgentNodeData).name })),
-  ]
-
   const incomingEdge = edges.find(e => e.target === selectedAgentId)
   const outgoingEdge = edges.find(e => e.source === selectedAgentId)
+
+  function roleFilteredOptions(filter: (r: string) => boolean, currentValue?: string) {
+    const filtered = otherAgents.filter(n => filter((n.data as AgentNodeData).role))
+    const options = [
+      { value: "", label: "None" },
+      ...filtered.map(n => ({ value: n.id, label: (n.data as AgentNodeData).name })),
+    ]
+    if (currentValue && !options.some(o => o.value === currentValue)) {
+      const staleNode = nodes.find(n => n.id === currentValue)
+      const staleName = staleNode ? (staleNode.data as AgentNodeData).name : "Unknown"
+      options.push({ value: currentValue, label: staleName })
+    }
+    return options
+  }
+
+  const reportsToOptions = roleFilteredOptions(
+    r => r === "ORCHESTRATOR" || r === "WORKER",
+    incomingEdge?.source
+  )
+  const outputsToOptions = isOrch
+    ? roleFilteredOptions(r => r === "WORKER", outgoingEdge?.target)
+    : isCritic
+      ? roleFilteredOptions(r => r === "ORCHESTRATOR", outgoingEdge?.target)
+      : roleFilteredOptions(r => r === "CRITIC" || r === "WORKER", outgoingEdge?.target)
 
   function handleReportsToChange(newParentId: string) {
     if (!selectedAgentId) return
@@ -191,12 +210,26 @@ export function PropertiesPanel() {
       </div>
 
       <div className="mb-2.5">
-        <Label text="Reports to" tooltip="Which agent this one reports its work to. Typically Workers report to the Orchestrator." />
-        <CustomSelect
-          value={incomingEdge?.source || ""}
-          onChange={(val) => handleReportsToChange(val)}
-          options={agentOptions}
-        />
+        {isOrch ? (
+          <>
+            <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Reports to</label>
+            <p className="text-[11px] text-[var(--tx3)] italic">None - top of hierarchy</p>
+          </>
+        ) : isCritic ? (
+          <>
+            <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Receives from</label>
+            <p className="text-[11px] text-[var(--tx3)] italic">All workers (via their output settings)</p>
+          </>
+        ) : (
+          <>
+            <Label text="Reports to" tooltip="Which agent this one reports its work to. Typically Workers report to the Orchestrator." />
+            <CustomSelect
+              value={incomingEdge?.source || ""}
+              onChange={(val) => handleReportsToChange(val)}
+              options={reportsToOptions}
+            />
+          </>
+        )}
       </div>
 
       <div className="mb-2.5">
@@ -204,7 +237,7 @@ export function PropertiesPanel() {
         <CustomSelect
           value={outgoingEdge?.target || ""}
           onChange={(val) => handleOutputsToChange(val)}
-          options={agentOptions}
+          options={outputsToOptions}
         />
       </div>
 
