@@ -197,7 +197,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           })
 
           return (
-            <div key={provider} className="flex items-center justify-between px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
+            <div key={provider} className="flex items-center justify-between gap-[16px] px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
               <div className="min-w-0">
                 <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
                 {usingAgents.length > 0 && (
@@ -206,7 +206,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
                   </TruncateWithTooltip>
                 )}
               </div>
-              <div className="flex items-center gap-[8px] flex-shrink-0 ml-[10px]">
+              <div className="flex items-center gap-[8px] flex-shrink-0 whitespace-nowrap">
                 {status?.hasKey ? (
                   <>
                     {(status.effectiveSource === "override" ? status.overrideKeyValid : status.globalKeyValid) ? (
@@ -576,13 +576,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       {requiredTools.length === 0 && recommendedTools.length === 0 && (
         <div className="text-center py-[30px] border border-dashed border-[var(--bd)] rounded-[12px] mb-3.5">
           <Wrench className="w-[24px] h-[24px] text-[var(--tx3)] mx-auto mb-[8px]" />
-          <h3 className="text-[14px] font-semibold text-[var(--tx)] mb-[4px]">No tools configured yet</h3>
-          <p className="text-[12px] text-[var(--tx2)] mb-[10px] max-w-[300px] mx-auto">
+          <p className="text-[13px] font-medium text-[var(--tx)] mb-[4px]">No tools configured yet</p>
+          <p className="text-[12px] text-[var(--tx3)] max-w-[300px] mx-auto">
             Your custom Claw doesn&apos;t have pre-configured tools. Browse the catalog to add tools your agents can use.
           </p>
-          <Button variant="outline" onClick={() => setBrowseModal(true)}>
-            Browse available tools
-          </Button>
         </div>
       )}
 
