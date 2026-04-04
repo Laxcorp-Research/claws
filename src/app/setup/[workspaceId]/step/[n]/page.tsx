@@ -144,14 +144,13 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           })
         )
       )
-      const fromParam = isFromBuilder ? "?from=builder" : ""
-      router.push(`/setup/${workspaceId}/step/2${fromParam}`)
+      router.push(`/setup/${workspaceId}/step/2`)
     } catch (e) {
       console.error("Failed to save models:", e)
     } finally {
       setIsSavingModels(false)
     }
-  }, [agents, workspaceId, router, isFromBuilder])
+  }, [agents, workspaceId, router])
 
   const handleRemoveOverride = useCallback(async (provider: string) => {
     await fetch(`/api/workspaces/${workspaceId}/api-keys`, {
@@ -346,8 +345,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
         const wsData = await wsRes.json()
 
-        let requiredNames: string[] = ["Claude API"]
-        let recommendedNames: string[] = ["Tavily", "Gmail", "Calendar"]
+        let requiredNames: string[] = []
+        let recommendedNames: string[] = []
 
         if (wsData.success && wsData.data?.clawTemplate?.slug) {
           try {
@@ -417,31 +416,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           })
 
         const allTools = [...buildToolState(requiredNames, true), ...buildToolState(recommendedNames, false)]
-
-        const AI_SLUG_TO_PROVIDER: Record<string, string> = {
-          anthropic_api: "ANTHROPIC", claude_api: "ANTHROPIC",
-          openai_api: "OPENAI", google_ai: "GOOGLE",
-        }
-
-        try {
-          const keysRes = await fetch(`/api/workspaces/${workspaceId}/api-keys`)
-          const keysData = await keysRes.json()
-          if (keysData.success && Array.isArray(keysData.data)) {
-            const keyStatus = keysData.data as Array<{ provider: string; hasKey: boolean; globalKeyValid: boolean; overrideKeyValid: boolean; effectiveSource: string; globalKeyHint: string | null; overrideKeyHint: string | null }>
-            for (let i = 0; i < allTools.length; i++) {
-              const provider = AI_SLUG_TO_PROVIDER[allTools[i].slug]
-              if (provider) {
-                const ks = keyStatus.find(k => k.provider === provider)
-                if (ks?.hasKey) {
-                  const isValid = ks.effectiveSource === "override" ? ks.overrideKeyValid : ks.globalKeyValid
-                  if (isValid) {
-                    allTools[i] = { ...allTools[i], status: "connected" as const, connectionId: `apikey-${provider}` }
-                  }
-                }
-              }
-            }
-          }
-        } catch { /* key status check is optional */ }
+          .filter(t => {
+            const def = getToolBySlug(t.slug)
+            return !def?.isAIProvider
+          })
 
         setTools(allTools)
       } catch (e) {
@@ -1086,11 +1064,27 @@ function StepPlaceholder({ step, workspaceId }: { step: number; workspaceId: str
 
 export default function SetupStepPage() {
   const params = useParams()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const workspaceId = params.workspaceId as string
   const stepNum = parseInt(params.n as string, 10)
-  const isFromBuilder = searchParams.get("from") === "builder"
   const isManageMode = searchParams.get("mode") === "manage"
+
+  useEffect(() => {
+    const from = searchParams.get("from")
+    if (from) {
+      sessionStorage.setItem(`wizard-context-${workspaceId}`, from)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isFromBuilder = typeof window !== "undefined"
+    ? (sessionStorage.getItem(`wizard-context-${workspaceId}`) === "builder" || searchParams.get("from") === "builder")
+    : searchParams.get("from") === "builder"
+
+  const exitWizard = useCallback(() => {
+    if (typeof window !== "undefined") sessionStorage.removeItem(`wizard-context-${workspaceId}`)
+    router.push(isFromBuilder ? `/builder/${workspaceId}` : "/my-claws")
+  }, [workspaceId, isFromBuilder, router])
 
   if (isNaN(stepNum) || stepNum < 1 || stepNum > 5) {
     return (
@@ -1116,13 +1110,13 @@ export default function SetupStepPage() {
     <>
       <div className="max-w-4xl mx-auto px-4 pt-4">
         <div className="flex items-center mb-[24px]">
-          <Link
-            href={isFromBuilder ? `/builder/${workspaceId}` : "/my-claws"}
-            className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 flex-shrink-0 transition-colors mr-[16px] leading-none"
+          <button
+            onClick={exitWizard}
+            className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 flex-shrink-0 transition-colors mr-[16px] leading-none cursor-pointer bg-transparent border-none"
           >
             <ArrowLeft size={12} aria-hidden="true" />
             {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
-          </Link>
+          </button>
           {showWizardChrome && (
             <>
               <div className="flex-1 flex justify-center items-center">

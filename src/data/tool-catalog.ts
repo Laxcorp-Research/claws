@@ -9,10 +9,11 @@ export interface ToolDefinition {
   keyPlaceholder?: string
   composioToolkitId?: string
   description?: string
+  isAIProvider?: boolean
 }
 
 export const API_KEY_TOOLS: ToolDefinition[] = [
-  { slug: "anthropic_api", name: "Anthropic (Claude)", connectionType: "API_KEY", category: "AI", helpUrl: "https://console.anthropic.com/settings/keys", keyPlaceholder: "sk-ant-api03-..." },
+  { slug: "anthropic_api", name: "Anthropic (Claude)", connectionType: "API_KEY", category: "AI", helpUrl: "https://console.anthropic.com/settings/keys", keyPlaceholder: "sk-ant-api03-...", isAIProvider: true },
   { slug: "tavily", name: "Tavily (Web Search)", connectionType: "API_KEY", category: "SEARCH", helpUrl: "https://tavily.com/#api", keyPlaceholder: "tvly-...", description: "AI-optimized web search" },
   { slug: "serp_api", name: "SerpAPI", connectionType: "API_KEY", category: "SEARCH", helpUrl: "https://serpapi.com/manage-api-key", keyPlaceholder: "serp_...", description: "Google search results API" },
   { slug: "exa_search", name: "Exa", connectionType: "API_KEY", category: "SEARCH", helpUrl: "https://exa.ai/settings", description: "AI-powered web search" },
