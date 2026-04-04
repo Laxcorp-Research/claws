@@ -1,43 +1,48 @@
-import DOMPurify from "dompurify"
-import { JSDOM } from "jsdom"
-
-const window = new JSDOM("").window
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const purify = DOMPurify(window as any)
-
-const SANITIZE_CONFIG = {
-  ALLOWED_TAGS: [
-    "h1", "h2", "h3", "h4", "h5", "h6",
-    "p", "br", "hr",
-    "ul", "ol", "li",
-    "strong", "em", "b", "i", "u", "s", "del",
-    "code", "pre", "blockquote",
-    "a", "img",
-    "table", "thead", "tbody", "tr", "th", "td",
-    "span", "div",
-    "sup", "sub",
-  ],
-  ALLOWED_ATTR: [
-    "href", "src", "alt", "title", "class",
-    "target", "rel",
-    "colspan", "rowspan",
-  ],
-  ALLOW_DATA_ATTR: false,
-  ADD_ATTR: ["target"],
-  FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "input", "textarea", "select", "button"],
-  FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur", "style"],
-}
-
-export function sanitizeHtml(dirty: string): string {
-  if (!dirty) return ""
-  return purify.sanitize(dirty, SANITIZE_CONFIG) as string
-}
-
+/**
+ * Strip ALL HTML tags from a string. Returns plain text only.
+ * Lightweight — no dependencies, safe for serverless.
+ */
 export function sanitizeText(dirty: string): string {
   if (!dirty) return ""
-  return purify.sanitize(dirty, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }) as string
+  return dirty
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
 }
 
+/**
+ * Sanitize HTML preserving safe tags. Uses regex-based approach
+ * that's safe for serverless (no jsdom dependency).
+ */
+export function sanitizeHtml(dirty: string): string {
+  if (!dirty) return ""
+  const SAFE_TAGS = new Set([
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "p", "br", "hr", "ul", "ol", "li",
+    "strong", "em", "b", "i", "u", "s", "del",
+    "code", "pre", "blockquote", "a", "img",
+    "table", "thead", "tbody", "tr", "th", "td",
+    "span", "div", "sup", "sub",
+  ])
+  let clean = dirty.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+  clean = clean.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, "")
+  clean = clean.replace(/<(\/?)(\w+)([^>]*)>/g, (match, slash, tag, attrs) => {
+    if (!SAFE_TAGS.has(tag.toLowerCase())) return ""
+    const safeAttrs = (attrs as string).replace(/\s*(style|onerror|onload|onclick|onmouseover|onfocus|onblur)\s*=\s*["'][^"']*["']/gi, "")
+    return `<${slash}${tag}${safeAttrs}>`
+  })
+  return clean
+}
+
+/**
+ * Sanitize raw markdown source. Removes script tags and event handlers
+ * but preserves markdown syntax.
+ */
 export function sanitizeMarkdown(dirty: string): string {
   if (!dirty) return ""
   let clean = dirty.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")

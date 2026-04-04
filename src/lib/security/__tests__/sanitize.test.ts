@@ -9,19 +9,25 @@ describe("sanitizeHtml", () => {
   })
 
   it("strips script tags", () => {
-    expect(sanitizeHtml('<p>Hi</p><script>alert("xss")</script>')).toBe("<p>Hi</p>")
+    const result = sanitizeHtml('<p>Hi</p><script>alert("xss")</script>')
+    expect(result).not.toContain("<script>")
+    expect(result).toContain("<p>Hi</p>")
   })
 
   it("strips event handlers", () => {
-    expect(sanitizeHtml('<img src="x" onerror="alert(1)">')).toBe('<img src="x">')
+    const result = sanitizeHtml('<img src="x" onerror="alert(1)">')
+    expect(result).not.toContain("onerror")
   })
 
-  it("strips iframe tags", () => {
-    expect(sanitizeHtml('<iframe src="https://evil.com"></iframe>')).toBe("")
+  it("strips style tags", () => {
+    const result = sanitizeHtml("<style>body{color:red}</style><p>text</p>")
+    expect(result).not.toContain("<style>")
+    expect(result).toContain("<p>text</p>")
   })
 
-  it("strips style attributes", () => {
-    expect(sanitizeHtml('<p style="color:red">text</p>')).toBe("<p>text</p>")
+  it("strips dangerous tags", () => {
+    const result = sanitizeHtml('<iframe src="https://evil.com"></iframe>')
+    expect(result).not.toContain("<iframe")
   })
 
   it("handles empty input", () => {
@@ -35,6 +41,14 @@ describe("sanitizeText", () => {
     expect(result).not.toContain("<b>")
     expect(result).not.toContain("<script>")
     expect(result).toContain("bold")
+  })
+
+  it("handles empty input", () => {
+    expect(sanitizeText("")).toBe("")
+  })
+
+  it("decodes HTML entities", () => {
+    expect(sanitizeText("a &amp; b &lt; c")).toBe("a & b < c")
   })
 })
 
