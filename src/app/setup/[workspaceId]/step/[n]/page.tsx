@@ -197,13 +197,13 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           })
 
           return (
-            <div key={provider} className="flex items-center justify-between gap-[16px] px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
-              <div className="min-w-0">
+            <div key={provider} className="flex items-start justify-between gap-[24px] px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
+              <div className="min-w-0 max-w-[60%]">
                 <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
                 {usingAgents.length > 0 && (
-                  <TruncateWithTooltip className="text-[11px] text-[var(--tx3)] mt-[2px]" as="div">
-                    {`Used by: ${usingAgents.map(a => a.name).join(", ")}`}
-                  </TruncateWithTooltip>
+                  <div className="text-[11px] text-[var(--tx3)] mt-[2px]">
+                    Used by: {usingAgents.map(a => a.name).join(", ")}
+                  </div>
                 )}
               </div>
               <div className="flex items-center gap-[8px] flex-shrink-0 whitespace-nowrap">
