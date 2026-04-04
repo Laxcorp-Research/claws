@@ -1,52 +1,50 @@
-/**
- * Strip ALL HTML tags from a string. Returns plain text only.
- * Lightweight — no dependencies, safe for serverless.
- */
-export function sanitizeText(dirty: string): string {
-  if (!dirty) return ""
-  return dirty
-    .replace(/<[^>]*>/g, "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-}
+import sanitize from "sanitize-html"
 
-/**
- * Sanitize HTML preserving safe tags. Uses regex-based approach
- * that's safe for serverless (no jsdom dependency).
- */
 export function sanitizeHtml(dirty: string): string {
   if (!dirty) return ""
-  const SAFE_TAGS = new Set([
-    "h1", "h2", "h3", "h4", "h5", "h6",
-    "p", "br", "hr", "ul", "ol", "li",
-    "strong", "em", "b", "i", "u", "s", "del",
-    "code", "pre", "blockquote", "a", "img",
-    "table", "thead", "tbody", "tr", "th", "td",
-    "span", "div", "sup", "sub",
-  ])
-  let clean = dirty.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-  clean = clean.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, "")
-  clean = clean.replace(/<(\/?)(\w+)([^>]*)>/g, (match, slash, tag, attrs) => {
-    if (!SAFE_TAGS.has(tag.toLowerCase())) return ""
-    const safeAttrs = (attrs as string).replace(/\s*(style|onerror|onload|onclick|onmouseover|onfocus|onblur)\s*=\s*["'][^"']*["']/gi, "")
-    return `<${slash}${tag}${safeAttrs}>`
+  return sanitize(dirty, {
+    allowedTags: [
+      "h1", "h2", "h3", "h4", "h5", "h6",
+      "p", "br", "hr",
+      "ul", "ol", "li",
+      "strong", "em", "b", "i", "u", "s", "del",
+      "code", "pre", "blockquote",
+      "a", "img",
+      "table", "thead", "tbody", "tr", "th", "td",
+      "span", "div",
+      "sup", "sub",
+    ],
+    allowedAttributes: {
+      a: ["href", "title", "target", "rel"],
+      img: ["src", "alt", "title"],
+      th: ["colspan", "rowspan"],
+      td: ["colspan", "rowspan"],
+      "*": ["class"],
+    },
+    allowedSchemes: ["http", "https", "mailto"],
+    disallowedTagsMode: "discard",
+    allowedStyles: {},
   })
-  return clean
 }
 
-/**
- * Sanitize raw markdown source. Removes script tags and event handlers
- * but preserves markdown syntax.
- */
+export function sanitizeText(dirty: string): string {
+  if (!dirty) return ""
+  return sanitize(dirty, {
+    allowedTags: [],
+    allowedAttributes: {},
+  })
+}
+
 export function sanitizeMarkdown(dirty: string): string {
   if (!dirty) return ""
-  let clean = dirty.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+  let clean = dirty
+  clean = clean.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+  clean = clean.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
   clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, "")
+  clean = clean.replace(/\bon\w+\s*=\s*[^\s>]*/gi, "")
   clean = clean.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
+  clean = clean.replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src=""')
+  clean = clean.replace(/src\s*=\s*["']data:text\/html[^"']*["']/gi, 'src=""')
+  clean = clean.replace(/<\s*\/?\s*(iframe|object|embed|form|input|textarea|select|button)\b[^>]*>/gi, "")
   return clean
 }
