@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
+import { log } from "@/lib/logger"
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const sessionUser = await getSessionUser()
@@ -71,8 +72,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       data: { status: "DEPLOYING" },
     })
 
+    log.deployEvent({ event: "started", workspaceId, userId: user.id })
+
     return apiSuccess({ deployment: { id: deployment.id, status: deployment.status, version: deployment.version } }, 201)
   } catch (err: unknown) {
+    log.deployEvent({
+      event: "failed",
+      workspaceId,
+      userId: user.id,
+      error: err instanceof Error ? err.message : "Unknown",
+    })
     return apiError("DEPLOY_FAILED", err instanceof Error ? err.message : "Deployment failed", 500)
   }
 }

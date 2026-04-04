@@ -6,7 +6,9 @@ import { Prisma, TrustTier, ClawCategory } from "@/generated/prisma/client"
 import { scanTemplate } from "@/lib/marketplace/template-scan"
 import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 import { validateSkillDependencies } from "@/lib/marketplace/skill-dependency"
+import { sanitizeText } from "@/lib/security/sanitize"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
+import { log } from "@/lib/logger"
 
 interface SnapshotAgent {
   name: string
@@ -355,10 +357,10 @@ export async function POST(request: NextRequest) {
 
     const template = await prisma.clawTemplate.create({
       data: {
-        name: name.trim(),
+        name: sanitizeText(name.trim()),
         slug,
-        tagline: tagline.trim(),
-        description: description.trim(),
+        tagline: sanitizeText(tagline.trim()),
+        description: sanitizeText(description.trim()),
         category: category as ClawCategory,
         tags: tags?.map((t) => t.trim()) ?? [],
         estimatedMonthlyCost: estimatedMonthlyCost?.trim() ?? null,
@@ -386,6 +388,8 @@ export async function POST(request: NextRequest) {
       where: { id: creatorProfile.id },
       data: { totalTemplates: { increment: 1 } },
     })
+
+    log.marketplaceEvent({ event: "template_published", itemId: template.id, itemType: "template", userId: user.id })
 
     return apiSuccess({
       templateId: template.id,

@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { encrypt, generateKeyHint } from "@/lib/encryption"
+import { log } from "@/lib/logger"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -60,6 +61,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     create: data as Parameters<typeof prisma.toolConnection.create>[0]["data"],
     update: { ...data, updatedAt: new Date() } as Parameters<typeof prisma.toolConnection.update>[0]["data"],
     select: { id: true, toolSlug: true, displayName: true, connectionType: true, keyHint: true, status: true, createdAt: true },
+  })
+
+  log.toolEvent({
+    event: "connected",
+    toolSlug: body.toolSlug || "unknown",
+    connectionType: body.connectionType || "unknown",
+    workspaceId,
+    userId: user.id,
   })
 
   return apiSuccess(connection, 201)

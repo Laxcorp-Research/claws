@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
+import { logAdminAction } from '@/lib/security/audit-log'
 import { Resend } from 'resend'
 
 function getResend() {
@@ -9,11 +10,12 @@ function getResend() {
 }
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let admin
   try {
-    await requireAdmin()
+    admin = await requireAdmin()
   } catch {
     return apiError('FORBIDDEN', 'Admin access required', 403)
   }
@@ -115,6 +117,8 @@ export async function POST(
     })
 
     Promise.allSettled(emailPromises)
+
+    logAdminAction({ action: 'version.force-update', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'version', details: { affectedCount: affectedDeployments.length, targetVersion: targetVersion.version }, ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
 
     return apiSuccess({
       message: `Force update initiated for ${affectedDeployments.length} deployment(s)`,

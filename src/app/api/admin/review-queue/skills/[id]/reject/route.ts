@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
+import { logAdminAction } from '@/lib/security/audit-log'
 import { Resend } from 'resend'
 
 function getResend() {
@@ -12,8 +13,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let admin
   try {
-    await requireAdmin()
+    admin = await requireAdmin()
   } catch {
     return apiError('FORBIDDEN', 'Admin access required', 403)
   }
@@ -86,6 +88,8 @@ export async function POST(
         console.error('Failed to send rejection email:', emailError)
       }
     }
+
+    logAdminAction({ action: 'skill.reject', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'skill', details: { reason: reason.trim() }, ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
 
     return apiSuccess(updated)
   } catch (error) {

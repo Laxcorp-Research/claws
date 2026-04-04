@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import DodoPayments from "dodopayments"
 import { prisma } from "@/lib/db"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
+import { log } from "@/lib/logger"
 
 const webhookClient = new DodoPayments({
   bearerToken: process.env.DODO_PAYMENTS_API_KEY || "placeholder",
@@ -54,8 +55,15 @@ export async function POST(req: NextRequest) {
       default:
         console.log(`[Webhook] Unhandled event: ${eventType}`)
     }
+
+    log.paymentEvent({ event: "webhook_processed", status: "success" })
   } catch (error) {
     console.error("[Webhook] Top-level error:", error)
+    log.paymentEvent({
+      event: "webhook_error",
+      status: "error",
+      error: error instanceof Error ? error.message : "Unknown",
+    })
   }
 
   return NextResponse.json({ received: true }, { status: 200 })

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
+import { log } from "@/lib/logger"
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       where: { id: workspaceId },
       data: { status: "RUNNING" },
     })
+    log.deployEvent({ event: "completed", workspaceId, userId: user.id })
   }
 
   return apiSuccess({ status: finalStatus })

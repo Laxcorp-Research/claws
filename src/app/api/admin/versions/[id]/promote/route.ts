@@ -2,13 +2,15 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
+import { logAdminAction } from '@/lib/security/audit-log'
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let admin
   try {
-    await requireAdmin()
+    admin = await requireAdmin()
   } catch {
     return apiError('FORBIDDEN', 'Admin access required', 403)
   }
@@ -34,6 +36,9 @@ export async function POST(
     ])
 
     const updated = await prisma.openClawVersion.findUnique({ where: { id } })
+
+    logAdminAction({ action: 'version.promote', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'version', ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
+
     return apiSuccess(updated)
   } catch (error) {
     console.error('Failed to promote version:', error)

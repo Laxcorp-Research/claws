@@ -31,7 +31,8 @@ function isProtectedPath(pathname: string): boolean {
 function isExcludedFromCors(pathname: string): boolean {
   return (
     pathname.startsWith("/api/auth/") ||
-    pathname.startsWith("/api/dodo-payments/webhook")
+    pathname.startsWith("/api/dodo-payments/webhook") ||
+    pathname.startsWith("/api/axiom")
   );
 }
 
@@ -54,6 +55,25 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
+const isDev = process.env.NODE_ENV === "development";
+
+const cspDirectives = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel-scripts.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.googleusercontent.com https://*.githubusercontent.com",
+  "font-src 'self' data:",
+  `connect-src 'self' https://*.sentry.io https://*.axiom.co https://vercel.live https://*.vercel-insights.com https://api.anthropic.com https://checkout.dodopayments.com${isDev ? " http://localhost:* ws://localhost:*" : ""}`,
+  "frame-src https://checkout.dodopayments.com",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  "upgrade-insecure-requests",
+];
+
+const cspHeader = cspDirectives.join("; ");
+
 function addSecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -63,6 +83,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
     "Strict-Transport-Security",
     "max-age=31536000; includeSubDomains"
   );
+  response.headers.set("Content-Security-Policy-Report-Only", cspHeader);
   return response;
 }
 
@@ -103,8 +124,8 @@ export async function middleware(request: NextRequest) {
       });
     }
 
-    // Rate limit authenticated API routes (skip webhooks)
-    if (!isWebhook(pathname)) {
+    // Rate limit authenticated API routes (skip webhooks and axiom proxy)
+    if (!isWebhook(pathname) && !pathname.startsWith("/api/axiom")) {
       try {
         const token = await getToken({ req: request });
         const identifier = token?.sub || getClientIp(request);

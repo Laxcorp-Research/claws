@@ -6,6 +6,8 @@ import { Prisma, TrustTier } from "@/generated/prisma/client"
 import { scanSkillContent } from "@/lib/marketplace/skill-scan"
 import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
+import { sanitizeText, sanitizeMarkdown } from "@/lib/security/sanitize"
+import { log } from "@/lib/logger"
 
 export const maxDuration = 30
 
@@ -201,12 +203,12 @@ export async function POST(request: NextRequest) {
     const skill = await prisma.marketplaceSkill.create({
       data: {
         slug,
-        name: name.trim(),
+        name: sanitizeText(name.trim()),
         emoji: emoji?.trim() || null,
-        description: description.trim(),
+        description: sanitizeText(description.trim()),
         category,
         tags: tags?.map((t) => t.trim()) ?? [],
-        skillMd: skillMd.trim(),
+        skillMd: sanitizeMarkdown(skillMd.trim()),
         requiredBins: requiredBins?.map((b) => b.trim()) ?? [],
         requiredEnvVars: requiredEnvVars?.map((v) => v.trim()) ?? [],
         creatorId: creatorProfile.id,
@@ -231,6 +233,8 @@ export async function POST(request: NextRequest) {
 
     // TODO: Queue Layer 2 sandbox test (requires Tier 3 container infra)
     console.log(`[TODO] Queue Layer 2 sandbox test for skill: ${skill.slug} (${skill.id})`)
+
+    log.marketplaceEvent({ event: "skill_published", itemId: skill.id, itemType: "skill", userId: user.id })
 
     return apiSuccess({
       skillId: skill.id,
