@@ -105,6 +105,8 @@ function rateLimitResponse(
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  /** CI E2E uses fake Upstash URLs; avoid calling Ratelimit (can hang or slow on runners). */
+  const skipRateLimitForE2e = process.env.E2E_TEST_MODE === "true";
 
   // --- CORS for API routes (except auth and webhooks) ---
   if (pathname.startsWith("/api/") && !isExcludedFromCors(pathname)) {
@@ -125,7 +127,11 @@ export async function middleware(request: NextRequest) {
     }
 
     // Rate limit authenticated API routes (skip webhooks and axiom proxy)
-    if (!isWebhook(pathname) && !pathname.startsWith("/api/axiom")) {
+    if (
+      !skipRateLimitForE2e &&
+      !isWebhook(pathname) &&
+      !pathname.startsWith("/api/axiom")
+    ) {
       try {
         const token = await getToken({ req: request });
         const identifier = token?.sub || getClientIp(request);
@@ -160,6 +166,7 @@ export async function middleware(request: NextRequest) {
 
   // --- Auth route rate limiting (POST only - sign-in attempts) ---
   if (
+    !skipRateLimitForE2e &&
     pathname.startsWith("/api/auth") &&
     request.method === "POST" &&
     !isWebhook(pathname)
