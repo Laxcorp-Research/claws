@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { createClawCheckout, createPlatformSubscription, createCommunityCheckout } from "@/lib/dodo-payments"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
+import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 
 export async function POST(req: NextRequest) {
   const sessionUser = await getSessionUser()
@@ -167,18 +168,13 @@ async function handleCommunityPurchase(
     })
 
     const processingFee = Math.round(template.price * 0.035 * 100) / 100
-    await prisma.marketplaceSale.create({
-      data: {
-        templateId: template.id,
-        buyerId: user.id,
-        creatorId: template.creatorId,
-        amount: template.price,
-        processingFee,
-        creatorPayout: Math.round((template.price - processingFee) * 100) / 100,
-        payoutStatus: "PENDING",
-        payoutHeldUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        dodoPaymentId: `mock_sale_${Date.now()}`,
-      },
+    await createMarketplaceSale({
+      templateId: template.id,
+      buyerId: user.id,
+      creatorId: template.creatorId,
+      amount: template.price,
+      processingFee,
+      dodoPaymentId: `mock_sale_${Date.now()}`,
     })
 
     return apiSuccess({ mockMode: true, redirectUrl: `/setup/${workspaceId}/step/1` })

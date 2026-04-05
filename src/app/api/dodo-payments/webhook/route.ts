@@ -3,6 +3,7 @@ import DodoPayments from "dodopayments"
 import { prisma } from "@/lib/db"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { log } from "@/lib/logger"
+import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 
 const webhookClient = new DodoPayments({
   bearerToken: process.env.DODO_PAYMENTS_API_KEY || "placeholder",
@@ -101,18 +102,13 @@ async function handlePaymentSucceeded(data: Record<string, unknown> | undefined,
 
     if (metadata.type === "community_purchase" && metadata.creatorId && template?.price && template.creatorId) {
       const processingFee = Math.round(template.price * 0.035 * 100) / 100
-      await prisma.marketplaceSale.create({
-        data: {
-          templateId: metadata.templateId,
-          buyerId: metadata.userId,
-          creatorId: template.creatorId,
-          amount: template.price,
-          processingFee,
-          creatorPayout: Math.round((template.price - processingFee) * 100) / 100,
-          payoutStatus: "PENDING",
-          payoutHeldUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          dodoPaymentId: paymentId,
-        },
+      await createMarketplaceSale({
+        templateId: metadata.templateId,
+        buyerId: metadata.userId,
+        creatorId: template.creatorId,
+        amount: template.price,
+        processingFee,
+        dodoPaymentId: paymentId,
       })
     }
 

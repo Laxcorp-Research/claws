@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/__tests__/**/*.test.ts'],
     exclude: ['node_modules', '.next', 'e2e/**'],
     setupFiles: ['./src/test/setup.ts'],
     coverage: {

@@ -8,13 +8,15 @@ type AdminAction =
   | "report.resolve"
   | "version.promote"
   | "version.force-update"
+  | "payout.release"
+  | "payout.process"
 
 interface AuditLogEntry {
   action: AdminAction
   adminId: string
   adminEmail: string
   targetId: string
-  targetType: "template" | "skill" | "report" | "version"
+  targetType: "template" | "skill" | "report" | "version" | "payout"
   details?: Record<string, unknown>
   ip?: string
 }

@@ -9,12 +9,8 @@ import { validateSkillDependencies } from "@/lib/marketplace/skill-dependency"
 import { sanitizeText } from "@/lib/security/sanitize"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 import { log } from "@/lib/logger"
-
-interface SnapshotAgent {
-  name: string
-  role: string
-  color: string
-}
+import { searchTemplates } from "@/lib/marketplace/search"
+import { formatMarketplaceTemplateRow } from "@/lib/marketplace/format-marketplace-template"
 
 export const maxDuration = 30
 
@@ -24,7 +20,9 @@ export async function GET(request: NextRequest) {
 
     const category = searchParams.get("category") || undefined
     const trustTier = searchParams.get("trustTier") || undefined
-    const isFree = searchParams.get("isFree")
+    const isFreeParam = searchParams.get("isFree")
+    const isFree =
+      isFreeParam === "true" ? true : isFreeParam === "false" ? false : undefined
     const search = searchParams.get("search") || undefined
     const sort = searchParams.get("sort") || "popular"
     const cursor = searchParams.get("cursor") || undefined
@@ -54,28 +52,18 @@ export async function GET(request: NextRequest) {
       where.trustTier = "OFFICIAL"
     }
 
-    if (isFree === "true") {
+    if (isFree === true) {
       where.isFree = true
-    } else if (isFree === "false") {
+    } else if (isFree === false) {
       where.isFree = false
       where.price = { gt: 0 }
-    }
-
-    if (search && search.trim().length > 0) {
-      const q = search.trim()
-      where.OR = [
-        { name: { contains: q, mode: "insensitive" } },
-        { description: { contains: q, mode: "insensitive" } },
-        { tagline: { contains: q, mode: "insensitive" } },
-        { tags: { has: q.toLowerCase() } },
-      ]
     }
 
     if (section === "new") {
       where.trustTier = { not: "OFFICIAL" }
     }
 
-    if (section === "trending") {
+    if (section === "trending" && !(search && search.trim().length > 0)) {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
@@ -104,11 +92,30 @@ export async function GET(request: NextRequest) {
         .slice(0, limit)
 
       const items = sorted.map(({ _count, ...t }) => ({
-        ...formatTemplate(t),
+        ...formatMarketplaceTemplateRow(t),
         recentInstalls: _count.installs,
       }))
 
       return apiSuccess({ items, nextCursor: null, totalCount: items.length })
+    }
+
+    if (search && search.trim().length > 0) {
+      const searchSection = section === "trending" ? undefined : section
+      const result = await searchTemplates({
+        search: search.trim(),
+        category,
+        trustTier,
+        section: searchSection,
+        isFree,
+        sort,
+        cursor,
+        limit,
+      })
+      return apiSuccess({
+        items: result.items,
+        nextCursor: result.nextCursor,
+        totalCount: result.totalCount,
+      })
     }
 
     const orderBy: Prisma.ClawTemplateOrderByWithRelationInput = (() => {
@@ -137,7 +144,7 @@ export async function GET(request: NextRequest) {
     })
 
     const hasMore = templates.length > limit
-    const items = templates.slice(0, limit).map((t) => formatTemplate(t))
+    const items = templates.slice(0, limit).map((t) => formatMarketplaceTemplateRow(t))
     const nextCursor = hasMore && templates.length > limit
       ? templates[limit - 1].id
       : null
@@ -150,56 +157,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Marketplace templates error:", error)
     return apiError("MARKETPLACE_ERROR", "Failed to fetch templates", 500)
-  }
-}
-
-function formatTemplate(t: {
-  id: string
-  name: string
-  slug: string
-  tagline: string
-  description: string
-  category: string
-  price: number
-  isFree: boolean
-  trustTier: string
-  installCount: number
-  avgRating: number | null
-  estimatedMonthlyCost: string | null
-  workspaceSnapshot: string
-  creator: { id: string; displayName: string; avatarUrl: string | null } | null
-}) {
-  let agents: SnapshotAgent[] = []
-  let flowDescription = ""
-  let legalDisclaimer: string | null = null
-  try {
-    const snap = JSON.parse(t.workspaceSnapshot)
-    agents = (snap.agents ?? []).map((a: SnapshotAgent) => ({
-      name: a.name,
-      role: a.role,
-      color: a.color,
-    }))
-    flowDescription = snap.flowDescription ?? ""
-    legalDisclaimer = snap.legalDisclaimer ?? null
-  } catch { /* malformed snapshot */ }
-
-  return {
-    id: t.id,
-    name: t.name,
-    slug: t.slug,
-    tagline: t.tagline,
-    description: t.description,
-    category: t.category,
-    price: t.price,
-    isFree: t.isFree,
-    trustTier: t.trustTier,
-    installCount: t.installCount,
-    avgRating: t.avgRating,
-    estimatedMonthlyCost: t.estimatedMonthlyCost,
-    creator: t.creator,
-    agents,
-    flowDescription,
-    legalDisclaimer,
   }
 }
 

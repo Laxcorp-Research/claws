@@ -8,6 +8,7 @@ import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 import { sanitizeText, sanitizeMarkdown } from "@/lib/security/sanitize"
 import { log } from "@/lib/logger"
+import { searchSkills } from "@/lib/marketplace/search"
 
 export const maxDuration = 30
 
@@ -17,7 +18,9 @@ export async function GET(request: NextRequest) {
 
     const category = searchParams.get("category") || undefined
     const trustTier = searchParams.get("trustTier") || undefined
-    const isFree = searchParams.get("isFree")
+    const isFreeParam = searchParams.get("isFree")
+    const isFree =
+      isFreeParam === "true" ? true : isFreeParam === "false" ? false : undefined
     const search = searchParams.get("search") || undefined
     const sort = searchParams.get("sort") || "popular"
     const cursor = searchParams.get("cursor") || undefined
@@ -47,19 +50,28 @@ export async function GET(request: NextRequest) {
       where.trustTier = { in: tiers as TrustTier[] }
     }
 
-    if (isFree === "true") {
+    if (isFree === true) {
       where.isFree = true
-    } else if (isFree === "false") {
+    } else if (isFree === false) {
       where.isFree = false
     }
 
     if (search && search.trim().length > 0) {
-      const q = search.trim()
-      where.OR = [
-        { name: { contains: q, mode: "insensitive" } },
-        { description: { contains: q, mode: "insensitive" } },
-        { tags: { has: q.toLowerCase() } },
-      ]
+      const result = await searchSkills({
+        search: search.trim(),
+        category,
+        trustTier,
+        section,
+        isFree,
+        sort,
+        cursor,
+        limit,
+      })
+      return apiSuccess({
+        items: result.items,
+        nextCursor: result.nextCursor,
+        totalCount: result.totalCount,
+      })
     }
 
     const orderBy: Prisma.MarketplaceSkillOrderByWithRelationInput = (() => {
@@ -231,8 +243,11 @@ export async function POST(request: NextRequest) {
       data: { totalSkills: { increment: 1 } },
     })
 
-    // TODO: Queue Layer 2 sandbox test (requires Tier 3 container infra)
-    console.log(`[TODO] Queue Layer 2 sandbox test for skill: ${skill.slug} (${skill.id})`)
+    log.info("Skill published; Layer 2 sandbox queue not configured", {
+      category: "marketplace",
+      skillId: skill.id,
+      skillSlug: skill.slug,
+    })
 
     log.marketplaceEvent({ event: "skill_published", itemId: skill.id, itemType: "skill", userId: user.id })
 

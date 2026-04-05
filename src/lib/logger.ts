@@ -61,7 +61,14 @@ export const log = {
   },
 
   marketplaceEvent: (data: {
-    event: "template_published" | "skill_published" | "template_purchased" | "skill_installed" | "review_submitted" | "report_filed"
+    event:
+      | "template_published"
+      | "skill_published"
+      | "template_purchased"
+      | "skill_purchased"
+      | "skill_installed"
+      | "review_submitted"
+      | "report_filed"
     itemId: string
     itemType: "template" | "skill"
     userId: string
