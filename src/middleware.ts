@@ -83,7 +83,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
     "Strict-Transport-Security",
     "max-age=31536000; includeSubDomains"
   );
-  response.headers.set("Content-Security-Policy-Report-Only", cspHeader);
+  response.headers.set("Content-Security-Policy", cspHeader);
   return response;
 }
 
