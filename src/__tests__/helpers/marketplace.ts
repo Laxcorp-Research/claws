@@ -13,7 +13,7 @@ export async function createTestUser(overrides?: Partial<Prisma.UserCreateInput>
 
 export async function createTestCreator(
   userId: string,
-  overrides?: Partial<Prisma.CreatorProfileCreateInput>,
+  overrides?: Partial<Omit<Prisma.CreatorProfileUncheckedCreateInput, "userId">>,
 ) {
   return prisma.creatorProfile.create({
     data: {
@@ -25,7 +25,7 @@ export async function createTestCreator(
   })
 }
 
-export async function createTestTemplate(overrides?: Partial<Prisma.ClawTemplateCreateInput>) {
+export async function createTestTemplate(overrides?: Partial<Prisma.ClawTemplateUncheckedCreateInput>) {
   return prisma.clawTemplate.create({
     data: {
       slug: `test-template-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -46,7 +46,7 @@ export async function createTestTemplate(overrides?: Partial<Prisma.ClawTemplate
   })
 }
 
-export async function createTestSkill(overrides?: Partial<Prisma.MarketplaceSkillCreateInput>) {
+export async function createTestSkill(overrides?: Partial<Prisma.MarketplaceSkillUncheckedCreateInput>) {
   return prisma.marketplaceSkill.create({
     data: {
       slug: `test-skill-${Date.now()}-${Math.random().toString(36).slice(2)}`,
