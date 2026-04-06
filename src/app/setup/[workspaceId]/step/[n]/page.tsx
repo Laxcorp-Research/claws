@@ -333,6 +333,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const router = useRouter()
   const [tools, setTools] = useState<ToolState[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [composioOAuthAvailable, setComposioOAuthAvailable] = useState(false)
   const [apiKeyModal, setApiKeyModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
@@ -361,6 +362,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
         const toolsRes = await fetch(`/api/tools/${workspaceId}`)
         const toolsData = await toolsRes.json()
+        if (toolsData.success) {
+          setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
+        }
         const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string }> = toolsData.success ? toolsData.data.connections : []
 
         const buildToolState = (names: string[], required: boolean): ToolState[] =>
@@ -440,6 +444,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     const res = await fetch(`/api/tools/${workspaceId}`)
     const data = await res.json()
     if (!data.success) return
+    setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
     const existing: Array<{ toolSlug: string; status: string; id: string }> = data.data.connections
     setTools((prev) =>
       prev.map((t) => {
@@ -462,26 +467,134 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch { return { success: false, error: "Network error" } }
   }, [apiKeyModal.tool, workspaceId, refreshTools])
 
-  const handleOAuthConnect = useCallback(async (tool: ToolState) => {
-    setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connecting" as const, errorMessage: undefined } : t)))
-    console.log(`[Placeholder] OAuth flow for ${tool.name} - would open Composio popup in production`)
-    setTimeout(async () => {
+  const handleOAuthConnect = useCallback(
+    async (tool: Pick<ToolState, "slug" | "name" | "connectionType"> & { category?: string }) => {
+      if (tool.connectionType !== "OAUTH_COMPOSIO") return
+
+      if (!composioOAuthAvailable) {
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === tool.slug
+              ? { ...t, status: "error" as const, errorMessage: "OAuth is not configured in this environment." }
+              : t
+          )
+        )
+        return
+      }
+
+      setTools((prev) =>
+        prev.map((t) =>
+          t.slug === tool.slug ? { ...t, status: "connecting" as const, errorMessage: undefined } : t
+        )
+      )
+
       try {
-        const res = await fetch(`/api/tools/${workspaceId}`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ toolSlug: tool.slug, displayName: tool.name, connectionType: "OAUTH_COMPOSIO", composioConnectionId: `demo-${tool.slug}` }),
+        const res = await fetch(`/api/tools/${workspaceId}/oauth/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toolSlug: tool.slug }),
         })
         const data = await res.json()
-        if (data.success) {
-          await refreshTools()
-        } else {
-          setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "OAuth authorization failed. Please try again or use an API key instead." } : t)))
+        if (!data.success) {
+          throw new Error(data.error?.message || "Failed to start OAuth")
         }
-      } catch {
-        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "OAuth authorization failed. Please try again or use an API key instead." } : t)))
+        const { redirectUrl, connectionId } = data.data as { redirectUrl: string; connectionId: string }
+
+        const w = 600
+        const h = 700
+        const left = window.screenX + (window.outerWidth - w) / 2
+        const top = window.screenY + (window.outerHeight - h) / 2
+        const popup = window.open(
+          redirectUrl,
+          "composio-oauth",
+          `width=${w},height=${h},left=${left},top=${top},scrollbars=yes,resizable=yes`
+        )
+        if (!popup) {
+          throw new Error("Popup blocked. Allow popups for this site and try again.")
+        }
+
+        const onMessage = (event: MessageEvent) => {
+          if (event.origin !== window.location.origin) return
+          if (event.data?.type === "composio-oauth-complete") {
+            // Polling will pick up ACTIVE; message confirms popup flow finished.
+          }
+        }
+        window.addEventListener("message", onMessage)
+
+        let pollInterval = 0
+        let timeoutId = 0
+        const cleanup = () => {
+          window.clearInterval(pollInterval)
+          window.clearTimeout(timeoutId)
+          window.removeEventListener("message", onMessage)
+          try {
+            if (popup && !popup.closed) popup.close()
+          } catch {
+            /* ignore */
+          }
+        }
+
+        pollInterval = window.setInterval(() => {
+          void (async () => {
+          try {
+            const statusRes = await fetch(
+              `/api/tools/${workspaceId}/oauth/status?connectionId=${encodeURIComponent(connectionId)}&toolSlug=${encodeURIComponent(tool.slug)}`
+            )
+            const statusData = await statusRes.json()
+            if (!statusData.success) return
+            const st = statusData.data?.status as string
+            if (st === "ACTIVE") {
+              cleanup()
+              await refreshTools()
+              setTools((prev) =>
+                prev.map((t) =>
+                  t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined } : t
+                )
+              )
+            }
+            if (st === "FAILED") {
+              cleanup()
+              setTools((prev) =>
+                prev.map((t) =>
+                  t.slug === tool.slug
+                    ? {
+                        ...t,
+                        status: "error" as const,
+                        errorMessage: "OAuth failed or was cancelled.",
+                      }
+                    : t
+                )
+              )
+            }
+          } catch {
+            /* ignore transient polling errors */
+          }
+          })()
+        }, 2000)
+
+        timeoutId = window.setTimeout(() => {
+          cleanup()
+          setTools((prev) =>
+            prev.map((t) => {
+              if (t.slug !== tool.slug) return t
+              if (t.status === "connecting") {
+                return { ...t, status: "error" as const, errorMessage: "Connection timed out. Try again." }
+              }
+              return t
+            })
+          )
+        }, 120_000)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "OAuth failed"
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: msg } : t
+          )
+        )
       }
-    }, 2000)
-  }, [workspaceId, refreshTools])
+    },
+    [workspaceId, refreshTools, composioOAuthAvailable]
+  )
 
   const handleSwapSelect = useCallback(async (newTool: ToolDefinition) => {
     if (!swapModal.tool) return
@@ -592,6 +705,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
               onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
@@ -611,6 +725,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               swappable
               onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
@@ -658,7 +773,22 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         alternatives={swapModal.tool ? getToolsByCategory(swapModal.tool.category).filter((t) => t.slug !== swapModal.tool!.slug) : []}
         onSelect={handleSwapSelect}
       />
-      <BrowseToolsModal open={browseModal} onClose={() => setBrowseModal(false)} connectedSlugs={connectedSlugs} onConnect={handleBrowseConnect} workspaceId={workspaceId} />
+      <BrowseToolsModal
+        open={browseModal}
+        onClose={() => setBrowseModal(false)}
+        connectedSlugs={connectedSlugs}
+        onConnect={handleBrowseConnect}
+        composioOAuthAvailable={composioOAuthAvailable}
+        onOAuthConnect={(def) =>
+          handleOAuthConnect({
+            slug: def.slug,
+            name: def.name,
+            connectionType: "OAUTH_COMPOSIO",
+            category: def.category,
+          })
+        }
+        workspaceId={workspaceId}
+      />
       <CustomApiModal open={customApiModal} onClose={() => setCustomApiModal(false)} onSave={handleCustomSave} />
     </>
   )

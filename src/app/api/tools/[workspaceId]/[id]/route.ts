@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
+import { getComposio } from "@/lib/composio"
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ workspaceId: string; id: string }> }) {
   const user = await getSessionUser()
@@ -40,6 +41,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const conn = await prisma.toolConnection.findFirst({ where: { id, workspaceId } })
   if (!conn) return ERRORS.NOT_FOUND("Tool connection")
+
+  if (conn.composioConnectionId) {
+    const composio = getComposio()
+    if (composio) {
+      try {
+        await composio.connectedAccounts.delete(conn.composioConnectionId)
+      } catch {
+        // still remove local row
+      }
+    }
+  }
 
   await prisma.toolConnection.delete({ where: { id } })
   return apiSuccess({ deleted: true })

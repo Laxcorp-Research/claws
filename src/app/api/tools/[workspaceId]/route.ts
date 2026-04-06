@@ -26,7 +26,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     orderBy: { createdAt: "asc" },
   })
 
-  return apiSuccess({ connections, customConnections })
+  return apiSuccess({
+    connections,
+    customConnections,
+    composioOAuthAvailable: Boolean(process.env.COMPOSIO_API_KEY?.trim()),
+  })
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {

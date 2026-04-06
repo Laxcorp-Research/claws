@@ -11,6 +11,8 @@ interface ToolRowProps {
   description?: string
   connectionStatus: ToolRowStatus
   connectionType: "API_KEY" | "OAUTH_COMPOSIO"
+  /** When false, OAuth tools show a disabled hint instead of starting a broken flow */
+  composioOAuthAvailable?: boolean
   swappable?: boolean
   errorMessage?: string
   onConnect?: () => void
@@ -21,7 +23,7 @@ interface ToolRowProps {
   className?: string
 }
 
-export function ToolRow({ name, description, connectionStatus, connectionType, swappable, errorMessage, onConnect, onSwap, onTest, onDisconnect, onReconnect, className }: ToolRowProps) {
+export function ToolRow({ name, description, connectionStatus, connectionType, composioOAuthAvailable = false, swappable, errorMessage, onConnect, onSwap, onTest, onDisconnect, onReconnect, className }: ToolRowProps) {
   const isError = connectionStatus === "error"
   const isTesting = connectionStatus === "testing"
 
@@ -56,10 +58,15 @@ export function ToolRow({ name, description, connectionStatus, connectionType, s
           {connectionStatus === "disconnected" && (
             <>
               {connectionType === "API_KEY" && onConnect && <button onClick={onConnect} className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity">Enter API key</button>}
-              {connectionType === "OAUTH_COMPOSIO" && (
+              {connectionType === "OAUTH_COMPOSIO" && !composioOAuthAvailable && (
                 <span className="text-[10px] text-[var(--tx3)] px-[8px] py-[3px] border border-[var(--bd)] rounded-[4px]">
-                  OAuth - Coming soon
+                  OAuth not configured
                 </span>
+              )}
+              {connectionType === "OAUTH_COMPOSIO" && composioOAuthAvailable && onConnect && (
+                <button type="button" onClick={onConnect} className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity">
+                  Connect with OAuth
+                </button>
               )}
               {swappable && onSwap && <button onClick={onSwap} className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)] transition-colors">Swap</button>}
             </>

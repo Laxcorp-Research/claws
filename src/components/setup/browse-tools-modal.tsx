@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,32 +13,82 @@ interface BrowseToolsModalProps {
   onClose: () => void
   connectedSlugs: string[]
   onConnect: (tool: ToolDefinition) => void
+  /** Real Composio OAuth (popup + poll); must match server COMPOSIO_API_KEY */
+  composioOAuthAvailable: boolean
+  onOAuthConnect: (tool: ToolDefinition) => void
   workspaceId?: string
 }
 
-export function BrowseToolsModal({ open, onClose, connectedSlugs, onConnect, workspaceId }: BrowseToolsModalProps) {
+export function BrowseToolsModal({
+  open,
+  onClose,
+  connectedSlugs,
+  onConnect,
+  composioOAuthAvailable,
+  onOAuthConnect,
+  workspaceId,
+}: BrowseToolsModalProps) {
   const [search, setSearch] = useState("")
   const [activeCategory, setActiveCategory] = useState("All")
   const [apiKeyTool, setApiKeyTool] = useState<ToolDefinition | null>(null)
   const [localConnected, setLocalConnected] = useState<Set<string>>(new Set())
+  const [remoteTools, setRemoteTools] = useState<ToolDefinition[] | null>(null)
+  const [remoteCategories, setRemoteCategories] = useState<string[] | null>(null)
+  const [browseLoading, setBrowseLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open || !workspaceId) return
+    let cancelled = false
+    setBrowseLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/tools/${workspaceId}/browse`)
+        const data = await res.json()
+        if (cancelled || !data.success) return
+        setRemoteTools(data.data.tools as ToolDefinition[])
+        setRemoteCategories(data.data.categories as string[])
+      } catch {
+        if (!cancelled) {
+          setRemoteTools(ALL_TOOLS)
+          setRemoteCategories([...TOOL_CATEGORIES])
+        }
+      } finally {
+        if (!cancelled) setBrowseLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, workspaceId])
+
+  const tools = remoteTools ?? ALL_TOOLS
+  const categoryList = remoteCategories ?? [...TOOL_CATEGORIES]
 
   const filtered = useMemo(() => {
-    return ALL_TOOLS.filter((tool) => {
-      const matchesSearch = !search || tool.name.toLowerCase().includes(search.toLowerCase())
+    return tools.filter((tool) => {
+      const matchesSearch =
+        !search ||
+        tool.name.toLowerCase().includes(search.toLowerCase()) ||
+        tool.slug.toLowerCase().includes(search.toLowerCase())
       const matchesCategory = activeCategory === "All" || tool.category === activeCategory
       return matchesSearch && matchesCategory
     })
-  }, [search, activeCategory])
+  }, [tools, search, activeCategory])
 
   const allConnected = useMemo(() => new Set([...connectedSlugs, ...localConnected]), [connectedSlugs, localConnected])
 
   function handleToolClick(tool: ToolDefinition) {
     if (tool.connectionType === "API_KEY") {
       setApiKeyTool(tool)
-    } else {
-      onConnect(tool)
+    } else if (tool.connectionType === "OAUTH_COMPOSIO" && composioOAuthAvailable) {
+      onOAuthConnect(tool)
     }
   }
+
+  const categoryPills = useMemo(() => {
+    const withAll = categoryList.includes("All") ? categoryList : ["All", ...categoryList]
+    return withAll.slice(0, 24)
+  }, [categoryList])
 
   return (
     <>
@@ -46,49 +96,97 @@ export function BrowseToolsModal({ open, onClose, connectedSlugs, onConnect, wor
         open={open}
         onClose={onClose}
         title="Browse tools"
-        description={`Browse ${ALL_TOOLS.length} available tools. More integrations coming soon.`}
+        description={
+          browseLoading
+            ? "Loading catalog…"
+            : `Browse ${tools.length} tools. Curated list first; Composio catalog fills in when configured.`
+        }
         size="lg"
         footer={
           <div className="flex items-center justify-between w-full">
             <span className="text-[11px] text-[var(--tx3)]">{filtered.length} tools</span>
-            <Button variant="outline" onClick={onClose}>Close</Button>
+            <Button variant="outline" onClick={onClose}>
+              Close
+            </Button>
           </div>
         }
       >
         <div>
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tools..." className="mb-2.5" />
-          <div className="flex gap-1.5 flex-wrap mb-2.5">
-            {TOOL_CATEGORIES.filter((_, i) => i < 10).map((cat) => (
-              <button key={cat} onClick={() => setActiveCategory(cat)} className={`text-[11px] font-medium px-[10px] py-[3px] rounded-[8px] border transition-colors cursor-pointer ${activeCategory === cat ? "bg-[var(--tx)] text-[var(--bg)] border-[var(--tx)]" : "bg-transparent text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]"}`}>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tools..."
+            className="mb-2.5"
+            disabled={browseLoading}
+          />
+          <div className="flex gap-1.5 flex-wrap mb-2.5 max-h-[72px] overflow-y-auto">
+            {categoryPills.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategory(cat)}
+                className={`text-[11px] font-medium px-[10px] py-[3px] rounded-[8px] border transition-colors cursor-pointer ${
+                  activeCategory === cat
+                    ? "bg-[var(--tx)] text-[var(--bg)] border-[var(--tx)]"
+                    : "bg-transparent text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]"
+                }`}
+              >
                 {cat}
               </button>
             ))}
           </div>
           <div className="border border-[var(--bd)] rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
-            {filtered.length === 0 && <div className="px-3.5 py-6 text-center text-xs text-[var(--tx3)]">No tools found.</div>}
-            {filtered.map((tool) => {
-              const isConnected = allConnected.has(tool.slug)
-              return (
-                <div key={tool.slug} className="flex items-center justify-between px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0">
-                  <div className="flex items-center gap-2">
-                    <StatusDot status={isConnected ? "connected" : "disconnected"} />
-                    <div>
-                      <div className="text-xs font-semibold">{tool.name}</div>
-                      <div className="text-[10px] text-[var(--tx2)]">{tool.description || tool.category}</div>
+            {browseLoading && (
+              <div className="px-3.5 py-6 text-center text-xs text-[var(--tx3)]">Loading tools…</div>
+            )}
+            {!browseLoading && filtered.length === 0 && (
+              <div className="px-3.5 py-6 text-center text-xs text-[var(--tx3)]">No tools found.</div>
+            )}
+            {!browseLoading &&
+              filtered.map((tool) => {
+                const isConnected = allConnected.has(tool.slug)
+                return (
+                  <div
+                    key={tool.slug}
+                    className="flex items-center justify-between px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <StatusDot status={isConnected ? "connected" : "disconnected"} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold truncate">{tool.name}</div>
+                        <div className="text-[10px] text-[var(--tx2)] truncate">
+                          {tool.description || tool.category}
+                        </div>
+                      </div>
                     </div>
+                    {isConnected ? (
+                      <span className="text-[10px] text-[var(--ok)] font-medium shrink-0">Connected</span>
+                    ) : tool.connectionType === "OAUTH_COMPOSIO" ? (
+                      composioOAuthAvailable ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToolClick(tool)}
+                          className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none shrink-0"
+                        >
+                          Connect OAuth
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-[var(--tx3)] px-[8px] py-[3px] border border-[var(--bd)] rounded-[4px] shrink-0">
+                          OAuth not configured
+                        </span>
+                      )
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleToolClick(tool)}
+                        className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none shrink-0"
+                      >
+                        Connect
+                      </button>
+                    )}
                   </div>
-                  {isConnected ? (
-                    <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>
-                  ) : tool.connectionType === "OAUTH_COMPOSIO" ? (
-                    <span className="text-[10px] text-[var(--tx3)] px-[8px] py-[3px] border border-[var(--bd)] rounded-[4px]">
-                      OAuth - Coming soon
-                    </span>
-                  ) : (
-                    <button onClick={() => handleToolClick(tool)} className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none">Connect</button>
-                  )}
-                </div>
-              )
-            })}
+                )
+              })}
           </div>
         </div>
       </Modal>
@@ -104,18 +202,26 @@ export function BrowseToolsModal({ open, onClose, connectedSlugs, onConnect, wor
             if (!workspaceId) return { success: false, error: "No workspace" }
             try {
               const res = await fetch(`/api/tools/${workspaceId}`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ toolSlug: apiKeyTool.slug, displayName: apiKeyTool.name, connectionType: "API_KEY", apiKey }),
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  toolSlug: apiKeyTool.slug,
+                  displayName: apiKeyTool.name,
+                  connectionType: "API_KEY",
+                  apiKey,
+                }),
               })
               const data = await res.json()
               if (data.success) {
-                setLocalConnected(prev => new Set([...prev, apiKeyTool.slug]))
+                setLocalConnected((prev) => new Set([...prev, apiKeyTool.slug]))
                 onConnect(apiKeyTool)
                 setApiKeyTool(null)
                 return { success: true }
               }
               return { success: false, error: data.error?.message || "Failed to connect" }
-            } catch { return { success: false, error: "Network error" } }
+            } catch {
+              return { success: false, error: "Network error" }
+            }
           }}
         />
       )}
