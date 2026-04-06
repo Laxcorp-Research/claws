@@ -77,6 +77,10 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: [unit-tests]
+    # Shared Neon test DB: parallel migrate deploy hits advisory-lock timeouts (P1002).
+    concurrency:
+      group: ci-e2e-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -92,7 +96,16 @@ jobs:
         run: npx prisma generate
 
       - name: Apply database migrations
-        run: npx prisma migrate deploy
+        run: |
+          set -e
+          for attempt in 1 2 3 4 5; do
+            if npx prisma migrate deploy; then
+              exit 0
+            fi
+            echo "migrate deploy failed (attempt $attempt), retrying in ${attempt}0s..."
+            sleep "${attempt}0"
+          done
+          exit 1
         env:
           DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.TEST_DATABASE_URL }}
