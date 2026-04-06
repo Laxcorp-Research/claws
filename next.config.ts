@@ -2,7 +2,15 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["dockerode", "ssh2", "tar-stream", "archiver", "docker-modem"],
+  serverExternalPackages: [
+    "dockerode",
+    "ssh2",
+    "tar-stream",
+    "archiver",
+    "docker-modem",
+    "@composio/core",
+    "@composio/client",
+  ],
 };
 
 export default withSentryConfig(nextConfig, {
