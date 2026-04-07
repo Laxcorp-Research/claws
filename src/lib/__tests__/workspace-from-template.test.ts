@@ -10,7 +10,7 @@ const MOCK_TEMPLATE = {
   slug: 'test-claw',
   name: 'Test Claw',
   description: 'A test template',
-  price: 149,
+  price: 49,
   workspaceSnapshot: JSON.stringify({
     agents: [
       { agentSlug: 'orch', name: 'Orchestrator', role: 'ORCHESTRATOR', model: 'anthropic/claude-haiku-4-5-20251001', soulMd: 'soul', agentsMd: 'agents', color: '#5BA1F5', positionX: 0, positionY: 0 },

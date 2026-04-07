@@ -35,7 +35,7 @@ export async function createTestTemplate(overrides?: Partial<Prisma.ClawTemplate
       category: "LIFESTYLE",
       tags: ["test"],
       agentCount: 3,
-      price: 149,
+      price: 49,
       isFree: false,
       trustTier: "OFFICIAL",
       isPublished: true,

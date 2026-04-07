@@ -82,26 +82,21 @@ describe('checkDeployEligibility', () => {
 });
 
 describe('getTemplateProductId', () => {
-  it('returns STANDARD product ID for $149', () => {
-    const id = getTemplateProductId(149);
-    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_149 || 'mock_template_149');
+  it('returns TEMPLATE_49 product ID for $49', () => {
+    const id = getTemplateProductId(49);
+    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_49 || 'mock_template_49');
   });
 
-  it('returns BUSINESS product ID for $199', () => {
-    const id = getTemplateProductId(199);
-    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_199 || 'mock_template_199');
-  });
-
-  it('returns PREMIUM product ID for $299', () => {
-    const id = getTemplateProductId(299);
-    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_299 || 'mock_template_299');
+  it('returns TEMPLATE_99 product ID for $99', () => {
+    const id = getTemplateProductId(99);
+    expect(id).toBe(process.env.DODO_PRODUCT_TEMPLATE_99 || 'mock_template_99');
   });
 
   it('throws for unknown price', () => {
     expect(() => getTemplateProductId(999)).toThrow('Unknown template price: 999');
   });
 
-  it('throws for zero price', () => {
+  it('throws for zero price (free templates bypass checkout)', () => {
     expect(() => getTemplateProductId(0)).toThrow('Unknown template price: 0');
   });
 });

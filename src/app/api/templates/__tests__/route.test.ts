@@ -14,7 +14,7 @@ const MOCK_TEMPLATE = {
   tagline: 'A tagline',
   description: 'Full description',
   category: 'CREATOR',
-  price: 149,
+  price: 49,
   isFree: false,
   creatorId: null,
   agentCount: 3,

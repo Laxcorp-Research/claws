@@ -1,31 +1,27 @@
 import Link from "next/link"
-import { Check, ArrowRight } from "lucide-react"
+import { Check, ArrowRight, Gift } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 
-const TIERS = [
+const FREE_TEMPLATES = [
+  "Developer Productivity OS",
+  "Student Accelerator",
+  "Job Hunter OS",
+  "Health & Fitness Commander",
+  "Twitter/X Growth Machine",
+]
+
+const PAID_TIERS = [
   {
-    label: "Standard",
-    price: "$149",
+    price: "$49",
     count: "8 templates",
-    subtitle: "Creator + Lifestyle",
-    badge: { bg: "#EDFFF3", text: "#0D6B32", border: "#B8FFCF" },
-    browseLink: "/store?category=CREATOR",
-  },
-  {
-    label: "Business",
-    price: "$199",
-    count: "11 templates",
-    subtitle: "Business Ops + Vertical",
+    subtitle: "Creator + Business",
     badge: { bg: "#EEF5FF", text: "#1A5BBF", border: "#A8CFFF" },
-    browseLink: "/store?category=BUSINESS_OPS",
   },
   {
-    label: "Premium",
-    price: "$299",
-    count: "1 template",
-    subtitle: "Quant Trader",
+    price: "$99",
+    count: "7 templates",
+    subtitle: "Vertical + Money-Making",
     badge: { bg: "#FFF8E7", text: "#8A6D00", border: "#FFE9A0" },
-    browseLink: "/store/quant-trader",
   },
 ] as const
 
@@ -41,7 +37,7 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { num: "1", label: "Template purchase", text: "$149, $199, or $299 one-time. Pick a pre-built Claw. Yours forever on the platform." },
+  { num: "1", label: "Template", text: "Free or $49\u2013$99 one-time. Pick a pre-built Claw. Yours forever on the platform. 5 templates are completely free." },
   { num: "2", label: "Platform fee", text: "$79/mo per running Claw. Everything included: hosting, channels, integrations, monitoring, updates." },
   { num: "3", label: "AI model costs", text: "You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30\u201390/mo." },
   { num: "4", label: "3-day free trial", text: "Your first deploy includes a free trial. No platform fee until day 4." },
@@ -81,11 +77,39 @@ export default function PricingPage() {
           Templates - one-time purchase, yours forever
         </p>
 
-        {/* Template tier cards */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          {TIERS.map((tier) => (
+        {/* Free templates highlight */}
+        <div className="border border-[var(--bd)] rounded-[12px] p-[14px] mb-2 text-left">
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className="text-[11px] font-semibold py-[2px] px-[8px] rounded-[4px] inline-flex items-center gap-1 border"
+              style={{ backgroundColor: "#EDFFF3", color: "#0D6B32", borderColor: "#B8FFCF" }}
+            >
+              <Gift className="w-3 h-3" />
+              Free
+            </span>
+            <span className="text-[13px] font-semibold text-[var(--tx)]">5 templates, free forever</span>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--tx2)]">
+            {FREE_TEMPLATES.map((name) => (
+              <span key={name} className="flex items-center gap-1.5">
+                <Check className="w-3 h-3 text-[var(--ok)] flex-shrink-0" />
+                {name}
+              </span>
+            ))}
+          </div>
+          <Link
+            href="/store?price=free"
+            className="text-[11px] text-[var(--ac)] mt-2.5 inline-block hover:underline"
+          >
+            Browse free templates →
+          </Link>
+        </div>
+
+        {/* Paid template tier cards */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {PAID_TIERS.map((tier) => (
             <div
-              key={tier.label}
+              key={tier.price}
               className="border border-[var(--bd)] rounded-[var(--r)] p-[14px_16px] text-center"
             >
               <span
@@ -96,13 +120,12 @@ export default function PricingPage() {
                   borderColor: tier.badge.border,
                 }}
               >
-                {tier.label}
+                {tier.subtitle}
               </span>
               <div className="text-[22px] font-bold text-[var(--tx)] mt-2">{tier.price}</div>
               <p className="text-[11px] text-[var(--tx3)] mt-[2px]">{tier.count}</p>
-              <p className="text-[11px] text-[var(--tx2)] mt-[4px]">{tier.subtitle}</p>
               <Link
-                href={tier.browseLink}
+                href="/store?price=paid"
                 className="text-[11px] text-[var(--ac)] mt-3 inline-block hover:underline"
               >
                 Browse templates →

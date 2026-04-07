@@ -39,7 +39,7 @@ const MOCK_TEMPLATE = {
   slug: 'quant-trader',
   name: 'Quant Trader',
   description: 'A trading bot',
-  price: 299,
+  price: 99,
   isFree: false,
   creatorId: null,
   workspaceSnapshot: JSON.stringify({
@@ -134,7 +134,7 @@ describe('POST /api/dodo-payments/webhook', () => {
         event_type: 'payment.succeeded',
         data: {
           payment_id: 'pay_install_test',
-          total_amount: 29900,
+          total_amount: 9900,
           currency: 'usd',
           customer: { customer_id: 'cust_456' },
           metadata: { type: 'claw_purchase', userId: 'user-install', templateId: 'tpl-1' },
@@ -216,7 +216,7 @@ describe('POST /api/dodo-payments/webhook', () => {
         event_type: 'payment.succeeded',
         data: {
           payment_id: 'pay_official_123',
-          total_amount: 29900,
+          total_amount: 9900,
           currency: 'usd',
           customer: { customer_id: 'cust_off' },
           metadata: { type: 'claw_purchase', userId: 'user-off', templateId: 'tpl-1' },

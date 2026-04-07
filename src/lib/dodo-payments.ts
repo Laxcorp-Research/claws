@@ -14,19 +14,17 @@ export function getDodoClient(): DodoPayments {
 }
 
 export const TEMPLATE_PRODUCTS = {
-  STANDARD: process.env.DODO_PRODUCT_TEMPLATE_149 || "mock_template_149",
-  BUSINESS: process.env.DODO_PRODUCT_TEMPLATE_199 || "mock_template_199",
-  PREMIUM: process.env.DODO_PRODUCT_TEMPLATE_299 || "mock_template_299",
+  TEMPLATE_49: process.env.DODO_PRODUCT_TEMPLATE_49 || "mock_template_49",
+  TEMPLATE_99: process.env.DODO_PRODUCT_TEMPLATE_99 || "mock_template_99",
 } as const
 
-export const CLAW_PLATFORM_PRODUCT = process.env.DODO_PRODUCT_CLAW_PLATFORM || "mock_claw_platform"
+export const CLAW_PLATFORM_PRODUCT = process.env.DODO_PRODUCT_PLATFORM || "mock_claw_platform"
 
 export function getTemplateProductId(price: number): string {
   switch (price) {
-    case 149: return TEMPLATE_PRODUCTS.STANDARD
-    case 199: return TEMPLATE_PRODUCTS.BUSINESS
-    case 299: return TEMPLATE_PRODUCTS.PREMIUM
-    default: throw new Error(`Unknown template price: ${price}`)
+    case 49: return TEMPLATE_PRODUCTS.TEMPLATE_49
+    case 99: return TEMPLATE_PRODUCTS.TEMPLATE_99
+    default: throw new Error(`Unknown template price: ${price}. Free templates should not reach this function.`)
   }
 }
 

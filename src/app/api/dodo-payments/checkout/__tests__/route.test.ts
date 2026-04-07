@@ -24,7 +24,7 @@ vi.mock('@/lib/workspace-from-template', () => ({
 import { POST } from '@/app/api/dodo-payments/checkout/route';
 
 const MOCK_USER = { id: 'user-1', email: 'test@test.com', name: 'Test', dodoCustomerId: null, workspaces: [] };
-const MOCK_TEMPLATE = { id: 'tpl-1', slug: 'test', price: 149, isFree: false, creatorId: null, dodoProductId: 'prod_1' };
+const MOCK_TEMPLATE = { id: 'tpl-1', slug: 'test', price: 49, isFree: false, creatorId: null, dodoProductId: 'prod_1' };
 const MOCK_FREE_TEMPLATE = { id: 'tpl-free', slug: 'free', price: 0, isFree: true, creatorId: null, dodoProductId: null };
 const MOCK_COMMUNITY_TEMPLATE = { id: 'tpl-comm', slug: 'community', price: 49, isFree: false, creatorId: 'creator-1', dodoProductId: null };
 
