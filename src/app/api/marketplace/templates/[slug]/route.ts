@@ -163,7 +163,7 @@ export async function GET(
       price: template.price,
       isFree: template.isFree,
       trustTier: template.trustTier,
-      installCount: template._count.installs,
+      installCount: template.installCount,
       avgRating: template.avgRating,
       estimatedMonthlyCost: template.estimatedMonthlyCost,
       agentCount: template.agentCount,
@@ -177,7 +177,7 @@ export async function GET(
     },
     reviews: formattedReviews,
     reviewCount: template._count.reviews,
-    installCount: template._count.installs,
+    installCount: template.installCount,
     similar,
     hasPurchased,
   })
