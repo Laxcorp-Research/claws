@@ -2,7 +2,7 @@ import DodoPayments from "dodopayments"
 
 let client: DodoPayments | null = null
 
-const MOCK_MODE = process.env.DODO_PAYMENTS_ENVIRONMENT !== "live_mode"
+const MOCK_MODE = !process.env.DODO_PAYMENTS_ENVIRONMENT || !process.env.DODO_PAYMENTS_API_KEY
 
 export function getDodoClient(): DodoPayments {
   if (!client) {
