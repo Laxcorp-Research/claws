@@ -73,6 +73,7 @@ export default function MyClawsPage() {
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [isRenaming, setIsRenaming] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   useEffect(() => { setDeleteConfirmText("") }, [deleteTarget])
 
@@ -127,22 +128,28 @@ export default function MyClawsPage() {
   function openRename(id: string, currentName: string) {
     setRenameTarget({ id, name: currentName })
     setRenameValue(currentName)
+    setRenameError(null)
   }
 
   async function handleRename() {
     if (!renameTarget || isRenaming || !renameValue.trim()) return
     setIsRenaming(true)
+    setRenameError(null)
     try {
       const res = await fetch(`/api/workspaces/${renameTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameValue.trim() }),
       })
-      if (!res.ok) throw new Error("Failed to rename")
+      const json = await res.json()
+      if (!res.ok || !json.success) {
+        setRenameError(json.error?.message || "Failed to rename")
+        return
+      }
       setWorkspaces(prev => prev ? prev.map(w => w.id === renameTarget.id ? { ...w, name: renameValue.trim() } : w) : prev)
       setRenameTarget(null)
-    } catch (err) {
-      console.error("Failed to rename:", err)
+    } catch {
+      setRenameError("Failed to rename")
     } finally {
       setIsRenaming(false)
     }
@@ -328,6 +335,9 @@ export default function MyClawsPage() {
               autoFocus
               onKeyDown={(e) => { if (e.key === "Enter" && renameValue.trim()) handleRename() }}
             />
+            {renameError && (
+              <p className="text-[11px] text-[var(--err)] mb-[10px]">{renameError}</p>
+            )}
             <div className="flex gap-[6px] justify-end">
               <button onClick={() => setRenameTarget(null)} className="px-[12px] py-[6px] text-[12px] text-[var(--tx2)] border border-[var(--bd)] rounded-[6px] hover:bg-[var(--bg2)] cursor-pointer bg-transparent">
                 Cancel

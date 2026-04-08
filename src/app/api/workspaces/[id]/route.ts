@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
-import { apiSuccess, ERRORS } from "@/lib/api/response"
+import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -41,6 +41,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body[key] !== undefined) updates[key] = body[key]
   }
   if (updates.name) {
+    const duplicate = await prisma.workspace.findFirst({
+      where: { userId: user.id, name: updates.name as string, id: { not: id } },
+    })
+    if (duplicate) return apiError("NAME_EXISTS", "A workspace with this name already exists", 409)
     updates.slug = (updates.name as string).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
   }
 

@@ -59,10 +59,17 @@ export async function createWorkspaceFromTemplate(
     typeof raw === "string" ? JSON.parse(raw) : (raw as unknown as WorkspaceSnapshot)
 
   return prisma.$transaction(async (tx) => {
+    const existingCount = await tx.workspace.count({
+      where: { userId, clawTemplateId: template.id },
+    })
+    const name = existingCount > 0
+      ? `${template.name} (${existingCount + 1})`
+      : template.name
+
     const workspace = await tx.workspace.create({
       data: {
         userId,
-        name: template.name,
+        name,
         slug: `${template.slug}-${Date.now()}`,
         description: template.description,
         status: "SETUP_INCOMPLETE",
