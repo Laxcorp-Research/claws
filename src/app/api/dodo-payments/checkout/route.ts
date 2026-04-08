@@ -7,6 +7,9 @@ import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 
 export async function POST(req: NextRequest) {
+  console.log("[Checkout Debug] NEXT_PUBLIC_APP_URL:", process.env.NEXT_PUBLIC_APP_URL)
+  console.log("[Checkout Debug] return_url would be:", `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`)
+
   const sessionUser = await getSessionUser()
   if (!sessionUser) return ERRORS.UNAUTHORIZED()
 
