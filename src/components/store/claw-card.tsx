@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { AgentPill } from "@/components/ui/agent-pill"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
+import { PriceDisplay } from "@/components/marketplace/price-display"
 import type { TrustTier } from "@/types/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
@@ -10,6 +11,7 @@ export interface ClawCardData {
   name: string
   slug: string
   price: number
+  isFree?: boolean
   tagline: string
   flowDescription: string
   legalDisclaimer?: string | null
@@ -43,8 +45,7 @@ export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount,
             {trustTier && !hideTrustBadge && <TrustBadge tier={trustTier} />}
           </div>
           <div className="text-right whitespace-nowrap ml-4 shrink-0">
-            <span className="text-[13px] font-semibold text-[var(--tx)]">${claw.price}</span>
-            <span className="text-[10px] text-[var(--tx3)] ml-1">one-time</span>
+            <PriceDisplay price={claw.price} isFree={claw.isFree} showPlatformFee={false} />
           </div>
         </div>
 

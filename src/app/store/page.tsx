@@ -20,6 +20,7 @@ function toClawCard(t: MarketplaceTemplate): ClawCardData {
     name: t.name,
     slug: t.slug,
     price: t.price,
+    isFree: t.isFree,
     tagline: t.tagline,
     flowDescription: t.flowDescription ?? "",
     legalDisclaimer: t.legalDisclaimer,
