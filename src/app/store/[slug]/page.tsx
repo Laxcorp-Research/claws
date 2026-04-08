@@ -300,7 +300,7 @@ export default function TemplateDetailPage() {
             </div>
           </div>
 
-          <div className="text-right flex-shrink-0 ml-6">
+          <div className="flex flex-col items-end flex-shrink-0 ml-6">
             {hasPurchased && !template.isFree ? (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0D6B32] bg-[#EDFFF3] border border-[#B8FFCF] py-[2px] px-[8px] rounded-[4px]">
                 <Check size={10} aria-hidden="true" />
