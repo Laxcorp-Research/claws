@@ -17,6 +17,7 @@ function SignInContent() {
   const authError = searchParams.get("error")
 
   const [email, setEmail] = useState("")
+  const [emailError, setEmailError] = useState<string | null>(null)
   const [magicLinkSent, setMagicLinkSent] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -30,8 +31,18 @@ function SignInContent() {
     return null
   }
 
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+
   const handleMagicLink = async () => {
-    if (!email.trim()) return
+    if (!email.trim()) {
+      setEmailError("Please enter your email address")
+      return
+    }
+    if (!isValidEmail) {
+      setEmailError("Please enter a valid email address")
+      return
+    }
+    setEmailError(null)
     setLoading(true)
     await signIn("email", { email, callbackUrl, redirect: false })
     setLoading(false)
@@ -84,13 +95,17 @@ function SignInContent() {
               type="email"
               placeholder="Email address"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setEmailError(null) }}
               onKeyDown={(e) => { if (e.key === "Enter") handleMagicLink() }}
             />
+            {emailError && (
+              <p className="text-[11px] text-[var(--err)] mt-1 mb-1 text-left">{emailError}</p>
+            )}
             <Button
               variant="primary"
               size="full"
               loading={loading}
+              disabled={loading || !email.trim()}
               onClick={handleMagicLink}
             >
               Send magic link
