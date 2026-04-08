@@ -20,7 +20,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
     <div
       aria-label={`${data.name}, ${data.role.toLowerCase()} agent, ${statusLabel}`}
       className={cn(
-        "bg-[var(--bg)] border rounded-lg px-3 py-2.5 relative select-none shadow-node overflow-hidden",
+        "bg-[var(--bg)] border rounded-lg px-3 py-2.5 relative select-none shadow-node",
         isOrchestrator && "w-[160px] border-2 border-[var(--ac)] bg-[var(--acbg)]",
         isCritic && "w-[160px] border-2 border-[#8b5cf6] bg-[#ede9fe]",
         isWorker && "w-[130px] border-[var(--bd)] border-l-[3px]",
@@ -49,7 +49,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
 
       <TruncateWithTooltip
         className={cn(
-          "text-[11px] font-semibold mb-0.5 max-w-full pr-3",
+          "text-[11px] font-semibold mb-0.5 max-w-full",
           isCritic && "text-[#5b21b6]"
         )}
         as="div"
@@ -59,7 +59,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
 
       <TruncateWithTooltip
         className={cn(
-          "text-[9px] max-w-full pr-3",
+          "text-[9px] max-w-full",
           isCritic ? "text-[#7c3aed]" : "text-[var(--tx2)]"
         )}
         as="div"
