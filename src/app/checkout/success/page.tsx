@@ -12,7 +12,7 @@ export default async function CheckoutSuccessPage() {
     orderBy: { createdAt: "desc" },
   })
 
-  if (purchase?.workspaceId) redirect(`/setup/${purchase.workspaceId}/step/1`)
+  if (purchase?.workspaceId) redirect(`/builder/${purchase.workspaceId}`)
 
   redirect("/my-claws")
 }
