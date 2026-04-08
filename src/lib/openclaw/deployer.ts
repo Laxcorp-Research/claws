@@ -1,9 +1,13 @@
-// @ts-nocheck - Depends on Docker/container infrastructure not available in web context
 // lib/openclaw/deployer.ts
 // ============================================================================
 // Container lifecycle management for Claws workspaces.
 // Handles: provisioning, file injection, startup, health checks,
 //          stopping, restarting, config updates, and export.
+//
+// Architecture:
+//   - Droplet (134.209.166.81) runs a lightweight container management agent
+//   - Vercel serverless functions call the agent's HTTP API via container-client
+//   - When CONTAINER_HOST is not set, falls back to simulation mode
 //
 // VALIDATED AGAINST: OpenClaw codebase (March 2026)
 // Key findings incorporated:
@@ -22,53 +26,40 @@
 import { prisma } from '@/lib/db';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { generateWorkspace, type GeneratedWorkspace } from './generator';
-import Docker from 'dockerode';
-import { Readable } from 'stream';
-import * as tar from 'tar-stream';
+import {
+  isContainerHostConfigured,
+  createContainer,
+  stopContainer as agentStopContainer,
+  restartContainer as agentRestartContainer,
+  removeContainer,
+  inspectContainer,
+  writeFilesToVolume,
+} from '@/lib/container-client';
+import { log } from '@/lib/logger';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/**
- * Our custom OpenClaw image with pre-baked extensions for all supported channels.
- * Built from OpenClaw's Dockerfile with:
- *   docker build \
- *     --build-arg OPENCLAW_EXTENSIONS="telegram discord slack whatsapp msteams signal" \
- *     -t ghcr.io/laxcorp/openclaw-runtime:latest .
- *
- * This image is built once by our CI/CD and pushed to our registry.
- * All customer containers use the same base image.
- */
-const OPENCLAW_IMAGE = process.env.OPENCLAW_DOCKER_IMAGE
-  ?? 'ghcr.io/laxcorp/openclaw-runtime:latest';
+const OPENCLAW_IMAGE =
+  process.env.OPENCLAW_DOCKER_IMAGE ??
+  'ghcr.io/laxcorp/openclaw-runtime:latest';
 
-/** Container naming convention */
 const CONTAINER_PREFIX = 'claws';
 
-/** Network for container isolation */
-const CONTAINER_NETWORK = process.env.OPENCLAW_DOCKER_NETWORK ?? 'claws-isolated';
+const CONTAINER_HOST_IP = process.env.CONTAINER_HOST_IP ?? '134.209.166.81';
 
 /** Default resource limits */
-const DEFAULT_MEMORY_BYTES = 1024 * 1024 * 1024;   // 1 GiB
-const DEFAULT_NANO_CPUS = 1_000_000_000;            // 1 CPU core
-const DEFAULT_PIDS_LIMIT = 256;
+const DEFAULT_MEMORY_MB = 1024;
+const DEFAULT_CPUS = 1.0;
 
 /** Health check timeouts */
-const LIVENESS_TIMEOUT_MS = 60_000;    // 60s for process to start
-const READINESS_TIMEOUT_MS = 120_000;  // 120s for channels to connect
-const HEALTH_CHECK_INTERVAL_MS = 2_000; // Poll every 2s during startup
+const LIVENESS_TIMEOUT_MS = 60_000;
+const READINESS_TIMEOUT_MS = 120_000;
+const HEALTH_CHECK_INTERVAL_MS = 2_000;
 
 /** Gateway port inside container */
 const GATEWAY_PORT = 18789;
-
-// ---------------------------------------------------------------------------
-// Docker Client
-// ---------------------------------------------------------------------------
-
-const docker = new Docker({
-  socketPath: process.env.DOCKER_SOCKET ?? '/var/run/docker.sock',
-});
 
 // ---------------------------------------------------------------------------
 // Deployment Status
@@ -96,7 +87,6 @@ async function updateDeploymentStatus(
       status,
       ...(error && { errorMessage: error }),
       ...(status === 'COMPLETED' && { completedAt: new Date() }),
-      ...(status === 'FAILED' && { failedAt: new Date() }),
     },
   });
 }
@@ -113,7 +103,6 @@ export async function deployToCloud(workspaceId: string): Promise<{
   // 1. Create deployment record
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
-    include: { channelConnections: true },
   });
 
   const deployment = await prisma.deployment.create({
@@ -121,127 +110,90 @@ export async function deployToCloud(workspaceId: string): Promise<{
       workspaceId,
       status: 'PENDING',
       version: await getNextDeploymentVersion(workspaceId),
+      configSnapshot: JSON.stringify({
+        workspaceId,
+        createdAt: new Date().toISOString(),
+      }),
     },
   });
+
+  // If container host is not configured, use simulation mode
+  if (!isContainerHostConfigured()) {
+    log.warn('Container host not configured — running in simulation mode', {
+      workspaceId,
+    });
+    return simulateDeploy(workspaceId, deployment.id, workspace);
+  }
 
   try {
     // 2. Generate workspace files
     await updateDeploymentStatus(deployment.id, 'GENERATING');
     const generated = await generateWorkspace(workspaceId);
 
-    // 3. Provision container
+    // 3. Provision: write files to volume via droplet agent
     await updateDeploymentStatus(deployment.id, 'PROVISIONING');
     const containerName = `${CONTAINER_PREFIX}-${workspaceId}`;
-
-    // Remove existing container if any (for redeployments)
-    await removeContainerIfExists(containerName);
-
-    // Create persistent volume for workspace data
     const volumeName = `${CONTAINER_PREFIX}-vol-${workspaceId}`;
-    await ensureVolume(volumeName);
 
-    const container = await docker.createContainer({
-      Image: OPENCLAW_IMAGE,
-      name: containerName,
+    const files = buildVolumeFileMap(generated);
+    await writeFilesToVolume(volumeName, files);
 
-      // OpenClaw gateway command with Docker-compatible flags
-      // --bind lan = bind to 0.0.0.0 (required for Docker bridge networking)
-      // --port 18789 = standard gateway port
-      Cmd: [
-        'node', 'openclaw.mjs', 'gateway',
-        '--bind', 'lan',
-        '--port', String(GATEWAY_PORT),
-      ],
-
-      // Environment variables for API keys and tokens
-      // OpenClaw's dotenv loader also reads /home/node/.openclaw/.env
-      // but env vars take precedence and are more secure for containers
-      Env: [
-        `OPENCLAW_GATEWAY_TOKEN=${generated.gatewayToken}`,
-        `TZ=${workspace.timezone ?? 'UTC'}`,
-        'NODE_ENV=production',
-        // NODE_OPTIONS for memory management in constrained containers
-        `NODE_OPTIONS=--max-old-space-size=${Math.floor(DEFAULT_MEMORY_BYTES / 1024 / 1024 * 0.75)}`,
-      ],
-
-      ExposedPorts: {
-        [`${GATEWAY_PORT}/tcp`]: {},
-      },
-
-      HostConfig: {
-        // PID 1 init process (tini) for signal forwarding and zombie reaping
-        Init: true,
-
-        // Resource limits
-        Memory: DEFAULT_MEMORY_BYTES,
-        NanoCpus: DEFAULT_NANO_CPUS,
-        PidsLimit: DEFAULT_PIDS_LIMIT,
-
-        // Security hardening
-        SecurityOpt: ['no-new-privileges'],
-        CapDrop: ['NET_RAW', 'NET_ADMIN'],
-        ReadonlyRootfs: false, // Agent needs to write to node_modules/.cache etc.
-
-        // Persistent volume for workspace data, memory files, session state
-        // Mounted at /home/node/.openclaw (OpenClaw's default state dir for `node` user)
-        Binds: [
-          `${volumeName}:/home/node/.openclaw`,
-        ],
-
-        // Auto-restart on failure with max retries
-        RestartPolicy: {
-          Name: 'on-failure',
-          MaximumRetryCount: 5,
-        },
-
-        // Isolated network - containers can't reach each other
-        NetworkMode: CONTAINER_NETWORK,
-
-        // Port mapping for external access (health checks, monitoring, WhatsApp QR)
-        PortBindings: {
-          [`${GATEWAY_PORT}/tcp`]: [{ HostPort: '0' }], // Dynamic host port
-        },
-      },
-
-      // Labels for management
-      Labels: {
-        'claws.workspace': workspaceId,
-        'claws.managed': 'true',
-        'claws.version': String(deployment.version),
-      },
-    });
-
-    // 4. Copy generated files into the volume
+    // 4. Configure: build environment variables
     await updateDeploymentStatus(deployment.id, 'CONFIGURING');
-    await copyWorkspaceToContainer(container.id, generated);
 
-    // 5. Start container
+    const containerEnv: Record<string, string> = {
+      OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
+      TZ: workspace.timezone ?? 'UTC',
+      NODE_ENV: 'production',
+      NODE_OPTIONS: `--max-old-space-size=${Math.floor(DEFAULT_MEMORY_MB * 0.75)}`,
+    };
+
+    // 5. Start container via droplet agent
     await updateDeploymentStatus(deployment.id, 'STARTING');
-    await container.start();
+
+    const result = await createContainer({
+      name: containerName,
+      image: OPENCLAW_IMAGE,
+      env: containerEnv,
+      memoryMb: DEFAULT_MEMORY_MB,
+      cpus: DEFAULT_CPUS,
+      volumeName,
+      volumePath: '/home/node/.openclaw',
+    });
 
     // 6. Liveness check: wait for /healthz (gateway process is up)
     await updateDeploymentStatus(deployment.id, 'HEALTH_CHECK');
-    const containerInfo = await container.inspect();
-    const hostPort = getHostPort(containerInfo);
+    const hostPort = result.hostPort;
 
-    await waitForEndpoint(
-      `http://127.0.0.1:${hostPort}/healthz`,
-      LIVENESS_TIMEOUT_MS,
-    );
-
-    // 7. Readiness check: wait for /readyz (channels connected)
-    const hasChannels = workspace.channelConnections.length > 0;
-    if (hasChannels) {
-      await updateDeploymentStatus(deployment.id, 'WAITING_CHANNELS');
+    if (hostPort) {
       try {
         await waitForEndpoint(
-          `http://127.0.0.1:${hostPort}/readyz`,
-          READINESS_TIMEOUT_MS,
+          `http://${CONTAINER_HOST_IP}:${hostPort}/healthz`,
+          LIVENESS_TIMEOUT_MS,
         );
       } catch {
-        // Channels may not connect immediately (e.g., WhatsApp needs QR scan)
-        // Mark as running but note the channel status
-        console.warn(`[deploy] Readiness check timed out for ${workspaceId} - channels may need configuration`);
+        log.warn('Container liveness check timed out — continuing', {
+          workspaceId,
+          containerName,
+        });
+      }
+
+      // 7. Readiness check: wait for /readyz (channels connected)
+      const hasChannels = !!workspace.channelConfigEncrypted;
+
+      if (hasChannels) {
+        await updateDeploymentStatus(deployment.id, 'WAITING_CHANNELS');
+        try {
+          await waitForEndpoint(
+            `http://${CONTAINER_HOST_IP}:${hostPort}/readyz`,
+            READINESS_TIMEOUT_MS,
+          );
+        } catch {
+          log.warn(
+            'Readiness check timed out — channels may need configuration',
+            { workspaceId },
+          );
+        }
       }
     }
 
@@ -252,7 +204,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
       where: { id: workspaceId },
       data: {
         status: 'RUNNING',
-        containerId: container.id,
+        containerId: result.containerId,
         containerName,
         hostPort,
         gatewayToken: encrypt(generated.gatewayToken),
@@ -263,12 +215,13 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
     return {
       deploymentId: deployment.id,
-      containerId: container.id,
+      containerId: result.containerId,
       gatewayToken: generated.gatewayToken,
     };
-
-  } catch (error: any) {
-    await updateDeploymentStatus(deployment.id, 'FAILED', error.message);
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown deployment error';
+    await updateDeploymentStatus(deployment.id, 'FAILED', message);
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: { status: 'ERROR' },
@@ -281,36 +234,49 @@ export async function deployToCloud(workspaceId: string): Promise<{
 // Container Operations
 // ---------------------------------------------------------------------------
 
-/** Stop a running container */
 export async function stopContainer(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
 
-  if (!workspace.containerId) throw new Error('No container found');
-
-  const container = docker.getContainer(workspace.containerId);
-  await container.stop({ t: 10 }); // 10s graceful shutdown
+  if (isContainerHostConfigured() && workspace.containerName) {
+    try {
+      await agentStopContainer(workspace.containerName);
+    } catch {
+      // Container might already be stopped
+    }
+  }
 
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: {
       status: 'PAUSED',
-      healthStatus: 'STOPPED',
+      healthStatus: 'UNKNOWN',
     },
   });
 }
 
-/** Restart a stopped or running container */
 export async function restartContainer(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
 
-  if (!workspace.containerId) throw new Error('No container found');
+  if (isContainerHostConfigured() && workspace.containerName) {
+    const result = await agentRestartContainer(workspace.containerName);
 
-  const container = docker.getContainer(workspace.containerId);
-  await container.restart({ t: 10 });
+    if (result.hostPort) {
+      await prisma.workspace.update({
+        where: { id: workspaceId },
+        data: {
+          status: 'RUNNING',
+          hostPort: result.hostPort,
+          healthStatus: 'HEALTHY',
+          lastHealthCheck: new Date(),
+        },
+      });
+      return;
+    }
+  }
 
   await prisma.workspace.update({
     where: { id: workspaceId },
@@ -328,24 +294,18 @@ export async function redeployWorkspace(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
-  // If there's a running container, we can hot-reload the config
-  // by updating the files in the volume. OpenClaw watches openclaw.json.
-  if (workspace.containerId && workspace.status === 'RUNNING') {
+  if (
+    isContainerHostConfigured() &&
+    workspace.containerName &&
+    workspace.status === 'RUNNING'
+  ) {
     const generated = await generateWorkspace(workspaceId);
-
-    // Update config file in the volume - triggers hot-reload
-    const container = docker.getContainer(workspace.containerId);
-    await copyWorkspaceToContainer(workspace.containerId, generated);
-
-    // The gateway's config reloader will detect the change and apply it.
-    // For workspace .md file changes, a container restart is needed
-    // since those are loaded at agent run time from disk.
-    // However, the next agent run will pick up the new files automatically.
-
+    const volumeName = `${CONTAINER_PREFIX}-vol-${workspaceId}`;
+    const files = buildVolumeFileMap(generated);
+    await writeFilesToVolume(volumeName, files);
     return;
   }
 
-  // Otherwise, full redeploy
   await deployToCloud(workspaceId);
 }
 
@@ -355,13 +315,13 @@ export async function destroyDeployment(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
-  if (workspace.containerId) {
-    await removeContainerIfExists(`${CONTAINER_PREFIX}-${workspaceId}`);
+  if (isContainerHostConfigured() && workspace.containerName) {
+    try {
+      await removeContainer(workspace.containerName);
+    } catch {
+      // Container might not exist
+    }
   }
-
-  // Optionally remove the volume (keeps data by default)
-  // const volumeName = `${CONTAINER_PREFIX}-vol-${workspaceId}`;
-  // await docker.getVolume(volumeName).remove();
 
   await prisma.workspace.update({
     where: { id: workspaceId },
@@ -371,7 +331,7 @@ export async function destroyDeployment(workspaceId: string): Promise<void> {
       containerName: null,
       hostPort: null,
       gatewayToken: null,
-      healthStatus: null,
+      healthStatus: 'UNKNOWN',
     },
   });
 }
@@ -379,21 +339,45 @@ export async function destroyDeployment(workspaceId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Health Monitoring
 // ---------------------------------------------------------------------------
-// Called by a cron job (Vercel Cron or separate worker) every 2 minutes.
-// Uses /healthz (liveness) and /readyz (readiness with channel checks).
-// ---------------------------------------------------------------------------
 
 export async function healthCheckAllContainers(): Promise<void> {
   const runningWorkspaces = await prisma.workspace.findMany({
     where: { status: 'RUNNING' },
-    select: { id: true, containerId: true, hostPort: true, userId: true },
+    select: {
+      id: true,
+      containerId: true,
+      containerName: true,
+      hostPort: true,
+      userId: true,
+    },
   });
 
   for (const ws of runningWorkspaces) {
     if (!ws.hostPort) continue;
 
+    // Use the droplet agent to inspect, or fall back to direct health check
+    if (isContainerHostConfigured() && ws.containerName) {
+      try {
+        const info = await inspectContainer(ws.containerName);
+        if (!info.running) {
+          await markUnhealthy(ws.id, ws.userId, 'Container not running');
+          continue;
+        }
+        await prisma.workspace.update({
+          where: { id: ws.id },
+          data: {
+            healthStatus: 'HEALTHY',
+            lastHealthCheck: new Date(),
+          },
+        });
+      } catch {
+        await markUnhealthy(ws.id, ws.userId, 'Container unreachable');
+      }
+      continue;
+    }
+
+    // Direct health check (localhost — for co-located setups)
     try {
-      // Liveness check
       const liveRes = await fetchWithTimeout(
         `http://127.0.0.1:${ws.hostPort}/healthz`,
         5000,
@@ -404,7 +388,6 @@ export async function healthCheckAllContainers(): Promise<void> {
         continue;
       }
 
-      // Readiness check (channels)
       const readyRes = await fetchWithTimeout(
         `http://127.0.0.1:${ws.hostPort}/readyz`,
         5000,
@@ -433,34 +416,25 @@ async function markUnhealthy(
     data: { healthStatus: 'UNHEALTHY' },
   });
 
-  // Send alert to user (email or in-app notification)
   await sendHealthAlert(userId, workspaceId, reason);
 }
 
 async function sendHealthAlert(
-  userId: string,
+  _userId: string,
   workspaceId: string,
   reason: string,
 ): Promise<void> {
   // TODO: Implement email/notification alert
-  console.error(`[health] Workspace ${workspaceId} unhealthy: ${reason}`);
+  log.warn(`Workspace ${workspaceId} unhealthy: ${reason}`, { workspaceId });
 }
 
 // ---------------------------------------------------------------------------
 // Gateway WebSocket Connection (for monitoring)
 // ---------------------------------------------------------------------------
-// The platform connects to each container's Gateway via WebSocket
-// to stream agent activity events for the live dashboard.
-//
-// Protocol: JSON frames
-//   Client→Gateway: {"type":"req","id":"1","method":"agent","params":{...}}
-//   Gateway→Client: {"type":"event","event":"agent","payload":{...}}
-//   Gateway→Client: {"type":"res","id":"1","ok":true,"payload":{...}}
-//
-// Auth: Include OPENCLAW_GATEWAY_TOKEN in the connect handshake.
-// ---------------------------------------------------------------------------
 
-export async function getGatewayConnectionInfo(workspaceId: string): Promise<{
+export async function getGatewayConnectionInfo(
+  workspaceId: string,
+): Promise<{
   wsUrl: string;
   token: string;
 } | null> {
@@ -470,146 +444,121 @@ export async function getGatewayConnectionInfo(workspaceId: string): Promise<{
 
   if (!workspace.hostPort || !workspace.gatewayToken) return null;
 
+  const host = isContainerHostConfigured()
+    ? CONTAINER_HOST_IP
+    : '127.0.0.1';
+
   return {
-    wsUrl: `ws://127.0.0.1:${workspace.hostPort}`,
+    wsUrl: `ws://${host}:${workspace.hostPort}`,
     token: decrypt(workspace.gatewayToken),
   };
 }
 
 // ---------------------------------------------------------------------------
-// Container File Operations
+// Volume File Map Builder
 // ---------------------------------------------------------------------------
 
-/**
- * Copies all generated workspace files into the container's volume.
- * Uses tar stream to efficiently write multiple files in one operation.
- *
- * Target structure inside container:
- *   /home/node/.openclaw/
- *   ├── openclaw.json
- *   ├── .env
- *   ├── workspace-orchestrator/
- *   │   ├── SOUL.md
- *   │   ├── AGENTS.md
- *   │   ├── ...
- *   │   └── skills/<name>/SKILL.md
- *   ├── workspace-worker-1/
- *   │   └── ...
- *   ├── cron/
- *   │   └── jobs.json
- *   └── agents/        ← auto-created by OpenClaw for session storage
- */
-async function copyWorkspaceToContainer(
-  containerId: string,
+function buildVolumeFileMap(
   generated: GeneratedWorkspace,
-): Promise<void> {
-  const container = docker.getContainer(containerId);
-  const tarStream = await buildTarStream(generated);
+): Record<string, string> {
+  const files: Record<string, string> = {};
 
-  await container.putArchive(tarStream, {
-    path: '/home/node/.openclaw',
-  });
-}
+  files['openclaw.json'] = generated['openclaw.json'];
+  files['.env'] = generated['.env'];
 
-async function buildTarStream(generated: GeneratedWorkspace): Promise<Readable> {
-  const pack = tar.pack();
-
-  // openclaw.json
-  addToTar(pack, 'openclaw.json', generated['openclaw.json']);
-
-  // .env
-  addToTar(pack, '.env', generated['.env']);
-
-  // cron/jobs.json
   const cronContent = generated['cron/jobs.json'];
   if (cronContent && cronContent !== '[]') {
-    addToTar(pack, 'cron/jobs.json', cronContent);
+    files['cron/jobs.json'] = cronContent;
   }
 
-  // Per-agent workspace directories
-  for (const [dirName, files] of Object.entries(generated.workspaces)) {
-    // Create memory/ subdirectory (empty - agent populates it)
-    pack.entry({ name: `${dirName}/memory`, type: 'directory', mode: 0o755 });
-
-    for (const [fileName, content] of Object.entries(files)) {
+  for (const [dirName, agentFiles] of Object.entries(generated.workspaces)) {
+    for (const [fileName, content] of Object.entries(agentFiles)) {
       if (fileName === 'skills' && typeof content === 'object') {
-        // Skills subdirectories
-        for (const [skillName, skillFiles] of Object.entries(content as Record<string, any>)) {
-          addToTar(pack, `${dirName}/skills/${skillName}/SKILL.md`, skillFiles['SKILL.md']);
+        for (const [skillName, skillFiles] of Object.entries(
+          content as Record<string, Record<string, string>>,
+        )) {
+          for (const [skillFile, skillContent] of Object.entries(skillFiles)) {
+            files[`${dirName}/skills/${skillName}/${skillFile}`] = skillContent;
+          }
         }
       } else if (typeof content === 'string') {
-        addToTar(pack, `${dirName}/${fileName}`, content);
+        files[`${dirName}/${fileName}`] = content;
       }
     }
   }
 
-  pack.finalize();
-  return pack;
+  return files;
 }
 
-function addToTar(pack: tar.Pack, name: string, content: string): void {
-  pack.entry({ name, mode: 0o644 }, content);
+// ---------------------------------------------------------------------------
+// Simulation Mode
+// ---------------------------------------------------------------------------
+// When CONTAINER_HOST is not set, simulate deployment with delays.
+// This keeps staging/dev working without a real droplet.
+// ---------------------------------------------------------------------------
+
+async function simulateDeploy(
+  workspaceId: string,
+  deploymentId: string,
+  workspace: { channelConfigEncrypted?: string | null; timezone?: string | null },
+): Promise<{
+  deploymentId: string;
+  containerId: string;
+  gatewayToken: string;
+}> {
+  const fakeContainerId = `sim-${workspaceId.substring(0, 8)}`;
+  const fakeToken = 'simulation-token';
+
+  await updateDeploymentStatus(deploymentId, 'GENERATING');
+  await sleep(800);
+
+  await updateDeploymentStatus(deploymentId, 'PROVISIONING');
+  await sleep(600);
+
+  await updateDeploymentStatus(deploymentId, 'CONFIGURING');
+  await sleep(400);
+
+  await updateDeploymentStatus(deploymentId, 'STARTING');
+  await sleep(800);
+
+  await updateDeploymentStatus(deploymentId, 'HEALTH_CHECK');
+  await sleep(600);
+
+  if (workspace.channelConfigEncrypted) {
+    await updateDeploymentStatus(deploymentId, 'WAITING_CHANNELS');
+    await sleep(400);
+  }
+
+  await updateDeploymentStatus(deploymentId, 'COMPLETED');
+
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: {
+      status: 'RUNNING',
+      containerId: fakeContainerId,
+      containerName: `${CONTAINER_PREFIX}-${workspaceId}`,
+      hostPort: null,
+      gatewayToken: null,
+      healthStatus: 'HEALTHY',
+      lastHealthCheck: new Date(),
+    },
+  });
+
+  return {
+    deploymentId,
+    containerId: fakeContainerId,
+    gatewayToken: fakeToken,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function removeContainerIfExists(name: string): Promise<void> {
-  try {
-    const existing = docker.getContainer(name);
-    const info = await existing.inspect();
-    if (info.State.Running) {
-      await existing.stop({ t: 5 });
-    }
-    await existing.remove({ force: true });
-  } catch (err: any) {
-    if (err.statusCode !== 404) throw err;
-  }
-}
-
-async function ensureVolume(name: string): Promise<void> {
-  try {
-    await docker.getVolume(name).inspect();
-  } catch (err: any) {
-    if (err.statusCode === 404) {
-      await docker.createVolume({
-        Name: name,
-        Labels: { 'claws.managed': 'true' },
-      });
-    } else {
-      throw err;
-    }
-  }
-}
-
-async function ensureNetwork(): Promise<void> {
-  try {
-    await docker.getNetwork(CONTAINER_NETWORK).inspect();
-  } catch (err: any) {
-    if (err.statusCode === 404) {
-      await docker.createNetwork({
-        Name: CONTAINER_NETWORK,
-        Driver: 'bridge',
-        Internal: true, // No external internet access between containers
-        Labels: { 'claws.managed': 'true' },
-      });
-    } else {
-      throw err;
-    }
-  }
-}
-
-function getHostPort(containerInfo: Docker.ContainerInspectInfo): number {
-  const portBindings = containerInfo.NetworkSettings.Ports;
-  const binding = portBindings[`${GATEWAY_PORT}/tcp`];
-  if (!binding?.[0]?.HostPort) {
-    throw new Error('No host port assigned to container');
-  }
-  return parseInt(binding[0].HostPort, 10);
-}
-
-async function waitForEndpoint(url: string, timeoutMs: number): Promise<void> {
+async function waitForEndpoint(
+  url: string,
+  timeoutMs: number,
+): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
@@ -620,10 +569,15 @@ async function waitForEndpoint(url: string, timeoutMs: number): Promise<void> {
     }
     await sleep(HEALTH_CHECK_INTERVAL_MS);
   }
-  throw new Error(`Endpoint ${url} did not become healthy within ${timeoutMs}ms`);
+  throw new Error(
+    `Endpoint ${url} did not become healthy within ${timeoutMs}ms`,
+  );
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -633,7 +587,9 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
   }
 }
 
-async function getNextDeploymentVersion(workspaceId: string): Promise<number> {
+async function getNextDeploymentVersion(
+  workspaceId: string,
+): Promise<number> {
   const latest = await prisma.deployment.findFirst({
     where: { workspaceId },
     orderBy: { version: 'desc' },
@@ -645,11 +601,3 @@ async function getNextDeploymentVersion(workspaceId: string): Promise<number> {
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
-// ---------------------------------------------------------------------------
-// Initialization - ensure network exists on module load
-// ---------------------------------------------------------------------------
-
-ensureNetwork().catch(err => {
-  console.error('[deployer] Failed to ensure Docker network:', err);
-});

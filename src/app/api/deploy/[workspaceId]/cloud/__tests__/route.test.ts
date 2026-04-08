@@ -10,6 +10,13 @@ vi.mock('@/lib/api/auth', () => ({ getSessionUser: () => mockGetSessionUser() })
 const mockVerifyOwnership = vi.fn();
 vi.mock('@/lib/api/ownership', () => ({ verifyWorkspaceOwnership: (...args: unknown[]) => mockVerifyOwnership(...args) }));
 
+const mockDeployToCloud = vi.fn();
+vi.mock('@/lib/openclaw/deployer', () => ({ deployToCloud: (...args: unknown[]) => mockDeployToCloud(...args) }));
+
+vi.mock('@/lib/logger', () => ({
+  log: { deployEvent: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
 import { POST } from '@/app/api/deploy/[workspaceId]/cloud/route';
 
 function callRoute(workspaceId: string) {
@@ -23,9 +30,12 @@ function mockEligibleUser(overrides: Record<string, unknown> = {}) {
     ...overrides,
   });
   (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-  (prismaMock.deployment.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'dep-1', status: 'PENDING', version: 1 });
   (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  mockDeployToCloud.mockResolvedValue({
+    deploymentId: 'dep-1',
+    containerId: 'sim-ws1',
+    gatewayToken: 'test-token',
+  });
 }
 
 describe('POST /api/deploy/[workspaceId]/cloud', () => {
@@ -116,7 +126,7 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(res.status).toBe(201);
   });
 
-  it('creates deployment record and returns it', async () => {
+  it('calls deployToCloud and returns deployment result', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
     mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
     mockEligibleUser();
@@ -125,10 +135,23 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(res.status).toBe(201);
     const json = await res.json();
     expect(json.data.deployment.id).toBe('dep-1');
-    expect(json.data.deployment.status).toBe('PENDING');
-    expect(prismaMock.deployment.create).toHaveBeenCalledTimes(1);
+    expect(json.data.deployment.containerId).toBe('sim-ws1');
+    expect(json.data.deployment.status).toBe('COMPLETED');
+    expect(mockDeployToCloud).toHaveBeenCalledWith('ws-1');
     expect(prismaMock.workspace.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'DEPLOYING' }) })
     );
+  });
+
+  it('returns 500 when deployToCloud fails', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
+    mockEligibleUser();
+    mockDeployToCloud.mockRejectedValue(new Error('Container agent unreachable'));
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error.code).toBe('DEPLOY_FAILED');
   });
 });
