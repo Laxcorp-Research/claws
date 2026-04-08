@@ -45,7 +45,7 @@ export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount,
           </div>
           <div className="text-right whitespace-nowrap ml-4 shrink-0">
             {claw.isFree || claw.price === 0 ? (
-              <span className="text-[18px] font-bold text-[var(--ok)]">Free</span>
+              <span className="text-[13px] font-semibold text-[var(--ok)]">Free</span>
             ) : (
               <>
                 <span className="text-[13px] font-semibold text-[var(--tx)]">${claw.price}</span>
