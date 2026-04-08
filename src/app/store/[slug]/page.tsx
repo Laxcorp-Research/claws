@@ -11,11 +11,9 @@ import { Modal } from "@/components/ui/modal"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { AgentPill } from "@/components/ui/agent-pill"
 import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge"
-import { StatusBadge } from "@/components/ui/status-badge"
 import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
-import { mapWorkspaceStatus } from "@/lib/utils"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 
 interface TemplateAgent {
@@ -79,20 +77,13 @@ interface SimilarTemplate {
   avgRating: number | null
 }
 
-interface OwnershipInfo {
-  owned: boolean
-  workspaceId: string | null
-  workspaceStatus: string | null
-  hasInstall: boolean
-}
-
 interface PageData {
   template: TemplateData
   reviews: TemplateReviewData[]
   reviewCount: number
   installCount: number
   similar: SimilarTemplate[]
-  ownership: OwnershipInfo | null
+  hasPurchased: boolean
 }
 
 export default function TemplateDetailPage() {
@@ -272,7 +263,7 @@ export default function TemplateDetailPage() {
     )
   }
 
-  const { template, reviewCount, installCount, similar, ownership } = data
+  const { template, reviewCount, installCount, similar, hasPurchased } = data
   const isOfficial = template.trustTier === "OFFICIAL"
   const allTools = [...template.tools.required, ...template.tools.recommended]
 
@@ -310,44 +301,22 @@ export default function TemplateDetailPage() {
           </div>
 
           <div className="text-right flex-shrink-0 ml-6">
-            {ownership?.owned ? (
-              <>
-                <div className="flex items-center gap-1.5 justify-end mb-2">
-                  <StatusBadge status={mapWorkspaceStatus(ownership.workspaceStatus ?? "DRAFT")} />
-                  <span className="text-[12px] font-medium text-[var(--tx)]">You own this</span>
-                </div>
-                <div className="flex gap-2">
-                  {ownership.workspaceStatus === "RUNNING" ? (
-                    <>
-                      <Button onClick={() => router.push(`/dashboard/${ownership.workspaceId}`)}>Open Dashboard</Button>
-                      <Button variant="outline" onClick={() => router.push(`/builder/${ownership.workspaceId}`)}>Open Builder</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button onClick={() => router.push(`/setup/${ownership.workspaceId}/step/1`)}>Deploy</Button>
-                      <Button variant="outline" onClick={() => router.push(`/builder/${ownership.workspaceId}`)}>Open Builder</Button>
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <PriceDisplay price={template.price} isFree={template.isFree} />
-                <Button
-                  size="lg"
-                  className="mt-2.5"
-                  onClick={handlePurchase}
-                  loading={purchasing}
-                >
-                  {!session?.user
-                    ? "Sign in to purchase"
-                    : template.isFree
-                      ? "Install - Free"
-                      : `Purchase - $${template.price}`}
-                </Button>
-                {purchaseError && <p className="text-[10px] text-[var(--err)] mt-1">{purchaseError}</p>}
-              </>
-            )}
+            <PriceDisplay price={template.price} isFree={template.isFree} />
+            <Button
+              size="lg"
+              className="mt-2.5"
+              onClick={handlePurchase}
+              loading={purchasing}
+            >
+              {!session?.user
+                ? "Sign in to purchase"
+                : template.isFree
+                  ? "Install - Free"
+                  : hasPurchased
+                    ? "Install"
+                    : `Purchase - $${template.price}`}
+            </Button>
+            {purchaseError && <p className="text-[10px] text-[var(--err)] mt-1">{purchaseError}</p>}
           </div>
         </div>
 
@@ -469,7 +438,7 @@ export default function TemplateDetailPage() {
             <p className="text-[11px] text-[var(--tx3)] mt-2">Loading more reviews...</p>
           )}
 
-          {ownership?.hasInstall && (
+          {hasPurchased && (
             <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowReviewModal(true)}>
               Write a review
             </Button>

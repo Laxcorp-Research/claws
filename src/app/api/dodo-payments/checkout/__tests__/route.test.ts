@@ -52,13 +52,25 @@ describe('POST /api/dodo-payments/checkout', () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_FREE_TEMPLATE);
-      (prismaMock.templateInstall.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-free', workspaceName: 'Free Claw' });
 
       const res = await callCheckout({ type: 'free_template', templateId: 'tpl-free' });
       const json = await res.json();
       expect(res.status).toBe(200);
-      expect(json.data.redirectUrl).toContain('ws-free');
+      expect(json.data.redirectUrl).toContain('/builder/ws-free');
+      expect(mockCreateWorkspace).toHaveBeenCalledWith({ userId: 'user-1', templateId: 'tpl-free' });
+    });
+
+    it('always creates a new workspace even if already installed', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_FREE_TEMPLATE);
+      mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-new', workspaceName: 'Free Claw 2' });
+
+      const res = await callCheckout({ type: 'free_template', templateId: 'tpl-free' });
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json.data.redirectUrl).toContain('/builder/ws-new');
       expect(mockCreateWorkspace).toHaveBeenCalledWith({ userId: 'user-1', templateId: 'tpl-free' });
     });
 
@@ -69,18 +81,6 @@ describe('POST /api/dodo-payments/checkout', () => {
 
       const res = await callCheckout({ type: 'free_template', templateId: 'tpl-1' });
       expect(res.status).toBe(400);
-    });
-
-    it('redirects to existing workspace if already installed', async () => {
-      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
-      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
-      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_FREE_TEMPLATE);
-      (prismaMock.templateInstall.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'existing' });
-      (prismaMock.workspace.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-existing' });
-
-      const res = await callCheckout({ type: 'free_template', templateId: 'tpl-free' });
-      const json = await res.json();
-      expect(json.data.redirectUrl).toContain('ws-existing');
     });
   });
 
@@ -110,17 +110,22 @@ describe('POST /api/dodo-payments/checkout', () => {
       const res = await callCheckout({ type: 'claw_purchase', templateId: 'tpl-1' });
       const json = await res.json();
       expect(json.data.mockMode).toBe(true);
-      expect(json.data.redirectUrl).toContain('ws-mock');
+      expect(json.data.redirectUrl).toContain('/builder/ws-mock');
     });
 
-    it('rejects duplicate purchase', async () => {
+    it('creates new workspace without checkout when already purchased', async () => {
+      mockCreateClawCheckout.mockClear();
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'existing' });
+      mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-reinstall', workspaceName: 'Test' });
 
       const res = await callCheckout({ type: 'claw_purchase', templateId: 'tpl-1' });
-      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json.data.redirectUrl).toContain('/builder/ws-reinstall');
+      expect(mockCreateClawCheckout).not.toHaveBeenCalled();
     });
 
     it('returns 400 when templateId is missing', async () => {
@@ -158,6 +163,7 @@ describe('POST /api/dodo-payments/checkout', () => {
       const res = await callCheckout({ type: 'community_purchase', templateId: 'tpl-comm' });
       const json = await res.json();
       expect(json.data.mockMode).toBe(true);
+      expect(json.data.redirectUrl).toContain('/builder/ws-comm');
 
       const saleCall = (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(saleCall.data.creatorId).toBe('creator-1');

@@ -90,12 +90,7 @@ export interface TemplateDetailData {
     installCount: number
     avgRating: number | null
   }>
-  ownership: {
-    owned: boolean
-    workspaceId: string | null
-    workspaceStatus: string | null
-    hasInstall: boolean
-  } | null
+  hasPurchased: boolean
 }
 
 export interface ReportFormData {

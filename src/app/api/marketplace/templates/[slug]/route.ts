@@ -137,32 +137,19 @@ export async function GET(
     similar = [...similar, ...backfill]
   }
 
-  let ownership: {
-    owned: boolean
-    workspaceId: string | null
-    workspaceStatus: string | null
-    hasInstall: boolean
-  } | null = null
+  let hasPurchased = false
 
   try {
     const user = await getSessionUser()
     if (user) {
-      const workspace = await prisma.workspace.findFirst({
-        where: { userId: user.id, clawTemplateId: template.id },
-        select: { id: true, status: true },
+      const purchase = await prisma.purchase.findFirst({
+        where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
+        select: { id: true },
       })
-      const install = await prisma.templateInstall.findUnique({
-        where: { templateId_userId: { templateId: template.id, userId: user.id } },
-      })
-      ownership = {
-        owned: !!workspace || !!install,
-        workspaceId: workspace?.id ?? null,
-        workspaceStatus: workspace?.status ?? null,
-        hasInstall: !!install,
-      }
+      hasPurchased = !!purchase
     }
   } catch {
-    ownership = null
+    hasPurchased = false
   }
 
   return apiSuccess({
@@ -192,6 +179,6 @@ export async function GET(
     reviewCount: template._count.reviews,
     installCount: template._count.installs,
     similar,
-    ownership,
+    hasPurchased,
   })
 }

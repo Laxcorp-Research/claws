@@ -54,23 +54,12 @@ async function handleFreeTemplate(
   if (!template) return ERRORS.NOT_FOUND("Template")
   if (!template.isFree) return apiError("NOT_FREE", "This template is not free", 400)
 
-  const existing = await prisma.templateInstall.findUnique({
-    where: { templateId_userId: { templateId: template.id, userId: user.id } },
-  })
-  if (existing) {
-    const ws = await prisma.workspace.findFirst({
-      where: { userId: user.id, clawTemplateId: template.id },
-      orderBy: { createdAt: "desc" },
-    })
-    if (ws) return apiSuccess({ redirectUrl: `/setup/${ws.id}/step/1` })
-  }
-
   const { workspaceId } = await createWorkspaceFromTemplate({
     userId: user.id,
     templateId: template.id,
   })
 
-  return apiSuccess({ redirectUrl: `/setup/${workspaceId}/step/1` })
+  return apiSuccess({ redirectUrl: `/builder/${workspaceId}` })
 }
 
 async function handleClawPurchase(
@@ -83,10 +72,16 @@ async function handleClawPurchase(
   const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
   if (!template) return ERRORS.NOT_FOUND("Template")
 
-  const existing = await prisma.purchase.findFirst({
+  const existingPurchase = await prisma.purchase.findFirst({
     where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
   })
-  if (existing) return apiError("ALREADY_OWNED", "You already own this Claw", 409)
+  if (existingPurchase) {
+    const { workspaceId } = await createWorkspaceFromTemplate({
+      userId: user.id,
+      templateId: template.id,
+    })
+    return apiSuccess({ redirectUrl: `/builder/${workspaceId}` })
+  }
 
   const result = await createClawCheckout({
     templateId: template.id,
@@ -114,7 +109,7 @@ async function handleClawPurchase(
         status: "COMPLETED",
       },
     })
-    return apiSuccess({ mockMode: true, redirectUrl: `/setup/${workspaceId}/step/1` })
+    return apiSuccess({ mockMode: true, redirectUrl: `/builder/${workspaceId}` })
   }
 
   if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
@@ -134,10 +129,16 @@ async function handleCommunityPurchase(
   if (template.isFree) return apiError("USE_FREE_FLOW", "Use the free_template checkout type for free templates", 400)
   if (template.price < 19) return apiError("PRICE_TOO_LOW", "Community template price must be at least $19", 400)
 
-  const existing = await prisma.purchase.findFirst({
+  const existingPurchase = await prisma.purchase.findFirst({
     where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
   })
-  if (existing) return apiError("ALREADY_OWNED", "You already own this Claw", 409)
+  if (existingPurchase) {
+    const { workspaceId } = await createWorkspaceFromTemplate({
+      userId: user.id,
+      templateId: template.id,
+    })
+    return apiSuccess({ redirectUrl: `/builder/${workspaceId}` })
+  }
 
   const result = await createCommunityCheckout({
     templateId: template.id,
@@ -177,7 +178,7 @@ async function handleCommunityPurchase(
       dodoPaymentId: `mock_sale_${Date.now()}`,
     })
 
-    return apiSuccess({ mockMode: true, redirectUrl: `/setup/${workspaceId}/step/1` })
+    return apiSuccess({ mockMode: true, redirectUrl: `/builder/${workspaceId}` })
   }
 
   if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
