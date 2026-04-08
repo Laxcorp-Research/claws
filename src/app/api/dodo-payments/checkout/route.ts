@@ -7,9 +7,6 @@ import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 
 export async function POST(req: NextRequest) {
-  console.log("[Checkout Debug] NEXT_PUBLIC_APP_URL:", process.env.NEXT_PUBLIC_APP_URL)
-  console.log("[Checkout Debug] return_url would be:", `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`)
-
   const sessionUser = await getSessionUser()
   if (!sessionUser) return ERRORS.UNAUTHORIZED()
 
@@ -41,8 +38,9 @@ export async function POST(req: NextRequest) {
 
     return ERRORS.VALIDATION("Invalid checkout type")
   } catch (error) {
-    console.error("[Checkout Error]", error)
-    return apiError("CHECKOUT_FAILED", "Checkout failed", 500)
+    const message = error instanceof Error ? error.message : "Unknown error"
+    console.error("[Checkout Error]", { type, userId: sessionUser.id, error: message, stack: error instanceof Error ? error.stack : undefined })
+    return apiError("CHECKOUT_FAILED", `Checkout failed: ${message}`, 500)
   }
 }
 

@@ -52,6 +52,7 @@ export async function createClawCheckout(params: {
       ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
     product_cart: [{ product_id: productId, quantity: 1 }],
+    payment_link: true,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
     metadata: { userId: params.userId, templateId: params.templateId, templateSlug: params.templateSlug, type: "claw_purchase" },
   })
@@ -78,6 +79,7 @@ export async function createPlatformSubscription(params: {
     },
     product_id: CLAW_PLATFORM_PRODUCT,
     quantity: 1,
+    payment_link: true,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/setup/${params.workspaceId}/step/3`,
     metadata: { userId: params.userId, workspaceId: params.workspaceId, type: "claw_platform" },
   })
@@ -107,6 +109,7 @@ export async function createCommunityCheckout(params: {
       ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
     product_cart: [{ product_id: params.templateId, quantity: 1 }],
+    payment_link: true,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
     metadata: {
       userId: params.userId,
