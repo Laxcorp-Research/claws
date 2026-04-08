@@ -8,6 +8,7 @@ import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 const webhookClient = new DodoPayments({
   bearerToken: process.env.DODO_PAYMENTS_API_KEY || "placeholder",
   webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY || "placeholder",
+  environment: (process.env.DODO_PAYMENTS_ENVIRONMENT as "live_mode" | "test_mode") || "live_mode",
 })
 
 export async function POST(req: NextRequest) {
