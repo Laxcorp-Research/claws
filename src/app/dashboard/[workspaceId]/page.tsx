@@ -44,6 +44,7 @@ interface AgentInfo {
   model: string
   agentSlug: string
   status: "healthy" | "paused" | "error" | "offline"
+  lastActive?: string
 }
 
 interface LogEntry {
@@ -487,6 +488,17 @@ export default function DashboardPage() {
   const costRows = useMemo(() => getEstimatedCosts(agents), [agents])
   const costTotal = useMemo(() => costRows.reduce((sum, r) => sum + r.cost, 0), [costRows])
 
+  const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 }
+  const sortedAgents = useMemo(
+    () => [...agents].sort((a, b) => {
+      const ra = ROLE_ORDER[a.role] ?? 1
+      const rb = ROLE_ORDER[b.role] ?? 1
+      if (ra !== rb) return ra - rb
+      return a.name.localeCompare(b.name)
+    }),
+    [agents],
+  )
+
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto px-5 py-6">
@@ -600,11 +612,12 @@ export default function DashboardPage() {
 
         <div className="flex flex-col gap-3">
           <AgentStatusList
-            agents={agents.map((a) => ({
+            agents={sortedAgents.map((a) => ({
               id: a.id,
               name: a.name,
               role: a.role,
               status: a.status === "healthy" ? "running" as const : a.status,
+              lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
             }))}
             onPauseAgent={handleAgentPause}
             onResumeAgent={handleAgentResume}
