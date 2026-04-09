@@ -7,6 +7,7 @@ type AdminAction =
   | "skill.reject"
   | "report.resolve"
   | "version.promote"
+  | "version.edit"
   | "version.force-update"
   | "payout.release"
   | "payout.process"
