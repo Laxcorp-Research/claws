@@ -3,10 +3,10 @@
 import { useMemo } from "react"
 import Link from "next/link"
 import { formatCurrency } from "@/lib/utils/format"
-import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface CostBreakdownRow {
   agentName: string
+  role?: string
   model: string
   calls: number
   cost: number
@@ -19,6 +19,8 @@ interface CostBreakdownTableProps {
   workspaceId?: string
   optimizationTip?: string | null
 }
+
+const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 }
 
 function abbreviateMonth(period: string): string {
   const date = new Date(period)
@@ -33,13 +35,18 @@ function abbreviateMonth(period: string): string {
 }
 
 export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optimizationTip }: CostBreakdownTableProps) {
-  const sorted = useMemo(() => [...rows].sort((a, b) => b.cost - a.cost), [rows])
+  const sorted = useMemo(() => [...rows].sort((a, b) => {
+    const ra = ROLE_ORDER[a.role ?? "WORKER"] ?? 1
+    const rb = ROLE_ORDER[b.role ?? "WORKER"] ?? 1
+    if (ra !== rb) return ra - rb
+    return a.agentName.localeCompare(b.agentName)
+  }), [rows])
 
   const computedTip = useMemo(() => {
     if (optimizationTip) return { text: optimizationTip, agentName: "", percentage: 0, model: "" }
     if (rows.length === 0 || totalCost === 0) return null
 
-    const topAgent = sorted[0]
+    const topAgent = [...rows].sort((a, b) => b.cost - a.cost)[0]
     if (!topAgent) return null
     const topPercent = Math.round((topAgent.cost / totalCost) * 100)
 
@@ -52,7 +59,7 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
       }
     }
     return null
-  }, [rows, totalCost, optimizationTip, sorted])
+  }, [rows, totalCost, optimizationTip])
 
   return (
     <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
@@ -79,8 +86,8 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
         <tbody>
           {sorted.map((row, i) => (
             <tr key={row.agentName} className={i < sorted.length - 1 ? "border-b border-[var(--bd)]" : ""}>
-              <TruncateWithTooltip className="py-[6px] pr-[8px] whitespace-nowrap overflow-hidden" as="td">{row.agentName}</TruncateWithTooltip>
-              <TruncateWithTooltip className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] whitespace-nowrap overflow-hidden" as="td">{row.model}</TruncateWithTooltip>
+              <td className="py-[6px] pr-[8px] whitespace-nowrap overflow-hidden text-ellipsis">{row.agentName}</td>
+              <td className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] whitespace-nowrap">{row.model}</td>
               <td className="py-[6px] pr-[8px] text-right whitespace-nowrap">{row.calls.toLocaleString()}</td>
               <td className="py-[6px] text-right font-semibold whitespace-nowrap">{formatCurrency(row.cost)}</td>
             </tr>

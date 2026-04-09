@@ -34,3 +34,8 @@ export function getModelDisplayName(model: string): string {
 
   return withoutProvider || model
 }
+
+export function getModelShortDisplayName(model: string): string {
+  const full = getModelDisplayName(model)
+  return full.replace(/^Claude\s+/, "")
+}
