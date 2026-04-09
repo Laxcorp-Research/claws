@@ -21,7 +21,7 @@ import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
-import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2, ArrowLeft } from "lucide-react"
+import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 
 interface AgentRow {
   id: string
@@ -1239,10 +1239,9 @@ export default function SetupStepPage() {
         <div className="flex items-center mb-[24px]">
           <button
             onClick={exitWizard}
-            className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 flex-shrink-0 transition-colors mr-[16px] leading-none cursor-pointer bg-transparent border-none"
+            className="text-[11px] text-[var(--tx2)] hover:text-[var(--tx)] cursor-pointer bg-transparent border-none flex-shrink-0 transition-colors mr-[16px] leading-none"
           >
-            <ArrowLeft size={12} aria-hidden="true" />
-            {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
+            {isFromBuilder ? "← Back to Builder" : "← Back to My Claws"}
           </button>
           {showWizardChrome && (
             <>
