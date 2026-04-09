@@ -66,6 +66,7 @@ export async function createPlatformSubscription(params: {
   userName?: string
   userId: string
   dodoCustomerId?: string
+  returnUrl?: string
 }): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
   if (MOCK_MODE) return { checkoutUrl: null, mockMode: true }
 
@@ -80,7 +81,7 @@ export async function createPlatformSubscription(params: {
     product_id: CLAW_PLATFORM_PRODUCT,
     quantity: 1,
     payment_link: true,
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/setup/${params.workspaceId}/step/3`,
+    return_url: params.returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/setup/${params.workspaceId}/step/3`,
     metadata: { userId: params.userId, workspaceId: params.workspaceId, type: "claw_platform" },
   })
 
