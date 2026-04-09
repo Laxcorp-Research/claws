@@ -23,7 +23,7 @@ export async function GET(
   const [agents, tasksToday, tasksYesterday, pendingReview, costAgg, recentLogs, humanRequests, humanResponses, expiredTools] = await Promise.all([
     prisma.agent.findMany({
       where: { workspaceId },
-      select: { id: true, name: true, role: true, color: true, model: true, agentSlug: true },
+      select: { id: true, name: true, role: true, color: true, model: true, agentSlug: true, isPaused: true, lastActiveAt: true },
     }),
     prisma.activityLog.count({
       where: {
@@ -89,18 +89,44 @@ export async function GET(
       metadata: req.metadata,
     }))
 
-  const agentStatuses = agents.map((a) => ({
-    id: a.id,
-    name: a.name,
-    role: a.role,
-    color: a.color,
-    model: a.model,
-    agentSlug: a.agentSlug,
-    status: workspace!.status === "PAUSED" ? "paused" as const
-      : workspace!.healthStatus === "UNHEALTHY" ? "error" as const
-      : workspace!.status === "RUNNING" ? "healthy" as const
-      : "offline" as const,
-  }))
+  const agentSlugs = agents.map((a) => a.agentSlug).filter(Boolean)
+  const latestActivityByAgent = agentSlugs.length > 0
+    ? await prisma.$queryRawUnsafe<{ agentSlug: string; latest: Date }[]>(
+        `SELECT "agentSlug", MAX("timestamp") as latest FROM "ActivityLog" WHERE "workspaceId" = $1 AND "agentSlug" = ANY($2) GROUP BY "agentSlug"`,
+        workspaceId,
+        agentSlugs,
+      )
+    : []
+
+  const lastActiveMap = new Map<string, string>()
+  for (const row of latestActivityByAgent) {
+    lastActiveMap.set(row.agentSlug, new Date(row.latest).toISOString())
+  }
+
+  const agentStatuses = agents.map((a) => {
+    let status: "healthy" | "paused" | "error" | "offline"
+    if (a.isPaused) status = "paused"
+    else if (workspace!.status === "PAUSED") status = "paused"
+    else if (workspace!.healthStatus === "UNHEALTHY") status = "error"
+    else if (workspace!.status === "RUNNING") status = "healthy"
+    else status = "offline"
+
+    const lastActive = lastActiveMap.get(a.agentSlug)
+      ?? (a.lastActiveAt ? a.lastActiveAt.toISOString() : undefined)
+
+    return {
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      color: a.color,
+      model: a.model,
+      agentSlug: a.agentSlug,
+      status,
+      lastActive,
+    }
+  })
+
+  const pausedCount = agentStatuses.filter((a) => a.status === "paused").length
 
   const totalApiCost = costAgg._sum.apiCost ?? 0
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -118,8 +144,8 @@ export async function GET(
       costAlertThreshold: workspace!.costAlertThreshold,
     },
     stats: {
-      agentsRunning: agents.length,
-      agentsPaused: workspace!.status === "PAUSED" ? agents.length : 0,
+      agentsRunning: agents.length - pausedCount,
+      agentsPaused: pausedCount,
       tasksToday,
       tasksYesterday,
       apiCostThisMonth: totalApiCost,

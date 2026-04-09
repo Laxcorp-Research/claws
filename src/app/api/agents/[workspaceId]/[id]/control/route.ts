@@ -37,6 +37,8 @@ export async function POST(
     )
   }
 
+  const now = new Date()
+
   const actionTypeMap: Record<string, ActivityType> = {
     pause: "SYSTEM",
     resume: "SYSTEM",
@@ -49,22 +51,29 @@ export async function POST(
     restart: "restarted",
   }
 
-  await prisma.activityLog.create({
-    data: {
-      workspaceId,
-      agentName: agent.name,
-      agentSlug: agent.agentSlug,
-      action: `${agent.name} ${actionLabelMap[action]} by user`,
-      actionType: actionTypeMap[action],
-      metadata: JSON.stringify({
-        controlAction: action,
-        triggeredBy: user.email,
-        triggeredAt: new Date().toISOString(),
-      }),
-    },
-  })
-
-  // TODO: Forward control command to OpenClaw container via deployer API
+  await prisma.$transaction([
+    prisma.agent.update({
+      where: { id: agentId },
+      data: {
+        isPaused: action === "pause",
+        lastActiveAt: now,
+      },
+    }),
+    prisma.activityLog.create({
+      data: {
+        workspaceId,
+        agentName: agent.name,
+        agentSlug: agent.agentSlug,
+        action: `${agent.name} ${actionLabelMap[action]} by user`,
+        actionType: actionTypeMap[action],
+        metadata: JSON.stringify({
+          controlAction: action,
+          triggeredBy: user.email,
+          triggeredAt: now.toISOString(),
+        }),
+      },
+    }),
+  ])
 
   const statusMap: Record<string, string> = {
     pause: "paused",
