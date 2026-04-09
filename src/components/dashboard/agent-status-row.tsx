@@ -2,7 +2,6 @@
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface AgentStatusRowProps {
   name: string
@@ -106,9 +105,9 @@ export function AgentStatusRow({
           <div className="mb-[2px]">
             <span className={cn("text-[12px] font-semibold", role === "CRITIC" && "text-[#5b21b6]")}>{name}</span>
           </div>
-          <TruncateWithTooltip className={cn("text-[10px]", getMetaColor(normalizedStatus))} as="div">
+          <div className={cn("text-[10px]", getMetaColor(normalizedStatus))}>
             {buildMetaText(role, normalizedStatus, lastActive, errorMessage, retryIn, queuedTasks, passRate)}
-          </TruncateWithTooltip>
+          </div>
         </div>
       </div>
 

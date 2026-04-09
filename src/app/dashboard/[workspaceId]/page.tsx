@@ -13,7 +13,7 @@ import { AgentStatusList } from "@/components/dashboard/agent-status-list"
 import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
 import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
-import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
+import { formatCurrencyRounded, getModelShortDisplayName } from "@/lib/utils/format"
 
 interface DashboardStats {
   agentsRunning: number
@@ -103,6 +103,8 @@ const ROLE_CALL_MULTIPLIER: Record<string, number> = {
   CRITIC: 0.6,
 }
 
+const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 }
+
 const MAX_LOG_ENTRIES = 200
 const STATS_POLL_MS = 30_000
 
@@ -122,7 +124,7 @@ function relativeTime(isoStr: string | undefined): string {
 }
 
 function getModelShortName(model: string): string {
-  return getModelDisplayName(model)
+  return getModelShortDisplayName(model)
 }
 
 function getModelCostKey(model: string): string {
@@ -132,7 +134,7 @@ function getModelCostKey(model: string): string {
   return "sonnet"
 }
 
-function getEstimatedCosts(agents: AgentInfo[]): { agentName: string; model: string; calls: number; cost: number }[] {
+function getEstimatedCosts(agents: AgentInfo[]): { agentName: string; role: string; model: string; calls: number; cost: number }[] {
   const baseCalls = 150
   return agents.map((a) => {
     const shortModel = getModelShortName(a.model)
@@ -141,7 +143,7 @@ function getEstimatedCosts(agents: AgentInfo[]): { agentName: string; model: str
     const multiplier = ROLE_CALL_MULTIPLIER[a.role] ?? 1.0
     const calls = Math.round(baseCalls * multiplier + (a.name.length * 7) % 100)
     const cost = Math.round(calls * costPerCall * 100) / 100
-    return { agentName: a.name, model: shortModel, calls, cost }
+    return { agentName: a.name, role: a.role, model: shortModel, calls, cost }
   })
 }
 
@@ -488,7 +490,6 @@ export default function DashboardPage() {
   const costRows = useMemo(() => getEstimatedCosts(agents), [agents])
   const costTotal = useMemo(() => costRows.reduce((sum, r) => sum + r.cost, 0), [costRows])
 
-  const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 }
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => {
       const ra = ROLE_ORDER[a.role] ?? 1
