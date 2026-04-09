@@ -12,7 +12,7 @@ import { HeartbeatConfig } from "@/components/builder/heartbeat-config"
 import { VersionHistoryPanel } from "@/components/builder/version-history-panel"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useBuilderStore } from "@/stores/builder-store"
-import { Loader2, Send, Save, Check, ArrowLeft, AlertTriangle } from "lucide-react"
+import { Loader2, Send, Save, Check, AlertTriangle } from "lucide-react"
 
 export default function BuilderPage() {
   const params = useParams()
@@ -81,9 +81,8 @@ export default function BuilderPage() {
       {/* Builder top bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--bd)] bg-[var(--bg)]">
         <div className="flex items-center gap-[10px] min-w-0">
-          <button onClick={handleBack} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] inline-flex items-center gap-1 transition-colors cursor-pointer bg-transparent border-none flex-shrink-0">
-            <ArrowLeft size={12} />
-            My Claws
+          <button onClick={handleBack} className="text-[11px] text-[var(--tx2)] hover:text-[var(--tx)] cursor-pointer bg-transparent border-none flex-shrink-0 transition-colors">
+            ← My Claws
           </button>
           <h1 className="sr-only">{localName || "Builder"}</h1>
           <input

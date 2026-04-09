@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
-import { ArrowLeft, Star, Flag, Wrench, Check } from "lucide-react"
+import { Star, Flag, Wrench, Check } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
@@ -252,8 +252,8 @@ export default function TemplateDetailPage() {
     return (
       <PageShell background="secondary">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <Link href="/store" className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-4 inline-flex items-center gap-1">
-            <ArrowLeft size={12} aria-hidden="true" /> Back to store
+          <Link href="/store" className="text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] mb-3 inline-block">
+            ← Back to store
           </Link>
           <AlertBanner variant="error">
             <p className="font-medium">{error || "Template not found"}</p>
@@ -270,8 +270,8 @@ export default function TemplateDetailPage() {
   return (
     <PageShell background="secondary">
       <div className="max-w-4xl mx-auto px-4 py-4">
-        <Link href="/store" className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-[10px] inline-flex items-center gap-1">
-          <ArrowLeft size={12} aria-hidden="true" /> Back to store
+        <Link href="/store" className="text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] mb-3 inline-block">
+          ← Back to store
         </Link>
 
         {/* Header: title + purchase */}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Star, Terminal, Key, Info, Check } from "lucide-react"
+import { Star, Terminal, Key, Info, Check } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
@@ -183,8 +183,8 @@ export default function SkillDetailPage() {
     return (
       <PageShell background="secondary">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <Link href="/store?tab=skills" className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-4 inline-flex items-center gap-1">
-            <ArrowLeft size={12} aria-hidden="true" /> Back to skills
+          <Link href="/store?tab=skills" className="text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] mb-3 inline-block">
+            ← Back to skills
           </Link>
           <AlertBanner variant="error">
             <p className="font-medium">{error || "Skill not found"}</p>
@@ -199,8 +199,8 @@ export default function SkillDetailPage() {
   return (
     <PageShell background="secondary">
       <div className="max-w-4xl mx-auto px-4 py-4">
-        <Link href="/store?tab=skills" className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] mb-[10px] inline-flex items-center gap-1">
-          <ArrowLeft size={12} aria-hidden="true" /> Back to skills
+        <Link href="/store?tab=skills" className="text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] mb-3 inline-block">
+          ← Back to skills
         </Link>
 
         {/* Header: title + install */}
