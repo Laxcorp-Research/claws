@@ -68,28 +68,23 @@ export function CostBreakdownTable({ rows, totalCost, period, workspaceId, optim
         <span className="text-[16px] font-semibold text-[var(--tx)] whitespace-nowrap ml-[12px]">{formatCurrency(totalCost)}</span>
       </div>
 
-      <table className="w-full text-[12px]" style={{ tableLayout: "fixed" }}>
-        <colgroup>
-          <col style={{ width: "28%" }} />
-          <col style={{ width: "32%" }} />
-          <col style={{ width: "20%" }} />
-          <col style={{ width: "20%" }} />
-        </colgroup>
+      <table className="w-full text-[12px]">
         <thead>
           <tr className="border-b border-[var(--bd)]">
             <th className="text-left font-medium py-[6px] pr-[8px]">Agent</th>
-            <th className="text-left font-medium py-[6px] pr-[8px]">Model</th>
-            <th className="text-right font-medium py-[6px] pr-[8px]">Calls</th>
-            <th className="text-right font-medium py-[6px]">Cost</th>
+            <th className="text-right font-medium py-[6px] pr-[8px] w-[60px]">Calls</th>
+            <th className="text-right font-medium py-[6px] w-[60px]">Cost</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((row, i) => (
             <tr key={row.agentName} className={i < sorted.length - 1 ? "border-b border-[var(--bd)]" : ""}>
-              <td className="py-[6px] pr-[8px] whitespace-nowrap overflow-hidden text-ellipsis">{row.agentName}</td>
-              <td className="py-[6px] pr-[8px] text-[10px] text-[var(--tx2)] whitespace-nowrap">{row.model}</td>
-              <td className="py-[6px] pr-[8px] text-right whitespace-nowrap">{row.calls.toLocaleString()}</td>
-              <td className="py-[6px] text-right font-semibold whitespace-nowrap">{formatCurrency(row.cost)}</td>
+              <td className="py-[6px] pr-[8px]">
+                <div className="text-[12px] font-semibold">{row.agentName}</div>
+                <div className="text-[11px] text-[var(--tx2)]">{row.model}</div>
+              </td>
+              <td className="py-[6px] pr-[8px] text-right whitespace-nowrap align-top">{row.calls.toLocaleString()}</td>
+              <td className="py-[6px] text-right font-semibold whitespace-nowrap align-top">{formatCurrency(row.cost)}</td>
             </tr>
           ))}
         </tbody>
