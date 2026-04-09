@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Package } from "lucide-react"
+import { Package, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
 import { Input } from "@/components/ui/input"
@@ -54,6 +54,17 @@ export default function AdminVersionsPage() {
   const [forceUpdateLoading, setForceUpdateLoading] = useState(false)
   const [forceUpdateResult, setForceUpdateResult] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<VersionItem | null>(null)
+  const [editForm, setEditForm] = useState({
+    version: "",
+    dockerImage: "",
+    releaseNotes: "",
+    breakingChanges: "",
+    isSecurityPatch: false,
+    isStable: false,
+  })
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
 
   const fetchVersions = useCallback(async () => {
     try {
@@ -131,6 +142,47 @@ export default function AdminVersionsPage() {
     }
   }
 
+  function openEdit(v: VersionItem) {
+    setEditTarget(v)
+    setEditForm({
+      version: v.version,
+      dockerImage: v.dockerImage,
+      releaseNotes: v.releaseNotes || "",
+      breakingChanges: v.breakingChanges || "",
+      isSecurityPatch: v.isSecurityPatch,
+      isStable: v.isStable,
+    })
+    setEditError(null)
+  }
+
+  async function handleEditVersion() {
+    if (!editTarget || !editForm.version.trim() || !editForm.dockerImage.trim()) return
+    setEditLoading(true)
+    setEditError(null)
+    try {
+      const res = await fetch(`/api/admin/versions/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version: editForm.version.trim(),
+          dockerImage: editForm.dockerImage.trim(),
+          releaseNotes: editForm.releaseNotes.trim() || null,
+          breakingChanges: editForm.breakingChanges.trim() || null,
+          isSecurityPatch: editForm.isSecurityPatch,
+          isStable: editForm.isStable,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error?.message || "Failed to update version")
+      setEditTarget(null)
+      fetchVersions()
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to update version")
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-4">
       <div className="flex items-center justify-between mb-3">
@@ -163,7 +215,11 @@ export default function AdminVersionsPage() {
       ) : (
         <div>
           {versions.map((v) => (
-            <div key={v.id} className="border border-[var(--bd)] rounded-[12px] p-[14px] mb-[10px]">
+            <div
+              key={v.id}
+              className="border border-[var(--bd)] rounded-[12px] p-[14px] mb-[10px] cursor-pointer hover:border-[var(--tx3)] transition-colors"
+              onClick={() => openEdit(v)}
+            >
               <div className="flex items-center justify-between mb-[6px]">
                 <div className="flex items-center gap-[8px] flex-wrap">
                   <span className="text-[15px] font-semibold text-[var(--tx)]">v{v.version}</span>
@@ -183,13 +239,20 @@ export default function AdminVersionsPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex gap-[4px]">
+                <div className="flex items-center gap-[4px]">
+                  <button
+                    className="p-[4px] rounded-[6px] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--bg2)] transition-colors"
+                    onClick={(e) => { e.stopPropagation(); openEdit(v) }}
+                    title="Edit version"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
                   {!v.isStable && (
                     <Button
                       size="sm"
                       variant="primary"
                       loading={actionLoading === v.id}
-                      onClick={() => handlePromote(v.id)}
+                      onClick={(e) => { e.stopPropagation(); handlePromote(v.id) }}
                     >
                       Promote to Stable
                     </Button>
@@ -199,7 +262,7 @@ export default function AdminVersionsPage() {
                       size="sm"
                       variant="outline"
                       className="text-[var(--err)] border-[var(--err)] hover:bg-[var(--errbg)]"
-                      onClick={() => setForceUpdateTarget(v)}
+                      onClick={(e) => { e.stopPropagation(); setForceUpdateTarget(v) }}
                     >
                       Force Update All
                     </Button>
@@ -302,6 +365,89 @@ export default function AdminVersionsPage() {
               className="w-3.5 h-3.5 rounded border-[var(--bd)] accent-[var(--tx)]"
             />
             <span className="text-[12px] text-[var(--tx2)]">This is a security patch</span>
+          </label>
+        </div>
+      </Modal>
+
+      {/* Edit Version Modal */}
+      <Modal
+        open={!!editTarget}
+        onClose={() => { setEditTarget(null); setEditError(null) }}
+        title={`Edit v${editTarget?.version || ""}`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => { setEditTarget(null); setEditError(null) }}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={editLoading}
+              disabled={!editForm.version.trim() || !editForm.dockerImage.trim()}
+              onClick={handleEditVersion}
+            >
+              Save Changes
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {editError && (
+            <div className="text-[11px] text-[var(--err)] bg-[var(--errbg)] rounded-[6px] p-2">
+              {editError}
+            </div>
+          )}
+          <div>
+            <label className="block text-[12px] font-medium text-[var(--tx)] mb-1">
+              Version <span className="text-[var(--err)]">*</span>
+            </label>
+            <Input
+              value={editForm.version}
+              onChange={(e) => setEditForm(prev => ({ ...prev, version: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-[var(--tx)] mb-1">
+              Docker Image <span className="text-[var(--err)]">*</span>
+            </label>
+            <Input
+              className="font-mono"
+              value={editForm.dockerImage}
+              onChange={(e) => setEditForm(prev => ({ ...prev, dockerImage: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-[var(--tx)] mb-1">Release Notes</label>
+            <Textarea
+              rows={3}
+              value={editForm.releaseNotes}
+              onChange={(e) => setEditForm(prev => ({ ...prev, releaseNotes: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-[var(--tx)] mb-1">Breaking Changes</label>
+            <Textarea
+              rows={2}
+              value={editForm.breakingChanges}
+              onChange={(e) => setEditForm(prev => ({ ...prev, breakingChanges: e.target.value }))}
+            />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editForm.isStable}
+              onChange={(e) => setEditForm(prev => ({ ...prev, isStable: e.target.checked }))}
+              className="w-3.5 h-3.5 rounded border-[var(--bd)] accent-[var(--tx)]"
+            />
+            <span className="text-[12px] text-[var(--tx2)]">Stable</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editForm.isSecurityPatch}
+              onChange={(e) => setEditForm(prev => ({ ...prev, isSecurityPatch: e.target.checked }))}
+              className="w-3.5 h-3.5 rounded border-[var(--bd)] accent-[var(--tx)]"
+            />
+            <span className="text-[12px] text-[var(--tx2)]">Security patch</span>
           </label>
         </div>
       </Modal>
