@@ -177,7 +177,7 @@ export default function TemplateDetailPage() {
         return
       }
       if (json.data?.redirectUrl) { router.push(json.data.redirectUrl); return }
-      if (json.data?.checkoutUrl) { window.location.href = json.data.checkoutUrl }
+      if (json.data?.checkoutUrl) { window.open(json.data.checkoutUrl, "_blank") }
     } catch {
       setPurchaseError("Something went wrong. Please try again.")
     } finally {
