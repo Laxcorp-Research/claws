@@ -478,7 +478,6 @@ export default function DashboardPage() {
             <p className="mt-0.5 opacity-80">Agents have stopped running. Pending tasks are queued and will resume when you unpause.</p>
           </>
         ),
-        actions: <Button variant="primary" size="xs" onClick={handleResumeAll}>Resume agents</Button>,
       })
     }
 
