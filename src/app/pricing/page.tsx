@@ -1,29 +1,33 @@
 import Link from "next/link"
 import { Check, ArrowRight, Gift } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
-
-const FREE_TEMPLATES = [
-  "Developer Productivity OS",
-  "Student Accelerator",
-  "Job Hunter OS",
-  "Health & Fitness Commander",
-  "Twitter/X Growth Machine",
-]
+import { CLAW_TEMPLATES } from "@/data/claw-templates"
 
 const PAID_TIERS = [
   {
+    priceValue: 49,
     price: "$49",
     count: "8 templates",
     subtitle: "Creator + Business",
     badge: { bg: "#EEF5FF", text: "#1A5BBF", border: "#A8CFFF" },
   },
   {
+    priceValue: 99,
     price: "$99",
     count: "7 templates",
     subtitle: "Vertical + Money-Making",
     badge: { bg: "#FFF8E7", text: "#8A6D00", border: "#FFE9A0" },
   },
 ] as const
+
+const TEMPLATE_NAMES_BY_PRICE = CLAW_TEMPLATES.reduce<Record<number, string[]>>(
+  (groups, template) => {
+    groups[template.price] ??= []
+    groups[template.price].push(template.name)
+    return groups
+  },
+  {},
+)
 
 const FEATURES = [
   "Cloud hosting (2Gi RAM, managed)",
@@ -44,6 +48,8 @@ const STEPS = [
 ]
 
 export default function PricingPage() {
+  const freeTemplateNames = TEMPLATE_NAMES_BY_PRICE[0] ?? []
+
   return (
     <PageShell background="primary">
       <div className="max-w-4xl mx-auto px-4 py-6 text-center">
@@ -87,16 +93,11 @@ export default function PricingPage() {
               <Gift className="w-3 h-3" />
               Free
             </span>
-            <span className="text-[13px] font-semibold text-[var(--tx)]">5 templates, free forever</span>
+            <span className="text-[13px] font-semibold text-[var(--tx)]">{freeTemplateNames.length} templates, free forever</span>
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--tx2)]">
-            {FREE_TEMPLATES.map((name) => (
-              <span key={name} className="flex items-center gap-1.5">
-                <Check className="w-3 h-3 text-[var(--ok)] flex-shrink-0" />
-                {name}
-              </span>
-            ))}
-          </div>
+          <p className="text-[13px] text-[var(--tx-muted)]">
+            {freeTemplateNames.join(", ")}
+          </p>
           <Link
             href="/store?price=free"
             className="text-[11px] text-[var(--ac)] mt-2.5 inline-block hover:underline"
@@ -124,6 +125,9 @@ export default function PricingPage() {
               </span>
               <div className="text-[22px] font-bold text-[var(--tx)] mt-2">{tier.price}</div>
               <p className="text-[11px] text-[var(--tx3)] mt-[2px]">{tier.count}</p>
+              <p className="text-[13px] text-[var(--tx-muted)] mt-3">
+                {(TEMPLATE_NAMES_BY_PRICE[tier.priceValue] ?? []).join(", ")}
+              </p>
               <Link
                 href="/store?price=paid"
                 className="text-[11px] text-[var(--ac)] mt-3 inline-block hover:underline"
