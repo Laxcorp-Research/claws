@@ -17,6 +17,23 @@ export async function GET(
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   const now = new Date()
+
+  if (workspace!.status === "RUNNING") {
+    const owner = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { trialUsed: true, trialEndsAt: true, hasActiveSubscription: true },
+    })
+    if (owner?.trialUsed && !owner.hasActiveSubscription) {
+      const expired = !owner.trialEndsAt || owner.trialEndsAt <= now
+      if (expired) {
+        await prisma.workspace.update({
+          where: { id: workspaceId },
+          data: { status: "PAUSED" },
+        })
+        workspace!.status = "PAUSED"
+      }
+    }
+  }
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterdayStart = new Date(todayStart.getTime() - 86_400_000)
 

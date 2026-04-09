@@ -13,7 +13,7 @@ import { AgentStatusList } from "@/components/dashboard/agent-status-list"
 import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
 import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
-import { formatCurrencyRounded, getModelShortDisplayName } from "@/lib/utils/format"
+import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 
 interface DashboardStats {
   agentsRunning: number
@@ -124,7 +124,7 @@ function relativeTime(isoStr: string | undefined): string {
 }
 
 function getModelShortName(model: string): string {
-  return getModelShortDisplayName(model)
+  return getModelDisplayName(model)
 }
 
 function getModelCostKey(model: string): string {
@@ -478,7 +478,6 @@ export default function DashboardPage() {
             <p className="mt-0.5 opacity-80">Agents have stopped running. Pending tasks are queued and will resume when you unpause.</p>
           </>
         ),
-        actions: <Button variant="primary" size="xs" onClick={handleResumeAll}>Resume agents</Button>,
       })
     }
 
