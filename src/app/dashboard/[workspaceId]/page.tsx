@@ -160,9 +160,28 @@ export default function DashboardPage() {
   const [trialInfo, setTrialInfo] = useState<{ trialUsed: boolean; trialEndsAt: string | null; hasActiveSubscription: boolean } | null>(null)
   const [agentActionLoadingId, setAgentActionLoadingId] = useState<string | null>(null)
   const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
+  const [subscribing, setSubscribing] = useState(false)
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
+
+  const handleSubscribe = useCallback(async () => {
+    setSubscribing(true)
+    try {
+      const res = await fetch("/api/dodo-payments/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "claw_platform", workspaceId, returnUrl: `/dashboard/${workspaceId}` }),
+      })
+      const json = await res.json()
+      if (json.data?.checkoutUrl) {
+        window.location.href = json.data.checkoutUrl
+      } else if (json.data?.mockMode) {
+        setTrialInfo((prev) => prev ? { ...prev, hasActiveSubscription: true } : prev)
+      }
+    } catch { /* network error — button re-enables */ }
+    setSubscribing(false)
+  }, [workspaceId])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -418,7 +437,7 @@ export default function DashboardPage() {
             </>
           ),
           actions: (
-            <Button variant="primary" size="xs" onClick={() => router.push("/pricing")}>
+            <Button variant="primary" size="xs" loading={subscribing} onClick={handleSubscribe}>
               Subscribe - $79/mo
             </Button>
           ),
@@ -436,7 +455,7 @@ export default function DashboardPage() {
             </>
           ),
           actions: (
-            <Button variant="primary" size="xs" onClick={() => router.push("/pricing")}>
+            <Button variant="primary" size="xs" loading={subscribing} onClick={handleSubscribe}>
               Subscribe - $79/mo
             </Button>
           ),
@@ -463,7 +482,7 @@ export default function DashboardPage() {
     list.sort((a, b) => a.priority - b.priority)
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo])
+  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe])
 
   const costRows = useMemo(() => getEstimatedCosts(agents), [agents])
   const costTotal = useMemo(() => costRows.reduce((sum, r) => sum + r.cost, 0), [costRows])

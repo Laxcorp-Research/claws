@@ -190,7 +190,7 @@ async function handleClawPlatform(
   body: Record<string, unknown>,
   user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
 ) {
-  const { workspaceId } = body as { workspaceId?: string }
+  const { workspaceId, returnUrl } = body as { workspaceId?: string; returnUrl?: string }
   if (!workspaceId) return ERRORS.VALIDATION("workspaceId required")
 
   const workspace = await prisma.workspace.findFirst({ where: { id: workspaceId, userId: user.id } })
@@ -202,6 +202,7 @@ async function handleClawPlatform(
     userName: user.name ?? undefined,
     userId: user.id,
     dodoCustomerId: user.dodoCustomerId ?? undefined,
+    returnUrl: returnUrl ? `${process.env.NEXT_PUBLIC_APP_URL}${returnUrl}` : undefined,
   })
 
   if (result.mockMode) {
