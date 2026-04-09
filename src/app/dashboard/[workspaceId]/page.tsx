@@ -175,7 +175,7 @@ export default function DashboardPage() {
       })
       const json = await res.json()
       if (json.data?.checkoutUrl) {
-        window.location.href = json.data.checkoutUrl
+        window.open(json.data.checkoutUrl, "_blank")
       } else if (json.data?.mockMode) {
         setTrialInfo((prev) => prev ? { ...prev, hasActiveSubscription: true } : prev)
       }

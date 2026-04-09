@@ -960,7 +960,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       })
       const json = await res.json()
       if (json.data?.checkoutUrl) {
-        window.location.href = json.data.checkoutUrl
+        window.open(json.data.checkoutUrl, "_blank")
       } else if (json.data?.mockMode) {
         setEligibility({ canDeploy: true, reason: "subscribed", needsSubscription: false, isFirstDeploy: false })
       }
