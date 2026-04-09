@@ -90,6 +90,14 @@ export function BrowseToolsModal({
     return withAll.slice(0, 24)
   }, [categoryList])
 
+  function formatCategory(raw: string): string {
+    if (raw === "All") return raw
+    return raw
+      .split("_")
+      .map((w) => (w.length <= 3 ? w : w.charAt(0) + w.slice(1).toLowerCase()))
+      .join(" ")
+  }
+
   return (
     <>
       <Modal
@@ -119,19 +127,19 @@ export function BrowseToolsModal({
             className="mb-2.5"
             disabled={browseLoading}
           />
-          <div className="flex gap-1.5 flex-wrap mb-2.5 max-h-[72px] overflow-y-auto">
+          <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1 scrollbar-hide">
             {categoryPills.map((cat) => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setActiveCategory(cat)}
-                className={`text-[11px] font-medium px-[10px] py-[3px] rounded-[8px] border transition-colors cursor-pointer ${
+                className={`text-[11px] font-medium px-[10px] py-[3px] rounded-[8px] border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   activeCategory === cat
                     ? "bg-[var(--tx)] text-[var(--bg)] border-[var(--tx)]"
                     : "bg-transparent text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]"
                 }`}
               >
-                {cat}
+                {formatCategory(cat)}
               </button>
             ))}
           </div>
@@ -148,9 +156,9 @@ export function BrowseToolsModal({
                 return (
                   <div
                     key={tool.slug}
-                    className="flex items-center justify-between px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0"
+                    className="flex items-center gap-3 px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <StatusDot status={isConnected ? "connected" : "disconnected"} />
                       <div className="min-w-0">
                         <div className="text-xs font-semibold truncate">{tool.name}</div>

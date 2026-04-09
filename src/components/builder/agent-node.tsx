@@ -49,7 +49,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
 
       <TruncateWithTooltip
         className={cn(
-          "text-[11px] font-semibold mb-0.5",
+          "text-[11px] font-semibold mb-0.5 max-w-full",
           isCritic && "text-[#5b21b6]"
         )}
         as="div"
@@ -59,7 +59,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
 
       <TruncateWithTooltip
         className={cn(
-          "text-[9px]",
+          "text-[9px] max-w-full",
           isCritic ? "text-[#7c3aed]" : "text-[var(--tx2)]"
         )}
         as="div"

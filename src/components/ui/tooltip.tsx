@@ -81,7 +81,7 @@ export function Tooltip({
         ref={triggerRef}
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
-        className="inline-flex items-center"
+        className="inline-flex items-center max-w-full"
       >
         {children}
       </div>

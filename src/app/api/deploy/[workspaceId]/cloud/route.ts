@@ -51,22 +51,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   }
 
   try {
-    const latestVersion = await prisma.deployment.findFirst({
-      where: { workspaceId },
-      orderBy: { version: "desc" },
-      select: { version: true },
-    })
-    const nextVersion = (latestVersion?.version ?? 0) + 1
-
-    const deployment = await prisma.deployment.create({
-      data: {
-        workspaceId,
-        status: "PENDING",
-        version: nextVersion,
-        configSnapshot: JSON.stringify({ workspaceId, version: nextVersion, createdAt: new Date().toISOString() }),
-      },
-    })
-
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: { status: "DEPLOYING" },
@@ -74,7 +58,20 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
 
     log.deployEvent({ event: "started", workspaceId, userId: user.id })
 
-    return apiSuccess({ deployment: { id: deployment.id, status: deployment.status, version: deployment.version } }, 201)
+    // Kick off the full deploy pipeline (generates files, provisions container, etc.)
+    // Uses real containers when CONTAINER_HOST is set, simulation otherwise.
+    const { deployToCloud } = await import("@/lib/openclaw/deployer")
+    const result = await deployToCloud(workspaceId)
+
+    log.deployEvent({ event: "completed", workspaceId, userId: user.id })
+
+    return apiSuccess({
+      deployment: {
+        id: result.deploymentId,
+        containerId: result.containerId,
+        status: "COMPLETED",
+      },
+    }, 201)
   } catch (err: unknown) {
     log.deployEvent({
       event: "failed",

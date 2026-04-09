@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
-import { ArrowLeft, Star, Flag, Wrench } from "lucide-react"
+import { ArrowLeft, Star, Flag, Wrench, Check } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
@@ -300,8 +300,15 @@ export default function TemplateDetailPage() {
             </div>
           </div>
 
-          <div className="text-right flex-shrink-0 ml-6">
-            <PriceDisplay price={template.price} isFree={template.isFree} />
+          <div className="flex flex-col items-end flex-shrink-0 ml-6">
+            {hasPurchased && !template.isFree ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0D6B32] bg-[#EDFFF3] border border-[#B8FFCF] py-[2px] px-[8px] rounded-[4px]">
+                <Check size={10} aria-hidden="true" />
+                Purchased
+              </span>
+            ) : (
+              <PriceDisplay price={template.price} isFree={template.isFree} />
+            )}
             <Button
               size="lg"
               className="mt-2.5"
@@ -309,10 +316,10 @@ export default function TemplateDetailPage() {
               loading={purchasing}
             >
               {!session?.user
-                ? "Sign in to purchase"
+                ? "Sign in to buy"
                 : template.isFree || hasPurchased
                   ? "Install"
-                  : `Purchase - $${template.price}`}
+                  : "Buy"}
             </Button>
             {purchaseError && <p className="text-[10px] text-[var(--err)] mt-1">{purchaseError}</p>}
           </div>
