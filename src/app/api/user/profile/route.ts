@@ -8,9 +8,9 @@ export async function PATCH(req: NextRequest) {
   if (!user) return ERRORS.UNAUTHORIZED()
 
   const body = await req.json()
-  const { name, email } = body as { name?: string; email?: string }
+  const { name, email, onboardingCompleted } = body as { name?: string; email?: string; onboardingCompleted?: boolean }
 
-  const updateData: Record<string, string> = {}
+  const updateData: Record<string, unknown> = {}
   if (name !== undefined) updateData.name = name
   if (email !== undefined) {
     if (!email || !email.includes("@")) return ERRORS.VALIDATION("Invalid email address")
@@ -18,6 +18,7 @@ export async function PATCH(req: NextRequest) {
     if (existing) return ERRORS.VALIDATION("Email already in use")
     updateData.email = email
   }
+  if (onboardingCompleted !== undefined) updateData.onboardingCompleted = onboardingCompleted === true
 
   if (Object.keys(updateData).length === 0) return ERRORS.VALIDATION("No fields to update")
 

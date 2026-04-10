@@ -5,13 +5,18 @@ import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { log } from "@/lib/logger"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 
-const webhookClient = new DodoPayments({
-  bearerToken: process.env.DODO_PAYMENTS_API_KEY || "placeholder",
-  webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY || "placeholder",
-  environment: (process.env.DODO_PAYMENTS_ENVIRONMENT as "live_mode" | "test_mode") || "live_mode",
-})
-
 export async function POST(req: NextRequest) {
+  if (!process.env.DODO_PAYMENTS_API_KEY || !process.env.DODO_PAYMENTS_WEBHOOK_KEY) {
+    log.error("Webhook not configured: missing DODO_PAYMENTS_API_KEY or DODO_PAYMENTS_WEBHOOK_KEY")
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 500 })
+  }
+
+  const webhookClient = new DodoPayments({
+    bearerToken: process.env.DODO_PAYMENTS_API_KEY,
+    webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY,
+    environment: (process.env.DODO_PAYMENTS_ENVIRONMENT as "live_mode" | "test_mode") || "live_mode",
+  })
+
   try {
     const rawBody = await req.text()
     const headers = {
@@ -24,8 +29,8 @@ export async function POST(req: NextRequest) {
     try {
       payload = webhookClient.webhooks.unwrap(rawBody, { headers }) as unknown as Record<string, unknown>
     } catch {
-      console.error("[Webhook] Signature verification failed")
-      return NextResponse.json({ received: true }, { status: 200 })
+      log.warn("Webhook signature verification failed", { category: "payment" })
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
     }
 
     const eventType = payload.event_type as string
@@ -55,12 +60,15 @@ export async function POST(req: NextRequest) {
         await handleRefundSucceeded(data)
         break
       default:
-        console.log(`[Webhook] Unhandled event: ${eventType}`)
+        log.warn(`Unhandled webhook event: ${eventType}`, { category: "payment" })
     }
 
     log.paymentEvent({ event: "webhook_processed", status: "success" })
   } catch (error) {
-    console.error("[Webhook] Top-level error:", error)
+    log.error("Webhook top-level error", {
+      error: error instanceof Error ? error.message : "Unknown",
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     log.paymentEvent({
       event: "webhook_error",
       status: "error",
@@ -118,8 +126,8 @@ async function handlePaymentSucceeded(data: Record<string, unknown> | undefined,
       await prisma.user.update({ where: { id: metadata.userId }, data: { dodoCustomerId: customerId } })
     }
 
-    console.log(`[Webhook] Claw purchased: ${template?.slug ?? metadata.templateId} → workspace ${workspaceId}`)
-  } catch (error) { console.error("[Webhook] onPaymentSucceeded error:", error) }
+    log.paymentEvent({ event: "claw_purchased", templateId: metadata.templateId, userId: metadata.userId, status: "success" })
+  } catch (error) { log.error("Webhook onPaymentSucceeded error", { error: error instanceof Error ? error.message : "Unknown" }) }
 }
 
 async function handlePaymentFailed(data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
@@ -130,7 +138,7 @@ async function handlePaymentFailed(data: Record<string, unknown> | undefined, me
         data: { userId: metadata.userId, clawTemplateId: metadata.templateId, amountPaid: 0, dodoPaymentId: data?.payment_id as string, status: "FAILED" },
       })
     }
-  } catch (error) { console.error("[Webhook] onPaymentFailed error:", error) }
+  } catch (error) { log.error("Webhook onPaymentFailed error", { error: error instanceof Error ? error.message : "Unknown" }) }
 }
 
 async function handleSubscriptionActive(data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
@@ -154,7 +162,7 @@ async function handleSubscriptionActive(data: Record<string, unknown> | undefine
         await prisma.purchase.update({ where: { id: purchase.id }, data: { subscriptionId, subscriptionStatus: "ACTIVE" } })
       }
     }
-  } catch (error) { console.error("[Webhook] onSubscriptionActive error:", error) }
+  } catch (error) { log.error("Webhook onSubscriptionActive error", { error: error instanceof Error ? error.message : "Unknown" }) }
 }
 
 async function handleSubscriptionCancelled(data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
@@ -172,7 +180,7 @@ async function handleSubscriptionCancelled(data: Record<string, unknown> | undef
       const purchase = await prisma.purchase.findFirst({ where: { subscriptionId } })
       if (purchase) await prisma.purchase.update({ where: { id: purchase.id }, data: { subscriptionStatus: "CANCELED" } })
     }
-  } catch (error) { console.error("[Webhook] onSubscriptionCancelled error:", error) }
+  } catch (error) { log.error("Webhook onSubscriptionCancelled error", { error: error instanceof Error ? error.message : "Unknown" }) }
 }
 
 async function handleSubscriptionFailed(_data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
@@ -183,7 +191,7 @@ async function handleSubscriptionFailed(_data: Record<string, unknown> | undefin
     if (metadata.type === "claw_platform" && metadata.workspaceId) {
       await prisma.workspace.update({ where: { id: metadata.workspaceId }, data: { status: "PAUSED" } })
     }
-  } catch (error) { console.error("[Webhook] onSubscriptionFailed error:", error) }
+  } catch (error) { log.error("Webhook onSubscriptionFailed error", { error: error instanceof Error ? error.message : "Unknown" }) }
 }
 
 async function handleSubscriptionExpired(_data: Record<string, unknown> | undefined, metadata: Record<string, string>) {
@@ -194,7 +202,7 @@ async function handleSubscriptionExpired(_data: Record<string, unknown> | undefi
         data: { hasActiveSubscription: false, subscriptionId: null, subscriptionEndsAt: null },
       })
     }
-  } catch (error) { console.error("[Webhook] onSubscriptionExpired error:", error) }
+  } catch (error) { log.error("Webhook onSubscriptionExpired error", { error: error instanceof Error ? error.message : "Unknown" }) }
 }
 
 async function handleRefundSucceeded(data: Record<string, unknown> | undefined) {
@@ -208,5 +216,5 @@ async function handleRefundSucceeded(data: Record<string, unknown> | undefined) 
       const days = Math.floor((Date.now() - purchase.createdAt.getTime()) / 86400000)
       if (days <= 7) await prisma.workspace.delete({ where: { id: purchase.workspaceId } })
     }
-  } catch (error) { console.error("[Webhook] onRefundSucceeded error:", error) }
+  } catch (error) { log.error("Webhook onRefundSucceeded error", { error: error instanceof Error ? error.message : "Unknown" }) }
 }
