@@ -42,6 +42,5 @@ export async function GET() {
     trialStartedAt: dbUser.trialStartedAt?.toISOString() ?? null,
     trialEndsAt: dbUser.trialEndsAt?.toISOString() ?? null,
     nextBillingDate: dbUser.subscriptionEndsAt ? dbUser.subscriptionEndsAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
-    isPastDue: false,
   })
 }
