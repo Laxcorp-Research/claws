@@ -91,18 +91,6 @@ const AGENT_COLORS: Record<string, string> = {
   CRITIC: "#A78BFA",
 }
 
-const MODEL_COST_PER_CALL: Record<string, number> = {
-  opus: 0.075,
-  sonnet: 0.015,
-  haiku: 0.001,
-}
-
-const ROLE_CALL_MULTIPLIER: Record<string, number> = {
-  ORCHESTRATOR: 1.5,
-  WORKER: 1.0,
-  CRITIC: 0.6,
-}
-
 const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 }
 
 const MAX_LOG_ENTRIES = 200
@@ -123,28 +111,12 @@ function relativeTime(isoStr: string | undefined): string {
   return `${hours} hour${hours !== 1 ? "s" : ""} ago`
 }
 
-function getModelShortName(model: string): string {
-  return getModelDisplayName(model)
-}
-
-function getModelCostKey(model: string): string {
-  const lower = model.toLowerCase()
-  if (lower.includes("opus")) return "opus"
-  if (lower.includes("haiku")) return "haiku"
-  return "sonnet"
-}
-
-function getEstimatedCosts(agents: AgentInfo[]): { agentName: string; role: string; model: string; calls: number; cost: number }[] {
-  const baseCalls = 150
-  return agents.map((a) => {
-    const shortModel = getModelShortName(a.model)
-    const costKey = getModelCostKey(a.model)
-    const costPerCall = MODEL_COST_PER_CALL[costKey] ?? 0.015
-    const multiplier = ROLE_CALL_MULTIPLIER[a.role] ?? 1.0
-    const calls = Math.round(baseCalls * multiplier + (a.name.length * 7) % 100)
-    const cost = Math.round(calls * costPerCall * 100) / 100
-    return { agentName: a.name, role: a.role, model: shortModel, calls, cost }
-  })
+interface AgentCostRow {
+  agentName: string
+  role: string
+  model: string
+  calls: number
+  cost: number
 }
 
 export default function DashboardPage() {
@@ -163,6 +135,7 @@ export default function DashboardPage() {
   const [trialInfo, setTrialInfo] = useState<{ trialUsed: boolean; trialEndsAt: string | null; hasActiveSubscription: boolean } | null>(null)
   const [agentActionLoadingId, setAgentActionLoadingId] = useState<string | null>(null)
   const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
+  const [agentCosts, setAgentCosts] = useState<AgentCostRow[]>([])
   const [subscribing, setSubscribing] = useState(false)
 
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -201,6 +174,15 @@ export default function DashboardPage() {
         setPendingApprovals(json.data.pendingApprovals ?? [])
         setSpend(json.data.spend ?? null)
         setExpiredTools(json.data.expiredTools ?? [])
+        if (json.data.agentCosts) {
+          setAgentCosts((json.data.agentCosts as { agentName: string; role: string; model: string; calls: number; cost: number }[]).map((c) => ({
+            agentName: c.agentName,
+            role: c.role,
+            model: getModelDisplayName(c.model),
+            calls: c.calls,
+            cost: c.cost,
+          })))
+        }
         const colorMap: Record<string, string> = {}
         for (const a of json.data.agents as AgentInfo[]) {
           colorMap[a.name] = a.color
@@ -486,7 +468,15 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe])
 
-  const costRows = useMemo(() => getEstimatedCosts(agents), [agents])
+  const costRows = useMemo(() =>
+    [...agentCosts].sort((a, b) => {
+      const ra = ROLE_ORDER[a.role] ?? 1
+      const rb = ROLE_ORDER[b.role] ?? 1
+      if (ra !== rb) return ra - rb
+      return a.agentName.localeCompare(b.agentName)
+    }),
+    [agentCosts],
+  )
   const costTotal = useMemo(() => costRows.reduce((sum, r) => sum + r.cost, 0), [costRows])
 
   const sortedAgents = useMemo(
@@ -628,7 +618,7 @@ export default function DashboardPage() {
 
           <CostBreakdownTable
             rows={costRows}
-            totalCost={stats?.apiCostThisMonth ?? costTotal}
+            totalCost={costTotal}
             period={new Date().toLocaleString("default", { month: "long", year: "numeric" })}
             workspaceId={workspaceId}
           />

@@ -145,6 +145,19 @@ export async function GET(
 
   const pausedCount = agentStatuses.filter((a) => a.status === "paused").length
 
+  const perAgentCosts = agentSlugs.length > 0
+    ? await prisma.$queryRawUnsafe<{ agentSlug: string; calls: bigint; cost: number }[]>(
+        `SELECT "agentSlug", COUNT(*) as calls, COALESCE(SUM("apiCost"), 0) as cost FROM "ActivityLog" WHERE "workspaceId" = $1 AND "agentSlug" = ANY($2) AND "apiCost" IS NOT NULL GROUP BY "agentSlug"`,
+        workspaceId,
+        agentSlugs,
+      )
+    : []
+
+  const costBySlug = new Map<string, { calls: number; cost: number }>()
+  for (const row of perAgentCosts) {
+    costBySlug.set(row.agentSlug, { calls: Number(row.calls), cost: Number(row.cost) })
+  }
+
   const totalApiCost = costAgg._sum.apiCost ?? 0
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const dayOfMonth = now.getDate()
@@ -178,6 +191,10 @@ export async function GET(
         ? Math.round((workspace!.currentMonthApiCost / workspace!.apiSpendLimit) * 100)
         : 0,
     },
+    agentCosts: agents.map((a) => {
+      const entry = costBySlug.get(a.agentSlug)
+      return { agentSlug: a.agentSlug, agentName: a.name, role: a.role, model: a.model, calls: entry?.calls ?? 0, cost: Math.round((entry?.cost ?? 0) * 100) / 100 }
+    }),
     expiredTools: expiredTools.map((t) => ({ name: t.displayName })),
     recentLogs: recentLogs.map((log) => ({
       id: log.id,
