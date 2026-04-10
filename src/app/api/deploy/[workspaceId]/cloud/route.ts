@@ -58,8 +58,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
 
     log.deployEvent({ event: "started", workspaceId, userId: user.id })
 
-    // Kick off the full deploy pipeline (generates files, provisions container, etc.)
-    // Uses real containers when CONTAINER_HOST is set, simulation otherwise.
+    // Kick off the full deploy pipeline (generates files, creates Railway service, etc.)
+    // Uses Railway when configured, simulation otherwise.
     const { deployToCloud } = await import("@/lib/openclaw/deployer")
     const result = await deployToCloud(workspaceId)
 

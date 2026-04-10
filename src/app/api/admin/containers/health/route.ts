@@ -1,38 +1,33 @@
 import { NextRequest } from "next/server"
 import { apiSuccess, apiError } from "@/lib/api/response"
 import { getAdminUser } from "@/lib/api/admin"
-import {
-  checkAgentHealth,
-  listContainers,
-  isContainerHostConfigured,
-} from "@/lib/container-client"
+import { isRailwayConfigured, listProjectServices } from "@/lib/openclaw/railway-client"
 
 export async function GET(_req: NextRequest) {
   const admin = await getAdminUser()
   if (!admin) return apiError("ADMIN_REQUIRED", "Admin access required", 403)
 
-  if (!isContainerHostConfigured()) {
+  if (!isRailwayConfigured()) {
     return apiSuccess({
       configured: false,
-      agentHealthy: false,
-      containers: [],
+      provider: "railway",
+      services: [],
     })
   }
 
-  const agentHealthy = await checkAgentHealth()
-  let containers: unknown[] = []
-
-  if (agentHealthy) {
-    try {
-      containers = await listContainers()
-    } catch {
-      containers = []
-    }
+  try {
+    const services = await listProjectServices()
+    return apiSuccess({
+      configured: true,
+      provider: "railway",
+      services,
+    })
+  } catch {
+    return apiSuccess({
+      configured: true,
+      provider: "railway",
+      services: [],
+      error: "Failed to query Railway API",
+    })
   }
-
-  return apiSuccess({
-    configured: true,
-    agentHealthy,
-    containers,
-  })
 }

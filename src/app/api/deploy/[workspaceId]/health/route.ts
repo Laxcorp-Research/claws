@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
-import { isContainerHostConfigured, inspectContainer } from "@/lib/container-client"
+import { isRailwayConfigured, getServiceStatus } from "@/lib/openclaw/railway-client"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -22,36 +22,37 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
       lastHealthCheck: true,
       containerId: true,
       containerName: true,
+      containerHost: true,
       hostPort: true,
     },
   })
 
-  if (!isContainerHostConfigured() || !workspace?.containerName) {
+  if (!isRailwayConfigured() || !workspace?.containerId) {
     return apiSuccess({
       status: workspace?.status ?? "UNKNOWN",
       healthStatus: workspace?.healthStatus ?? "UNKNOWN",
       lastHealthCheck: workspace?.lastHealthCheck,
       containerId: workspace?.containerId,
       containerName: workspace?.containerName,
-      hostPort: workspace?.hostPort,
+      containerHost: workspace?.containerHost,
       mode: "simulation",
     })
   }
 
   try {
-    const info = await inspectContainer(workspace.containerName)
+    const railwayStatus = await getServiceStatus(workspace.containerId)
     return apiSuccess({
       status: workspace.status,
       healthStatus: workspace.healthStatus,
       lastHealthCheck: workspace.lastHealthCheck,
       containerId: workspace.containerId,
       containerName: workspace.containerName,
-      hostPort: info.hostPort,
+      containerHost: workspace.containerHost,
       container: {
-        running: info.running,
-        containerStatus: info.status,
-        restartCount: info.restartCount,
-        startedAt: info.startedAt,
+        running: railwayStatus.healthy,
+        containerStatus: railwayStatus.status,
+        deploymentId: railwayStatus.deploymentId,
+        createdAt: railwayStatus.createdAt,
       },
     })
   } catch {
@@ -61,10 +62,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
       lastHealthCheck: workspace.lastHealthCheck,
       containerId: workspace.containerId,
       containerName: workspace.containerName,
-      hostPort: workspace.hostPort,
+      containerHost: workspace.containerHost,
       container: {
         running: false,
-        containerStatus: "not_found",
+        containerStatus: "unreachable",
       },
     })
   }

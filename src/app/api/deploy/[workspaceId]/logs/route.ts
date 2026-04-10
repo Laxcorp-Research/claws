@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
-import { isContainerHostConfigured, getContainerLogs } from "@/lib/container-client"
+import { isRailwayConfigured, getServiceLogs } from "@/lib/openclaw/railway-client"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -16,20 +16,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ work
 
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { containerName: true },
+    select: { containerId: true },
   })
 
-  if (!isContainerHostConfigured() || !workspace?.containerName) {
-    return apiSuccess({ logs: "[Simulation mode — no real logs]" })
+  if (!isRailwayConfigured() || !workspace?.containerId) {
+    return apiSuccess({ logs: "[No container running — deploy first]" })
   }
 
   const url = new URL(req.url)
   const tail = parseInt(url.searchParams.get("tail") || "100", 10)
 
   try {
-    const logs = await getContainerLogs(workspace.containerName, tail)
+    const logs = await getServiceLogs(workspace.containerId, tail)
     return apiSuccess({ logs })
   } catch {
-    return apiSuccess({ logs: "[Container not found or not running]" })
+    return apiSuccess({ logs: "[Failed to fetch logs]" })
   }
 }

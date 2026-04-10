@@ -1,65 +1,43 @@
 // lib/openclaw/deployer.ts
 // ============================================================================
 // Container lifecycle management for Claws workspaces.
-// Handles: provisioning, file injection, startup, health checks,
-//          stopping, restarting, config updates, and export.
+// Handles: provisioning, startup, health checks, stopping, restarting,
+//          config updates, and destruction.
 //
 // Architecture:
-//   - Droplet (134.209.166.81) runs a lightweight container management agent
-//   - Vercel serverless functions call the agent's HTTP API via container-client
-//   - When CONTAINER_HOST is not set, falls back to simulation mode
+//   - Each workspace gets its own Railway service (Docker container)
+//   - Vercel serverless functions call Railway's GraphQL API
+//   - Config is delivered via base64-encoded env vars, unpacked at boot
+//   - Health monitored via Railway deployment status + direct /healthz
 //
-// VALIDATED AGAINST: OpenClaw codebase (March 2026)
-// Key findings incorporated:
-//   1. Base image: custom-built from OpenClaw Dockerfile (node:24-bookworm)
-//   2. Entrypoint: node openclaw.mjs gateway --bind lan --port 18789
-//   3. State dir: /home/node/.openclaw (default for `node` user)
-//   4. Runs as non-root user `node` (uid 1000)
-//   5. Health: /healthz (liveness) + /readyz (readiness with channel checks)
-//   6. Persistent volume required (NOT tmpfs - agent writes memory files)
-//   7. Gateway token via OPENCLAW_GATEWAY_TOKEN env var
-//   8. Config hot-reload: edit openclaw.json in volume → auto-applied
-//   9. init: true for PID 1 signal handling
-//  10. --bind lan required (default loopback unreachable in Docker bridge)
+// Config delivery:
+//   - openclaw.json → base64 → CLAWS_CONFIG_B64 env var
+//   - .env content → base64 → CLAWS_ENV_B64 env var
+//   - Workspace files (SOUL.md etc.) → JSON → base64 → CLAWS_FILES_B64
+//   - Railway start command decodes these to /home/node/.openclaw/ on boot
 // ============================================================================
 
 import { prisma } from '@/lib/db';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { generateWorkspace, type GeneratedWorkspace } from './generator';
 import {
-  isContainerHostConfigured,
-  createContainer,
-  stopContainer as agentStopContainer,
-  restartContainer as agentRestartContainer,
-  removeContainer,
-  inspectContainer,
-  writeFilesToVolume,
-} from '@/lib/container-client';
+  isRailwayConfigured,
+  createService,
+  deleteService,
+  redeployService,
+  updateServiceVariables,
+  getServiceStatus,
+} from './railway-client';
 import { log } from '@/lib/logger';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const OPENCLAW_IMAGE =
-  process.env.OPENCLAW_DOCKER_IMAGE ??
-  'ghcr.io/laxcorp/openclaw-runtime:latest';
+const CONTAINER_PREFIX = 'claw';
 
-const CONTAINER_PREFIX = 'claws';
-
-const CONTAINER_HOST_IP = process.env.CONTAINER_HOST_IP ?? '134.209.166.81';
-
-/** Default resource limits */
-const DEFAULT_MEMORY_MB = 1024;
-const DEFAULT_CPUS = 1.0;
-
-/** Health check timeouts */
-const LIVENESS_TIMEOUT_MS = 60_000;
-const READINESS_TIMEOUT_MS = 120_000;
-const HEALTH_CHECK_INTERVAL_MS = 2_000;
-
-/** Gateway port inside container */
-const GATEWAY_PORT = 18789;
+const DEPLOY_POLL_INTERVAL_MS = 3_000;
+const DEPLOY_TIMEOUT_MS = 180_000;
 
 // ---------------------------------------------------------------------------
 // Deployment Status
@@ -92,7 +70,7 @@ async function updateDeploymentStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Deploy to Cloud
+// Deploy to Cloud (Railway)
 // ---------------------------------------------------------------------------
 
 export async function deployToCloud(workspaceId: string): Promise<{
@@ -100,7 +78,6 @@ export async function deployToCloud(workspaceId: string): Promise<{
   containerId: string;
   gatewayToken: string;
 }> {
-  // 1. Create deployment record
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
@@ -117,96 +94,46 @@ export async function deployToCloud(workspaceId: string): Promise<{
     },
   });
 
-  // If container host is not configured, use simulation mode
-  if (!isContainerHostConfigured()) {
-    log.warn('Container host not configured — running in simulation mode', {
-      workspaceId,
-    });
+  if (!isRailwayConfigured()) {
+    log.warn('Railway not configured — running in simulation mode', { workspaceId });
     return simulateDeploy(workspaceId, deployment.id, workspace);
   }
 
   try {
-    // 2. Generate workspace files
     await updateDeploymentStatus(deployment.id, 'GENERATING');
     const generated = await generateWorkspace(workspaceId);
 
-    // 3. Provision: write files to volume via droplet agent
     await updateDeploymentStatus(deployment.id, 'PROVISIONING');
-    const containerName = `${CONTAINER_PREFIX}-${workspaceId}`;
-    const volumeName = `${CONTAINER_PREFIX}-vol-${workspaceId}`;
+    const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);
+    const envVars = buildRailwayEnvVars(generated, workspace);
 
-    const files = buildVolumeFileMap(generated);
-    await writeFilesToVolume(volumeName, files);
-
-    // 4. Configure: build environment variables
     await updateDeploymentStatus(deployment.id, 'CONFIGURING');
 
-    const containerEnv: Record<string, string> = {
-      OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
-      TZ: workspace.timezone ?? 'UTC',
-      NODE_ENV: 'production',
-      NODE_OPTIONS: `--max-old-space-size=${Math.floor(DEFAULT_MEMORY_MB * 0.75)}`,
-    };
-
-    // 5. Start container via droplet agent
     await updateDeploymentStatus(deployment.id, 'STARTING');
+    const result = await createService({ name: serviceName, envVars });
 
-    const result = await createContainer({
-      name: containerName,
-      image: OPENCLAW_IMAGE,
-      env: containerEnv,
-      memoryMb: DEFAULT_MEMORY_MB,
-      cpus: DEFAULT_CPUS,
-      volumeName,
-      volumePath: '/home/node/.openclaw',
-    });
-
-    // 6. Liveness check: wait for /healthz (gateway process is up)
     await updateDeploymentStatus(deployment.id, 'HEALTH_CHECK');
-    const hostPort = result.hostPort;
+    await waitForDeploymentSuccess(result.serviceId);
 
-    if (hostPort) {
+    if (workspace.channelConfigEncrypted) {
+      await updateDeploymentStatus(deployment.id, 'WAITING_CHANNELS');
       try {
-        await waitForEndpoint(
-          `http://${CONTAINER_HOST_IP}:${hostPort}/healthz`,
-          LIVENESS_TIMEOUT_MS,
-        );
+        await waitForEndpoint(`https://${result.domain}/readyz`, 60_000);
       } catch {
-        log.warn('Container liveness check timed out — continuing', {
-          workspaceId,
-          containerName,
-        });
-      }
-
-      // 7. Readiness check: wait for /readyz (channels connected)
-      const hasChannels = !!workspace.channelConfigEncrypted;
-
-      if (hasChannels) {
-        await updateDeploymentStatus(deployment.id, 'WAITING_CHANNELS');
-        try {
-          await waitForEndpoint(
-            `http://${CONTAINER_HOST_IP}:${hostPort}/readyz`,
-            READINESS_TIMEOUT_MS,
-          );
-        } catch {
-          log.warn(
-            'Readiness check timed out — channels may need configuration',
-            { workspaceId },
-          );
-        }
+        log.warn('Readiness check timed out — channels may need configuration', { workspaceId });
       }
     }
 
-    // 8. Mark complete
     await updateDeploymentStatus(deployment.id, 'COMPLETED');
 
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: {
         status: 'RUNNING',
-        containerId: result.containerId,
-        containerName,
-        hostPort,
+        containerId: result.serviceId,
+        containerName: serviceName,
+        containerHost: result.domain,
+        hostPort: null,
         gatewayToken: encrypt(generated.gatewayToken),
         healthStatus: 'HEALTHY',
         lastHealthCheck: new Date(),
@@ -215,12 +142,11 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
     return {
       deploymentId: deployment.id,
-      containerId: result.containerId,
+      containerId: result.serviceId,
       gatewayToken: generated.gatewayToken,
     };
   } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown deployment error';
+    const message = error instanceof Error ? error.message : 'Unknown deployment error';
     await updateDeploymentStatus(deployment.id, 'FAILED', message);
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -239,11 +165,11 @@ export async function stopContainer(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
-  if (isContainerHostConfigured() && workspace.containerName) {
+  if (isRailwayConfigured() && workspace.containerId) {
     try {
-      await agentStopContainer(workspace.containerName);
+      await deleteService(workspace.containerId);
     } catch {
-      // Container might already be stopped
+      log.warn('Failed to delete Railway service — may already be removed', { workspaceId });
     }
   }
 
@@ -251,6 +177,10 @@ export async function stopContainer(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
     data: {
       status: 'PAUSED',
+      containerId: null,
+      containerName: null,
+      containerHost: null,
+      hostPort: null,
       healthStatus: 'UNKNOWN',
     },
   });
@@ -261,21 +191,17 @@ export async function restartContainer(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
-  if (isContainerHostConfigured() && workspace.containerName) {
-    const result = await agentRestartContainer(workspace.containerName);
-
-    if (result.hostPort) {
-      await prisma.workspace.update({
-        where: { id: workspaceId },
-        data: {
-          status: 'RUNNING',
-          hostPort: result.hostPort,
-          healthStatus: 'HEALTHY',
-          lastHealthCheck: new Date(),
-        },
-      });
-      return;
-    }
+  if (isRailwayConfigured() && workspace.containerId) {
+    await redeployService(workspace.containerId);
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        status: 'RUNNING',
+        healthStatus: 'HEALTHY',
+        lastHealthCheck: new Date(),
+      },
+    });
+    return;
   }
 
   await prisma.workspace.update({
@@ -288,38 +214,32 @@ export async function restartContainer(workspaceId: string): Promise<void> {
   });
 }
 
-/** Redeploy with updated config (regenerates files, restarts container) */
 export async function redeployWorkspace(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
 
-  if (
-    isContainerHostConfigured() &&
-    workspace.containerName &&
-    workspace.status === 'RUNNING'
-  ) {
+  if (isRailwayConfigured() && workspace.containerId && workspace.status === 'RUNNING') {
     const generated = await generateWorkspace(workspaceId);
-    const volumeName = `${CONTAINER_PREFIX}-vol-${workspaceId}`;
-    const files = buildVolumeFileMap(generated);
-    await writeFilesToVolume(volumeName, files);
+    const envVars = buildRailwayEnvVars(generated, workspace);
+    await updateServiceVariables(workspace.containerId, envVars);
+    await redeployService(workspace.containerId);
     return;
   }
 
   await deployToCloud(workspaceId);
 }
 
-/** Destroy container and clean up */
 export async function destroyDeployment(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
 
-  if (isContainerHostConfigured() && workspace.containerName) {
+  if (isRailwayConfigured() && workspace.containerId) {
     try {
-      await removeContainer(workspace.containerName);
+      await deleteService(workspace.containerId);
     } catch {
-      // Container might not exist
+      log.warn('Failed to delete Railway service during destroy', { workspaceId });
     }
   }
 
@@ -329,6 +249,7 @@ export async function destroyDeployment(workspaceId: string): Promise<void> {
       status: 'DRAFT',
       containerId: null,
       containerName: null,
+      containerHost: null,
       hostPort: null,
       gatewayToken: null,
       healthStatus: 'UNKNOWN',
@@ -341,90 +262,50 @@ export async function destroyDeployment(workspaceId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function healthCheckAllContainers(): Promise<void> {
+  if (!isRailwayConfigured()) return;
+
   const runningWorkspaces = await prisma.workspace.findMany({
-    where: { status: 'RUNNING' },
-    select: {
-      id: true,
-      containerId: true,
-      containerName: true,
-      hostPort: true,
-      userId: true,
-    },
+    where: { status: 'RUNNING', containerId: { not: null } },
+    select: { id: true, containerId: true, containerHost: true, userId: true },
   });
 
   for (const ws of runningWorkspaces) {
-    if (!ws.hostPort) continue;
+    if (!ws.containerId) continue;
 
-    // Use the droplet agent to inspect, or fall back to direct health check
-    if (isContainerHostConfigured() && ws.containerName) {
-      try {
-        const info = await inspectContainer(ws.containerName);
-        if (!info.running) {
-          await markUnhealthy(ws.id, ws.userId, 'Container not running');
-          continue;
-        }
-        await prisma.workspace.update({
-          where: { id: ws.id },
-          data: {
-            healthStatus: 'HEALTHY',
-            lastHealthCheck: new Date(),
-          },
-        });
-      } catch {
-        await markUnhealthy(ws.id, ws.userId, 'Container unreachable');
-      }
-      continue;
-    }
-
-    // Direct health check (localhost — for co-located setups)
     try {
-      const liveRes = await fetchWithTimeout(
-        `http://127.0.0.1:${ws.hostPort}/healthz`,
-        5000,
-      );
-
-      if (!liveRes.ok) {
-        await markUnhealthy(ws.id, ws.userId, 'Liveness check failed');
+      const status = await getServiceStatus(ws.containerId);
+      if (!status.healthy) {
+        await markUnhealthy(ws.id, ws.userId, `Railway deployment status: ${status.status}`);
         continue;
       }
 
-      const readyRes = await fetchWithTimeout(
-        `http://127.0.0.1:${ws.hostPort}/readyz`,
-        5000,
-      );
+      if (ws.containerHost) {
+        try {
+          const res = await fetchWithTimeout(`https://${ws.containerHost}/healthz`, 5000);
+          if (!res.ok) {
+            await markUnhealthy(ws.id, ws.userId, 'Gateway /healthz check failed');
+            continue;
+          }
+        } catch {
+          log.warn('Direct health check failed, but Railway reports healthy', { workspaceId: ws.id });
+        }
+      }
 
       await prisma.workspace.update({
         where: { id: ws.id },
-        data: {
-          healthStatus: readyRes.ok ? 'HEALTHY' : 'DEGRADED',
-          lastHealthCheck: new Date(),
-        },
+        data: { healthStatus: 'HEALTHY', lastHealthCheck: new Date() },
       });
     } catch {
-      await markUnhealthy(ws.id, ws.userId, 'Container unreachable');
+      await markUnhealthy(ws.id, ws.userId, 'Railway service unreachable');
     }
   }
 }
 
-async function markUnhealthy(
-  workspaceId: string,
-  userId: string,
-  reason: string,
-): Promise<void> {
+async function markUnhealthy(workspaceId: string, userId: string, reason: string): Promise<void> {
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: { healthStatus: 'UNHEALTHY' },
   });
-
-  await sendHealthAlert(userId, workspaceId, reason);
-}
-
-async function sendHealthAlert(
-  _userId: string,
-  workspaceId: string,
-  reason: string,
-): Promise<void> {
-  // TODO: Implement email/notification alert
   log.warn(`Workspace ${workspaceId} unhealthy: ${reason}`, { workspaceId });
 }
 
@@ -434,37 +315,43 @@ async function sendHealthAlert(
 
 export async function getGatewayConnectionInfo(
   workspaceId: string,
-): Promise<{
-  wsUrl: string;
-  token: string;
-} | null> {
+): Promise<{ wsUrl: string; token: string } | null> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
 
-  if (!workspace.hostPort || !workspace.gatewayToken) return null;
-
-  const host = isContainerHostConfigured()
-    ? CONTAINER_HOST_IP
-    : '127.0.0.1';
+  if (!workspace.containerHost || !workspace.gatewayToken) return null;
 
   return {
-    wsUrl: `ws://${host}:${workspace.hostPort}`,
+    wsUrl: `wss://${workspace.containerHost}`,
     token: decrypt(workspace.gatewayToken),
   };
 }
 
 // ---------------------------------------------------------------------------
-// Volume File Map Builder
+// Railway Env Var Builder
 // ---------------------------------------------------------------------------
 
-function buildVolumeFileMap(
+function buildRailwayEnvVars(
   generated: GeneratedWorkspace,
+  workspace: { timezone?: string | null },
 ): Record<string, string> {
-  const files: Record<string, string> = {};
+  const configJson = generated['openclaw.json'];
+  const envFileContent = generated['.env'];
+  const workspaceFiles = buildWorkspaceFileMap(generated);
 
-  files['openclaw.json'] = generated['openclaw.json'];
-  files['.env'] = generated['.env'];
+  return {
+    CLAWS_CONFIG_B64: Buffer.from(configJson).toString('base64'),
+    CLAWS_ENV_B64: Buffer.from(envFileContent).toString('base64'),
+    CLAWS_FILES_B64: Buffer.from(JSON.stringify(workspaceFiles)).toString('base64'),
+    OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
+    TZ: workspace.timezone ?? 'UTC',
+    NODE_ENV: 'production',
+  };
+}
+
+function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
+  const files: Record<string, string> = {};
 
   const cronContent = generated['cron/jobs.json'];
   if (cronContent && cronContent !== '[]') {
@@ -491,48 +378,32 @@ function buildVolumeFileMap(
 }
 
 // ---------------------------------------------------------------------------
-// Simulation Mode
-// ---------------------------------------------------------------------------
-// When CONTAINER_HOST is not set, simulate deployment with delays.
-// This keeps staging/dev working without a real droplet.
+// Simulation Mode (dev/staging without Railway credentials)
 // ---------------------------------------------------------------------------
 
 async function simulateDeploy(
   workspaceId: string,
   deploymentId: string,
   workspace: { channelConfigEncrypted?: string | null; timezone?: string | null },
-): Promise<{
-  deploymentId: string;
-  containerId: string;
-  gatewayToken: string;
-}> {
+): Promise<{ deploymentId: string; containerId: string; gatewayToken: string }> {
   if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'Deploy simulation is disabled in production. Configure CONTAINER_HOST and CONTAINER_AGENT_SECRET.',
-    );
+    throw new Error('Deploy simulation is disabled in production. Configure RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_ENVIRONMENT_ID.');
   }
 
   const fakeContainerId = `sim-${workspaceId.substring(0, 8)}`;
-  const fakeToken = 'simulation-token';
 
   await updateDeploymentStatus(deploymentId, 'GENERATING');
-  await sleep(800);
-
+  await sleep(500);
   await updateDeploymentStatus(deploymentId, 'PROVISIONING');
-  await sleep(600);
-
-  await updateDeploymentStatus(deploymentId, 'CONFIGURING');
-  await sleep(400);
-
+  await sleep(300);
   await updateDeploymentStatus(deploymentId, 'STARTING');
-  await sleep(800);
-
+  await sleep(500);
   await updateDeploymentStatus(deploymentId, 'HEALTH_CHECK');
-  await sleep(600);
+  await sleep(300);
 
   if (workspace.channelConfigEncrypted) {
     await updateDeploymentStatus(deploymentId, 'WAITING_CHANNELS');
-    await sleep(400);
+    await sleep(200);
   }
 
   await updateDeploymentStatus(deploymentId, 'COMPLETED');
@@ -543,6 +414,7 @@ async function simulateDeploy(
       status: 'RUNNING',
       containerId: fakeContainerId,
       containerName: `${CONTAINER_PREFIX}-${workspaceId}`,
+      containerHost: null,
       hostPort: null,
       gatewayToken: null,
       healthStatus: 'HEALTHY',
@@ -550,21 +422,27 @@ async function simulateDeploy(
     },
   });
 
-  return {
-    deploymentId,
-    containerId: fakeContainerId,
-    gatewayToken: fakeToken,
-  };
+  return { deploymentId, containerId: fakeContainerId, gatewayToken: 'simulation-token' };
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function waitForEndpoint(
-  url: string,
-  timeoutMs: number,
-): Promise<void> {
+async function waitForDeploymentSuccess(serviceId: string): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < DEPLOY_TIMEOUT_MS) {
+    const status = await getServiceStatus(serviceId);
+    if (status.status === 'SUCCESS') return;
+    if (status.status === 'FAILED' || status.status === 'CRASHED') {
+      throw new Error(`Railway deployment ${status.status}`);
+    }
+    await sleep(DEPLOY_POLL_INTERVAL_MS);
+  }
+  throw new Error(`Railway deployment did not succeed within ${DEPLOY_TIMEOUT_MS / 1000}s`);
+}
+
+async function waitForEndpoint(url: string, timeoutMs: number): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
@@ -573,17 +451,12 @@ async function waitForEndpoint(
     } catch {
       // Expected during startup
     }
-    await sleep(HEALTH_CHECK_INTERVAL_MS);
+    await sleep(2000);
   }
-  throw new Error(
-    `Endpoint ${url} did not become healthy within ${timeoutMs}ms`,
-  );
+  throw new Error(`Endpoint ${url} did not become healthy within ${timeoutMs}ms`);
 }
 
-async function fetchWithTimeout(
-  url: string,
-  timeoutMs: number,
-): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -593,9 +466,7 @@ async function fetchWithTimeout(
   }
 }
 
-async function getNextDeploymentVersion(
-  workspaceId: string,
-): Promise<number> {
+async function getNextDeploymentVersion(workspaceId: string): Promise<number> {
   const latest = await prisma.deployment.findFirst({
     where: { workspaceId },
     orderBy: { version: 'desc' },
