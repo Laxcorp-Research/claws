@@ -17,7 +17,7 @@ interface BillingData {
   trialUsed: boolean
   trialStartedAt: string | null
   trialEndsAt: string | null
-  isPastDue?: boolean
+  nextBillingDate?: string
 }
 
 interface WorkspaceItem {
@@ -131,42 +131,24 @@ export function BillingDashboard() {
         </AlertBanner>
       )}
 
-      {data.isPastDue && (
-        <AlertBanner
-          variant="error"
-          actions={
-            <Button variant="primary" size="sm" onClick={openPortal}>
-              Update payment
-            </Button>
-          }
-        >
-          <p className="font-medium">Payment failed</p>
-          <p className="mt-0.5 opacity-80">Update your payment method to keep Claws running.</p>
-        </AlertBanner>
-      )}
-
       <h2 className="text-[14px] font-semibold mb-[2px]">Billing summary</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-[12px]">You pay $79/mo per running Claw. No tiers, no surprises.</p>
 
       <div className="grid grid-cols-3 gap-[8px] my-[10px]">
         <StatCard label="Active Claws" value={activeClaws} trend="$79/mo each" />
-        <StatCard label="Monthly total" value={`$${monthlyTotal}`} trend="Platform fees only" />
+        <StatCard label="Est. monthly" value={`$${monthlyTotal}`} trend={`${activeClaws} running Claw${activeClaws !== 1 ? "s" : ""} × $79`} />
         <StatCard label="Trial status" value={trialStatusLabel} trend={trialTrend} />
       </div>
 
       <div className="border border-[var(--bd)] rounded-[var(--r,8px)] p-[10px] my-[10px]">
-        <h3 className="text-[12px] font-semibold mb-[6px]">Active subscriptions</h3>
+        <h3 className="text-[12px] font-semibold mb-[6px]">Your Claws</h3>
         {activeWorkspaces.length === 0 ? (
           <p className="text-[11px] text-[var(--tx2)]">No running Claws. Deploy a Claw to start your subscription.</p>
         ) : (
           activeWorkspaces.map((ws) => (
             <div key={ws.id} className="flex justify-between items-center text-[11px] py-[4px] border-b border-[var(--bd)] last:border-0">
               <span className="font-medium">{ws.name}</span>
-              <div className="flex items-center gap-[4px]">
-                <StatusBadge status={mapStatus(ws.status)} />
-                {/* TODO: Store next billing date from Dodo subscription webhook */}
-                <span className="text-[var(--ok)]">· $79/mo · Active</span>
-              </div>
+              <StatusBadge status={mapStatus(ws.status)} />
             </div>
           ))
         )}

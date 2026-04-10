@@ -99,7 +99,6 @@ export function SecuritySettings() {
       <div className="border border-[var(--bd)] rounded-[12px] p-[14px] mb-[14px]">
         <h3 className="text-[13px] font-semibold mb-[8px]">Active sessions</h3>
         <p className="text-[11px] text-[var(--tx2)] mb-[8px]">Your current active sessions across devices.</p>
-        {/* TODO: List all sessions from Session model when multi-device tracking is implemented */}
         <div className="flex items-center justify-between py-[6px]">
           <div className="flex items-center gap-[8px]">
             <div className="w-[8px] h-[8px] rounded-full bg-[var(--ok)]" />

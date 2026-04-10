@@ -506,6 +506,12 @@ async function simulateDeploy(
   containerId: string;
   gatewayToken: string;
 }> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Deploy simulation is disabled in production. Configure CONTAINER_HOST and CONTAINER_AGENT_SECRET.',
+    );
+  }
+
   const fakeContainerId = `sim-${workspaceId.substring(0, 8)}`;
   const fakeToken = 'simulation-token';
 
