@@ -898,7 +898,9 @@ function Step3({ workspaceId }: { workspaceId: string }) {
             setIsDeploying(true)
           }
         }
-      } catch {} finally {
+      } catch (err) {
+        console.error("Failed to load setup data:", err)
+      } finally {
         setIsLoading(false)
       }
     }
@@ -964,7 +966,9 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       } else if (json.data?.mockMode) {
         setEligibility({ canDeploy: true, reason: "subscribed", needsSubscription: false, isFirstDeploy: false })
       }
-    } catch {}
+    } catch (err) {
+      console.error("Failed to start subscription checkout:", err)
+    }
     setSubscribing(false)
   }, [workspaceId])
 
@@ -1131,7 +1135,9 @@ function Step5({ workspaceId }: { workspaceId: string }) {
           })
           setActivated(true)
         }
-      } catch {}
+      } catch (err) {
+        console.error("Failed to activate workspace:", err)
+      }
     }
     activate()
   }, [workspaceId, activated])

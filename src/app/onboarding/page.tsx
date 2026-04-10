@@ -9,8 +9,12 @@ import Link from "next/link"
 export default function OnboardingPage() {
   const router = useRouter()
 
-  const handleSkip = () => {
-    // TODO: PATCH /api/user to set onboardingCompleted=true
+  const handleSkip = async () => {
+    await fetch("/api/user/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ onboardingCompleted: true }),
+    }).catch(() => {})
     router.push("/my-claws")
   }
 

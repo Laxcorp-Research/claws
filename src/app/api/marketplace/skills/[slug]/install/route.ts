@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import { log } from "@/lib/logger"
 
 export async function POST(
   request: NextRequest,
@@ -60,15 +61,13 @@ export async function POST(
   //   4. Gateway auto-detects config change and hot-reloads
   const containerName = workspace.containerName ?? workspace.containerId
   if (containerName) {
-    console.log(
-      `[SKILL_INSTALL] Would hot-add skill "${skill.slug}" to container "${containerName}" ` +
-      `for ${workspace.agents.length} agents`
-    )
+    log.info(`Skill "${skill.slug}" installed — hot-add pending for container "${containerName}"`, {
+      skillSlug: skill.slug, workspaceId: workspace.id, agentCount: workspace.agents.length,
+    })
   } else {
-    console.warn(
-      `[SKILL_INSTALL] Skill "${skill.slug}" installed to workspace "${workspace.id}" ` +
-      `(DB only - no container available)`
-    )
+    log.warn(`Skill "${skill.slug}" installed to workspace "${workspace.id}" (DB only — no container)`, {
+      skillSlug: skill.slug, workspaceId: workspace.id,
+    })
   }
 
   await prisma.skillInstall.create({
