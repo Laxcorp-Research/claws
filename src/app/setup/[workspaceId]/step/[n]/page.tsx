@@ -860,34 +860,46 @@ interface DeployEligibility {
 
 function Step3({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(true)
   const [isDeploying, setIsDeploying] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null)
   const [deploymentError, setDeploymentError] = useState<string | null>(null)
   const [eligibility, setEligibility] = useState<DeployEligibility | null>(null)
   const [subscribing, setSubscribing] = useState(false)
+  const [waitingForActivation, setWaitingForActivation] = useState(false)
+
+  const checkBillingAndUpdateEligibility = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/user/billing")
+      const json = await res.json()
+      if (!json.success) return false
+      const d = json.data
+      const now = new Date()
+      if (!d.trialUsed) {
+        setEligibility({ canDeploy: true, reason: "first_deploy_trial", needsSubscription: false, isFirstDeploy: true })
+        return true
+      }
+      if (d.trialEndsAt && new Date(d.trialEndsAt) > now) {
+        setEligibility({ canDeploy: true, reason: "trial_active", needsSubscription: false, isFirstDeploy: false })
+        return true
+      }
+      if (d.hasActiveSubscription) {
+        setEligibility({ canDeploy: true, reason: "subscribed", needsSubscription: false, isFirstDeploy: false })
+        return true
+      }
+      setEligibility({ canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false })
+      return false
+    } catch { return false }
+  }, [])
+
   useEffect(() => {
     async function init() {
       try {
-        const [billingRes, statusRes] = await Promise.all([
-          fetch("/api/user/billing"),
+        const [, statusRes] = await Promise.all([
+          checkBillingAndUpdateEligibility(),
           fetch(`/api/deploy/${workspaceId}/status`),
         ])
-
-        const billingJson = await billingRes.json()
-        if (billingJson.success) {
-          const d = billingJson.data
-          const now = new Date()
-          if (!d.trialUsed) {
-            setEligibility({ canDeploy: true, reason: "first_deploy_trial", needsSubscription: false, isFirstDeploy: true })
-          } else if (d.trialEndsAt && new Date(d.trialEndsAt) > now) {
-            setEligibility({ canDeploy: true, reason: "trial_active", needsSubscription: false, isFirstDeploy: false })
-          } else if (d.hasActiveSubscription) {
-            setEligibility({ canDeploy: true, reason: "subscribed", needsSubscription: false, isFirstDeploy: false })
-          } else {
-            setEligibility({ canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false })
-          }
-        }
 
         const statusJson = await statusRes.json()
         if (statusJson.success && statusJson.data.deployment) {
@@ -905,7 +917,35 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       }
     }
     init()
-  }, [workspaceId])
+  }, [workspaceId, checkBillingAndUpdateEligibility])
+
+  useEffect(() => {
+    const onFocus = () => { checkBillingAndUpdateEligibility() }
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
+  }, [checkBillingAndUpdateEligibility])
+
+  useEffect(() => {
+    const status = searchParams.get("status")
+    if (!status || status !== "active") return
+
+    setWaitingForActivation(true)
+    let cancelled = false
+    let attempts = 0
+    const maxAttempts = 8
+
+    const poll = async () => {
+      while (!cancelled && attempts < maxAttempts) {
+        attempts++
+        const activated = await checkBillingAndUpdateEligibility()
+        if (activated) { setWaitingForActivation(false); return }
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+      if (!cancelled) setWaitingForActivation(false)
+    }
+    poll()
+    return () => { cancelled = true }
+  }, [searchParams, checkBillingAndUpdateEligibility])
 
   const handleDeploy = useCallback(async () => {
     setIsDeploying(true)
@@ -989,14 +1029,21 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
       )}
 
-      {needsSub && !deploymentStatus && (
+      {needsSub && !deploymentStatus && !waitingForActivation && (
         <AlertBanner variant="warning">
           <p className="font-medium">Your 3-day trial has ended</p>
           <p className="mt-0.5 opacity-80">Subscribe to the Claw Platform ($79/mo) to deploy and run your Claws.</p>
         </AlertBanner>
       )}
 
-      {!deploymentStatus && (
+      {waitingForActivation && !deploymentStatus && (
+        <AlertBanner variant="info" icon={<Loader2 className="w-4 h-4 animate-spin" />}>
+          <p className="font-medium">Payment received — activating your subscription</p>
+          <p className="mt-0.5 opacity-80">This usually takes a few seconds. If it doesn&apos;t update, try refreshing the page.</p>
+        </AlertBanner>
+      )}
+
+      {!deploymentStatus && !waitingForActivation && (
         needsSub ? (
           <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
             Subscribe to Deploy - $79/mo
