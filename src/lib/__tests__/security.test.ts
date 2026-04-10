@@ -140,7 +140,7 @@ describe('Security: Auth enforcement on API routes', () => {
   });
 
   describe('Webhook signature verification', () => {
-    it('returns 200 even with bad signature (no retry)', async () => {
+    it('returns 500 when webhook env vars are not configured', async () => {
       const { POST } = await import('@/app/api/dodo-payments/webhook/route');
       const req = new (await import('next/server')).NextRequest(
         new URL('http://localhost:3000/api/dodo-payments/webhook'),
@@ -156,7 +156,9 @@ describe('Security: Auth enforcement on API routes', () => {
         },
       );
       const res = await POST(req);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.error).toBe('Webhook not configured');
       expect(prismaMock.purchase.create).not.toHaveBeenCalled();
     });
   });
