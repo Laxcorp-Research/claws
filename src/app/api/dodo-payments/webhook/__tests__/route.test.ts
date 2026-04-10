@@ -66,6 +66,15 @@ function setupTransactionMock() {
   );
 }
 
+function mockUserLookup(userId: string) {
+  (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockImplementation(
+    (args: { where: { id?: string } }) => {
+      if (args.where.id === userId) return Promise.resolve({ id: userId })
+      return Promise.resolve(null)
+    },
+  );
+}
+
 function setupWorkspaceCreationMocks() {
   setupTransactionMock();
   (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
@@ -79,6 +88,7 @@ function setupWorkspaceCreationMocks() {
 describe('POST /api/dodo-payments/webhook', () => {
   describe('payment.succeeded', () => {
     it('creates workspace and purchase on claw_purchase', async () => {
+      mockUserLookup('user-buyer');
       setupWorkspaceCreationMocks();
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
@@ -124,6 +134,7 @@ describe('POST /api/dodo-payments/webhook', () => {
     });
 
     it('creates TemplateInstall and increments installCount on purchase', async () => {
+      mockUserLookup('user-install');
       setupWorkspaceCreationMocks();
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
@@ -157,6 +168,7 @@ describe('POST /api/dodo-payments/webhook', () => {
     });
 
     it('creates MarketplaceSale for community template purchase', async () => {
+      mockUserLookup('user-buyer-c');
       setupTransactionMock();
       (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_COMMUNITY_TEMPLATE);
       (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-community', name: 'Community Claw' });
@@ -206,6 +218,7 @@ describe('POST /api/dodo-payments/webhook', () => {
     });
 
     it('does not create MarketplaceSale for official template purchase', async () => {
+      mockUserLookup('user-off');
       setupWorkspaceCreationMocks();
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
@@ -253,6 +266,7 @@ describe('POST /api/dodo-payments/webhook', () => {
 
   describe('subscription.failed', () => {
     it('pauses workspace on platform subscription failure', async () => {
+      mockUserLookup('user-downgrade');
       (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
@@ -275,6 +289,7 @@ describe('POST /api/dodo-payments/webhook', () => {
     });
 
     it('deactivates subscription on failure', async () => {
+      mockUserLookup('user-downgrade');
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({

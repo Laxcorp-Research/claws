@@ -54,7 +54,7 @@ export async function createClawCheckout(params: {
     product_cart: [{ product_id: productId, quantity: 1 }],
     payment_link: true,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
-    metadata: { userId: params.userId, templateId: params.templateId, templateSlug: params.templateSlug, type: "claw_purchase" },
+    metadata: { userId: params.userId, email: params.userEmail, templateId: params.templateId, templateSlug: params.templateSlug, type: "claw_purchase" },
   })
 
   return { checkoutUrl: payment.payment_link ?? null, mockMode: false }
@@ -82,7 +82,7 @@ export async function createPlatformSubscription(params: {
     quantity: 1,
     payment_link: true,
     return_url: params.returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/setup/${params.workspaceId}/step/3`,
-    metadata: { userId: params.userId, workspaceId: params.workspaceId, type: "claw_platform" },
+    metadata: { userId: params.userId, email: params.userEmail, workspaceId: params.workspaceId, type: "claw_platform" },
   })
 
   return { checkoutUrl: subscription.payment_link ?? null, mockMode: false }
@@ -114,6 +114,7 @@ export async function createCommunityCheckout(params: {
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
     metadata: {
       userId: params.userId,
+      email: params.userEmail,
       templateId: params.templateId,
       templateSlug: params.templateSlug,
       creatorId: params.creatorId,
