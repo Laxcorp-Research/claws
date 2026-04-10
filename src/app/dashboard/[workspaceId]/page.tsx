@@ -619,6 +619,7 @@ export default function DashboardPage() {
               status: a.status === "healthy" ? "running" as const : a.status,
               lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
             }))}
+            clawPaused={isPaused}
             onPauseAgent={handleAgentPause}
             onResumeAgent={handleAgentResume}
             onRestartAgent={handleAgentRestart}

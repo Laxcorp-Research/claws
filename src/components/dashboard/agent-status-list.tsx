@@ -16,6 +16,7 @@ interface AgentStatus {
 
 interface AgentStatusListProps {
   agents: AgentStatus[]
+  clawPaused?: boolean
   onPauseAgent: (agentId: string) => void
   onResumeAgent: (agentId: string) => void
   onRestartAgent: (agentId: string) => void
@@ -24,6 +25,7 @@ interface AgentStatusListProps {
 
 export function AgentStatusList({
   agents,
+  clawPaused,
   onPauseAgent,
   onResumeAgent,
   onRestartAgent,
@@ -44,7 +46,7 @@ export function AgentStatusList({
             retryIn={agent.retryIn}
             queuedTasks={agent.queuedTasks}
             passRate={agent.passRate}
-            canPause={agent.role === "WORKER"}
+            canPause={agent.role === "WORKER" && !clawPaused}
             onPause={() => onPauseAgent(agent.id)}
             onResume={() => onResumeAgent(agent.id)}
             onRestart={() => onRestartAgent(agent.id)}
@@ -53,7 +55,7 @@ export function AgentStatusList({
         ))}
       </div>
       <p className="text-[10px] text-[var(--tx3)] mt-[12px]">
-        Note: Orchestrator and Critic cannot be paused individually - they&apos;re essential for Claw operation. Use &quot;Pause all&quot; to stop the entire Claw.
+        Orchestrator and Critic cannot be paused individually. When the Claw is paused, use &quot;Resume all&quot; to restart.
       </p>
     </div>
   )
