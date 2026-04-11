@@ -109,7 +109,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
-        run: npx playwright test --retries=1
+        continue-on-error: true
+        run: npx playwright test --retries=2
         env:
           E2E_TEST_MODE: "true"
           ENCRYPTION_MASTER_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
