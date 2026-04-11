@@ -81,7 +81,7 @@ export async function createPlatformSubscription(params: {
     product_id: CLAW_PLATFORM_PRODUCT,
     quantity: 1,
     payment_link: true,
-    return_url: params.returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/setup/${params.workspaceId}/step/3`,
+    return_url: params.returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/checkout/complete`,
     metadata: { userId: params.userId, email: params.userEmail, workspaceId: params.workspaceId, type: "claw_platform" },
   })
 
