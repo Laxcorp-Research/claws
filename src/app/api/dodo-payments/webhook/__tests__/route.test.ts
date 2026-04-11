@@ -96,7 +96,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'payment.succeeded',
+        type: 'payment.succeeded',
         data: {
           payment_id: 'pay_test_123',
           total_amount: 9900,
@@ -121,7 +121,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'existing-purchase' });
 
       const req = createWebhookRequest({
-        event_type: 'payment.succeeded',
+        type: 'payment.succeeded',
         data: {
           payment_id: 'pay_duplicate',
           metadata: { type: 'claw_purchase', userId: 'user-1', templateId: 'tpl-1' },
@@ -142,7 +142,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'payment.succeeded',
+        type: 'payment.succeeded',
         data: {
           payment_id: 'pay_install_test',
           total_amount: 9900,
@@ -183,7 +183,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'payment.succeeded',
+        type: 'payment.succeeded',
         data: {
           payment_id: 'pay_community_123',
           total_amount: 4900,
@@ -226,7 +226,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'payment.succeeded',
+        type: 'payment.succeeded',
         data: {
           payment_id: 'pay_official_123',
           total_amount: 9900,
@@ -247,7 +247,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.purchase.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'purch-fail' });
 
       const req = createWebhookRequest({
-        event_type: 'payment.failed',
+        type: 'payment.failed',
         data: {
           payment_id: 'pay_fail_123',
           metadata: { type: 'claw_purchase', userId: 'user-1', templateId: 'tpl-1' },
@@ -271,7 +271,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'subscription.failed',
+        type: 'subscription.failed',
         data: {
           subscription_id: 'sub_fail',
           metadata: { type: 'claw_platform', workspaceId: 'ws-pause', userId: 'user-downgrade' },
@@ -293,7 +293,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'subscription.failed',
+        type: 'subscription.failed',
         data: {
           subscription_id: 'sub_fail',
           metadata: { type: 'claw_platform', userId: 'user-downgrade' },
@@ -317,7 +317,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.purchase.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'subscription.cancelled',
+        type: 'subscription.cancelled',
         data: {
           subscription_id: 'sub_cancel',
           metadata: { type: 'claw_purchase' },
@@ -346,7 +346,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       (prismaMock.workspace.delete as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
-        event_type: 'refund.succeeded',
+        type: 'refund.succeeded',
         data: { payment_id: 'pay_refund' },
       });
 
@@ -365,7 +365,7 @@ describe('POST /api/dodo-payments/webhook', () => {
 
   it('returns 200 for unhandled event types', async () => {
     const req = createWebhookRequest({
-      event_type: 'some.unknown.event',
+      type: 'some.unknown.event',
       data: {},
     });
 

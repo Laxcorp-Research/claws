@@ -33,10 +33,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
     }
 
-    const eventType = payload.event_type as string
+    const eventType = (payload.type ?? payload.event_type) as string
     const data = payload.data as Record<string, unknown> | undefined
     const metadata = (data?.metadata ?? {}) as Record<string, string>
     const customerEmail = (data?.customer as Record<string, string>)?.email
+
+    log.info("Webhook received", {
+      eventType,
+      metadataType: metadata.type,
+      metadataUserId: metadata.userId,
+      metadataEmail: metadata.email,
+      customerEmail,
+      hasData: !!data,
+      dataKeys: data ? Object.keys(data).join(",") : "none",
+    })
 
     switch (eventType) {
       case "payment.succeeded":
@@ -82,9 +92,14 @@ async function resolveUser(
   email: string | undefined,
   context: string,
 ): Promise<{ id: string }> {
+  log.info(`resolveUser called`, { context, metadataUserId, email })
+
   if (metadataUserId) {
     const user = await prisma.user.findUnique({ where: { id: metadataUserId }, select: { id: true } })
-    if (user) return user
+    if (user) {
+      log.info(`resolveUser: found by ID`, { context, userId: user.id })
+      return user
+    }
     log.warn(`${context}: userId ${metadataUserId} not found in DB, trying email fallback`, { userId: metadataUserId, email })
   }
 
@@ -171,19 +186,33 @@ async function handleSubscriptionActive(
   const subscriptionId = data?.subscription_id as string
   const customerId = (data?.customer as Record<string, string>)?.customer_id
 
+  log.info("handleSubscriptionActive called", {
+    metadataType: metadata.type,
+    metadataUserId: metadata.userId,
+    subscriptionId,
+    customerId,
+    customerEmail,
+  })
+
   if (metadata.type === "claw_platform") {
     const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onSubscriptionActive")
 
-    await prisma.user.update({
+    log.info("Updating user subscription", { userId: user.id, subscriptionId, customerId })
+
+    const updated = await prisma.user.update({
       where: { id: user.id },
       data: {
         hasActiveSubscription: true,
         subscriptionId: subscriptionId ?? undefined,
         ...(customerId ? { dodoCustomerId: customerId } : {}),
       },
+      select: { id: true, hasActiveSubscription: true, subscriptionId: true },
     })
 
+    log.info("User subscription updated", { userId: updated.id, hasActiveSubscription: updated.hasActiveSubscription, subscriptionId: updated.subscriptionId })
     log.paymentEvent({ event: "subscription_activated", userId: user.id, status: "success" })
+  } else {
+    log.warn("handleSubscriptionActive: metadata.type is not claw_platform", { metadataType: metadata.type, metadata: JSON.stringify(metadata) })
   }
 
   if (metadata.type === "claw_purchase" && metadata.userId) {

@@ -152,7 +152,7 @@ describe('Security: Auth enforcement on API routes', () => {
             'webhook-signature': 'forged_signature',
             'webhook-timestamp': '0',
           },
-          body: JSON.stringify({ event_type: 'payment.succeeded', data: { metadata: { type: 'claw_purchase', userId: 'u1', templateId: 't1' } } }),
+          body: JSON.stringify({ type: 'payment.succeeded', data: { metadata: { type: 'claw_purchase', userId: 'u1', templateId: 't1' } } }),
         },
       );
       const res = await POST(req);
