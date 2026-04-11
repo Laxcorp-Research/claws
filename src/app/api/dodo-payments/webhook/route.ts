@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
     }
 
-    const eventType = payload.event_type as string
+    const eventType = (payload.type ?? payload.event_type) as string
     const data = payload.data as Record<string, unknown> | undefined
     const metadata = (data?.metadata ?? {}) as Record<string, string>
     const customerEmail = (data?.customer as Record<string, string>)?.email
