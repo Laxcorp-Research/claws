@@ -125,7 +125,6 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
         orderBy: { createdAt: 'asc' },
       },
       toolConnections: true,
-      channelConnections: true,
       clawTemplate: true,
       user: {
         include: {
@@ -135,10 +134,22 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     },
   });
 
-  // 2. Identify agent roles
-  const orchestrator = workspace.agents.find(a => a.role === 'ORCHESTRATOR');
-  const critic = workspace.agents.find(a => a.role === 'CRITIC');
-  const workers = workspace.agents.filter(a => a.role === 'WORKER');
+  // 2. Parse channel config from encrypted JSON blob
+  let channelConnections: ChannelConnectionRecord[] = [];
+  if (workspace.channelConfigEncrypted) {
+    try {
+      channelConnections = JSON.parse(decrypt(workspace.channelConfigEncrypted)) as ChannelConnectionRecord[];
+    } catch {
+      channelConnections = [];
+    }
+  }
+
+  const workspaceWithChannels = { ...workspace, channelConnections };
+
+  // 3. Identify agent roles
+  const orchestrator = workspaceWithChannels.agents.find(a => a.role === 'ORCHESTRATOR');
+  const critic = workspaceWithChannels.agents.find(a => a.role === 'CRITIC');
+  const workers = workspaceWithChannels.agents.filter(a => a.role === 'WORKER');
 
   if (!orchestrator) throw new Error(`Workspace ${workspaceId} has no Orchestrator agent`);
   if (!critic) throw new Error(`Workspace ${workspaceId} has no Critic agent`);
@@ -146,11 +157,11 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // 3. Generate gateway token for platform↔container communication
   const gatewayToken = generateSecureToken();
 
-  // 4. Build all outputs
-  const openclawConfig = generateOpenClawConfig(workspace, orchestrator, workers, critic);
-  const envFile = generateEnvFile(workspace, gatewayToken);
-  const cronJobs = generateCronJobs(workspace, orchestrator);
-  const workspaces = generateAllWorkspaceFiles(workspace, orchestrator, workers, critic);
+  // 5. Build all outputs
+  const openclawConfig = generateOpenClawConfig(workspaceWithChannels, orchestrator, workers, critic);
+  const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
+  const cronJobs = generateCronJobs(workspaceWithChannels, orchestrator);
+  const workspaces = generateAllWorkspaceFiles(workspaceWithChannels, orchestrator, workers, critic);
 
   return {
     'openclaw.json': JSON.stringify(openclawConfig, null, 2),
