@@ -101,7 +101,7 @@ jobs:
           DIRECT_URL: ${{ secrets.TEST_DATABASE_URL }}
 
       - name: Wake up Neon database
-        run: node -e "const{PrismaClient}=require('./src/generated/prisma/client');const{PrismaPg}=require('@prisma/adapter-pg');const a=new PrismaPg({connectionString:process.env.DATABASE_URL});const p=new PrismaClient({adapter:a});p.\$queryRawUnsafe('SELECT 1').then(()=>{console.log('DB awake');return p.\$disconnect()}).catch(e=>{console.error(e);process.exit(1)})"
+        run: node -e "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}});p.query('SELECT 1').then(()=>{console.log('DB awake');return p.end()}).catch(e=>{console.error('DB wake failed:',e.message);process.exit(0)})"
         env:
           DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
 
