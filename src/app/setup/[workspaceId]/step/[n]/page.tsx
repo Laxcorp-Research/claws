@@ -926,6 +926,28 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   }, [checkBillingAndUpdateEligibility])
 
   useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return
+      if (e.data?.type === "dodo-checkout-complete") {
+        setWaitingForActivation(true)
+        let attempts = 0
+        const poll = async () => {
+          while (attempts < 10) {
+            attempts++
+            const activated = await checkBillingAndUpdateEligibility()
+            if (activated) { setWaitingForActivation(false); return }
+            await new Promise((r) => setTimeout(r, 2000))
+          }
+          setWaitingForActivation(false)
+        }
+        poll()
+      }
+    }
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+  }, [checkBillingAndUpdateEligibility])
+
+  useEffect(() => {
     const status = searchParams.get("status")
     if (!status || status !== "active") return
 

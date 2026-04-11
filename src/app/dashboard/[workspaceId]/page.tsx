@@ -147,7 +147,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/dodo-payments/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "claw_platform", workspaceId, returnUrl: `/dashboard/${workspaceId}` }),
+        body: JSON.stringify({ type: "claw_platform", workspaceId, returnUrl: `/checkout/complete` }),
       })
       const json = await res.json()
       if (json.data?.checkoutUrl) {
@@ -225,6 +225,20 @@ export default function DashboardPage() {
     const interval = setInterval(fetchStats, STATS_POLL_MS)
     return () => clearInterval(interval)
   }, [fetchStats, fetchDeploymentImage])
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return
+      if (e.data?.type === "dodo-checkout-complete") {
+        fetchStats()
+        fetch("/api/user/billing").then((r) => r.json()).then((json) => {
+          if (json.success) setTrialInfo({ trialUsed: json.data.trialUsed, trialEndsAt: json.data.trialEndsAt, hasActiveSubscription: json.data.hasActiveSubscription })
+        }).catch(() => {})
+      }
+    }
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+  }, [fetchStats])
 
   useEffect(() => {
     const es = new EventSource(`/api/activity/${workspaceId}/stream`)
