@@ -155,10 +155,10 @@ export async function createService(config: {
   const domainData = await railwayGql<{
     serviceDomainCreate: { domain: string };
   }>(
-    `mutation($serviceId: String!, $environmentId: String!) {
-      serviceDomainCreate(serviceId: $serviceId, environmentId: $environmentId) { domain }
+    `mutation($input: ServiceDomainCreateInput!) {
+      serviceDomainCreate(input: $input) { domain }
     }`,
-    { serviceId, environmentId: RAILWAY_ENVIRONMENT_ID },
+    { input: { serviceId, environmentId: RAILWAY_ENVIRONMENT_ID } },
   );
 
   const domain = domainData.serviceDomainCreate.domain;
