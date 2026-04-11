@@ -7,7 +7,7 @@ const RAILWAY_PROJECT_ID = process.env.RAILWAY_PROJECT_ID;
 const RAILWAY_ENVIRONMENT_ID = process.env.RAILWAY_ENVIRONMENT_ID;
 
 const OPENCLAW_IMAGE =
-  process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/laxcorp/openclaw-runtime:latest';
+  process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/openclaw/openclaw:latest';
 
 const UNPACK_SCRIPT = [
   "const fs=require('fs'),path=require('path');",
@@ -158,7 +158,12 @@ export async function createService(config: {
     `mutation($input: ServiceDomainCreateInput!) {
       serviceDomainCreate(input: $input) { domain }
     }`,
-    { input: { serviceId, environmentId: RAILWAY_ENVIRONMENT_ID } },
+    {
+      input: {
+        serviceId,
+        environmentId: RAILWAY_ENVIRONMENT_ID,
+      },
+    },
   );
 
   const domain = domainData.serviceDomainCreate.domain;
