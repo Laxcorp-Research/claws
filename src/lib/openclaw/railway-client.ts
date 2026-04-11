@@ -7,7 +7,10 @@ const RAILWAY_PROJECT_ID = process.env.RAILWAY_PROJECT_ID;
 const RAILWAY_ENVIRONMENT_ID = process.env.RAILWAY_ENVIRONMENT_ID;
 
 const OPENCLAW_IMAGE =
-  process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/openclaw/openclaw:latest';
+  process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/laxcorp/openclaw-runtime:latest';
+
+const GHCR_USERNAME = process.env.GHCR_USERNAME;
+const GHCR_PAT = process.env.GHCR_PAT;
 
 const UNPACK_SCRIPT = [
   "const fs=require('fs'),path=require('path');",
@@ -133,6 +136,9 @@ export async function createService(config: {
       input: {
         source: { image: OPENCLAW_IMAGE },
         startCommand: START_COMMAND,
+        ...(GHCR_USERNAME && GHCR_PAT ? {
+          registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
+        } : {}),
       },
     },
   );
