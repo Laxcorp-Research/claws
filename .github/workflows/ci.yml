@@ -79,7 +79,7 @@ jobs:
     needs: [unit-tests]
     concurrency:
       group: ci-e2e-${{ github.repository }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -100,11 +100,16 @@ jobs:
           DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.TEST_DATABASE_URL }}
 
+      - name: Wake up Neon database
+        run: node -e "const{PrismaClient}=require('./src/generated/prisma/client');const{PrismaPg}=require('@prisma/adapter-pg');const a=new PrismaPg({connectionString:process.env.DATABASE_URL});const p=new PrismaClient({adapter:a});p.\$queryRawUnsafe('SELECT 1').then(()=>{console.log('DB awake');return p.\$disconnect()}).catch(e=>{console.error(e);process.exit(1)})"
+        env:
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
-        run: npx playwright test
+        run: npx playwright test --retries=1
         env:
           E2E_TEST_MODE: "true"
           ENCRYPTION_MASTER_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
