@@ -22,7 +22,7 @@ const UNPACK_SCRIPT = [
   "if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(d+p,String(c))}",
 ].join('');
 
-const START_COMMAND = `node -e "${UNPACK_SCRIPT}" && exec node openclaw.mjs gateway --allow-unconfigured`;
+const START_COMMAND = `node -e "${UNPACK_SCRIPT}" && exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port \${PORT:-18789}`;
 
 // ---------------------------------------------------------------------------
 // Configuration check

@@ -377,6 +377,7 @@ function buildRailwayEnvVars(
     OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
     TZ: workspace.timezone ?? 'UTC',
     NODE_ENV: 'production',
+    PORT: '18789',
   };
 }
 
