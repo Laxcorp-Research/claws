@@ -34,7 +34,7 @@ const MOCK_VERSION_STABLE = {
   isStable: true,
   isLatest: false,
   isSecurityPatch: false,
-  dockerImage: 'ghcr.io/laxcorp/openclaw-runtime:0.1.0',
+  dockerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:0.1.0',
   releaseNotes: 'Initial release',
   breakingChanges: null,
   releasedAt: new Date('2026-03-01'),
@@ -49,7 +49,7 @@ const MOCK_VERSION_LATEST = {
   isStable: false,
   isLatest: true,
   isSecurityPatch: false,
-  dockerImage: 'ghcr.io/laxcorp/openclaw-runtime:0.2.0',
+  dockerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:0.2.0',
   releaseNotes: 'New features',
   breakingChanges: null,
   releasedAt: new Date('2026-03-15'),
@@ -125,7 +125,7 @@ describe('Version Management API', () => {
 
       const req = createMockRequest('http://localhost:3000/api/admin/versions/create', {
         method: 'POST',
-        body: { version: '0.2.0', dockerImage: 'ghcr.io/laxcorp/openclaw-runtime:0.2.0' },
+        body: { version: '0.2.0', dockerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:0.2.0' },
       });
       const res = await createVersion(req);
       const json = await res.json();
@@ -139,7 +139,7 @@ describe('Version Management API', () => {
 
       const req = createMockRequest('http://localhost:3000/api/admin/versions/create', {
         method: 'POST',
-        body: { version: '0.1.0', dockerImage: 'ghcr.io/laxcorp/openclaw-runtime:0.1.0' },
+        body: { version: '0.1.0', dockerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:0.1.0' },
       });
       const res = await createVersion(req);
       expect(res.status).toBe(409);
@@ -185,7 +185,7 @@ describe('Version Management API', () => {
       (prismaMock.deployment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
         {
           id: 'dep-1',
-          containerImage: 'ghcr.io/laxcorp/openclaw-runtime:old',
+          containerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:old',
           workspace: { id: 'ws-1', name: 'My Claw', userId: 'user-1', user: { email: 'user@test.com', name: 'User' } },
         },
       ]);
@@ -227,7 +227,7 @@ describe('Version Management API', () => {
       (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_VERSION_STABLE);
       (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 'dep-1',
-        containerImage: 'ghcr.io/laxcorp/openclaw-runtime:old',
+        containerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:old',
       });
       (prismaMock.deployment.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 

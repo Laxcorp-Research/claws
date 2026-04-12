@@ -16,7 +16,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: laxcorp/openclaw-runtime
+  IMAGE_NAME: laxcorp-research/openclaw-runtime
   UPSTREAM_IMAGE: ghcr.io/openclaw/openclaw
   EXTENSIONS: "telegram discord slack whatsapp msteams signal"
 

@@ -333,7 +333,7 @@ export default function AdminVersionsPage() {
               Docker Image <span className="text-[var(--err)]">*</span>
             </label>
             <Input
-              placeholder="ghcr.io/laxcorp/openclaw-runtime:0.2.0"
+              placeholder="ghcr.io/laxcorp-research/openclaw-runtime:0.2.0"
               className="font-mono"
               value={addForm.dockerImage}
               onChange={(e) => setAddForm(prev => ({ ...prev, dockerImage: e.target.value }))}

@@ -50,7 +50,7 @@ These must be set in `.env.local` (dev) and in Vercel (staging/production):
 | `RAILWAY_API_TOKEN` | `railway_token_xxxx` | API token from Railway dashboard (Account Settings > Tokens) |
 | `RAILWAY_PROJECT_ID` | `xxxxxxxx-xxxx-xxxx` | Railway project ID (one project for all Claw containers) |
 | `RAILWAY_ENVIRONMENT_ID` | `xxxxxxxx-xxxx-xxxx` | Railway environment ID (production environment) |
-| `OPENCLAW_DOCKER_IMAGE` | `ghcr.io/laxcorp/openclaw-runtime:latest` | Docker image Railway pulls when creating services |
+| `OPENCLAW_DOCKER_IMAGE` | `ghcr.io/laxcorp-research/openclaw-runtime:latest` | Docker image Railway pulls when creating services |
 
 If `RAILWAY_API_TOKEN` or `RAILWAY_PROJECT_ID` is missing, the deployer runs
 in **simulation mode** — it walks through all deployment stages with fake delays
@@ -155,7 +155,7 @@ These are accessed via `https://<domain>/healthz` (Railway provides TLS).
 The admin versions page (`/admin/versions`) manages `OpenClawVersion` records.
 The `dockerImage` field specifies which image Railway pulls. To update:
 
-1. Pull the new upstream image and re-tag: `docker tag ghcr.io/openclaw/openclaw:<version> ghcr.io/laxcorp/openclaw-runtime:latest`
+1. Pull the new upstream image and re-tag: `docker tag ghcr.io/openclaw/openclaw:<version> ghcr.io/laxcorp-research/openclaw-runtime:latest`
 2. Push to ghcr.io (or update the tag reference)
 3. In admin panel: add new version, promote to stable
 4. Users see "Update available" banner and can redeploy
