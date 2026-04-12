@@ -27,6 +27,7 @@ import {
   redeployService,
   updateServiceVariables,
   getServiceStatus,
+  listProjectServices,
 } from './railway-client';
 import { log } from '@/lib/logger';
 
@@ -109,8 +110,29 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
     await updateDeploymentStatus(deployment.id, 'CONFIGURING');
 
+    if (workspace.containerId) {
+      try {
+        await deleteService(workspace.containerId);
+        log.info('Cleaned up orphaned Railway service from previous attempt', { workspaceId, oldServiceId: workspace.containerId });
+      } catch {
+        log.warn('Failed to clean up orphaned service — may already be deleted', { workspaceId });
+      }
+      await prisma.workspace.update({ where: { id: workspaceId }, data: { containerId: null, containerName: null, containerHost: null } });
+    }
+
     await updateDeploymentStatus(deployment.id, 'STARTING');
-    const result = await createService({ name: serviceName, envVars });
+    let result: { serviceId: string; domain: string };
+    try {
+      result = await createService({ name: serviceName, envVars });
+    } catch (createErr) {
+      if (createErr instanceof Error && createErr.message.includes('already exists')) {
+        log.warn('Service name conflict — cleaning up and retrying', { workspaceId, serviceName });
+        await cleanupServiceByName(serviceName);
+        result = await createService({ name: serviceName, envVars });
+      } else {
+        throw createErr;
+      }
+    }
 
     await updateDeploymentStatus(deployment.id, 'HEALTH_CHECK');
     await waitForDeploymentSuccess(result.serviceId);
@@ -473,6 +495,19 @@ async function getNextDeploymentVersion(workspaceId: string): Promise<number> {
     select: { version: true },
   });
   return (latest?.version ?? 0) + 1;
+}
+
+async function cleanupServiceByName(serviceName: string): Promise<void> {
+  try {
+    const services = await listProjectServices();
+    const match = services.find((s) => s.name === serviceName);
+    if (match) {
+      await deleteService(match.id);
+      log.info('Deleted orphaned service by name', { serviceName, serviceId: match.id });
+    }
+  } catch (err) {
+    log.warn('Failed to cleanup service by name', { serviceName, error: err instanceof Error ? err.message : 'Unknown' });
+  }
 }
 
 function sleep(ms: number): Promise<void> {
