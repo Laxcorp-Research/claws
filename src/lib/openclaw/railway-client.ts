@@ -9,6 +9,9 @@ const RAILWAY_ENVIRONMENT_ID = process.env.RAILWAY_ENVIRONMENT_ID;
 const OPENCLAW_IMAGE =
   process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/laxcorp/openclaw-runtime:latest';
 
+const GHCR_USERNAME = process.env.GHCR_USERNAME;
+const GHCR_PAT = process.env.GHCR_PAT;
+
 const UNPACK_SCRIPT = [
   "const fs=require('fs'),path=require('path');",
   "const b=s=>Buffer.from(s,'base64').toString();",
@@ -133,6 +136,9 @@ export async function createService(config: {
       input: {
         source: { image: OPENCLAW_IMAGE },
         startCommand: START_COMMAND,
+        ...(GHCR_USERNAME && GHCR_PAT ? {
+          registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
+        } : {}),
       },
     },
   );
@@ -155,10 +161,15 @@ export async function createService(config: {
   const domainData = await railwayGql<{
     serviceDomainCreate: { domain: string };
   }>(
-    `mutation($serviceId: String!, $environmentId: String!) {
-      serviceDomainCreate(serviceId: $serviceId, environmentId: $environmentId) { domain }
+    `mutation($input: ServiceDomainCreateInput!) {
+      serviceDomainCreate(input: $input) { domain }
     }`,
-    { serviceId, environmentId: RAILWAY_ENVIRONMENT_ID },
+    {
+      input: {
+        serviceId,
+        environmentId: RAILWAY_ENVIRONMENT_ID,
+      },
+    },
   );
 
   const domain = domainData.serviceDomainCreate.domain;
@@ -172,6 +183,85 @@ export async function createService(config: {
 
   log.info('Railway service created', { serviceId, domain, name: config.name });
 
+  return { serviceId, domain };
+}
+
+export async function findServiceByName(name: string): Promise<string | null> {
+  const data = await railwayGql<{
+    project: { services: { edges: Array<{ node: { id: string; name: string } }> } };
+  }>(
+    `query($id: String!) {
+      project(id: $id) { services { edges { node { id name } } } }
+    }`,
+    { id: RAILWAY_PROJECT_ID },
+  );
+
+  const match = data.project.services.edges.find((e) => e.node.name === name);
+  return match?.node.id ?? null;
+}
+
+export async function updateAndRedeployService(
+  serviceId: string,
+  envVars: Record<string, string>,
+): Promise<{ serviceId: string; domain: string }> {
+  await railwayGql(
+    `mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
+      serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
+    }`,
+    {
+      serviceId,
+      environmentId: RAILWAY_ENVIRONMENT_ID,
+      input: {
+        source: { image: OPENCLAW_IMAGE },
+        startCommand: START_COMMAND,
+        ...(GHCR_USERNAME && GHCR_PAT ? {
+          registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
+        } : {}),
+      },
+    },
+  );
+
+  await railwayGql(
+    `mutation($input: VariableCollectionUpsertInput!) {
+      variableCollectionUpsert(input: $input)
+    }`,
+    {
+      input: {
+        projectId: RAILWAY_PROJECT_ID,
+        environmentId: RAILWAY_ENVIRONMENT_ID,
+        serviceId,
+        variables: envVars,
+        replace: true,
+      },
+    },
+  );
+
+  let domain = '';
+  try {
+    const domainData = await railwayGql<{
+      serviceDomainCreate: { domain: string };
+    }>(
+      `mutation($input: ServiceDomainCreateInput!) {
+        serviceDomainCreate(input: $input) { domain }
+      }`,
+      { input: { serviceId, environmentId: RAILWAY_ENVIRONMENT_ID } },
+    );
+    domain = domainData.serviceDomainCreate.domain;
+  } catch {
+    const status = await getServiceStatus(serviceId);
+    if (status.deploymentId) {
+      domain = `${serviceId}.up.railway.app`;
+    }
+  }
+
+  await railwayGql(
+    `mutation($serviceId: String!, $environmentId: String!) {
+      serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId)
+    }`,
+    { serviceId, environmentId: RAILWAY_ENVIRONMENT_ID },
+  );
+
+  log.info('Railway service updated and redeployed', { serviceId, domain });
   return { serviceId, domain };
 }
 

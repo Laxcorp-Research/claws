@@ -26,6 +26,8 @@ import {
   deleteService,
   redeployService,
   updateServiceVariables,
+  updateAndRedeployService,
+  findServiceByName,
   getServiceStatus,
 } from './railway-client';
 import { log } from '@/lib/logger';
@@ -110,7 +112,35 @@ export async function deployToCloud(workspaceId: string): Promise<{
     await updateDeploymentStatus(deployment.id, 'CONFIGURING');
 
     await updateDeploymentStatus(deployment.id, 'STARTING');
-    const result = await createService({ name: serviceName, envVars });
+
+    let result: { serviceId: string; domain: string };
+
+    if (workspace.containerId) {
+      log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId });
+      result = await updateAndRedeployService(workspace.containerId, envVars);
+      if (!result.domain && workspace.containerHost) {
+        result.domain = workspace.containerHost;
+      }
+    } else {
+      try {
+        result = await createService({ name: serviceName, envVars });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('already exists')) {
+          log.warn('Service already exists, looking it up by name', { serviceName, workspaceId });
+          const existingId = await findServiceByName(serviceName);
+          if (!existingId) throw new Error(`Service "${serviceName}" exists but could not be found`);
+          result = await updateAndRedeployService(existingId, envVars);
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { containerId: result.serviceId, containerName: serviceName, containerHost: result.domain || null },
+    });
 
     await updateDeploymentStatus(deployment.id, 'HEALTH_CHECK');
     await waitForDeploymentSuccess(result.serviceId);
