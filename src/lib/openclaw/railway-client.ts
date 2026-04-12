@@ -7,7 +7,7 @@ const RAILWAY_PROJECT_ID = process.env.RAILWAY_PROJECT_ID;
 const RAILWAY_ENVIRONMENT_ID = process.env.RAILWAY_ENVIRONMENT_ID;
 
 const OPENCLAW_IMAGE =
-  process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/laxcorp/openclaw-runtime:latest';
+  process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/laxcorp-research/openclaw-runtime:latest';
 
 const GHCR_USERNAME = process.env.GHCR_USERNAME;
 const GHCR_PAT = process.env.GHCR_PAT;

@@ -153,7 +153,7 @@ async function main() {
       isStable: true,
       isLatest: true,
       isSecurityPatch: false,
-      dockerImage: "ghcr.io/laxcorp/openclaw-runtime:latest",
+      dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:latest",
       releaseNotes: "Initial stable release for Claws platform launch.",
       releasedAt: new Date(),
     },
