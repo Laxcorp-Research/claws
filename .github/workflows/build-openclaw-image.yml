@@ -1,0 +1,120 @@
+name: Build OpenClaw Runtime Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_version:
+        description: 'Force build a specific upstream version (e.g., 2026.4.11). Leave empty for auto-detect.'
+        required: false
+        type: string
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 6am UTC
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: laxcorp/openclaw-runtime
+  UPSTREAM_IMAGE: ghcr.io/openclaw/openclaw
+  EXTENSIONS: "telegram discord slack whatsapp msteams signal"
+
+jobs:
+  build:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Detect latest upstream version
+        id: detect
+        run: |
+          if [ -n "${{ inputs.force_version }}" ]; then
+            VERSION="${{ inputs.force_version }}"
+            echo "Using forced version: $VERSION"
+          else
+            # Get token for public GHCR read
+            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:openclaw/openclaw:pull&service=ghcr.io" | jq -r .token)
+            # List tags, filter out slim/beta/arm64/amd64, get latest versioned tag
+            TAGS=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/openclaw/openclaw/tags/list" | jq -r '.tags[]')
+            VERSION=$(echo "$TAGS" | grep -E '^[0-9]{4}\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+            echo "Detected latest upstream version: $VERSION"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not detect upstream version"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image already exists
+        id: check
+        run: |
+          VERSION="${{ steps.detect.outputs.version }}"
+          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
+            -u "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | jq -r .token 2>/dev/null || echo "")
+
+          if [ -n "$TOKEN" ]; then
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $TOKEN" \
+              "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION" \
+              -H "Accept: application/vnd.docker.distribution.manifest.v2+json")
+
+            if [ "$STATUS" = "200" ] && [ -z "${{ inputs.force_version }}" ]; then
+              echo "Image ${{ env.IMAGE_NAME }}:$VERSION already exists. Skipping build."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout OpenClaw source
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.detect.outputs.version }}"
+          git clone --depth 1 --branch "v$VERSION" https://github.com/openclaw/openclaw.git openclaw-src || \
+          git clone --depth 1 --branch "$VERSION" https://github.com/openclaw/openclaw.git openclaw-src || \
+          git clone --depth 1 https://github.com/openclaw/openclaw.git openclaw-src
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: steps.check.outputs.skip != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        if: steps.check.outputs.skip != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./openclaw-src
+          push: true
+          build-args: |
+            OPENCLAW_EXTENSIONS=${{ env.EXTENSIONS }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          echo "### OpenClaw Runtime Image Built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ steps.detect.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Latest:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Extensions:** ${{ env.EXTENSIONS }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Skipped summary
+        if: steps.check.outputs.skip == 'true'
+        run: |
+          echo "### Build Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "Image \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\` already exists." >> $GITHUB_STEP_SUMMARY
