@@ -17,6 +17,7 @@ const UNPACK_NODE_SCRIPT = [
   'const b=s=>Buffer.from(s,"base64").toString();',
   'const w=(p,c)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,c)};',
   'const d="/home/node/.openclaw/";',
+  'fs.mkdirSync(d,{recursive:true});',
   'if(process.env.CLAWS_CONFIG_B64)w(d+"openclaw.json",b(process.env.CLAWS_CONFIG_B64));',
   'if(process.env.CLAWS_ENV_B64)w(d+".env",b(process.env.CLAWS_ENV_B64));',
   'if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(d+p,String(c))};',
@@ -24,6 +25,7 @@ const UNPACK_NODE_SCRIPT = [
 ].join('');
 
 const START_COMMAND = [
+  'exec 2>&1; ',
   'echo "=== CLAWS BOOT ===" && ',
   'echo "PWD: $(pwd)" && ',
   'echo "PORT: $PORT" && ',
@@ -31,7 +33,7 @@ const START_COMMAND = [
   'echo "Unpacking config..." && ',
   `node -e '${UNPACK_NODE_SCRIPT}' && `,
   'echo "Starting gateway on port $PORT..." && ',
-  'exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port ${PORT:-18789} 2>&1',
+  'exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port ${PORT:-18789}',
 ].join('');
 
 // ---------------------------------------------------------------------------
