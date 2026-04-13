@@ -136,6 +136,8 @@ export async function createService(config: {
       input: {
         source: { image: OPENCLAW_IMAGE },
         startCommand: START_COMMAND,
+        healthcheckPath: '/healthz',
+        healthcheckTimeout: 120,
         ...(GHCR_USERNAME && GHCR_PAT ? {
           registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
         } : {}),
@@ -214,6 +216,8 @@ export async function updateAndRedeployService(
       input: {
         source: { image: OPENCLAW_IMAGE },
         startCommand: START_COMMAND,
+        healthcheckPath: '/healthz',
+        healthcheckTimeout: 120,
         ...(GHCR_USERNAME && GHCR_PAT ? {
           registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
         } : {}),
