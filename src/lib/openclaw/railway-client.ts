@@ -13,27 +13,25 @@ const GHCR_USERNAME = process.env.GHCR_USERNAME;
 const GHCR_PAT = process.env.GHCR_PAT;
 
 const UNPACK_NODE_SCRIPT = [
-  "const fs=require('fs'),path=require('path');",
-  "const b=s=>Buffer.from(s,'base64').toString();",
-  "const w=(p,c)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,c)};",
-  "const d='/home/node/.openclaw/';",
-  "if(process.env.CLAWS_CONFIG_B64)w(d+'openclaw.json',b(process.env.CLAWS_CONFIG_B64));",
-  "if(process.env.CLAWS_ENV_B64)w(d+'.env',b(process.env.CLAWS_ENV_B64));",
-  "if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(d+p,String(c))};",
-  "console.log('Unpack complete. Files:',fs.readdirSync(d).join(', '))",
+  'const fs=require("fs"),path=require("path");',
+  'const b=s=>Buffer.from(s,"base64").toString();',
+  'const w=(p,c)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,c)};',
+  'const d="/home/node/.openclaw/";',
+  'if(process.env.CLAWS_CONFIG_B64)w(d+"openclaw.json",b(process.env.CLAWS_CONFIG_B64));',
+  'if(process.env.CLAWS_ENV_B64)w(d+".env",b(process.env.CLAWS_ENV_B64));',
+  'if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(d+p,String(c))};',
+  'console.log("Unpack complete. Files:",fs.readdirSync(d).join(", "))',
 ].join('');
 
 const START_COMMAND = [
-  "sh -c '",
   'echo "=== CLAWS BOOT ===" && ',
   'echo "PWD: $(pwd)" && ',
   'echo "PORT: $PORT" && ',
   'echo "NODE: $(node --version)" && ',
   'echo "Unpacking config..." && ',
-  `node -e "${UNPACK_NODE_SCRIPT}" && `,
+  `node -e '${UNPACK_NODE_SCRIPT}' && `,
   'echo "Starting gateway on port $PORT..." && ',
   'exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port ${PORT:-18789} 2>&1',
-  "'",
 ].join('');
 
 // ---------------------------------------------------------------------------
