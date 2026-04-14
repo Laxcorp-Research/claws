@@ -6,7 +6,8 @@ import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
-import { OctagonX, Pause, Unplug, TrendingUp, Clock } from "lucide-react"
+import { OctagonX, Pause, Unplug, TrendingUp, Clock, RefreshCw } from "lucide-react"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { StatCards } from "@/components/dashboard/stat-cards"
 import { ActivityFeed } from "@/components/dashboard/activity-feed"
 import { AgentStatusList } from "@/components/dashboard/agent-status-list"
@@ -137,6 +138,9 @@ export default function DashboardPage() {
   const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
   const [agentCosts, setAgentCosts] = useState<AgentCostRow[]>([])
   const [subscribing, setSubscribing] = useState(false)
+  const [redeploying, setRedeploying] = useState(false)
+  const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
+  const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
@@ -278,6 +282,27 @@ export default function DashboardPage() {
     fetchStats()
   }
 
+  const handleRedeploy = async () => {
+    setRedeployConfirmOpen(false)
+    setRedeploying(true)
+    setRedeployBanner(null)
+    try {
+      const res = await fetch(`/api/deploy/${workspaceId}/redeploy`, { method: "POST" })
+      const json = await res.json()
+      if (!res.ok) {
+        setRedeployBanner({ variant: "error", message: json.error?.message ?? "Redeploy failed" })
+        return
+      }
+      setRedeployBanner({ variant: "info", message: "Redeployment successful" })
+      fetchStats()
+      fetchDeploymentImage()
+    } catch {
+      setRedeployBanner({ variant: "error", message: "Network error — could not reach the server" })
+    } finally {
+      setRedeploying(false)
+    }
+  }
+
   const handleApprove = async (activityLogId: string) => {
     const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
       method: "POST",
@@ -322,6 +347,7 @@ export default function DashboardPage() {
 
   const isPaused = workspace?.status === "PAUSED"
   const isError = workspace?.healthStatus === "UNHEALTHY" || workspace?.status === "ERROR"
+  const showRedeploy = workspace?.status === "RUNNING" || workspace?.status === "ERROR"
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
   const spendWarning = spendPercent >= 80 && spendPercent < 100
@@ -551,6 +577,17 @@ export default function DashboardPage() {
             <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>
               Manage Tools
             </Button>
+            {showRedeploy && (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={redeploying}
+                onClick={() => setRedeployConfirmOpen(true)}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {redeploying ? "Redeploying…" : "Redeploy"}
+              </Button>
+            )}
             {isPaused ? (
               <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
             ) : (
@@ -559,6 +596,19 @@ export default function DashboardPage() {
           </div>
         }
       />
+
+      {redeployBanner && (
+        <AlertBanner
+          variant={redeployBanner.variant}
+          actions={
+            redeployBanner.variant === "error" ? (
+              <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Retry</Button>
+            ) : undefined
+          }
+        >
+          <p className="font-medium">{redeployBanner.message}</p>
+        </AlertBanner>
+      )}
 
       {alerts.length > 0 && (
         <div className="space-y-2 mb-3">
@@ -638,6 +688,16 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      <ConfirmDialog
+        open={redeployConfirmOpen}
+        onClose={() => setRedeployConfirmOpen(false)}
+        onConfirm={handleRedeploy}
+        title="Redeploy Claw"
+        description="This will update your Claw with the latest configuration and redeploy. Continue?"
+        confirmLabel="Redeploy"
+        variant="warning"
+      />
     </div>
   )
 }
