@@ -5,6 +5,8 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
 
+export const maxDuration = 300
+
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
   if (!user) return ERRORS.UNAUTHORIZED()

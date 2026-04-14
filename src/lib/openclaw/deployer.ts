@@ -32,6 +32,7 @@ import {
   BOOT_SCRIPT_B64,
 } from './railway-client';
 import { log } from '@/lib/logger';
+import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -59,6 +60,7 @@ type DeploymentStatus =
 
 async function updateDeploymentStatus(
   deploymentId: string,
+  workspaceId: string,
   status: DeploymentStatus,
   error?: string,
 ): Promise<void> {
@@ -70,6 +72,7 @@ async function updateDeploymentStatus(
       ...(status === 'COMPLETED' && { completedAt: new Date() }),
     },
   });
+  publishDeployEvent(workspaceId, deploymentId, status, error).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -97,22 +100,24 @@ export async function deployToCloud(workspaceId: string): Promise<{
     },
   });
 
+  await clearDeployEvents(workspaceId).catch(() => {});
+
   if (!isRailwayConfigured()) {
     log.warn('Railway not configured — running in simulation mode', { workspaceId });
     return simulateDeploy(workspaceId, deployment.id, workspace);
   }
 
   try {
-    await updateDeploymentStatus(deployment.id, 'GENERATING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
     const generated = await generateWorkspace(workspaceId);
 
-    await updateDeploymentStatus(deployment.id, 'PROVISIONING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'PROVISIONING');
     const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);
     const envVars = buildRailwayEnvVars(generated, workspace);
 
-    await updateDeploymentStatus(deployment.id, 'CONFIGURING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'CONFIGURING');
 
-    await updateDeploymentStatus(deployment.id, 'STARTING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'STARTING');
 
     let result: { serviceId: string; domain: string };
 
@@ -147,11 +152,11 @@ export async function deployToCloud(workspaceId: string): Promise<{
       },
     });
 
-    await updateDeploymentStatus(deployment.id, 'HEALTH_CHECK');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'HEALTH_CHECK');
     await waitForDeploymentSuccess(result.serviceId);
 
     if (workspace.channelConfigEncrypted) {
-      await updateDeploymentStatus(deployment.id, 'WAITING_CHANNELS');
+      await updateDeploymentStatus(deployment.id, workspaceId, 'WAITING_CHANNELS');
       try {
         await waitForEndpoint(`https://${result.domain}/readyz`, 60_000);
       } catch {
@@ -159,7 +164,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
       }
     }
 
-    await updateDeploymentStatus(deployment.id, 'COMPLETED');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED');
 
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -182,7 +187,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown deployment error';
-    await updateDeploymentStatus(deployment.id, 'FAILED', message);
+    await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: { status: 'ERROR' },
@@ -432,21 +437,21 @@ async function simulateDeploy(
 
   const fakeContainerId = `sim-${workspaceId.substring(0, 8)}`;
 
-  await updateDeploymentStatus(deploymentId, 'GENERATING');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'GENERATING');
   await sleep(500);
-  await updateDeploymentStatus(deploymentId, 'PROVISIONING');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'PROVISIONING');
   await sleep(300);
-  await updateDeploymentStatus(deploymentId, 'STARTING');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'STARTING');
   await sleep(500);
-  await updateDeploymentStatus(deploymentId, 'HEALTH_CHECK');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'HEALTH_CHECK');
   await sleep(300);
 
   if (workspace.channelConfigEncrypted) {
-    await updateDeploymentStatus(deploymentId, 'WAITING_CHANNELS');
+    await updateDeploymentStatus(deploymentId, workspaceId, 'WAITING_CHANNELS');
     await sleep(200);
   }
 
-  await updateDeploymentStatus(deploymentId, 'COMPLETED');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'COMPLETED');
 
   await prisma.workspace.update({
     where: { id: workspaceId },
