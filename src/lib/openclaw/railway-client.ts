@@ -27,7 +27,8 @@ const UNPACK_NODE_SCRIPT = [
 const PATCH_ORIGINS_SCRIPT = [
   'const fs=require("fs");',
   'const f="/home/node/.openclaw/openclaw.json";',
-  'const u=process.env.CLAWS_PUBLIC_URL;',
+  'const rd=process.env.RAILWAY_PUBLIC_DOMAIN;',
+  'const u=rd?("https://"+rd):process.env.CLAWS_PUBLIC_URL;',
   'if(u&&fs.existsSync(f)){',
   'const c=JSON.parse(fs.readFileSync(f,"utf8"));',
   'if(!c.gateway)c.gateway={};',
@@ -36,7 +37,8 @@ const PATCH_ORIGINS_SCRIPT = [
   'if(!o.includes(u))o.push(u);',
   'c.gateway.controlUi.allowedOrigins=o;',
   'fs.writeFileSync(f,JSON.stringify(c,null,2));',
-  'console.log("Patched allowedOrigins:",o)}',
+  'console.log("Patched allowedOrigins:",o)',
+  '}else{console.log("No public URL found, skipping origin patch. RAILWAY_PUBLIC_DOMAIN="+rd)}',
 ].join('');
 
 const BOOT_SCRIPT = `#!/bin/sh
@@ -235,6 +237,30 @@ export async function findServiceByName(name: string): Promise<string | null> {
   return match?.node.id ?? null;
 }
 
+async function queryServiceDomain(serviceId: string): Promise<string | null> {
+  try {
+    const data = await railwayGql<{
+      environment: { config: Record<string, unknown> };
+    }>(
+      `query($envId: String!) {
+        environment(id: $envId) { config(decryptVariables: false) }
+      }`,
+      { envId: RAILWAY_ENVIRONMENT_ID },
+    );
+
+    const services = (data.environment.config as Record<string, unknown>).services as
+      Record<string, { networking?: { serviceDomains?: string[] } }> | undefined;
+    if (!services) return null;
+
+    const svc = services[serviceId];
+    const domains = svc?.networking?.serviceDomains;
+    return domains?.[0] ?? null;
+  } catch (err) {
+    log.warn('Failed to query service domain from Railway', { serviceId, error: err });
+    return null;
+  }
+}
+
 export async function updateAndRedeployService(
   serviceId: string,
   envVars: Record<string, string>,
@@ -285,8 +311,8 @@ export async function updateAndRedeployService(
     );
     domain = domainData.serviceDomainCreate.domain;
   } catch {
-    // Domain already exists -- leave domain empty so the caller
-    // falls back to the previously stored workspace.containerHost.
+    // Domain already exists -- query Railway for the actual domain
+    domain = await queryServiceDomain(serviceId) ?? '';
   }
 
   await railwayGql(

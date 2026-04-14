@@ -140,7 +140,11 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
     await prisma.workspace.update({
       where: { id: workspaceId },
-      data: { containerId: result.serviceId, containerName: serviceName, containerHost: result.domain || null },
+      data: {
+        containerId: result.serviceId,
+        containerName: serviceName,
+        ...(result.domain && { containerHost: result.domain }),
+      },
     });
 
     await updateDeploymentStatus(deployment.id, 'HEALTH_CHECK');
