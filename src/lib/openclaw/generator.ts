@@ -237,12 +237,24 @@ function generateOpenClawConfig(
   // Skills entries - API keys and env vars for connected tools
   const skillsEntries = generateSkillsEntriesConfig(workspace);
 
+  // Build allowed origins for the Control UI
+  const allowedOrigins = [
+    'http://localhost:18789',
+    'http://127.0.0.1:18789',
+  ];
+  if (workspace.containerHost) {
+    allowedOrigins.push(`https://${workspace.containerHost}`);
+  }
+
   // Build the final config - ONLY use fields that exist in OpenClaw's Zod schema
   const config: Record<string, any> = {
     gateway: {
       mode: 'local',
       bind: 'lan',  // Required for Docker (0.0.0.0)
       port: 18789,
+      controlUi: {
+        allowedOrigins,
+      },
     },
     agents: {
       defaults: {
@@ -1116,6 +1128,7 @@ type WorkspaceWithRelations = {
   timezone?: string | null;
   userContext?: string | null;
   scheduledTasks?: any;
+  containerHost?: string | null;
   agents: AgentWithRelations[];
   toolConnections: ToolConnectionRecord[];
   channelConnections: ChannelConnectionRecord[];
