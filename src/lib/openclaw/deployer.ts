@@ -29,6 +29,7 @@ import {
   updateAndRedeployService,
   findServiceByName,
   getServiceStatus,
+  BOOT_SCRIPT_B64,
 } from './railway-client';
 import { log } from '@/lib/logger';
 
@@ -371,6 +372,7 @@ function buildRailwayEnvVars(
   const workspaceFiles = buildWorkspaceFileMap(generated);
 
   return {
+    CLAWS_BOOT_B64: BOOT_SCRIPT_B64,
     CLAWS_CONFIG_B64: Buffer.from(configJson).toString('base64'),
     CLAWS_ENV_B64: Buffer.from(envFileContent).toString('base64'),
     CLAWS_FILES_B64: Buffer.from(JSON.stringify(workspaceFiles)).toString('base64'),

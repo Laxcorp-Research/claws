@@ -24,17 +24,22 @@ const UNPACK_NODE_SCRIPT = [
   'console.log("Unpack complete. Files:",fs.readdirSync(d).join(", "))',
 ].join('');
 
-const START_COMMAND = [
-  'echo "=== CLAWS BOOT ===" && ',
-  'exec 2>&1 && ',
-  'echo "PWD: $(pwd)" && ',
-  'echo "PORT: $PORT" && ',
-  'echo "NODE: $(node --version)" && ',
-  'echo "Unpacking config..." && ',
-  `node -e '${UNPACK_NODE_SCRIPT}' && `,
-  'echo "Starting gateway on port $PORT..." && ',
-  'exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port ${PORT:-18789}',
-].join('');
+const BOOT_SCRIPT = `#!/bin/sh
+exec 2>&1
+echo "=== CLAWS BOOT ==="
+echo "PWD: $(pwd)"
+echo "PORT: $PORT"
+echo "NODE: $(node --version)"
+echo "Unpacking config..."
+node -e '${UNPACK_NODE_SCRIPT}'
+echo "Starting gateway on port $PORT..."
+exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port \${PORT:-18789}
+`;
+
+export const BOOT_SCRIPT_B64 = Buffer.from(BOOT_SCRIPT).toString('base64');
+
+const START_COMMAND =
+  '/bin/sh -c "echo $CLAWS_BOOT_B64 | base64 -d > /tmp/boot.sh && exec sh /tmp/boot.sh"';
 
 // ---------------------------------------------------------------------------
 // Configuration check
