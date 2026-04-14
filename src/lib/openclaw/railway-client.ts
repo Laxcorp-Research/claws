@@ -25,8 +25,8 @@ const UNPACK_NODE_SCRIPT = [
 ].join('');
 
 const START_COMMAND = [
-  'exec 2>&1; ',
   'echo "=== CLAWS BOOT ===" && ',
+  'exec 2>&1 && ',
   'echo "PWD: $(pwd)" && ',
   'echo "PORT: $PORT" && ',
   'echo "NODE: $(node --version)" && ',
