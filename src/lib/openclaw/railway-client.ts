@@ -24,6 +24,21 @@ const UNPACK_NODE_SCRIPT = [
   'console.log("Unpack complete. Files:",fs.readdirSync(d).join(", "))',
 ].join('');
 
+const PATCH_ORIGINS_SCRIPT = [
+  'const fs=require("fs");',
+  'const f="/home/node/.openclaw/openclaw.json";',
+  'const u=process.env.CLAWS_PUBLIC_URL;',
+  'if(u&&fs.existsSync(f)){',
+  'const c=JSON.parse(fs.readFileSync(f,"utf8"));',
+  'if(!c.gateway)c.gateway={};',
+  'if(!c.gateway.controlUi)c.gateway.controlUi={};',
+  'const o=c.gateway.controlUi.allowedOrigins||["http://localhost:18789","http://127.0.0.1:18789"];',
+  'if(!o.includes(u))o.push(u);',
+  'c.gateway.controlUi.allowedOrigins=o;',
+  'fs.writeFileSync(f,JSON.stringify(c,null,2));',
+  'console.log("Patched allowedOrigins:",o)}',
+].join('');
+
 const BOOT_SCRIPT = `#!/bin/sh
 exec 2>&1
 echo "=== CLAWS BOOT ==="
@@ -32,6 +47,7 @@ echo "PORT: $PORT"
 echo "NODE: $(node --version)"
 echo "Unpacking config..."
 node -e '${UNPACK_NODE_SCRIPT}'
+node -e '${PATCH_ORIGINS_SCRIPT}'
 echo "Starting gateway on port $PORT..."
 exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port \${PORT:-18789}
 `;
@@ -269,10 +285,8 @@ export async function updateAndRedeployService(
     );
     domain = domainData.serviceDomainCreate.domain;
   } catch {
-    const status = await getServiceStatus(serviceId);
-    if (status.deploymentId) {
-      domain = `${serviceId}.up.railway.app`;
-    }
+    // Domain already exists -- leave domain empty so the caller
+    // falls back to the previously stored workspace.containerHost.
   }
 
   await railwayGql(

@@ -365,7 +365,7 @@ export async function getGatewayConnectionInfo(
 
 function buildRailwayEnvVars(
   generated: GeneratedWorkspace,
-  workspace: { timezone?: string | null },
+  workspace: { timezone?: string | null; containerHost?: string | null },
 ): Record<string, string> {
   const configJson = generated['openclaw.json'];
   const envFileContent = generated['.env'];
@@ -377,6 +377,9 @@ function buildRailwayEnvVars(
     CLAWS_ENV_B64: Buffer.from(envFileContent).toString('base64'),
     CLAWS_FILES_B64: Buffer.from(JSON.stringify(workspaceFiles)).toString('base64'),
     OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
+    ...(workspace.containerHost && {
+      CLAWS_PUBLIC_URL: `https://${workspace.containerHost}`,
+    }),
     TZ: workspace.timezone ?? 'UTC',
     NODE_ENV: 'production',
     PORT: '18789',
