@@ -164,7 +164,8 @@ export async function deployToCloud(workspaceId: string): Promise<{
     });
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'HEALTH_CHECK');
-    await waitForDeploymentSuccess(result.serviceId);
+    const preDeployStatus = await getServiceStatus(result.serviceId);
+    await waitForDeploymentSuccess(result.serviceId, preDeployStatus.deploymentId);
 
     if (workspace.channelConfigEncrypted) {
       await updateDeploymentStatus(deployment.id, workspaceId, 'WAITING_CHANNELS');
@@ -584,38 +585,25 @@ function calculateNextHeartbeat(cronJobsJson: string | null | undefined): Date |
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function waitForDeploymentSuccess(serviceId: string): Promise<void> {
-  // Wait for the new deployment to register in Railway's API.
-  // Without this, getServiceStatus may return the OLD (possibly failed)
-  // deployment before the new one is visible in the GraphQL response.
-  await sleep(5_000);
-
+async function waitForDeploymentSuccess(
+  serviceId: string,
+  previousDeploymentId: string | null,
+): Promise<void> {
   const start = Date.now();
-  let lastSeenDeploymentId: string | null = null;
 
   while (Date.now() - start < DEPLOY_TIMEOUT_MS) {
     const status = await getServiceStatus(serviceId);
 
-    // Track which deployment we're watching. If the deployment ID changes
-    // mid-poll, a new deployment was triggered (e.g., Railway auto-retry).
-    // Reset our failure tracking — only fail on the LATEST deployment.
-    if (lastSeenDeploymentId && status.deploymentId !== lastSeenDeploymentId) {
-      log.info('New Railway deployment detected during polling', {
-        serviceId,
-        old: lastSeenDeploymentId,
-        new: status.deploymentId,
-      });
+    // If we know the previous deployment ID, ignore it entirely.
+    // Keep polling until Railway registers the NEW deployment.
+    if (previousDeploymentId && status.deploymentId === previousDeploymentId) {
+      await sleep(DEPLOY_POLL_INTERVAL_MS);
+      continue;
     }
-    lastSeenDeploymentId = status.deploymentId;
 
     if (status.status === 'SUCCESS') return;
     if (status.status === 'FAILED' || status.status === 'CRASHED') {
-      // Only fail if we've been watching this specific deployment for a while.
-      // A FAILED status on the very first poll is likely the old deployment.
-      if (Date.now() - start > 15_000) {
-        throw new Error(`Railway deployment ${status.status}`);
-      }
-      // Otherwise wait for the new deployment to appear
+      throw new Error(`Railway deployment ${status.status}`);
     }
     await sleep(DEPLOY_POLL_INTERVAL_MS);
   }
