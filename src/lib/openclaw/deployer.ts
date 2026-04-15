@@ -458,7 +458,6 @@ function buildRailwayEnvVars(
     vars.NODE_OPTIONS = '--max-old-space-size=700';
   } else {
     vars.CLAWS_CREDIT_MODE = 'false';
-    vars.NODE_OPTIONS = '--max-old-space-size=768';
   }
 
   return vars;
