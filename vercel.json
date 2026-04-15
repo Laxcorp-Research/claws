@@ -4,6 +4,18 @@
     {
       "path": "/api/admin/payouts/release",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-credit-balances",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/aggregate-credit-usage",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/credit-pool-monitor",
+      "schedule": "0 * * * *"
     }
   ]
 }
