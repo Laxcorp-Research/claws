@@ -152,11 +152,16 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.sub = user.id
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { onboardingCompleted: true },
-        })
-        token.onboardingCompleted = dbUser?.onboardingCompleted ?? false
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { onboardingCompleted: true, _count: { select: { workspaces: true } } },
+          })
+          const hasWorkspaces = (dbUser?._count?.workspaces ?? 0) > 0
+          token.onboardingCompleted = dbUser?.onboardingCompleted || hasWorkspaces
+        } catch {
+          token.onboardingCompleted = true
+        }
       }
       if (trigger === "update" && session?.onboardingCompleted !== undefined) {
         token.onboardingCompleted = session.onboardingCompleted as boolean
