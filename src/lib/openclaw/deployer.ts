@@ -376,6 +376,10 @@ export async function healthCheckAllContainers(): Promise<void> {
         where: { id: ws.id },
         data: { healthStatus: 'HEALTHY', lastHealthCheck: new Date() },
       });
+      await prisma.containerState.updateMany({
+        where: { workspaceId: ws.id },
+        data: { lastActiveAt: new Date() },
+      }).catch(() => {});
     } catch {
       await markUnhealthy(ws.id, ws.userId, 'Railway service unreachable');
     }

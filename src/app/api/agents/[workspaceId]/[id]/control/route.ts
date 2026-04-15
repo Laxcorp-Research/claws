@@ -73,6 +73,10 @@ export async function POST(
         }),
       },
     }),
+    prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: { lastActiveAt: now },
+    }),
   ])
 
   const statusMap: Record<string, string> = {

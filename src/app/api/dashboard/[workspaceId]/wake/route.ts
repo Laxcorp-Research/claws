@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
+import { wakeWorkspace } from "@/lib/hibernation/manager"
 
 export async function POST(
   _req: NextRequest,
@@ -35,18 +36,12 @@ export async function POST(
     }),
   ])
 
-  if (process.env.CONTAINER_AGENT_URL) {
-    fetch(`${process.env.CONTAINER_AGENT_URL}/wake`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.CONTAINER_AGENT_SECRET}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ workspaceId }),
-    }).catch((err) => {
-      log.error("Wake webhook failed, will rely on polling", { workspaceId, error: String(err) })
+  wakeWorkspace(workspaceId).catch((err) => {
+    log.error("Dashboard wake async failed, cron will retry", {
+      workspaceId,
+      error: String(err),
     })
-  }
+  })
 
   return apiSuccess({ status: "WAKING" })
 }

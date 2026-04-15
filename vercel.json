@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/credit-pool-monitor",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/hibernation",
+      "schedule": "* * * * *"
     }
   ]
 }
