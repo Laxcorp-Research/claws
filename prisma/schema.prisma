@@ -31,6 +31,10 @@ model User {
   trialStartedAt  DateTime?
   trialEndsAt     DateTime?
 
+  creditAccount            CreditAccount?
+  apiKeySource             ApiKeySource    @default(NONE)
+  emailVerifiedForCredits  Boolean         @default(false)
+
   accounts        Account[]
   sessions        Session[]
   workspaces      Workspace[]
@@ -173,6 +177,9 @@ model Workspace {
 
   clawTemplateId String?
 
+  containerState           ContainerState?
+  apiKeySourceOverride     ApiKeySource?
+
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   clawTemplate ClawTemplate? @relation(fields: [clawTemplateId], references: [id])
   agents      Agent[]
@@ -200,6 +207,8 @@ enum WorkspaceStatus {
   DEPLOYING
   RUNNING
   PAUSED
+  HIBERNATED
+  WAKING
   ERROR
   STOPPED
 }
@@ -997,4 +1006,132 @@ model OpenClawVersion {
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+// ─── CREDIT SYSTEM ─────────────────────────────────────
+
+enum CreditStatus {
+  ACTIVE
+  EXHAUSTED
+  SUSPENDED
+  CONVERTED
+}
+
+enum ApiKeySource {
+  NONE
+  PLATFORM_CREDIT
+  USER_OWN_KEY
+}
+
+enum ContainerPhase {
+  RUNNING
+  WARM
+  HIBERNATED
+  WAKING
+  STOPPED
+}
+
+model CreditAccount {
+  id                  String       @id @default(cuid())
+  userId              String       @unique
+
+  initialGrantCents   Int          @default(2500)
+  balanceCents        Int          @default(2500)
+  totalConsumedCents  Int          @default(0)
+
+  status              CreditStatus @default(ACTIVE)
+  grantedAt           DateTime     @default(now())
+  exhaustedAt         DateTime?
+
+  grantFingerprint    String?
+  ipAtGrant           String?
+  flaggedForReview    Boolean      @default(false)
+
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageRecords        CreditUsageRecord[]
+  dailyUsage          CreditUsageDaily[]
+
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model CreditUsageRecord {
+  id                String      @id @default(cuid())
+  creditAccountId   String
+  workspaceId       String
+  agentId           String?
+
+  provider          ApiProvider
+  model             String
+  inputTokens       Int
+  outputTokens      Int
+  costCents         Int
+  balanceAfterCents Int
+
+  creditAccount     CreditAccount @relation(fields: [creditAccountId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime     @default(now())
+
+  @@index([creditAccountId])
+  @@index([workspaceId])
+  @@index([createdAt])
+}
+
+model CreditUsageDaily {
+  id                String      @id @default(cuid())
+  creditAccountId   String
+  workspaceId       String
+  date              DateTime    @db.Date
+
+  provider          ApiProvider
+  model             String
+  totalCalls        Int
+  totalInputTokens  Int
+  totalOutputTokens Int
+  totalCostCents    Int
+
+  creditAccount     CreditAccount @relation(fields: [creditAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([creditAccountId, workspaceId, date, provider, model])
+  @@index([creditAccountId])
+  @@index([date])
+}
+
+// ─── CONTAINER STATE (HIBERNATION) ─────────────────────
+
+model ContainerState {
+  id                        String         @id @default(cuid())
+  workspaceId               String         @unique
+
+  containerPhase            ContainerPhase @default(STOPPED)
+  lastActiveAt              DateTime?
+  hibernatedAt              DateTime?
+  wakeRequestedAt           DateTime?
+
+  nextHeartbeatAt           DateTime?
+  heartbeatInterval         Int?
+  heartbeatCronExpressions  String?        @db.Text
+
+  hasActiveChannels         Boolean        @default(false)
+  lastChannelMessageAt      DateTime?
+
+  activeMinutesToday        Int            @default(0)
+  lastResetDate             DateTime       @default(now())
+
+  lastWakeDurationMs        Int?
+  avgWakeDurationMs         Int?
+
+  savedVolumeId             String?
+  savedContainerConfig      String?        @db.Text
+
+  workspace                 Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  @@index([containerPhase])
+  @@index([nextHeartbeatAt])
 }
