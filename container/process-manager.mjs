@@ -19,7 +19,8 @@ const PROXY_HEALTH_TIMEOUT_MS = 10000;
 const PROXY_HEALTH_POLL_MS = 500;
 
 const STATE_SYNC_INTERVAL_MS = 5 * 60 * 1000;
-const OPENCLAW_DIR = '/home/node/.openclaw';
+const OPENCLAW_APP_DIR = '/app';
+const OPENCLAW_DATA_DIR = '/home/node/.openclaw';
 const METERING_ENDPOINT = process.env.CLAWS_METERING_ENDPOINT;
 const METERING_SECRET = process.env.CLAWS_METERING_SECRET;
 const WORKSPACE_ID = process.env.CLAWS_WORKSPACE_ID;
@@ -78,7 +79,7 @@ function bundleRuntimeState() {
     }
   }
 
-  walkDir(OPENCLAW_DIR);
+  walkDir(OPENCLAW_DATA_DIR);
   return { files, totalSize };
 }
 
@@ -88,7 +89,7 @@ function restoreRuntimeState(stateJson) {
 
   let restored = 0;
   for (const [relativePath, base64Content] of Object.entries(files)) {
-    const fullPath = path.join(OPENCLAW_DIR, relativePath);
+    const fullPath = path.join(OPENCLAW_DATA_DIR, relativePath);
     try {
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
       fs.writeFileSync(fullPath, Buffer.from(base64Content, 'base64'));
@@ -255,7 +256,7 @@ function spawnGateway() {
   ], {
     stdio: 'inherit',
     env: process.env,
-    cwd: OPENCLAW_DIR,
+    cwd: OPENCLAW_APP_DIR,
   });
 
   children.add(gateway);
