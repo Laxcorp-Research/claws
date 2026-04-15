@@ -50,8 +50,13 @@ echo "NODE: $(node --version)"
 echo "Unpacking config..."
 node -e '${UNPACK_NODE_SCRIPT}'
 node -e '${PATCH_ORIGINS_SCRIPT}'
-echo "Starting gateway on port $PORT..."
-exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port \${PORT:-18789}
+if [ -f "/usr/local/bin/process-manager.mjs" ]; then
+  echo "Starting via process-manager (credit_mode=\${CLAWS_CREDIT_MODE:-false})..."
+  exec node /usr/local/bin/process-manager.mjs
+else
+  echo "Starting gateway on port $PORT..."
+  exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port \${PORT:-18789}
+fi
 `;
 
 export const BOOT_SCRIPT_B64 = Buffer.from(BOOT_SCRIPT).toString('base64');
