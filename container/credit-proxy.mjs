@@ -209,6 +209,187 @@ class UsageReporter {
 const creditWindow = new CreditWindow();
 const reporter = new UsageReporter();
 
+// ─── Metered API Call Handler ────────────────────────────
+
+async function handleApiCall(req, res, body, parsed) {
+  const model = parsed.model || 'claude-sonnet-4-6';
+  const isStreaming = parsed.stream === true;
+  const estimatedInputTokens = Math.ceil(body.length / 4);
+  const estimatedCost = estimateCost(model, estimatedInputTokens);
+
+  const check = await creditWindow.canSpend(estimatedCost);
+  if (!check.allowed) {
+    res.writeHead(402, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'credits_exhausted',
+        message: check.reason || 'Claws Starter Credits exhausted. Add your own API key to continue.',
+      },
+    }));
+    return;
+  }
+
+  try {
+    const anthropicRes = await fetch(`${REAL_ANTHROPIC_URL}${req.url}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': MASTER_KEY,
+        'anthropic-version': req.headers['anthropic-version'] || '2023-06-01',
+        ...(req.headers['anthropic-beta'] ? { 'anthropic-beta': req.headers['anthropic-beta'] } : {}),
+      },
+      body: body,
+      signal: AbortSignal.timeout(600_000),
+    });
+
+    const contentType = anthropicRes.headers.get('Content-Type') || '';
+
+    if (isStreaming && contentType.includes('text/event-stream')) {
+      await handleStreamingResponse(req, res, anthropicRes, model, estimatedCost, body);
+    } else {
+      await handleBufferedResponse(req, res, anthropicRes, model, estimatedCost);
+    }
+  } catch (err) {
+    creditWindow.refund(estimatedCost);
+    console.error('[credit-proxy] Anthropic request failed:', err.message);
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      type: 'error',
+      error: { type: 'proxy_error', message: `Failed to reach Anthropic API: ${err.message}` },
+    }));
+  }
+}
+
+async function handleStreamingResponse(req, res, anthropicRes, model, estimatedCost, requestBody) {
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  res.writeHead(anthropicRes.status, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+
+  const reader = anthropicRes.body.getReader();
+  const decoder = new TextDecoder();
+  let sseBuffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+
+      try {
+        const canContinue = res.write(chunk);
+        if (!canContinue) {
+          await new Promise(resolve => res.once('drain', resolve));
+        }
+      } catch {
+        console.error('[credit-proxy] Client disconnected during stream');
+        reader.cancel().catch(() => {});
+        break;
+      }
+
+      sseBuffer += chunk;
+      const lines = sseBuffer.split('\n');
+      sseBuffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const dataStr = line.slice(6).trim();
+        if (dataStr === '[DONE]') continue;
+
+        try {
+          const event = JSON.parse(dataStr);
+          if (event.type === 'message_start' && event.message?.usage) {
+            inputTokens = event.message.usage.input_tokens || 0;
+          }
+          if (event.type === 'message_delta' && event.usage) {
+            outputTokens = event.usage.output_tokens || 0;
+          }
+        } catch {
+          // Partial JSON or non-JSON data line — skip
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[credit-proxy] Stream read error:', err.message);
+  } finally {
+    res.end();
+  }
+
+  if (inputTokens === 0 && outputTokens === 0) {
+    inputTokens = Math.ceil(requestBody.length / 4);
+    outputTokens = inputTokens;
+    console.warn('[credit-proxy] No usage data in stream, using estimates');
+  }
+
+  const actualCost = calculateCost(model, inputTokens, outputTokens);
+
+  if (estimatedCost > actualCost) {
+    creditWindow.refund(estimatedCost - actualCost);
+  } else if (actualCost > estimatedCost) {
+    creditWindow.windowCents -= (actualCost - estimatedCost);
+  }
+
+  reporter.add({
+    workspaceId: WORKSPACE_ID,
+    agentId: req.headers['x-agent-id'] || null,
+    provider: 'ANTHROPIC',
+    model,
+    inputTokens,
+    outputTokens,
+    costCents: actualCost,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+async function handleBufferedResponse(req, res, anthropicRes, model, estimatedCost) {
+  const responseBody = await anthropicRes.text();
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  try {
+    const responseData = JSON.parse(responseBody);
+    inputTokens = responseData.usage?.input_tokens || 0;
+    outputTokens = responseData.usage?.output_tokens || 0;
+  } catch {
+    const estimated = Math.ceil(responseBody.length / 4);
+    inputTokens = estimated;
+    outputTokens = estimated;
+  }
+
+  const actualCost = calculateCost(model, inputTokens, outputTokens);
+
+  if (estimatedCost > actualCost) {
+    creditWindow.refund(estimatedCost - actualCost);
+  } else if (actualCost > estimatedCost) {
+    creditWindow.windowCents -= (actualCost - estimatedCost);
+  }
+
+  reporter.add({
+    workspaceId: WORKSPACE_ID,
+    agentId: req.headers['x-agent-id'] || null,
+    provider: 'ANTHROPIC',
+    model,
+    inputTokens,
+    outputTokens,
+    costCents: actualCost,
+    timestamp: new Date().toISOString(),
+  });
+
+  res.writeHead(anthropicRes.status, {
+    'Content-Type': anthropicRes.headers.get('Content-Type') || 'application/json',
+  });
+  res.end(responseBody);
+}
+
+// ─── Server ─────────────────────────────────────────────
+
 const server = http.createServer(async (req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -240,83 +421,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const model = parsed.model || 'claude-sonnet-4-6';
-  const estimatedInputTokens = Math.ceil(body.length / 4);
-  const estimatedCost = estimateCost(model, estimatedInputTokens);
-
-  const check = await creditWindow.canSpend(estimatedCost);
-  if (!check.allowed) {
-    res.writeHead(402, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      type: 'error',
-      error: {
-        type: 'credits_exhausted',
-        message: check.reason || 'Claws Starter Credits exhausted. Add your own API key to continue.',
-      },
-    }));
-    return;
-  }
-
-  try {
-    const anthropicRes = await fetch(`${REAL_ANTHROPIC_URL}${req.url}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': MASTER_KEY,
-        'anthropic-version': req.headers['anthropic-version'] || '2023-06-01',
-        ...(req.headers['anthropic-beta'] ? { 'anthropic-beta': req.headers['anthropic-beta'] } : {}),
-      },
-      body: body,
-      signal: AbortSignal.timeout(600_000),
-    });
-
-    const responseBody = await anthropicRes.text();
-
-    let inputTokens = 0;
-    let outputTokens = 0;
-    try {
-      const responseData = JSON.parse(responseBody);
-      inputTokens = responseData.usage?.input_tokens || 0;
-      outputTokens = responseData.usage?.output_tokens || 0;
-    } catch {
-      inputTokens = estimatedInputTokens;
-      outputTokens = estimatedInputTokens;
-    }
-
-    const actualCost = calculateCost(model, inputTokens, outputTokens);
-
-    if (estimatedCost > actualCost) {
-      creditWindow.refund(estimatedCost - actualCost);
-    } else if (actualCost > estimatedCost) {
-      creditWindow.windowCents -= (actualCost - estimatedCost);
-    }
-
-    reporter.add({
-      workspaceId: WORKSPACE_ID,
-      agentId: req.headers['x-agent-id'] || null,
-      provider: 'ANTHROPIC',
-      model,
-      inputTokens,
-      outputTokens,
-      costCents: actualCost,
-      timestamp: new Date().toISOString(),
-    });
-
-    res.writeHead(anthropicRes.status, {
-      'Content-Type': anthropicRes.headers.get('Content-Type') || 'application/json',
-    });
-    res.end(responseBody);
-
-  } catch (err) {
-    creditWindow.refund(estimatedCost);
-
-    console.error('[credit-proxy] Anthropic request failed:', err.message);
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      type: 'error',
-      error: { type: 'proxy_error', message: `Failed to reach Anthropic API: ${err.message}` },
-    }));
-  }
+  await handleApiCall(req, res, body, parsed);
 });
 
 async function proxyPassthrough(req, res) {
