@@ -6,6 +6,7 @@ import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
 import { prisma } from "@/lib/db"
 import { getResend } from "./resend"
+import { grantStarterCredits } from "@/lib/credits/grant"
 
 function CustomPrismaAdapter(p: typeof prisma): Adapter {
   const base = PrismaAdapter(p) as Adapter;
@@ -123,6 +124,19 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  events: {
+    async createUser({ user }) {
+      if (user.id) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerifiedForCredits: true },
+        }).catch(() => {})
+        await grantStarterCredits(user.id, "signup").catch((err) => {
+          console.error("Failed to grant starter credits:", err)
+        })
+      }
+    },
+  },
   callbacks: {
     async session({ session, token }) {
       if (session.user && token.sub) {

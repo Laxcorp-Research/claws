@@ -6,6 +6,8 @@ import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { CreditBalanceCard } from "@/components/credits/credit-balance-card"
+import { useCreditBalance } from "@/hooks/use-credit-balance"
 
 interface ApiKey {
   id: string
@@ -34,6 +36,12 @@ export function ApiKeyManager() {
   const [testingId, setTestingId] = useState<string | null>(null)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
+  const [switchConfirmOpen, setSwitchConfirmOpen] = useState(false)
+  const [switching, setSwitching] = useState(false)
+
+  const credit = useCreditBalance()
+  const onCredits = credit.hasCredits && (credit.status === "ACTIVE" || credit.status === "EXHAUSTED")
+  const hasValidAnthropicKey = keys.some((k) => k.provider === "ANTHROPIC" && k.isValid)
 
   const fetchKeys = useCallback(async () => {
     try {
@@ -109,6 +117,20 @@ export function ApiKeyManager() {
     setValidationState("idle")
   }
 
+  const handleSwitchSource = async () => {
+    setSwitching(true)
+    try {
+      const res = await fetch("/api/api-keys/switch-source", { method: "POST" })
+      if (res.ok) {
+        credit.refetch()
+        fetchKeys()
+      }
+    } finally {
+      setSwitching(false)
+      setSwitchConfirmOpen(false)
+    }
+  }
+
   const providerInfo = PROVIDERS.find((p) => p.key === addProvider)
 
   if (loading) {
@@ -122,7 +144,33 @@ export function ApiKeyManager() {
 
   return (
     <div>
-      <h2 className="text-[14px] font-semibold mb-[2px]">AI model API keys</h2>
+      {onCredits && !credit.loading && (
+        <>
+          <CreditBalanceCard
+            variant="full"
+            balanceCents={credit.balanceCents}
+            totalConsumedCents={credit.totalConsumedCents}
+            initialGrantCents={credit.initialGrantCents}
+            status={credit.status}
+          />
+
+          {credit.status === "ACTIVE" && hasValidAnthropicKey && (
+            <div className="mb-3.5">
+              <Button variant="outline" size="sm" className="text-[11px]" onClick={() => setSwitchConfirmOpen(true)}>
+                Switch to my key
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      <h2 className="text-[14px] font-semibold mb-[2px]">
+        {onCredits && credit.status === "EXHAUSTED"
+          ? "Add your API key to resume your agents"
+          : onCredits && credit.status === "ACTIVE"
+            ? "Add your own key (optional)"
+            : "AI model API keys"}
+      </h2>
       <p className="text-[11px] text-[var(--tx2)] mb-[4px]">
         These power all your Claws. Each Claw&apos;s agents can use a different model - configure that in the builder or during setup.
       </p>
@@ -230,6 +278,17 @@ export function ApiKeyManager() {
         confirmLabel="Remove key"
         variant="danger"
         loading={removing}
+      />
+
+      <ConfirmDialog
+        open={switchConfirmOpen}
+        onClose={() => setSwitchConfirmOpen(false)}
+        onConfirm={handleSwitchSource}
+        title="Switch to your own API key"
+        description="Your agents will restart to use your key instead of Claws credits. This takes about 30 seconds. Remaining credits will not be used."
+        confirmLabel="Switch to my key"
+        variant="warning"
+        loading={switching}
       />
     </div>
   )

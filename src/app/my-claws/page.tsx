@@ -30,7 +30,7 @@ interface ApiWorkspace {
 interface WorkspaceItem {
   id: string
   name: string
-  status: "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped"
+  status: "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking"
   apiStatus: string
   agentCount: number
   agentRoles: string[]

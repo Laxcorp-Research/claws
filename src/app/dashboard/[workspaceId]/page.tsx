@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
-import { OctagonX, Pause, Unplug, TrendingUp, Clock, RefreshCw } from "lucide-react"
+import { OctagonX, Pause, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Modal } from "@/components/ui/modal"
 import { DeployProgress } from "@/components/setup/deploy-progress"
@@ -17,6 +17,7 @@ import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
 import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
+import { useCreditBalance } from "@/hooks/use-credit-balance"
 
 interface DashboardStats {
   agentsRunning: number
@@ -82,7 +83,7 @@ interface ExpiredTool {
 interface DashboardAlert {
   key: string
   priority: number
-  variant: "error" | "warning"
+  variant: "error" | "warning" | "info"
   icon?: ReactNode
   content: ReactNode
   actions?: ReactNode
@@ -186,6 +187,9 @@ export default function DashboardPage() {
   const eventSourceRef = useRef<EventSource | null>(null)
   const redeployEsRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
+
+  const credit = useCreditBalance(30_000)
+  const creditMode = credit.hasCredits && (credit.status === "ACTIVE" || credit.status === "EXHAUSTED")
 
   const handleSubscribe = useCallback(async () => {
     setSubscribing(true)
@@ -312,6 +316,28 @@ export default function DashboardPage() {
       es.close()
       eventSourceRef.current?.close()
     }
+  }, [workspaceId])
+
+  useEffect(() => {
+    if (workspace?.status === "WAKING" || workspace?.status === "HIBERNATED") {
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/workspaces/${workspaceId}`)
+          const data = await res.json()
+          if (data.success && data.data?.status === "RUNNING") {
+            clearInterval(interval)
+            router.refresh()
+            fetchStats()
+          }
+        } catch { /* ignore */ }
+      }, 3000)
+      return () => clearInterval(interval)
+    }
+  }, [workspace?.status, workspaceId, router, fetchStats])
+
+  const handleWakeNow = useCallback(async () => {
+    await fetch(`/api/dashboard/${workspaceId}/wake`, { method: "POST" })
+    setWorkspace((prev) => prev ? { ...prev, status: "WAKING" } : prev)
   }, [workspaceId])
 
   const handlePauseAll = async () => {
@@ -589,10 +615,61 @@ export default function DashboardPage() {
       })
     }
 
+    if (workspace?.status === "HIBERNATED") {
+      list.push({
+        key: "hibernated",
+        priority: 5,
+        variant: "info",
+        icon: <Moon className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">This Claw is hibernating</p>
+            <p className="mt-0.5 opacity-80">Agents are sleeping to save resources. They&apos;ll wake automatically for the next scheduled heartbeat, or you can wake them now.</p>
+          </>
+        ),
+        actions: <Button variant="primary" size="xs" onClick={handleWakeNow}>Wake now</Button>,
+      })
+    }
+
+    if (workspace?.status === "WAKING") {
+      list.push({
+        key: "waking",
+        priority: 5,
+        variant: "info",
+        content: (
+          <>
+            <p className="font-medium">Your Claw is waking up</p>
+            <p className="mt-0.5 opacity-80">Restarting agents — this usually takes 15-30 seconds.</p>
+          </>
+        ),
+      })
+    }
+
+    if (creditMode && credit.status === "EXHAUSTED") {
+      list.push({
+        key: "credits-exhausted",
+        priority: 0,
+        variant: "error",
+        icon: <Gift className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">Claws Starter Credits exhausted</p>
+            <p className="mt-0.5 opacity-80">Your agents are paused. Add your API key and subscribe to resume.</p>
+          </>
+        ),
+        actions: (
+          <div className="flex gap-1.5">
+            <Button variant="primary" size="xs" onClick={() => router.push("/settings?tab=api-keys")}>Add API key</Button>
+            <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Subscribe</Button>
+          </div>
+        ),
+      })
+    }
+
     list.sort((a, b) => a.priority - b.priority)
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe])
+  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {
@@ -724,6 +801,19 @@ export default function DashboardPage() {
           apiCostProjected={stats.apiCostProjected}
           pendingReview={stats.pendingReview}
           isPaused={isPaused}
+          isHibernated={workspace?.status === "HIBERNATED"}
+          creditMode={creditMode && credit.status === "ACTIVE"}
+          creditBalanceCents={creditMode ? credit.balanceCents : undefined}
+          creditDaysEstimate={
+            creditMode && credit.totalConsumedCents > 0 && credit.grantedAt
+              ? (() => {
+                  const days = Math.max(1, Math.floor((Date.now() - new Date(credit.grantedAt).getTime()) / 86400000))
+                  const dailyRate = credit.totalConsumedCents / days
+                  const remaining = dailyRate > 0 ? Math.round(credit.balanceCents / dailyRate) : 0
+                  return remaining > 0 ? `~${remaining} day${remaining !== 1 ? "s" : ""} at current usage` : "Running low"
+                })()
+              : undefined
+          }
         />
       )}
 
