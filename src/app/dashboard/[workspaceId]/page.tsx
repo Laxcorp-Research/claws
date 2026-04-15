@@ -214,6 +214,7 @@ export default function DashboardPage() {
       const res = await fetch(`/api/activity/${workspaceId}`)
       if (!res.ok) {
         if (res.status === 401) { router.push("/auth/signin"); return }
+        if (res.status === 403 || res.status === 404) { router.replace("/my-claws"); return }
         throw new Error(`Failed to fetch stats: ${res.status}`)
       }
       const json = await res.json()

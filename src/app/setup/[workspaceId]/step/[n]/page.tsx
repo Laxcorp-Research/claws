@@ -1300,6 +1300,13 @@ export default function SetupStepPage() {
   const isManageMode = searchParams.get("mode") === "manage"
 
   useEffect(() => {
+    fetch(`/api/workspaces/${workspaceId}`).then((res) => {
+      if (res.status === 401) router.push("/auth/signin")
+      else if (res.status === 403 || res.status === 404) router.replace("/my-claws")
+    }).catch(() => {})
+  }, [workspaceId, router])
+
+  useEffect(() => {
     const from = searchParams.get("from")
     if (from) {
       sessionStorage.setItem(`wizard-context-${workspaceId}`, from)

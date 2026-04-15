@@ -138,15 +138,28 @@ export const authOptions: NextAuthOptions = {
     },
   },
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith(baseUrl)) return url
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      return `${baseUrl}/my-claws`
+    },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub
       }
       return session
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.sub = user.id
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { onboardingCompleted: true },
+        })
+        token.onboardingCompleted = dbUser?.onboardingCompleted ?? false
+      }
+      if (trigger === "update" && session?.onboardingCompleted !== undefined) {
+        token.onboardingCompleted = session.onboardingCompleted as boolean
       }
       return token
     },

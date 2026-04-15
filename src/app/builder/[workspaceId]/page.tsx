@@ -18,7 +18,7 @@ export default function BuilderPage() {
   const params = useParams()
   const router = useRouter()
   const workspaceId = params.workspaceId as string
-  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, lastSavedAt, saveWorkspace, revertToLastSaved, hasDraftRecovery, draftTimestamp, restoreDraft, dismissDraft } = useBuilderStore()
+  const { loadWorkspace, workspaceName, workspaceStatus, isDirty, isSaving, isLoading, loadError, lastSavedAt, saveWorkspace, revertToLastSaved, hasDraftRecovery, draftTimestamp, restoreDraft, dismissDraft } = useBuilderStore()
   const [showHistory, setShowHistory] = useState(false)
   const [localName, setLocalName] = useState("")
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
@@ -28,6 +28,11 @@ export default function BuilderPage() {
   useEffect(() => {
     loadWorkspace(workspaceId)
   }, [workspaceId, loadWorkspace])
+
+  useEffect(() => {
+    if (loadError === 401) router.push("/auth/signin")
+    else if (loadError === 403 || loadError === 404) router.replace("/my-claws")
+  }, [loadError, router])
 
   useEffect(() => {
     setLocalName(workspaceName)

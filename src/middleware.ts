@@ -199,6 +199,15 @@ export async function middleware(request: NextRequest) {
       signInUrl.searchParams.set("callbackUrl", request.url);
       return NextResponse.redirect(signInUrl);
     }
+
+    if (
+      token.onboardingCompleted === false &&
+      (pathname.startsWith("/dashboard/") ||
+        pathname.startsWith("/builder/") ||
+        pathname.startsWith("/setup/"))
+    ) {
+      return NextResponse.redirect(new URL("/my-claws", request.url));
+    }
   }
 
   return addSecurityHeaders(NextResponse.next());
