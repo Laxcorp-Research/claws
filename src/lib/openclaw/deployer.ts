@@ -120,21 +120,6 @@ export async function deployToCloud(workspaceId: string): Promise<{
     await updateDeploymentStatus(deployment.id, workspaceId, 'PROVISIONING');
     const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);
     const apiKeySource = getApiKeySource(workspace, user);
-
-    // DEBUG: log what the deployer sees at deploy time
-    log.info('[DEPLOY DEBUG] Credit config', {
-      workspaceId,
-      userApiKeySource: user.apiKeySource,
-      workspaceOverride: workspace.apiKeySourceOverride,
-      resolvedSource: apiKeySource,
-      isCreditMode: apiKeySource === 'PLATFORM_CREDIT',
-      hasMasterKey: !!process.env.CLAWS_MASTER_ANTHROPIC_KEY,
-      masterKeyPrefix: process.env.CLAWS_MASTER_ANTHROPIC_KEY?.substring(0, 10) || 'EMPTY',
-      hasMeteringSecret: !!process.env.METERING_MASTER_SECRET,
-      meteringSecretLen: process.env.METERING_MASTER_SECRET?.length || 0,
-      meteringEndpoint: process.env.METERING_ENDPOINT || 'NOT_SET',
-    });
-
     const envVars = buildRailwayEnvVars(generated, workspace, {
       creditMode: apiKeySource === 'PLATFORM_CREDIT',
       workspaceId,
