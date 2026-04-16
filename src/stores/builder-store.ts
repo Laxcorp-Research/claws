@@ -73,6 +73,7 @@ interface BuilderState {
   workspaceName: string
   workspaceStatus: string
   isLoading: boolean
+  loadError: number | null
 
   nodes: Node<AgentNodeData>[]
   edges: Edge<ConnectionEdgeData>[]
@@ -238,6 +239,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     workspaceName: "",
     workspaceStatus: "DRAFT",
     isLoading: false,
+    loadError: null,
 
     nodes: [],
     edges: [],
@@ -524,7 +526,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       if (prevInterval) clearInterval(prevInterval)
 
       set({
-        isLoading: true, workspaceId,
+        isLoading: true, loadError: null, workspaceId,
         nodes: [], edges: [], skills: [], snapshots: [],
         selectedAgentId: null, selectedEdgeId: null,
         workspaceName: "", workspaceStatus: "DRAFT",
@@ -538,6 +540,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
 
         if (!wsRes.ok) {
+          if (wsRes.status === 401 || wsRes.status === 403 || wsRes.status === 404) {
+            set({ isLoading: false, loadError: wsRes.status })
+            return
+          }
           const text = await wsRes.text().catch(() => "")
           throw new Error(`Workspace API returned ${wsRes.status}: ${text.slice(0, 200)}`)
         }

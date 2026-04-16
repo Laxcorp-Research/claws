@@ -6,6 +6,7 @@ import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
 import { prisma } from "@/lib/db"
 import { getResend } from "./resend"
+import { grantStarterCredits } from "@/lib/credits/grant"
 
 function CustomPrismaAdapter(p: typeof prisma): Adapter {
   const base = PrismaAdapter(p) as Adapter;
@@ -123,16 +124,47 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  events: {
+    async createUser({ user }) {
+      if (user.id) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerifiedForCredits: true },
+        }).catch(() => {})
+        await grantStarterCredits(user.id, "signup").catch((err) => {
+          console.error("Failed to grant starter credits:", err)
+        })
+      }
+    },
+  },
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith(baseUrl)) return url
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      return `${baseUrl}/my-claws`
+    },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub
       }
       return session
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.sub = user.id
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { onboardingCompleted: true, _count: { select: { workspaces: true } } },
+          })
+          const hasWorkspaces = (dbUser?._count?.workspaces ?? 0) > 0
+          token.onboardingCompleted = dbUser?.onboardingCompleted || hasWorkspaces
+        } catch {
+          token.onboardingCompleted = true
+        }
+      }
+      if (trigger === "update" && session?.onboardingCompleted !== undefined) {
+        token.onboardingCompleted = session.onboardingCompleted as boolean
       }
       return token
     },

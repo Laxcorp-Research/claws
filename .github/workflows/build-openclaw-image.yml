@@ -25,6 +25,9 @@ jobs:
     name: Build & Push
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Claws repo
+        uses: actions/checkout@v4
+
       - name: Detect latest upstream version
         id: detect
         run: |
@@ -89,7 +92,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build upstream base image
         if: steps.check.outputs.skip != 'true'
         uses: docker/build-push-action@v5
         with:
@@ -97,6 +100,20 @@ jobs:
           push: true
           build-args: |
             OPENCLAW_EXTENSIONS=${{ env.EXTENSIONS }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build extended image with credit proxy
+        if: steps.check.outputs.skip != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
@@ -109,9 +126,11 @@ jobs:
           echo "### OpenClaw Runtime Image Built" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Version:** ${{ steps.detect.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Base:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Latest:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Extensions:** ${{ env.EXTENSIONS }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Includes:** process-manager.mjs, credit-proxy.mjs" >> $GITHUB_STEP_SUMMARY
 
       - name: Skipped summary
         if: steps.check.outputs.skip == 'true'

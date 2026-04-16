@@ -29,8 +29,12 @@ import {
   updateAndRedeployService,
   findServiceByName,
   getServiceStatus,
+  BOOT_SCRIPT_B64,
 } from './railway-client';
 import { log } from '@/lib/logger';
+import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
+import { getApiKeySource } from '@/lib/credits/api-key-source';
+import { CronExpressionParser } from 'cron-parser';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -58,6 +62,7 @@ type DeploymentStatus =
 
 async function updateDeploymentStatus(
   deploymentId: string,
+  workspaceId: string,
   status: DeploymentStatus,
   error?: string,
 ): Promise<void> {
@@ -69,6 +74,7 @@ async function updateDeploymentStatus(
       ...(status === 'COMPLETED' && { completedAt: new Date() }),
     },
   });
+  publishDeployEvent(workspaceId, deploymentId, status, error).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +90,10 @@ export async function deployToCloud(workspaceId: string): Promise<{
     where: { id: workspaceId },
   });
 
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: workspace.userId },
+  });
+
   const deployment = await prisma.deployment.create({
     data: {
       workspaceId,
@@ -96,27 +106,37 @@ export async function deployToCloud(workspaceId: string): Promise<{
     },
   });
 
+  await clearDeployEvents(workspaceId).catch(() => {});
+
   if (!isRailwayConfigured()) {
     log.warn('Railway not configured — running in simulation mode', { workspaceId });
     return simulateDeploy(workspaceId, deployment.id, workspace);
   }
 
   try {
-    await updateDeploymentStatus(deployment.id, 'GENERATING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
     const generated = await generateWorkspace(workspaceId);
 
-    await updateDeploymentStatus(deployment.id, 'PROVISIONING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'PROVISIONING');
     const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);
-    const envVars = buildRailwayEnvVars(generated, workspace);
+    const apiKeySource = getApiKeySource(workspace, user);
+    const envVars = buildRailwayEnvVars(generated, workspace, {
+      creditMode: apiKeySource === 'PLATFORM_CREDIT',
+      workspaceId,
+      userId: workspace.userId,
+    });
 
-    await updateDeploymentStatus(deployment.id, 'CONFIGURING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'CONFIGURING');
 
-    await updateDeploymentStatus(deployment.id, 'STARTING');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'STARTING');
 
     let result: { serviceId: string; domain: string };
+    let previousDeploymentId: string | null = null;
 
     if (workspace.containerId) {
       log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId });
+      const beforeStatus = await getServiceStatus(workspace.containerId);
+      previousDeploymentId = beforeStatus.deploymentId;
       result = await updateAndRedeployService(workspace.containerId, envVars);
       if (!result.domain && workspace.containerHost) {
         result.domain = workspace.containerHost;
@@ -130,6 +150,8 @@ export async function deployToCloud(workspaceId: string): Promise<{
           log.warn('Service already exists, looking it up by name', { serviceName, workspaceId });
           const existingId = await findServiceByName(serviceName);
           if (!existingId) throw new Error(`Service "${serviceName}" exists but could not be found`);
+          const beforeStatus = await getServiceStatus(existingId);
+          previousDeploymentId = beforeStatus.deploymentId;
           result = await updateAndRedeployService(existingId, envVars);
         } else {
           throw err;
@@ -139,14 +161,18 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
     await prisma.workspace.update({
       where: { id: workspaceId },
-      data: { containerId: result.serviceId, containerName: serviceName, containerHost: result.domain || null },
+      data: {
+        containerId: result.serviceId,
+        containerName: serviceName,
+        ...(result.domain && { containerHost: result.domain }),
+      },
     });
 
-    await updateDeploymentStatus(deployment.id, 'HEALTH_CHECK');
-    await waitForDeploymentSuccess(result.serviceId);
+    await updateDeploymentStatus(deployment.id, workspaceId, 'HEALTH_CHECK');
+    await waitForDeploymentSuccess(result.serviceId, previousDeploymentId);
 
     if (workspace.channelConfigEncrypted) {
-      await updateDeploymentStatus(deployment.id, 'WAITING_CHANNELS');
+      await updateDeploymentStatus(deployment.id, workspaceId, 'WAITING_CHANNELS');
       try {
         await waitForEndpoint(`https://${result.domain}/readyz`, 60_000);
       } catch {
@@ -154,7 +180,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
       }
     }
 
-    await updateDeploymentStatus(deployment.id, 'COMPLETED');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED');
 
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -170,6 +196,28 @@ export async function deployToCloud(workspaceId: string): Promise<{
       },
     });
 
+    const channelsActive = hasChannels(workspace);
+    await prisma.containerState.upsert({
+      where: { workspaceId },
+      update: {
+        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
+        lastActiveAt: new Date(),
+        hibernatedAt: null,
+        wakeRequestedAt: null,
+        hasActiveChannels: channelsActive,
+        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
+        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+      },
+      create: {
+        workspaceId,
+        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
+        lastActiveAt: new Date(),
+        hasActiveChannels: channelsActive,
+        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
+        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+      },
+    });
+
     return {
       deploymentId: deployment.id,
       containerId: result.serviceId,
@@ -177,7 +225,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown deployment error';
-    await updateDeploymentStatus(deployment.id, 'FAILED', message);
+    await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: { status: 'ERROR' },
@@ -250,8 +298,16 @@ export async function redeployWorkspace(workspaceId: string): Promise<void> {
   });
 
   if (isRailwayConfigured() && workspace.containerId && workspace.status === 'RUNNING') {
+    const redeployUser = await prisma.user.findUniqueOrThrow({
+      where: { id: workspace.userId },
+    });
     const generated = await generateWorkspace(workspaceId);
-    const envVars = buildRailwayEnvVars(generated, workspace);
+    const redeploySource = getApiKeySource(workspace, redeployUser);
+    const envVars = buildRailwayEnvVars(generated, workspace, {
+      creditMode: redeploySource === 'PLATFORM_CREDIT',
+      workspaceId,
+      userId: workspace.userId,
+    });
     await updateServiceVariables(workspace.containerId, envVars);
     await redeployService(workspace.containerId);
     return;
@@ -325,6 +381,10 @@ export async function healthCheckAllContainers(): Promise<void> {
         where: { id: ws.id },
         data: { healthStatus: 'HEALTHY', lastHealthCheck: new Date() },
       });
+      await prisma.containerState.updateMany({
+        where: { workspaceId: ws.id },
+        data: { lastActiveAt: new Date() },
+      }).catch(() => {});
     } catch {
       await markUnhealthy(ws.id, ws.userId, 'Railway service unreachable');
     }
@@ -362,22 +422,50 @@ export async function getGatewayConnectionInfo(
 // Railway Env Var Builder
 // ---------------------------------------------------------------------------
 
+interface CreditConfig {
+  creditMode: boolean;
+  workspaceId: string;
+  userId: string;
+}
+
 function buildRailwayEnvVars(
   generated: GeneratedWorkspace,
-  workspace: { timezone?: string | null },
+  workspace: { timezone?: string | null; containerHost?: string | null },
+  creditConfig?: CreditConfig,
 ): Record<string, string> {
   const configJson = generated['openclaw.json'];
   const envFileContent = generated['.env'];
   const workspaceFiles = buildWorkspaceFileMap(generated);
 
-  return {
+  const vars: Record<string, string> = {
+    CLAWS_BOOT_B64: BOOT_SCRIPT_B64,
     CLAWS_CONFIG_B64: Buffer.from(configJson).toString('base64'),
     CLAWS_ENV_B64: Buffer.from(envFileContent).toString('base64'),
     CLAWS_FILES_B64: Buffer.from(JSON.stringify(workspaceFiles)).toString('base64'),
     OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
     TZ: workspace.timezone ?? 'UTC',
     NODE_ENV: 'production',
+    PORT: '18789',
   };
+
+  if (workspace.containerHost) {
+    vars.CLAWS_PUBLIC_URL = `https://${workspace.containerHost}`;
+  }
+
+  if (creditConfig?.creditMode) {
+    vars.CLAWS_CREDIT_MODE = 'true';
+    vars.CLAWS_WORKSPACE_ID = creditConfig.workspaceId;
+    vars.CLAWS_USER_ID = creditConfig.userId;
+    vars.CLAWS_METERING_ENDPOINT = process.env.METERING_ENDPOINT || 'https://app.buildclaws.ai/api/internal/metering';
+    vars.CLAWS_METERING_SECRET = process.env.METERING_MASTER_SECRET || '';
+    vars.ANTHROPIC_API_KEY = process.env.CLAWS_MASTER_ANTHROPIC_KEY || '';
+    vars.ANTHROPIC_BASE_URL = 'http://localhost:3789';
+    vars.NODE_OPTIONS = '--max-old-space-size=700';
+  } else {
+    vars.CLAWS_CREDIT_MODE = 'false';
+  }
+
+  return vars;
 }
 
 function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
@@ -422,21 +510,21 @@ async function simulateDeploy(
 
   const fakeContainerId = `sim-${workspaceId.substring(0, 8)}`;
 
-  await updateDeploymentStatus(deploymentId, 'GENERATING');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'GENERATING');
   await sleep(500);
-  await updateDeploymentStatus(deploymentId, 'PROVISIONING');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'PROVISIONING');
   await sleep(300);
-  await updateDeploymentStatus(deploymentId, 'STARTING');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'STARTING');
   await sleep(500);
-  await updateDeploymentStatus(deploymentId, 'HEALTH_CHECK');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'HEALTH_CHECK');
   await sleep(300);
 
   if (workspace.channelConfigEncrypted) {
-    await updateDeploymentStatus(deploymentId, 'WAITING_CHANNELS');
+    await updateDeploymentStatus(deploymentId, workspaceId, 'WAITING_CHANNELS');
     await sleep(200);
   }
 
-  await updateDeploymentStatus(deploymentId, 'COMPLETED');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'COMPLETED');
 
   await prisma.workspace.update({
     where: { id: workspaceId },
@@ -456,13 +544,67 @@ async function simulateDeploy(
 }
 
 // ---------------------------------------------------------------------------
+// Container State Helpers
+// ---------------------------------------------------------------------------
+
+function hasChannels(workspace: { channelConfigEncrypted?: string | null }): boolean {
+  if (!workspace.channelConfigEncrypted) return false;
+  try {
+    const config = JSON.parse(decrypt(workspace.channelConfigEncrypted));
+    return !!(
+      config.telegram?.botToken ||
+      config.discord?.botToken ||
+      config.slack?.botToken ||
+      config.whatsapp?.phoneNumberId ||
+      config.msteams?.webhookUrl
+    );
+  } catch {
+    return false;
+  }
+}
+
+function calculateNextHeartbeat(cronJobsJson: string | null | undefined): Date | null {
+  if (!cronJobsJson || cronJobsJson === '[]') return null;
+  try {
+    const jobs = JSON.parse(cronJobsJson);
+    if (!Array.isArray(jobs) || jobs.length === 0) return null;
+    let earliest: Date | null = null;
+    for (const job of jobs) {
+      const schedule = job.schedule || job.cron;
+      if (!schedule) continue;
+      try {
+        const next = CronExpressionParser.parse(schedule).next().toDate();
+        if (!earliest || next < earliest) earliest = next;
+      } catch {
+        // Invalid cron expression — skip
+      }
+    }
+    return earliest;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function waitForDeploymentSuccess(serviceId: string): Promise<void> {
+async function waitForDeploymentSuccess(
+  serviceId: string,
+  previousDeploymentId: string | null,
+): Promise<void> {
   const start = Date.now();
+
   while (Date.now() - start < DEPLOY_TIMEOUT_MS) {
     const status = await getServiceStatus(serviceId);
+
+    // If we know the previous deployment ID, ignore it entirely.
+    // Keep polling until Railway registers the NEW deployment.
+    if (previousDeploymentId && status.deploymentId === previousDeploymentId) {
+      await sleep(DEPLOY_POLL_INTERVAL_MS);
+      continue;
+    }
+
     if (status.status === 'SUCCESS') return;
     if (status.status === 'FAILED' || status.status === 'CRASHED') {
       throw new Error(`Railway deployment ${status.status}`);

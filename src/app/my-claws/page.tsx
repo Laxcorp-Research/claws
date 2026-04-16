@@ -30,7 +30,7 @@ interface ApiWorkspace {
 interface WorkspaceItem {
   id: string
   name: string
-  status: "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped"
+  status: "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking"
   apiStatus: string
   agentCount: number
   agentRoles: string[]
@@ -170,6 +170,7 @@ export default function MyClawsPage() {
     setWorkspaces(null)
     try {
       const res = await fetch("/api/workspaces")
+      if (res.status === 401) { router.push("/auth/signin"); return }
       if (!res.ok) throw new Error("Failed to fetch")
       const json = await res.json()
       const items = ((json.data ?? []) as ApiWorkspace[]).map(toWorkspaceItem)
@@ -178,7 +179,7 @@ export default function MyClawsPage() {
       setError("Failed to load your Claws")
       setWorkspaces([])
     }
-  }, [])
+  }, [router])
 
   useEffect(() => { fetchWorkspaces() }, [fetchWorkspaces])
 

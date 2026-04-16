@@ -13,6 +13,7 @@ interface AgentModelRow {
 interface ModelSelectionTableProps {
   agents: AgentModelRow[]
   onModelChange: (agentId: string, model: string) => void
+  creditMode?: boolean
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -21,12 +22,20 @@ const ROLE_COLORS: Record<string, string> = {
   CRITIC: "text-[#5b21b6]",
 }
 
-const MODEL_OPTIONS = AI_MODELS.map(m => ({
+const ALL_MODEL_OPTIONS = AI_MODELS.map(m => ({
   value: m.value,
   label: `${m.label} (${m.provider}) - ~$${m.costPer1kCalls}/call`,
 }))
 
-export function ModelSelectionTable({ agents, onModelChange }: ModelSelectionTableProps) {
+const CREDIT_MODEL_OPTIONS = AI_MODELS
+  .filter(m => m.provider === "Anthropic")
+  .map(m => ({
+    value: m.value,
+    label: `${m.label} - ~$${m.costPer1kCalls}/call`,
+  }))
+
+export function ModelSelectionTable({ agents, onModelChange, creditMode }: ModelSelectionTableProps) {
+  const MODEL_OPTIONS = creditMode ? CREDIT_MODEL_OPTIONS : ALL_MODEL_OPTIONS
   return (
     <table className="w-full text-xs mb-3.5 border-collapse">
       <thead>

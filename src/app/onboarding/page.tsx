@@ -1,6 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { OnboardingStep } from "@/components/onboarding/onboarding-step"
@@ -8,6 +9,7 @@ import Link from "next/link"
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const { update } = useSession()
 
   const handleSkip = async () => {
     await fetch("/api/user/profile", {
@@ -15,6 +17,7 @@ export default function OnboardingPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ onboardingCompleted: true }),
     }).catch(() => {})
+    await update({ onboardingCompleted: true }).catch(() => {})
     router.push("/my-claws")
   }
 

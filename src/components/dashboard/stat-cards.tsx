@@ -13,17 +13,27 @@ interface StatCardsProps {
   apiCostProjected: number
   pendingReview: number
   isPaused?: boolean
+  isHibernated?: boolean
+  creditMode?: boolean
+  creditBalanceCents?: number
+  creditDaysEstimate?: string
 }
 
-export function StatCards({ agentsRunning, agentsPaused, tasksToday, tasksYesterday, apiCostThisMonth, apiCostProjected, pendingReview, isPaused }: StatCardsProps) {
+export function StatCards({
+  agentsRunning, agentsPaused, tasksToday, tasksYesterday,
+  apiCostThisMonth, apiCostProjected, pendingReview, isPaused,
+  isHibernated, creditMode, creditBalanceCents, creditDaysEstimate,
+}: StatCardsProps) {
   const taskDiff = tasksToday - tasksYesterday
   const month = new Date().toLocaleString("default", { month: "long" })
+  const dimmed = isPaused || isHibernated
+  const creditLow = creditMode && creditBalanceCents !== undefined && creditBalanceCents > 0 && creditBalanceCents < 500
 
   return (
-    <div className={cn("grid grid-cols-4 gap-2 mb-3.5", isPaused && "opacity-50")}>
+    <div className={cn("grid gap-2 mb-3.5", creditMode ? "grid-cols-5" : "grid-cols-4", dimmed && "opacity-50")}>
       <StatCard
         label="Agents running"
-        value={isPaused ? "Paused" : agentsRunning}
+        value={isHibernated ? "Hibernating" : isPaused ? "Paused" : agentsRunning}
         trend={agentsPaused > 0 ? `${agentsPaused} paused` : "All healthy"}
         trendType={agentsPaused > 0 ? "down" : "up"}
       />
@@ -45,6 +55,15 @@ export function StatCards({ agentsRunning, agentsPaused, tasksToday, tasksYester
         trend={pendingReview > 0 ? "Action needed" : "All clear"}
         trendType={pendingReview > 0 ? "down" : "up"}
       />
+      {creditMode && creditBalanceCents !== undefined && creditBalanceCents > 0 && (
+        <StatCard
+          label="Credits remaining"
+          value={`$${(creditBalanceCents / 100).toFixed(2)}`}
+          trend={creditDaysEstimate || "Estimating usage..."}
+          trendType={creditLow ? "down" : undefined}
+          alert={creditLow}
+        />
+      )}
     </div>
   )
 }

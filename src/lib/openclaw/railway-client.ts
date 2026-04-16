@@ -12,17 +12,57 @@ const OPENCLAW_IMAGE =
 const GHCR_USERNAME = process.env.GHCR_USERNAME;
 const GHCR_PAT = process.env.GHCR_PAT;
 
-const UNPACK_SCRIPT = [
-  "const fs=require('fs'),path=require('path');",
-  "const b=s=>Buffer.from(s,'base64').toString();",
-  "const w=(p,c)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,c)};",
-  "const d='/home/node/.openclaw/';",
-  "if(process.env.CLAWS_CONFIG_B64)w(d+'openclaw.json',b(process.env.CLAWS_CONFIG_B64));",
-  "if(process.env.CLAWS_ENV_B64)w(d+'.env',b(process.env.CLAWS_ENV_B64));",
-  "if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(d+p,String(c))}",
+const UNPACK_NODE_SCRIPT = [
+  'const fs=require("fs"),path=require("path");',
+  'const b=s=>Buffer.from(s,"base64").toString();',
+  'const w=(p,c)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,c)};',
+  'const d="/home/node/.openclaw/";',
+  'fs.mkdirSync(d,{recursive:true});',
+  'if(process.env.CLAWS_CONFIG_B64)w(d+"openclaw.json",b(process.env.CLAWS_CONFIG_B64));',
+  'if(process.env.CLAWS_ENV_B64)w(d+".env",b(process.env.CLAWS_ENV_B64));',
+  'if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(d+p,String(c))};',
+  'console.log("Unpack complete. Files:",fs.readdirSync(d).join(", "))',
 ].join('');
 
-const START_COMMAND = `node -e "${UNPACK_SCRIPT}" && exec node openclaw.mjs gateway --allow-unconfigured`;
+const PATCH_ORIGINS_SCRIPT = [
+  'const fs=require("fs");',
+  'const f="/home/node/.openclaw/openclaw.json";',
+  'const rd=process.env.RAILWAY_PUBLIC_DOMAIN;',
+  'const u=rd?("https://"+rd):process.env.CLAWS_PUBLIC_URL;',
+  'if(u&&fs.existsSync(f)){',
+  'const c=JSON.parse(fs.readFileSync(f,"utf8"));',
+  'if(!c.gateway)c.gateway={};',
+  'if(!c.gateway.controlUi)c.gateway.controlUi={};',
+  'const o=c.gateway.controlUi.allowedOrigins||["http://localhost:18789","http://127.0.0.1:18789"];',
+  'if(!o.includes(u))o.push(u);',
+  'c.gateway.controlUi.allowedOrigins=o;',
+  'fs.writeFileSync(f,JSON.stringify(c,null,2));',
+  'console.log("Patched allowedOrigins:",o)',
+  '}else{console.log("No public URL found, skipping origin patch. RAILWAY_PUBLIC_DOMAIN="+rd)}',
+].join('');
+
+const BOOT_SCRIPT = `#!/bin/sh
+exec 2>&1
+echo "=== CLAWS BOOT ==="
+echo "PWD: $(pwd)"
+echo "PORT: $PORT"
+echo "NODE: $(node --version)"
+echo "Unpacking config..."
+node -e '${UNPACK_NODE_SCRIPT}'
+node -e '${PATCH_ORIGINS_SCRIPT}'
+if [ -f "/usr/local/bin/process-manager.mjs" ]; then
+  echo "Starting via process-manager (credit_mode=\${CLAWS_CREDIT_MODE:-false})..."
+  exec node /usr/local/bin/process-manager.mjs
+else
+  echo "Starting gateway on port $PORT..."
+  exec node openclaw.mjs gateway --allow-unconfigured --bind lan --port \${PORT:-18789}
+fi
+`;
+
+export const BOOT_SCRIPT_B64 = Buffer.from(BOOT_SCRIPT).toString('base64');
+
+const START_COMMAND =
+  '/bin/sh -c "echo $CLAWS_BOOT_B64 | base64 -d > /tmp/boot.sh && exec sh /tmp/boot.sh"';
 
 // ---------------------------------------------------------------------------
 // Configuration check
@@ -136,6 +176,8 @@ export async function createService(config: {
       input: {
         source: { image: OPENCLAW_IMAGE },
         startCommand: START_COMMAND,
+        healthcheckPath: '/healthz',
+        healthcheckTimeout: 120,
         ...(GHCR_USERNAME && GHCR_PAT ? {
           registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
         } : {}),
@@ -200,6 +242,30 @@ export async function findServiceByName(name: string): Promise<string | null> {
   return match?.node.id ?? null;
 }
 
+async function queryServiceDomain(serviceId: string): Promise<string | null> {
+  try {
+    const data = await railwayGql<{
+      environment: { config: Record<string, unknown> };
+    }>(
+      `query($envId: String!) {
+        environment(id: $envId) { config(decryptVariables: false) }
+      }`,
+      { envId: RAILWAY_ENVIRONMENT_ID },
+    );
+
+    const services = (data.environment.config as Record<string, unknown>).services as
+      Record<string, { networking?: { serviceDomains?: string[] } }> | undefined;
+    if (!services) return null;
+
+    const svc = services[serviceId];
+    const domains = svc?.networking?.serviceDomains;
+    return domains?.[0] ?? null;
+  } catch (err) {
+    log.warn('Failed to query service domain from Railway', { serviceId, error: err });
+    return null;
+  }
+}
+
 export async function updateAndRedeployService(
   serviceId: string,
   envVars: Record<string, string>,
@@ -214,6 +280,8 @@ export async function updateAndRedeployService(
       input: {
         source: { image: OPENCLAW_IMAGE },
         startCommand: START_COMMAND,
+        healthcheckPath: '/healthz',
+        healthcheckTimeout: 120,
         ...(GHCR_USERNAME && GHCR_PAT ? {
           registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
         } : {}),
@@ -248,10 +316,8 @@ export async function updateAndRedeployService(
     );
     domain = domainData.serviceDomainCreate.domain;
   } catch {
-    const status = await getServiceStatus(serviceId);
-    if (status.deploymentId) {
-      domain = `${serviceId}.up.railway.app`;
-    }
+    // Domain already exists -- query Railway for the actual domain
+    domain = await queryServiceDomain(serviceId) ?? '';
   }
 
   await railwayGql(

@@ -97,6 +97,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingModels, setIsSavingModels] = useState(false)
   const [overrideModal, setOverrideModal] = useState<{ provider: string; providerName: string } | null>(null)
+  const [creditMode, setCreditMode] = useState(false)
 
   const fetchKeyStatus = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`)
@@ -108,8 +109,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     async function load() {
       setIsLoading(true)
       try {
-        const [agentsRes] = await Promise.all([
+        const [agentsRes, creditRes] = await Promise.all([
           fetch(`/api/agents/${workspaceId}`),
+          fetch("/api/credits/balance"),
           fetchKeyStatus(),
         ])
         const agentsData = await agentsRes.json()
@@ -119,6 +121,10 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
               id: a.id, name: a.name, role: a.role as AgentRow["role"], model: a.model || defaultModel(a.role),
             }))
           )
+        }
+        const creditData = await creditRes.json()
+        if (creditData.success && creditData.data?.hasCredits && creditData.data?.status === "ACTIVE") {
+          setCreditMode(true)
         }
       } catch (e) {
         console.error("Failed to load setup data:", e)
@@ -183,10 +189,23 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">Choose AI models for your agents</h2>
       <p className="text-xs text-[var(--tx2)] mb-3.5">
-        Your agents need API keys to think. Configure keys for each provider your agents use.
+        {creditMode
+          ? "Your agents are powered by Claws Starter Credits. Choose which models each agent should use below."
+          : "Your agents need API keys to think. Configure keys for each provider your agents use."}
       </p>
 
-      {/* Provider Key Cards */}
+      {creditMode && (
+        <div className="bg-[var(--bg2)] border border-[var(--bd)] rounded-xl p-3.5 mb-3.5 flex items-start gap-2.5">
+          <CheckCircle className="w-4 h-4 text-[var(--ok)] flex-shrink-0 mt-[1px]" />
+          <div>
+            <p className="text-[13px] font-medium mb-0.5">AI models powered by Claws Starter Credits</p>
+            <p className="text-[11px] text-[var(--tx2)]">You have $25.00 in free credits — no API key needed.</p>
+          </div>
+        </div>
+      )}
+
+      {!creditMode && (
+      <>
       <div className="border border-[var(--bd)] rounded-xl mb-3.5 overflow-hidden">
         {requiredProviders.map((provider) => {
           const status = keyStatus.find(k => k.provider === provider)
@@ -272,9 +291,17 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           All keys are encrypted with AES-256-GCM and never stored in plaintext.
         </p>
       </div>
+      </>
+      )}
 
       {/* Model Selection Table */}
-      {agents.length > 0 && <ModelSelectionTable agents={agents} onModelChange={handleModelChange} />}
+      {agents.length > 0 && <ModelSelectionTable agents={agents} onModelChange={handleModelChange} creditMode={creditMode} />}
+
+      {creditMode && (
+        <p className="text-[11px] text-[var(--tx3)] mb-3.5">
+          Starter credits work with Claude models. To use GPT or Gemini, add your own API key in Settings.
+        </p>
+      )}
 
       {/* Navigation */}
       <div className="flex justify-between">
@@ -283,7 +310,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         ) : (
           <div />
         )}
-        <Button variant="primary" onClick={handleNext} disabled={!allProvidersConfigured || isSavingModels}>
+        <Button variant="primary" onClick={handleNext} disabled={(!creditMode && !allProvidersConfigured) || isSavingModels}>
           {isSavingModels ? "Saving..." : "Next: Connect tools →"}
         </Button>
       </div>
@@ -1271,6 +1298,13 @@ export default function SetupStepPage() {
   const workspaceId = params.workspaceId as string
   const stepNum = parseInt(params.n as string, 10)
   const isManageMode = searchParams.get("mode") === "manage"
+
+  useEffect(() => {
+    fetch(`/api/workspaces/${workspaceId}`).then((res) => {
+      if (res.status === 401) router.push("/auth/signin")
+      else if (res.status === 403 || res.status === 404) router.replace("/my-claws")
+    }).catch(() => {})
+  }, [workspaceId, router])
 
   useEffect(() => {
     const from = searchParams.get("from")

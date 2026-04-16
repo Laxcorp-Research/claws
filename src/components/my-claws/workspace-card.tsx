@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { WorkspaceContextMenu } from "./workspace-context-menu"
 
-type WorkspaceStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped"
+type WorkspaceStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking"
 
 interface WorkspaceCardProps {
   id: string
@@ -29,7 +29,7 @@ export function WorkspaceCard({
   const router = useRouter()
 
   const handleClick = () => {
-    if (status === "running" || status === "paused") router.push(`/dashboard/${id}`)
+    if (status === "running" || status === "paused" || status === "hibernated" || status === "waking") router.push(`/dashboard/${id}`)
     else if (status === "draft") router.push(`/builder/${id}`)
     else if (status === "setup") router.push(`/setup/${id}/step/1`)
     else router.push(`/dashboard/${id}`)
@@ -59,7 +59,13 @@ export function WorkspaceCard({
           />
         </div>
       </div>
-      <p className="text-[11px] text-[var(--tx2)]">{agentCount} agents · {source}</p>
+      <p className="text-[11px] text-[var(--tx2)]">
+        {status === "hibernated"
+          ? `${agentCount} agents · Hibernating · Wakes on next heartbeat`
+          : status === "waking"
+            ? `${agentCount} agents · Starting up · ~30 seconds`
+            : `${agentCount} agents · ${source}`}
+      </p>
       <div className="flex gap-3.5 mt-1 text-[11px] text-[var(--tx2)]">
         {lastActive && <span>Last: {lastActive}</span>}
         {monthlyCost && <span>{monthlyCost} this month</span>}

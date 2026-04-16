@@ -6,7 +6,10 @@ import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
-import { OctagonX, Pause, Unplug, TrendingUp, Clock } from "lucide-react"
+import { OctagonX, Pause, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Modal } from "@/components/ui/modal"
+import { DeployProgress } from "@/components/setup/deploy-progress"
 import { StatCards } from "@/components/dashboard/stat-cards"
 import { ActivityFeed } from "@/components/dashboard/activity-feed"
 import { AgentStatusList } from "@/components/dashboard/agent-status-list"
@@ -14,6 +17,7 @@ import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
 import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
+import { useCreditBalance } from "@/hooks/use-credit-balance"
 
 interface DashboardStats {
   agentsRunning: number
@@ -79,7 +83,7 @@ interface ExpiredTool {
 interface DashboardAlert {
   key: string
   priority: number
-  variant: "error" | "warning"
+  variant: "error" | "warning" | "info"
   icon?: ReactNode
   content: ReactNode
   actions?: ReactNode
@@ -95,6 +99,42 @@ const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC:
 
 const MAX_LOG_ENTRIES = 200
 const STATS_POLL_MS = 30_000
+
+const REDEPLOY_STAGES = [
+  { label: "Generating workspace files", key: "GENERATING" },
+  { label: "Provisioning container", key: "PROVISIONING" },
+  { label: "Configuring workspace", key: "CONFIGURING" },
+  { label: "Starting gateway", key: "STARTING" },
+  { label: "Health check", key: "HEALTH_CHECK" },
+  { label: "Connecting channels", key: "WAITING_CHANNELS" },
+  { label: "Complete", key: "COMPLETED" },
+]
+
+const REDEPLOY_ORDER = REDEPLOY_STAGES.map((s) => s.key)
+
+function mapRedeployStatus(status: string | null, failedAtStage?: string | null): { label: string; status: "complete" | "running" | "pending" | "failed" }[] {
+  if (!status || status === "PENDING") return REDEPLOY_STAGES.map((s, i) => ({ label: s.label, status: i === 0 ? "running" as const : "pending" as const }))
+
+  if (status === "FAILED") {
+    const failIdx = failedAtStage ? REDEPLOY_ORDER.indexOf(failedAtStage) : -1
+    return REDEPLOY_STAGES.map((s) => {
+      const si = REDEPLOY_ORDER.indexOf(s.key)
+      if (failIdx >= 0) {
+        if (si < failIdx) return { label: s.label, status: "complete" as const }
+        if (si === failIdx) return { label: s.label, status: "failed" as const }
+      }
+      return { label: s.label, status: "pending" as const }
+    })
+  }
+
+  const idx = REDEPLOY_ORDER.indexOf(status)
+  return REDEPLOY_STAGES.map((s) => {
+    const si = REDEPLOY_ORDER.indexOf(s.key)
+    if (si < idx) return { label: s.label, status: "complete" as const }
+    if (si === idx) return { label: s.label, status: status === "COMPLETED" ? "complete" as const : "running" as const }
+    return { label: s.label, status: "pending" as const }
+  })
+}
 
 function formatTime(isoStr: string) {
   const d = new Date(isoStr)
@@ -137,9 +177,19 @@ export default function DashboardPage() {
   const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
   const [agentCosts, setAgentCosts] = useState<AgentCostRow[]>([])
   const [subscribing, setSubscribing] = useState(false)
+  const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
+  const [redeployModalOpen, setRedeployModalOpen] = useState(false)
+  const [redeployStatus, setRedeployStatus] = useState<string | null>(null)
+  const [redeployLastStage, setRedeployLastStage] = useState<string | null>(null)
+  const [redeployError, setRedeployError] = useState<string | null>(null)
+  const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
 
   const eventSourceRef = useRef<EventSource | null>(null)
+  const redeployEsRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
+
+  const credit = useCreditBalance(30_000)
+  const creditMode = credit.hasCredits && (credit.status === "ACTIVE" || credit.status === "EXHAUSTED")
 
   const handleSubscribe = useCallback(async () => {
     setSubscribing(true)
@@ -164,6 +214,7 @@ export default function DashboardPage() {
       const res = await fetch(`/api/activity/${workspaceId}`)
       if (!res.ok) {
         if (res.status === 401) { router.push("/auth/signin"); return }
+        if (res.status === 403 || res.status === 404) { router.replace("/my-claws"); return }
         throw new Error(`Failed to fetch stats: ${res.status}`)
       }
       const json = await res.json()
@@ -268,6 +319,28 @@ export default function DashboardPage() {
     }
   }, [workspaceId])
 
+  useEffect(() => {
+    if (workspace?.status === "WAKING" || workspace?.status === "HIBERNATED") {
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/workspaces/${workspaceId}`)
+          const data = await res.json()
+          if (data.success && data.data?.status === "RUNNING") {
+            clearInterval(interval)
+            router.refresh()
+            fetchStats()
+          }
+        } catch { /* ignore */ }
+      }, 3000)
+      return () => clearInterval(interval)
+    }
+  }, [workspace?.status, workspaceId, router, fetchStats])
+
+  const handleWakeNow = useCallback(async () => {
+    await fetch(`/api/dashboard/${workspaceId}/wake`, { method: "POST" })
+    setWorkspace((prev) => prev ? { ...prev, status: "WAKING" } : prev)
+  }, [workspaceId])
+
   const handlePauseAll = async () => {
     await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
     fetchStats()
@@ -277,6 +350,70 @@ export default function DashboardPage() {
     await fetch(`/api/deploy/${workspaceId}/restart`, { method: "POST" })
     fetchStats()
   }
+
+  const closeRedeployStream = useCallback(() => {
+    redeployEsRef.current?.close()
+    redeployEsRef.current = null
+  }, [])
+
+  const handleRedeploy = useCallback(async () => {
+    setRedeployConfirmOpen(false)
+    setRedeployModalOpen(true)
+    setRedeployStatus("PENDING")
+    setRedeployLastStage(null)
+    setRedeployError(null)
+    setRedeployBanner(null)
+
+    const es = new EventSource(`/api/deploy/${workspaceId}/stream`)
+    redeployEsRef.current = es
+
+    es.addEventListener("status", (e) => {
+      const data = JSON.parse(e.data) as { status: string; error?: string }
+      if (data.status !== "FAILED" && data.status !== "COMPLETED") {
+        setRedeployLastStage(data.status)
+      }
+      setRedeployStatus(data.status)
+      if (data.error) setRedeployError(data.error)
+      if (data.status === "COMPLETED" || data.status === "FAILED") {
+        es.close()
+        redeployEsRef.current = null
+      }
+    })
+
+    es.onerror = () => {
+      es.close()
+      redeployEsRef.current = null
+    }
+
+    try {
+      const res = await fetch(`/api/deploy/${workspaceId}/redeploy`, { method: "POST" })
+      const json = await res.json()
+      closeRedeployStream()
+      if (!res.ok) {
+        setRedeployStatus("FAILED")
+        setRedeployError(json.error?.message ?? "Redeploy failed")
+      } else {
+        setRedeployStatus((prev) => prev === "COMPLETED" ? prev : "COMPLETED")
+      }
+    } catch {
+      closeRedeployStream()
+      setRedeployStatus("FAILED")
+      setRedeployError("Network error — could not reach the server")
+    }
+  }, [workspaceId, closeRedeployStream])
+
+  const handleRedeployDone = useCallback(() => {
+    setRedeployModalOpen(false)
+    closeRedeployStream()
+    if (redeployStatus === "COMPLETED") {
+      setRedeployBanner({ variant: "info", message: "Redeployment successful" })
+      fetchStats()
+      fetchDeploymentImage()
+    }
+    setRedeployStatus(null)
+    setRedeployLastStage(null)
+    setRedeployError(null)
+  }, [redeployStatus, closeRedeployStream, fetchStats, fetchDeploymentImage])
 
   const handleApprove = async (activityLogId: string) => {
     const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
@@ -322,6 +459,8 @@ export default function DashboardPage() {
 
   const isPaused = workspace?.status === "PAUSED"
   const isError = workspace?.healthStatus === "UNHEALTHY" || workspace?.status === "ERROR"
+  const showRedeploy = workspace?.status === "RUNNING" || workspace?.status === "ERROR"
+  const redeploying = redeployModalOpen && redeployStatus !== "COMPLETED" && redeployStatus !== "FAILED"
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
   const spendWarning = spendPercent >= 80 && spendPercent < 100
@@ -477,10 +616,61 @@ export default function DashboardPage() {
       })
     }
 
+    if (workspace?.status === "HIBERNATED") {
+      list.push({
+        key: "hibernated",
+        priority: 5,
+        variant: "info",
+        icon: <Moon className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">This Claw is hibernating</p>
+            <p className="mt-0.5 opacity-80">Agents are sleeping to save resources. They&apos;ll wake automatically for the next scheduled heartbeat, or you can wake them now.</p>
+          </>
+        ),
+        actions: <Button variant="primary" size="xs" onClick={handleWakeNow}>Wake now</Button>,
+      })
+    }
+
+    if (workspace?.status === "WAKING") {
+      list.push({
+        key: "waking",
+        priority: 5,
+        variant: "info",
+        content: (
+          <>
+            <p className="font-medium">Your Claw is waking up</p>
+            <p className="mt-0.5 opacity-80">Restarting agents — this usually takes 15-30 seconds.</p>
+          </>
+        ),
+      })
+    }
+
+    if (creditMode && credit.status === "EXHAUSTED") {
+      list.push({
+        key: "credits-exhausted",
+        priority: 0,
+        variant: "error",
+        icon: <Gift className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">Claws Starter Credits exhausted</p>
+            <p className="mt-0.5 opacity-80">Your agents are paused. Add your API key and subscribe to resume.</p>
+          </>
+        ),
+        actions: (
+          <div className="flex gap-1.5">
+            <Button variant="primary" size="xs" onClick={() => router.push("/settings?tab=api-keys")}>Add API key</Button>
+            <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Subscribe</Button>
+          </div>
+        ),
+      })
+    }
+
     list.sort((a, b) => a.priority - b.priority)
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe])
+  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {
@@ -551,6 +741,17 @@ export default function DashboardPage() {
             <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>
               Manage Tools
             </Button>
+            {showRedeploy && (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={redeploying}
+                onClick={() => setRedeployConfirmOpen(true)}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {redeploying ? "Redeploying…" : "Redeploy"}
+              </Button>
+            )}
             {isPaused ? (
               <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
             ) : (
@@ -559,6 +760,19 @@ export default function DashboardPage() {
           </div>
         }
       />
+
+      {redeployBanner && (
+        <AlertBanner
+          variant={redeployBanner.variant}
+          actions={
+            redeployBanner.variant === "error" ? (
+              <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Retry</Button>
+            ) : undefined
+          }
+        >
+          <p className="font-medium">{redeployBanner.message}</p>
+        </AlertBanner>
+      )}
 
       {alerts.length > 0 && (
         <div className="space-y-2 mb-3">
@@ -588,6 +802,19 @@ export default function DashboardPage() {
           apiCostProjected={stats.apiCostProjected}
           pendingReview={stats.pendingReview}
           isPaused={isPaused}
+          isHibernated={workspace?.status === "HIBERNATED"}
+          creditMode={creditMode && credit.status === "ACTIVE"}
+          creditBalanceCents={creditMode ? credit.balanceCents : undefined}
+          creditDaysEstimate={
+            creditMode && credit.totalConsumedCents > 0 && credit.grantedAt
+              ? (() => {
+                  const days = Math.max(1, Math.floor((Date.now() - new Date(credit.grantedAt).getTime()) / 86400000))
+                  const dailyRate = credit.totalConsumedCents / days
+                  const remaining = dailyRate > 0 ? Math.round(credit.balanceCents / dailyRate) : 0
+                  return remaining > 0 ? `~${remaining} day${remaining !== 1 ? "s" : ""} at current usage` : "Running low"
+                })()
+              : undefined
+          }
         />
       )}
 
@@ -638,6 +865,47 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      <ConfirmDialog
+        open={redeployConfirmOpen}
+        onClose={() => setRedeployConfirmOpen(false)}
+        onConfirm={handleRedeploy}
+        title="Redeploy Claw"
+        description="This will update your Claw with the latest configuration and redeploy. Continue?"
+        confirmLabel="Redeploy"
+        variant="warning"
+      />
+
+      <Modal
+        open={redeployModalOpen}
+        onClose={handleRedeployDone}
+        title="Redeploying Claw"
+        description={
+          redeployStatus === "COMPLETED"
+            ? "Your Claw has been redeployed with the latest configuration."
+            : redeployStatus === "FAILED"
+              ? "Redeployment encountered an error."
+              : "Updating configuration and redeploying your Claw…"
+        }
+        size="sm"
+        footer={
+          (redeployStatus === "COMPLETED" || redeployStatus === "FAILED") ? (
+            <>
+              {redeployStatus === "FAILED" && (
+                <Button variant="outline" onClick={() => { handleRedeployDone(); setRedeployConfirmOpen(true) }}>Retry</Button>
+              )}
+              <Button variant="primary" onClick={handleRedeployDone}>
+                {redeployStatus === "COMPLETED" ? "Done" : "Close"}
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        <DeployProgress
+          steps={mapRedeployStatus(redeployStatus, redeployLastStage)}
+          failureDetail={redeployStatus === "FAILED" ? redeployError ?? "Deployment failed" : undefined}
+        />
+      </Modal>
     </div>
   )
 }
