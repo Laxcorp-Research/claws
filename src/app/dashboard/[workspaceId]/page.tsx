@@ -476,13 +476,13 @@ export default function DashboardPage() {
         content: (
           <>
             <p className="font-medium">Agent container is not responding</p>
-            <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck)}. Check the agent status panel below.</p>
+            <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck)}. Try redeploying to restore the container.</p>
           </>
         ),
         actions: (
           <div className="flex gap-1.5">
             <Button variant="danger" size="xs" onClick={handleResumeAll}>Force restart</Button>
-            <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tools</Button>
+            <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Redeploy</Button>
           </div>
         ),
       })
