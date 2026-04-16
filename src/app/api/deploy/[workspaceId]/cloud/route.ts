@@ -17,7 +17,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "NOT_FOUND") return ERRORS.NOT_FOUND("Workspace")
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
-  if (workspace?.status === "RUNNING") return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
+  if (workspace?.status === "RUNNING" && workspace.containerId) return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: sessionUser.id },
