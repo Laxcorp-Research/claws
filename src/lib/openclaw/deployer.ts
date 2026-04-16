@@ -131,9 +131,12 @@ export async function deployToCloud(workspaceId: string): Promise<{
     await updateDeploymentStatus(deployment.id, workspaceId, 'STARTING');
 
     let result: { serviceId: string; domain: string };
+    let previousDeploymentId: string | null = null;
 
     if (workspace.containerId) {
       log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId });
+      const beforeStatus = await getServiceStatus(workspace.containerId);
+      previousDeploymentId = beforeStatus.deploymentId;
       result = await updateAndRedeployService(workspace.containerId, envVars);
       if (!result.domain && workspace.containerHost) {
         result.domain = workspace.containerHost;
@@ -147,6 +150,8 @@ export async function deployToCloud(workspaceId: string): Promise<{
           log.warn('Service already exists, looking it up by name', { serviceName, workspaceId });
           const existingId = await findServiceByName(serviceName);
           if (!existingId) throw new Error(`Service "${serviceName}" exists but could not be found`);
+          const beforeStatus = await getServiceStatus(existingId);
+          previousDeploymentId = beforeStatus.deploymentId;
           result = await updateAndRedeployService(existingId, envVars);
         } else {
           throw err;
@@ -164,8 +169,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
     });
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'HEALTH_CHECK');
-    const preDeployStatus = await getServiceStatus(result.serviceId);
-    await waitForDeploymentSuccess(result.serviceId, preDeployStatus.deploymentId);
+    await waitForDeploymentSuccess(result.serviceId, previousDeploymentId);
 
     if (workspace.channelConfigEncrypted) {
       await updateDeploymentStatus(deployment.id, workspaceId, 'WAITING_CHANNELS');
