@@ -134,12 +134,26 @@ export async function deployToCloud(workspaceId: string): Promise<{
     let previousDeploymentId: string | null = null;
 
     if (workspace.containerId) {
-      log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId });
-      const beforeStatus = await getServiceStatus(workspace.containerId);
-      previousDeploymentId = beforeStatus.deploymentId;
-      result = await updateAndRedeployService(workspace.containerId, envVars);
-      if (!result.domain && workspace.containerHost) {
-        result.domain = workspace.containerHost;
+      try {
+        log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId });
+        const beforeStatus = await getServiceStatus(workspace.containerId);
+        previousDeploymentId = beforeStatus.deploymentId;
+        result = await updateAndRedeployService(workspace.containerId, envVars);
+        if (!result.domain && workspace.containerHost) {
+          result.domain = workspace.containerHost;
+        }
+      } catch (redeployErr) {
+        log.warn('Failed to update existing service, deleting and creating fresh', {
+          workspaceId,
+          oldServiceId: workspace.containerId,
+          error: redeployErr instanceof Error ? redeployErr.message : String(redeployErr),
+        });
+        try { await deleteService(workspace.containerId); } catch { /* already gone */ }
+        await prisma.workspace.update({
+          where: { id: workspaceId },
+          data: { containerId: null, containerName: null, containerHost: null },
+        });
+        result = await createService({ name: serviceName, envVars });
       }
     } else {
       try {
