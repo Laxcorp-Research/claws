@@ -6,6 +6,8 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
 import { log } from "@/lib/logger"
 
+export const maxDuration = 300
+
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const sessionUser = await getSessionUser()
   if (!sessionUser) return ERRORS.UNAUTHORIZED()
