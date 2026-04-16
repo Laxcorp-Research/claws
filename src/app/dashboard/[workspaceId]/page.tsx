@@ -878,7 +878,7 @@ export default function DashboardPage() {
 
       <Modal
         open={redeployModalOpen}
-        onClose={handleRedeployDone}
+        onClose={redeploying ? () => {} : handleRedeployDone}
         title="Redeploying Claw"
         description={
           redeployStatus === "COMPLETED"
