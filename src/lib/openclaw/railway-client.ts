@@ -105,7 +105,7 @@ async function railwayGql<T = Record<string, unknown>>(
           Authorization: `Bearer ${RAILWAY_TOKEN}`,
         },
         body,
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(90_000),
       });
     } catch (networkErr) {
       if (attempt < RAILWAY_MAX_RETRIES) {
