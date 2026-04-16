@@ -79,6 +79,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       userId: user.id,
       error: err instanceof Error ? err.message : "Unknown",
     })
-    return apiError("DEPLOY_FAILED", err instanceof Error ? err.message : "Deployment failed", 500)
+    const msg = err instanceof Error ? err.message : "Deployment failed"
+    return apiError("DEPLOY_FAILED", msg.length > 300 ? `${msg.substring(0, 300)}…` : msg, 500)
   }
 }

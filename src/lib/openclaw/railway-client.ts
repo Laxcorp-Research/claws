@@ -99,7 +99,10 @@ async function railwayGql<T = Record<string, unknown>>(
   });
 
   if (!res.ok) {
-    throw new Error(`Railway API returned ${res.status}: ${await res.text()}`);
+    const body = await res.text();
+    const isHtml = body.trimStart().startsWith('<');
+    const detail = isHtml ? `(HTML error page)` : body.substring(0, 200);
+    throw new Error(`Railway API returned ${res.status}: ${detail}`);
   }
 
   const json = (await res.json()) as GqlResponse<T>;
