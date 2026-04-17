@@ -241,6 +241,8 @@ export async function POST(request: NextRequest) {
         soulMd: a.soulMd,
         agentsMd: a.agentsMd,
         heartbeatMd: a.heartbeatMd,
+        heartbeatFrequency: a.heartbeatFrequency,
+        heartbeatTime: a.heartbeatTime,
         toolsMd: a.toolsMd,
         userMd: a.userMd,
         identityMd: a.identityMd,

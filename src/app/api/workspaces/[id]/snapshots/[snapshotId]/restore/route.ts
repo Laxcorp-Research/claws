@@ -16,7 +16,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (!snapshot || snapshot.workspaceId !== id) return ERRORS.NOT_FOUND("Snapshot")
 
   const data = (typeof snapshot.snapshot === "string" ? JSON.parse(snapshot.snapshot) : snapshot.snapshot) as {
-    agents: Array<{ name: string; agentSlug: string; role: string; color: string; model: string; soulMd: string; agentsMd: string; heartbeatMd?: string; positionX: number; positionY: number; qualityThreshold?: number; reportsTo?: string }>
+    agents: Array<{ name: string; agentSlug: string; role: string; color: string; model: string; soulMd: string; agentsMd: string; heartbeatMd?: string; heartbeatFrequency?: string | null; heartbeatTime?: string | null; positionX: number; positionY: number; qualityThreshold?: number; reportsTo?: string }>
     connections: Array<{ sourceSlug: string; targetSlug: string; condition: string; label?: string }>
   }
 
@@ -31,7 +31,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           workspaceId: id, name: a.name, agentSlug: a.agentSlug,
           role: a.role as "ORCHESTRATOR" | "WORKER" | "CRITIC",
           color: a.color, model: a.model, soulMd: a.soulMd, agentsMd: a.agentsMd,
-          heartbeatMd: a.heartbeatMd || null, positionX: a.positionX, positionY: a.positionY,
+          heartbeatMd: a.heartbeatMd || null,
+          heartbeatFrequency: a.heartbeatFrequency ?? null,
+          heartbeatTime: a.heartbeatTime ?? null,
+          positionX: a.positionX, positionY: a.positionY,
           qualityThreshold: a.qualityThreshold ?? 8.0,
         },
       })

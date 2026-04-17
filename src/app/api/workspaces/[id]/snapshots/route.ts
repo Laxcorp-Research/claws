@@ -41,6 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     agents: workspace.agents.map((a) => ({
       name: a.name, agentSlug: a.agentSlug, role: a.role, color: a.color, model: a.model,
       soulMd: a.soulMd, agentsMd: a.agentsMd, heartbeatMd: a.heartbeatMd,
+      heartbeatFrequency: a.heartbeatFrequency, heartbeatTime: a.heartbeatTime,
       positionX: a.positionX, positionY: a.positionY, qualityThreshold: a.qualityThreshold,
       reportsTo: a.reportsTo,
     })),

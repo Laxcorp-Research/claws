@@ -577,17 +577,18 @@ function hasChannels(workspace: { channelConfigEncrypted?: string | null }): boo
   }
 }
 
-function calculateNextHeartbeat(cronJobsJson: string | null | undefined): Date | null {
+export function calculateNextHeartbeat(cronJobsJson: string | null | undefined): Date | null {
   if (!cronJobsJson || cronJobsJson === '[]') return null;
   try {
     const jobs = JSON.parse(cronJobsJson);
     if (!Array.isArray(jobs) || jobs.length === 0) return null;
     let earliest: Date | null = null;
     for (const job of jobs) {
-      const schedule = job.schedule || job.cron;
-      if (!schedule) continue;
+      const cronExpr = extractCronExpression(job);
+      if (!cronExpr) continue;
       try {
-        const next = CronExpressionParser.parse(schedule).next().toDate();
+        const tz = extractCronTimezone(job);
+        const next = CronExpressionParser.parse(cronExpr, tz ? { tz } : {}).next().toDate();
         if (!earliest || next < earliest) earliest = next;
       } catch {
         // Invalid cron expression — skip
@@ -597,6 +598,37 @@ function calculateNextHeartbeat(cronJobsJson: string | null | undefined): Date |
   } catch {
     return null;
   }
+}
+
+/**
+ * Pulls the cron expression string out of a job entry. Handles the
+ * verified OpenClaw shape `{ schedule: { kind: 'cron', expr } }` plus a
+ * couple of legacy/string fallbacks defensively. Non-cron schedule kinds
+ * (`every`, `at`) intentionally return null because they aren't cron-parseable.
+ */
+export function extractCronExpression(job: unknown): string | null {
+  if (!job || typeof job !== 'object') return null;
+  const obj = job as { schedule?: unknown; cron?: unknown };
+  if (obj.schedule && typeof obj.schedule === 'object') {
+    const sched = obj.schedule as { kind?: unknown; expr?: unknown };
+    if (sched.kind === 'cron' && typeof sched.expr === 'string' && sched.expr.length > 0) {
+      return sched.expr;
+    }
+    return null;
+  }
+  if (typeof obj.schedule === 'string' && obj.schedule.length > 0) return obj.schedule;
+  if (typeof obj.cron === 'string' && obj.cron.length > 0) return obj.cron;
+  return null;
+}
+
+function extractCronTimezone(job: unknown): string | null {
+  if (!job || typeof job !== 'object') return null;
+  const obj = job as { schedule?: unknown };
+  if (obj.schedule && typeof obj.schedule === 'object') {
+    const sched = obj.schedule as { tz?: unknown };
+    if (typeof sched.tz === 'string' && sched.tz.length > 0) return sched.tz;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

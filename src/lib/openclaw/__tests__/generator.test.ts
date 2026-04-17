@@ -45,7 +45,8 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         soulMd: '',
         agentsMd: '',
         heartbeatMd: '- [ ] Check status every 30 minutes',
-        heartbeatInterval: '30m',
+        heartbeatFrequency: 'hourly',
+        heartbeatTime: null,
         qualityThreshold: 8.0,
         emoji: null,
         reportsTo: null,
@@ -77,7 +78,8 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         soulMd: '# Data Analyst\nYou analyze data.',
         agentsMd: '# Procedures\nAnalyze what the orchestrator asks.',
         heartbeatMd: '',
-        heartbeatInterval: null,
+        heartbeatFrequency: null,
+        heartbeatTime: null,
         qualityThreshold: 8.0,
         emoji: null,
         reportsTo: 'agent-orch',
@@ -95,7 +97,8 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         soulMd: '',
         agentsMd: '',
         heartbeatMd: '',
-        heartbeatInterval: null,
+        heartbeatFrequency: null,
+        heartbeatTime: null,
         qualityThreshold: 8.0,
         emoji: null,
         reportsTo: 'agent-orch',
@@ -267,5 +270,85 @@ describe('generateWorkspace', () => {
     expect(result.workspaces[workerKey!]['HEARTBEAT.md']).toContain(
       'No heartbeat tasks'
     );
+  });
+
+  describe('heartbeat integration (generator end-to-end)', () => {
+    function withOrchestratorHeartbeat(frequency: string | null, time: string | null) {
+      const ws = buildMockWorkspace();
+      const orch = ws.agents.find((a) => a.role === 'ORCHESTRATOR')! as Record<string, unknown>;
+      orch.heartbeatFrequency = frequency;
+      orch.heartbeatTime = time;
+      return ws;
+    }
+
+    it('hourly: writes interval to openclaw.json and no cron job', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withOrchestratorHeartbeat('hourly', null)
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+
+      expect(config.agents.defaults.heartbeat).toEqual({ every: '1h' });
+      expect(cronJobs).toEqual([]);
+    });
+
+    it('every_6h: writes 6h interval to openclaw.json', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withOrchestratorHeartbeat('every_6h', null)
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      expect(config.agents.defaults.heartbeat).toEqual({ every: '6h' });
+    });
+
+    it('daily at 08:00: writes cron job to cron/jobs.json and NO heartbeat in openclaw.json', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withOrchestratorHeartbeat('daily', '08:00')
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+
+      expect(config.agents.defaults.heartbeat).toBeUndefined();
+      expect(cronJobs).toHaveLength(1);
+      const job = cronJobs[0];
+      expect(job.schedule).toEqual({ kind: 'cron', expr: '0 8 * * *', tz: 'America/New_York' });
+      expect(job.sessionTarget).toBe('main');
+      expect(job.wakeMode).toBe('now');
+      expect(job.payload.kind).toBe('agentTurn');
+      expect(job.enabled).toBe(true);
+    });
+
+    it('weekday at 09:30: produces "30 9 * * 1-5" cron expression', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withOrchestratorHeartbeat('weekday', '09:30')
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+      expect(cronJobs[0].schedule.expr).toBe('30 9 * * 1-5');
+    });
+
+    it('off: no heartbeat in openclaw.json and no cron job', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withOrchestratorHeartbeat('off', null)
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+      expect(config.agents.defaults.heartbeat).toBeUndefined();
+      expect(cronJobs).toEqual([]);
+    });
+
+    it('null frequency: no heartbeat in openclaw.json and no cron job', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withOrchestratorHeartbeat(null, null)
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+      expect(config.agents.defaults.heartbeat).toBeUndefined();
+      expect(cronJobs).toEqual([]);
+    });
   });
 });

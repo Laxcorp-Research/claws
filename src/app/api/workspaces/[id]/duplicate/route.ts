@@ -32,7 +32,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         data: {
           workspaceId: created.id, name: a.name, agentSlug: a.agentSlug, role: a.role,
           color: a.color, model: a.model, soulMd: a.soulMd, agentsMd: a.agentsMd,
-          heartbeatMd: a.heartbeatMd, positionX: a.positionX, positionY: a.positionY,
+          heartbeatMd: a.heartbeatMd,
+          heartbeatFrequency: a.heartbeatFrequency,
+          heartbeatTime: a.heartbeatTime,
+          positionX: a.positionX, positionY: a.positionY,
           qualityThreshold: a.qualityThreshold, reportsTo: null,
         },
       })

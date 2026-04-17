@@ -66,6 +66,7 @@ interface SavedState {
   edges: Edge<ConnectionEdgeData>[]
   workspaceName: string
   skills: SkillItem[]
+  heartbeatSchedule: { frequency: string; time: string }
 }
 
 interface BuilderState {
@@ -152,11 +153,23 @@ function getDefaultPosition(role: AgentRole, existingNodes: Node[]): { x: number
   }
 }
 
-function cloneState(nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[], name: string, skills: SkillItem[] = []): SavedState {
-  return { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)), workspaceName: name, skills: JSON.parse(JSON.stringify(skills)) }
+function cloneState(
+  nodes: Node<AgentNodeData>[],
+  edges: Edge<ConnectionEdgeData>[],
+  name: string,
+  skills: SkillItem[] = [],
+  heartbeatSchedule: { frequency: string; time: string } = { frequency: "off", time: "08:00" },
+): SavedState {
+  return {
+    nodes: JSON.parse(JSON.stringify(nodes)),
+    edges: JSON.parse(JSON.stringify(edges)),
+    workspaceName: name,
+    skills: JSON.parse(JSON.stringify(skills)),
+    heartbeatSchedule: { ...heartbeatSchedule },
+  }
 }
 
-function computeIsDirty(state: { nodes: Node<AgentNodeData>[]; edges: Edge<ConnectionEdgeData>[]; workspaceName: string; skills: SkillItem[]; lastSavedState: SavedState | null }): boolean {
+function computeIsDirty(state: { nodes: Node<AgentNodeData>[]; edges: Edge<ConnectionEdgeData>[]; workspaceName: string; skills: SkillItem[]; heartbeatSchedule: { frequency: string; time: string }; lastSavedState: SavedState | null }): boolean {
   if (!state.lastSavedState) {
     return state.nodes.some(n => n.id.startsWith("temp-"))
   }
@@ -166,6 +179,9 @@ function computeIsDirty(state: { nodes: Node<AgentNodeData>[]; edges: Edge<Conne
   if (state.nodes.length !== ss.nodes.length) return true
   if (state.edges.length !== ss.edges.length) return true
   if (state.skills.length !== (ss.skills?.length || 0)) return true
+  const savedHb = ss.heartbeatSchedule || { frequency: "off", time: "08:00" }
+  if (state.heartbeatSchedule.frequency !== savedHb.frequency) return true
+  if (state.heartbeatSchedule.time !== savedHb.time) return true
 
   for (const node of state.nodes) {
     const saved = ss.nodes.find(n => n.id === node.id)
@@ -207,6 +223,7 @@ interface DraftState {
   edges: Edge<ConnectionEdgeData>[]
   workspaceName: string
   skills: SkillItem[]
+  heartbeatSchedule?: { frequency: string; time: string }
   timestamp: number
 }
 
@@ -249,7 +266,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     leftPanelTab: "agents",
 
     skills: [],
-    heartbeatSchedule: { frequency: "daily", time: "08:00" },
+    heartbeatSchedule: { frequency: "off", time: "08:00" },
 
     isDirty: false,
     isSaving: false,
@@ -410,6 +427,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     },
     setHeartbeatSchedule: (schedule) => {
       set((s) => ({ heartbeatSchedule: { ...s.heartbeatSchedule, ...schedule } }))
+      recheckDirty()
     },
     addConnection: ({ source, target, condition }) => {
       if (source === target) return
@@ -486,6 +504,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           edges: JSON.parse(JSON.stringify(s.lastSavedState.edges)),
           workspaceName: s.lastSavedState.workspaceName,
           skills: JSON.parse(JSON.stringify(s.lastSavedState.skills || [])),
+          heartbeatSchedule: { ...(s.lastSavedState.heartbeatSchedule || { frequency: "off", time: "08:00" }) },
           isDirty: false,
           hasDraftRecovery: false,
           draftTimestamp: null,
@@ -508,6 +527,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           edges: draft.edges as Edge<ConnectionEdgeData>[],
           workspaceName: draft.workspaceName,
           skills: (draft.skills || []) as SkillItem[],
+          heartbeatSchedule: draft.heartbeatSchedule
+            ? { ...draft.heartbeatSchedule }
+            : s.heartbeatSchedule,
           isDirty: true,
           hasDraftRecovery: false,
           draftTimestamp: null,
@@ -533,7 +555,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         isDirty: false, isSaving: false,
         lastSavedAt: null, lastSavedState: null,
         hasDraftRecovery: false, draftTimestamp: null, _draftIntervalId: null,
-        heartbeatSchedule: { frequency: "daily", time: "08:00" },
+        heartbeatSchedule: { frequency: "off", time: "08:00" },
       })
 
       try {
@@ -585,7 +607,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
               model: (a.model as string) || "anthropic/claude-sonnet-4-6",
               skillCount: agentSkills.length,
               agentSkillIds: agentSkills.map(s => s.skillId),
-              hasHeartbeat: !!(a.heartbeatMd), healthStatus: "idle" as const,
+              hasHeartbeat: !!a.heartbeatMd || (!!a.heartbeatFrequency && a.heartbeatFrequency !== "off"),
+              healthStatus: "idle" as const,
               soulMd: (a.soulMd as string) || "", agentsMd: (a.agentsMd as string) || "",
               reportsTo: (a.reportsTo as string) || undefined, qualityThreshold: a.qualityThreshold as number | undefined,
             },
@@ -621,10 +644,19 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         const name = (ws.name as string) || ""
 
+        const orchestrator = agents.find((a: Record<string, unknown>) => a.role === "ORCHESTRATOR") as Record<string, unknown> | undefined
+        const savedFreq = orchestrator && typeof orchestrator.heartbeatFrequency === "string" ? (orchestrator.heartbeatFrequency as string) : null
+        const savedTime = orchestrator && typeof orchestrator.heartbeatTime === "string" ? (orchestrator.heartbeatTime as string) : null
+        const heartbeatSchedule = {
+          frequency: savedFreq || "off",
+          time: savedTime || "08:00",
+        }
+
         set({
           nodes, edges, workspaceId, workspaceName: name, workspaceStatus: (ws.status as string) || "DRAFT",
           skills: workspaceSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
-          lastSavedState: cloneState(nodes, edges, name, workspaceSkills),
+          heartbeatSchedule,
+          lastSavedState: cloneState(nodes, edges, name, workspaceSkills, heartbeatSchedule),
         })
 
         const draft = loadDraftFromLocal(workspaceId)
@@ -643,6 +675,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
               edges: current.edges,
               workspaceName: current.workspaceName,
               skills: current.skills,
+              heartbeatSchedule: current.heartbeatSchedule,
               timestamp: Date.now(),
             })
           }
@@ -674,9 +707,15 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         const idMap = new Map<string, string>()
 
+        const hbFreq = s.heartbeatSchedule.frequency
+        const hbPayload = hbFreq && hbFreq !== "off"
+          ? { heartbeatFrequency: hbFreq, heartbeatTime: hbFreq === "hourly" ? null : (s.heartbeatSchedule.time || null) }
+          : { heartbeatFrequency: null, heartbeatTime: null }
+
         for (const node of s.nodes) {
           const d = node.data as AgentNodeData
           const isTemp = node.id.startsWith("temp-")
+          const isOrchestrator = d.role === "ORCHESTRATOR"
 
           if (isTemp) {
             const createRes = await fetch(`/api/agents/${wid}`, {
@@ -691,16 +730,26 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             if (!createRes.ok) throw new Error(`Failed to create agent ${d.name}: ${createRes.status}`)
             const created = await createRes.json()
             const realId = created.data?.id || created.id
-            if (realId) idMap.set(node.id, realId)
+            if (realId) {
+              idMap.set(node.id, realId)
+              if (isOrchestrator) {
+                await fetch(`/api/agents/${wid}/${realId}`, {
+                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(hbPayload),
+                })
+              }
+            }
           } else {
+            const patchBody: Record<string, unknown> = {
+              name: d.name, model: d.model, soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
+              positionX: node.position.x, positionY: node.position.y,
+              qualityThreshold: d.qualityThreshold, reportsTo: d.reportsTo || null,
+              skillIds: d.agentSkillIds || [],
+            }
+            if (isOrchestrator) Object.assign(patchBody, hbPayload)
             const patchRes = await fetch(`/api/agents/${wid}/${node.id}`, {
               method: "PATCH", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name: d.name, model: d.model, soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
-                positionX: node.position.x, positionY: node.position.y,
-                qualityThreshold: d.qualityThreshold, reportsTo: d.reportsTo || null,
-                skillIds: d.agentSkillIds || [],
-              }),
+              body: JSON.stringify(patchBody),
             })
             if (!patchRes.ok) throw new Error(`Failed to update agent ${d.name}: ${patchRes.status}`)
           }
@@ -766,11 +815,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         const currentName = get().workspaceName
         const currentSkills = get().skills
+        const currentHb = get().heartbeatSchedule
         set({
           nodes: updatedNodes,
           edges: updatedEdges,
           lastSavedAt: new Date(),
-          lastSavedState: cloneState(updatedNodes, updatedEdges, currentName, currentSkills),
+          lastSavedState: cloneState(updatedNodes, updatedEdges, currentName, currentSkills, currentHb),
         })
         queueMicrotask(() => {
           set({ isDirty: false, isSaving: false })

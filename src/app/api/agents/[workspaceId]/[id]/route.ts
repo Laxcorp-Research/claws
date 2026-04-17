@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ wo
   if (error) return error === "NOT_FOUND" ? ERRORS.NOT_FOUND("Workspace") : ERRORS.FORBIDDEN()
 
   const body = await req.json()
-  const allowed = ["name", "color", "model", "fallbackModel", "soulMd", "agentsMd", "heartbeatMd", "toolsMd", "userMd", "qualityThreshold", "maxRetries", "reportsTo", "positionX", "positionY", "roleDescription", "description", "icon"]
+  const allowed = ["name", "color", "model", "fallbackModel", "soulMd", "agentsMd", "heartbeatMd", "heartbeatFrequency", "heartbeatTime", "toolsMd", "userMd", "qualityThreshold", "maxRetries", "reportsTo", "positionX", "positionY", "roleDescription", "description", "icon"]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]
