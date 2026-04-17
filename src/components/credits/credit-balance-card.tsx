@@ -107,7 +107,7 @@ export function CreditBalanceCard({
       )}
 
       {!isExhausted && (
-        <Link href="/settings?tab=api-keys" className="text-[11px] text-[var(--ac)] hover:underline mt-1.5 inline-block">
+        <Link href="/settings?tab=usage" className="text-[11px] text-[var(--ac)] hover:underline mt-1.5 inline-block">
           View detailed usage →
         </Link>
       )}
