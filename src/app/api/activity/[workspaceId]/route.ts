@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
+import { sanitizeActivityText } from "@/lib/security/sanitize"
 
 export async function GET(
   _req: NextRequest,
@@ -101,7 +102,7 @@ export async function GET(
     .map((req) => ({
       id: req.id,
       title: `${req.agentName || "Agent"} requests approval`,
-      description: req.action,
+      description: sanitizeActivityText(req.action),
       agentName: req.agentName || "Unknown",
       agentSlug: req.agentSlug || "",
       timestamp: req.timestamp.toISOString(),
@@ -203,7 +204,7 @@ export async function GET(
       id: log.id,
       timestamp: log.timestamp.toISOString(),
       agentName: log.agentName ?? "System",
-      action: log.action,
+      action: sanitizeActivityText(log.action),
       actionType: log.actionType,
       apiCost: log.apiCost,
     })),

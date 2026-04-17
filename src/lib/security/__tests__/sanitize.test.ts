@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { sanitizeHtml, sanitizeText, sanitizeMarkdown } from "../sanitize"
+import { sanitizeHtml, sanitizeText, sanitizeMarkdown, sanitizeActivityText } from "../sanitize"
 
 describe("sanitizeHtml", () => {
   it("preserves safe HTML", () => {
@@ -108,5 +108,85 @@ describe("sanitizeMarkdown", () => {
     const result = sanitizeMarkdown("# Title\n<style>.x{color:red}</style>\nContent")
     expect(result).not.toContain("<style>")
     expect(result).toContain("# Title")
+  })
+})
+
+describe("sanitizeActivityText", () => {
+  it("returns empty string for null", () => {
+    expect(sanitizeActivityText(null)).toBe("")
+  })
+
+  it("returns empty string for undefined", () => {
+    expect(sanitizeActivityText(undefined)).toBe("")
+  })
+
+  it("returns empty string for empty input", () => {
+    expect(sanitizeActivityText("")).toBe("")
+  })
+
+  it("returns empty string for whitespace-only input", () => {
+    expect(sanitizeActivityText("   \n\t  ")).toBe("")
+  })
+
+  it("passes plain short text through unchanged", () => {
+    const input = "Agent orchestrator paused by user"
+    expect(sanitizeActivityText(input)).toBe(input)
+  })
+
+  it("trims leading and trailing whitespace", () => {
+    expect(sanitizeActivityText("  hello  ")).toBe("hello")
+  })
+
+  it("strips HTML tags while preserving inner text", () => {
+    const input = '<div class="foo">hello <b>world</b></div>'
+    const result = sanitizeActivityText(input)
+    expect(result).not.toContain("<")
+    expect(result).not.toContain(">")
+    expect(result).toContain("hello")
+    expect(result).toContain("world")
+  })
+
+  it("handles Cloudflare-style HTML error payload without leaking tags", () => {
+    const cloudflare504 = [
+      "<!DOCTYPE html>",
+      '<html lang="en-US">',
+      "<head>",
+      '<meta charset="UTF-8">',
+      "<title>my-app.up.railway.app | 504: Gateway time-out</title>",
+      "</head>",
+      "<body>",
+      '<div class="cf-error-details">',
+      "<h1>Gateway time-out</h1>",
+      "</div>",
+      "</body>",
+      "</html>",
+    ].join("\n")
+    const result = sanitizeActivityText(cloudflare504)
+    expect(result).not.toContain("<")
+    expect(result).not.toContain(">")
+    expect(result).not.toContain("<!DOCTYPE")
+    expect(result).toContain("Gateway time-out")
+  })
+
+  it("truncates text longer than 500 chars and appends an ellipsis", () => {
+    const input = "a".repeat(600)
+    const result = sanitizeActivityText(input)
+    expect(result).toHaveLength(501)
+    expect(result.endsWith("\u2026")).toBe(true)
+    expect(result.slice(0, 500)).toBe("a".repeat(500))
+  })
+
+  it("does not truncate text at exactly 500 chars", () => {
+    const input = "a".repeat(500)
+    const result = sanitizeActivityText(input)
+    expect(result).toHaveLength(500)
+    expect(result.endsWith("\u2026")).toBe(false)
+  })
+
+  it("preserves the '>' character inside normal sentences", () => {
+    const input = "Rule fired: price > threshold"
+    const result = sanitizeActivityText(input)
+    expect(result).toContain("price")
+    expect(result).toContain("threshold")
   })
 })
