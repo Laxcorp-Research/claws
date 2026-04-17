@@ -22,6 +22,8 @@ import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
+import { isCreditUser } from "@/lib/credits/api-key-source"
+import type { ApiKeySource } from "@/generated/prisma/client"
 
 interface AgentRow {
   id: string
@@ -895,6 +897,8 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   const [eligibility, setEligibility] = useState<DeployEligibility | null>(null)
   const [subscribing, setSubscribing] = useState(false)
   const [waitingForActivation, setWaitingForActivation] = useState(false)
+  const [apiKeySource, setApiKeySource] = useState<ApiKeySource | null>(null)
+  const creditUser = isCreditUser(apiKeySource)
 
   const checkBillingAndUpdateEligibility = useCallback(async (): Promise<boolean> => {
     try {
@@ -929,12 +933,17 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         ])
 
         const statusJson = await statusRes.json()
-        if (statusJson.success && statusJson.data.deployment) {
-          const dep = statusJson.data.deployment
-          setDeploymentStatus(dep.status)
-          if (dep.errorMessage) setDeploymentError(dep.errorMessage)
-          if (!["COMPLETED", "FAILED"].includes(dep.status)) {
-            setIsDeploying(true)
+        if (statusJson.success) {
+          if (statusJson.data.apiKeySource) {
+            setApiKeySource(statusJson.data.apiKeySource as ApiKeySource)
+          }
+          if (statusJson.data.deployment) {
+            const dep = statusJson.data.deployment
+            setDeploymentStatus(dep.status)
+            if (dep.errorMessage) setDeploymentError(dep.errorMessage)
+            if (!["COMPLETED", "FAILED"].includes(dep.status)) {
+              setIsDeploying(true)
+            }
           }
         }
       } catch (err) {
@@ -1072,20 +1081,22 @@ function Step3({ workspaceId }: { workspaceId: string }) {
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">Deploy your Claw</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
-      {eligibility?.isFirstDeploy ? (
+      {creditUser ? (
+        <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">Powered by Claws Starter Credits — no payment needed.</p>
+      ) : eligibility?.isFirstDeploy ? (
         <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">3-day free trial - no payment required. $79/mo after trial.</p>
       ) : (
         <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
       )}
 
-      {needsSub && !deploymentStatus && !waitingForActivation && (
+      {!creditUser && needsSub && !deploymentStatus && !waitingForActivation && (
         <AlertBanner variant="warning">
           <p className="font-medium">Your 3-day trial has ended</p>
           <p className="mt-0.5 opacity-80">Subscribe to the Claw Platform ($79/mo) to deploy and run your Claws.</p>
         </AlertBanner>
       )}
 
-      {waitingForActivation && !deploymentStatus && (
+      {!creditUser && waitingForActivation && !deploymentStatus && (
         <AlertBanner variant="info" icon={<Loader2 className="w-4 h-4 animate-spin" />}>
           <p className="font-medium">Payment received — activating your subscription</p>
           <p className="mt-0.5 opacity-80">This usually takes a few seconds. If it doesn&apos;t update, try refreshing the page.</p>
@@ -1093,7 +1104,11 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       {!deploymentStatus && !waitingForActivation && (
-        needsSub ? (
+        creditUser ? (
+          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying}>
+            Deploy Claw
+          </Button>
+        ) : needsSub ? (
           <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
             Subscribe to Deploy - $79/mo
           </Button>

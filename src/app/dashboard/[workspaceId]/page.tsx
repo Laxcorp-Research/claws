@@ -18,6 +18,8 @@ import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
+import { isCreditUser } from "@/lib/credits/api-key-source"
+import type { ApiKeySource } from "@/generated/prisma/client"
 
 interface DashboardStats {
   agentsRunning: number
@@ -38,6 +40,7 @@ interface WorkspaceInfo {
   apiSpendLimit: number
   costAlertThreshold: number
   lastHealthCheck?: string
+  apiKeySource?: ApiKeySource
 }
 
 interface AgentInfo {
@@ -555,7 +558,9 @@ export default function DashboardPage() {
       })
     }
 
-    if (trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
+    const creditUser = isCreditUser(workspace?.apiKeySource)
+
+    if (!creditUser && trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
       const trialEnd = trialInfo.trialEndsAt ? new Date(trialInfo.trialEndsAt) : null
       const now = new Date()
       const trialActive = trialEnd && trialEnd > now
