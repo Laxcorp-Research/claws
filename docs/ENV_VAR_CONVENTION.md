@@ -405,3 +405,245 @@ This repo:
 - `prisma/schema.prisma:856-906` — `MarketplaceSkill` model
 - `docs/TOOL_CONNECTION_FIX_INVESTIGATION.md §6` — prior (revised) recommendation
 - `docs/CONTAINER_INFRASTRUCTURE.md:68-73` — container `.env` delivery via `CLAWS_ENV_B64`
+
+---
+
+## Runtime behavior details
+
+Appendix to the TL;DR, written to answer three runtime-behavior questions that gate PR #2 (multi-credential schema). Same pinned image (`sha256:9e1af63c16d44066a3d2c66332b3842dd40a17bcaab6a6bada9fd2a172dd9301`) and source commit (`d76b224`) as the main body. I re-pulled `:latest` at the start of this pass and confirmed the remote tag still resolves to `9e1af63c…` before doing anything else; if that ever stops being true we should stop citing this evidence.
+
+### D1. Sanitizer behavior on unknown env vars (answer to Q1)
+
+**Observed from source + verified against the compiled `dist/` bundle inside the image.** Not observed from a live container run — I read the code and confirmed the literal strings survived compilation. Live verification would add confidence but was not strictly required given the code paths are deterministic and the string literals match.
+
+The answer is **(b) log warning, key stripped, skill still loads** — but only for credential-named keys. Full tier breakdown below because the question's multiple-choice framing compresses three distinct behaviors into one.
+
+**Tier 1 — "host-dangerous" keys (always blocked, cannot be allowlisted):**
+
+Defined at `src/infra/host-env-security-policy.json` in the source extract (not present as an extracted JSON inside the image rootfs — it's compiled in, which I confirmed by finding its contents inline in `dist/*.js`). Two sets:
+
+- `blockedKeys`: `NODE_OPTIONS`, `NODE_PATH`, `PYTHONHOME`, `PYTHONPATH`, `PERL5LIB`, `PERL5OPT`, `RUBYLIB`, `RUBYOPT`, `BASH_ENV`, `ENV`, `GIT_EXTERNAL_DIFF`, `SHELL`, `SHELLOPTS`, `PS4`, `GCONV_PATH`, `IFS`, `SSLKEYLOGFILE`
+- `blockedPrefixes`: `DYLD_*`, `LD_*`, `BASH_FUNC_*`
+- Plus an always-blocked pattern from `env-overrides.ts:21`: `/^OPENSSL_CONF$/i`
+
+If a skill's `primaryEnv` is one of these, or if `skills.entries[slug].env` names one of these, the sanitizer blocks it regardless of the skill's own allowlist. Logged as:
+
+```
+Blocked skill env overrides for <skillKey>: <key1>, <key2>, ...
+```
+
+at warn level via `createSubsystemLogger("env-overrides")`. The skill **still loads**. Its in-process `hasEnv(X)` check returns false, so eligibility logic downstream may exclude the skill from the agent's catalog at that point (see `shouldIncludeSkill` in `src/agents/skills/config.ts:70-102`). But container startup is not affected and no other skills are affected.
+
+**Tier 2 — credential-named keys not in the skill's own allowlist:**
+
+`src/agents/sandbox/sanitize-env-vars.ts:1-19` defines `BLOCKED_ENV_VAR_PATTERNS`. The last entry is the important one for us:
+
+```ts
+/_?(API_KEY|TOKEN|PASSWORD|PRIVATE_KEY|SECRET)$/i,
+```
+
+This matches any key ending in `API_KEY`, `TOKEN`, `PASSWORD`, `PRIVATE_KEY`, or `SECRET` (with an optional leading underscore). So `HUBSPOT_API_KEY`, `GITHUB_TOKEN`, `BINANCE_SECRET`, `SF_INSTANCE_TOKEN` all match. On the first pass (`sanitizeEnvVars` at line 62-102) these go into `result.blocked`.
+
+`env-overrides.ts:54-72` then re-examines `result.blocked` with the skill's own allowlist (`allowedSensitiveKeys = {primaryEnv, ...requires.env}`):
+
+- If the key is in the skill's allowlist → moved back to `allowed`, injected into `process.env`.
+- If the key is not in the skill's allowlist → stays blocked, logged with the same "Blocked skill env overrides…" warn message. Skill still loads.
+
+So a `skills.entries.notion.env.RANDOM_API_KEY = "xxx"` emission (where `RANDOM_API_KEY` isn't in the notion skill's frontmatter) produces: warn log, `RANDOM_API_KEY` not injected, notion skill still loads with its normal `NOTION_API_KEY`-dependent behavior. Silent to the agent; visible to anyone reading container logs.
+
+**Tier 3 — non-credential, non-dangerous unknown keys:**
+
+`MY_RANDOM_FOO = "bar"` doesn't match any BLOCKED pattern and isn't host-dangerous. `sanitizeEnvVars` in non-strict mode (which is how `env-overrides.ts` calls it) puts it in `result.allowed`. No second-pass rejection. **Injected into `process.env` silently, no warning.**
+
+This is worth knowing for PR #2: if PR #2's multi-credential schema lets users name credential fields freely, and they pick a non-credential-looking name like `PIPELINE_ID`, it'll inject without any safety net. Most credentials should end up matching the BLOCKED regex anyway (API_KEY / TOKEN / SECRET / PASSWORD / PRIVATE_KEY suffixes cover the obvious cases), but it's a gap worth noting.
+
+**Tier 4 — skill declaring a dangerous `primaryEnv`:**
+
+`src/agents/skills/frontmatter.ts:207` parses `primaryEnv` with just a `typeof === "string"` check — no validation against host-dangerous names at parse time. A skill that declares `primaryEnv: "NODE_OPTIONS"` loads into the catalog cleanly. Then when the host emits `skills.entries[slug].apiKey = "…"`, `env-overrides.ts` puts `NODE_OPTIONS` into `pendingOverrides`, `sanitizeEnvVars` doesn't block it (it's not credential-named), but the always-blocked check at line 27-31 (`isAlwaysBlockedSkillEnvKey` → `isDangerousHostEnvVarName`) catches it. So Tier 1 applies: warn log, not injected, skill loads anyway. A malicious skill can't exfiltrate via this path.
+
+**Compiled-runtime verification:**
+
+Counts from `C:\temp\openclaw-rootfs\dist\**\*.js` (the actual JS bundles that run in the container):
+
+| String | Count in compiled dist |
+|---|---|
+| `TOOL_API_KEY` | **0** (matches source — still zero after compilation) |
+| `primaryEnv` | 54 |
+| `Blocked skill env overrides` (the warn log literal) | 4 (in `skills-*.js` bundle chunks) |
+| `ANTHROPIC_API_KEY` (sample BLOCKED_ENV_VAR_PATTERNS entry) | 36 |
+
+The sanitizer's behavior is live in the runtime, not a source-only artifact that got tree-shaken out.
+
+**Source reference for the full flow:**
+
+- `src/agents/skills/env-overrides.ts:77-134` — `applySkillConfigEnvOverrides`
+- `src/agents/skills/env-overrides.ts:33-75` — `sanitizeSkillEnvOverrides` (second-pass allowlist check)
+- `src/agents/sandbox/sanitize-env-vars.ts:1-19,62-102` — `BLOCKED_ENV_VAR_PATTERNS` + `sanitizeEnvVars`
+- `src/infra/host-env-security.ts:54-64` — `isDangerousHostEnvVarName`
+- `src/infra/host-env-security-policy.json` — canonical list of host-dangerous keys and prefixes
+
+### D2. Seeded `Skill.skillMd` frontmatter audit (answer to Q2)
+
+Scope: `prisma/seed-data/skills-tool-specific.ts` — the file with the 84 `$TOOL_API_KEY` hits. 36 skills, all typed `TOOL_SPECIFIC`.
+
+Confirmed by `rg "primaryEnv" prisma/seed-data/skills-tool-specific.ts`: **0 matches.** Same for `requires.env`. Every `skillMd` in that file has frontmatter of the exact same shape:
+
+```yaml
+---
+name: <Skill Name>
+description: <one-liner>
+metadata:
+  openclaw:
+    emoji: <emoji>
+---
+```
+
+No `primaryEnv`. No `requires.env`. No `requires.bins`. The env var expectations live entirely in prose inside the body (e.g., `Set `$TOOL_API_KEY` to your HubSpot private app token` at line 58).
+
+Full audit table. "Has primaryEnv" and "Has requires.env" are uniformly "no" — kept as columns to show I looked. The "body env vars" column is my extraction of what the body text actually references (the vars our generator would need to declare in frontmatter if we ship Option 2):
+
+| # | Skill slug | Line | Has frontmatter | Has `primaryEnv` | Has `requires.env` | Body env vars referenced | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | `tavily-search` | 6 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 2 | `hubspot-crm` | 47 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 3 | `salesforce-crm` | 94 | yes | no | no | `$TOOL_API_KEY`, `$SF_INSTANCE_URL` | **Multi** |
+| 4 | `pipedrive-crm` | 133 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 5 | `apollo-search` | 177 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 6 | `clay-enrichment` | 218 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 7 | `instantly-email` | 259 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 8 | `smartlead-email` | 303 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 9 | `twitter-api` | 347 | yes | no | no | `$TOOL_API_KEY` | Single (bearer token) |
+| 10 | `linkedin-api` | 392 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 11 | `buffer-social` | 423 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 12 | `typefully-social` | 463 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 13 | `youtube-data-api` | 498 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 14 | `beehiiv-newsletter` | 538 | yes | no | no | `$TOOL_API_KEY`, `$BEEHIIV_PUB_ID` | **Multi** |
+| 15 | `substack-newsletter` | 577 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 16 | `convertkit-newsletter` | 608 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 17 | `binance-trading` | 652 | yes | no | no | `$TOOL_API_KEY`, `$BINANCE_SECRET` | **Multi** |
+| 18 | `coinbase-trading` | 697 | yes | no | no | `$TOOL_API_KEY`, `$CB_API_SECRET` | **Multi** |
+| 19 | `alpaca-trading` | 742 | yes | no | no | `$TOOL_API_KEY`, `$ALPACA_SECRET` | **Multi** |
+| 20 | `polymarket-trading` | 792 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 21 | `linear-pm` | 837 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 22 | `asana-pm` | 880 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 23 | `clickup-pm` | 911 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 24 | `jira-pm` | 942 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 25 | `slack-messaging` | 973 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 26 | `notion-docs` | 1004 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 27 | `shopify-store` | 1035 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 28 | `google-search-console` | 1080 | yes | no | no | `$TOOL_API_KEY` | Single (but GSC is OAuth-only per [TOOL_CONNECTION_FIX_INVESTIGATION.md §2](./TOOL_CONNECTION_FIX_INVESTIGATION.md#slug-naming-drift-real-blocking) — catalog mislabeled) |
+| 29 | `google-analytics` | 1111 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 30 | `ahrefs-seo` | 1142 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 31 | `calendly-scheduling` | 1185 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 32 | `snyk-security` | 1216 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 33 | `twilio-sms` | 1261 | yes | no | no | `$TOOL_API_KEY` | Single (actually Account SID + Auth Token, skill writeup glosses over this) |
+| 34 | `zillow-api` | 1301 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 35 | `google-business-profile` | 1338 | yes | no | no | `$TOOL_API_KEY` | Single |
+| 36 | `wordpress-cms` | 1369 | yes | no | no | `$TOOL_API_KEY` | Single |
+
+**Counts:**
+
+- **36/36** skills have frontmatter (all `skillMd` blocks start with `---`)
+- **0/36** skills declare `primaryEnv`
+- **0/36** skills declare `requires.env`
+- **31/36** are single-variable tools (`$TOOL_API_KEY` only)
+- **5/36** are multi-variable tools (second env var named in body prose):
+  - `salesforce-crm` → also `$SF_INSTANCE_URL`
+  - `beehiiv-newsletter` → also `$BEEHIIV_PUB_ID`
+  - `binance-trading` → also `$BINANCE_SECRET`
+  - `coinbase-trading` → also `$CB_API_SECRET`
+  - `alpaca-trading` → also `$ALPACA_SECRET`
+
+**Scope implication for PR #3:**
+
+PR #3 is larger than the original "rename 84 body-text references" framing. Concretely:
+
+- **~84 body-text `$TOOL_API_KEY` renames** to the tool-specific env var names we pick (e.g., `$HUBSPOT_API_KEY`, `$APOLLO_API_KEY`, …).
+- **31 new `primaryEnv` frontmatter declarations** for single-var tools.
+- **5 new `requires.env` frontmatter declarations** for multi-var tools (each an array of 2 names).
+- **Optional hardening**: also add `requires.env` on single-var tools (redundant with `primaryEnv`, but bundled skills like `notion` do it for explicitness — our choice).
+- **Pick the env var name per tool**: for the 31 single-var tools, the name is ours to choose. Recommended convention: uppercase tool slug + `_API_KEY` (so `hubspot-crm` → `HUBSPOT_API_KEY`, `apollo-search` → `APOLLO_API_KEY`). Exceptions: `twitter-api` → `TWITTER_BEARER_TOKEN` (matches the common Twitter v2 naming and what `MarketplaceSkill`'s `twitter-api` already uses per the architecture doc).
+
+Total rough LOC for PR #3 seed changes: **~120 lines touched in `skills-tool-specific.ts`** (36 frontmatter declarations + 84 body renames). Plus generator changes, plus the `@ts-nocheck` removal, plus tests. Still tractable; just meaningfully bigger than the initial framing.
+
+**Seven seeds still map to tools that don't exist in the catalog** (flagged in [TOOL_CONNECTION_FIX_INVESTIGATION.md §2](./TOOL_CONNECTION_FIX_INVESTIGATION.md#slug-naming-drift-real-blocking)): `pipedrive-crm`, `smartlead-email`, `typefully-social`, `coinbase-trading`, `snyk-security`, `zillow-api`, `google-business-profile`. These are orphans — they'll never be emitted by the generator because no user can connect the matching tool. Either drop them from the seed or add their tools to the catalog. Out of scope here; flag for PR #3.
+
+### D3. Multi-credential frontmatter shape (answer to Q3)
+
+**Trello's frontmatter verbatim** — `C:\temp\openclaw-rootfs\skills\trello\SKILL.md` lines 1-10, byte-for-byte identical to `C:\temp\openclaw-src\skills\trello\SKILL.md` at commit `d76b224`:
+
+```markdown
+---
+name: trello
+description: Manage Trello boards, lists, and cards via the Trello REST API.
+homepage: https://developer.atlassian.com/cloud/trello/rest/
+metadata:
+  {
+    "openclaw":
+      { "emoji": "📋", "requires": { "bins": ["jq"], "env": ["TRELLO_API_KEY", "TRELLO_TOKEN"] } },
+  }
+---
+```
+
+**Shape**: a `requires.env` array with the two names, and **no `primaryEnv`**. The frontmatter does NOT use a separate `primaryEnv + requiredEnv[]` pair for multi-credential skills; the array by itself carries both names. There is no "which one is primary" marker.
+
+**Full bundled multi-`env` survey** (from `C:\temp\openclaw-rootfs\skills\*\SKILL.md`):
+
+Only two bundled skills declare `requires.env` with more than one entry:
+
+| Bundled skill | `requires.env` | `primaryEnv` | Credential or not |
+|---|---|---|---|
+| `trello` | `["TRELLO_API_KEY", "TRELLO_TOKEN"]` | none | credentials (what we care about) |
+| `sherpa-onnx-tts` | `["SHERPA_ONNX_RUNTIME_DIR", "SHERPA_ONNX_MODEL_DIR"]` | none | directory paths, not credentials |
+
+I checked for `salesforce`, `binance`, `coinbase`, `alpaca` specifically since the prompt asked — **none of these are bundled in the OpenClaw image**. OpenClaw ships ~54 skills (listed in the main body above); multi-credential credentialed services aren't in the bundle because OpenClaw's core skill set leans personal/dev tools (github, gmail, notion, spotify-player, weather, etc.). The multi-var tools that matter to us (salesforce, binance, coinbase, alpaca, beehiiv, twilio) would be custom skills we seed ourselves — or marketplace skills someone publishes.
+
+**Related single-variable pattern (for contrast):**
+
+Every bundled credentialed single-var skill I inspected declares **both** `primaryEnv` and `requires.env` (with the same single value). Concrete examples:
+
+| Bundled skill | `primaryEnv` | `requires.env` |
+|---|---|---|
+| `notion` | `"NOTION_API_KEY"` | `["NOTION_API_KEY"]` |
+| `openai-image-gen` | `"OPENAI_API_KEY"` | `["OPENAI_API_KEY"]` |
+| `openai-whisper-api` | `"OPENAI_API_KEY"` | `["OPENAI_API_KEY"]` |
+| `goplaces` | `"GOOGLE_PLACES_API_KEY"` | `["GOOGLE_PLACES_API_KEY"]` |
+| `nano-banana-pro` | `"GEMINI_API_KEY"` | `["GEMINI_API_KEY"]` |
+| `sag` | `"ELEVENLABS_API_KEY"` | `["ELEVENLABS_API_KEY"]` |
+
+This is redundant-but-explicit: `primaryEnv` enables the `skills.entries[slug].apiKey = "…"` shortcut (OpenClaw binds the value to `primaryEnv`'s name at runtime); `requires.env` drives the eligibility check (`hasEnv(...)`) that determines whether the skill should even appear in the agent's catalog at this boot. Both are needed for the skill to fully work; they happen to name the same variable.
+
+**Contract for PR #2's `credentialFields` schema:**
+
+The frontmatter shape implies a clean data model for PR #2's multi-credential tool catalog:
+
+```ts
+type ToolCredentialField = {
+  envVar: string;        // the literal name, e.g., "TRELLO_API_KEY"
+  label: string;         // UI label, e.g., "API Key"
+  required: boolean;     // whether the Setup Wizard must collect it
+  primary: boolean;      // at most one field per tool; maps to primaryEnv
+  helpUrl?: string;      // tool-specific "where do I find this?" link
+  placeholder?: string;  // UI placeholder
+};
+```
+
+Mapping to frontmatter emission:
+
+- **Single-credential tool** (31 of 36 seeded): one `ToolCredentialField` with `primary: true`. Our generator emits both `primaryEnv: "<envVar>"` and `requires.env: ["<envVar>"]` in the skill's frontmatter. For the `skills.entries[slug]` config, we can use either the `apiKey` shortcut or the explicit `env: { ... }` map — both work, `apiKey` is slightly less code since OpenClaw does the name binding.
+- **Multi-credential tool** (5 of 36): multiple `ToolCredentialField`s. At most one has `primary: true` (or none — trello has none). Our generator emits only `requires.env: [<envVar1>, <envVar2>, ...]` (no `primaryEnv` for the multi case unless we opt to). For `skills.entries[slug]`, emit the explicit `env: { <envVar1>: "...", <envVar2>: "..." }` map. The `apiKey` shortcut does not cover the secondary values.
+
+**`primary` semantics — explicit, recommendation**:
+
+- `primary: true` on at most one field per tool.
+- Single-credential tools: primary field is the one the user types in the existing single-key Setup Wizard input. Zero UX change for them.
+- Multi-credential tools: picking one as primary is optional. We could use it to drive the "main" field in the expanded wizard (e.g., Binance's `API_KEY` is primary, `SECRET` is secondary). Or skip the concept entirely for multi and force the expanded wizard to label all fields equally. Either works; a call for PR #2's UX design, not this doc.
+
+### D4. What this follow-up does NOT resolve
+
+- **Schema for the multi-credential bag on `ToolConnection`.** PR #2.
+- **Setup Wizard UX for multi-credential tools.** PR #2.
+- **Actual seed renames and `primaryEnv` additions.** PR #3.
+- **Whether we drop the 7 orphan seeds or add their tools to the catalog.** PR #3.
+- **Live integration test** of the sanitizer behavior in a running container (I read source + compiled bundle strings; didn't run the container with a synthetic `skills.entries` config to observe logs). Worth doing before shipping PR #2's schema if there's any doubt about tier boundaries; I don't think there is, but it's a cheap hedge.
+
