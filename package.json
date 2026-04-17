@@ -92,5 +92,8 @@
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "protobufjs": "^7.5.5"
   }
 }
