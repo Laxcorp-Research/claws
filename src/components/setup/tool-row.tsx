@@ -15,6 +15,8 @@ interface ToolRowProps {
   composioOAuthAvailable?: boolean
   swappable?: boolean
   errorMessage?: string
+  /** Non-error informational note (e.g., "saved but not verified"). Shown in warn color. */
+  warningMessage?: string
   onConnect?: () => void
   onSwap?: () => void
   onTest?: () => void
@@ -23,7 +25,7 @@ interface ToolRowProps {
   className?: string
 }
 
-export function ToolRow({ name, description, connectionStatus, connectionType, composioOAuthAvailable = false, swappable, errorMessage, onConnect, onSwap, onTest, onDisconnect, onReconnect, className }: ToolRowProps) {
+export function ToolRow({ name, description, connectionStatus, connectionType, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, onConnect, onSwap, onTest, onDisconnect, onReconnect, className }: ToolRowProps) {
   const isError = connectionStatus === "error"
   const isTesting = connectionStatus === "testing"
 
@@ -84,6 +86,9 @@ export function ToolRow({ name, description, connectionStatus, connectionType, c
           {errorMessage}
           {onReconnect && <button onClick={onReconnect} className="font-semibold underline ml-1">Reconnect</button>}
         </p>
+      )}
+      {!isError && warningMessage && (
+        <p className="text-[11px] text-[var(--warn)] mt-1.5 ml-[22px]">{warningMessage}</p>
       )}
     </div>
   )

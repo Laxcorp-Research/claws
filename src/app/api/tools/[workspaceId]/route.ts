@@ -5,6 +5,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { encrypt, generateKeyHint } from "@/lib/encryption"
 import { log } from "@/lib/logger"
+import { validateToolKey } from "@/lib/tools/validators"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -50,9 +51,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   const data: Record<string, unknown> = { workspaceId, toolSlug, displayName, connectionType, status: "PENDING" }
 
   if (connectionType === "API_KEY" && apiKey) {
+    const validation = await validateToolKey(toolSlug, apiKey)
+    if (!validation.valid) {
+      log.toolEvent({
+        event: "failed",
+        toolSlug,
+        connectionType,
+        workspaceId,
+        userId: user.id,
+        error: validation.error,
+      })
+      return ERRORS.VALIDATION(validation.error || "Invalid API key")
+    }
+
     data.encryptedApiKey = encrypt(apiKey)
     data.keyHint = generateKeyHint(apiKey)
-    data.status = "CONNECTED"
+    data.lastTestedAt = new Date()
+    if (validation.unverified) {
+      data.status = "PENDING"
+      data.lastError = validation.message ?? "Connected but not verified — will be tested on first use."
+    } else if (validation.warning) {
+      data.status = "PENDING"
+      data.lastError = validation.warning
+    } else {
+      data.status = "CONNECTED"
+      data.lastError = null
+    }
   }
   if (connectionType === "OAUTH_COMPOSIO") {
     data.composioConnectionId = composioConnectionId || null
@@ -64,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     where: { workspaceId_toolSlug: { workspaceId, toolSlug } },
     create: data as Parameters<typeof prisma.toolConnection.create>[0]["data"],
     update: { ...data, updatedAt: new Date() } as Parameters<typeof prisma.toolConnection.update>[0]["data"],
-    select: { id: true, toolSlug: true, displayName: true, connectionType: true, keyHint: true, status: true, createdAt: true },
+    select: { id: true, toolSlug: true, displayName: true, connectionType: true, keyHint: true, status: true, lastError: true, createdAt: true },
   })
 
   log.toolEvent({
