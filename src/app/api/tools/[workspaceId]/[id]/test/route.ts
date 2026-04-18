@@ -6,7 +6,6 @@ import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { decrypt } from "@/lib/encryption"
 import { log } from "@/lib/logger"
 import { validateToolKey, hasValidator } from "@/lib/tools/validators"
-import { getPrimaryCredentialField } from "@/data/tool-catalog"
 
 /**
  * POST /api/tools/[workspaceId]/[id]/test
@@ -49,23 +48,37 @@ export async function POST(
     )
   }
 
-  if (!conn.encryptedApiKey) {
+  // NEEDS_CREDENTIALS rows are known-incomplete; testing them will just
+  // fail with "missing required field". Surface a better error that maps
+  // onto the UI's Complete button flow.
+  if (conn.status === "NEEDS_CREDENTIALS") {
     return ERRORS.VALIDATION(
-      "This connection has no stored key. Reconnect to add one.",
+      "Connection is missing credentials. Click 'Complete' to supply the remaining fields.",
     )
   }
 
-  let plainKey: string
+  if (!conn.encryptedCredentials) {
+    return ERRORS.VALIDATION(
+      "This connection has no stored credentials. Reconnect to add them.",
+    )
+  }
+
+  let credentials: Record<string, string>
   try {
-    plainKey = decrypt(conn.encryptedApiKey)
+    const plaintext = decrypt(conn.encryptedCredentials)
+    const parsed = JSON.parse(plaintext)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("encryptedCredentials plaintext is not a JSON object")
+    }
+    credentials = parsed as Record<string, string>
   } catch (err) {
-    log.error("Failed to decrypt tool api key", {
+    log.error("Failed to decrypt tool credentials", {
       category: "tool_validation",
       toolSlug: conn.toolSlug,
       error: err instanceof Error ? err.message : String(err),
     })
     return ERRORS.VALIDATION(
-      "Couldn't read the stored key. Remove and reconnect this tool.",
+      "Couldn't read the stored credentials. Remove and reconnect this tool.",
     )
   }
 
@@ -85,16 +98,7 @@ export async function POST(
     })
   }
 
-  // Commit 3 still reads from the legacy encryptedApiKey column. Commit 4
-  // switches the test route to read encryptedCredentials (which already
-  // stores the full credentials record). Until then, wrap the single
-  // decrypted key into the primary envVar of the catalog entry so the
-  // validator receives the new record shape.
-  const primaryField = getPrimaryCredentialField(conn.toolSlug)
-  if (!primaryField) {
-    return ERRORS.VALIDATION(`No credential fields declared for tool '${conn.toolSlug}'`)
-  }
-  const result = await validateToolKey(conn.toolSlug, { [primaryField.envVar]: plainKey })
+  const result = await validateToolKey(conn.toolSlug, credentials)
 
   if (!result.valid) {
     const updated = await prisma.toolConnection.update({
