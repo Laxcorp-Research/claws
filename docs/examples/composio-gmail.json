@@ -1,0 +1,23 @@
+{
+  "_comment_this_file": "Sanitized example of the skills.entries shape the generator should emit for an OAUTH_COMPOSIO Gmail connection. Real values are redacted. See docs/COMPOSIO_RUNTIME_CONTRACT.md for rationale and the live POC that validated this shape.",
+  "_comment_redaction": "Every field below that would normally hold a real secret is replaced with '<REDACTED:...>' in this committed example. PR #4's generator will substitute real values at deploy time from the ToolConnection row.",
+
+  "skills": {
+    "entries": {
+      "gmail-send": {
+        "enabled": true,
+        "env": {
+          "COMPOSIO_API_KEY": "<REDACTED:platform-scoped Composio key; injected via CLAWS_ENV_B64>",
+          "COMPOSIO_USER_ID": "<REDACTED:claws_${User.id} — from src/lib/composio.ts:getComposioUserId>",
+          "COMPOSIO_CONNECTED_ACCOUNT_ID": "<REDACTED:ToolConnection.composioConnectionId>"
+        },
+        "config": {
+          "composio": {
+            "toolkit": "gmail",
+            "executeEndpoint": "https://backend.composio.dev/api/v3/tools/execute"
+          }
+        }
+      }
+    }
+  }
+}
