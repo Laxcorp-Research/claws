@@ -89,7 +89,7 @@ describe("IMPLEMENTED_SLUGS", () => {
         "sendgrid",
         "stripe_api",
         "tavily",
-        "youtube_data",
+        "youtube-data-api",
       ].sort(),
     )
   })
@@ -259,10 +259,10 @@ describe("brave_search validator", () => {
   })
 })
 
-describe("youtube_data validator", () => {
+describe("youtube-data-api validator", () => {
   it("returns valid on 200", async () => {
     mockFetchOnce({ status: 200 })
-    const result = await validateToolKey("youtube_data", "AIzaTest")
+    const result = await validateToolKey("youtube-data-api", "AIzaTest")
     expect(result.valid).toBe(true)
   })
 
@@ -271,7 +271,7 @@ describe("youtube_data validator", () => {
       status: 400,
       json: { error: { errors: [{ reason: "keyInvalid" }] } },
     })
-    const result = await validateToolKey("youtube_data", "AIzaTest")
+    const result = await validateToolKey("youtube-data-api", "AIzaTest")
     expect(result.valid).toBe(false)
     expect(result.error).toMatch(/Invalid YouTube/)
   })
@@ -281,21 +281,21 @@ describe("youtube_data validator", () => {
       status: 403,
       json: { error: { errors: [{ reason: "accessNotConfigured" }] } },
     })
-    const result = await validateToolKey("youtube_data", "AIzaTest")
+    const result = await validateToolKey("youtube-data-api", "AIzaTest")
     expect(result.valid).toBe(false)
     expect(result.error).toMatch(/not enabled/i)
   })
 
   it("returns warning on 500", async () => {
     mockFetchOnce({ status: 500 })
-    const result = await validateToolKey("youtube_data", "AIzaTest")
+    const result = await validateToolKey("youtube-data-api", "AIzaTest")
     expect(result.valid).toBe(true)
     expect(result.warning).toBeDefined()
   })
 
   it("URL-encodes the api key so keys with special chars don't break the URL", async () => {
     mockFetchOnce({ status: 200 })
-    await validateToolKey("youtube_data", "a&b=c")
+    await validateToolKey("youtube-data-api", "a&b=c")
     const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(String(url)).toContain("a%26b%3Dc")
   })

@@ -21,17 +21,16 @@
  *
  * IMPLEMENTED (7 of 26 API_KEY tools):
  *   anthropic_api, tavily, stripe_api, sendgrid, elevenlabs, brave_search,
- *   youtube_data
+ *   youtube-data-api
  *
  * DEFERRED (19) — why each is hard to validate from a single apiKey field:
- *   alpaca         requires key_id + secret_key pair in separate headers
- *   binance        requires HMAC-SHA256 request signing with key + secret
- *   twilio         Basic auth with Account SID + Auth Token pair
- *   mixpanel       service account username + secret pair
- *   twitter_api    OAuth 1.0a (4 values) or OAuth 2.0 Bearer — unclear
- *                  which one a single-field input represents
- *   gsc            Google Search Console is OAuth-only; catalog is
- *                  mislabeled as API_KEY
+ *   alpaca                 requires key_id + secret_key pair in separate headers
+ *   binance                requires HMAC-SHA256 request signing with key + secret
+ *   twilio                 Basic auth with Account SID + Auth Token pair
+ *   mixpanel               service account username + secret pair
+ *   twitter-api            OAuth 1.0a (4 values) or OAuth 2.0 Bearer — unclear
+ *                          which one a single-field input represents
+ *   google-search-console  OAuth-only; catalog is mislabeled as API_KEY
  *   mailgun        domain-scoped sending keys and a new token scheme; no
  *                  universal /me endpoint that works for both
  *   clay           HMAC-signed webhooks; no documented key-validation
@@ -240,7 +239,7 @@ const VALIDATORS: Record<string, ToolValidator> = {
   sendgrid: validateSendGrid,
   elevenlabs: validateElevenLabs,
   brave_search: validateBraveSearch,
-  youtube_data: validateYouTubeData,
+  "youtube-data-api": validateYouTubeData,
 }
 
 /** Exposed for tests to assert coverage. */
