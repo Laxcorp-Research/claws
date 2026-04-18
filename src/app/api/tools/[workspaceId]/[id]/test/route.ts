@@ -6,6 +6,7 @@ import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { decrypt } from "@/lib/encryption"
 import { log } from "@/lib/logger"
 import { validateToolKey, hasValidator } from "@/lib/tools/validators"
+import { getPrimaryCredentialField } from "@/data/tool-catalog"
 
 /**
  * POST /api/tools/[workspaceId]/[id]/test
@@ -84,7 +85,16 @@ export async function POST(
     })
   }
 
-  const result = await validateToolKey(conn.toolSlug, plainKey)
+  // Commit 3 still reads from the legacy encryptedApiKey column. Commit 4
+  // switches the test route to read encryptedCredentials (which already
+  // stores the full credentials record). Until then, wrap the single
+  // decrypted key into the primary envVar of the catalog entry so the
+  // validator receives the new record shape.
+  const primaryField = getPrimaryCredentialField(conn.toolSlug)
+  if (!primaryField) {
+    return ERRORS.VALIDATION(`No credential fields declared for tool '${conn.toolSlug}'`)
+  }
+  const result = await validateToolKey(conn.toolSlug, { [primaryField.envVar]: plainKey })
 
   if (!result.valid) {
     const updated = await prisma.toolConnection.update({

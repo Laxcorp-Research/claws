@@ -6,6 +6,7 @@ import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { encrypt, generateKeyHint } from "@/lib/encryption"
 import { log } from "@/lib/logger"
 import { validateToolKey } from "@/lib/tools/validators"
+import { getPrimaryCredentialField } from "@/data/tool-catalog"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -51,7 +52,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   const data: Record<string, unknown> = { workspaceId, toolSlug, displayName, connectionType, status: "PENDING" }
 
   if (connectionType === "API_KEY" && apiKey) {
-    const validation = await validateToolKey(toolSlug, apiKey)
+    // Commit 3 keeps the {apiKey} body shape; commit 4 switches to
+    // {credentials}. For now, wrap the single field into the catalog's
+    // primary envVar so validators receive the new record shape.
+    const primaryField = getPrimaryCredentialField(toolSlug)
+    if (!primaryField) {
+      return ERRORS.VALIDATION(`No credential fields declared for tool '${toolSlug}'`)
+    }
+    const validation = await validateToolKey(toolSlug, { [primaryField.envVar]: apiKey })
     if (!validation.valid) {
       log.toolEvent({
         event: "failed",
