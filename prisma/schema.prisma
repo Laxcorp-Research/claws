@@ -430,7 +430,22 @@ model ToolConnection {
   connectionType ConnectionType
   displayName    String
 
+  // encryptedApiKey is the legacy single-credential field. It is no longer
+  // written to by new code (see PR #2). Existing rows are backfilled into
+  // encryptedCredentials by prisma/migrations/migrate-to-encrypted-credentials.ts.
+  // The column is retained through PR #2 and dropped in PR #2.5 after prod
+  // verification.
   encryptedApiKey String?
+
+  // encryptedCredentials holds an AES-256-GCM encrypted JSON string of the
+  // credential map, keyed by env-var name (matches credentialFields in
+  // src/data/tool-catalog.ts). Example payload after decrypt:
+  //   {"BINANCE_API_KEY":"...", "BINANCE_API_SECRET":"..."}
+  // Single-cred tools produce a one-key object; multi-cred tools produce
+  // N keys matching their catalog-declared credentialFields. OAUTH_COMPOSIO
+  // and CHANNEL_NATIVE rows leave this null.
+  encryptedCredentials String?
+
   keyHint         String?
 
   composioConnectionId String?
@@ -461,6 +476,12 @@ enum ToolConnectionStatus {
   EXPIRED
   ERROR
   REVOKED
+  // NEEDS_CREDENTIALS: the backfill migrated partial data (e.g. a multi-cred
+  // tool with only the primary API key but missing secret/passphrase). UI
+  // renders this with an amber badge and a "Complete" button that reopens
+  // the CredentialsModal pre-filled with the known field. Terminal states
+  // from here are CONNECTED (once user supplies the rest) or ERROR.
+  NEEDS_CREDENTIALS
 }
 
 // ─── CUSTOM TOOL CONNECTIONS ────────────────────────────
