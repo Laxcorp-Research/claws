@@ -34,7 +34,9 @@ export function DeployProgress({ steps, failureDetail }: DeployProgressProps) {
         ))}
       </div>
       {failedStep && failureDetail && (
-        <p className="text-[11px] text-[var(--err)] mt-2 ml-[26px]">{failureDetail}</p>
+        <p className="text-[11px] text-[var(--err)] mt-2 ml-[26px]">
+          {failureDetail.length > 300 ? `${failureDetail.substring(0, 300)}…` : failureDetail}
+        </p>
       )}
     </div>
   )

@@ -35,6 +35,26 @@ export function sanitizeText(dirty: string): string {
   })
 }
 
+const ACTIVITY_TEXT_MAX_LEN = 500
+
+/**
+ * Normalize free-form activity-log text before it reaches the client.
+ *
+ * ActivityLog.action is rendered verbatim in the dashboard's activity feed
+ * and pending-approvals list. If a writer ever stores a non-plain-text
+ * payload (e.g., a tool response body containing HTML), React escapes the
+ * tags and the user sees a wall of tag-looking characters inline.
+ *
+ * This helper strips any HTML tags and caps length so a single pathological
+ * row can't dominate the feed. Non-HTML text under the cap is unchanged.
+ */
+export function sanitizeActivityText(raw: string | null | undefined): string {
+  if (!raw) return ""
+  const cleaned = sanitizeText(raw).trim()
+  if (cleaned.length <= ACTIVITY_TEXT_MAX_LEN) return cleaned
+  return cleaned.slice(0, ACTIVITY_TEXT_MAX_LEN) + "\u2026"
+}
+
 export function sanitizeMarkdown(dirty: string): string {
   if (!dirty) return ""
   let clean = dirty

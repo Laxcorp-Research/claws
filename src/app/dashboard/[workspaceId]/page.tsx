@@ -18,6 +18,8 @@ import { PendingApprovals } from "@/components/dashboard/pending-approvals"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
+import { isCreditUser } from "@/lib/credits/api-key-source"
+import type { ApiKeySource } from "@/generated/prisma/client"
 
 interface DashboardStats {
   agentsRunning: number
@@ -38,6 +40,7 @@ interface WorkspaceInfo {
   apiSpendLimit: number
   costAlertThreshold: number
   lastHealthCheck?: string
+  apiKeySource?: ApiKeySource
 }
 
 interface AgentInfo {
@@ -476,13 +479,13 @@ export default function DashboardPage() {
         content: (
           <>
             <p className="font-medium">Agent container is not responding</p>
-            <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck)}. Check the agent status panel below.</p>
+            <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck)}. Try redeploying to restore the container.</p>
           </>
         ),
         actions: (
           <div className="flex gap-1.5">
             <Button variant="danger" size="xs" onClick={handleResumeAll}>Force restart</Button>
-            <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Check tools</Button>
+            <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Redeploy</Button>
           </div>
         ),
       })
@@ -555,7 +558,9 @@ export default function DashboardPage() {
       })
     }
 
-    if (trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
+    const creditUser = isCreditUser(workspace?.apiKeySource)
+
+    if (!creditUser && trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
       const trialEnd = trialInfo.trialEndsAt ? new Date(trialInfo.trialEndsAt) : null
       const now = new Date()
       const trialActive = trialEnd && trialEnd > now
@@ -878,7 +883,7 @@ export default function DashboardPage() {
 
       <Modal
         open={redeployModalOpen}
-        onClose={handleRedeployDone}
+        onClose={redeploying ? () => {} : handleRedeployDone}
         title="Redeploying Claw"
         description={
           redeployStatus === "COMPLETED"

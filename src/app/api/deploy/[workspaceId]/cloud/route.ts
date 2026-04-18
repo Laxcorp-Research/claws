@@ -6,6 +6,8 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
 import { log } from "@/lib/logger"
 
+export const maxDuration = 300
+
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const sessionUser = await getSessionUser()
   if (!sessionUser) return ERRORS.UNAUTHORIZED()
@@ -15,7 +17,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "NOT_FOUND") return ERRORS.NOT_FOUND("Workspace")
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
-  if (workspace?.status === "RUNNING") return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
+  if (workspace?.status === "RUNNING" && workspace.containerId) return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: sessionUser.id },
@@ -79,6 +81,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       userId: user.id,
       error: err instanceof Error ? err.message : "Unknown",
     })
-    return apiError("DEPLOY_FAILED", err instanceof Error ? err.message : "Deployment failed", 500)
+    const msg = err instanceof Error ? err.message : "Deployment failed"
+    return apiError("DEPLOY_FAILED", msg.length > 300 ? `${msg.substring(0, 300)}…` : msg, 500)
   }
 }

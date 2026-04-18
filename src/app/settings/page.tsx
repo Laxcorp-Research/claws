@@ -10,10 +10,12 @@ import { BillingDashboard } from "@/components/settings/billing-dashboard"
 import { SecuritySettings } from "@/components/settings/security-settings"
 import { cn } from "@/lib/utils"
 import { CreatorDashboard } from "@/components/settings/creator-dashboard"
+import { UsageDashboard } from "@/components/settings/usage-dashboard"
 
 const TABS = [
   { id: "account", label: "Account" },
   { id: "api-keys", label: "API Keys" },
+  { id: "usage", label: "Usage" },
   { id: "billing", label: "Billing" },
   { id: "security", label: "Security" },
   { id: "creator", label: "Creator" },
@@ -113,6 +115,7 @@ function SettingsContent() {
             <div className="text-center py-10 text-[var(--tx2)] text-[12px]">Loading account...</div>
           )}
           {activeTab === "api-keys" && <ApiKeyManager />}
+          {activeTab === "usage" && <UsageDashboard />}
           {activeTab === "billing" && <BillingDashboard />}
           {activeTab === "security" && <SecuritySettings />}
           {activeTab === "creator" && <CreatorDashboard />}

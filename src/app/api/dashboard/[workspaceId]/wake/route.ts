@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { wakeWorkspace } from "@/lib/hibernation/manager"
 
+export const maxDuration = 300
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }

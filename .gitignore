@@ -70,3 +70,10 @@ audit-report-*.json
 
 # Sentry
 .sentryclirc
+
+# Scratch dirs (defensive — our POC scripts actually live at C:\temp\composio-poc
+# and similar paths outside the repo, but belt-and-suspenders against anyone
+# creating an in-repo scratch by accident)
+composio-poc/
+poc-*/
+/.scratch/

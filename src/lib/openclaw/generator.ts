@@ -157,10 +157,20 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // 3. Generate gateway token for platform↔container communication
   const gatewayToken = generateSecureToken();
 
+  // 4. Resolve heartbeat once. Interval frequencies feed the openclaw.json
+  //    `agents.defaults.heartbeat` field; time-of-day frequencies feed
+  //    cron/jobs.json. Computed up front so both downstream generators stay
+  //    in sync (no risk of one path forgetting to call buildHeartbeatSchedule).
+  const heartbeat = buildHeartbeatSchedule(
+    orchestrator.heartbeatFrequency,
+    orchestrator.heartbeatTime,
+    workspaceWithChannels.timezone,
+  );
+
   // 5. Build all outputs
-  const openclawConfig = generateOpenClawConfig(workspaceWithChannels, orchestrator, workers, critic);
+  const openclawConfig = generateOpenClawConfig(workspaceWithChannels, orchestrator, workers, critic, heartbeat);
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
-  const cronJobs = generateCronJobs(workspaceWithChannels, orchestrator);
+  const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat);
   const workspaces = generateAllWorkspaceFiles(workspaceWithChannels, orchestrator, workers, critic);
 
   return {
@@ -188,6 +198,7 @@ function generateOpenClawConfig(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
+  heartbeat: HeartbeatScheduleResult | null,
 ) {
   const allAgents = [orchestrator, ...workers, critic];
   const workerIds = workers.map(w => toAgentId(w.name));
@@ -225,11 +236,12 @@ function generateOpenClawConfig(
     return entry;
   });
 
-  // Heartbeat config - only the orchestrator runs heartbeats
-  const heartbeatConfig: Record<string, any> = {};
-  if (orchestrator.heartbeatInterval) {
-    heartbeatConfig.every = orchestrator.heartbeatInterval; // e.g. "30m", "1h"
-  }
+  // Heartbeat config - only the orchestrator runs heartbeats.
+  // Interval frequencies (hourly/every_6h/every_12h) live here in
+  // agents.defaults.heartbeat. Time-of-day frequencies (daily/weekday) are
+  // emitted as cron jobs in cron/jobs.json instead, so heartbeat is undefined
+  // here for those cases.
+  const heartbeatInterval = heartbeat?.intervalConfig;
 
   // Channel config - from setup wizard step 4
   const channelsConfig = generateChannelsConfig(workspace);
@@ -259,7 +271,7 @@ function generateOpenClawConfig(
     agents: {
       defaults: {
         model: resolveModel(orchestrator.model),
-        heartbeat: Object.keys(heartbeatConfig).length > 0 ? heartbeatConfig : undefined,
+        heartbeat: heartbeatInterval,
         subagents: {
           // Increase max children for larger Claws (default is 5)
           maxChildrenPerAgent: Math.max(5, workers.length + 1),
@@ -469,13 +481,16 @@ function generateEnvFile(
 
 function generateCronJobs(
   workspace: WorkspaceWithRelations,
-  orchestrator: AgentWithRelations,
+  heartbeat: HeartbeatScheduleResult | null,
 ): any[] {
   const jobs: any[] = [];
 
-  // If the orchestrator has a heartbeat schedule, it's handled by the
-  // gateway's built-in heartbeat runner (agents.defaults.heartbeat.every),
-  // NOT by cron. We only generate cron jobs for additional scheduled tasks.
+  // Time-of-day heartbeat (daily/weekday) is emitted here as a cron job.
+  // Pure interval heartbeats live in agents.defaults.heartbeat and are
+  // handled by the gateway's built-in heartbeat runner instead.
+  if (heartbeat?.cronJob) {
+    jobs.push(heartbeat.cronJob);
+  }
 
   // Add any workspace-specific scheduled tasks from the template
   if (workspace.scheduledTasks && Array.isArray(workspace.scheduledTasks)) {
@@ -1148,13 +1163,127 @@ type AgentWithRelations = {
   soulMd?: string | null;
   agentsMd?: string | null;
   heartbeatMd?: string | null;
-  heartbeatInterval?: string | null;
+  heartbeatFrequency?: string | null;
+  heartbeatTime?: string | null;
   qualityThreshold?: number | null;
   emoji?: string | null;
   skills: { skill: SkillRecord }[];
   outgoingConnections: { targetAgent: { name: string }; condition: string }[];
   incomingConnections: { sourceAgent: { name: string } }[];
 };
+
+/**
+ * Cron job emitted into `cron/jobs.json`. Shape was verified against the
+ * OpenClaw Control UI bundle (the form-state-to-`cron.add`-payload converter)
+ * which round-trips through the gateway's strict Zod schema. Field names that
+ * are NOT verified (e.g. `cronExpression`, `timezone`, `assistant`) are
+ * deliberately avoided.
+ */
+export type HeartbeatCronJob = {
+  name: string;
+  description: string;
+  enabled: boolean;
+  deleteAfterRun: boolean;
+  schedule: { kind: 'cron'; expr: string; tz?: string };
+  sessionTarget: 'main';
+  wakeMode: 'now';
+  payload: { kind: 'agentTurn'; message: string };
+};
+
+/**
+ * Output of `buildHeartbeatSchedule`. Heartbeat frequencies map to one of two
+ * delivery mechanisms:
+ *   - `intervalConfig`: written to `agents.defaults.heartbeat` in
+ *     openclaw.json. Fires every N hours from container start. Used for pure
+ *     interval frequencies (hourly / every_6h / every_12h).
+ *   - `cronJob`: appended to `cron/jobs.json`. Fires at a specific time-of-day
+ *     in the workspace timezone. Used for daily / weekday.
+ * Exactly one is set when the result is non-null. The structure allows both
+ * to be set in the future without changing the API.
+ */
+export type HeartbeatScheduleResult = {
+  intervalConfig?: { every: string };
+  cronJob?: HeartbeatCronJob;
+};
+
+/**
+ * Translates the Builder UI's heartbeat selection (frequency + optional
+ * time-of-day) into an OpenClaw heartbeat descriptor.
+ *
+ * Returns `null` when heartbeat is off, unset, or unknown (caller skips both
+ * the openclaw.json heartbeat field AND the cron job append).
+ *
+ * Frequency mappings (verified shapes only):
+ *   - null / "off" / unknown -> null
+ *   - "hourly"               -> { intervalConfig: { every: "1h" } }
+ *   - "every_6h"             -> { intervalConfig: { every: "6h" } }
+ *   - "every_12h"            -> { intervalConfig: { every: "12h" } }
+ *   - "daily"     at HH:MM   -> { cronJob: { schedule: { kind:'cron', expr:"<m> <h> * * *",   tz } } }
+ *   - "weekday"   at HH:MM   -> { cronJob: { schedule: { kind:'cron', expr:"<m> <h> * * 1-5", tz } } }
+ *
+ * Invalid time strings (e.g. "not-a-time", out-of-range hour) for daily /
+ * weekday degrade to `{ intervalConfig: { every: "1h" } }` so the gateway
+ * still wakes up periodically rather than failing schema validation on a
+ * malformed cron expression.
+ */
+export function buildHeartbeatSchedule(
+  frequency: string | null | undefined,
+  time: string | null | undefined,
+  timezone: string | null | undefined,
+): HeartbeatScheduleResult | null {
+  if (!frequency || frequency === 'off') return null;
+
+  switch (frequency) {
+    case 'hourly':    return { intervalConfig: { every: '1h' } };
+    case 'every_6h':  return { intervalConfig: { every: '6h' } };
+    case 'every_12h': return { intervalConfig: { every: '12h' } };
+  }
+
+  if (frequency !== 'daily' && frequency !== 'weekday') {
+    return null;
+  }
+
+  const rawTime = (time && time.trim().length > 0) ? time : '08:00';
+  const [hourStr, minuteStr] = rawTime.split(':');
+  const hour = parseInt(hourStr, 10);
+  const minute = parseInt(minuteStr, 10);
+
+  if (
+    !Number.isInteger(hour) || !Number.isInteger(minute) ||
+    hour < 0 || hour > 23 ||
+    minute < 0 || minute > 59
+  ) {
+    // Falling back to an interval (vs. returning null) keeps SOME heartbeat
+    // running. The gateway crashes on a malformed cron expr; an interval is safe.
+    return { intervalConfig: { every: '1h' } };
+  }
+
+  const dayOfWeek = frequency === 'weekday' ? '1-5' : '*';
+  const expr = `${minute} ${hour} * * ${dayOfWeek}`;
+  const tz = timezone && timezone.trim().length > 0 ? timezone : undefined;
+
+  return {
+    cronJob: {
+      name: `orchestrator-heartbeat-${frequency}`,
+      description: `Orchestrator heartbeat (${frequency} at ${rawTime}${tz ? ` ${tz}` : ''})`,
+      enabled: true,
+      deleteAfterRun: false,
+      schedule: {
+        kind: 'cron',
+        expr,
+        ...(tz ? { tz } : {}),
+      },
+      sessionTarget: 'main',
+      wakeMode: 'now',
+      payload: {
+        kind: 'agentTurn',
+        message:
+          'Heartbeat. Read HEARTBEAT.md and follow it strictly. ' +
+          'If nothing needs attention, reply HEARTBEAT_OK.',
+      },
+    },
+  };
+}
 
 type SkillRecord = {
   slug: string;

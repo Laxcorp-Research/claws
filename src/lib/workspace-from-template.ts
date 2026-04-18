@@ -8,6 +8,8 @@ interface SnapshotAgent {
   soulMd: string
   agentsMd: string
   heartbeatMd?: string
+  heartbeatFrequency?: string | null
+  heartbeatTime?: string | null
   color?: string
   qualityThreshold?: number
   positionX?: number
@@ -90,6 +92,8 @@ export async function createWorkspaceFromTemplate(
           soulMd: a.soulMd,
           agentsMd: a.agentsMd,
           heartbeatMd: a.heartbeatMd ?? null,
+          heartbeatFrequency: a.heartbeatFrequency ?? null,
+          heartbeatTime: a.heartbeatTime ?? null,
           color: a.color ?? "#5BA1F5",
           qualityThreshold: a.qualityThreshold ?? 8.0,
           positionX: a.positionX ?? 0,

@@ -242,6 +242,9 @@ model Agent {
   userMd        String?  @db.Text
   identityMd    String?  @db.Text
 
+  heartbeatFrequency String?
+  heartbeatTime      String?
+
   model         String   @default("anthropic/claude-sonnet-4-6")
   fallbackModel String?
 

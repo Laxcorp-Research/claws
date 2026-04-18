@@ -5,6 +5,7 @@ import { CustomSelect } from "./custom-select"
 import { HelpTooltip } from "@/components/ui/help-tooltip"
 
 const FREQUENCY_OPTIONS = [
+  { value: "off", label: "Off" },
   { value: "hourly", label: "Every hour" },
   { value: "every_6h", label: "Every 6 hours" },
   { value: "every_12h", label: "Every 12 hours" },
@@ -27,7 +28,7 @@ const TIME_OPTIONS = [
 
 export function HeartbeatConfig() {
   const { heartbeatSchedule, setHeartbeatSchedule } = useBuilderStore()
-  const showTime = heartbeatSchedule.frequency !== "hourly"
+  const showTime = heartbeatSchedule.frequency !== "hourly" && heartbeatSchedule.frequency !== "off"
 
   return (
     <div>

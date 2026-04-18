@@ -22,6 +22,8 @@ import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
+import { isCreditUser } from "@/lib/credits/api-key-source"
+import type { ApiKeySource } from "@/generated/prisma/client"
 
 interface AgentRow {
   id: string
@@ -350,10 +352,49 @@ interface ToolState {
   category: string
   status: ToolRowStatus
   errorMessage?: string
+  /** Non-error informational note (e.g., "saved but not verified"). */
+  warningMessage?: string
   connectionId?: string
   helpUrl?: string
   keyPlaceholder?: string
   required: boolean
+}
+
+interface ServerConnectionSummary {
+  toolSlug: string
+  status: string
+  id: string
+  connectionType?: string
+  lastError?: string | null
+}
+
+function connectionUiState(conn: ServerConnectionSummary): {
+  status: ToolRowStatus
+  errorMessage?: string
+  warningMessage?: string
+} {
+  switch (conn.status) {
+    case "CONNECTED":
+      return { status: "connected" }
+    case "ERROR":
+    case "EXPIRED":
+    case "REVOKED":
+      return {
+        status: "error",
+        errorMessage: conn.lastError ?? "Connection failed",
+      }
+    case "PENDING":
+      // API-key rows end up PENDING when we saved the key but couldn't
+      // verify it (no validator implemented, or provider returned 5xx).
+      // Treat as connected-with-warning — the key is stored and usable —
+      // not as disconnected, which would misrepresent what happened.
+      if (conn.connectionType === "API_KEY" && conn.lastError) {
+        return { status: "connected", warningMessage: conn.lastError }
+      }
+      return { status: "disconnected" }
+    default:
+      return { status: "disconnected" }
+  }
 }
 
 function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isManageMode?: boolean }) {
@@ -392,7 +433,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         if (toolsData.success) {
           setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
         }
-        const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string }> = toolsData.success ? toolsData.data.connections : []
+        const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null }> = toolsData.success ? toolsData.data.connections : []
 
         const buildToolState = (names: string[], required: boolean): ToolState[] =>
           names.map((name) => {
@@ -402,12 +443,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
             const directMatch = existingConnections.find((c) => c.toolSlug === templateSlug)
             if (directMatch) {
+              const ui = connectionUiState(directMatch)
               return {
                 slug: templateSlug,
                 name: def?.name || name,
                 connectionType: def?.connectionType || "API_KEY",
                 category: templateCategory,
-                status: directMatch.status === "CONNECTED" ? "connected" as const : "disconnected" as const,
+                status: ui.status,
+                errorMessage: ui.errorMessage,
+                warningMessage: ui.warningMessage,
                 connectionId: directMatch.id,
                 helpUrl: def?.helpUrl,
                 keyPlaceholder: def?.keyPlaceholder,
@@ -421,12 +465,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             })
             if (swapMatch) {
               const swapDef = getToolBySlug(swapMatch.toolSlug)
+              const ui = connectionUiState(swapMatch)
               return {
                 slug: swapMatch.toolSlug,
                 name: swapDef?.name || swapMatch.displayName || name,
                 connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO",
                 category: templateCategory,
-                status: swapMatch.status === "CONNECTED" ? "connected" as const : "disconnected" as const,
+                status: ui.status,
+                errorMessage: ui.errorMessage,
+                warningMessage: ui.warningMessage,
                 connectionId: swapMatch.id,
                 helpUrl: swapDef?.helpUrl,
                 keyPlaceholder: swapDef?.keyPlaceholder,
@@ -472,11 +519,19 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     const data = await res.json()
     if (!data.success) return
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
-    const existing: Array<{ toolSlug: string; status: string; id: string }> = data.data.connections
+    const existing: ServerConnectionSummary[] = data.data.connections
     setTools((prev) =>
       prev.map((t) => {
         const conn = existing.find((c) => c.toolSlug === t.slug)
-        return conn ? { ...t, status: conn.status === "CONNECTED" ? "connected" as const : "disconnected" as const, connectionId: conn.id } : t
+        if (!conn) return t
+        const ui = connectionUiState(conn)
+        return {
+          ...t,
+          status: ui.status,
+          errorMessage: ui.errorMessage,
+          warningMessage: ui.warningMessage,
+          connectionId: conn.id,
+        }
       })
     )
   }, [workspaceId])
@@ -673,20 +728,36 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
   const handleTest = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return
-    setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "testing" as const, errorMessage: undefined } : t)))
+    setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "testing" as const, errorMessage: undefined, warningMessage: undefined } : t)))
     try {
-      const res = await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lastTestedAt: new Date().toISOString(), status: "CONNECTED" }),
+      const res = await fetch(`/api/tools/${workspaceId}/${tool.connectionId}/test`, {
+        method: "POST",
       })
-      const data = await res.json()
-      if (data.success) {
-        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined } : t)))
-      } else {
-        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "Could not reach the API. The key may have expired or been revoked." } : t)))
+      const body = await res.json()
+
+      if (!body.success) {
+        const msg = body.error?.message || "Test failed"
+        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: msg, warningMessage: undefined } : t)))
+        return
       }
+
+      const result: { valid: boolean; error?: string; warning?: string; unverified?: boolean; message?: string } = body.data
+
+      if (!result.valid) {
+        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: result.error || "Test failed", warningMessage: undefined } : t)))
+        return
+      }
+
+      // Valid, but couldn't fully verify. Show as connected with a yellow note.
+      if (result.unverified || result.warning) {
+        const note = result.message ?? result.warning ?? ""
+        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined, warningMessage: note } : t)))
+        return
+      }
+
+      setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined, warningMessage: undefined } : t)))
     } catch {
-      setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "Could not reach the API. The key may have expired or been revoked." } : t)))
+      setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "Couldn't reach the server. Check your connection and try again.", warningMessage: undefined } : t)))
     }
   }, [workspaceId])
 
@@ -734,6 +805,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               connectionType={tool.connectionType}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
+              warningMessage={tool.warningMessage}
               onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
               onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
@@ -754,6 +826,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               connectionType={tool.connectionType}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
+              warningMessage={tool.warningMessage}
               swappable
               onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
               onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
@@ -895,6 +968,8 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   const [eligibility, setEligibility] = useState<DeployEligibility | null>(null)
   const [subscribing, setSubscribing] = useState(false)
   const [waitingForActivation, setWaitingForActivation] = useState(false)
+  const [apiKeySource, setApiKeySource] = useState<ApiKeySource | null>(null)
+  const creditUser = isCreditUser(apiKeySource)
 
   const checkBillingAndUpdateEligibility = useCallback(async (): Promise<boolean> => {
     try {
@@ -929,12 +1004,17 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         ])
 
         const statusJson = await statusRes.json()
-        if (statusJson.success && statusJson.data.deployment) {
-          const dep = statusJson.data.deployment
-          setDeploymentStatus(dep.status)
-          if (dep.errorMessage) setDeploymentError(dep.errorMessage)
-          if (!["COMPLETED", "FAILED"].includes(dep.status)) {
-            setIsDeploying(true)
+        if (statusJson.success) {
+          if (statusJson.data.apiKeySource) {
+            setApiKeySource(statusJson.data.apiKeySource as ApiKeySource)
+          }
+          if (statusJson.data.deployment) {
+            const dep = statusJson.data.deployment
+            setDeploymentStatus(dep.status)
+            if (dep.errorMessage) setDeploymentError(dep.errorMessage)
+            if (!["COMPLETED", "FAILED"].includes(dep.status)) {
+              setIsDeploying(true)
+            }
           }
         }
       } catch (err) {
@@ -1072,20 +1152,22 @@ function Step3({ workspaceId }: { workspaceId: string }) {
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">Deploy your Claw</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
-      {eligibility?.isFirstDeploy ? (
+      {creditUser ? (
+        <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">Powered by Claws Starter Credits — no payment needed.</p>
+      ) : eligibility?.isFirstDeploy ? (
         <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">3-day free trial - no payment required. $79/mo after trial.</p>
       ) : (
         <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
       )}
 
-      {needsSub && !deploymentStatus && !waitingForActivation && (
+      {!creditUser && needsSub && !deploymentStatus && !waitingForActivation && (
         <AlertBanner variant="warning">
           <p className="font-medium">Your 3-day trial has ended</p>
           <p className="mt-0.5 opacity-80">Subscribe to the Claw Platform ($79/mo) to deploy and run your Claws.</p>
         </AlertBanner>
       )}
 
-      {waitingForActivation && !deploymentStatus && (
+      {!creditUser && waitingForActivation && !deploymentStatus && (
         <AlertBanner variant="info" icon={<Loader2 className="w-4 h-4 animate-spin" />}>
           <p className="font-medium">Payment received — activating your subscription</p>
           <p className="mt-0.5 opacity-80">This usually takes a few seconds. If it doesn&apos;t update, try refreshing the page.</p>
@@ -1093,7 +1175,11 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       {!deploymentStatus && !waitingForActivation && (
-        needsSub ? (
+        creditUser ? (
+          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying}>
+            Deploy Claw
+          </Button>
+        ) : needsSub ? (
           <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
             Subscribe to Deploy - $79/mo
           </Button>

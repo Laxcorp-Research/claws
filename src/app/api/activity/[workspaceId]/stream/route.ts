@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { prisma } from "@/lib/db"
+import { sanitizeActivityText } from "@/lib/security/sanitize"
 
 export const dynamic = "force-dynamic"
 
@@ -112,7 +113,7 @@ function formatLog(log: {
     timestamp: log.timestamp.toISOString(),
     agentName: log.agentName ?? "System",
     agentSlug: log.agentSlug,
-    action: log.action,
+    action: sanitizeActivityText(log.action),
     actionType: log.actionType,
     apiCost: log.apiCost,
   }

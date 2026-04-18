@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { Prisma } from '@/generated/prisma/client';
 import { prismaMock } from '@/test/helpers/mock-prisma';
 import { createMockRequest } from '@/test/helpers/mock-request';
 
@@ -19,16 +20,39 @@ vi.mock('@/lib/logger', () => ({
 
 import { POST } from '@/app/api/deploy/[workspaceId]/cloud/route';
 
+// Mirrors the exact `select` block in the route. If the route adds/removes
+// a selected field, TypeScript will flag every user-mock site in this file.
+// This is what prevents the class of drift that caused the previous CI break.
+type EligibilityUser = Prisma.UserGetPayload<{
+  select: {
+    id: true;
+    trialUsed: true;
+    trialStartedAt: true;
+    trialEndsAt: true;
+    hasActiveSubscription: true;
+  };
+}>;
+
+function makeEligibilityUser(overrides: Partial<EligibilityUser> = {}): EligibilityUser {
+  return {
+    id: 'user-1',
+    trialUsed: false,
+    trialStartedAt: null,
+    trialEndsAt: null,
+    hasActiveSubscription: false,
+    ...overrides,
+  };
+}
+
 function callRoute(workspaceId: string) {
   const req = createMockRequest(`http://localhost:3000/api/deploy/${workspaceId}/cloud`, { method: 'POST' });
   return POST(req, { params: Promise.resolve({ workspaceId }) });
 }
 
-function mockEligibleUser(overrides: Record<string, unknown> = {}) {
-  (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
-    id: 'user-1', trialUsed: false, trialStartedAt: null, trialEndsAt: null, hasActiveSubscription: false,
-    ...overrides,
-  });
+function mockEligibleUser(overrides: Partial<EligibilityUser> = {}) {
+  (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+    makeEligibilityUser(overrides),
+  );
   (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
   (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
   mockDeployToCloud.mockResolvedValue({
@@ -61,7 +85,10 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
 
   it('returns 400 when workspace is already running', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
-    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'RUNNING' } });
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: { id: 'ws-1', status: 'RUNNING', containerId: 'c-1' },
+    });
     const res = await callRoute('ws-1');
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -85,12 +112,15 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
   it('returns 402 when trial expired and no subscription', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-expired' });
     mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'PAUSED' } });
-    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 'user-expired', trialUsed: true,
-      trialStartedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-      trialEndsAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      hasActiveSubscription: false,
-    });
+    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeEligibilityUser({
+        id: 'user-expired',
+        trialUsed: true,
+        trialStartedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        trialEndsAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        hasActiveSubscription: false,
+      }),
+    );
 
     const res = await callRoute('ws-1');
     expect(res.status).toBe(402);

@@ -81,6 +81,9 @@ interface GqlResponse<T = Record<string, unknown>> {
   errors?: Array<{ message: string }>;
 }
 
+const RAILWAY_MAX_RETRIES = 3;
+const RAILWAY_RETRY_DELAYS = [1000, 3000, 8000];
+
 async function railwayGql<T = Record<string, unknown>>(
   query: string,
   variables?: Record<string, unknown>,
@@ -89,31 +92,61 @@ async function railwayGql<T = Record<string, unknown>>(
     throw new Error('RAILWAY_API_TOKEN is not configured');
   }
 
-  const res = await fetch(RAILWAY_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${RAILWAY_TOKEN}`,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+  const body = JSON.stringify({ query, variables });
 
-  if (!res.ok) {
-    throw new Error(`Railway API returned ${res.status}: ${await res.text()}`);
+  for (let attempt = 0; attempt <= RAILWAY_MAX_RETRIES; attempt++) {
+    let res: Response;
+
+    try {
+      res = await fetch(RAILWAY_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${RAILWAY_TOKEN}`,
+        },
+        body,
+        signal: AbortSignal.timeout(90_000),
+      });
+    } catch (networkErr) {
+      if (attempt < RAILWAY_MAX_RETRIES) {
+        log.warn('Railway API network error, retrying', {
+          attempt: attempt + 1,
+          error: networkErr instanceof Error ? networkErr.message : String(networkErr),
+        });
+        await new Promise((r) => setTimeout(r, RAILWAY_RETRY_DELAYS[attempt]));
+        continue;
+      }
+      throw new Error(`Railway API network error after ${RAILWAY_MAX_RETRIES + 1} attempts: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`);
+    }
+
+    if (res.ok) {
+      const json = (await res.json()) as GqlResponse<T>;
+
+      if (json.errors?.length) {
+        const msg = json.errors.map((e) => e.message).join('; ');
+        throw new Error(`Railway GraphQL error: ${msg}`);
+      }
+
+      if (!json.data) {
+        throw new Error('Railway API returned no data');
+      }
+
+      return json.data;
+    }
+
+    if (res.status >= 500 && attempt < RAILWAY_MAX_RETRIES) {
+      log.warn('Railway API 5xx, retrying', { status: res.status, attempt: attempt + 1 });
+      await new Promise((r) => setTimeout(r, RAILWAY_RETRY_DELAYS[attempt]));
+      continue;
+    }
+
+    const respBody = await res.text();
+    const isHtml = respBody.trimStart().startsWith('<');
+    const detail = isHtml ? `(HTML error page)` : respBody.substring(0, 200);
+    throw new Error(`Railway API returned ${res.status}: ${detail}`);
   }
 
-  const json = (await res.json()) as GqlResponse<T>;
-
-  if (json.errors?.length) {
-    const msg = json.errors.map((e) => e.message).join('; ');
-    throw new Error(`Railway GraphQL error: ${msg}`);
-  }
-
-  if (!json.data) {
-    throw new Error('Railway API returned no data');
-  }
-
-  return json.data;
+  throw new Error('Railway API: unreachable');
 }
 
 // ---------------------------------------------------------------------------
