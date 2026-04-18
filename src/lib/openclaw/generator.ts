@@ -1157,6 +1157,70 @@ On gateway startup:
 // that aren't already bundled.
 // ---------------------------------------------------------------------------
 
+/**
+ * Strip a leading YAML frontmatter block (`---\n...\n---\n`) from a markdown
+ * string. Seeds in `prisma/seed-data/skills-tool-specific.ts` carry their
+ * own frontmatter at the top of `skillMd` for readability during authoring.
+ * The generator builds authoritative frontmatter from Prisma columns +
+ * tool catalog, so seed-carried frontmatter is dead weight and creates a
+ * visual "double --- block" in the emitted SKILL.md if not stripped.
+ *
+ * Conservative match: only strip when the string starts with `---\n`,
+ * contains another `---\n` line within the first ~100 lines, and the
+ * intervening content parses as valid YAML-like (we don't actually parse;
+ * we trust the shape). If the string doesn't start with `---\n`, return
+ * unchanged (body-only seeds pass through).
+ */
+function stripLeadingFrontmatter(md: string): string {
+  if (!md.startsWith('---\n') && !md.startsWith('---\r\n')) return md;
+  // Match `---\n<non-greedy anything>\n---\n` (accept \r\n too).
+  const match = md.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n+/);
+  if (!match) return md;
+  return md.slice(match[0].length);
+}
+
+/**
+ * Look up the primaryEnv + requires.env for a skill based on its first
+ * compatibleTool's catalog entry. Returns null (no env declaration) for:
+ *   - Skills with no compatibleTools (shouldn't happen for tool-specific
+ *     skills, but built-in or agnostic skills may legitimately have none).
+ *   - OAUTH_COMPOSIO tools (credentials flow through Composio; no env
+ *     declaration needed and declaring one is wrong).
+ *   - Orphan slugs (not in catalog — logged warning at generator time so
+ *     tests catch this early).
+ *
+ * The returned `requiresEnv` array omits `primaryEnv` (single-cred tools
+ * get only `primaryEnv`; multi-cred tools get `requires.env` with all
+ * fields and NO `primaryEnv`, matching Trello's bundled frontmatter per
+ * docs/ENV_VAR_CONVENTION.md).
+ */
+function resolveSkillFrontmatterEnv(
+  skillSlug: string,
+  compatibleTools: string[] | null | undefined,
+): { primaryEnv?: string; requiresEnv: string[] } | null {
+  if (!compatibleTools || compatibleTools.length === 0) return null;
+  const toolSlug = compatibleTools[0];
+  const tool = getToolBySlug(toolSlug);
+  if (!tool) {
+    console.warn(
+      `[generator] skill '${skillSlug}' references tool '${toolSlug}' which is not in the catalog. ` +
+        `No frontmatter env declaration will be emitted. This skill's credentials will not pass the runtime sanitizer.`,
+    );
+    return null;
+  }
+  if (tool.connectionType !== 'API_KEY') return null;
+  const fields = tool.credentialFields;
+  if (fields.length === 0) return null;
+
+  if (fields.length === 1) {
+    // Single-cred: declare both primaryEnv AND requires.env with the same name.
+    return { primaryEnv: fields[0].envVar, requiresEnv: [fields[0].envVar] };
+  }
+
+  // Multi-cred: declare requires.env with all names, no primaryEnv.
+  return { requiresEnv: fields.map((f) => f.envVar) };
+}
+
 function generateSkillFiles(
   agent: AgentWithRelations,
 ): Record<string, { 'SKILL.md': string }> {
@@ -1165,28 +1229,40 @@ function generateSkillFiles(
   for (const agentSkill of agent.skills) {
     const skill = agentSkill.skill;
 
-    // Build YAML frontmatter
-    const metadata: Record<string, any> = {
-      openclaw: {
-        ...(skill.emoji && { emoji: skill.emoji }),
-        ...(skill.requiredBins && skill.requiredBins.length > 0 && {
-          requires: { bins: skill.requiredBins },
-        }),
-      },
+    const envFrontmatter = resolveSkillFrontmatterEnv(skill.slug, skill.compatibleTools ?? null);
+
+    // Build the `metadata.openclaw.requires` sub-object incrementally so we
+    // emit `{ bins: [...] }`, `{ env: [...] }`, both, or neither as
+    // appropriate — Trello's bundled shape has both; a bin-only skill has
+    // only bins; a pure-env skill has only env.
+    const requires: Record<string, string[]> = {};
+    if (skill.requiredBins && skill.requiredBins.length > 0) {
+      requires.bins = skill.requiredBins;
+    }
+    if (envFrontmatter) {
+      requires.env = envFrontmatter.requiresEnv;
+    }
+
+    const openclawMeta: Record<string, unknown> = {
+      ...(skill.emoji && { emoji: skill.emoji }),
+      ...(envFrontmatter?.primaryEnv && { primaryEnv: envFrontmatter.primaryEnv }),
+      ...(Object.keys(requires).length > 0 && { requires }),
     };
 
-    const frontmatter: Record<string, any> = {
+    const frontmatter: Record<string, unknown> = {
       name: skill.slug,
       description: skill.description,
     };
 
-    // Only include metadata if it has content
-    if (Object.keys(metadata.openclaw).length > 0) {
-      frontmatter.metadata = metadata;
+    if (Object.keys(openclawMeta).length > 0) {
+      frontmatter.metadata = { openclaw: openclawMeta };
     }
 
     const yamlStr = yaml.stringify(frontmatter, { lineWidth: 0 });
-    const body = skill.skillMd || `# ${skill.name}\n\nNo instructions provided.`;
+    const rawBody = skill.skillMd || `# ${skill.name}\n\nNo instructions provided.`;
+    // Strip any seed-carried frontmatter block — the generator-built
+    // frontmatter above is authoritative. See stripLeadingFrontmatter docs.
+    const body = stripLeadingFrontmatter(rawBody);
 
     skills[skill.slug] = {
       'SKILL.md': `---\n${yamlStr}---\n\n${body}`,
@@ -1354,6 +1430,7 @@ type SkillRecord = {
   description: string;
   emoji?: string | null;
   requiredBins?: string[] | null;
+  compatibleTools?: string[] | null;
   skillMd?: string | null;
 };
 
