@@ -397,6 +397,17 @@ function connectionUiState(conn: ServerConnectionSummary): {
         status: "error",
         errorMessage: conn.lastError ?? "Connection failed",
       }
+    case "NEEDS_CREDENTIALS":
+      // PR #2 backfill outcome for multi-cred tools that held only the
+      // primary key in the legacy encryptedApiKey column. Server flipped
+      // status to NEEDS_CREDENTIALS + populated lastError with the list
+      // of missing fields; UI renders amber badge + Complete button.
+      return {
+        status: "needs-credentials",
+        warningMessage:
+          conn.lastError ??
+          "Some required fields are missing. Click Complete to finish setting this up.",
+      }
     case "PENDING":
       // API-key rows end up PENDING when we saved the key but couldn't
       // verify it (no validator implemented, or provider returned 5xx).

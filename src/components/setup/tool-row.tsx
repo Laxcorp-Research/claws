@@ -2,9 +2,21 @@
 
 import { cn } from "@/lib/utils"
 import { StatusDot } from "@/components/ui/status-dot"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react"
 
-export type ToolRowStatus = "connected" | "disconnected" | "error" | "connecting" | "testing"
+export type ToolRowStatus =
+  | "connected"
+  | "disconnected"
+  | "error"
+  | "connecting"
+  | "testing"
+  // PR #2: backfill or user save carried the primary credential but the tool
+  // is multi-cred (e.g. binance needs secret; coinbase needs secret +
+  // passphrase). UI renders an amber "Incomplete credentials" badge and
+  // a "Complete" button that reopens the CredentialsModal with all fields
+  // blank for the user to re-enter everything including the known field
+  // (we intentionally don't surface any decrypted value to the UI).
+  | "needs-credentials"
 
 interface ToolRowProps {
   name: string
@@ -28,6 +40,7 @@ interface ToolRowProps {
 export function ToolRow({ name, description, connectionStatus, connectionType, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, onConnect, onSwap, onTest, onDisconnect, onReconnect, className }: ToolRowProps) {
   const isError = connectionStatus === "error"
   const isTesting = connectionStatus === "testing"
+  const needsCredentials = connectionStatus === "needs-credentials"
 
   return (
     <div className={cn("px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0", className)}>
@@ -35,6 +48,8 @@ export function ToolRow({ name, description, connectionStatus, connectionType, c
         <div className="flex items-center gap-2">
           {isError ? (
             <AlertTriangle className="w-3.5 h-3.5 text-[var(--err)] shrink-0" aria-hidden="true" />
+          ) : needsCredentials ? (
+            <AlertCircle className="w-3.5 h-3.5 text-[var(--warn)] shrink-0" aria-hidden="true" />
           ) : (
             <StatusDot status={connectionStatus === "connected" || isTesting ? "connected" : connectionStatus === "connecting" ? "connecting" : "disconnected"} />
           )}
@@ -43,6 +58,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, c
             {description && <div className="text-[10px] text-[var(--tx2)]">{description}</div>}
             {connectionStatus === "connecting" && <div className="text-[10px] text-[var(--ac)] mt-0.5 inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Connecting...</div>}
             {isError && !errorMessage && <div className="text-[10px] text-[var(--err)] mt-0.5">Connection failed</div>}
+            {needsCredentials && <div className="text-[10px] text-[var(--warn)] mt-0.5">Incomplete credentials</div>}
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -79,8 +95,16 @@ export function ToolRow({ name, description, connectionStatus, connectionType, c
           {isError && (onReconnect || onConnect) && (
             <button onClick={onReconnect || onConnect} className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--err)] text-[var(--err)] hover:bg-[var(--errbg)] transition-colors">Retry</button>
           )}
+          {needsCredentials && (onReconnect || onConnect) && (
+            <button onClick={onReconnect || onConnect} className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--warn)] text-[var(--warn)] hover:bg-[color:color-mix(in_oklab,var(--warn)_12%,transparent)] transition-colors">
+              Complete
+            </button>
+          )}
         </div>
       </div>
+      {needsCredentials && warningMessage && (
+        <p className="text-[11px] text-[var(--warn)] mt-1.5 ml-[22px]">{warningMessage}</p>
+      )}
       {isError && errorMessage && (
         <p className="text-[11px] text-[var(--err)] mt-1.5 ml-[22px]">
           {errorMessage}
