@@ -21,6 +21,7 @@
 import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { generateSecureToken } from '@/lib/crypto';
+import { getToolBySlug } from '@/data/tool-catalog';
 import yaml from 'yaml';
 
 // ---------------------------------------------------------------------------
@@ -370,29 +371,69 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): Record<strin
 // the skill in the catalog.
 // ---------------------------------------------------------------------------
 
+/**
+ * Build `openclaw.json > skills.entries` from the user's ToolConnection rows.
+ *
+ * For each API_KEY ToolConnection with a populated encryptedCredentials
+ * column, decrypt the JSON payload (a `Record<envVar, value>`) and emit
+ * `skills.entries[toolSlug] = { enabled: true, env: <decrypted record> }`.
+ *
+ * Skipped rows:
+ *   - `connectionType !== 'API_KEY'` (OAUTH_COMPOSIO, CHANNEL_NATIVE —
+ *     Composio handles OAuth at runtime; channel tokens live elsewhere.
+ *     See docs/COMPOSIO_RUNTIME_CONTRACT.md).
+ *   - `encryptedCredentials IS NULL` (row was created but never had
+ *     credentials saved; happens during race between row insert and the
+ *     connect flow, or for rows awaiting backfill).
+ *   - `status === 'NEEDS_CREDENTIALS'` (row holds partial data — shipping
+ *     it to the container would hand the skill a broken env, better to
+ *     skip and let the UI re-prompt).
+ *   - Decrypt/parse failures (logged as console.warn, row skipped; a
+ *     partial workspace is less harmful than a crashed generator).
+ *
+ * Note: the key of `skills.entries` is the `toolSlug`, NOT a `skillSlug`.
+ * OpenClaw resolves skill names via the `skills.entries[<slug>]` lookup
+ * itself; our catalog slug == the skill name for tool-backed skills in
+ * the seed data (see docs/ENV_VAR_CONVENTION.md §"skills.entries").
+ */
 function generateSkillsEntriesConfig(
   workspace: WorkspaceWithRelations,
 ): Record<string, any> {
   const entries: Record<string, any> = {};
 
   for (const toolConn of workspace.toolConnections) {
-    // Only tools with associated skills need entries
-    if (!toolConn.skillSlug) continue;
+    if (toolConn.connectionType !== 'API_KEY') continue;
+    if (!toolConn.encryptedCredentials) continue;
+    if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
 
-    const entry: Record<string, any> = { enabled: true };
-
-    // Map tool credentials to skill env vars
-    if (toolConn.envVarMapping && typeof toolConn.envVarMapping === 'object') {
-      const envVars: Record<string, string> = {};
-      for (const [envName, encryptedValue] of Object.entries(toolConn.envVarMapping as Record<string, string>)) {
-        envVars[envName] = decrypt(encryptedValue);
+    let decrypted: Record<string, string>;
+    try {
+      const plaintext = decrypt(toolConn.encryptedCredentials);
+      const parsed = JSON.parse(plaintext);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        console.warn(
+          `[generator] skipping tool ${toolConn.toolSlug}: encryptedCredentials plaintext is not a JSON object`,
+        );
+        continue;
       }
-      if (Object.keys(envVars).length > 0) {
-        entry.env = envVars;
-      }
+      decrypted = parsed as Record<string, string>;
+    } catch (err) {
+      console.warn(
+        `[generator] skipping tool ${toolConn.toolSlug}: decrypt/parse failed (${err instanceof Error ? err.message : String(err)})`,
+      );
+      continue;
     }
 
-    entries[toolConn.skillSlug] = entry;
+    // Keep only string values; the schema guarantees this at write time
+    // (src/app/api/tools/[workspaceId]/route.ts) but defensively filter in
+    // case a row was produced before tighter validation landed.
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(decrypted)) {
+      if (typeof v === 'string' && v.length > 0) env[k] = v;
+    }
+    if (Object.keys(env).length === 0) continue;
+
+    entries[toolConn.toolSlug] = { enabled: true, env };
   }
 
   return entries;
@@ -993,17 +1034,40 @@ function generateIdentityMd(agent: AgentWithRelations): string {
 // Actual tool credentials are in openclaw.json skills.entries (NOT here).
 // ---------------------------------------------------------------------------
 
+/**
+ * Build a per-agent TOOLS.md section listing the workspace's connected
+ * tools. Sections read from real ToolConnection fields (displayName,
+ * connectionType, status) plus the catalog name as a fallback when a
+ * displayName is absent. PR #1b's phantom-fields bug came from reading
+ * non-existent `toolName` and `notes` columns here; the Prisma model has
+ * neither.
+ */
 function generateToolsMd(
   workspace: WorkspaceWithRelations,
-  agent: AgentWithRelations,
+  _agent: AgentWithRelations,
 ): string {
   const toolSections: string[] = [];
 
   for (const toolConn of workspace.toolConnections) {
-    const section = `### ${toolConn.toolName}
+    // Prefer the user-visible displayName; fall back to the catalog name;
+    // last resort, the toolSlug itself. Never emits `### undefined`.
+    const catalogTool = getToolBySlug(toolConn.toolSlug);
+    const name =
+      toolConn.displayName?.trim() ||
+      catalogTool?.name ||
+      toolConn.toolSlug;
+
+    const statusLabel =
+      toolConn.status === 'CONNECTED'
+        ? 'Connected'
+        : toolConn.status === 'NEEDS_CREDENTIALS'
+          ? 'Needs credentials (partial data — agent should treat as unavailable)'
+          : `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+
+    const section = `### ${name}
+- Slug: \`${toolConn.toolSlug}\`
 - Connection type: ${toolConn.connectionType}
-- Status: Connected
-${toolConn.notes ? `- Notes: ${toolConn.notes}` : ''}`;
+- Status: ${statusLabel}`;
     toolSections.push(section);
   }
 
@@ -1022,7 +1086,7 @@ ${toolSections.join('\n\n')}
 
 ## Notes
 
-- Tool credentials are configured automatically. Use the corresponding skills to interact with these tools.
+- Tool credentials are configured automatically via openclaw.json skills.entries. Use the corresponding skills to interact with these tools.
 - If a tool connection fails, advise the human to reconnect in the Claws Settings page.
 `;
 }
@@ -1294,12 +1358,17 @@ type SkillRecord = {
   skillMd?: string | null;
 };
 
+/**
+ * Subset of `prisma.ToolConnection` fields the generator actually reads.
+ * Kept minimal so any future schema change that drops one of these fails
+ * at type-check time (once PR #3 removes the `@ts-nocheck` directive above).
+ */
 type ToolConnectionRecord = {
-  toolName: string;
-  connectionType: string;
-  skillSlug?: string | null;
-  envVarMapping?: any;
-  notes?: string | null;
+  toolSlug: string;
+  displayName: string | null;
+  connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE' | string;
+  status: string;
+  encryptedCredentials: string | null;
 };
 
 type ChannelConnectionRecord = {

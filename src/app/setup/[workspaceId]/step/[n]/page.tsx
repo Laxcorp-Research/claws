@@ -7,7 +7,7 @@ import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
 import { ToolConnectionList } from "@/components/setup/tool-connection-list"
 import { ToolRow, type ToolRowStatus } from "@/components/setup/tool-row"
-import { ApiKeyModal } from "@/components/setup/api-key-modal"
+import { CredentialsModal } from "@/components/setup/credentials-modal"
 import { ToolSwapModal } from "@/components/setup/tool-swap-modal"
 import { BrowseToolsModal } from "@/components/setup/browse-tools-modal"
 import { CustomApiModal } from "@/components/setup/custom-api-modal"
@@ -19,7 +19,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
-import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition, type ToolCredentialField } from "@/data/tool-catalog"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
@@ -317,15 +317,29 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         </Button>
       </div>
 
-      {/* Override Modal */}
+      {/* AI Provider Override Modal — uses CredentialsModal with a
+          synthesized 1-field descriptor. The backend endpoint for AI
+          provider keys is /api/workspaces/[id]/api-keys, which is a
+          different path than the tool-connection endpoint and still
+          expects { provider, apiKey } in the body. We extract the
+          single field from the credentials record before posting. */}
       {overrideModal && (
-        <ApiKeyModal
+        <CredentialsModal
           open={true}
           onClose={() => setOverrideModal(null)}
           toolName={overrideModal.providerName}
           helpUrl={PROVIDER_HELP[overrideModal.provider]}
-          keyPlaceholder={PROVIDER_PLACEHOLDER[overrideModal.provider]}
-          onSave={async (apiKey) => {
+          credentialFields={[
+            {
+              envVar: `${overrideModal.provider}_API_KEY`,
+              label: "API Key",
+              required: true,
+              primary: true,
+              placeholder: PROVIDER_PLACEHOLDER[overrideModal.provider],
+            },
+          ]}
+          onSave={async (credentials) => {
+            const apiKey = Object.values(credentials)[0] ?? ""
             const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`, {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ provider: overrideModal.provider, apiKey }),
@@ -382,6 +396,17 @@ function connectionUiState(conn: ServerConnectionSummary): {
       return {
         status: "error",
         errorMessage: conn.lastError ?? "Connection failed",
+      }
+    case "NEEDS_CREDENTIALS":
+      // PR #2 backfill outcome for multi-cred tools that held only the
+      // primary key in the legacy encryptedApiKey column. Server flipped
+      // status to NEEDS_CREDENTIALS + populated lastError with the list
+      // of missing fields; UI renders amber badge + Complete button.
+      return {
+        status: "needs-credentials",
+        warningMessage:
+          conn.lastError ??
+          "Some required fields are missing. Click Complete to finish setting this up.",
       }
     case "PENDING":
       // API-key rows end up PENDING when we saved the key but couldn't
@@ -536,12 +561,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     )
   }, [workspaceId])
 
-  const handleApiKeySave = useCallback(async (apiKey: string): Promise<{ success: boolean; error?: string }> => {
+  const handleCredentialsSave = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
     if (!apiKeyModal.tool) return { success: false, error: "No tool selected" }
     try {
       const res = await fetch(`/api/tools/${workspaceId}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toolSlug: apiKeyModal.tool.slug, displayName: apiKeyModal.tool.name, connectionType: "API_KEY", apiKey }),
+        body: JSON.stringify({
+          toolSlug: apiKeyModal.tool.slug,
+          displayName: apiKeyModal.tool.name,
+          connectionType: "API_KEY",
+          credentials,
+        }),
       })
       const data = await res.json()
       if (data.success) { await refreshTools(); return { success: true } }
@@ -857,13 +887,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
 
       {/* Modals */}
-      <ApiKeyModal
+      <CredentialsModal
         open={apiKeyModal.open}
         onClose={() => setApiKeyModal({ open: false, tool: null })}
         toolName={apiKeyModal.tool?.name || ""}
         helpUrl={apiKeyModal.tool?.helpUrl}
-        keyPlaceholder={apiKeyModal.tool?.keyPlaceholder}
-        onSave={handleApiKeySave}
+        credentialFields={
+          apiKeyModal.tool ? getToolBySlug(apiKeyModal.tool.slug)?.credentialFields ?? [] : []
+        }
+        onSave={handleCredentialsSave}
       />
       <ToolSwapModal
         open={swapModal.open}

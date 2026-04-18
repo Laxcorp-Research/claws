@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StatusDot } from "@/components/ui/status-dot"
-import { ApiKeyModal } from "./api-key-modal"
+import { CredentialsModal } from "./credentials-modal"
 import { ALL_TOOLS, TOOL_CATEGORIES, type ToolDefinition } from "@/data/tool-catalog"
 
 interface BrowseToolsModalProps {
@@ -200,13 +200,13 @@ export function BrowseToolsModal({
       </Modal>
 
       {apiKeyTool && (
-        <ApiKeyModal
+        <CredentialsModal
           open={true}
           onClose={() => setApiKeyTool(null)}
           toolName={apiKeyTool.name}
           helpUrl={apiKeyTool.helpUrl}
-          keyPlaceholder={apiKeyTool.keyPlaceholder}
-          onSave={async (apiKey) => {
+          credentialFields={apiKeyTool.credentialFields}
+          onSave={async (credentials) => {
             if (!workspaceId) return { success: false, error: "No workspace" }
             try {
               const res = await fetch(`/api/tools/${workspaceId}`, {
@@ -216,7 +216,7 @@ export function BrowseToolsModal({
                   toolSlug: apiKeyTool.slug,
                   displayName: apiKeyTool.name,
                   connectionType: "API_KEY",
-                  apiKey,
+                  credentials,
                 }),
               })
               const data = await res.json()

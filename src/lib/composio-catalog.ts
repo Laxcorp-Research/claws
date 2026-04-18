@@ -33,6 +33,10 @@ function toolkitItemToToolDefinition(item: ToolkitListResponse.Item): ToolDefini
     connectionType: mapAuthToConnectionType(item.auth_schemes),
     composioToolkitId: item.slug,
     isAIProvider: false,
+    // Dynamic Composio catalog entries are always OAUTH-managed; their
+    // credentials are held by Composio, not by us. Static catalog entries
+    // in src/data/tool-catalog.ts declare their own credentialFields.
+    credentialFields: [],
   }
 }
 
