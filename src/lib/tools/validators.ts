@@ -14,14 +14,13 @@
  * Rate-limit responses (429) are treated as valid — the key works, the
  * account is just throttled right now.
  *
- * IMPLEMENTED (12 of 29 API_KEY tools after PR #2):
+ * IMPLEMENTED (13 of 29 API_KEY tools after PR #3a):
  *   anthropic_api, tavily, stripe_api, sendgrid, elevenlabs, brave_search,
- *   youtube-data-api, binance, alpaca, coinbase, salesforce-api, beehiiv-api
+ *   youtube-data-api, binance, alpaca, coinbase, salesforce-api, beehiiv-api,
+ *   twilio (promoted to multi-cred in PR #3a)
  *
- * DEFERRED (17 — why each is hard to validate from whatever credentials we
+ * DEFERRED (16 — why each is hard to validate from whatever credentials we
  * persist today):
- *   twilio          Basic auth with Account SID + Auth Token pair; our
- *                   catalog only stores the token, not the SID
  *   mixpanel        service-account username + secret pair; our catalog
  *                   only stores the secret
  *   twitter-api     OAuth 1.0a (4 values) or OAuth 2.0 Bearer — unclear
@@ -439,6 +438,45 @@ async function validateSalesforceApi(
   return { valid: false, error: `Salesforce returned ${res.status}` }
 }
 
+/**
+ * Twilio: HTTP Basic Auth with Account SID (username) + Auth Token
+ * (password). `GET /2010-04-01/Accounts/{sid}.json` is the canonical
+ * self-probe and is free (no usage charged). 401 on wrong creds.
+ */
+async function validateTwilio(
+  credentials: Record<string, string>,
+): Promise<ValidationResult> {
+  const miss = requireFields(
+    credentials,
+    ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+    "Twilio",
+  )
+  if (miss) return miss
+
+  const sid = credentials.TWILIO_ACCOUNT_SID.trim()
+  const token = credentials.TWILIO_AUTH_TOKEN.trim()
+
+  // Account SIDs start with "AC" and are 34 chars long. Cheap sanity check
+  // before spending the round-trip on a clearly malformed value.
+  if (!/^AC[a-f0-9]{32}$/i.test(sid)) {
+    return { valid: false, error: "TWILIO_ACCOUNT_SID must start with 'AC' and be 34 chars total" }
+  }
+
+  const basic = Buffer.from(`${sid}:${token}`).toString("base64")
+  const res = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}.json`,
+    {
+      headers: { Authorization: `Basic ${basic}` },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    },
+  )
+
+  const byStatus = classifyByStatus(res.status, "Twilio")
+  if (byStatus) return byStatus
+  if (res.ok) return { valid: true }
+  return { valid: false, error: `Twilio returned ${res.status}` }
+}
+
 /** Beehiiv pub IDs look like `pub_<uuid>`. We don't require that format. */
 async function validateBeehiivApi(
   credentials: Record<string, string>,
@@ -480,6 +518,7 @@ const VALIDATORS: Record<string, ToolValidator> = {
   coinbase: validateCoinbase,
   "salesforce-api": validateSalesforceApi,
   "beehiiv-api": validateBeehiivApi,
+  twilio: validateTwilio,
 }
 
 /** Exposed for tests to assert coverage. */

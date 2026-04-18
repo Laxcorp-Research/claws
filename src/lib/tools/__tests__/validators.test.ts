@@ -84,7 +84,7 @@ describe("validateToolKey dispatch", () => {
 })
 
 describe("IMPLEMENTED_SLUGS", () => {
-  it("contains all 12 confident validators after PR #2", () => {
+  it("contains all 13 confident validators after PR #3a", () => {
     expect([...IMPLEMENTED_SLUGS].sort()).toEqual(
       [
         "alpaca",
@@ -98,6 +98,7 @@ describe("IMPLEMENTED_SLUGS", () => {
         "sendgrid",
         "stripe_api",
         "tavily",
+        "twilio",
         "youtube-data-api",
       ].sort(),
     )
@@ -106,7 +107,8 @@ describe("IMPLEMENTED_SLUGS", () => {
   it("hasValidator reflects the registry", () => {
     expect(hasValidator("stripe_api")).toBe(true)
     expect(hasValidator("binance")).toBe(true)
-    expect(hasValidator("twilio")).toBe(false)
+    expect(hasValidator("twilio")).toBe(true)
+    expect(hasValidator("mailgun")).toBe(false)
   })
 })
 
@@ -499,6 +501,57 @@ describe("salesforce-api validator (multi-cred)", () => {
     const headers = init?.headers as Record<string, string>
     expect(String(url)).toContain("mydomain.my.salesforce.com/services/data/v59.0/")
     expect(headers.Authorization).toBe("Bearer 00D-token")
+  })
+})
+
+describe("twilio validator (multi-cred, Basic auth)", () => {
+  const validCreds = {
+    TWILIO_ACCOUNT_SID: "AC" + "a".repeat(32),
+    TWILIO_AUTH_TOKEN: "auth-token-value",
+  }
+
+  it("returns valid on 200", async () => {
+    mockFetchOnce({ status: 200 })
+    const result = await validateToolKey("twilio", validCreds)
+    expect(result.valid).toBe(true)
+  })
+
+  it("returns invalid on 401", async () => {
+    mockFetchOnce({ status: 401 })
+    const result = await validateToolKey("twilio", validCreds)
+    expect(result.valid).toBe(false)
+    expect(result.error).toMatch(/Twilio/)
+  })
+
+  it("rejects malformed SID before hitting the network", async () => {
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+    const result = await validateToolKey("twilio", {
+      TWILIO_ACCOUNT_SID: "not-a-sid",
+      TWILIO_AUTH_TOKEN: "tok",
+    })
+    expect(result.valid).toBe(false)
+    expect(result.error).toMatch(/AC.*34 chars/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("rejects when either field missing", async () => {
+    const r1 = await validateToolKey("twilio", { TWILIO_AUTH_TOKEN: "tok" })
+    expect(r1.valid).toBe(false)
+    expect(r1.error).toMatch(/TWILIO_ACCOUNT_SID/i)
+    const r2 = await validateToolKey("twilio", { TWILIO_ACCOUNT_SID: "AC" + "a".repeat(32) })
+    expect(r2.valid).toBe(false)
+    expect(r2.error).toMatch(/TWILIO_AUTH_TOKEN/i)
+  })
+
+  it("sends Basic auth header with base64(sid:token)", async () => {
+    mockFetchOnce({ status: 200 })
+    await validateToolKey("twilio", validCreds)
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const headers = init?.headers as Record<string, string>
+    expect(String(url)).toContain(`/Accounts/${validCreds.TWILIO_ACCOUNT_SID}.json`)
+    const expectedAuth = `Basic ${Buffer.from(`${validCreds.TWILIO_ACCOUNT_SID}:${validCreds.TWILIO_AUTH_TOKEN}`).toString("base64")}`
+    expect(headers.Authorization).toBe(expectedAuth)
   })
 })
 
