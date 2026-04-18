@@ -64,33 +64,43 @@ async function main() {
 
   console.log(`  Seeded ${ALL_TEMPLATES.length} Claw templates\n`)
 
-  await prisma.skill.deleteMany()
-  console.log("  Cleared existing skills")
-
+  // Upsert by slug (PR #3a). Previous version called deleteMany() + create(),
+  // which cascade-deletes every AgentSkill row because Skill is the parent
+  // in that FK relation — i.e. running seed on a populated DB wiped skill
+  // assignments for every user. Upsert preserves agent->skill wiring and
+  // still propagates field changes (skillMd, permissions, etc.) to existing
+  // rows.
+  //
+  // Skills dropped from ALL_SKILLS between seed runs are left untouched in
+  // the DB (orphan rows). Cleanup of stale rows is a separate operator step;
+  // doing it here without a whitelist of currently-expected slugs would
+  // re-introduce the cascade-delete footgun.
+  const seedSkillSlugs = ALL_SKILLS.map((s) => s.slug)
   for (const skill of ALL_SKILLS) {
-    await prisma.skill.create({
-      data: {
-        name: skill.name,
-        slug: skill.slug,
-        description: skill.description,
-        skillMd: skill.skillMd,
-        type: skill.type,
-        category: skill.category,
-        icon: skill.icon,
-        compatibleTools: skill.compatibleTools,
-        requiresToolConnection: skill.requiresToolConnection,
-        requiredToolCategory: skill.requiredToolCategory ?? null,
-        isVerified: true,
-        isBuiltIn: skill.isBuiltIn,
-        isCurated: true,
-        version: 1,
-        permissions: skill.permissions,
-      },
+    const data = {
+      name: skill.name,
+      description: skill.description,
+      skillMd: skill.skillMd,
+      type: skill.type,
+      category: skill.category,
+      icon: skill.icon,
+      compatibleTools: skill.compatibleTools,
+      requiresToolConnection: skill.requiresToolConnection,
+      requiredToolCategory: skill.requiredToolCategory ?? null,
+      isVerified: true,
+      isBuiltIn: skill.isBuiltIn,
+      isCurated: true,
+      permissions: skill.permissions,
+    }
+    await prisma.skill.upsert({
+      where: { slug: skill.slug },
+      create: { ...data, slug: skill.slug, version: 1 },
+      update: data,
     })
     console.log(`  ✅ Skill: ${skill.name}`)
   }
 
-  console.log(`  Seeded ${ALL_SKILLS.length} skills\n`)
+  console.log(`  Upserted ${seedSkillSlugs.length} skills (non-destructive; existing AgentSkill rows preserved)\n`)
 
   const seedSlugs = MARKETPLACE_SKILLS_CATALOG.map(s => s.slug)
   await prisma.skillReview.deleteMany({ where: { skill: { slug: { in: seedSlugs } } } })
