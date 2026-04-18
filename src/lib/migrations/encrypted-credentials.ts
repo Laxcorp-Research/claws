@@ -57,7 +57,7 @@ export type MigrationOrphan = {
   kind: "orphan-slug"
   rowId: string
   toolSlug: string
-  reason: "slug-not-in-catalog" | "no-primary-field"
+  reason: "slug-not-in-catalog" | "no-primary-field" | "decrypt-failed"
 }
 
 export type MigrationDecision = MigrationAction | MigrationSkip | MigrationOrphan
@@ -137,7 +137,7 @@ export function decideForRow(
       kind: "orphan-slug",
       rowId: row.id,
       toolSlug: row.toolSlug,
-      reason: "slug-not-in-catalog",
+      reason: "decrypt-failed",
     }
   }
 

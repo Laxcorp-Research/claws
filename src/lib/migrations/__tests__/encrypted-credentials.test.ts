@@ -121,6 +121,8 @@ describe("decideForRow", () => {
     }
     const decision = decideForRow(row(), throwingAdapter)
     expect(decision.kind).toBe("orphan-slug")
+    if (decision.kind !== "orphan-slug") throw new Error("type narrow")
+    expect(decision.reason).toBe("decrypt-failed")
   })
 })
 
