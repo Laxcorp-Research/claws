@@ -1,4 +1,3 @@
-// @ts-nocheck - Depends on channel infrastructure not yet in Prisma schema
 // lib/openclaw/generator.ts
 // ============================================================================
 // THE critical module. Converts Claws DB models into OpenClaw workspace
@@ -1361,7 +1360,8 @@ type SkillRecord = {
 /**
  * Subset of `prisma.ToolConnection` fields the generator actually reads.
  * Kept minimal so any future schema change that drops one of these fails
- * at type-check time (once PR #3 removes the `@ts-nocheck` directive above).
+ * at type-check time (the file-wide @ts-nocheck was removed in PR #3a
+ * once PR #2's phantom-field rewrite made the whole file type-safe).
  */
 type ToolConnectionRecord = {
   toolSlug: string;
