@@ -6,7 +6,21 @@ vi.mock('@/lib/db', () => ({
 }));
 
 vi.mock('@/lib/encryption', () => ({
-  decrypt: vi.fn((val: string) => `decrypted-${val}`),
+  // Smart decrypt mock: JSON inputs pass through (used for
+  // encryptedCredentials fixtures that hold plaintext JSON for easy test
+  // writing), non-JSON inputs get the legacy "decrypted-<blob>" prefix
+  // which the existing .env / apiKey assertions rely on.
+  decrypt: vi.fn((val: string) => {
+    if (val.trim().startsWith('{')) {
+      try {
+        JSON.parse(val);
+        return val;
+      } catch {
+        // fall through
+      }
+    }
+    return `decrypted-${val}`;
+  }),
   encrypt: vi.fn((val: string) => `encrypted-${val}`),
   generateKeyHint: vi.fn((val: string) => `${val.slice(0, 4)}...`),
 }));
@@ -16,6 +30,20 @@ vi.mock('@/lib/crypto', () => ({
 }));
 
 import { generateWorkspace } from '@/lib/openclaw/generator';
+
+/**
+ * Test-only shape matching the subset of ToolConnection fields the generator
+ * reads (see the ToolConnectionRecord type in generator.ts). Using this type
+ * in test fixtures lets us declare `encryptedCredentials: null` for the
+ * skip-path tests without TypeScript inferring a narrower shape.
+ */
+type TestToolConn = {
+  toolSlug: string;
+  displayName: string;
+  connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE';
+  status: string;
+  encryptedCredentials: string | null;
+};
 
 function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
   return {
@@ -109,14 +137,18 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
       },
     ],
     toolConnections: [
+      // Real Prisma ToolConnection shape post-PR #2. encryptedCredentials
+      // holds a JSON string that the smart decrypt mock passes through
+      // unchanged — the generator then parses it and emits it as the
+      // `env` map on the skills.entries slot keyed by toolSlug.
       {
-        toolName: 'Tavily',
+        toolSlug: 'tavily',
+        displayName: 'Tavily',
         connectionType: 'API_KEY',
-        skillSlug: 'tavily-search',
-        envVarMapping: { TAVILY_API_KEY: 'encrypted-tavily-key' },
-        notes: null,
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'real-tavily-key' }),
       },
-    ],
+    ] as TestToolConn[],
     channelConnections: [],
     clawTemplate: { name: 'Test Template', slug: 'test-template' },
     user: {
@@ -231,16 +263,146 @@ describe('generateWorkspace', () => {
     await expect(generateWorkspace('nonexistent')).rejects.toThrow();
   });
 
-  it('includes tool connection credentials in skills entries', async () => {
+  it('includes tool connection credentials in skills entries (keyed by toolSlug)', async () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.skills).toBeDefined();
-    expect(config.skills.entries['tavily-search']).toBeDefined();
-    expect(config.skills.entries['tavily-search'].enabled).toBe(true);
-    expect(config.skills.entries['tavily-search'].env.TAVILY_API_KEY).toBe(
-      'decrypted-encrypted-tavily-key'
+    // Post-PR #2: skills.entries is keyed by toolSlug (not a phantom
+    // skillSlug). PR #3 may revisit keying by skill slug via
+    // Skill.compatibleTools lookup, but PR #2 keys by toolSlug per the
+    // migration contract.
+    expect(config.skills.entries.tavily).toBeDefined();
+    expect(config.skills.entries.tavily.enabled).toBe(true);
+    expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('real-tavily-key');
+  });
+
+  it('emits a multi-cred env map when the tool has multiple credential fields', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'binance',
+        displayName: 'Binance',
+        connectionType: 'API_KEY',
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({
+          BINANCE_API_KEY: 'binance-key-real',
+          BINANCE_API_SECRET: 'binance-secret-real',
+        }),
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    expect(config.skills.entries.binance).toBeDefined();
+    expect(config.skills.entries.binance.env).toEqual({
+      BINANCE_API_KEY: 'binance-key-real',
+      BINANCE_API_SECRET: 'binance-secret-real',
+    });
+  });
+
+  it('skips ToolConnection rows with status=NEEDS_CREDENTIALS', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'alpaca',
+        displayName: 'Alpaca',
+        connectionType: 'API_KEY',
+        status: 'NEEDS_CREDENTIALS',
+        encryptedCredentials: JSON.stringify({ ALPACA_API_KEY_ID: 'partial-only' }),
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    // skills.entries omitted entirely when nothing qualifies (generator
+    // only adds the `skills` key when the map has content).
+    expect(config.skills).toBeUndefined();
+  });
+
+  it('skips OAUTH_COMPOSIO rows (Composio handles auth at runtime)', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'gmail',
+        displayName: 'Gmail',
+        connectionType: 'OAUTH_COMPOSIO',
+        status: 'CONNECTED',
+        encryptedCredentials: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.skills).toBeUndefined();
+  });
+
+  it('skips rows with null encryptedCredentials', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'sendgrid',
+        displayName: 'SendGrid',
+        connectionType: 'API_KEY',
+        status: 'PENDING',
+        encryptedCredentials: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.skills).toBeUndefined();
+  });
+
+  it('TOOLS.md uses displayName (not the phantom toolName) for the section header', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'tavily',
+        displayName: 'My Custom Tavily',
+        connectionType: 'API_KEY',
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'k' }),
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const orchKey = Object.keys(result.workspaces).find((k) =>
+      k.includes('test-commander'),
     );
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('### My Custom Tavily');
+    // Regression guard against the phantom-fields bug (PR #11): no
+    // `### undefined` section.
+    expect(toolsMd).not.toContain('### undefined');
+  });
+
+  it('TOOLS.md falls back to catalog name when displayName is empty', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'sendgrid',
+        displayName: '',
+        connectionType: 'API_KEY',
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({ SENDGRID_API_KEY: 'k' }),
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const orchKey = Object.keys(result.workspaces).find((k) =>
+      k.includes('test-commander'),
+    );
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('### SendGrid');
   });
 
   it('sets orchestrator as default agent with subagents config', async () => {
