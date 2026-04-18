@@ -129,50 +129,6 @@ curl "$SF_INSTANCE_URL/services/data/v59.0/query?q=SELECT+Id,Name,Amount+FROM+Op
     permissions: ["internet_access"],
   },
   {
-    name: "Pipedrive CRM",
-    slug: "pipedrive-crm",
-    description: "Manage deals and pipeline stages in Pipedrive",
-    skillMd: `---
-name: Pipedrive CRM
-description: Deals pipeline management via Pipedrive API
-metadata:
-  openclaw:
-    emoji: 🟢
----
-
-## Authentication
-Set \`$TOOL_API_KEY\` to your Pipedrive API token.
-
-## Key Endpoints
-
-**Create Deal:**
-\`\`\`bash
-curl -X POST "https://api.pipedrive.com/v1/deals?api_token=$TOOL_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"title":"New Deal","value":5000,"currency":"USD"}'
-\`\`\`
-
-**List Pipeline Stages:**
-\`\`\`bash
-curl "https://api.pipedrive.com/v1/stages?api_token=$TOOL_API_KEY"
-\`\`\`
-
-**Update Deal Stage:**
-\`\`\`bash
-curl -X PUT "https://api.pipedrive.com/v1/deals/{id}?api_token=$TOOL_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"stage_id":3}'
-\`\`\``,
-    type: "TOOL_SPECIFIC",
-    category: "CRM",
-    icon: "🟢",
-    compatibleTools: ["pipedrive"],
-    requiresToolConnection: true,
-    requiredToolCategory: "CRM",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
-  {
     name: "Apollo Search",
     slug: "apollo-search",
     description: "B2B people search and contact enrichment via Apollo.io",
@@ -299,50 +255,6 @@ curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$TOOL_A
     permissions: ["internet_access", "email_send"],
   },
   {
-    name: "SmartLead Email",
-    slug: "smartlead-email",
-    description: "Cold email campaigns via SmartLead",
-    skillMd: `---
-name: SmartLead Email
-description: Cold email campaigns via SmartLead API
-metadata:
-  openclaw:
-    emoji: 💡
----
-
-## Authentication
-Set \`$TOOL_API_KEY\` to your SmartLead API key.
-
-## Key Endpoints
-
-**Create Campaign:**
-\`\`\`bash
-curl -X POST "https://server.smartlead.ai/api/v1/campaigns/create?api_key=$TOOL_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"Outbound Spring"}'
-\`\`\`
-
-**Add Leads:**
-\`\`\`bash
-curl -X POST "https://server.smartlead.ai/api/v1/campaigns/{id}/leads?api_key=$TOOL_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"lead_list":[{"email":"j@co.com","first_name":"Jane"}]}'
-\`\`\`
-
-**Campaign Statistics:**
-\`\`\`bash
-curl "https://server.smartlead.ai/api/v1/campaigns/{id}/statistics?api_key=$TOOL_API_KEY"
-\`\`\``,
-    type: "TOOL_SPECIFIC",
-    category: "EMAIL_SENDER",
-    icon: "💡",
-    compatibleTools: ["smartlead"],
-    requiresToolConnection: true,
-    requiredToolCategory: "EMAIL_SENDER",
-    isBuiltIn: false,
-    permissions: ["internet_access", "email_send"],
-  },
-  {
     name: "Twitter API",
     slug: "twitter-api",
     description: "Post, read, and search tweets via the Twitter/X API",
@@ -453,41 +365,6 @@ Supports Twitter, LinkedIn, Facebook, Instagram, and more via connected profiles
     category: "CONTENT",
     icon: "📱",
     compatibleTools: ["buffer"],
-    requiresToolConnection: true,
-    requiredToolCategory: "CONTENT",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
-  {
-    name: "Typefully Social",
-    slug: "typefully-social",
-    description: "Create and schedule Twitter threads via Typefully",
-    skillMd: `---
-name: Typefully Social
-description: Twitter threads and scheduling via Typefully API
-metadata:
-  openclaw:
-    emoji: ✍️
----
-
-## Authentication
-Set \`$TOOL_API_KEY\` to your Typefully API key.
-
-## Key Endpoints
-
-**Create Draft (thread):**
-\`\`\`bash
-curl -X POST https://api.typefully.com/v1/drafts/ \\
-  -H "X-API-KEY: $TOOL_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"content":"First tweet\\n\\n---\\n\\nSecond tweet","schedule-date":"2025-03-01T10:00:00Z"}'
-\`\`\`
-
-Use \`---\` on its own line to separate thread tweets. Omit \`schedule-date\` to save as draft.`,
-    type: "TOOL_SPECIFIC",
-    category: "CONTENT",
-    icon: "✍️",
-    compatibleTools: ["typefully"],
     requiresToolConnection: true,
     requiredToolCategory: "CONTENT",
     isBuiltIn: false,
@@ -1212,51 +1089,6 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     permissions: ["internet_access"],
   },
   {
-    name: "Snyk Security",
-    slug: "snyk-security",
-    description: "Vulnerability scanning and dependency analysis via Snyk",
-    skillMd: `---
-name: Snyk Security
-description: Vulnerability scanning via Snyk API
-metadata:
-  openclaw:
-    emoji: 🛡️
----
-
-## Authentication
-Set \`$TOOL_API_KEY\` to your Snyk API token.
-
-## Key Endpoints
-
-**List Projects:**
-\`\`\`bash
-curl "https://api.snyk.io/rest/orgs/{org_id}/projects?version=2024-01-01" \\
-  -H "Authorization: token $TOOL_API_KEY"
-\`\`\`
-
-**Get Project Issues:**
-\`\`\`bash
-curl "https://api.snyk.io/v1/org/{org_id}/project/{project_id}/aggregated-issues" \\
-  -H "Authorization: token $TOOL_API_KEY"
-\`\`\`
-
-**Test Package:**
-\`\`\`bash
-curl -X POST "https://api.snyk.io/v1/test/npm" \\
-  -H "Authorization: token $TOOL_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"encoding":"plain","files":{"target":{"contents":"{\\\"name\\\":\\\"test\\\",\\\"dependencies\\\":{\\\"lodash\\\":\\\"4.17.15\\\"}}"}}}'
-\`\`\``,
-    type: "TOOL_SPECIFIC",
-    category: "SECURITY",
-    icon: "🛡️",
-    compatibleTools: ["snyk"],
-    requiresToolConnection: true,
-    requiredToolCategory: "SECURITY",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
-  {
     name: "Twilio SMS",
     slug: "twilio-sms",
     description: "Send and receive SMS messages via Twilio",
@@ -1293,74 +1125,6 @@ Uses Basic auth with Account SID and Auth Token.`,
     compatibleTools: ["twilio"],
     requiresToolConnection: true,
     requiredToolCategory: "COMMUNICATION",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
-  {
-    name: "Zillow API",
-    slug: "zillow-api",
-    description: "Property data, Zestimates, and listings via Zillow",
-    skillMd: `---
-name: Zillow API
-description: Property data and Zestimates via Zillow API
-metadata:
-  openclaw:
-    emoji: 🏠
----
-
-## Authentication
-Set \`$TOOL_API_KEY\` to your Zillow/Bridge API key.
-
-## Key Endpoints
-
-**Property Search:**
-\`\`\`bash
-curl "https://api.bridgedataoutput.com/api/v2/zestimates?access_token=$TOOL_API_KEY&address=123+Main+St"
-\`\`\`
-
-**Get Property Details:**
-\`\`\`bash
-curl "https://api.bridgedataoutput.com/api/v2/pub/parcels?access_token=$TOOL_API_KEY&zpid=12345678"
-\`\`\`
-
-Zillow data is accessed via Bridge Interactive API. Zestimates, tax history, and comparable sales available.`,
-    type: "TOOL_SPECIFIC",
-    category: "ANALYTICS",
-    icon: "🏠",
-    compatibleTools: ["zillow"],
-    requiresToolConnection: true,
-    requiredToolCategory: "ANALYTICS",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
-  {
-    name: "Google Business Profile",
-    slug: "google-business-profile",
-    description: "Manage business listings and reviews via Composio",
-    skillMd: `---
-name: Google Business Profile
-description: Business listings and reviews via Google Business Profile (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 📍
----
-
-## Authentication
-Via Composio OAuth — auth managed automatically.
-
-## Capabilities
-- Read and respond to reviews
-- Update business information (hours, description, photos)
-- Create posts and offers
-- View insights (views, clicks, calls)
-
-Composio handles the full OAuth2 flow. No manual token management required.`,
-    type: "TOOL_SPECIFIC",
-    category: "CONTENT",
-    icon: "📍",
-    compatibleTools: ["google-business-profile"],
-    requiresToolConnection: true,
-    requiredToolCategory: "CONTENT",
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
