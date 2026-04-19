@@ -18,15 +18,45 @@ import { ALL_TOOLS, getToolBySlug } from "@/data/tool-catalog"
  *   3. Multi-cred API_KEY seeds must mention ALL declared envVars in
  *      their bodies (otherwise the agent's self-doc is incomplete for
  *      the secondary credentials).
- *   4. OAUTH_COMPOSIO seed bodies must not contain any `$ENVVAR`-shaped
- *      references — Composio delivers tokens at runtime; `$FOO_API_KEY`
- *      in a body would imply an env var the runtime never sets.
+ *   4. OAUTH_COMPOSIO seed bodies may only reference the three runtime-
+ *      injected `$COMPOSIO_*` env vars — any other `$FOO_API_KEY`-style
+ *      reference would imply an env var the runtime never sets and is
+ *      banned (regression guard on PR #4). See PR #4 Commit 1 (generator
+ *      OAuth emission) + Commit 2 (deployer container-env injection) for
+ *      where the three allowlisted vars are populated.
  */
 
 // Matches `$SOME_VAR_NAME` — has to start uppercase to avoid matching
 // shell positional args or `${...}` template snippets that happen to
 // appear in docs. Not a perfect regex; tightened by per-test allowlists.
 const ENVVAR_REGEX = /\$[A-Z][A-Z0-9_]+/g
+
+/**
+ * $ENVVAR names the runtime legitimately injects into OAUTH_COMPOSIO
+ * skill bodies. PR #4 Commit 1 emits the per-skill triple into
+ * openclaw.json > skills.entries[slug].env; Commit 2 pins the first two
+ * at container-env level (defense in depth — the third is per-tool and
+ * therefore only per-skill). Seed bodies may reference any of these as
+ * `$COMPOSIO_API_KEY` / `$COMPOSIO_USER_ID` / `$COMPOSIO_CONNECTED_ACCOUNT_ID`.
+ * Any OTHER `$ENVVAR` ref in an OAUTH_COMPOSIO body is a bug because the
+ * runtime never sets those vars for OAuth tools.
+ */
+const COMPOSIO_INJECTED_VARS: ReadonlySet<string> = new Set([
+  "COMPOSIO_API_KEY",
+  "COMPOSIO_USER_ID",
+  "COMPOSIO_CONNECTED_ACCOUNT_ID",
+])
+
+/**
+ * Returns the `$ENVVAR` refs in `body` that are NOT in the Composio
+ * allowlist. Shared by the seed-data invariant test below and the two
+ * regex/allowlist unit tests that guard the allowlist logic itself.
+ * Empty array = body has only allowed refs (or none at all).
+ */
+function findDisallowedEnvRefsInOauthBody(body: string): string[] {
+  const refs = [...new Set(body.match(ENVVAR_REGEX) ?? [])]
+  return refs.filter((r) => !COMPOSIO_INJECTED_VARS.has(r.slice(1)))
+}
 
 describe("PR #3b seed body invariants", () => {
   it("no tool-specific seed body contains $TOOL_API_KEY", () => {
@@ -124,8 +154,14 @@ describe("PR #3b seed body invariants", () => {
     ).toEqual([])
   })
 
-  it("OAUTH_COMPOSIO seed bodies contain no $ENVVAR references (Composio handles auth)", () => {
-    type OauthLeak = { skillSlug: string; refs: string[] }
+  it("OAUTH_COMPOSIO seed bodies reference only the 3 runtime-injected $COMPOSIO_* env vars", () => {
+    // Pre-PR #4, this test banned ALL $ENVVAR refs in OAuth bodies (Composio
+    // tokens were expected to arrive as `<OAUTH_TOKEN>` placeholders, not env
+    // vars). PR #4 changed the contract: the runtime now injects three
+    // COMPOSIO_* vars, and OAuth skill bodies are expected to read them.
+    // Everything ELSE is still banned — no $HUBSPOT_API_KEY, no $GITHUB_TOKEN,
+    // etc. in an OAUTH_COMPOSIO body.
+    type OauthLeak = { skillSlug: string; disallowed: string[] }
     const leaks: OauthLeak[] = []
 
     for (const skill of TOOL_SPECIFIC_SKILLS) {
@@ -134,16 +170,90 @@ describe("PR #3b seed body invariants", () => {
       const tool = getToolBySlug(toolSlug)
       if (!tool || tool.connectionType !== "OAUTH_COMPOSIO") continue
 
-      const refs = [...new Set((skill.skillMd.match(ENVVAR_REGEX) ?? []).map((r) => r))]
-      if (refs.length > 0) {
-        leaks.push({ skillSlug: skill.slug, refs })
+      const disallowed = findDisallowedEnvRefsInOauthBody(skill.skillMd)
+      if (disallowed.length > 0) {
+        leaks.push({ skillSlug: skill.slug, disallowed })
       }
     }
 
     expect(
       leaks,
-      `OAUTH_COMPOSIO seed bodies have $ENVVAR refs (should use <OAUTH_TOKEN> or {placeholder} instead):\n${leaks.map((l) => `  ${l.skillSlug}: ${l.refs.join(", ")}`).join("\n")}`,
+      `OAUTH_COMPOSIO seed bodies reference env vars the runtime does not inject. Only $COMPOSIO_API_KEY, $COMPOSIO_USER_ID, $COMPOSIO_CONNECTED_ACCOUNT_ID are allowed:\n${leaks.map((l) => `  ${l.skillSlug}: ${l.disallowed.join(", ")}`).join("\n")}`,
     ).toEqual([])
+  })
+
+  // ------------------------------------------------------------------------
+  // Allowlist-logic unit tests (PR #4 Commit 4)
+  //
+  // Purpose: guard the allowlist check itself (the regex + the 3-var Set),
+  // so a future edit that accidentally widens or narrows the allowlist
+  // fails loud in tests rather than only at seed-review time. These tests
+  // run against synthetic bodies, not the actual seed data — no seed in
+  // the repo has `$COMPOSIO_*` refs yet (that lands in PR #4 Commit 6's
+  // skillMd rewrites) and no live OAuth seed still has the pre-PR #4
+  // `$HUBSPOT_API_KEY`-style refs (Commit 1 removed the 4 dead tools).
+  // ------------------------------------------------------------------------
+
+  it("allowlist passes: an OAuth body with only $COMPOSIO_* refs has zero disallowed refs", () => {
+    // This is the exact shape PR #4 Commit 6's rewritten OAuth seeds will
+    // use. `tools.execute` with x-api-key + user_id + connected_account_id.
+    const syntheticOauthBody = `
+## Authentication
+This skill calls Composio's REST endpoint at runtime using three env vars
+the runtime injects (per PR #4). No OAuth tokens live in this container.
+
+\`\`\`bash
+curl -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL" \\
+  -H "x-api-key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d "{\\"user_id\\":\\"$COMPOSIO_USER_ID\\",\\"connected_account_id\\":\\"$COMPOSIO_CONNECTED_ACCOUNT_ID\\",\\"arguments\\":{\\"recipient_email\\":\\"foo@bar.com\\"}}"
+\`\`\`
+`
+    const disallowed = findDisallowedEnvRefsInOauthBody(syntheticOauthBody)
+    expect(
+      disallowed,
+      `body references only allowlisted COMPOSIO_* vars but findDisallowedEnvRefsInOauthBody flagged some as disallowed`,
+    ).toEqual([])
+
+    // Sanity: the body DOES contain the 3 Composio refs — otherwise the
+    // assertion above is vacuously true.
+    const allRefs = [...new Set(syntheticOauthBody.match(ENVVAR_REGEX) ?? [])].sort()
+    expect(allRefs).toEqual([
+      "$COMPOSIO_API_KEY",
+      "$COMPOSIO_CONNECTED_ACCOUNT_ID",
+      "$COMPOSIO_USER_ID",
+    ])
+  })
+
+  it("allowlist blocks: an OAuth body with $HUBSPOT_API_KEY or similar direct-token refs is flagged", () => {
+    // Regression guard. PR #4 intentionally broadens what's allowed in
+    // OAUTH_COMPOSIO bodies to include the 3 Composio vars. This test
+    // ensures we did not accidentally allowlist the world — non-Composio
+    // direct-token env vars are STILL banned. If this ever passes silently
+    // (zero disallowed refs on a body containing $HUBSPOT_API_KEY), the
+    // allowlist logic has regressed and a future OAuth seed rewrite could
+    // ship with a broken env-var contract without the test catching it.
+    const nonComposioSyntheticBodies = [
+      `Call HubSpot with $HUBSPOT_API_KEY and $HUBSPOT_PORTAL_ID`,
+      `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user`,
+      `axios.post(url, {headers: {"x-api-key": $SLACK_API_KEY}})`,
+      `// Mixed: legit + illegit. Runtime injects the first; not the second.\n` +
+        `curl ... -H "x-api-key: $COMPOSIO_API_KEY" -H "x-hubspot-key: $HUBSPOT_API_KEY"`,
+    ]
+
+    for (const body of nonComposioSyntheticBodies) {
+      const disallowed = findDisallowedEnvRefsInOauthBody(body)
+      expect(
+        disallowed.length,
+        `body "${body.slice(0, 80).replace(/\n/g, " ")}..." should have been flagged as disallowed`,
+      ).toBeGreaterThan(0)
+    }
+
+    // Assert the specific ban on $HUBSPOT_API_KEY for the most likely
+    // regression path (someone pastes a pre-PR #3 curl example into an
+    // OAuth seed). Named assertion keeps the failure message readable.
+    const hubspotBody = `curl -H "x-api-key: $HUBSPOT_API_KEY"`
+    expect(findDisallowedEnvRefsInOauthBody(hubspotBody)).toEqual(["$HUBSPOT_API_KEY"])
   })
 })
 
