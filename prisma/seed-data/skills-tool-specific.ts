@@ -14,7 +14,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Tavily API key.
+Set \`$TAVILY_API_KEY\` to your Tavily API key.
 
 ## Key Endpoints
 
@@ -22,14 +22,14 @@ Set \`$TOOL_API_KEY\` to your Tavily API key.
 \`\`\`bash
 curl -X POST https://api.tavily.com/search \\
   -H "Content-Type: application/json" \\
-  -d '{"api_key":"'$TOOL_API_KEY'","query":"latest AI news","max_results":5}'
+  -d '{"api_key":"'$TAVILY_API_KEY'","query":"latest AI news","max_results":5}'
 \`\`\`
 
 **Extract (content from URL):**
 \`\`\`bash
 curl -X POST https://api.tavily.com/extract \\
   -H "Content-Type: application/json" \\
-  -d '{"api_key":"'$TOOL_API_KEY'","urls":["https://example.com"]}'
+  -d '{"api_key":"'$TAVILY_API_KEY'","urls":["https://example.com"]}'
 \`\`\`
 
 Use \`search_depth: "advanced"\` for deeper results. Default returns title, url, content, and score.`,
@@ -55,14 +55,14 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your HubSpot private app token.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
 
 **Create Contact:**
 \`\`\`bash
 curl -X POST https://api.hubapi.com/crm/v3/objects/contacts \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Authorization: Bearer <OAUTH_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"properties":{"email":"j@example.com","firstname":"Jane"}}'
 \`\`\`
@@ -70,13 +70,13 @@ curl -X POST https://api.hubapi.com/crm/v3/objects/contacts \\
 **List Deals:**
 \`\`\`bash
 curl https://api.hubapi.com/crm/v3/objects/deals \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer <OAUTH_TOKEN>"
 \`\`\`
 
 **Search Contacts:**
 \`\`\`bash
 curl -X POST https://api.hubapi.com/crm/v3/objects/contacts/search \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Authorization: Bearer <OAUTH_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"filterGroups":[{"filters":[{"propertyName":"email","operator":"EQ","value":"j@example.com"}]}]}'
 \`\`\``,
@@ -102,22 +102,24 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` (Bearer token) and \`$SF_INSTANCE_URL\`.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
+
+Salesforce REST endpoints use the instance URL + Bearer token pair; both are injected by Composio at tool-invocation time (see \`{instance_url}\` / \`<OAUTH_TOKEN>\` as placeholders below).
 
 ## Key Endpoints
 
 **Create Lead:**
 \`\`\`bash
-curl -X POST $SF_INSTANCE_URL/services/data/v59.0/sobjects/Lead \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+curl -X POST {instance_url}/services/data/v59.0/sobjects/Lead \\
+  -H "Authorization: Bearer <OAUTH_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"FirstName":"Jane","LastName":"Doe","Company":"Acme"}'
 \`\`\`
 
 **Query Opportunities:**
 \`\`\`bash
-curl "$SF_INSTANCE_URL/services/data/v59.0/query?q=SELECT+Id,Name,Amount+FROM+Opportunity" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+curl "{instance_url}/services/data/v59.0/query?q=SELECT+Id,Name,Amount+FROM+Opportunity" \\
+  -H "Authorization: Bearer <OAUTH_TOKEN>"
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "CRM",
@@ -141,7 +143,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Apollo API key.
+Set \`$APOLLO_API_KEY\` to your Apollo API key.
 
 ## Key Endpoints
 
@@ -149,7 +151,7 @@ Set \`$TOOL_API_KEY\` to your Apollo API key.
 \`\`\`bash
 curl -X POST https://api.apollo.io/api/v1/mixed_people/search \\
   -H "Content-Type: application/json" \\
-  -H "X-Api-Key: $TOOL_API_KEY" \\
+  -H "X-Api-Key: $APOLLO_API_KEY" \\
   -d '{"person_titles":["CTO"],"person_locations":["San Francisco"],"per_page":10}'
 \`\`\`
 
@@ -157,7 +159,7 @@ curl -X POST https://api.apollo.io/api/v1/mixed_people/search \\
 \`\`\`bash
 curl -X POST https://api.apollo.io/api/v1/people/match \\
   -H "Content-Type: application/json" \\
-  -H "X-Api-Key: $TOOL_API_KEY" \\
+  -H "X-Api-Key: $APOLLO_API_KEY" \\
   -d '{"email":"jane@example.com"}'
 \`\`\``,
     type: "TOOL_SPECIFIC",
@@ -182,14 +184,14 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Clay API key.
+Set \`$CLAY_API_KEY\` to your Clay API key.
 
 ## Key Endpoints
 
 **Enrich Person:**
 \`\`\`bash
 curl -X POST https://api.clay.com/v1/enrichments \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Authorization: Bearer $CLAY_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"email":"jane@example.com","sources":["clearbit","apollo","hunter"]}'
 \`\`\`
@@ -197,7 +199,7 @@ curl -X POST https://api.clay.com/v1/enrichments \\
 **List Tables:**
 \`\`\`bash
 curl https://api.clay.com/v1/tables \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $CLAY_API_KEY"
 \`\`\`
 
 Clay aggregates 50+ data providers. Specify sources or let Clay auto-select the best match.`,
@@ -223,7 +225,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Instantly API key.
+Set \`$INSTANTLY_API_KEY\` to your Instantly API key.
 
 ## Key Endpoints
 
@@ -231,19 +233,19 @@ Set \`$TOOL_API_KEY\` to your Instantly API key.
 \`\`\`bash
 curl -X POST https://api.instantly.ai/api/v1/campaign/create \\
   -H "Content-Type: application/json" \\
-  -d '{"api_key":"'$TOOL_API_KEY'","name":"Outbound Q1"}'
+  -d '{"api_key":"'$INSTANTLY_API_KEY'","name":"Outbound Q1"}'
 \`\`\`
 
 **Add Leads to Campaign:**
 \`\`\`bash
 curl -X POST https://api.instantly.ai/api/v1/lead/add \\
   -H "Content-Type: application/json" \\
-  -d '{"api_key":"'$TOOL_API_KEY'","campaign_id":"abc","leads":[{"email":"j@co.com","first_name":"Jane"}]}'
+  -d '{"api_key":"'$INSTANTLY_API_KEY'","campaign_id":"abc","leads":[{"email":"j@co.com","first_name":"Jane"}]}'
 \`\`\`
 
 **Get Campaign Analytics:**
 \`\`\`bash
-curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$TOOL_API_KEY&campaign_id=abc"
+curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$INSTANTLY_API_KEY&campaign_id=abc"
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "EMAIL_SENDER",
@@ -267,14 +269,14 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Twitter Bearer token.
+Set \`$TWITTER_API_KEY\` to your Twitter Bearer token.
 
 ## Key Endpoints
 
 **Post Tweet:**
 \`\`\`bash
 curl -X POST https://api.twitter.com/2/tweets \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Authorization: Bearer $TWITTER_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"text":"Hello from LaxClaws!"}'
 \`\`\`
@@ -282,13 +284,13 @@ curl -X POST https://api.twitter.com/2/tweets \\
 **Search Tweets:**
 \`\`\`bash
 curl "https://api.twitter.com/2/tweets/search/recent?query=AI%20agents&max_results=10" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $TWITTER_API_KEY"
 \`\`\`
 
 **Get User Timeline:**
 \`\`\`bash
 curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $TWITTER_API_KEY"
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "SOCIAL",
@@ -343,21 +345,21 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Buffer access token.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
 
 **Create Post:**
 \`\`\`bash
 curl -X POST https://api.bufferapp.com/1/updates/create.json \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Authorization: Bearer <OAUTH_TOKEN>" \\
   -d "text=Check out our new launch!&profile_ids[]=abc123&scheduled_at=2025-03-01T10:00:00Z"
 \`\`\`
 
 **List Profiles:**
 \`\`\`bash
 curl https://api.bufferapp.com/1/profiles.json \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer <OAUTH_TOKEN>"
 \`\`\`
 
 Supports Twitter, LinkedIn, Facebook, Instagram, and more via connected profiles.`,
@@ -383,23 +385,23 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your YouTube Data API key (or OAuth token for writes).
+Set \`$YOUTUBE_DATA_API_KEY\` to your YouTube Data API key (or OAuth token for writes).
 
 ## Key Endpoints
 
 **Search Videos:**
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/search?part=snippet&q=AI+agents&type=video&key=$TOOL_API_KEY"
+curl "https://www.googleapis.com/youtube/v3/search?part=snippet&q=AI+agents&type=video&key=$YOUTUBE_DATA_API_KEY"
 \`\`\`
 
 **Get Channel Stats:**
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/channels?part=statistics&id=CHANNEL_ID&key=$TOOL_API_KEY"
+curl "https://www.googleapis.com/youtube/v3/channels?part=statistics&id=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
 \`\`\`
 
 **List Playlists:**
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHANNEL_ID&key=$TOOL_API_KEY"
+curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
@@ -423,22 +425,22 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Beehiiv API key. Set \`$BEEHIIV_PUB_ID\` to your publication ID.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
 
 **Create Post:**
 \`\`\`bash
-curl -X POST "https://api.beehiiv.com/v2/publications/$BEEHIIV_PUB_ID/posts" \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+curl -X POST "https://api.beehiiv.com/v2/publications/{publication_id}/posts" \\
+  -H "Authorization: Bearer <OAUTH_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"title":"Weekly Update","subtitle":"What happened this week","content_html":"<p>Hello!</p>"}'
 \`\`\`
 
 **List Subscribers:**
 \`\`\`bash
-curl "https://api.beehiiv.com/v2/publications/$BEEHIIV_PUB_ID/subscriptions" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+curl "https://api.beehiiv.com/v2/publications/{publication_id}/subscriptions" \\
+  -H "Authorization: Bearer <OAUTH_TOKEN>"
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
@@ -462,7 +464,9 @@ metadata:
 ---
 
 ## Authentication
-Substack has a limited official API. Set \`$TOOL_API_KEY\` if using an unofficial or partner endpoint.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
+
+Substack has a limited official API; this skill is best-effort against unofficial / partner endpoints. The OAuth token is injected by Composio at runtime.
 
 ## Notes
 - Substack does not offer a full public REST API as of 2025.
@@ -493,7 +497,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your ConvertKit API secret.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
 
@@ -501,19 +505,19 @@ Set \`$TOOL_API_KEY\` to your ConvertKit API secret.
 \`\`\`bash
 curl -X POST https://api.convertkit.com/v3/broadcasts \\
   -H "Content-Type: application/json" \\
-  -d '{"api_secret":"'$TOOL_API_KEY'","subject":"Weekly Digest","content":"<p>Hello subscribers!</p>"}'
+  -d '{"api_secret":"'<OAUTH_TOKEN>'","subject":"Weekly Digest","content":"<p>Hello subscribers!</p>"}'
 \`\`\`
 
 **List Subscribers:**
 \`\`\`bash
-curl "https://api.convertkit.com/v3/subscribers?api_secret=$TOOL_API_KEY&page=1"
+curl "https://api.convertkit.com/v3/subscribers?api_secret=<OAUTH_TOKEN>&page=1"
 \`\`\`
 
 **Add Subscriber to Form:**
 \`\`\`bash
 curl -X POST "https://api.convertkit.com/v3/forms/{form_id}/subscribe" \\
   -H "Content-Type: application/json" \\
-  -d '{"api_secret":"'$TOOL_API_KEY'","email":"j@example.com"}'
+  -d '{"api_secret":"'<OAUTH_TOKEN>'","email":"j@example.com"}'
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
@@ -537,7 +541,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` and \`$BINANCE_SECRET\` for signed endpoints.
+Set \`$BINANCE_API_KEY\` and \`$BINANCE_SECRET\` for signed endpoints.
 
 ## Key Endpoints
 
@@ -549,14 +553,14 @@ curl "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
 **Place Order (signed):**
 \`\`\`bash
 curl -X POST "https://api.binance.com/api/v3/order" \\
-  -H "X-MBX-APIKEY: $TOOL_API_KEY" \\
+  -H "X-MBX-APIKEY: $BINANCE_API_KEY" \\
   -d "symbol=BTCUSDT&side=BUY&type=LIMIT&timeInForce=GTC&quantity=0.001&price=50000&timestamp=$(date +%s000)&signature=COMPUTED_HMAC"
 \`\`\`
 
 **Account Balance:**
 \`\`\`bash
 curl "https://api.binance.com/api/v3/account?timestamp=$(date +%s000)&signature=COMPUTED_HMAC" \\
-  -H "X-MBX-APIKEY: $TOOL_API_KEY"
+  -H "X-MBX-APIKEY: $BINANCE_API_KEY"
 \`\`\`
 
 Signatures require HMAC-SHA256 of the query string using \`$BINANCE_SECRET\`.`,
@@ -582,26 +586,26 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` and \`$CB_API_SECRET\` for Coinbase Advanced Trade.
+Set \`$COINBASE_API_KEY\` and \`$CB_API_SECRET\` for Coinbase Advanced Trade.
 
 ## Key Endpoints
 
 **List Accounts:**
 \`\`\`bash
 curl "https://api.coinbase.com/api/v3/brokerage/accounts" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $COINBASE_API_KEY"
 \`\`\`
 
 **Get Product Candles:**
 \`\`\`bash
 curl "https://api.coinbase.com/api/v3/brokerage/products/BTC-USD/candles?granularity=ONE_HOUR" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $COINBASE_API_KEY"
 \`\`\`
 
 **Create Order:**
 \`\`\`bash
 curl -X POST "https://api.coinbase.com/api/v3/brokerage/orders" \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Authorization: Bearer $COINBASE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"product_id":"BTC-USD","side":"BUY","order_configuration":{"limit_limit_gtc":{"base_size":"0.001","limit_price":"50000"}}}'
 \`\`\``,
@@ -627,21 +631,21 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` and \`$ALPACA_SECRET\` for Alpaca.
+Set \`$ALPACA_API_KEY_ID\` and \`$ALPACA_SECRET\` for Alpaca.
 
 ## Key Endpoints
 
 **Get Account:**
 \`\`\`bash
 curl https://paper-api.alpaca.markets/v2/account \\
-  -H "APCA-API-KEY-ID: $TOOL_API_KEY" \\
+  -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
   -H "APCA-API-SECRET-KEY: $ALPACA_SECRET"
 \`\`\`
 
 **Place Order:**
 \`\`\`bash
 curl -X POST https://paper-api.alpaca.markets/v2/orders \\
-  -H "APCA-API-KEY-ID: $TOOL_API_KEY" \\
+  -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
   -H "APCA-API-SECRET-KEY: $ALPACA_SECRET" \\
   -H "Content-Type: application/json" \\
   -d '{"symbol":"AAPL","qty":"1","side":"buy","type":"market","time_in_force":"day"}'
@@ -650,7 +654,7 @@ curl -X POST https://paper-api.alpaca.markets/v2/orders \\
 **Get Positions:**
 \`\`\`bash
 curl https://paper-api.alpaca.markets/v2/positions \\
-  -H "APCA-API-KEY-ID: $TOOL_API_KEY" \\
+  -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
   -H "APCA-API-SECRET-KEY: $ALPACA_SECRET"
 \`\`\`
 
@@ -677,7 +681,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Polymarket API key.
+Set \`$POLYMARKET_API_KEY\` to your Polymarket API key.
 
 ## Key Endpoints
 
@@ -694,7 +698,7 @@ curl "https://clob.polymarket.com/markets/{condition_id}"
 **Place Order:**
 \`\`\`bash
 curl -X POST "https://clob.polymarket.com/order" \\
-  -H "Authorization: Bearer $TOOL_API_KEY" \\
+  -H "Authorization: Bearer $POLYMARKET_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"tokenID":"abc","price":0.65,"size":10,"side":"BUY"}'
 \`\`\`
@@ -722,14 +726,14 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Linear API key.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
 
 **Create Issue:**
 \`\`\`bash
 curl -X POST https://api.linear.app/graphql \\
-  -H "Authorization: $TOOL_API_KEY" \\
+  -H "Authorization: <OAUTH_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"query":"mutation { issueCreate(input: { teamId: \\"TEAM_ID\\", title: \\"Fix bug\\", priority: 2 }) { success issue { id identifier } } }"}'
 \`\`\`
@@ -737,7 +741,7 @@ curl -X POST https://api.linear.app/graphql \\
 **List Issues:**
 \`\`\`bash
 curl -X POST https://api.linear.app/graphql \\
-  -H "Authorization: $TOOL_API_KEY" \\
+  -H "Authorization: <OAUTH_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"query":"{ issues(first: 10) { nodes { id title state { name } } } }"}'
 \`\`\`
@@ -920,28 +924,28 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Shopify Admin API access token. Set \`$SHOPIFY_STORE\` to your store name.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
 
 **List Products:**
 \`\`\`bash
-curl "https://$SHOPIFY_STORE.myshopify.com/admin/api/2024-01/products.json" \\
-  -H "X-Shopify-Access-Token: $TOOL_API_KEY"
+curl "https://{shop}.myshopify.com/admin/api/2024-01/products.json" \\
+  -H "X-Shopify-Access-Token: <OAUTH_TOKEN>"
 \`\`\`
 
 **Create Order:**
 \`\`\`bash
-curl -X POST "https://$SHOPIFY_STORE.myshopify.com/admin/api/2024-01/orders.json" \\
-  -H "X-Shopify-Access-Token: $TOOL_API_KEY" \\
+curl -X POST "https://{shop}.myshopify.com/admin/api/2024-01/orders.json" \\
+  -H "X-Shopify-Access-Token: <OAUTH_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"order":{"line_items":[{"variant_id":123,"quantity":1}]}}'
 \`\`\`
 
 **Get Inventory Levels:**
 \`\`\`bash
-curl "https://$SHOPIFY_STORE.myshopify.com/admin/api/2024-01/inventory_levels.json?location_ids=LOC_ID" \\
-  -H "X-Shopify-Access-Token: $TOOL_API_KEY"
+curl "https://{shop}.myshopify.com/admin/api/2024-01/inventory_levels.json?location_ids=LOC_ID" \\
+  -H "X-Shopify-Access-Token: <OAUTH_TOKEN>"
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "FINANCE",
@@ -1027,26 +1031,26 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your Ahrefs API token.
+Set \`$AHREFS_API_KEY\` to your Ahrefs API token.
 
 ## Key Endpoints
 
 **Get Backlinks:**
 \`\`\`bash
 curl "https://api.ahrefs.com/v3/site-explorer/backlinks?target=example.com&limit=10" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $AHREFS_API_KEY"
 \`\`\`
 
 **Keywords Explorer:**
 \`\`\`bash
 curl "https://api.ahrefs.com/v3/keywords-explorer/overview?keywords=ai+agents&country=us" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $AHREFS_API_KEY"
 \`\`\`
 
 **Domain Rating:**
 \`\`\`bash
 curl "https://api.ahrefs.com/v3/site-explorer/domain-rating?target=example.com" \\
-  -H "Authorization: Bearer $TOOL_API_KEY"
+  -H "Authorization: Bearer $AHREFS_API_KEY"
 \`\`\``,
     type: "TOOL_SPECIFIC",
     category: "ANALYTICS",
@@ -1141,28 +1145,28 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TOOL_API_KEY\` to your WordPress application password. Set \`$WP_SITE\` to your site URL.
+Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
 
 **Create Post:**
 \`\`\`bash
-curl -X POST "$WP_SITE/wp-json/wp/v2/posts" \\
-  -u "admin:$TOOL_API_KEY" \\
+curl -X POST "{site}/wp-json/wp/v2/posts" \\
+  -u REDACTED \\
   -H "Content-Type: application/json" \\
   -d '{"title":"New Post","content":"<p>Hello world!</p>","status":"draft"}'
 \`\`\`
 
 **List Posts:**
 \`\`\`bash
-curl "$WP_SITE/wp-json/wp/v2/posts?per_page=10" \\
-  -u "admin:$TOOL_API_KEY"
+curl "{site}/wp-json/wp/v2/posts?per_page=10" \\
+  -u REDACTED
 \`\`\`
 
 **Upload Media:**
 \`\`\`bash
-curl -X POST "$WP_SITE/wp-json/wp/v2/media" \\
-  -u "admin:$TOOL_API_KEY" \\
+curl -X POST "{site}/wp-json/wp/v2/media" \\
+  -u REDACTED \\
   -H "Content-Disposition: attachment; filename=image.png" \\
   --data-binary @image.png
 \`\`\``,
