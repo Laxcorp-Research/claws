@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { TOOL_SPECIFIC_SKILLS } from "../../../../prisma/seed-data/skills-tool-specific"
-import { ALL_TOOLS, getToolBySlug } from "@/data/tool-catalog"
+import { OAUTH_TOOLS, getToolBySlug } from "@/data/tool-catalog"
 
 /**
  * PR #3b regression tests for tool-specific seed body text.
@@ -254,6 +254,112 @@ curl -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL
     // OAuth seed). Named assertion keeps the failure message readable.
     const hubspotBody = `curl -H "x-api-key: $HUBSPOT_API_KEY"`
     expect(findDisallowedEnvRefsInOauthBody(hubspotBody)).toEqual(["$HUBSPOT_API_KEY"])
+  })
+
+  // ------------------------------------------------------------------------
+  // OAuth body content invariants (PR #4 Commit 5)
+  //
+  // These three assertions guard against "forgot to rewrite" and "pasted
+  // generic template" classes of bug across all OAUTH_COMPOSIO seeds:
+  //
+  //  1. Every OAuth body must reference Composio's execute endpoint — either
+  //     as the literal path `/api/v3/tools/execute/` or the SDK call
+  //     `composio.tools.execute` (we accept either for forward-compat).
+  //  2. Every OAuth body must reference at least one toolkit-specific tool
+  //     name using the uppercase composio slug as prefix (e.g., `GMAIL_*`,
+  //     `GITHUB_*`). Catches bodies that were rewritten with the generic
+  //     template but never customized with per-toolkit operations.
+  //  3. Each of the 4 OAuth skills added in this PR (gmail, google_calendar,
+  //     github, twitter) must have both a catalog entry AND a seed row in
+  //     lockstep — if one side is removed without the other, the test fails.
+  //
+  // Test #5 (the $ENVVAR allowlist) runs first and catches different
+  // regressions. These three stack on top of it.
+  // ------------------------------------------------------------------------
+
+  it("every OAUTH_COMPOSIO seed body references Composio's tools.execute endpoint", () => {
+    type Miss = { skillSlug: string; toolSlug: string }
+    const misses: Miss[] = []
+
+    for (const skill of TOOL_SPECIFIC_SKILLS) {
+      const toolSlug = skill.compatibleTools[0]
+      if (!toolSlug) continue
+      const tool = getToolBySlug(toolSlug)
+      if (!tool || tool.connectionType !== "OAUTH_COMPOSIO") continue
+
+      const hasEndpoint =
+        skill.skillMd.includes("/api/v3/tools/execute/") ||
+        skill.skillMd.includes("composio.tools.execute")
+      if (!hasEndpoint) {
+        misses.push({ skillSlug: skill.slug, toolSlug })
+      }
+    }
+
+    expect(
+      misses,
+      `OAUTH_COMPOSIO seed bodies missing Composio execute reference (expected /api/v3/tools/execute/ or composio.tools.execute literal):\n${misses.map((m) => `  ${m.skillSlug} (-> ${m.toolSlug})`).join("\n")}`,
+    ).toEqual([])
+  })
+
+  it("every OAUTH_COMPOSIO seed body references at least one toolkit-prefixed tool name", () => {
+    // Map catalog slug → expected tool-name prefix in the body. The prefix
+    // is derived from the composioToolkitId (not the catalog slug) because
+    // Composio's tool names are prefixed with the toolkit id uppercased.
+    // Two drift-corrected cases: `google_calendar` → `GOOGLECALENDAR_`
+    // (no underscore in Composio slug); `convertkit` → `KIT_` (vendor rebrand).
+    type Miss = { skillSlug: string; toolSlug: string; expectedPrefix: string }
+    const misses: Miss[] = []
+
+    for (const skill of TOOL_SPECIFIC_SKILLS) {
+      const toolSlug = skill.compatibleTools[0]
+      if (!toolSlug) continue
+      const tool = getToolBySlug(toolSlug)
+      if (!tool || tool.connectionType !== "OAUTH_COMPOSIO") continue
+      if (!tool.composioToolkitId) continue
+
+      // Composio tool names are prefixed with the toolkit id uppercased
+      // + underscore. GA uses an underscore-bearing id (`google_analytics`)
+      // which uppercases fine; others are single-token so the prefix is
+      // trivial.
+      const prefix = tool.composioToolkitId.toUpperCase() + "_"
+
+      if (!skill.skillMd.includes(prefix)) {
+        misses.push({ skillSlug: skill.slug, toolSlug, expectedPrefix: prefix })
+      }
+    }
+
+    expect(
+      misses,
+      `OAUTH_COMPOSIO seed bodies missing at least one tool-name literal starting with expected toolkit prefix:\n${misses.map((m) => `  ${m.skillSlug} (-> ${m.toolSlug}): expected prefix ${m.expectedPrefix}`).join("\n")}`,
+    ).toEqual([])
+  })
+
+  it("4 new OAuth skills (gmail, google_calendar, github, twitter) have both a catalog entry AND a seed row — lockstep", () => {
+    // If either side is removed without the other, this test surfaces the
+    // drift immediately. The 4 skills were added in PR #4 Commit 5 to fill
+    // the gap left by the OAuth catalog entries that previously had no
+    // matching compatibleTools skill row.
+    const NEW_OAUTH_SKILL_TOOLS = ["gmail", "google_calendar", "github", "twitter"] as const
+
+    type Miss = { toolSlug: string; hasCatalogEntry: boolean; hasSeedRow: boolean }
+    const misses: Miss[] = []
+
+    for (const toolSlug of NEW_OAUTH_SKILL_TOOLS) {
+      const catalogEntry = OAUTH_TOOLS.find((t) => t.slug === toolSlug)
+      const seedRow = TOOL_SPECIFIC_SKILLS.find((s) => s.compatibleTools.includes(toolSlug))
+
+      const hasCatalogEntry = Boolean(catalogEntry)
+      const hasSeedRow = Boolean(seedRow)
+
+      if (!hasCatalogEntry || !hasSeedRow) {
+        misses.push({ toolSlug, hasCatalogEntry, hasSeedRow })
+      }
+    }
+
+    expect(
+      misses,
+      `catalog/seed lockstep broken for newly-added OAuth skills:\n${misses.map((m) => `  ${m.toolSlug}: catalog=${m.hasCatalogEntry} seed=${m.hasSeedRow}`).join("\n")}`,
+    ).toEqual([])
   })
 })
 
