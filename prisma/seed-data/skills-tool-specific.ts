@@ -541,7 +541,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$BINANCE_API_KEY\` and \`$BINANCE_SECRET\` for signed endpoints.
+Set \`$BINANCE_API_KEY\` and \`$BINANCE_API_SECRET\` for signed endpoints.
 
 ## Key Endpoints
 
@@ -563,7 +563,7 @@ curl "https://api.binance.com/api/v3/account?timestamp=$(date +%s000)&signature=
   -H "X-MBX-APIKEY: $BINANCE_API_KEY"
 \`\`\`
 
-Signatures require HMAC-SHA256 of the query string using \`$BINANCE_SECRET\`.`,
+Signatures require HMAC-SHA256 of the query string using \`$BINANCE_API_SECRET\`.`,
     type: "TOOL_SPECIFIC",
     category: "TRADING",
     icon: "₿",
@@ -586,7 +586,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$COINBASE_API_KEY\` and \`$CB_API_SECRET\` for Coinbase Advanced Trade.
+Set \`$COINBASE_API_KEY\`, \`$COINBASE_API_SECRET\`, and \`$COINBASE_API_PASSPHRASE\` for Coinbase Exchange (the Advanced Trade endpoint uses the same Exchange HMAC auth per docs.cloud.coinbase.com/exchange/docs/rest-auth).
 
 ## Key Endpoints
 
@@ -631,7 +631,7 @@ metadata:
 ---
 
 ## Authentication
-Set \`$ALPACA_API_KEY_ID\` and \`$ALPACA_SECRET\` for Alpaca.
+Set \`$ALPACA_API_KEY_ID\` and \`$ALPACA_API_SECRET_KEY\` for Alpaca.
 
 ## Key Endpoints
 
@@ -639,14 +639,14 @@ Set \`$ALPACA_API_KEY_ID\` and \`$ALPACA_SECRET\` for Alpaca.
 \`\`\`bash
 curl https://paper-api.alpaca.markets/v2/account \\
   -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
-  -H "APCA-API-SECRET-KEY: $ALPACA_SECRET"
+  -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET_KEY"
 \`\`\`
 
 **Place Order:**
 \`\`\`bash
 curl -X POST https://paper-api.alpaca.markets/v2/orders \\
   -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
-  -H "APCA-API-SECRET-KEY: $ALPACA_SECRET" \\
+  -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"symbol":"AAPL","qty":"1","side":"buy","type":"market","time_in_force":"day"}'
 \`\`\`
@@ -655,7 +655,7 @@ curl -X POST https://paper-api.alpaca.markets/v2/orders \\
 \`\`\`bash
 curl https://paper-api.alpaca.markets/v2/positions \\
   -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
-  -H "APCA-API-SECRET-KEY: $ALPACA_SECRET"
+  -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET_KEY"
 \`\`\`
 
 Use \`paper-api\` for paper trading, \`api\` for live.`,
@@ -1105,21 +1105,21 @@ metadata:
 ---
 
 ## Authentication
-Set \`$TWILIO_SID\` and \`$TWILIO_AUTH_TOKEN\` for your Twilio account.
+Set \`$TWILIO_ACCOUNT_SID\` and \`$TWILIO_AUTH_TOKEN\`. The SID identifies the Twilio account; both are supplied together as HTTP Basic Auth (\`sid:token\`) for every REST call.
 
 ## Key Endpoints
 
 **Send SMS:**
 \`\`\`bash
-curl -X POST "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_SID/Messages.json" \\
-  -u "$TWILIO_SID:$TWILIO_AUTH_TOKEN" \\
+curl -X POST "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_ACCOUNT_SID/Messages.json" \\
+  -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" \\
   -d "To=+1234567890&From=+0987654321&Body=Hello from LaxClaws!"
 \`\`\`
 
 **List Messages:**
 \`\`\`bash
-curl "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_SID/Messages.json?PageSize=10" \\
-  -u "$TWILIO_SID:$TWILIO_AUTH_TOKEN"
+curl "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_ACCOUNT_SID/Messages.json?PageSize=10" \\
+  -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN"
 \`\`\`
 
 Uses Basic auth with Account SID and Auth Token.`,
