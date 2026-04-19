@@ -84,9 +84,17 @@ export async function GET(
       where: { workspaceId, actionType: { in: ["HUMAN_APPROVE", "HUMAN_REJECT"] } },
       select: { metadata: true },
     }),
+    // PR #4 Commit 6: expand the expired-tools banner trigger to cover
+    // EXPIRED and REVOKED alongside ERROR. Prior code fired only on ERROR,
+    // so any OAuth connection that lapsed (and was correctly written to
+    // the DB as EXPIRED after the mapComposioStatus un-collapse in the
+    // same commit) would never surface on the dashboard. Also selects
+    // `status` + `connectionType` so the dashboard banner can pick the
+    // right "Your OAuth token has expired" vs generic "Your connection
+    // stopped working" cause sentence.
     prisma.toolConnection.findMany({
-      where: { workspaceId, status: "ERROR" },
-      select: { displayName: true },
+      where: { workspaceId, status: { in: ["ERROR", "EXPIRED", "REVOKED"] } },
+      select: { displayName: true, status: true, connectionType: true },
     }),
   ])
 
@@ -199,7 +207,11 @@ export async function GET(
       const entry = costBySlug.get(a.agentSlug)
       return { agentSlug: a.agentSlug, agentName: a.name, role: a.role, model: a.model, calls: entry?.calls ?? 0, cost: Math.round((entry?.cost ?? 0) * 100) / 100 }
     }),
-    expiredTools: expiredTools.map((t) => ({ name: t.displayName })),
+    expiredTools: expiredTools.map((t) => ({
+      name: t.displayName,
+      status: t.status,
+      connectionType: t.connectionType,
+    })),
     recentLogs: recentLogs.map((log) => ({
       id: log.id,
       timestamp: log.timestamp.toISOString(),
