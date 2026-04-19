@@ -268,38 +268,10 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
-  {
-    name: "Buffer Social",
-    slug: "buffer-social",
-    description: "Schedule and publish social media posts via Buffer",
-    skillMd: `## Authentication
-Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
-
-## Key Endpoints
-
-**Create Post:**
-\`\`\`bash
-curl -X POST https://api.bufferapp.com/1/updates/create.json \\
-  -H "Authorization: Bearer <OAUTH_TOKEN>" \\
-  -d "text=Check out our new launch!&profile_ids[]=abc123&scheduled_at=2025-03-01T10:00:00Z"
-\`\`\`
-
-**List Profiles:**
-\`\`\`bash
-curl https://api.bufferapp.com/1/profiles.json \\
-  -H "Authorization: Bearer <OAUTH_TOKEN>"
-\`\`\`
-
-Supports Twitter, LinkedIn, Facebook, Instagram, and more via connected profiles.`,
-    type: "TOOL_SPECIFIC",
-    category: "CONTENT",
-    icon: "📱",
-    compatibleTools: ["buffer"],
-    requiresToolConnection: true,
-    requiredToolCategory: "CONTENT",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
+  // `buffer-social` skill removed in PR #4 — Composio has no `buffer` toolkit,
+  // so this skill had no usable tool to bind to. Restoration tracked in the
+  // "Template seed data drift" umbrella issue; remediation path is PR #6's
+  // Custom API pipeline (buffer-api direct-token).
   {
     name: "YouTube Data API",
     slug: "youtube-data-api",
@@ -332,62 +304,11 @@ curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHA
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
-  {
-    name: "Beehiiv Newsletter",
-    slug: "beehiiv-newsletter",
-    description: "Manage newsletter posts and subscribers via Beehiiv",
-    skillMd: `## Authentication
-Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
-
-## Key Endpoints
-
-**Create Post:**
-\`\`\`bash
-curl -X POST "https://api.beehiiv.com/v2/publications/{publication_id}/posts" \\
-  -H "Authorization: Bearer <OAUTH_TOKEN>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"title":"Weekly Update","subtitle":"What happened this week","content_html":"<p>Hello!</p>"}'
-\`\`\`
-
-**List Subscribers:**
-\`\`\`bash
-curl "https://api.beehiiv.com/v2/publications/{publication_id}/subscriptions" \\
-  -H "Authorization: Bearer <OAUTH_TOKEN>"
-\`\`\``,
-    type: "TOOL_SPECIFIC",
-    category: "CONTENT",
-    icon: "🐝",
-    compatibleTools: ["beehiiv"],
-    requiresToolConnection: true,
-    requiredToolCategory: "CONTENT",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
-  {
-    name: "Substack Newsletter",
-    slug: "substack-newsletter",
-    description: "Publish newsletter posts on Substack (limited API)",
-    skillMd: `## Authentication
-Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
-
-Substack has a limited official API; this skill is best-effort against unofficial / partner endpoints. The OAuth token is injected by Composio at runtime.
-
-## Notes
-- Substack does not offer a full public REST API as of 2025.
-- Reading posts is possible via the RSS feed at \`https://yourpub.substack.com/feed\`.
-- For write operations, consider using browser automation or the Substack editor API if whitelisted.
-- Monitor Substack's developer docs for future API availability.
-
-Best used for read-only integrations or alongside manual publishing workflows.`,
-    type: "TOOL_SPECIFIC",
-    category: "CONTENT",
-    icon: "📰",
-    compatibleTools: ["substack"],
-    requiresToolConnection: true,
-    requiredToolCategory: "CONTENT",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
+  // `beehiiv-newsletter` and `substack-newsletter` skills removed in PR #4 —
+  // Composio has no `beehiiv` or `substack` toolkit. Beehiiv users can instead
+  // use `beehiiv-api` (API_KEY_TOOLS, direct-token) via the MarketplaceSkill
+  // `beehiiv-newsletter` row in marketplace-skills.ts. Substack has no current
+  // remediation path; tracked in the umbrella drift issue.
   {
     name: "ConvertKit Newsletter",
     slug: "convertkit-newsletter",
@@ -900,43 +821,10 @@ Uses Basic auth with Account SID and Auth Token.`,
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
-  {
-    name: "WordPress CMS",
-    slug: "wordpress-cms",
-    description: "Create and manage posts, pages, and media via WordPress REST API",
-    skillMd: `## Authentication
-Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
-
-## Key Endpoints
-
-**Create Post:**
-\`\`\`bash
-curl -X POST "{site}/wp-json/wp/v2/posts" \\
-  -u REDACTED \\
-  -H "Content-Type: application/json" \\
-  -d '{"title":"New Post","content":"<p>Hello world!</p>","status":"draft"}'
-\`\`\`
-
-**List Posts:**
-\`\`\`bash
-curl "{site}/wp-json/wp/v2/posts?per_page=10" \\
-  -u REDACTED
-\`\`\`
-
-**Upload Media:**
-\`\`\`bash
-curl -X POST "{site}/wp-json/wp/v2/media" \\
-  -u REDACTED \\
-  -H "Content-Disposition: attachment; filename=image.png" \\
-  --data-binary @image.png
-\`\`\``,
-    type: "TOOL_SPECIFIC",
-    category: "CONTENT",
-    icon: "📝",
-    compatibleTools: ["wordpress"],
-    requiresToolConnection: true,
-    requiredToolCategory: "CONTENT",
-    isBuiltIn: false,
-    permissions: ["internet_access"],
-  },
+  // `wordpress-cms` skill removed in PR #4 — Composio has no `wordpress`
+  // toolkit. WordPress users can still install the `wordpress-cms`
+  // MarketplaceSkill (marketplace-skills.ts) which uses a direct
+  // WORDPRESS_URL + WORDPRESS_TOKEN pair (no OAuth). Restoration as a
+  // built-in skill tracked in the umbrella drift issue; built-in
+  // restoration needs PR #6's Custom API pipeline (wordpress-api).
 ]

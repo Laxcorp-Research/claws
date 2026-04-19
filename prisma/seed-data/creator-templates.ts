@@ -421,7 +421,10 @@ For each option:
       { slug: "youtube-data-api", name: "YouTube Data API", category: "Platform", connectionType: "API_KEY", required: true },
       { slug: "tavily", name: "Tavily", category: "Research", connectionType: "API_KEY", required: false },
       { slug: "vidiq", name: "VidIQ", category: "YouTube Analytics", connectionType: "API_KEY", required: false },
-      { slug: "buffer", name: "Buffer", category: "Social Scheduling", connectionType: "OAUTH_COMPOSIO", required: false },
+      // Note: a Social Scheduling slot (previously `buffer` OAUTH_COMPOSIO)
+      // was removed in PR #4 because Composio does not publish a `buffer`
+      // toolkit. Restoration tracked in the umbrella drift issue; remediation
+      // via PR #6's Custom API pipeline (buffer-api direct-token).
     ],
   },
 
@@ -1057,10 +1060,16 @@ For each topic:
     ),
     tools: [
       { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
-      { slug: "beehiiv", name: "Beehiiv", category: "Newsletter Platform", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["substack", "convertkit"] },
+      // Newsletter Platform: swapped from OAUTH_COMPOSIO `beehiiv` to API_KEY
+      // `beehiiv-api` (direct-token sibling in API_KEY_TOOLS) in PR #4, since
+      // Composio does not publish a `beehiiv` toolkit. `substack` dropped from
+      // alternatives for the same reason; `convertkit` retained (Composio
+      // exposes it at slug `kit` post-rebrand — mapped via composioToolkitId).
+      { slug: "beehiiv-api", name: "Beehiiv (API Key)", category: "Newsletter Platform", connectionType: "API_KEY", required: false, alternatives: ["convertkit"] },
       { slug: "twitter", name: "Twitter", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
       { slug: "linkedin", name: "LinkedIn", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
-      { slug: "buffer", name: "Buffer", category: "Social Scheduling", connectionType: "OAUTH_COMPOSIO", required: false },
+      // Note: Social Scheduling `buffer` removed in PR #4 (no Composio toolkit).
+      // Newsletter Empire still has twitter + linkedin for direct social posting.
     ],
   },
 
@@ -1385,7 +1394,8 @@ For each topic:
       { slug: "tavily", name: "Tavily", category: "Research", connectionType: "API_KEY", required: false },
       { slug: "twitter", name: "Twitter", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
       { slug: "linkedin", name: "LinkedIn", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
-      { slug: "buffer", name: "Buffer", category: "Social Scheduling", connectionType: "OAUTH_COMPOSIO", required: false },
+      // Note: Social Scheduling `buffer` removed in PR #4 (no Composio toolkit).
+      // Podcast Production Studio retains twitter + linkedin for direct social posting.
     ],
   },
 ]

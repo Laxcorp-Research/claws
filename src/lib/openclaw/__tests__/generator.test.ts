@@ -36,6 +36,10 @@ import { generateWorkspace } from '@/lib/openclaw/generator';
  * reads (see the ToolConnectionRecord type in generator.ts). Using this type
  * in test fixtures lets us declare `encryptedCredentials: null` for the
  * skip-path tests without TypeScript inferring a narrower shape.
+ *
+ * Post-PR #4: includes `composioConnectionId` + `composioEntityId` so OAuth
+ * emission tests can build CONNECTED rows. API_KEY tests continue to leave
+ * both null (matches the Prisma-level default for those rows).
  */
 type TestToolConn = {
   toolSlug: string;
@@ -43,6 +47,8 @@ type TestToolConn = {
   connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE';
   status: string;
   encryptedCredentials: string | null;
+  composioConnectionId: string | null;
+  composioEntityId: string | null;
 };
 
 function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
@@ -147,11 +153,14 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         connectionType: 'API_KEY',
         status: 'CONNECTED',
         encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'real-tavily-key' }),
+        composioConnectionId: null,
+        composioEntityId: null,
       },
     ] as TestToolConn[],
     channelConnections: [],
     clawTemplate: { name: 'Test Template', slug: 'test-template' },
     user: {
+      id: 'user-1',
       name: 'Test User',
       apiKeys: [
         { provider: 'ANTHROPIC', encryptedKey: 'encrypted-anthropic-key' },
@@ -289,6 +298,8 @@ describe('generateWorkspace', () => {
           BINANCE_API_KEY: 'binance-key-real',
           BINANCE_API_SECRET: 'binance-secret-real',
         }),
+        composioConnectionId: null,
+        composioEntityId: null,
       },
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
@@ -312,6 +323,8 @@ describe('generateWorkspace', () => {
         connectionType: 'API_KEY',
         status: 'NEEDS_CREDENTIALS',
         encryptedCredentials: JSON.stringify({ ALPACA_API_KEY_ID: 'partial-only' }),
+        composioConnectionId: null,
+        composioEntityId: null,
       },
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
@@ -324,22 +337,31 @@ describe('generateWorkspace', () => {
     expect(config.skills).toBeUndefined();
   });
 
-  it('skips OAUTH_COMPOSIO rows (Composio handles auth at runtime)', async () => {
-    const ws = buildMockWorkspace();
-    ws.toolConnections = [
-      {
-        toolSlug: 'gmail',
-        displayName: 'Gmail',
-        connectionType: 'OAUTH_COMPOSIO',
-        status: 'CONNECTED',
-        encryptedCredentials: null,
-      },
-    ];
-    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+  it('skips OAUTH_COMPOSIO rows when COMPOSIO_API_KEY is unset (no-op; preserves pre-PR #4 behavior for unconfigured envs)', async () => {
+    const prev = process.env.COMPOSIO_API_KEY;
+    delete process.env.COMPOSIO_API_KEY;
+    try {
+      const ws = buildMockWorkspace();
+      ws.toolConnections = [
+        {
+          toolSlug: 'gmail',
+          displayName: 'Gmail',
+          connectionType: 'OAUTH_COMPOSIO',
+          status: 'CONNECTED',
+          encryptedCredentials: null,
+          composioConnectionId: 'ca_fake_123',
+          composioEntityId: 'claws_user-1',
+        },
+      ];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
-    const config = JSON.parse(result['openclaw.json']);
-    expect(config.skills).toBeUndefined();
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      expect(config.skills).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.COMPOSIO_API_KEY;
+      else process.env.COMPOSIO_API_KEY = prev;
+    }
   });
 
   it('skips rows with null encryptedCredentials', async () => {
@@ -351,6 +373,8 @@ describe('generateWorkspace', () => {
         connectionType: 'API_KEY',
         status: 'PENDING',
         encryptedCredentials: null,
+        composioConnectionId: null,
+        composioEntityId: null,
       },
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
@@ -369,6 +393,8 @@ describe('generateWorkspace', () => {
         connectionType: 'API_KEY',
         status: 'CONNECTED',
         encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'k' }),
+        composioConnectionId: null,
+        composioEntityId: null,
       },
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
@@ -393,6 +419,8 @@ describe('generateWorkspace', () => {
         connectionType: 'API_KEY',
         status: 'CONNECTED',
         encryptedCredentials: JSON.stringify({ SENDGRID_API_KEY: 'k' }),
+        composioConnectionId: null,
+        composioEntityId: null,
       },
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
@@ -432,6 +460,264 @@ describe('generateWorkspace', () => {
     expect(result.workspaces[workerKey!]['HEARTBEAT.md']).toContain(
       'No heartbeat tasks'
     );
+  });
+
+  // ============================================================================
+  // OAUTH_COMPOSIO emission (PR #4)
+  // Docs: docs/COMPOSIO_RUNTIME_CONTRACT.md §"Emission shape"
+  // Each test sets COMPOSIO_API_KEY explicitly in a try/finally so the state
+  // cannot leak between tests (vitest doesn't isolate process.env by default).
+  // ============================================================================
+  describe('OAUTH_COMPOSIO emission (option iv per-request proxy)', () => {
+    function withComposioEnv<T>(fn: () => Promise<T>): Promise<T> {
+      const prev = process.env.COMPOSIO_API_KEY;
+      process.env.COMPOSIO_API_KEY = 'ak_test_platform_key';
+      return fn().finally(() => {
+        if (prev === undefined) delete process.env.COMPOSIO_API_KEY;
+        else process.env.COMPOSIO_API_KEY = prev;
+      });
+    }
+
+    it('emits the exact Composio envelope for each compatible Skill when COMPOSIO_API_KEY is set', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        ws.toolConnections = [
+          {
+            toolSlug: 'gmail',
+            displayName: 'Gmail',
+            connectionType: 'OAUTH_COMPOSIO',
+            status: 'CONNECTED',
+            encryptedCredentials: null,
+            composioConnectionId: 'ca_gmail_abc',
+            composioEntityId: 'claws_user-1',
+          },
+        ];
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+          { slug: 'gmail-outreach', compatibleTools: ['gmail'] },
+        ]);
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+
+        expect(config.skills).toBeDefined();
+        expect(config.skills.entries['gmail-outreach']).toEqual({
+          enabled: true,
+          env: {
+            COMPOSIO_API_KEY: 'ak_test_platform_key',
+            COMPOSIO_USER_ID: 'claws_user-1',
+            COMPOSIO_CONNECTED_ACCOUNT_ID: 'ca_gmail_abc',
+          },
+          config: {
+            composio: {
+              toolkit: 'gmail',
+              executeEndpoint: 'https://backend.composio.dev/api/v3/tools/execute',
+            },
+          },
+        });
+      });
+    });
+
+    it('emits one entry per compatible Skill (multi-skill fan-out)', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        ws.toolConnections = [
+          {
+            toolSlug: 'github',
+            displayName: 'GitHub',
+            connectionType: 'OAUTH_COMPOSIO',
+            status: 'CONNECTED',
+            encryptedCredentials: null,
+            composioConnectionId: 'ca_github_xyz',
+            composioEntityId: 'claws_user-1',
+          },
+        ];
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        // GitHub drives two skills. Fan-out is explicit in the contract: one
+        // toolkit can power many distinct skills (e.g., issue triage + repo
+        // reader). Each gets its own entry keyed by skill slug.
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+          { slug: 'github-issue-triage', compatibleTools: ['github'] },
+          { slug: 'github-repo-reader', compatibleTools: ['github'] },
+        ]);
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+
+        expect(Object.keys(config.skills.entries)).toEqual(
+          expect.arrayContaining(['github-issue-triage', 'github-repo-reader']),
+        );
+        expect(config.skills.entries['github-issue-triage'].config.composio.toolkit).toBe('github');
+        expect(config.skills.entries['github-repo-reader'].config.composio.toolkit).toBe('github');
+        // Both entries share the same connected account — they represent
+        // different verbs against the same OAuth grant.
+        expect(config.skills.entries['github-issue-triage'].env.COMPOSIO_CONNECTED_ACCOUNT_ID).toBe('ca_github_xyz');
+        expect(config.skills.entries['github-repo-reader'].env.COMPOSIO_CONNECTED_ACCOUNT_ID).toBe('ca_github_xyz');
+      });
+    });
+
+    it('uses the catalog composioToolkitId (not the catalog slug) — verifies slug-drift fixes land correctly', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        // `google_calendar` is our catalog slug; Composio's real toolkit slug
+        // is `googlecalendar` (no underscore). The generator must emit the
+        // Composio slug in config.composio.toolkit — not the catalog slug.
+        ws.toolConnections = [
+          {
+            toolSlug: 'google_calendar',
+            displayName: 'Google Calendar',
+            connectionType: 'OAUTH_COMPOSIO',
+            status: 'CONNECTED',
+            encryptedCredentials: null,
+            composioConnectionId: 'ca_gcal_123',
+            composioEntityId: 'claws_user-1',
+          },
+        ];
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+          { slug: 'google-calendar', compatibleTools: ['google_calendar'] },
+        ]);
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+
+        expect(config.skills.entries['google-calendar'].config.composio.toolkit).toBe('googlecalendar');
+      });
+    });
+
+    it('skips OAUTH_COMPOSIO rows with null composioConnectionId (OAuth initiated but not completed)', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        ws.toolConnections = [
+          {
+            toolSlug: 'hubspot',
+            displayName: 'HubSpot',
+            connectionType: 'OAUTH_COMPOSIO',
+            status: 'CONNECTED',
+            encryptedCredentials: null,
+            composioConnectionId: null,
+            composioEntityId: 'claws_user-1',
+          },
+        ];
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+        expect(config.skills).toBeUndefined();
+      });
+    });
+
+    it('skips OAUTH_COMPOSIO rows with status != CONNECTED (e.g., EXPIRED, REVOKED, PENDING)', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        ws.toolConnections = [
+          {
+            toolSlug: 'hubspot',
+            displayName: 'HubSpot',
+            connectionType: 'OAUTH_COMPOSIO',
+            status: 'EXPIRED',
+            encryptedCredentials: null,
+            composioConnectionId: 'ca_hubspot_stale',
+            composioEntityId: 'claws_user-1',
+          },
+        ];
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+        expect(config.skills).toBeUndefined();
+      });
+    });
+
+    it('skips OAUTH_COMPOSIO rows when the tool is not in the catalog (e.g., orphan after removal)', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        ws.toolConnections = [
+          {
+            // `buffer` was removed from the catalog in PR #4 Commit 1. Any
+            // lingering ToolConnection row with this slug (from a prior seed
+            // run) must NOT produce emission — the generator has no
+            // composioToolkitId to work with.
+            toolSlug: 'buffer',
+            displayName: 'Buffer',
+            connectionType: 'OAUTH_COMPOSIO',
+            status: 'CONNECTED',
+            encryptedCredentials: null,
+            composioConnectionId: 'ca_buffer_stale',
+            composioEntityId: 'claws_user-1',
+          },
+        ];
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+        expect(config.skills).toBeUndefined();
+      });
+    });
+
+    it('does not query prisma.skill.findMany when no OAuth tools are connected (saves the round-trip)', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        // Default fixture has one API_KEY row (tavily) only. No OAuth rows.
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        // If the generator does call findMany despite no OAuth connections,
+        // this rejection would surface as a failure — the guard-rail canary.
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockRejectedValue(
+          new Error('prisma.skill.findMany should not be called when no OAUTH_COMPOSIO rows are CONNECTED'),
+        );
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+        // API_KEY emission still works; OAuth branch was short-circuited.
+        expect(config.skills.entries.tavily).toBeDefined();
+      });
+    });
+
+    it('mixes API_KEY and OAUTH_COMPOSIO entries without collision', async () => {
+      await withComposioEnv(async () => {
+        const ws = buildMockWorkspace();
+        ws.toolConnections = [
+          {
+            toolSlug: 'tavily',
+            displayName: 'Tavily',
+            connectionType: 'API_KEY',
+            status: 'CONNECTED',
+            encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'tvly-k' }),
+            composioConnectionId: null,
+            composioEntityId: null,
+          },
+          {
+            toolSlug: 'gmail',
+            displayName: 'Gmail',
+            connectionType: 'OAUTH_COMPOSIO',
+            status: 'CONNECTED',
+            encryptedCredentials: null,
+            composioConnectionId: 'ca_gmail_mix',
+            composioEntityId: 'claws_user-1',
+          },
+        ];
+        (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+        (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+          { slug: 'gmail-outreach', compatibleTools: ['gmail'] },
+        ]);
+
+        const result = await generateWorkspace('ws-test-1');
+        const config = JSON.parse(result['openclaw.json']);
+
+        // API_KEY: keyed by tool slug, env is the decrypted payload.
+        expect(config.skills.entries.tavily).toEqual({
+          enabled: true,
+          env: { TAVILY_API_KEY: 'tvly-k' },
+        });
+        // OAUTH_COMPOSIO: keyed by skill slug, env is the Composio triple,
+        // config carries the composio block.
+        expect(config.skills.entries['gmail-outreach'].env.COMPOSIO_CONNECTED_ACCOUNT_ID).toBe('ca_gmail_mix');
+        expect(config.skills.entries['gmail-outreach'].config.composio.toolkit).toBe('gmail');
+      });
+    });
   });
 
   describe('heartbeat integration (generator end-to-end)', () => {
