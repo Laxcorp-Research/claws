@@ -106,6 +106,24 @@ describe("PR #3b seed body invariants", () => {
     ).toEqual([])
   })
 
+  it("no seed body begins with a YAML frontmatter block (generator builds it from catalog)", () => {
+    // Per PR #3a commit 0d21133, the generator emits authoritative
+    // frontmatter from Prisma columns + tool catalog. Seed-side frontmatter
+    // in `skillMd` bodies gets stripped at emit time, so leaving it in the
+    // seed source is dead weight + misleading to readers. Commit 3 of
+    // PR #3b removed it from every seed; this test prevents re-introduction.
+    const offenders: string[] = []
+    for (const skill of TOOL_SPECIFIC_SKILLS) {
+      if (/^---\r?\n/.test(skill.skillMd)) {
+        offenders.push(skill.slug)
+      }
+    }
+    expect(
+      offenders,
+      `seeds have a leading YAML frontmatter block in skillMd (should be stripped): ${offenders.join(", ")}`,
+    ).toEqual([])
+  })
+
   it("OAUTH_COMPOSIO seed bodies contain no $ENVVAR references (Composio handles auth)", () => {
     type OauthLeak = { skillSlug: string; refs: string[] }
     const leaks: OauthLeak[] = []

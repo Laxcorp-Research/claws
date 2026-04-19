@@ -5,15 +5,7 @@ export const TOOL_SPECIFIC_SKILLS: SeedSkill[] = [
     name: "Tavily Search",
     slug: "tavily-search",
     description: "Real-time web search via the Tavily API",
-    skillMd: `---
-name: Tavily Search
-description: Real-time web search via Tavily API
-metadata:
-  openclaw:
-    emoji: 🔎
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$TAVILY_API_KEY\` to your Tavily API key.
 
 ## Key Endpoints
@@ -46,15 +38,7 @@ Use \`search_depth: "advanced"\` for deeper results. Default returns title, url,
     name: "HubSpot CRM",
     slug: "hubspot-crm",
     description: "Manage contacts, deals, and companies in HubSpot",
-    skillMd: `---
-name: HubSpot CRM
-description: Contacts and deals CRUD via HubSpot API
-metadata:
-  openclaw:
-    emoji: 🔗
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
@@ -93,15 +77,7 @@ curl -X POST https://api.hubapi.com/crm/v3/objects/contacts/search \\
     name: "Salesforce CRM",
     slug: "salesforce-crm",
     description: "Manage leads, opportunities, and accounts in Salesforce",
-    skillMd: `---
-name: Salesforce CRM
-description: Leads and opportunities via Salesforce REST API
-metadata:
-  openclaw:
-    emoji: ☁️
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 Salesforce REST endpoints use the instance URL + Bearer token pair; both are injected by Composio at tool-invocation time (see \`{instance_url}\` / \`<OAUTH_TOKEN>\` as placeholders below).
@@ -134,15 +110,7 @@ curl "{instance_url}/services/data/v59.0/query?q=SELECT+Id,Name,Amount+FROM+Oppo
     name: "Apollo Search",
     slug: "apollo-search",
     description: "B2B people search and contact enrichment via Apollo.io",
-    skillMd: `---
-name: Apollo Search
-description: B2B people search and enrichment via Apollo API
-metadata:
-  openclaw:
-    emoji: 🚀
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$APOLLO_API_KEY\` to your Apollo API key.
 
 ## Key Endpoints
@@ -175,15 +143,7 @@ curl -X POST https://api.apollo.io/api/v1/people/match \\
     name: "Clay Enrichment",
     slug: "clay-enrichment",
     description: "Multi-source data enrichment via Clay API",
-    skillMd: `---
-name: Clay Enrichment
-description: Multi-source enrichment via Clay API
-metadata:
-  openclaw:
-    emoji: 🧱
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$CLAY_API_KEY\` to your Clay API key.
 
 ## Key Endpoints
@@ -216,15 +176,7 @@ Clay aggregates 50+ data providers. Specify sources or let Clay auto-select the 
     name: "Instantly Email",
     slug: "instantly-email",
     description: "Send cold email campaigns via Instantly",
-    skillMd: `---
-name: Instantly Email
-description: Cold email campaigns via Instantly API
-metadata:
-  openclaw:
-    emoji: ⚡
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$INSTANTLY_API_KEY\` to your Instantly API key.
 
 ## Key Endpoints
@@ -260,15 +212,7 @@ curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$INSTAN
     name: "Twitter API",
     slug: "twitter-api",
     description: "Post, read, and search tweets via the Twitter/X API",
-    skillMd: `---
-name: Twitter API
-description: Post, read, and search tweets via Twitter API v2
-metadata:
-  openclaw:
-    emoji: 🐦
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$TWITTER_API_KEY\` to your Twitter Bearer token.
 
 ## Key Endpoints
@@ -305,15 +249,7 @@ curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10" \\
     name: "LinkedIn API",
     slug: "linkedin-api",
     description: "Manage LinkedIn posts and profiles via Composio OAuth",
-    skillMd: `---
-name: LinkedIn API
-description: LinkedIn posts and profile management via Composio OAuth
-metadata:
-  openclaw:
-    emoji: 💼
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -336,15 +272,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Buffer Social",
     slug: "buffer-social",
     description: "Schedule and publish social media posts via Buffer",
-    skillMd: `---
-name: Buffer Social
-description: Schedule social posts via Buffer API
-metadata:
-  openclaw:
-    emoji: 📱
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
@@ -376,15 +304,7 @@ Supports Twitter, LinkedIn, Facebook, Instagram, and more via connected profiles
     name: "YouTube Data API",
     slug: "youtube-data-api",
     description: "Manage YouTube channels, videos, and playlists",
-    skillMd: `---
-name: YouTube Data API
-description: Channel and video management via YouTube Data API v3
-metadata:
-  openclaw:
-    emoji: 🎬
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$YOUTUBE_DATA_API_KEY\` to your YouTube Data API key (or OAuth token for writes).
 
 ## Key Endpoints
@@ -416,15 +336,7 @@ curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHA
     name: "Beehiiv Newsletter",
     slug: "beehiiv-newsletter",
     description: "Manage newsletter posts and subscribers via Beehiiv",
-    skillMd: `---
-name: Beehiiv Newsletter
-description: Newsletter posts and subscribers via Beehiiv API
-metadata:
-  openclaw:
-    emoji: 🐝
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
@@ -455,15 +367,7 @@ curl "https://api.beehiiv.com/v2/publications/{publication_id}/subscriptions" \\
     name: "Substack Newsletter",
     slug: "substack-newsletter",
     description: "Publish newsletter posts on Substack (limited API)",
-    skillMd: `---
-name: Substack Newsletter
-description: Substack newsletter management (limited API)
-metadata:
-  openclaw:
-    emoji: 📰
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 Substack has a limited official API; this skill is best-effort against unofficial / partner endpoints. The OAuth token is injected by Composio at runtime.
@@ -488,15 +392,7 @@ Best used for read-only integrations or alongside manual publishing workflows.`,
     name: "ConvertKit Newsletter",
     slug: "convertkit-newsletter",
     description: "Manage broadcasts and subscribers via ConvertKit",
-    skillMd: `---
-name: ConvertKit Newsletter
-description: Broadcasts and subscribers via ConvertKit API
-metadata:
-  openclaw:
-    emoji: 💌
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
@@ -532,15 +428,7 @@ curl -X POST "https://api.convertkit.com/v3/forms/{form_id}/subscribe" \\
     name: "Binance Trading",
     slug: "binance-trading",
     description: "Crypto prices, balances, and orders via Binance API",
-    skillMd: `---
-name: Binance Trading
-description: Crypto prices and orders via Binance API
-metadata:
-  openclaw:
-    emoji: ₿
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$BINANCE_API_KEY\` and \`$BINANCE_API_SECRET\` for signed endpoints.
 
 ## Key Endpoints
@@ -577,15 +465,7 @@ Signatures require HMAC-SHA256 of the query string using \`$BINANCE_API_SECRET\`
     name: "Coinbase Trading",
     slug: "coinbase-trading",
     description: "Crypto trading via Coinbase Advanced Trade API",
-    skillMd: `---
-name: Coinbase Trading
-description: Crypto trading via Coinbase Advanced Trade API
-metadata:
-  openclaw:
-    emoji: 🪙
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$COINBASE_API_KEY\`, \`$COINBASE_API_SECRET\`, and \`$COINBASE_API_PASSPHRASE\` for Coinbase Exchange (the Advanced Trade endpoint uses the same Exchange HMAC auth per docs.cloud.coinbase.com/exchange/docs/rest-auth).
 
 ## Key Endpoints
@@ -622,15 +502,7 @@ curl -X POST "https://api.coinbase.com/api/v3/brokerage/orders" \\
     name: "Alpaca Trading",
     slug: "alpaca-trading",
     description: "US stock trading via Alpaca Markets API",
-    skillMd: `---
-name: Alpaca Trading
-description: US stock trading via Alpaca API
-metadata:
-  openclaw:
-    emoji: 📈
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$ALPACA_API_KEY_ID\` and \`$ALPACA_API_SECRET_KEY\` for Alpaca.
 
 ## Key Endpoints
@@ -672,15 +544,7 @@ Use \`paper-api\` for paper trading, \`api\` for live.`,
     name: "Polymarket Trading",
     slug: "polymarket-trading",
     description: "Trade on prediction markets via Polymarket",
-    skillMd: `---
-name: Polymarket Trading
-description: Prediction market trading via Polymarket API
-metadata:
-  openclaw:
-    emoji: 🎯
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$POLYMARKET_API_KEY\` to your Polymarket API key.
 
 ## Key Endpoints
@@ -717,15 +581,7 @@ Polymarket uses a CLOB (Central Limit Order Book). Prices are between 0 and 1, r
     name: "Linear PM",
     slug: "linear-pm",
     description: "Manage issues and sprints via Linear GraphQL API",
-    skillMd: `---
-name: Linear PM
-description: Issues and sprints via Linear GraphQL API
-metadata:
-  openclaw:
-    emoji: 📐
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
@@ -760,15 +616,7 @@ Linear uses GraphQL exclusively. Use mutations for writes, queries for reads.`,
     name: "Asana PM",
     slug: "asana-pm",
     description: "Manage tasks and projects in Asana via Composio",
-    skillMd: `---
-name: Asana PM
-description: Task and project management via Asana (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 🎯
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -791,15 +639,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "ClickUp PM",
     slug: "clickup-pm",
     description: "Manage tasks and spaces in ClickUp via Composio",
-    skillMd: `---
-name: ClickUp PM
-description: Task and space management via ClickUp (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: ✅
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -822,15 +662,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Jira PM",
     slug: "jira-pm",
     description: "Manage issues and sprints in Jira via Composio",
-    skillMd: `---
-name: Jira PM
-description: Issue and sprint management via Jira (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 🔵
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -853,15 +685,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Slack Messaging",
     slug: "slack-messaging",
     description: "Send messages and manage channels in Slack via Composio",
-    skillMd: `---
-name: Slack Messaging
-description: Channel messaging via Slack (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 💬
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -884,15 +708,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Notion Docs",
     slug: "notion-docs",
     description: "Manage pages and databases in Notion via Composio",
-    skillMd: `---
-name: Notion Docs
-description: Pages and databases via Notion (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 📝
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -915,15 +731,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Shopify Store",
     slug: "shopify-store",
     description: "Manage products, orders, and inventory via Shopify API",
-    skillMd: `---
-name: Shopify Store
-description: Products and orders via Shopify Admin API
-metadata:
-  openclaw:
-    emoji: 🛍️
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
@@ -960,15 +768,7 @@ curl "https://{shop}.myshopify.com/admin/api/2024-01/inventory_levels.json?locat
     name: "Google Search Console",
     slug: "google-search-console",
     description: "Search performance and indexing data via Composio",
-    skillMd: `---
-name: Google Search Console
-description: Search performance and indexing via Google Search Console (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 📊
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -991,15 +791,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Google Analytics",
     slug: "google-analytics",
     description: "GA4 reporting and audience data via Composio",
-    skillMd: `---
-name: Google Analytics
-description: GA4 reporting via Google Analytics (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 📈
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -1022,15 +814,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Ahrefs SEO",
     slug: "ahrefs-seo",
     description: "Keyword research and backlink analysis via Ahrefs API",
-    skillMd: `---
-name: Ahrefs SEO
-description: Keywords and backlinks via Ahrefs API
-metadata:
-  openclaw:
-    emoji: 🔗
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$AHREFS_API_KEY\` to your Ahrefs API token.
 
 ## Key Endpoints
@@ -1065,15 +849,7 @@ curl "https://api.ahrefs.com/v3/site-explorer/domain-rating?target=example.com" 
     name: "Calendly Scheduling",
     slug: "calendly-scheduling",
     description: "Manage scheduling links and events via Composio",
-    skillMd: `---
-name: Calendly Scheduling
-description: Scheduling and events via Calendly (Composio OAuth)
-metadata:
-  openclaw:
-    emoji: 📅
----
-
-## Authentication
+    skillMd: `## Authentication
 Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
@@ -1096,15 +872,7 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     name: "Twilio SMS",
     slug: "twilio-sms",
     description: "Send and receive SMS messages via Twilio",
-    skillMd: `---
-name: Twilio SMS
-description: Send and receive SMS via Twilio API
-metadata:
-  openclaw:
-    emoji: 📱
----
-
-## Authentication
+    skillMd: `## Authentication
 Set \`$TWILIO_ACCOUNT_SID\` and \`$TWILIO_AUTH_TOKEN\`. The SID identifies the Twilio account; both are supplied together as HTTP Basic Auth (\`sid:token\`) for every REST call.
 
 ## Key Endpoints
@@ -1136,15 +904,7 @@ Uses Basic auth with Account SID and Auth Token.`,
     name: "WordPress CMS",
     slug: "wordpress-cms",
     description: "Create and manage posts, pages, and media via WordPress REST API",
-    skillMd: `---
-name: WordPress CMS
-description: Posts and pages via WordPress REST API
-metadata:
-  openclaw:
-    emoji: 📝
----
-
-## Authentication
+    skillMd: `## Authentication
 Authenticated via Composio OAuth; \`<OAUTH_TOKEN>\` in the examples below is a placeholder for the token Composio injects at runtime — do NOT try to read it from an env var. Use \`composio.tools.execute()\` to invoke these endpoints.
 
 ## Key Endpoints
