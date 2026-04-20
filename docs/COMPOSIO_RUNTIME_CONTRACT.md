@@ -330,12 +330,11 @@ https://www.googleapis.com/auth/contacts.readonly
 https://www.googleapis.com/auth/contacts.other.readonly
 ```
 
-**Observation — launch-gate follow-up**: the Composio-managed auth config for Gmail requests **full Gmail access** (`https://mail.google.com/`) plus a broad set of user/contact profile scopes. This is materially over-privileged for our Gmail use cases (we probably only need `gmail.send` and `gmail.readonly`, plus `userinfo.email` for display). Users who connect Gmail today are granting more than Claws actually uses. **This is a product-UX finding, not a blocker for architecture (iv).** Two mitigations worth tracking separately:
+**Observation — descriptive only**: the Composio-managed auth config for Gmail requests 12 scopes on the user's Google account, including full Gmail access (`https://mail.google.com/`) and a broad set of user/contact profile fields. This is what Composio's managed-auth template for Gmail asks for, and the user sees all of it on Google's consent screen before authorizing.
 
-1. Publish a "custom auth config" in our Composio project with a minimal scope set (Composio calls this `use_custom_auth`), default new connections to it.
-2. Document the grant scope in our Setup Wizard UI so users opt in with eyes open.
+**Our architectural stance (revised post-PR #4 review):** we default to Composio's managed auth for every OAuth tool. We do NOT build `use_custom_auth` configs with pre-narrowed scopes. Scope decisions stay with users via Google's consent surface — it's their account, their automation, their risk appetite, not ours to cap. The 12-scope grant is recorded here for traceability (so a future maintainer can look up what Gmail connections consent to without running the audit script again), not as a remediation target.
 
-Tracked in [GH issue #25](https://github.com/Laxcorp-Research/claws/issues/25) with full finding, two remediation paths, and launch-gate designation.
+Per-tool scope counts for the other 16 OAuth toolkits live in the PR #4 merge description, sourced from `C:\temp\composio-poc\90-oauth-tools-raw.json`. Re-runnable via `node C:\temp\composio-poc\21-scope-audit.mjs` if Composio changes what they ask for.
 
 ### Step 2 — Connection state inspection (confirms masking, confirms option (iv) never needs raw tokens)
 
@@ -488,9 +487,9 @@ What PR #4 actually needs:
 - Unit test on `generator.ts`'s OAuth-emission branch — assert that a `ToolConnection` with `connectionType="OAUTH_COMPOSIO"` produces the exact `skills.entries[slug]` shape documented in §"Emission shape".
 - Integration test, skipped-in-CI unless `COMPOSIO_API_KEY` is set, that round-trips a real `tools.execute` call against a test fixture connection. The scratch scripts at `C:\temp\composio-poc\` (this PR's artifacts) can be banked for this — they exercise every Composio API call PR #4 will touch.
 
-**Additional acceptance criterion (launch-gate-adjacent):**
+**Additional acceptance criterion — descriptive documentation:**
 
-- **For each of the 21 OAuth toolkits, document the actual scope list Composio-managed auth requests** (by completing OAuth once against each and recording the scope set). Flag any toolkit whose default grant is materially broader than the skill's functional need — those are launch-gate reductions to do before users connect them. The Gmail finding in this doc's §"Live POC results" → "Step 1" is the first row of what will become the full 21-toolkit audit; the remaining 20 need the same treatment. Pair with [GH issue #25](https://github.com/Laxcorp-Research/claws/issues/25) — any toolkit with an over-grant finding gets its own remediation decision (custom auth config or Setup Wizard disclosure).
+- **For each OAuth toolkit we ship, document the scope list Composio-managed auth requests.** Purpose: maintainer traceability. A user (or us during support triage) should be able to look up "what does connecting Slack actually authorize?" without re-running the audit. PR #4 shipped this via the 17-row informational table in its merge description, sourced from `C:\temp\composio-poc\90-oauth-tools-raw.json`. Re-runnable via `node C:\temp\composio-poc\21-scope-audit.mjs`. We are NOT preemptively narrowing these scopes by publishing `use_custom_auth` configs — see the Gmail §"Live POC results" → "Step 1" note on our architectural stance. [GH issue #25](https://github.com/Laxcorp-Research/claws/issues/25) was closed with that rationale.
 
 ### PR #5 (marketplace skill install)
 
@@ -504,9 +503,9 @@ A community skill that declares a Composio-backed toolkit in its `requiredEnvVar
 
 - **OAuth token custody.** Composio holds all tokens at rest, encrypted per their own SOC 2 controls. Our platform holds only `composioConnectionId` and `composioEntityId` (both opaque IDs). Container holds `COMPOSIO_API_KEY` (platform-scoped) + those two IDs.
 - **Rotation.** `COMPOSIO_API_KEY` is rotated via Composio's dashboard. On rotation, we update `process.env.COMPOSIO_API_KEY` on our server AND re-deploy every running container with the new key. No per-user rotation concern.
-- **Token scope (over-grant risk).** Composio-managed auth configs request a fixed scope per toolkit. The Gmail POC measured the exact grant: **12 scopes**, including full mailbox access (`https://mail.google.com/`), full contact list access (`contacts.readonly`), and personal profile fields (phone, address, birthday). Most of these are not used by our skills. See §"Live POC results" → "Step 1" for the verbatim grant list.
+- **Token scope (what users authorize).** Composio-managed auth configs request a fixed scope per toolkit. The Gmail POC measured the exact grant: 12 scopes, including full mailbox access (`https://mail.google.com/`), full contact list access (`contacts.readonly`), and personal profile fields (phone, address, birthday). The user sees all of these on Google's consent screen before authorizing.
 
-  **Launch gate.** The 12-scope Gmail grant above should be reduced to minimum viable (`gmail.send`, `gmail.readonly`, `userinfo.email`) before the first paying customer connects Gmail. Either (a) publish a custom Composio auth config with minimal scopes and default new connections to it, or (b) front the consent screen in the Setup Wizard with plain-language scope disclosure so users opt in with eyes open. Tracked in [GH issue #25](https://github.com/Laxcorp-Research/claws/issues/25).
+  **Architectural stance:** we default to Composio's managed auth. We do NOT build custom `use_custom_auth` configs to pre-narrow scopes. The decision of what an agent can do on a user's behalf belongs to the user at the consent screen, not to us in a config file. Per-tool scope lists are documented in PR #4's merge description for maintainer traceability. Reactive-only audit issue filed for "genuinely absurd" scopes (e.g., destructive scopes for a read-only integration use case); [GH issue #25](https://github.com/Laxcorp-Research/claws/issues/25) closed with this rationale.
 - **Revocation.** Three failure modes, all graceful:
   1. User revokes in Google (or whichever provider). Next `tools.execute` returns `successful=false` with a provider-specific error. The skill surfaces "reconnect your Gmail account" to the agent.
   2. We delete the connection via `connectedAccounts.delete`. Next `tools.execute` returns 404. Same UX.
@@ -521,7 +520,7 @@ A community skill that declares a Composio-backed toolkit in its `requiredEnvVar
 ## What this does NOT resolve
 
 - **The auth flow for `OAUTH_COMPOSIO` tools outside the catalog** (dynamic toolkits returned by `composio-catalog.ts`). Those work identically to cataloged ones because the architecture is toolkit-agnostic, but we haven't explicitly tested a dynamic one. If PR #4 wants to be thorough, re-run the POC with a dynamic toolkit (e.g., one not in our `OAUTH_TOOLS` array).
-- **Custom auth configs** (user-supplied OAuth app credentials, different scopes). Per Composio docs, we can supply an `authConfigId` that points to a custom app instead of Composio-managed. No architectural difference — same emission shape, just a different `authConfigId` lookup. PR #6 territory if/when we want minimal-scope auth.
+- **Custom auth configs** (user-supplied OAuth app credentials). Per Composio docs, we can supply an `authConfigId` that points to a custom app instead of Composio-managed. No architectural difference — same emission shape, just a different `authConfigId` lookup. We explicitly decided in PR #4 review NOT to build these preemptively; see the "Architectural stance" note in §"Security considerations". If a future requirement surfaces (e.g., a specific enterprise customer needs a whitelisted OAuth app instead of Composio's), the emission shape already supports it.
 - **Composio-mediated triggers / webhooks.** Not in scope — we only use Composio for tool execution. Triggers would need separate investigation.
 - **Cost modeling.** Composio charges per `tools.execute`. PR #4 should surface this in credit accounting and (optionally) pass cost through to our credit users. Out of scope for this doc.
 - **Fallback when Composio is down.** Composio's SLA is not 100%. The POC doesn't exercise this. Recommendation: when `tools.execute` returns 5xx from Composio, skill retries once, then fails gracefully with a "Composio unreachable; try again in a moment" message. Implementation is PR #4's concern.
