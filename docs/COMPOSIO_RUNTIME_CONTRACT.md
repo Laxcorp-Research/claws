@@ -126,7 +126,11 @@ Response shape (from `@composio/client/resources/tools.d.ts:323-346`):
 - Composio handles auth, token refresh, retries — our code doesn't see any of that.
 - Credential masking is orthogonal to `tools.execute`. We never need to fetch raw tokens for this path, so we never need to disable masking org-wide.
 - A single `COMPOSIO_API_KEY` (platform-scoped) authorizes all per-user tool calls. Per-user identity is carried by `user_id`; per-connection via `connected_account_id`.
-- Revocation is transparent: if a user revokes Gmail access in Google, the next `tools.execute` returns `{ successful: false, error: "..." }`. We don't maintain our own "is token stale" state.
+- **Revocation semantics (verified 2026-04-21, updated from pre-evidence framing):**
+  - **At the provider (Google):** when the user revokes at `https://myaccount.google.com/permissions`, both the access token and refresh token are invalidated atomically.
+  - **At `composio.tools.execute` call time:** the call returns `{ successful: false, error: "HTTP 401: Request had invalid authentication credentials. Expected OAuth 2 access token...", data: { message, status_code } }`. Composio propagates Google's 401 faithfully. Skill bodies catch this and surface "reconnect required" to the agent.
+  - **At `composio.connectedAccounts.get(id)`:** `status` **stays `ACTIVE`** before, during, and immediately after the probe call that surfaced the 401. Composio does not flip the status record on an immediately-observed provider-side 401. What trigger *does* flip it (periodic health sweep, `connectedAccounts.delete`, refresh-token-expiry event, a Composio-side background job, etc.) is currently unknown. Evidence: `C:\temp\composio-poc\400-force-composio-probe.mjs`.
+  - **Architectural implication:** `/oauth/status`'s `mapComposioStatus` correctly handles `ACTIVE`/`EXPIRED`/`REVOKED`/`FAILED` raw values if Composio returns them. But because Composio does not return `EXPIRED`/`REVOKED` promptly after a provider-side revoke, the DB can remain `CONNECTED` for stale connections until the Composio-side trigger fires. Users discover revocation gracefully at agent-runtime via the 401 path; dashboard UX may show stale `CONNECTED` until the DB catches up. Follow-up: [GH #40](../../issues/40).
 
 ### Endpoint path drift: `v3` vs `v3.1`
 
