@@ -27,6 +27,10 @@ import {
   connectionUiState,
   buildExtraToolsFromConnections,
 } from "@/components/setup/tools-state"
+import {
+  UNSUPPORTED_TOOLKITS,
+  UNSUPPORTED_TOOLKIT_TOOLTIP,
+} from "@/lib/composio/cheap-ops"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
@@ -502,6 +506,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const connectedSlugs = useMemo(() => tools.filter((t) => t.status === "connected").map((t) => t.slug), [tools])
   const allRequiredConnected = requiredTools.every((t) => t.status === "connected")
 
+  // PR #5: OAuth Test button support is toolkit-specific. For toolkits in
+  // UNSUPPORTED_TOOLKITS (Asana — GH #41), ToolRow renders Test disabled
+  // with a tooltip. API_KEY rows are unaffected. Helper lives here (not
+  // in tools-state.ts) because it's UI wiring, not state derivation.
+  const getTestDisabledReason = useCallback((tool: ToolState): string | undefined => {
+    if (tool.connectionType !== "OAUTH_COMPOSIO") return undefined
+    const def = getToolBySlug(tool.slug)
+    const toolkitSlug = def?.composioToolkitId ?? tool.slug
+    return UNSUPPORTED_TOOLKITS.includes(toolkitSlug) ? UNSUPPORTED_TOOLKIT_TOOLTIP : undefined
+  }, [])
+
   const refreshTools = useCallback(async () => {
     const res = await fetch(`/api/tools/${workspaceId}`)
     const data = await res.json()
@@ -738,9 +753,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
   const handleTest = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return
+
+    // PR #5: OAuth tools have their own Test endpoint (/test-oauth) that
+    // probes the real token via composio.tools.execute. API-key tools
+    // stay on /test. Branching here (not server-side) keeps the two
+    // routes' responses shape-distinct and avoids cross-type leakage.
+    const isOAuth = tool.connectionType === "OAUTH_COMPOSIO"
+    const endpoint = isOAuth ? "test-oauth" : "test"
+
     setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "testing" as const, errorMessage: undefined, warningMessage: undefined } : t)))
     try {
-      const res = await fetch(`/api/tools/${workspaceId}/${tool.connectionId}/test`, {
+      const res = await fetch(`/api/tools/${workspaceId}/${tool.connectionId}/${endpoint}`, {
         method: "POST",
       })
       const body = await res.json()
@@ -751,6 +774,27 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         return
       }
 
+      if (isOAuth) {
+        // OAuth response shape: { ok, state: "working" | "expired" | "error", message? }
+        const oauthResult: { ok: boolean; state: "working" | "expired" | "error"; message?: string } = body.data
+        if (oauthResult.state === "working") {
+          setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined, warningMessage: undefined } : t)))
+          return
+        }
+        if (oauthResult.state === "expired") {
+          // Server wrote DB to EXPIRED. Refetch to pull that state + let
+          // the ToolRow render "Reconnect" instead of Test + Revoke.
+          await refreshTools()
+          return
+        }
+        // state === "error": transient/unclassified. DB unchanged. Surface
+        // the probe's sanitized message inline so the user gets a Retry
+        // button rather than a hard failure copy.
+        setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: oauthResult.message || "Test failed", warningMessage: undefined } : t)))
+        return
+      }
+
+      // API_KEY response shape: { valid, error?, warning?, unverified?, message? }
       const result: { valid: boolean; error?: string; warning?: string; unverified?: boolean; message?: string } = body.data
 
       if (!result.valid) {
@@ -758,7 +802,6 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         return
       }
 
-      // Valid, but couldn't fully verify. Show as connected with a yellow note.
       if (result.unverified || result.warning) {
         const note = result.message ?? result.warning ?? ""
         setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined, warningMessage: note } : t)))
@@ -769,7 +812,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch {
       setTools((prev) => prev.map((t) => (t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: "Couldn't reach the server. Check your connection and try again.", warningMessage: undefined } : t)))
     }
-  }, [workspaceId])
+  }, [workspaceId, refreshTools])
 
   if (isLoading) {
     return <div className="space-y-3"><LoadingSkeleton variant="line" /><LoadingSkeleton variant="card" /><LoadingSkeleton variant="card" /></div>
@@ -831,6 +874,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                     : () => handleOAuthConnect(tool)
               }
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+              testDisabledReason={getTestDisabledReason(tool)}
               onDisconnect={() => handleDisconnect(tool)}
               onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
             />
@@ -862,6 +906,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               }
               onSwap={() => setSwapModal({ open: true, tool })}
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+              testDisabledReason={getTestDisabledReason(tool)}
               onDisconnect={() => handleDisconnect(tool)}
               onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
             />
@@ -895,6 +940,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                     : () => handleOAuthConnect(tool)
               }
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+              testDisabledReason={getTestDisabledReason(tool)}
               onDisconnect={() => handleDisconnect(tool)}
               onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
             />

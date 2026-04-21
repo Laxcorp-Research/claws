@@ -207,6 +207,63 @@ describe("ToolRow — OAUTH_COMPOSIO EXPIRED / REVOKED rendering (PR #4 Commit 6
   })
 })
 
+describe("ToolRow — Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () => {
+  it("renders an enabled Test button when onTest is supplied and no testDisabledReason", () => {
+    const onTest = vi.fn()
+    render(
+      <ToolRow
+        name="Gmail"
+        description="EMAIL"
+        connectionStatus="connected"
+        connectionType="OAUTH_COMPOSIO"
+        connectedAt={fixedDate(3)}
+        onTest={onTest}
+      />,
+    )
+    const btn = screen.getByRole("button", { name: "Test" })
+    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(btn)
+    expect(onTest).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders a disabled Test button with tooltip when testDisabledReason is supplied", () => {
+    // Guards GH #41 — Asana rows get a clear "not yet" tooltip rather
+    // than a working Test button that would 400 at the server.
+    const onTest = vi.fn()
+    render(
+      <ToolRow
+        name="Asana"
+        description="PROJECT_MANAGEMENT"
+        connectionStatus="connected"
+        connectionType="OAUTH_COMPOSIO"
+        connectedAt={fixedDate(1)}
+        onTest={onTest}
+        testDisabledReason="Test not yet supported for this tool"
+      />,
+    )
+    const btn = screen.getByRole("button", { name: /Test not yet supported for this tool/i })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    expect(btn.getAttribute("title")).toBe("Test not yet supported for this tool")
+    fireEvent.click(btn)
+    // Disabled button must not fire onTest even if the user clicks.
+    expect(onTest).not.toHaveBeenCalled()
+  })
+
+  it("does NOT render a Test button at all when both onTest and testDisabledReason are omitted", () => {
+    render(
+      <ToolRow
+        name="Gmail"
+        description="EMAIL"
+        connectionStatus="connected"
+        connectionType="OAUTH_COMPOSIO"
+        connectedAt={fixedDate(1)}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: /^Test$/ })).toBeNull()
+    expect(screen.queryByRole("button", { name: /not yet supported/i })).toBeNull()
+  })
+})
+
 describe("ToolRow — API_KEY rows unaffected by OAuth-specific rendering (PR #4 Commit 6 regression guard)", () => {
   it("API_KEY CONNECTED: keeps the static category description even when connectedAt is supplied", () => {
     render(
