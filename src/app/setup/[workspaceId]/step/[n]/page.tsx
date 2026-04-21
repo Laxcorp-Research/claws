@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
 import { ToolConnectionList } from "@/components/setup/tool-connection-list"
-import { ToolRow, type ToolRowStatus } from "@/components/setup/tool-row"
+import { ToolRow } from "@/components/setup/tool-row"
 import { CredentialsModal } from "@/components/setup/credentials-modal"
 import { ToolSwapModal } from "@/components/setup/tool-swap-modal"
 import { BrowseToolsModal } from "@/components/setup/browse-tools-modal"
@@ -21,6 +21,12 @@ import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import {
+  type ToolState,
+  type ServerConnectionSummary,
+  connectionUiState,
+  buildExtraToolsFromConnections,
+} from "@/components/setup/tools-state"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
@@ -359,85 +365,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
 }
 
 // ─── Step 2: Connect Tools ──────────────────────────────────
-
-interface ToolState {
-  slug: string
-  name: string
-  connectionType: "API_KEY" | "OAUTH_COMPOSIO"
-  category: string
-  status: ToolRowStatus
-  errorMessage?: string
-  /** Non-error informational note (e.g., "saved but not verified"). */
-  warningMessage?: string
-  connectionId?: string
-  helpUrl?: string
-  keyPlaceholder?: string
-  required: boolean
-  /**
-   * PR #4 Commit 6: timestamp the OAuth connection was first established.
-   * Sourced from `ToolConnection.createdAt` in the API payload; used by
-   * ToolRow to render "Connected N days ago" for OAUTH_COMPOSIO CONNECTED rows.
-   */
-  connectedAt?: string | null
-}
-
-interface ServerConnectionSummary {
-  toolSlug: string
-  status: string
-  id: string
-  connectionType?: string
-  lastError?: string | null
-  /** PR #4 Commit 6: passed through for OAuth "Connected N days ago" rendering. */
-  createdAt?: string | null
-}
-
-function connectionUiState(conn: ServerConnectionSummary): {
-  status: ToolRowStatus
-  errorMessage?: string
-  warningMessage?: string
-} {
-  switch (conn.status) {
-    case "CONNECTED":
-      return { status: "connected" }
-    // PR #4 Commit 6: un-collapse EXPIRED/REVOKED. Previously coerced
-    // into "error" with a generic "Connection failed" message, which
-    // lost the "reconnect-required" semantic and gave the user a Retry
-    // button where they should have had a Reconnect button. ToolRow now
-    // renders "Token expired — reconnect required" + Reconnect for these
-    // two states.
-    case "EXPIRED":
-      return { status: "expired" }
-    case "REVOKED":
-      return { status: "revoked" }
-    case "ERROR":
-      return {
-        status: "error",
-        errorMessage: conn.lastError ?? "Connection failed",
-      }
-    case "NEEDS_CREDENTIALS":
-      // PR #2 backfill outcome for multi-cred tools that held only the
-      // primary key in the legacy encryptedApiKey column. Server flipped
-      // status to NEEDS_CREDENTIALS + populated lastError with the list
-      // of missing fields; UI renders amber badge + Complete button.
-      return {
-        status: "needs-credentials",
-        warningMessage:
-          conn.lastError ??
-          "Some required fields are missing. Click Complete to finish setting this up.",
-      }
-    case "PENDING":
-      // API-key rows end up PENDING when we saved the key but couldn't
-      // verify it (no validator implemented, or provider returned 5xx).
-      // Treat as connected-with-warning — the key is stored and usable —
-      // not as disconnected, which would misrepresent what happened.
-      if (conn.connectionType === "API_KEY" && conn.lastError) {
-        return { status: "connected", warningMessage: conn.lastError }
-      }
-      return { status: "disconnected" }
-    default:
-      return { status: "disconnected" }
-  }
-}
+// ToolState, ServerConnectionSummary, and connectionUiState moved to
+// src/components/setup/tools-state.ts in Commit 9 so the non-template
+// merge logic added below is unit-testable.
 
 function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isManageMode?: boolean }) {
   const router = useRouter()
@@ -543,7 +473,14 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             return !def?.isAIProvider
           })
 
-        setTools(allTools)
+        // PR #4 Commit 9: any ToolConnection row the user created via the
+        // Browse Tools modal for a tool NOT in this workspace's template
+        // still needs to surface in the wizard UI, otherwise the modal
+        // keeps showing "Connect OAuth" for an already-connected tool
+        // (see GH #39, moved into PR #4 scope and fixed here).
+        const extraTools = buildExtraToolsFromConnections(allTools, existingConnections)
+
+        setTools([...allTools, ...extraTools])
       } catch (e) {
         console.error("Failed to load tools:", e)
       } finally {
@@ -553,8 +490,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     load()
   }, [workspaceId])
 
-  const requiredTools = useMemo(() => tools.filter((t) => t.required), [tools])
-  const recommendedTools = useMemo(() => tools.filter((t) => !t.required), [tools])
+  // PR #4 Commit 9: split the `tools` state into three disjoint buckets.
+  // `extra` rows come from non-template ToolConnection rows (added via
+  // the Browse Tools modal) and render in their own section with no
+  // Swap button and no "required" affordance. Without this split the
+  // non-template rows would leak into the "Recommended" block alongside
+  // the template's own recommended alternatives, which is misleading.
+  const requiredTools = useMemo(() => tools.filter((t) => t.required && !t.extra), [tools])
+  const recommendedTools = useMemo(() => tools.filter((t) => !t.required && !t.extra), [tools])
+  const extraTools = useMemo(() => tools.filter((t) => t.extra), [tools])
   const connectedSlugs = useMemo(() => tools.filter((t) => t.status === "connected").map((t) => t.slug), [tools])
   const allRequiredConnected = requiredTools.every((t) => t.status === "connected")
 
@@ -564,8 +508,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!data.success) return
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
     const existing: ServerConnectionSummary[] = data.data.connections
-    setTools((prev) =>
-      prev.map((t) => {
+    setTools((prev) => {
+      const updated = prev.map((t) => {
         const conn = existing.find((c) => c.toolSlug === t.slug)
         if (!conn) return t
         const ui = connectionUiState(conn)
@@ -578,7 +522,13 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           connectedAt: conn.createdAt ?? t.connectedAt ?? null,
         }
       })
-    )
+      // PR #4 Commit 9: pick up any new non-template connections since
+      // the last state snapshot (e.g., user just completed OAuth for a
+      // tool added via Browse Tools modal). Without this, the OAuth
+      // success path writes CONNECTED to DB but the wizard UI stays blind.
+      const extras = buildExtraToolsFromConnections(updated, existing)
+      return extras.length > 0 ? [...updated, ...extras] : updated
+    })
   }, [workspaceId])
 
   // PR #4 Commit 7: Revoke flow state. When a user clicks the Revoke button
@@ -911,6 +861,39 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                     : () => handleOAuthConnect(tool)
               }
               onSwap={() => setSwapModal({ open: true, tool })}
+              onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+              onDisconnect={() => handleDisconnect(tool)}
+              onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
+            />
+          ))}
+        </ToolConnectionList>
+      )}
+
+      {/* PR #4 Commit 9: Additional tools = ToolConnection rows not in this
+          workspace's template required/recommended list (added via Browse
+          Tools modal). Same row affordances as recommended except for the
+          Swap button, which has no meaningful target set here. */}
+      {extraTools.length > 0 && (
+        <ToolConnectionList title="Additional tools" subtitle="Connections you've added outside this Claw's default setup.">
+          {extraTools.map((tool) => (
+            <ToolRow
+              key={tool.slug}
+              name={tool.name}
+              description={tool.category}
+              connectionStatus={tool.status}
+              connectionType={tool.connectionType}
+              composioOAuthAvailable={composioOAuthAvailable}
+              errorMessage={tool.errorMessage}
+              warningMessage={tool.warningMessage}
+              connectedAt={tool.connectedAt}
+              onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onReconnect={
+                tool.connectionType === "API_KEY"
+                  ? () => setApiKeyModal({ open: true, tool })
+                  : tool.status === "expired" || tool.status === "revoked"
+                    ? () => handleOauthReconnect(tool)
+                    : () => handleOAuthConnect(tool)
+              }
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
               onDisconnect={() => handleDisconnect(tool)}
               onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
