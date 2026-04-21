@@ -46,6 +46,14 @@ interface ToolRowProps {
   onConnect?: () => void
   onSwap?: () => void
   onTest?: () => void
+  /**
+   * PR #5: when set on a CONNECTED row that would otherwise show a Test
+   * button, renders the button in disabled state with this string as the
+   * native tooltip (`title` attr). Used for OAuth toolkits whose cheap-ops
+   * registry entry is deferred (Asana, tracked in GH #41). Has no effect
+   * on rows that wouldn't show a Test button in the first place.
+   */
+  testDisabledReason?: string
   onDisconnect?: () => void
   onReconnect?: () => void
   /**
@@ -77,7 +85,7 @@ function daysAgoLabel(from: ToolRowProps["connectedAt"]): string | null {
   return `Connected ${days} days ago`
 }
 
-export function ToolRow({ name, description, connectionStatus, connectionType, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, onDisconnect, onReconnect, onRevoke, className }: ToolRowProps) {
+export function ToolRow({ name, description, connectionStatus, connectionType, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, testDisabledReason, onDisconnect, onReconnect, onRevoke, className }: ToolRowProps) {
   const isError = connectionStatus === "error"
   const isTesting = connectionStatus === "testing"
   const needsCredentials = connectionStatus === "needs-credentials"
@@ -138,9 +146,24 @@ export function ToolRow({ name, description, connectionStatus, connectionType, c
           {(connectionStatus === "connected" || isTesting) && (
             <>
               <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>
-              {onTest && (
+              {/* PR #5: two Test-button modes on CONNECTED rows.
+                  Enabled   → onTest passed, no testDisabledReason.
+                  Disabled  → testDisabledReason passed (Asana-class toolkit
+                              per GH #41). Tooltip via native `title` attr. */}
+              {onTest && !testDisabledReason && (
                 <button onClick={onTest} disabled={isTesting} className={cn("text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] transition-colors", isTesting ? "opacity-50" : "hover:border-[var(--bd2)]")}>
                   {isTesting ? <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Testing...</span> : "Test"}
+                </button>
+              )}
+              {testDisabledReason && (
+                <button
+                  type="button"
+                  disabled
+                  title={testDisabledReason}
+                  aria-label={testDisabledReason}
+                  className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx3)] opacity-50 cursor-not-allowed"
+                >
+                  Test
                 </button>
               )}
               {/* OAuth + connected + onRevoke present: render Revoke (outline danger).
