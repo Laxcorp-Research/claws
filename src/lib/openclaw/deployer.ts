@@ -34,6 +34,7 @@ import {
 import { log } from '@/lib/logger';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
 import { getApiKeySource } from '@/lib/credits/api-key-source';
+import { getComposioUserId } from '@/lib/composio';
 import { CronExpressionParser } from 'cron-parser';
 
 // ---------------------------------------------------------------------------
@@ -442,7 +443,7 @@ interface CreditConfig {
   userId: string;
 }
 
-function buildRailwayEnvVars(
+export function buildRailwayEnvVars(
   generated: GeneratedWorkspace,
   workspace: { timezone?: string | null; containerHost?: string | null },
   creditConfig?: CreditConfig,
@@ -477,6 +478,50 @@ function buildRailwayEnvVars(
     vars.NODE_OPTIONS = '--max-old-space-size=700';
   } else {
     vars.CLAWS_CREDIT_MODE = 'false';
+  }
+
+  // ---------------------------------------------------------------------
+  // Composio coordinates (PR #4 Commit 2)
+  //
+  // COMPOSIO_API_KEY is a PLATFORM-SCOPED secret: the container holding it
+  // can call Composio's tools.execute on behalf of ANY user that the
+  // caller can name via `user_id` + `connected_account_id`. The ONLY thing
+  // that scopes execution to this workspace's user is COMPOSIO_USER_ID.
+  //
+  // Emission policy (defense-in-depth, two independent sources of
+  // COMPOSIO_USER_ID inside the container):
+  //   1. Per-skill: generator emits skills.entries[slug].env.COMPOSIO_USER_ID
+  //      — OpenClaw merges that into process.env when the skill runs.
+  //   2. Container-level (this function): COMPOSIO_USER_ID is pinned at
+  //      deploy time so any runtime code path reading process.env before
+  //      the per-skill merge (or any accidental ad-hoc Composio call)
+  //      reads the correct user id — NOT undefined, NOT another user's.
+  //
+  // Both landings are required. Without (2), a bug in the container (e.g.,
+  // a skill that shells out to a helper that doesn't receive per-skill
+  // env, or a runtime hook that loads before skill env injection) could
+  // use the platform API key with a spoofed user_id. This function fails
+  // closed: if COMPOSIO_API_KEY is present but we cannot pin a user id,
+  // we refuse to emit the API key at all.
+  //
+  // See docs/COMPOSIO_RUNTIME_CONTRACT.md §"Emission shape" for the
+  // canonical shape and docs/examples/composio-gmail.json for the
+  // reference example.
+  // ---------------------------------------------------------------------
+  const composioApiKey = process.env.COMPOSIO_API_KEY?.trim();
+  if (composioApiKey) {
+    if (!creditConfig?.userId) {
+      // Fail-closed: refuse to deploy a platform API key into a container
+      // that we cannot scope to a specific user. Existing callers (see
+      // deployWorkspace + redeployWorkspace) always pass creditConfig.userId;
+      // this throw catches a future regression where a new call site
+      // forgets. Error message is explicit so the fix is obvious.
+      throw new Error(
+        'buildRailwayEnvVars: COMPOSIO_API_KEY is set but creditConfig.userId is missing; refusing to emit platform API key without a user-id scope pin (security boundary — see docs/COMPOSIO_RUNTIME_CONTRACT.md §"Security considerations")',
+      );
+    }
+    vars.COMPOSIO_API_KEY = composioApiKey;
+    vars.COMPOSIO_USER_ID = getComposioUserId(creditConfig.userId);
   }
 
   return vars;

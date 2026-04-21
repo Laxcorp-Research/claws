@@ -21,7 +21,21 @@ import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { generateSecureToken } from '@/lib/crypto';
 import { getToolBySlug } from '@/data/tool-catalog';
+import { getComposioUserId } from '@/lib/composio';
 import yaml from 'yaml';
+
+// ---------------------------------------------------------------------------
+// Composio constants (OAUTH_COMPOSIO emission)
+// ---------------------------------------------------------------------------
+// The REST endpoint every skillMd body targets at runtime for Composio-proxied
+// OAuth tools (option iv, per docs/COMPOSIO_RUNTIME_CONTRACT.md). Emitted
+// into openclaw.json > skills.entries[<slug>].config.composio.executeEndpoint
+// so skill bodies read it from env/config rather than hard-coding.
+//
+// The SDK (`@composio/core` → `@composio/client`) canonically targets /api/v3/.
+// A /api/v3.1/ variant also exists but is OpenAPI-only; both accept the same
+// payload shape. See docs/COMPOSIO_RUNTIME_CONTRACT.md §"Endpoint path drift".
+const COMPOSIO_EXECUTE_ENDPOINT = 'https://backend.composio.dev/api/v3/tools/execute';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,7 +158,25 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     }
   }
 
-  const workspaceWithChannels = { ...workspace, channelConnections };
+  // 2b. Pre-load skills compatible with any CONNECTED OAUTH_COMPOSIO tool in
+  // this workspace. Kept separate from the main include because Skill is not
+  // a direct Workspace relation — the tool→skill map lives on Skill.compatibleTools.
+  // Loading here (once, before any sync config generator runs) keeps
+  // generateSkillsEntriesConfig pure-sync and testable without async plumbing.
+  // When no OAuth tools are connected, we skip the query entirely.
+  const connectedOauthToolSlugs = workspace.toolConnections
+    .filter((tc) => tc.connectionType === 'OAUTH_COMPOSIO' && tc.status === 'CONNECTED')
+    .map((tc) => tc.toolSlug);
+
+  const compatibleOauthSkills: SkillForOauthEmit[] =
+    connectedOauthToolSlugs.length > 0
+      ? await prisma.skill.findMany({
+          where: { compatibleTools: { hasSome: connectedOauthToolSlugs } },
+          select: { slug: true, compatibleTools: true },
+        })
+      : [];
+
+  const workspaceWithChannels = { ...workspace, channelConnections, compatibleOauthSkills };
 
   // 3. Identify agent roles
   const orchestrator = workspaceWithChannels.agents.find(a => a.role === 'ORCHESTRATOR');
@@ -373,33 +405,43 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): Record<strin
 /**
  * Build `openclaw.json > skills.entries` from the user's ToolConnection rows.
  *
- * For each API_KEY ToolConnection with a populated encryptedCredentials
- * column, decrypt the JSON payload (a `Record<envVar, value>`) and emit
- * `skills.entries[toolSlug] = { enabled: true, env: <decrypted record> }`.
+ * Emits two kinds of entries:
  *
- * Skipped rows:
- *   - `connectionType !== 'API_KEY'` (OAUTH_COMPOSIO, CHANNEL_NATIVE —
- *     Composio handles OAuth at runtime; channel tokens live elsewhere.
- *     See docs/COMPOSIO_RUNTIME_CONTRACT.md).
- *   - `encryptedCredentials IS NULL` (row was created but never had
- *     credentials saved; happens during race between row insert and the
- *     connect flow, or for rows awaiting backfill).
- *   - `status === 'NEEDS_CREDENTIALS'` (row holds partial data — shipping
- *     it to the container would hand the skill a broken env, better to
- *     skip and let the UI re-prompt).
- *   - Decrypt/parse failures (logged as console.warn, row skipped; a
+ *   1. **API_KEY** (keyed by `toolSlug`):
+ *      For each API_KEY ToolConnection with a populated `encryptedCredentials`
+ *      column, decrypt the JSON payload (a `Record<envVar, value>`) and emit
+ *      `skills.entries[toolSlug] = { enabled: true, env: <decrypted record> }`.
+ *      Skipped when `status === 'NEEDS_CREDENTIALS'` (partial data) or the
+ *      column is null/unparseable. Slot key matches the tool slug — the
+ *      catalog slug is the skill name for tool-backed API_KEY skills.
+ *
+ *   2. **OAUTH_COMPOSIO** (keyed by `skillSlug`):
+ *      For each CONNECTED OAUTH_COMPOSIO ToolConnection, look up every
+ *      `Skill` whose `compatibleTools` array contains the tool slug (from
+ *      `workspace.compatibleOauthSkills`, pre-loaded in `generateWorkspace`)
+ *      and emit one `skills.entries[skill.slug]` per compatible skill. Each
+ *      entry carries the three Composio coordinates in `env`
+ *      (`COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO_CONNECTED_ACCOUNT_ID`)
+ *      plus `config.composio.{toolkit, executeEndpoint}` so the skill body can
+ *      call Composio's REST endpoint at runtime. See
+ *      docs/COMPOSIO_RUNTIME_CONTRACT.md §"Emission shape" for the canonical
+ *      contract and the rationale for option (iv) per-request proxy.
+ *      Skipped when `process.env.COMPOSIO_API_KEY` is unset (quiet no-op —
+ *      builder/local-dev flows without Composio still succeed), when the
+ *      row has no `composioConnectionId`, when the tool is not in the
+ *      catalog, or when no Skill row has the tool in its `compatibleTools`.
+ *
+ * Skipped (across both branches):
+ *   - `connectionType === 'CHANNEL_NATIVE'` (tokens live in .env, not here).
+ *   - Decrypt/parse failures on API_KEY rows (logged, row skipped; a
  *     partial workspace is less harmful than a crashed generator).
- *
- * Note: the key of `skills.entries` is the `toolSlug`, NOT a `skillSlug`.
- * OpenClaw resolves skill names via the `skills.entries[<slug>]` lookup
- * itself; our catalog slug == the skill name for tool-backed skills in
- * the seed data (see docs/ENV_VAR_CONVENTION.md §"skills.entries").
  */
 function generateSkillsEntriesConfig(
   workspace: WorkspaceWithRelations,
 ): Record<string, any> {
   const entries: Record<string, any> = {};
 
+  // --- API_KEY branch -----------------------------------------------------
   for (const toolConn of workspace.toolConnections) {
     if (toolConn.connectionType !== 'API_KEY') continue;
     if (!toolConn.encryptedCredentials) continue;
@@ -433,6 +475,69 @@ function generateSkillsEntriesConfig(
     if (Object.keys(env).length === 0) continue;
 
     entries[toolConn.toolSlug] = { enabled: true, env };
+  }
+
+  // --- OAUTH_COMPOSIO branch ---------------------------------------------
+  // Only emits when COMPOSIO_API_KEY is in the server env. The container
+  // itself holds no OAuth tokens; it receives this platform key + two opaque
+  // IDs per skill and POSTs to Composio's execute endpoint (option iv).
+  const composioApiKey = process.env.COMPOSIO_API_KEY?.trim();
+  if (!composioApiKey) {
+    // Quiet no-op. Local builder / dev flows stay unblocked; production
+    // deploys must set COMPOSIO_API_KEY on the server.
+    return entries;
+  }
+
+  const composioUserId = getComposioUserId(workspace.user.id);
+
+  for (const toolConn of workspace.toolConnections) {
+    if (toolConn.connectionType !== 'OAUTH_COMPOSIO') continue;
+    if (toolConn.status !== 'CONNECTED') continue;
+    if (!toolConn.composioConnectionId) continue;
+
+    const tool = getToolBySlug(toolConn.toolSlug);
+    const toolkitId = tool?.composioToolkitId;
+    if (!toolkitId) {
+      // Tool was removed from catalog (e.g., Composio dropped the toolkit)
+      // but the ToolConnection row lingered. Don't emit garbage; let the
+      // tool-management UI surface the orphan on its own.
+      console.warn(
+        `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} has no catalog composioToolkitId; skipping`,
+      );
+      continue;
+    }
+
+    const matchingSkills = workspace.compatibleOauthSkills.filter((s) =>
+      s.compatibleTools.includes(toolConn.toolSlug),
+    );
+
+    if (matchingSkills.length === 0) {
+      // User connected the tool before a compatible Skill row was seeded,
+      // OR the seed rewrite for this tool's skills is still pending (PR #4
+      // Commit 6). Not fatal — the tool connection persists; future seed
+      // runs pick it up.
+      console.warn(
+        `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} has no compatible Skill rows; no skills.entries emitted`,
+      );
+      continue;
+    }
+
+    for (const skill of matchingSkills) {
+      entries[skill.slug] = {
+        enabled: true,
+        env: {
+          COMPOSIO_API_KEY: composioApiKey,
+          COMPOSIO_USER_ID: composioUserId,
+          COMPOSIO_CONNECTED_ACCOUNT_ID: toolConn.composioConnectionId,
+        },
+        config: {
+          composio: {
+            toolkit: toolkitId,
+            executeEndpoint: COMPOSIO_EXECUTE_ENDPOINT,
+          },
+        },
+      };
+    }
   }
 
   return entries;
@@ -1288,9 +1393,19 @@ type WorkspaceWithRelations = {
   channelConnections: ChannelConnectionRecord[];
   clawTemplate: { name: string; slug: string } | null;
   user: {
+    /** Needed for Composio user id (`claws_${user.id}`). Populated by the
+     *  top-level `user: { include: { apiKeys: true } }` in generateWorkspace. */
+    id: string;
     name: string | null;
     apiKeys: { provider: string; encryptedKey: string }[];
   };
+  /**
+   * Skills whose `compatibleTools` array intersects this workspace's
+   * CONNECTED OAUTH_COMPOSIO tool slugs. Pre-loaded in `generateWorkspace`
+   * (single `prisma.skill.findMany`) so config generators stay sync.
+   * Empty when no OAuth tools are connected.
+   */
+  compatibleOauthSkills: SkillForOauthEmit[];
 };
 
 type AgentWithRelations = {
@@ -1446,6 +1561,27 @@ type ToolConnectionRecord = {
   connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE' | string;
   status: string;
   encryptedCredentials: string | null;
+  /** Composio's opaque connected-account id (ca_...). Populated for
+   *  OAUTH_COMPOSIO rows after successful OAuth; null otherwise. Used as
+   *  `COMPOSIO_CONNECTED_ACCOUNT_ID` in the emission env. */
+  composioConnectionId: string | null;
+  /** Composio's external user id (claws_<User.id>). Populated alongside
+   *  composioConnectionId during the OAuth initiate flow (see
+   *  src/app/api/tools/[workspaceId]/oauth/initiate/route.ts). We re-derive
+   *  this field on emit via getComposioUserId(user.id) to keep it
+   *  authoritative at generate-time, but the column is kept for audit. */
+  composioEntityId: string | null;
+};
+
+/**
+ * Minimal Skill projection used by the OAUTH_COMPOSIO emission branch.
+ * `generateWorkspace` selects exactly these two columns from `prisma.skill`
+ * so we don't haul the entire `skillMd` body + metadata through memory for
+ * a lookup-only purpose. See `generateSkillsEntriesConfig`.
+ */
+type SkillForOauthEmit = {
+  slug: string;
+  compatibleTools: string[];
 };
 
 type ChannelConnectionRecord = {

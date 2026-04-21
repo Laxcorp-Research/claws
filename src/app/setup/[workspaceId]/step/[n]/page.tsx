@@ -2,11 +2,10 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
 import { ToolConnectionList } from "@/components/setup/tool-connection-list"
-import { ToolRow, type ToolRowStatus } from "@/components/setup/tool-row"
+import { ToolRow } from "@/components/setup/tool-row"
 import { CredentialsModal } from "@/components/setup/credentials-modal"
 import { ToolSwapModal } from "@/components/setup/tool-swap-modal"
 import { BrowseToolsModal } from "@/components/setup/browse-tools-modal"
@@ -17,11 +16,19 @@ import { ChannelList } from "@/components/setup/channel-list"
 import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
-import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
-import { ALL_TOOLS, getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition, type ToolCredentialField } from "@/data/tool-catalog"
+import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
+import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
+import { getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import {
+  type ToolState,
+  type ServerConnectionSummary,
+  connectionUiState,
+  buildExtraToolsFromConnections,
+} from "@/components/setup/tools-state"
 import { DEFAULT_MODEL } from "@/lib/models"
-import { Check, CheckCircle, XCircle, AlertTriangle, Package, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
+import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
 
@@ -358,69 +365,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
 }
 
 // ─── Step 2: Connect Tools ──────────────────────────────────
-
-interface ToolState {
-  slug: string
-  name: string
-  connectionType: "API_KEY" | "OAUTH_COMPOSIO"
-  category: string
-  status: ToolRowStatus
-  errorMessage?: string
-  /** Non-error informational note (e.g., "saved but not verified"). */
-  warningMessage?: string
-  connectionId?: string
-  helpUrl?: string
-  keyPlaceholder?: string
-  required: boolean
-}
-
-interface ServerConnectionSummary {
-  toolSlug: string
-  status: string
-  id: string
-  connectionType?: string
-  lastError?: string | null
-}
-
-function connectionUiState(conn: ServerConnectionSummary): {
-  status: ToolRowStatus
-  errorMessage?: string
-  warningMessage?: string
-} {
-  switch (conn.status) {
-    case "CONNECTED":
-      return { status: "connected" }
-    case "ERROR":
-    case "EXPIRED":
-    case "REVOKED":
-      return {
-        status: "error",
-        errorMessage: conn.lastError ?? "Connection failed",
-      }
-    case "NEEDS_CREDENTIALS":
-      // PR #2 backfill outcome for multi-cred tools that held only the
-      // primary key in the legacy encryptedApiKey column. Server flipped
-      // status to NEEDS_CREDENTIALS + populated lastError with the list
-      // of missing fields; UI renders amber badge + Complete button.
-      return {
-        status: "needs-credentials",
-        warningMessage:
-          conn.lastError ??
-          "Some required fields are missing. Click Complete to finish setting this up.",
-      }
-    case "PENDING":
-      // API-key rows end up PENDING when we saved the key but couldn't
-      // verify it (no validator implemented, or provider returned 5xx).
-      // Treat as connected-with-warning — the key is stored and usable —
-      // not as disconnected, which would misrepresent what happened.
-      if (conn.connectionType === "API_KEY" && conn.lastError) {
-        return { status: "connected", warningMessage: conn.lastError }
-      }
-      return { status: "disconnected" }
-    default:
-      return { status: "disconnected" }
-  }
-}
+// ToolState, ServerConnectionSummary, and connectionUiState moved to
+// src/components/setup/tools-state.ts in Commit 9 so the non-template
+// merge logic added below is unit-testable.
 
 function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isManageMode?: boolean }) {
   const router = useRouter()
@@ -458,7 +405,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         if (toolsData.success) {
           setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
         }
-        const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null }> = toolsData.success ? toolsData.data.connections : []
+        const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null; createdAt?: string | null }> = toolsData.success ? toolsData.data.connections : []
 
         const buildToolState = (names: string[], required: boolean): ToolState[] =>
           names.map((name) => {
@@ -478,6 +425,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                 errorMessage: ui.errorMessage,
                 warningMessage: ui.warningMessage,
                 connectionId: directMatch.id,
+                connectedAt: directMatch.createdAt ?? null,
                 helpUrl: def?.helpUrl,
                 keyPlaceholder: def?.keyPlaceholder,
                 required,
@@ -500,6 +448,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                 errorMessage: ui.errorMessage,
                 warningMessage: ui.warningMessage,
                 connectionId: swapMatch.id,
+                connectedAt: swapMatch.createdAt ?? null,
                 helpUrl: swapDef?.helpUrl,
                 keyPlaceholder: swapDef?.keyPlaceholder,
                 required,
@@ -524,7 +473,14 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             return !def?.isAIProvider
           })
 
-        setTools(allTools)
+        // PR #4 Commit 9: any ToolConnection row the user created via the
+        // Browse Tools modal for a tool NOT in this workspace's template
+        // still needs to surface in the wizard UI, otherwise the modal
+        // keeps showing "Connect OAuth" for an already-connected tool
+        // (see GH #39, moved into PR #4 scope and fixed here).
+        const extraTools = buildExtraToolsFromConnections(allTools, existingConnections)
+
+        setTools([...allTools, ...extraTools])
       } catch (e) {
         console.error("Failed to load tools:", e)
       } finally {
@@ -534,8 +490,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     load()
   }, [workspaceId])
 
-  const requiredTools = useMemo(() => tools.filter((t) => t.required), [tools])
-  const recommendedTools = useMemo(() => tools.filter((t) => !t.required), [tools])
+  // PR #4 Commit 9: split the `tools` state into three disjoint buckets.
+  // `extra` rows come from non-template ToolConnection rows (added via
+  // the Browse Tools modal) and render in their own section with no
+  // Swap button and no "required" affordance. Without this split the
+  // non-template rows would leak into the "Recommended" block alongside
+  // the template's own recommended alternatives, which is misleading.
+  const requiredTools = useMemo(() => tools.filter((t) => t.required && !t.extra), [tools])
+  const recommendedTools = useMemo(() => tools.filter((t) => !t.required && !t.extra), [tools])
+  const extraTools = useMemo(() => tools.filter((t) => t.extra), [tools])
   const connectedSlugs = useMemo(() => tools.filter((t) => t.status === "connected").map((t) => t.slug), [tools])
   const allRequiredConnected = requiredTools.every((t) => t.status === "connected")
 
@@ -545,8 +508,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!data.success) return
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
     const existing: ServerConnectionSummary[] = data.data.connections
-    setTools((prev) =>
-      prev.map((t) => {
+    setTools((prev) => {
+      const updated = prev.map((t) => {
         const conn = existing.find((c) => c.toolSlug === t.slug)
         if (!conn) return t
         const ui = connectionUiState(conn)
@@ -556,10 +519,133 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           errorMessage: ui.errorMessage,
           warningMessage: ui.warningMessage,
           connectionId: conn.id,
+          connectedAt: conn.createdAt ?? t.connectedAt ?? null,
         }
       })
-    )
+      // PR #4 Commit 9: pick up any new non-template connections since
+      // the last state snapshot (e.g., user just completed OAuth for a
+      // tool added via Browse Tools modal). Without this, the OAuth
+      // success path writes CONNECTED to DB but the wizard UI stays blind.
+      const extras = buildExtraToolsFromConnections(updated, existing)
+      return extras.length > 0 ? [...updated, ...extras] : updated
+    })
   }, [workspaceId])
+
+  // PR #4 Commit 7: Revoke flow state. When a user clicks the Revoke button
+  // on an OAUTH_COMPOSIO CONNECTED row, we open a ConfirmDialog (danger
+  // variant) so the destructive action gets an explicit confirmation. On
+  // confirm we POST to /oauth/disconnect; on success refreshTools picks up
+  // the deletion; on failure we surface the error inline in the dialog and
+  // keep it open so the user can retry or cancel.
+  const [revokeState, setRevokeState] = useState<{
+    tool: ToolState | null
+    loading: boolean
+    error: string | null
+  }>({ tool: null, loading: false, error: null })
+
+  const handleOauthRevoke = useCallback((tool: ToolState) => {
+    setRevokeState({ tool, loading: false, error: null })
+  }, [])
+
+  const handleOauthRevokeConfirm = useCallback(async () => {
+    const tool = revokeState.tool
+    if (!tool) return
+    setRevokeState((s) => ({ ...s, loading: true, error: null }))
+    try {
+      await disconnectOauthTool(workspaceId, tool.slug)
+      // Refetch to sync the row state with the DB delete. Row disappears
+      // from the OAUTH_COMPOSIO-connected bucket; returns to "disconnected"
+      // if the tool is still in the template's required/recommended list.
+      await refreshTools()
+      setRevokeState({ tool: null, loading: false, error: null })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to disconnect"
+      setRevokeState((s) => ({ ...s, loading: false, error: msg }))
+    }
+  }, [workspaceId, revokeState.tool, refreshTools])
+
+  const handleOauthRevokeCancel = useCallback(() => {
+    // Don't dismiss while the request is in flight; user might mistake
+    // the dialog close for a completed action.
+    setRevokeState((s) => {
+      if (s.loading) return s
+      return { tool: null, loading: false, error: null }
+    })
+  }, [])
+
+  // PR #4 Commit 7: OAuth connect / reconnect are driven by a shared hook
+  // (src/lib/oauth/use-oauth-connection.ts) so the consent-popup + status-
+  // polling flow lives in one place. handleOAuthConnect (initial-connect
+  // UX) and handleOauthReconnect (EXPIRED/REVOKED row UX) both delegate
+  // here; the callbacks drive per-row state transitions.
+  const oauth = useOAuthConnection({
+    workspaceId,
+    callbacks: {
+      onInitiated: (toolSlug) => {
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug ? { ...t, status: "connecting" as const, errorMessage: undefined } : t,
+          ),
+        )
+      },
+      onSuccess: async (toolSlug) => {
+        // Refetch first so connectedAt/status come from the server (not a
+        // stale client-side guess). Then also apply an optimistic
+        // transition for the rare race where refetch response is in flight.
+        await refreshTools()
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug ? { ...t, status: "connected" as const, errorMessage: undefined } : t,
+          ),
+        )
+      },
+      onFailure: (toolSlug, errorMsg) => {
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug ? { ...t, status: "error" as const, errorMessage: errorMsg } : t,
+          ),
+        )
+      },
+      onTimeout: (toolSlug) => {
+        setTools((prev) =>
+          prev.map((t) => {
+            if (t.slug !== toolSlug) return t
+            if (t.status === "connecting") {
+              return { ...t, status: "error" as const, errorMessage: "Connection timed out. Try again." }
+            }
+            return t
+          }),
+        )
+      },
+      onInitiateError: (toolSlug, errorMsg) => {
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug ? { ...t, status: "error" as const, errorMessage: errorMsg } : t,
+          ),
+        )
+      },
+    },
+  })
+
+  // PR #4 Commit 7: Reconnect is the same POST /oauth/initiate + poll flow
+  // as a fresh connect — the user re-authorizes through Composio's consent
+  // screen and the existing oauth/status poll flips the DB row back to
+  // CONNECTED on ACTIVE. No dialog (D5 spec: "Reconnect is non-destructive;
+  // re-authorizing through Composio IS the confirmation surface").
+  const handleOauthReconnect = useCallback((tool: ToolState) => {
+    if (tool.connectionType !== "OAUTH_COMPOSIO") return
+    if (!composioOAuthAvailable) {
+      setTools((prev) =>
+        prev.map((t) =>
+          t.slug === tool.slug
+            ? { ...t, status: "error" as const, errorMessage: "OAuth is not configured in this environment." }
+            : t,
+        ),
+      )
+      return
+    }
+    oauth.connect(tool.slug)
+  }, [oauth, composioOAuthAvailable])
 
   const handleCredentialsSave = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
     if (!apiKeyModal.tool) return { success: false, error: "No tool selected" }
@@ -579,133 +665,27 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch { return { success: false, error: "Network error" } }
   }, [apiKeyModal.tool, workspaceId, refreshTools])
 
+  // PR #4 Commit 7: initial "Connect with OAuth" flow delegates to the
+  // shared useOAuthConnection hook (defined at the top of the component).
+  // Pre-refactor this was ~120 LOC of inline fetch/popup/poll/cleanup that
+  // would have had to be duplicated for the Reconnect flow; now both call
+  // sites run the same code.
   const handleOAuthConnect = useCallback(
-    async (tool: Pick<ToolState, "slug" | "name" | "connectionType"> & { category?: string }) => {
+    (tool: Pick<ToolState, "slug" | "connectionType">) => {
       if (tool.connectionType !== "OAUTH_COMPOSIO") return
-
       if (!composioOAuthAvailable) {
         setTools((prev) =>
           prev.map((t) =>
             t.slug === tool.slug
               ? { ...t, status: "error" as const, errorMessage: "OAuth is not configured in this environment." }
-              : t
-          )
+              : t,
+          ),
         )
         return
       }
-
-      setTools((prev) =>
-        prev.map((t) =>
-          t.slug === tool.slug ? { ...t, status: "connecting" as const, errorMessage: undefined } : t
-        )
-      )
-
-      try {
-        const res = await fetch(`/api/tools/${workspaceId}/oauth/initiate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ toolSlug: tool.slug }),
-        })
-        const data = await res.json()
-        if (!data.success) {
-          throw new Error(data.error?.message || "Failed to start OAuth")
-        }
-        const { redirectUrl, connectionId } = data.data as { redirectUrl: string; connectionId: string }
-
-        const w = 600
-        const h = 700
-        const left = window.screenX + (window.outerWidth - w) / 2
-        const top = window.screenY + (window.outerHeight - h) / 2
-        const popup = window.open(
-          redirectUrl,
-          "composio-oauth",
-          `width=${w},height=${h},left=${left},top=${top},scrollbars=yes,resizable=yes`
-        )
-        if (!popup) {
-          throw new Error("Popup blocked. Allow popups for this site and try again.")
-        }
-
-        const onMessage = (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return
-          if (event.data?.type === "composio-oauth-complete") {
-            // Polling will pick up ACTIVE; message confirms popup flow finished.
-          }
-        }
-        window.addEventListener("message", onMessage)
-
-        let pollInterval = 0
-        let timeoutId = 0
-        const cleanup = () => {
-          window.clearInterval(pollInterval)
-          window.clearTimeout(timeoutId)
-          window.removeEventListener("message", onMessage)
-          try {
-            if (popup && !popup.closed) popup.close()
-          } catch {
-            /* ignore */
-          }
-        }
-
-        pollInterval = window.setInterval(() => {
-          void (async () => {
-          try {
-            const statusRes = await fetch(
-              `/api/tools/${workspaceId}/oauth/status?connectionId=${encodeURIComponent(connectionId)}&toolSlug=${encodeURIComponent(tool.slug)}`
-            )
-            const statusData = await statusRes.json()
-            if (!statusData.success) return
-            const st = statusData.data?.status as string
-            if (st === "ACTIVE") {
-              cleanup()
-              await refreshTools()
-              setTools((prev) =>
-                prev.map((t) =>
-                  t.slug === tool.slug ? { ...t, status: "connected" as const, errorMessage: undefined } : t
-                )
-              )
-            }
-            if (st === "FAILED") {
-              cleanup()
-              setTools((prev) =>
-                prev.map((t) =>
-                  t.slug === tool.slug
-                    ? {
-                        ...t,
-                        status: "error" as const,
-                        errorMessage: "OAuth failed or was cancelled.",
-                      }
-                    : t
-                )
-              )
-            }
-          } catch {
-            /* ignore transient polling errors */
-          }
-          })()
-        }, 2000)
-
-        timeoutId = window.setTimeout(() => {
-          cleanup()
-          setTools((prev) =>
-            prev.map((t) => {
-              if (t.slug !== tool.slug) return t
-              if (t.status === "connecting") {
-                return { ...t, status: "error" as const, errorMessage: "Connection timed out. Try again." }
-              }
-              return t
-            })
-          )
-        }, 120_000)
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "OAuth failed"
-        setTools((prev) =>
-          prev.map((t) =>
-            t.slug === tool.slug ? { ...t, status: "error" as const, errorMessage: msg } : t
-          )
-        )
-      }
+      oauth.connect(tool.slug)
     },
-    [workspaceId, refreshTools, composioOAuthAvailable]
+    [oauth, composioOAuthAvailable],
   )
 
   const handleSwapSelect = useCallback(async (newTool: ToolDefinition) => {
@@ -836,10 +816,23 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
+              connectedAt={tool.connectedAt}
               onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-              onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onReconnect={
+                // PR #4 Commit 6: for OAuth EXPIRED/REVOKED rows this
+                // will ultimately re-initiate the OAuth flow (Commit 7
+                // wires the actual mutation). For the immediate
+                // re-key-entry case on API_KEY errors the behavior is
+                // unchanged — re-open the credentials modal.
+                tool.connectionType === "API_KEY"
+                  ? () => setApiKeyModal({ open: true, tool })
+                  : tool.status === "expired" || tool.status === "revoked"
+                    ? () => handleOauthReconnect(tool)
+                    : () => handleOAuthConnect(tool)
+              }
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
               onDisconnect={() => handleDisconnect(tool)}
+              onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
             />
           ))}
         </ToolConnectionList>
@@ -857,12 +850,53 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
+              connectedAt={tool.connectedAt}
               swappable
               onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-              onReconnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onReconnect={
+                tool.connectionType === "API_KEY"
+                  ? () => setApiKeyModal({ open: true, tool })
+                  : tool.status === "expired" || tool.status === "revoked"
+                    ? () => handleOauthReconnect(tool)
+                    : () => handleOAuthConnect(tool)
+              }
               onSwap={() => setSwapModal({ open: true, tool })}
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
               onDisconnect={() => handleDisconnect(tool)}
+              onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
+            />
+          ))}
+        </ToolConnectionList>
+      )}
+
+      {/* PR #4 Commit 9: Additional tools = ToolConnection rows not in this
+          workspace's template required/recommended list (added via Browse
+          Tools modal). Same row affordances as recommended except for the
+          Swap button, which has no meaningful target set here. */}
+      {extraTools.length > 0 && (
+        <ToolConnectionList title="Additional tools" subtitle="Connections you've added outside this Claw's default setup.">
+          {extraTools.map((tool) => (
+            <ToolRow
+              key={tool.slug}
+              name={tool.name}
+              description={tool.category}
+              connectionStatus={tool.status}
+              connectionType={tool.connectionType}
+              composioOAuthAvailable={composioOAuthAvailable}
+              errorMessage={tool.errorMessage}
+              warningMessage={tool.warningMessage}
+              connectedAt={tool.connectedAt}
+              onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+              onReconnect={
+                tool.connectionType === "API_KEY"
+                  ? () => setApiKeyModal({ open: true, tool })
+                  : tool.status === "expired" || tool.status === "revoked"
+                    ? () => handleOauthReconnect(tool)
+                    : () => handleOAuthConnect(tool)
+              }
+              onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+              onDisconnect={() => handleDisconnect(tool)}
+              onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
             />
           ))}
         </ToolConnectionList>
@@ -914,14 +948,33 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         onOAuthConnect={(def) =>
           handleOAuthConnect({
             slug: def.slug,
-            name: def.name,
             connectionType: "OAUTH_COMPOSIO",
-            category: def.category,
           })
         }
         workspaceId={workspaceId}
       />
       <CustomApiModal open={customApiModal} onClose={() => setCustomApiModal(false)} onSave={handleCustomSave} />
+      {/*
+        PR #4 Commit 7 Revoke confirmation dialog. Opened by clicking the
+        Revoke button on an OAUTH_COMPOSIO CONNECTED row. Dismissable only
+        when not loading (prevents the "did my disconnect actually happen?"
+        UX bug where a user closes the dialog mid-fetch).
+       */}
+      <ConfirmDialog
+        open={revokeState.tool !== null}
+        onClose={handleOauthRevokeCancel}
+        onConfirm={handleOauthRevokeConfirm}
+        title={`Disconnect ${revokeState.tool?.name ?? "this tool"}?`}
+        description={
+          revokeState.tool
+            ? `This will disconnect your ${revokeState.tool.name} account from this workspace. Agents that use ${revokeState.tool.name} will lose access until you reconnect. This cannot be undone without re-authorizing.`
+            : ""
+        }
+        warningText={revokeState.error ?? undefined}
+        confirmLabel="Disconnect"
+        variant="danger"
+        loading={revokeState.loading}
+      />
     </>
   )
 }

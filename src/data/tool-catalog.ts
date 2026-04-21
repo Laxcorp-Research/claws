@@ -161,26 +161,44 @@ export const API_KEY_TOOLS: ToolDefinition[] = [
   },
 ]
 
+// OAuth-managed tools (via Composio). Each entry's `composioToolkitId` must be
+// a real toolkit slug on Composio's backend — verified by paginated audit of
+// Composio's toolkit list during PR #4's pre-flight
+// (C:\temp\composio-poc\21-scope-audit.mjs, raw results in
+//  21-scope-audit-raw.json).
+//
+// Four previously-listed OAuth tools (`buffer`, `beehiiv`, `substack`,
+// `wordpress`) were removed because Composio does not publish matching
+// toolkits — advertising a Connect button that 404s at
+// `composio.toolkits.get(slug)` is worse than not offering the integration.
+// Users needing these integrations can connect via Custom API keys once
+// PR #6's Custom API pipeline ships (tracked in the umbrella GH issue
+// "Template seed data drift — multiple pre-existing inconsistencies").
+// `beehiiv-api` remains available in API_KEY_TOOLS as a direct-token path.
+//
+// Two slug drifts were corrected:
+//   - google_calendar: catalog slug stays `google_calendar` (user-facing,
+//     already in DB rows); composioToolkitId fixed to `googlecalendar`
+//     (Composio's actual slug — no underscore).
+//   - convertkit: catalog slug stays `convertkit` (ConvertKit is the
+//     brand name the user knows); composioToolkitId fixed to `kit`
+//     (Composio follows the 2024 vendor rebrand to "Kit").
 export const OAUTH_TOOLS: ToolDefinition[] = [
   { slug: "hubspot", name: "HubSpot", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "hubspot", description: "CRM pipeline management", credentialFields: [] },
   { slug: "salesforce", name: "Salesforce", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "salesforce", description: "CRM data access (OAuth via Composio)", credentialFields: [] },
   { slug: "gmail", name: "Gmail", connectionType: "OAUTH_COMPOSIO", category: "EMAIL", composioToolkitId: "gmail", description: "Email sending and monitoring", credentialFields: [] },
-  { slug: "google_calendar", name: "Google Calendar", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "google_calendar", description: "Calendar events", credentialFields: [] },
+  { slug: "google_calendar", name: "Google Calendar", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "googlecalendar", description: "Calendar events", credentialFields: [] },
   { slug: "google-analytics", name: "Google Analytics", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "google_analytics", description: "Analytics data", credentialFields: [] },
   { slug: "slack", name: "Slack", connectionType: "OAUTH_COMPOSIO", category: "MESSAGING", composioToolkitId: "slack", description: "Team messaging", credentialFields: [] },
   { slug: "github", name: "GitHub", connectionType: "OAUTH_COMPOSIO", category: "DEVELOPMENT", composioToolkitId: "github", description: "Repos and issues", credentialFields: [] },
-  { slug: "buffer", name: "Buffer", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "buffer", description: "Social media scheduling", credentialFields: [] },
   { slug: "linear", name: "Linear", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "linear", description: "Issue tracking", credentialFields: [] },
   { slug: "asana", name: "Asana", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "asana", description: "Project management", credentialFields: [] },
   { slug: "clickup", name: "ClickUp", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "clickup", description: "Project management", credentialFields: [] },
   { slug: "notion", name: "Notion", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "notion", description: "Docs and wikis", credentialFields: [] },
   { slug: "linkedin", name: "LinkedIn", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "linkedin", description: "Professional networking", credentialFields: [] },
   { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", description: "Social media", credentialFields: [] },
-  { slug: "beehiiv", name: "Beehiiv", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "beehiiv", description: "Newsletter platform (OAuth via Composio)", credentialFields: [] },
-  { slug: "substack", name: "Substack", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "substack", description: "Newsletter platform", credentialFields: [] },
-  { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "convertkit", description: "Email marketing", credentialFields: [] },
+  { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "kit", description: "Email marketing (Composio slug is `kit` post-2024 rebrand)", credentialFields: [] },
   { slug: "shopify", name: "Shopify", connectionType: "OAUTH_COMPOSIO", category: "ECOMMERCE", composioToolkitId: "shopify", description: "E-commerce platform", credentialFields: [] },
-  { slug: "wordpress", name: "WordPress", connectionType: "OAUTH_COMPOSIO", category: "CMS", composioToolkitId: "wordpress", description: "Website management", credentialFields: [] },
   { slug: "jira", name: "Jira", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "jira", description: "Issue tracking", credentialFields: [] },
   { slug: "calendly", name: "Calendly", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "calendly", description: "Scheduling", credentialFields: [] },
 ]

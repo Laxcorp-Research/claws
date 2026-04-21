@@ -81,6 +81,14 @@ interface SpendInfo {
 
 interface ExpiredTool {
   name: string
+  /**
+   * PR #4 Commit 6: server returns the raw DB status so the banner can
+   * differentiate "OAuth token has expired" (EXPIRED/REVOKED) from a
+   * generic "connection failed" (ERROR). Optional for forward/back
+   * compat with older API payloads that only carried `name`.
+   */
+  status?: "ERROR" | "EXPIRED" | "REVOKED"
+  connectionType?: "API_KEY" | "OAUTH_COMPOSIO" | "CHANNEL_NATIVE"
 }
 
 interface DashboardAlert {
@@ -534,6 +542,27 @@ export default function DashboardPage() {
 
     if (expiredTools.length > 0) {
       const toolNames = expiredTools.map((t) => t.name).join(", ")
+      // PR #4 Commit 6: pick the cause-sentence wording based on whether
+      // the affected connections are OAuth-backed. When every expired
+      // connection is OAUTH_COMPOSIO the D5 copy applies verbatim ("Your
+      // OAuth token has expired"); otherwise fall back to the generic
+      // "connection stopped working" wording. Mixed cases pick the
+      // generic prose — telling an API_KEY user their OAuth token
+      // expired is worse than saying nothing specific.
+      const allOauth = expiredTools.every((t) => t.connectionType === "OAUTH_COMPOSIO")
+      const primary = expiredTools[0]
+      const causeSentence = allOauth
+        ? "Your OAuth token has expired."
+        : "Your connection stopped working."
+      const impactSentence = expiredTools.length === 1
+        ? `Agents that use ${primary.name} are operating with degraded functionality.`
+        : `${expiredTools.length} tool connections have expired (${toolNames}). Agents that use them are operating with degraded functionality.`
+      // PR #4 Commit 6: route includes ?mode=manage so the setup-step-2
+      // page renders "Manage Tools" chrome instead of "Connect your tools"
+      // wizard chrome. Fixes a pre-existing copy mismatch where clicking
+      // Reconnect/Manage from the dashboard (post-setup) landed on the
+      // initial-setup header.
+      const manageHref = `/setup/${workspaceId}/step/2?mode=manage`
       list.push({
         key: "tools-expired",
         priority: 3,
@@ -541,18 +570,16 @@ export default function DashboardPage() {
         icon: <Unplug className="w-4 h-4" />,
         content: (
           <>
-            <p className="font-medium">{expiredTools[0].name} connection expired</p>
+            <p className="font-medium">{primary.name} connection expired</p>
             <p className="mt-0.5 opacity-80">
-              {expiredTools.length === 1
-                ? `Your connection to ${toolNames} has expired. Agents that use it are operating with degraded functionality.`
-                : `${expiredTools.length} tool connections have expired (${toolNames}). Agents may be degraded.`}
+              {causeSentence} {impactSentence}
             </p>
           </>
         ),
         actions: (
           <div className="flex gap-1.5">
-            <Button variant="primary" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Reconnect</Button>
-            <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>Manage tools</Button>
+            <Button variant="primary" size="xs" onClick={() => router.push(manageHref)}>Reconnect</Button>
+            <Button variant="outline" size="xs" onClick={() => router.push(manageHref)}>Manage tools</Button>
           </div>
         ),
       })
@@ -743,7 +770,7 @@ export default function DashboardPage() {
             <Button variant="outline" size="sm" onClick={() => router.push(`/builder/${workspaceId}`)}>
               Edit in Builder
             </Button>
-            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>
+            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2?mode=manage`)}>
               Manage Tools
             </Button>
             {showRedeploy && (

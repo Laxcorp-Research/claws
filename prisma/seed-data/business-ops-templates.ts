@@ -1440,7 +1440,10 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
     { slug: "google-analytics", name: "Google Analytics", category: "Analytics", connectionType: "OAUTH_COMPOSIO", required: true },
     { slug: "ahrefs", name: "Ahrefs", category: "SEO", connectionType: "API_KEY", required: false, alternatives: ["semrush"] },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: false },
-    { slug: "wordpress", name: "WordPress", category: "CMS", connectionType: "API_KEY", required: false },
+    // Note: CMS `wordpress` removed in PR #4. The previous entry was labelled
+    // API_KEY but had no matching catalog entry (no wordpress-api), so it was
+    // already broken. Umbrella drift issue tracks restoration via PR #6's
+    // Custom API pipeline (user-supplied WordPress URL + application password).
   ],
 }
 

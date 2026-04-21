@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { calculateNextHeartbeat, extractCronExpression } from '@/lib/openclaw/deployer';
 
 describe('extractCronExpression', () => {
@@ -111,16 +111,25 @@ describe('calculateNextHeartbeat', () => {
   });
 
   it('returns the EARLIEST of multiple valid cron jobs', () => {
-    // 0 1 * * * fires at 01:00; 0 5 * * * fires at 05:00. Earliest of any
-    // current time is the next 01:00 mark.
-    const json = JSON.stringify([
-      { schedule: { kind: 'cron', expr: '0 5 * * *', tz: 'UTC' } },
-      { schedule: { kind: 'cron', expr: '0 1 * * *', tz: 'UTC' } },
-    ]);
-    const result = calculateNextHeartbeat(json);
-    expect(result).toBeInstanceOf(Date);
-    // Verify it's the 1AM job by parsing the result hour in UTC
-    expect(result!.getUTCHours()).toBe(1);
+    // Closes GH #26. Pin system time to a neutral 10:00 UTC so the next
+    // firing of both crons is tomorrow (`0 1` → tomorrow 01:00 UTC, `0 5`
+    // → tomorrow 05:00 UTC); the 01:00 firing is 4 hours earlier so the
+    // function under test must pick it. The pre-fix test used real
+    // Date.now() and failed deterministically between 01:00–04:59 UTC
+    // where the next 01:00 was tomorrow but the next 05:00 was today.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-20T10:00:00Z'));
+    try {
+      const json = JSON.stringify([
+        { schedule: { kind: 'cron', expr: '0 5 * * *', tz: 'UTC' } },
+        { schedule: { kind: 'cron', expr: '0 1 * * *', tz: 'UTC' } },
+      ]);
+      const result = calculateNextHeartbeat(json);
+      expect(result).toBeInstanceOf(Date);
+      expect(result!.getUTCHours()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('skips jobs with invalid cron expressions and uses the valid ones', () => {
