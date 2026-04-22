@@ -52,7 +52,6 @@ function baseOAuthConnection(overrides: Record<string, unknown> = {}) {
     connectionType: "OAUTH_COMPOSIO",
     displayName: "Gmail",
     status: "CONNECTED",
-    encryptedApiKey: null,
     encryptedCredentials: null,
     keyHint: null,
     composioConnectionId: COMPOSIO_CONN_ID,

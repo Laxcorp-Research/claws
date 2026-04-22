@@ -225,8 +225,8 @@ export function getToolsByCategory(category: string): ToolDefinition[] {
 
 /**
  * Returns the primary credential field for a tool. Used for keyHint display
- * and backfill (the primary field is the one that legacy encryptedApiKey
- * mapped to). Returns undefined for tools without declared fields (e.g.,
+ * and as the anchor env var when resolving single-credential connections.
+ * Returns undefined for tools without declared fields (e.g.,
  * OAUTH_COMPOSIO tools).
  */
 export function getPrimaryCredentialField(toolSlug: string): ToolCredentialField | undefined {

@@ -430,13 +430,6 @@ model ToolConnection {
   connectionType ConnectionType
   displayName    String
 
-  // encryptedApiKey is the legacy single-credential field. It is no longer
-  // written to by new code (see PR #2). Existing rows are backfilled into
-  // encryptedCredentials by prisma/migrations/migrate-to-encrypted-credentials.ts.
-  // The column is retained through PR #2 and dropped in PR #2.5 after prod
-  // verification.
-  encryptedApiKey String?
-
   // encryptedCredentials holds an AES-256-GCM encrypted JSON string of the
   // credential map, keyed by env-var name (matches credentialFields in
   // src/data/tool-catalog.ts). Example payload after decrypt:

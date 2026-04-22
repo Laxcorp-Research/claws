@@ -1,5 +1,7 @@
 # Tool Connection Fix — Investigation
 
+**Status (post-PR #2.5, 2026-04-21):** column `encryptedApiKey` has been dropped; replaced by `encryptedCredentials`. Document preserved as historical investigation.
+
 **Status:** Read-only analysis. No code changes in this PR.
 **Companion doc:** [TOOL_CONNECTION_GENERATOR_BUG.md](./TOOL_CONNECTION_GENERATOR_BUG.md) — the bug report that triggered this investigation.
 **Purpose:** Enumerate the tool/skill data model, evaluate three schema options for the fix, make a recommendation, and surface the open product decisions that block the fix PR.

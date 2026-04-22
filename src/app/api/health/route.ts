@@ -24,6 +24,7 @@ export async function GET() {
       status: allOk ? "healthy" : "degraded",
       checks,
       version: process.env.npm_package_version || "1.0.0",
+      commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "unknown").slice(0, 7),
       timestamp: new Date().toISOString(),
     },
     { status: allOk ? 200 : 503 }
