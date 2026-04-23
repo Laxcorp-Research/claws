@@ -318,7 +318,7 @@ And from the publish UI at `src/app/publish/skill/page.tsx:211`:
 - Schema addition needed on `ToolConnection`: a JSON column (or a new `ToolCredential` side-table) to hold multi-value credential bags keyed by env-var name. Plus the Setup Wizard UI work.
 
 **PR #3 (tool connection fix):**
-- Generator emits `skills.entries[<skill.slug>].apiKey = decrypt(toolConn.encryptedApiKey)` for every connected API_KEY tool whose mapped skill declares a `primaryEnv`.
+- Generator emits `skills.entries[<skill.slug>].apiKey = decrypt(toolConn.encryptedCredentials)[primaryEnvVar]` for every connected API_KEY tool whose mapped skill declares a `primaryEnv`. The primary env var is resolved via `credentialFields` in `src/data/tool-catalog.ts`.
 - For skills without a `primaryEnv` (e.g., GitHub, where auth is via `gh auth login`) — emit only `{ enabled: true }`. The credential isn't needed in `skills.entries.env` because the skill delegates auth to the binary. (Open question: for GitHub specifically, do we pass the token via the `.env` as `GITHUB_TOKEN` so `gh auth login --with-token <<<"$GITHUB_TOKEN"` works? Likely yes, but it's a Container `.env` concern, not `skills.entries.env`. Decide in PR #3.)
 - **Does NOT need per-tool mapping code in the generator.** OpenClaw reads `primaryEnv` from the bundled SKILL.md at runtime. Our generator only needs to know the skill slug; it doesn't need to know the env var name.
 - Drop the 84 `$TOOL_API_KEY` references from `skills-tool-specific.ts` `skillMd` bodies and replace with tool-specific names pulled from OpenClaw's frontmatter where a bundled skill exists, or from the catalog entry's (new) `primaryEnv` field for our custom skills. Exact list in "Seed migration" below.

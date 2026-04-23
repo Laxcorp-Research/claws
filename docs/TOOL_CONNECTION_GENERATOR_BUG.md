@@ -1,5 +1,7 @@
 # Tool Connection Generator Bug
 
+**Status (post-PR #2.5, 2026-04-21):** column `encryptedApiKey` has been dropped; replaced by `encryptedCredentials`. Document preserved as historical investigation.
+
 **Status:** Open — **LAUNCH BLOCKER**
 **Severity:** Critical
 **Discovered:** April 2026, during heartbeat system production-fix PR
