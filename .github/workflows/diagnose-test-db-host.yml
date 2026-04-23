@@ -1,0 +1,22 @@
+name: Diagnose TEST_DATABASE_URL host
+on:
+  workflow_dispatch: {}
+jobs:
+  print-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract and print hostname only
+        run: |
+          # Parse the URL and print only the host. Never print user, password, or full URL.
+          # URL format: postgres-redacted
+          HOST=$(echo "$URL" | sed -E 's|^postgres-redacted')
+          if [ -z "$HOST" ] || [ "$HOST" = "$URL" ]; then
+            echo "Could not parse host from URL"
+            echo "URL format may be unexpected. First 20 chars: ${URL:0:20}"
+            exit 1
+          fi
+          echo "TEST_DATABASE_URL host: $HOST"
+          # Also mask in case the regex unexpectedly matched the full URL
+          echo "::add-mask::$URL"
+        env:
+          URL: ${{ secrets.TEST_DATABASE_URL }}
