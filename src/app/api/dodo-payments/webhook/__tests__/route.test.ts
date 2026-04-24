@@ -9,6 +9,11 @@ vi.mock('@/lib/db', () => ({
   prisma: prismaMock,
 }));
 
+const mockDestroyContainer = vi.fn();
+vi.mock('@/lib/openclaw/deployer', () => ({
+  destroyContainer: (...args: unknown[]) => mockDestroyContainer(...args),
+}));
+
 vi.mock('dodopayments', () => {
   const unwrapMock = vi.fn((body: string) => JSON.parse(body));
   return {
@@ -265,9 +270,13 @@ describe('POST /api/dodo-payments/webhook', () => {
   });
 
   describe('subscription.failed', () => {
-    it('pauses workspace on platform subscription failure', async () => {
+    beforeEach(() => {
+      mockDestroyContainer.mockReset();
+      mockDestroyContainer.mockResolvedValue(undefined);
+    });
+
+    it('destroys workspace container on platform subscription failure', async () => {
       mockUserLookup('user-downgrade');
-      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
@@ -280,12 +289,25 @@ describe('POST /api/dodo-payments/webhook', () => {
 
       const res = await POST(req);
       expect(res.status).toBe(200);
-      expect(prismaMock.workspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'ws-pause' },
-          data: { status: 'PAUSED' },
-        })
-      );
+      expect(mockDestroyContainer).toHaveBeenCalledWith('ws-pause');
+    });
+
+    it('still returns 200 when destroyContainer throws (avoid Dodo retry storm)', async () => {
+      mockUserLookup('user-downgrade');
+      (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      mockDestroyContainer.mockRejectedValueOnce(new Error('Railway API 500'));
+
+      const req = createWebhookRequest({
+        type: 'subscription.failed',
+        data: {
+          subscription_id: 'sub_fail',
+          metadata: { type: 'claw_platform', workspaceId: 'ws-pause', userId: 'user-downgrade' },
+        },
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      expect(mockDestroyContainer).toHaveBeenCalledWith('ws-pause');
     });
 
     it('deactivates subscription on failure', async () => {

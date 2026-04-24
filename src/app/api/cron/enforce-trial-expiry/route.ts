@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
-import { stopContainer } from "@/lib/openclaw/deployer"
+import { destroyContainer } from "@/lib/openclaw/deployer"
 import {
   decideEnforcementActions,
   type UserWithWorkspaces,
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      await stopContainer(action.workspaceId)
+      await destroyContainer(action.workspaceId)
       stopped++
       log.info("Trial-expiry cron: stopped workspace", {
         userId: action.userId,

@@ -15,8 +15,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   try {
-    const { stopContainer } = await import("@/lib/openclaw/deployer")
-    await stopContainer(workspaceId)
+    const { destroyContainer } = await import("@/lib/openclaw/deployer")
+    await destroyContainer(workspaceId)
     return apiSuccess({ stopped: true })
   } catch (err: unknown) {
     return apiError("STOP_FAILED", err instanceof Error ? err.message : "Stop failed", 500)

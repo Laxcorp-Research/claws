@@ -253,7 +253,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
 // Container Operations
 // ---------------------------------------------------------------------------
 
-export async function stopContainer(workspaceId: string): Promise<void> {
+export async function destroyContainer(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
@@ -269,7 +269,7 @@ export async function stopContainer(workspaceId: string): Promise<void> {
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: {
-      status: 'PAUSED',
+      status: 'STOPPED',
       containerId: null,
       containerName: null,
       containerHost: null,

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { getResend } from "@/lib/resend"
 import { log } from "@/lib/logger"
+import { destroyContainer } from "@/lib/openclaw/deployer"
 
 export async function onCreditsExhausted(userId: string) {
   const user = await prisma.user.findUnique({
@@ -12,10 +13,15 @@ export async function onCreditsExhausted(userId: string) {
 
   for (const ws of user.workspaces) {
     if (user.apiKeySource === "PLATFORM_CREDIT") {
-      await prisma.workspace.update({
-        where: { id: ws.id },
-        data: { status: "PAUSED" },
-      })
+      try {
+        await destroyContainer(ws.id)
+      } catch (err) {
+        log.error("Failed to destroy container on credit exhaustion", {
+          workspaceId: ws.id,
+          userId,
+          error: String(err),
+        })
+      }
 
       await prisma.containerState.updateMany({
         where: { workspaceId: ws.id },
