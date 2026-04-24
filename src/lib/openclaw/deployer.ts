@@ -269,7 +269,7 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: {
-      status: 'PAUSED',
+      status: 'STOPPED',
       containerId: null,
       containerName: null,
       containerHost: null,

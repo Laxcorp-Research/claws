@@ -30,7 +30,7 @@ export async function GET(
     const expired = !owner.trialEndsAt || owner.trialEndsAt <= now
     if (expired) {
       await destroyContainer(workspaceId)
-      workspace!.status = "PAUSED"
+      workspace!.status = "STOPPED"
     }
   }
 

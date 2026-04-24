@@ -123,4 +123,21 @@ describe("GET /api/activity/[workspaceId] — trial-expiry side effect", () => {
 
     expect(mockDestroyContainer).not.toHaveBeenCalled()
   })
+
+  it("sets in-memory workspace.status to STOPPED after destroying (tracks destroyContainer semantic)", async () => {
+    mockGetSessionUser.mockResolvedValue({ id: "user-1" })
+    const workspaceFixture = { id: "ws-1", status: "RUNNING" }
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: workspaceFixture })
+    ;(prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      trialUsed: true,
+      trialEndsAt: new Date(Date.now() - 86_400_000),
+      hasActiveSubscription: false,
+      apiKeySource: "PLATFORM_CREDIT",
+    })
+
+    await callRoute("ws-1")
+
+    // workspace! mutation matches what destroyContainer wrote to DB.
+    expect(workspaceFixture.status).toBe("STOPPED")
+  })
 })
