@@ -4,9 +4,9 @@ import { createMockRequest } from "@/test/helpers/mock-request"
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 
-const mockStopContainer = vi.fn()
+const mockDestroyContainer = vi.fn()
 vi.mock("@/lib/openclaw/deployer", () => ({
-  stopContainer: (...args: unknown[]) => mockStopContainer(...args),
+  destroyContainer: (...args: unknown[]) => mockDestroyContainer(...args),
 }))
 
 vi.mock("@/lib/logger", () => ({
@@ -50,7 +50,7 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
 
   beforeEach(() => {
     process.env.CRON_SECRET = SECRET
-    mockStopContainer.mockReset()
+    mockDestroyContainer.mockReset()
   })
 
   afterEach(() => {
@@ -61,23 +61,23 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
   it("returns 401 when no Authorization header", async () => {
     const res = await callRoute()
     expect(res.status).toBe(401)
-    expect(mockStopContainer).not.toHaveBeenCalled()
+    expect(mockDestroyContainer).not.toHaveBeenCalled()
   })
 
   it("returns 401 with wrong bearer token", async () => {
     const res = await callRoute({ authHeader: "Bearer wrong-token" })
     expect(res.status).toBe(401)
-    expect(mockStopContainer).not.toHaveBeenCalled()
+    expect(mockDestroyContainer).not.toHaveBeenCalled()
   })
 
   it("returns 401 when CRON_SECRET env is unset (matches existing crons)", async () => {
     delete process.env.CRON_SECRET
     const res = await callRoute({ authHeader: "Bearer anything" })
     expect(res.status).toBe(401)
-    expect(mockStopContainer).not.toHaveBeenCalled()
+    expect(mockDestroyContainer).not.toHaveBeenCalled()
   })
 
-  it("dry run returns plan and does NOT call stopContainer", async () => {
+  it("dry run returns plan and does NOT call destroyContainer", async () => {
     mockUsers([
       {
         id: "u1",
@@ -97,7 +97,7 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
     expect(json.data.plan.toStop).toEqual([
       { userId: "u1", workspaceId: "ws1", containerId: "c1" },
     ])
-    expect(mockStopContainer).not.toHaveBeenCalled()
+    expect(mockDestroyContainer).not.toHaveBeenCalled()
   })
 
   it("happy path: stops all workspaces, returns { stopped: 2, errors: 0 }", async () => {
@@ -114,7 +114,7 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
       },
     ])
     mockFreshSubscriptionCheck(false)
-    mockStopContainer.mockResolvedValue(undefined)
+    mockDestroyContainer.mockResolvedValue(undefined)
 
     const res = await callRoute({ authHeader: `Bearer ${SECRET}` })
     expect(res.status).toBe(200)
@@ -124,12 +124,12 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
       stopped: 2,
       errors: 0,
     })
-    expect(mockStopContainer).toHaveBeenCalledTimes(2)
-    expect(mockStopContainer).toHaveBeenNthCalledWith(1, "ws1")
-    expect(mockStopContainer).toHaveBeenNthCalledWith(2, "ws2")
+    expect(mockDestroyContainer).toHaveBeenCalledTimes(2)
+    expect(mockDestroyContainer).toHaveBeenNthCalledWith(1, "ws1")
+    expect(mockDestroyContainer).toHaveBeenNthCalledWith(2, "ws2")
   })
 
-  it("partial failure: second stopContainer throws, returns { stopped: 1, errors: 1 }", async () => {
+  it("partial failure: second destroyContainer throws, returns { stopped: 1, errors: 1 }", async () => {
     mockUsers([
       {
         id: "u1",
@@ -143,7 +143,7 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
       },
     ])
     mockFreshSubscriptionCheck(false)
-    mockStopContainer
+    mockDestroyContainer
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error("Railway API 500"))
 
@@ -155,10 +155,10 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
       stopped: 1,
       errors: 1,
     })
-    expect(mockStopContainer).toHaveBeenCalledTimes(2)
+    expect(mockDestroyContainer).toHaveBeenCalledTimes(2)
   })
 
-  it("race: user subscribes between planning and execution → workspace skipped, stopContainer NOT called", async () => {
+  it("race: user subscribes between planning and execution → workspace skipped, destroyContainer NOT called", async () => {
     mockUsers([
       {
         id: "u1",
@@ -176,6 +176,6 @@ describe("GET /api/cron/enforce-trial-expiry", () => {
     expect(json.data.stopped).toBe(0)
     expect(json.data.errors).toBe(0)
     expect(json.data.candidatesScanned).toBe(1)
-    expect(mockStopContainer).not.toHaveBeenCalled()
+    expect(mockDestroyContainer).not.toHaveBeenCalled()
   })
 })
