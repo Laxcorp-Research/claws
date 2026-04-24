@@ -189,6 +189,7 @@ export default function DashboardPage() {
   const [agentCosts, setAgentCosts] = useState<AgentCostRow[]>([])
   const [subscribing, setSubscribing] = useState(false)
   const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
+  const [redeployFromStoppedConfirmOpen, setRedeployFromStoppedConfirmOpen] = useState(false)
   const [redeployModalOpen, setRedeployModalOpen] = useState(false)
   const [redeployStatus, setRedeployStatus] = useState<string | null>(null)
   const [redeployLastStage, setRedeployLastStage] = useState<string | null>(null)
@@ -358,7 +359,19 @@ export default function DashboardPage() {
   }
 
   const handleResumeAll = async () => {
+    // STOPPED workspaces have no container — /restart would 400. Route them
+    // through the confirm dialog below, which hits /cloud (full redeploy, ~2m).
+    if (workspace?.status === "STOPPED") {
+      setRedeployFromStoppedConfirmOpen(true)
+      return
+    }
     await fetch(`/api/deploy/${workspaceId}/restart`, { method: "POST" })
+    fetchStats()
+  }
+
+  const handleRedeployFromStopped = async () => {
+    setRedeployFromStoppedConfirmOpen(false)
+    await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
     fetchStats()
   }
 
@@ -469,6 +482,7 @@ export default function DashboardPage() {
   const handleAgentRestart = (agentId: string) => handleAgentControl(agentId, "restart")
 
   const isPaused = workspace?.status === "PAUSED"
+  const isStopped = workspace?.status === "STOPPED"
   const isError = workspace?.healthStatus === "UNHEALTHY" || workspace?.status === "ERROR"
   const showRedeploy = workspace?.status === "RUNNING" || workspace?.status === "ERROR"
   const redeploying = redeployModalOpen && redeployStatus !== "COMPLETED" && redeployStatus !== "FAILED"
@@ -648,6 +662,22 @@ export default function DashboardPage() {
       })
     }
 
+    if (isStopped) {
+      list.push({
+        key: "stopped",
+        priority: 5,
+        variant: "warning",
+        icon: <OctagonX className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">This Claw is stopped</p>
+            <p className="mt-0.5 opacity-80">The container was destroyed (trial ended, subscription lapsed, or manual stop). Click Redeploy to recreate it &mdash; this usually takes ~2 minutes.</p>
+          </>
+        ),
+        actions: <Button variant="primary" size="xs" onClick={handleResumeAll}>Redeploy</Button>,
+      })
+    }
+
     if (workspace?.status === "HIBERNATED") {
       list.push({
         key: "hibernated",
@@ -702,7 +732,7 @@ export default function DashboardPage() {
     list.sort((a, b) => a.priority - b.priority)
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isError, isPaused, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {
@@ -784,7 +814,9 @@ export default function DashboardPage() {
                 {redeploying ? "Redeploying…" : "Redeploy"}
               </Button>
             )}
-            {isPaused ? (
+            {isStopped ? (
+              <Button variant="primary" size="sm" onClick={handleResumeAll}>Redeploy</Button>
+            ) : isPaused ? (
               <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
             ) : (
               <Button variant="outline" size="sm" onClick={handlePauseAll}>Pause</Button>
@@ -834,6 +866,7 @@ export default function DashboardPage() {
           apiCostProjected={stats.apiCostProjected}
           pendingReview={stats.pendingReview}
           isPaused={isPaused}
+          isStopped={isStopped}
           isHibernated={workspace?.status === "HIBERNATED"}
           creditMode={creditMode && credit.status === "ACTIVE"}
           creditBalanceCents={creditMode ? credit.balanceCents : undefined}
@@ -882,7 +915,7 @@ export default function DashboardPage() {
               status: a.status === "healthy" ? "running" as const : a.status,
               lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
             }))}
-            clawPaused={isPaused}
+            clawPaused={isPaused || isStopped}
             onPauseAgent={handleAgentPause}
             onResumeAgent={handleAgentResume}
             onRestartAgent={handleAgentRestart}
@@ -904,6 +937,16 @@ export default function DashboardPage() {
         onConfirm={handleRedeploy}
         title="Redeploy Claw"
         description="This will update your Claw with the latest configuration and redeploy. Continue?"
+        confirmLabel="Redeploy"
+        variant="warning"
+      />
+
+      <ConfirmDialog
+        open={redeployFromStoppedConfirmOpen}
+        onClose={() => setRedeployFromStoppedConfirmOpen(false)}
+        onConfirm={handleRedeployFromStopped}
+        title="Redeploy this Claw?"
+        description="The container was stopped and destroyed. Redeploying recreates it from scratch — this usually takes ~2 minutes. Continue?"
         confirmLabel="Redeploy"
         variant="warning"
       />

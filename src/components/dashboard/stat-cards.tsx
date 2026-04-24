@@ -13,6 +13,7 @@ interface StatCardsProps {
   apiCostProjected: number
   pendingReview: number
   isPaused?: boolean
+  isStopped?: boolean
   isHibernated?: boolean
   creditMode?: boolean
   creditBalanceCents?: number
@@ -22,18 +23,18 @@ interface StatCardsProps {
 export function StatCards({
   agentsRunning, agentsPaused, tasksToday, tasksYesterday,
   apiCostThisMonth, apiCostProjected, pendingReview, isPaused,
-  isHibernated, creditMode, creditBalanceCents, creditDaysEstimate,
+  isStopped, isHibernated, creditMode, creditBalanceCents, creditDaysEstimate,
 }: StatCardsProps) {
   const taskDiff = tasksToday - tasksYesterday
   const month = new Date().toLocaleString("default", { month: "long" })
-  const dimmed = isPaused || isHibernated
+  const dimmed = isPaused || isStopped || isHibernated
   const creditLow = creditMode && creditBalanceCents !== undefined && creditBalanceCents > 0 && creditBalanceCents < 500
 
   return (
     <div className={cn("grid gap-2 mb-3.5", creditMode ? "grid-cols-5" : "grid-cols-4", dimmed && "opacity-50")}>
       <StatCard
         label="Agents running"
-        value={isHibernated ? "Hibernating" : isPaused ? "Paused" : agentsRunning}
+        value={isHibernated ? "Hibernating" : isStopped ? "Stopped" : isPaused ? "Paused" : agentsRunning}
         trend={agentsPaused > 0 ? `${agentsPaused} paused` : "All healthy"}
         trendType={agentsPaused > 0 ? "down" : "up"}
       />
