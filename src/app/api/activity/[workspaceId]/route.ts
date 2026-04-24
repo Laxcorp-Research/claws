@@ -5,6 +5,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
 import { sanitizeActivityText } from "@/lib/security/sanitize"
+import { destroyContainer } from "@/lib/openclaw/deployer"
 
 export async function GET(
   _req: NextRequest,
@@ -28,10 +29,7 @@ export async function GET(
   if (workspace!.status === "RUNNING" && owner?.trialUsed && !owner.hasActiveSubscription) {
     const expired = !owner.trialEndsAt || owner.trialEndsAt <= now
     if (expired) {
-      await prisma.workspace.update({
-        where: { id: workspaceId },
-        data: { status: "PAUSED" },
-      })
+      await destroyContainer(workspaceId)
       workspace!.status = "PAUSED"
     }
   }

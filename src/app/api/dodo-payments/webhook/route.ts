@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { log } from "@/lib/logger"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
+import { destroyContainer } from "@/lib/openclaw/deployer"
 
 export async function POST(req: NextRequest) {
   if (!process.env.DODO_PAYMENTS_API_KEY || !process.env.DODO_PAYMENTS_WEBHOOK_KEY) {
@@ -251,7 +252,18 @@ async function handleSubscriptionFailed(
     await prisma.user.update({ where: { id: user.id }, data: { hasActiveSubscription: false } })
 
     if (metadata.workspaceId) {
-      await prisma.workspace.update({ where: { id: metadata.workspaceId }, data: { status: "PAUSED" } })
+      // Wrap in try/catch: failing the webhook (non-200) would trigger Dodo
+      // retry storms. Log and continue; the trial-expiry cron will clean up
+      // any stragglers within 24h.
+      try {
+        await destroyContainer(metadata.workspaceId)
+      } catch (err) {
+        log.error("Failed to destroy container on subscription failure", {
+          workspaceId: metadata.workspaceId,
+          userId: user.id,
+          error: String(err),
+        })
+      }
     }
   }
 }
