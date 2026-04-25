@@ -29,7 +29,13 @@ export function WorkspaceCard({
   const router = useRouter()
 
   const handleClick = () => {
-    if (status === "running" || status === "paused" || status === "hibernated" || status === "waking") router.push(`/dashboard/${id}`)
+    if (
+      status === "running" ||
+      status === "paused" ||
+      status === "hibernated" ||
+      status === "waking" ||
+      status === "stopped"
+    ) router.push(`/dashboard/${id}`)
     else if (status === "draft") router.push(`/builder/${id}`)
     else if (status === "setup") router.push(`/setup/${id}/step/1`)
     else router.push(`/dashboard/${id}`)
@@ -64,7 +70,9 @@ export function WorkspaceCard({
           ? `${agentCount} agents · Hibernating · Wakes on next heartbeat`
           : status === "waking"
             ? `${agentCount} agents · Starting up · ~30 seconds`
-            : `${agentCount} agents · ${source}`}
+            : status === "stopped"
+              ? `${agentCount} agents · Stopped · Redeploy to restart`
+              : `${agentCount} agents · ${source}`}
       </p>
       <div className="flex gap-3.5 mt-1 text-[11px] text-[var(--tx2)]">
         {lastActive && <span>Last: {lastActive}</span>}
