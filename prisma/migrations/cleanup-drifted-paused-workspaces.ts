@@ -18,6 +18,8 @@
 //   npx dotenv -e .env.staging    -- npx tsx prisma/migrations/cleanup-drifted-paused-workspaces.ts
 //   npx dotenv -e .env.production -- npx tsx prisma/migrations/cleanup-drifted-paused-workspaces.ts
 
+import "./_polyfills"
+
 import { prisma } from "@/lib/db"
 import { destroyContainer } from "@/lib/openclaw/deployer"
 
