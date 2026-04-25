@@ -10,7 +10,7 @@ import {
   LayoutDashboard,
   Upload,
   Pause,
-  Play,
+  RotateCcw,
   Trash2,
 } from "lucide-react"
 
@@ -57,9 +57,10 @@ export function WorkspaceContextMenu({
 
   const isRunning = status === "RUNNING"
   const isPaused = status === "PAUSED"
+  const isStopped = status === "STOPPED"
   const isDraft = status === "DRAFT"
   const isSetup = status === "SETUP_INCOMPLETE"
-  const hasDeployment = isRunning || isPaused || status === "ERROR"
+  const hasDeployment = isRunning || isPaused || isStopped || status === "ERROR"
 
   const hasOrch = agentRoles.includes("ORCHESTRATOR")
   const hasCritic = agentRoles.includes("CRITIC")
@@ -112,10 +113,14 @@ export function WorkspaceContextMenu({
               <Item icon={Pause} label="Pause" onClick={() => act(() => fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" }))} />
             </>
           )}
-          {isPaused && (
+          {isStopped && (
             <>
               <Divider />
-              <Item icon={Play} label="Resume" onClick={() => act(() => fetch(`/api/deploy/${workspaceId}/restart`, { method: "POST" }))} />
+              <Item
+                icon={RotateCcw}
+                label="Redeploy"
+                onClick={() => act(() => router.push(`/dashboard/${workspaceId}`))}
+              />
             </>
           )}
 
