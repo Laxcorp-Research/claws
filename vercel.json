@@ -20,10 +20,6 @@
     {
       "path": "/api/cron/hibernation",
       "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/enforce-trial-expiry",
-      "schedule": "0 4 * * *"
     }
   ]
 }
