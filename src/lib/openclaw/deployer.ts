@@ -241,10 +241,22 @@ export async function deployToCloud(workspaceId: string): Promise<{
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown deployment error';
     await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
-    await prisma.workspace.update({
-      where: { id: workspaceId },
-      data: { status: 'ERROR' },
-    });
+    // Atomically converge Workspace + ContainerState rows on deploy failure.
+    // ContainerState.containerPhase='STOPPED' is correct here: the ContainerPhase
+    // enum has no ERROR value, and on a failed deploy the container (if any)
+    // is non-functional and needs a rebuild — which is what STOPPED semantically
+    // means under the post-PR-#52 vocabulary. updateMany avoids throwing when
+    // a first-time deploy failure happens before ContainerState is created.
+    await prisma.$transaction([
+      prisma.workspace.update({
+        where: { id: workspaceId },
+        data: { status: 'ERROR' },
+      }),
+      prisma.containerState.updateMany({
+        where: { workspaceId },
+        data: { containerPhase: 'STOPPED' },
+      }),
+    ]);
     throw error;
   }
 }
@@ -266,17 +278,36 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
     }
   }
 
-  await prisma.workspace.update({
-    where: { id: workspaceId },
-    data: {
-      status: 'STOPPED',
-      containerId: null,
-      containerName: null,
-      containerHost: null,
-      hostPort: null,
-      healthStatus: 'UNKNOWN',
-    },
-  });
+  // Atomically update Workspace row AND ContainerState row. Previous bug:
+  // only Workspace.status was updated, leaving ContainerState.containerPhase
+  // stale (still 'RUNNING' / 'WARM' / whatever it was before). The hibernation
+  // cron and health-check cron already filtered on Workspace.containerId
+  // being non-null so they skipped these drifted rows, but the divergence
+  // was real and cost us a live Railway service in one incident
+  // (service 00000000-0000-4000-8000-000000000001, cleaned up manually
+  // on 2026-04-27 — companion to this fix).
+  //
+  // updateMany is used (not update) so we don't throw if a workspace has
+  // never had a container and therefore has no ContainerState row. The
+  // Railway deleteService call stays OUTSIDE the transaction — we never
+  // want to hold a DB transaction open across a network call.
+  await prisma.$transaction([
+    prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        status: 'STOPPED',
+        containerId: null,
+        containerName: null,
+        containerHost: null,
+        hostPort: null,
+        healthStatus: 'UNKNOWN',
+      },
+    }),
+    prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: { containerPhase: 'STOPPED' },
+    }),
+  ]);
 }
 
 export async function restartContainer(workspaceId: string): Promise<void> {
@@ -329,33 +360,6 @@ export async function redeployWorkspace(workspaceId: string): Promise<void> {
   }
 
   await deployToCloud(workspaceId);
-}
-
-export async function destroyDeployment(workspaceId: string): Promise<void> {
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { id: workspaceId },
-  });
-
-  if (isRailwayConfigured() && workspace.containerId) {
-    try {
-      await deleteService(workspace.containerId);
-    } catch {
-      log.warn('Failed to delete Railway service during destroy', { workspaceId });
-    }
-  }
-
-  await prisma.workspace.update({
-    where: { id: workspaceId },
-    data: {
-      status: 'DRAFT',
-      containerId: null,
-      containerName: null,
-      containerHost: null,
-      hostPort: null,
-      gatewayToken: null,
-      healthStatus: 'UNKNOWN',
-    },
-  });
 }
 
 // ---------------------------------------------------------------------------
