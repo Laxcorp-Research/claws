@@ -5,7 +5,6 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
 import { sanitizeActivityText } from "@/lib/security/sanitize"
-import { destroyContainer } from "@/lib/openclaw/deployer"
 
 export async function GET(
   _req: NextRequest,
@@ -23,16 +22,8 @@ export async function GET(
 
   const owner = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { trialUsed: true, trialEndsAt: true, hasActiveSubscription: true, apiKeySource: true },
+    select: { apiKeySource: true },
   })
-
-  if (workspace!.status === "RUNNING" && owner?.trialUsed && !owner.hasActiveSubscription) {
-    const expired = !owner.trialEndsAt || owner.trialEndsAt <= now
-    if (expired) {
-      await destroyContainer(workspaceId)
-      workspace!.status = "STOPPED"
-    }
-  }
 
   const apiKeySource = getApiKeySource(workspace!, owner)
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
