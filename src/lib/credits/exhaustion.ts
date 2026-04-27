@@ -23,6 +23,15 @@ export async function onCreditsExhausted(userId: string) {
         })
       }
 
+      // TODO: containerPhase='HIBERNATED' set here is inconsistent with
+      // destroyContainer's containerPhase='STOPPED' (applied one call up).
+      // Result: this branch leaves Workspace.status='STOPPED' but
+      // ContainerState.containerPhase='HIBERNATED', a semantic mismatch
+      // that predates the STOPPED/HIBERNATED distinction. To be resolved
+      // in the billing-overhaul PR9: under the per-Claw subscription
+      // model, credit exhaustion NO LONGER destroys containers
+      // (subscription-funded), so this entire if-branch and the
+      // destroyContainer call above both disappear.
       await prisma.containerState.updateMany({
         where: { workspaceId: ws.id },
         data: { containerPhase: "HIBERNATED", hibernatedAt: new Date() },
