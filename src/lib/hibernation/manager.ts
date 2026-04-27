@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
-import { deployToCloud, stopContainer } from "@/lib/openclaw/deployer"
+import { deployToCloud, destroyContainer } from "@/lib/openclaw/deployer"
 
 export async function hibernateWorkspace(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
@@ -30,7 +30,7 @@ export async function hibernateWorkspace(workspaceId: string): Promise<void> {
   }
 
   try {
-    await stopContainer(workspaceId)
+    await destroyContainer(workspaceId)
 
     await prisma.$transaction([
       prisma.containerState.update({

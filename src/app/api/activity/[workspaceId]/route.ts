@@ -22,19 +22,8 @@ export async function GET(
 
   const owner = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { trialUsed: true, trialEndsAt: true, hasActiveSubscription: true, apiKeySource: true },
+    select: { apiKeySource: true },
   })
-
-  if (workspace!.status === "RUNNING" && owner?.trialUsed && !owner.hasActiveSubscription) {
-    const expired = !owner.trialEndsAt || owner.trialEndsAt <= now
-    if (expired) {
-      await prisma.workspace.update({
-        where: { id: workspaceId },
-        data: { status: "PAUSED" },
-      })
-      workspace!.status = "PAUSED"
-    }
-  }
 
   const apiKeySource = getApiKeySource(workspace!, owner)
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
