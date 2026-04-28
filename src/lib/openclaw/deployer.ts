@@ -118,6 +118,49 @@ export async function deployToCloud(workspaceId: string): Promise<{
     await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
     const generated = await generateWorkspace(workspaceId);
 
+    // Pre-populate ContainerState BEFORE any Railway call. The container's
+    // first state sync (~30s after boot, per PR2) uses updateMany on this
+    // row — if the row doesn't exist yet, the sync is silently dropped
+    // (count=0 no-op). Creating the row first makes the write idempotent
+    // and closes the race.
+    //
+    // Error path at the bottom of this try/catch uses updateMany with
+    // containerPhase='STOPPED', which will now correctly find this row
+    // and flip it on failure. No semantic drift.
+    //
+    // Known staleness windows (accepted, documented so future readers
+    // don't re-derive from git archaeology):
+    //   - hasChannels(workspace) reflects the workspace at deploy-start
+    //     time, not deploy-completion. If the user toggles channels
+    //     mid-deploy (~30-60s window for deployToCloud), the ContainerState
+    //     row's hasActiveChannels may lag by one deploy cycle. Concurrent
+    //     channel reconfiguration during an active deploy is rare enough
+    //     to accept rather than add a second write after waitForDeploymentSuccess.
+    //   - lastActiveAt is set at deploy-start (was previously post-success).
+    //     The hibernation threshold is 10 min idle, well above the ~60s
+    //     window, so no practical impact on hibernation decisions.
+    const channelsActive = hasChannels(workspace);
+    await prisma.containerState.upsert({
+      where: { workspaceId },
+      update: {
+        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
+        lastActiveAt: new Date(),
+        hibernatedAt: null,
+        wakeRequestedAt: null,
+        hasActiveChannels: channelsActive,
+        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
+        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+      },
+      create: {
+        workspaceId,
+        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
+        lastActiveAt: new Date(),
+        hasActiveChannels: channelsActive,
+        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
+        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+      },
+    });
+
     await updateDeploymentStatus(deployment.id, workspaceId, 'PROVISIONING');
     const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);
     const apiKeySource = getApiKeySource(workspace, user);
@@ -208,28 +251,6 @@ export async function deployToCloud(workspaceId: string): Promise<{
         gatewayToken: encrypt(generated.gatewayToken),
         healthStatus: 'HEALTHY',
         lastHealthCheck: new Date(),
-      },
-    });
-
-    const channelsActive = hasChannels(workspace);
-    await prisma.containerState.upsert({
-      where: { workspaceId },
-      update: {
-        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
-        lastActiveAt: new Date(),
-        hibernatedAt: null,
-        wakeRequestedAt: null,
-        hasActiveChannels: channelsActive,
-        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
-        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
-      },
-      create: {
-        workspaceId,
-        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
-        lastActiveAt: new Date(),
-        hasActiveChannels: channelsActive,
-        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
-        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
       },
     });
 
