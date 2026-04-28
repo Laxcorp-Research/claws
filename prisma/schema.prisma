@@ -180,6 +180,18 @@ model Workspace {
   containerState           ContainerState?
   apiKeySourceOverride     ApiKeySource?
 
+  // ─── PR1: per-workspace subscription state ──────────────────
+  // Part of the billing-model overhaul (PR1-9 sequence). This PR only
+  // adds the columns; PR3 will start populating them via the Dodo webhook
+  // (dual-write alongside User.hasActiveSubscription), and PR5 will cut
+  // the eligibility-check reads over to these fields. No code path in
+  // this PR writes or reads these — all nullable, all unused until PR3.
+  subscriptionId      String?             @unique
+  subscriptionStatus  SubscriptionStatus?
+  currentPeriodEnd    DateTime?           // Maps from Dodo's next_billing_date
+  canceledAt          DateTime?           // Set when cancellation takes effect (period-end), not at click time
+  stateRetainedUntil  DateTime?           // canceledAt + 30 days; populated at end-of-period destroy
+
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   clawTemplate ClawTemplate? @relation(fields: [clawTemplateId], references: [id])
   agents      Agent[]
@@ -199,6 +211,7 @@ model Workspace {
   @@index([userId])
   @@index([status])
   @@index([containerId])
+  @@index([subscriptionStatus, currentPeriodEnd])
 }
 
 enum WorkspaceStatus {
