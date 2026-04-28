@@ -450,7 +450,12 @@ interface CreditConfig {
 export function buildRailwayEnvVars(
   generated: GeneratedWorkspace,
   workspace: { timezone?: string | null; containerHost?: string | null },
-  creditConfig?: CreditConfig,
+  // PR2: creditConfig is now REQUIRED. Previously optional, which meant
+  // callers could silently skip the 3 state-sync env vars by omitting
+  // the arg. TypeScript now enforces the invariant; the runtime throw
+  // inside the Composio section remains as defense-in-depth for
+  // `as any` bypasses.
+  creditConfig: CreditConfig,
 ): Record<string, string> {
   const configJson = generated['openclaw.json'];
   const envFileContent = generated['.env'];
@@ -471,12 +476,22 @@ export function buildRailwayEnvVars(
     vars.CLAWS_PUBLIC_URL = `https://${workspace.containerHost}`;
   }
 
-  if (creditConfig?.creditMode) {
+  // PR2: ungated for universal state preservation. These 3 vars were
+  // credit-mode-gated until 2026-04-28. State sync (periodic + SIGTERM)
+  // inside process-manager.mjs reads all three; without them, sync short-
+  // circuits silently. By emitting them for every container we make every
+  // deploy's state preservable regardless of apiKeySource. The remaining
+  // credit-mode block below keeps credit-proxy-specific vars gated because
+  // those genuinely require the proxy process (CLAWS_USER_ID, ANTHROPIC_*,
+  // NODE_OPTIONS memory cap). creditConfig is now a required parameter,
+  // so these three emit unconditionally — no silent-no-op failure mode.
+  vars.CLAWS_WORKSPACE_ID = creditConfig.workspaceId;
+  vars.CLAWS_METERING_ENDPOINT = process.env.METERING_ENDPOINT || 'https://app.buildclaws.ai/api/internal/metering';
+  vars.CLAWS_METERING_SECRET = process.env.METERING_MASTER_SECRET || '';
+
+  if (creditConfig.creditMode) {
     vars.CLAWS_CREDIT_MODE = 'true';
-    vars.CLAWS_WORKSPACE_ID = creditConfig.workspaceId;
     vars.CLAWS_USER_ID = creditConfig.userId;
-    vars.CLAWS_METERING_ENDPOINT = process.env.METERING_ENDPOINT || 'https://app.buildclaws.ai/api/internal/metering';
-    vars.CLAWS_METERING_SECRET = process.env.METERING_MASTER_SECRET || '';
     vars.ANTHROPIC_API_KEY = process.env.CLAWS_MASTER_ANTHROPIC_KEY || '';
     vars.ANTHROPIC_BASE_URL = 'http://localhost:3789';
     vars.NODE_OPTIONS = '--max-old-space-size=700';

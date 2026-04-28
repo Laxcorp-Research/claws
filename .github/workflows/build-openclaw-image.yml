@@ -54,20 +54,40 @@ jobs:
         id: check
         run: |
           VERSION="${{ steps.detect.outputs.version }}"
-          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
-            -u "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | jq -r .token 2>/dev/null || echo "")
 
-          if [ -n "$TOKEN" ]; then
+          # PR2 fix (2026-04-28): the prior version of this step fetched a GHCR
+          # JWT using Basic auth with `github.actor:secrets.GITHUB_TOKEN`,
+          # which GHCR rejects (GHCR expects a PAT in the password slot, not
+          # a GITHUB_TOKEN). That made TOKEN empty, skip defaulted to false,
+          # and the workflow rebuilt unconditionally every Monday — producing
+          # fresh :<version> and :latest digests even when nothing had changed.
+          #
+          # Fix: fetch an anonymous JWT for pulling the manifest. The image
+          # is published to a private-by-default GHCR package but GHCR still
+          # issues anonymous pull tokens for pull-scope queries when the
+          # caller has read access via package visibility; for our org's
+          # package this works because it's set to "public" visibility.
+          # The OCI manifest Accept header also needs to cover OCI + Docker
+          # media types so the 200 check is reliable for both index and
+          # single-manifest images.
+          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
+            | jq -r .token 2>/dev/null || echo "")
+
+          if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               -H "Authorization: Bearer $TOKEN" \
-              "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION" \
-              -H "Accept: application/vnd.docker.distribution.manifest.v2+json")
+              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+              "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION")
 
             if [ "$STATUS" = "200" ] && [ -z "${{ inputs.force_version }}" ]; then
               echo "Image ${{ env.IMAGE_NAME }}:$VERSION already exists. Skipping build."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+
+            echo "Manifest check: version=$VERSION status=$STATUS force_version='${{ inputs.force_version }}'"
+          else
+            echo "::warning::Failed to obtain anonymous GHCR pull token; proceeding with build (skip check bypassed)"
           fi
 
           echo "skip=false" >> "$GITHUB_OUTPUT"

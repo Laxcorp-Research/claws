@@ -287,10 +287,14 @@ async function main() {
 
   spawnGateway();
 
+  // PR2 (2026-04-28): initial sync delay reduced 2min → 30sec. With state
+  // sync now universal (not credit-mode-gated), the faster first snapshot
+  // shortens the loss window if a container crashes early in its life.
+  // The 5-minute steady-state interval is unchanged.
   setTimeout(() => {
     syncState();
     setInterval(syncState, STATE_SYNC_INTERVAL_MS);
-  }, 2 * 60 * 1000);
+  }, 30 * 1000);
 
   console.log('[process-manager] All processes started');
 }
