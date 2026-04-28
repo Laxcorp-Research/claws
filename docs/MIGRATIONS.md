@@ -5,9 +5,15 @@
 1. Make changes to `prisma/schema.prisma`
 2. Run: `npm run db:migrate:dev` -- creates migration file + applies to dev DB
 3. Commit the generated migration file in `prisma/migrations/`
-4. Push to `staging` branch -- Vercel deploy runs `prisma migrate deploy` automatically
-5. Verify on staging
-6. PR to `main` -- production deploy runs `prisma migrate deploy` automatically
+4. Merge PR to `staging`. Vercel deploy does NOT auto-run migrations (changed
+   in commit e94932f — Vercel's `buildCommand` in `vercel.json` is `npm run build`,
+   which is `prisma generate && next build` without `migrate deploy`).
+   Run the migration manually after the deploy lands:
+   `npm run migrate:staging`
+5. Verify on staging (query DB directly or run `dotenv -e .env.staging -- npx prisma migrate status`)
+6. PR `staging` to `main`. Merge. Again, Vercel does NOT auto-run migrations.
+   Run the migration manually after the prod deploy lands:
+   `npm run migrate:production`
 
 ## Rules
 
