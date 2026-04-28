@@ -25,16 +25,23 @@ export async function POST(req: NextRequest) {
   const envVars: string[] = []
   const source = getApiKeySource(workspace, workspace.user)
 
+  // PR2: ungated for universal state preservation. These 3 vars (WORKSPACE_ID,
+  // METERING_ENDPOINT, METERING_SECRET) were credit-mode-gated until 2026-04-28.
+  // process-manager.mjs's syncState() requires all three; without them sync
+  // short-circuits silently. Emitting them for every container makes state
+  // preservation universal. Credit-proxy-specific vars (CLAWS_USER_ID,
+  // ANTHROPIC_*) stay gated below because they require the proxy process.
+  envVars.push(`CLAWS_WORKSPACE_ID=${workspaceId}`)
+  envVars.push(
+    `CLAWS_METERING_ENDPOINT=${process.env.METERING_ENDPOINT || "https://app.buildclaws.ai/api/internal/metering"}`
+  )
+  envVars.push(`CLAWS_METERING_SECRET=${process.env.METERING_MASTER_SECRET}`)
+
   if (source === "PLATFORM_CREDIT") {
     envVars.push(`ANTHROPIC_API_KEY=${process.env.CLAWS_MASTER_ANTHROPIC_KEY}`)
     envVars.push(`ANTHROPIC_BASE_URL=http://localhost:3789`)
     envVars.push(`CLAWS_CREDIT_MODE=true`)
-    envVars.push(`CLAWS_WORKSPACE_ID=${workspaceId}`)
     envVars.push(`CLAWS_USER_ID=${workspace.userId}`)
-    envVars.push(
-      `CLAWS_METERING_ENDPOINT=${process.env.METERING_ENDPOINT || "https://app.buildclaws.ai/api/internal/metering"}`
-    )
-    envVars.push(`CLAWS_METERING_SECRET=${process.env.METERING_MASTER_SECRET}`)
   } else {
     const anthropicKey = workspace.user.apiKeys.find((k) => k.provider === "ANTHROPIC")
     if (anthropicKey) {

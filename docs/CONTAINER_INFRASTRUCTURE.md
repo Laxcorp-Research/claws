@@ -152,13 +152,62 @@ These are accessed via `https://<domain>/healthz` (Railway provides TLS).
 
 ## Version Management
 
-The admin versions page (`/admin/versions`) manages `OpenClawVersion` records.
-The `dockerImage` field specifies which image Railway pulls. To update:
+The runtime image `ghcr.io/laxcorp-research/openclaw-runtime` is built and
+published by the GitHub Actions workflow at
+`.github/workflows/build-openclaw-image.yml`. What Railway pulls is governed
+by `OPENCLAW_IMAGE` in `src/lib/openclaw/railway-client.ts`, which falls back
+to `:latest` if the Vercel env var `OPENCLAW_DOCKER_IMAGE` is unset.
 
-1. Pull the new upstream image and re-tag: `docker tag ghcr.io/openclaw/openclaw:<version> ghcr.io/laxcorp-research/openclaw-runtime:latest`
-2. Push to ghcr.io (or update the tag reference)
-3. In admin panel: add new version, promote to stable
-4. Users see "Update available" banner and can redeploy
+### Automatic (weekly) builds
+
+The workflow runs every Monday at 06:00 UTC via cron. It:
+1. Queries `ghcr.io/openclaw/openclaw` for tags matching `YYYY.MM.PATCH`,
+   picks the highest semver as the upstream version.
+2. Checks whether `laxcorp-research/openclaw-runtime:<version>` already
+   exists on GHCR — if so, skips (no rebuild).
+3. Clones upstream at `v<version>`, builds the base image, layers our
+   `container/process-manager.mjs` + `container/credit-proxy.mjs` via
+   `docker/Dockerfile`, publishes to both `:<version>` AND `:latest`.
+
+### Manual (force) builds
+
+To force a rebuild (e.g., when you've changed `container/process-manager.mjs`
+and need it baked into the image before next Monday):
+
+```bash
+gh workflow run build-openclaw-image.yml -f force_version=<upstream-version>
+```
+
+`force_version` bypasses the skip-if-exists check and rebuilds `:<version>`
+AND `:latest` with a fresh digest. The workflow uses whatever `main`-branch
+SHA is current at trigger time to COPY `container/*.mjs` into the final
+image — so your code changes must be merged to `main` BEFORE you run
+`gh workflow run`.
+
+### Tag mutability
+
+**Both `:<version>` and `:latest` are MUTABLE.** Every weekly cron and every
+`force_version` dispatch overwrites them. Old digests remain pullable by
+digest (`@sha256:...`) but are unreferenced by the named tags.
+
+Documentation that pins to a specific digest (audits, runtime contracts) is
+a snapshot — a subsequent rebuild doesn't invalidate the running containers
+that were deployed against the old digest, but it does mean "the digest
+currently at `:latest`" is not the same as "the digest `:latest` pointed at
+when the audit was written."
+
+### Updating what Railway pulls
+
+- **If `OPENCLAW_DOCKER_IMAGE` is unset (or set to `:latest`) in Vercel env**:
+  next container deploy automatically picks up the newest `:latest` digest.
+  No code change or env change needed.
+- **If `OPENCLAW_DOCKER_IMAGE` is pinned to `:<version>`**: update the env
+  var via `npx vercel env add OPENCLAW_DOCKER_IMAGE` to point at the new
+  version. Redeploy Vercel (env changes require a redeploy to propagate).
+
+Running containers are unaffected — only NEW `createService` calls see the
+new image. To pick up a new runtime in an already-deployed workspace, trigger
+a redeploy (Builder → Save → Setup → Deploy, or `/api/deploy/.../redeploy`).
 
 ---
 
