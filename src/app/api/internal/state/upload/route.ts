@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ success: false, error: "State too large" }, { status: 413 })
   }
 
-  await prisma.containerState.updateMany({
+  const { count } = await prisma.containerState.updateMany({
     where: { workspaceId },
     data: {
       runtimeStateSnapshot: stateBuffer,
@@ -36,11 +36,23 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  log.info("Runtime state snapshot stored", {
-    workspaceId,
-    compressedBytes: stateBuffer.length,
-    uncompressedBytes: uncompressedSize,
-  })
+  if (count === 0) {
+    // Tripwire for the race PR2.5 closed at the deployer level: if this
+    // ever fires again it means a container booted and sync'd before its
+    // ContainerState row was created. State is silently discarded at the
+    // DB layer; surface it loudly so the next bug can't hide.
+    log.warn("State sync received but no ContainerState row — state discarded", {
+      workspaceId,
+      compressedBytes: stateBuffer.length,
+      uncompressedBytes: uncompressedSize,
+    })
+  } else {
+    log.info("Runtime state snapshot stored", {
+      workspaceId,
+      compressedBytes: stateBuffer.length,
+      uncompressedBytes: uncompressedSize,
+    })
+  }
 
-  return Response.json({ success: true })
+  return Response.json({ success: true, count })
 }

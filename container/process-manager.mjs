@@ -110,8 +110,10 @@ async function syncState() {
 
     const jsonStr = JSON.stringify(state);
     const compressed = zlib.gzipSync(Buffer.from(jsonStr));
+    const fileCount = Object.keys(state.files).length;
+    const sizeKb = Math.round(compressed.length / 1024);
 
-    await fetch(`${STATE_ENDPOINT}/upload`, {
+    const res = await fetch(`${STATE_ENDPOINT}/upload`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -125,7 +127,37 @@ async function syncState() {
       signal: AbortSignal.timeout(30000),
     });
 
-    console.log(`[process-manager] State synced (${Object.keys(state.files).length} files, ${Math.round(compressed.length / 1024)}KB compressed)`);
+    // PR2.5: differentiated outcomes instead of always logging "synced"
+    // regardless of server acceptance. Three distinct states:
+    //   1. HTTP !ok       -> server rejected; state NOT persisted
+    //   2. HTTP ok, count=0 -> server accepted but updateMany matched 0
+    //                        rows; state silently discarded (this was
+    //                        the PR2 initial-sync race — now closed at
+    //                        deployer.ts, but we keep the tripwire here
+    //                        in case a future regression opens it back up)
+    //   3. HTTP ok, count>=1 -> state persisted; the only safe case
+    if (!res.ok) {
+      console.warn(`[process-manager] State sync failed (HTTP ${res.status}): server rejected (${fileCount} files, ${sizeKb}KB)`);
+      return;
+    }
+
+    let bodyCount = null;
+    try {
+      const body = await res.json();
+      if (typeof body?.count === 'number') bodyCount = body.count;
+    } catch {
+      // Older server version that doesn't return count — treat as unknown
+      // and fall through to the success log so we don't flag a benign
+      // version skew. The server-side log.warn is still the source of
+      // truth for count=0 on any server >=PR2.5.
+    }
+
+    if (bodyCount === 0) {
+      console.warn(`[process-manager] State sync accepted but NOT persisted (count=0; ContainerState row missing) — ${fileCount} files, ${sizeKb}KB discarded`);
+      return;
+    }
+
+    console.log(`[process-manager] State synced (${fileCount} files, ${sizeKb}KB compressed)`);
   } catch (err) {
     console.error('[process-manager] State sync failed:', err.message);
   }
