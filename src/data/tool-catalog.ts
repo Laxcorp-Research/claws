@@ -215,8 +215,37 @@ export function getToolBySlug(slug: string): ToolDefinition | undefined {
   return ALL_TOOLS.find((t) => t.slug === slug)
 }
 
+/**
+ * Display-name aliases for template strings that don't resolve via substring.
+ * Manually curated; validated by tool-catalog-aliases.test.ts which asserts
+ * every target is a real catalog slug.
+ *
+ * Why this exists: claw-templates.ts declares required/recommended tools by
+ * human display names like "Claude API" and "Twitter API". The catalog's
+ * canonical names are "Anthropic (Claude)" and "Twitter/X API" respectively.
+ * Bidirectional substring matching fails for both — the strings don't share
+ * any common substring longer than partial-word. Without this alias, every
+ * setup wizard for every template hits Deploy-blocked because Claude API
+ * can't be resolved (see PR2.7 audit). See PR2.8 tracking issue for the
+ * typed-slug migration that will eventually deprecate this map.
+ */
+export const TOOL_NAME_ALIASES: Record<string, string> = {
+  "Claude API": "anthropic_api",
+  "Twitter API": "twitter-api",
+}
+
 export function getToolByName(name: string): ToolDefinition | undefined {
-  return ALL_TOOLS.find((t) => t.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(t.name.toLowerCase()))
+  const aliasTarget = TOOL_NAME_ALIASES[name]
+  if (aliasTarget) {
+    const hit = getToolBySlug(aliasTarget)
+    if (hit) return hit
+    // Fall through to substring if the alias's target slug somehow went
+    // missing (shouldn't happen — guarded by the aliases test — but
+    // preserving the old behavior keeps us safe against catalog drift).
+  }
+  return ALL_TOOLS.find(
+    (t) => t.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(t.name.toLowerCase()),
+  )
 }
 
 export function getToolsByCategory(category: string): ToolDefinition[] {

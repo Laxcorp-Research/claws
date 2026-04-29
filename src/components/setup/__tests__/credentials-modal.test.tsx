@@ -148,6 +148,79 @@ describe("CredentialsModal", () => {
     })
     expect(screen.getByText(/Validation failed/)).toBeDefined()
   })
+
+  // PR2.7: defensive state for incomplete catalog entries
+  describe("when the tool's catalog entry is incomplete (credentialFields=[])", () => {
+    // The modal's two callers (setup wizard Step 2 + Browse Tools modal)
+    // route only API_KEY tools here; OAuth tools go through a separate
+    // flow. So an open modal with credentialFields=[] always means the
+    // catalog entry is broken (PR4-orphan like Buffer/Typefully, or a
+    // never-in-catalog tool like DocuSign surfaced by template copy).
+    it("renders the 'not yet connectable' message instead of an empty form", () => {
+      render(
+        <CredentialsModal
+          open={true}
+          onClose={() => {}}
+          toolName="Typefully"
+          credentialFields={[]}
+          onSave={async () => ({ success: true })}
+        />,
+      )
+      // Message body. Using a substring match on the distinctive phrase
+      // ("connectable yet") rather than exact wording so minor copy edits
+      // don't break the test. Avoids matching "isn't connectable" across
+      // the apostrophe boundary which isn't JS-regex-friendly.
+      expect(
+        screen.getByText(/connectable yet/i),
+      ).toBeDefined()
+    })
+
+    it("hides the Validate button entirely (not just disables)", () => {
+      render(
+        <CredentialsModal
+          open={true}
+          onClose={() => {}}
+          toolName="Typefully"
+          credentialFields={[]}
+          onSave={async () => ({ success: true })}
+        />,
+      )
+      // queryByRole returns null when not found (unlike getByRole which
+      // throws). A DISABLED Validate button invites "why doesn't this
+      // work" confusion; we want it GONE.
+      expect(screen.queryByRole("button", { name: /Validate/i })).toBeNull()
+    })
+
+    it("keeps the Cancel button present and clickable", () => {
+      const onClose = vi.fn()
+      render(
+        <CredentialsModal
+          open={true}
+          onClose={onClose}
+          toolName="Typefully"
+          credentialFields={[]}
+          onSave={async () => ({ success: true })}
+        />,
+      )
+      const cancel = screen.getByRole("button", { name: /Cancel/i })
+      expect(cancel).toBeDefined()
+      fireEvent.click(cancel)
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it("renders zero input fields (no stray empty inputs)", () => {
+      render(
+        <CredentialsModal
+          open={true}
+          onClose={() => {}}
+          toolName="Typefully"
+          credentialFields={[]}
+          onSave={async () => ({ success: true })}
+        />,
+      )
+      expect(screen.queryAllByRole("textbox")).toHaveLength(0)
+    })
+  })
 })
 
 beforeEach(() => {
