@@ -107,11 +107,24 @@ export function CredentialsModal({
     onClose()
   }
 
-  const effectiveDescription =
-    description ??
-    (credentialFields.length === 1
-      ? "Enter your API key. Encrypted with AES-256-GCM."
-      : `Enter all ${credentialFields.length} required fields. Encrypted with AES-256-GCM.`)
+  // PR2.7: defensive state for tools whose catalog entry is incomplete.
+  // Both modal callers (setup/[workspaceId]/step/[n]/page.tsx and
+  // browse-tools-modal.tsx) route only API_KEY tools to this modal —
+  // OAuth tools go through a separate connection flow. So if this modal
+  // opens with credentialFields=[], the catalog is missing a definition
+  // (PR4-orphan, never-in-catalog tool, etc.). Replace the useless
+  // 0-field form with a clear error; hide the Validate button entirely
+  // (disabled buttons invite "why doesn't this work" confusion).
+  // See PR2.8 tracking issue for the eventual fix that adds the missing
+  // ~30 catalog entries instead of just papering over them here.
+  const isIncompleteCatalogEntry = credentialFields.length === 0
+
+  const effectiveDescription = isIncompleteCatalogEntry
+    ? undefined // body copy carries the meaning; subtitle would be redundant
+    : description ??
+      (credentialFields.length === 1
+        ? "Enter your API key. Encrypted with AES-256-GCM."
+        : `Enter all ${credentialFields.length} required fields. Encrypted with AES-256-GCM.`)
 
   const buttonLabel =
     credentialFields.length === 1 ? "Validate & save" : "Validate all & save"
@@ -128,23 +141,32 @@ export function CredentialsModal({
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            onClick={handleSave}
-            disabled={!allRequiredFilled || status === "validating"}
-          >
-            {status === "validating" ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" /> Validating...
-              </>
-            ) : (
-              buttonLabel
-            )}
-          </Button>
+          {!isIncompleteCatalogEntry && (
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={!allRequiredFilled || status === "validating"}
+            >
+              {status === "validating" ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" /> Validating...
+                </>
+              ) : (
+                buttonLabel
+              )}
+            </Button>
+          )}
         </>
       }
     >
       <div className="space-y-3">
+        {isIncompleteCatalogEntry && (
+          <div className="rounded-lg border border-[var(--bd)] bg-[var(--bg2)] p-3">
+            <p className="text-[12px] text-[var(--tx)] leading-[1.5]">
+              This tool isn&apos;t connectable yet. You can deploy without it, but it won&apos;t work until our team adds it to the catalog. Continue without connecting.
+            </p>
+          </div>
+        )}
         {credentialFields.map((field, idx) => (
           <div key={field.envVar}>
             <label className="block text-[11px] font-medium mb-[3px]">
