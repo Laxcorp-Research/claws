@@ -57,8 +57,38 @@ export const CHEAP_OPS: Record<string, CheapOp> = {
 
 /**
  * Toolkits whose OAuth Test button renders disabled. See GH #41.
+ *
+ * PR2.8a additions (19): all newly-added OAUTH_COMPOSIO catalog entries
+ * start here rather than in CHEAP_OPS. Each needs a zero-arg whoami op
+ * verified against Composio's SDK before it graduates — the verification
+ * procedure documented in the file header (500-validate-cheap-ops.mjs)
+ * needs to run once per new toolkit. Deferred to a follow-up PR so PR2.8a
+ * stays catalog-only. Users connecting these tools in the wizard see the
+ * "Test not yet supported" disabled state until the follow-up lands.
  */
-export const UNSUPPORTED_TOOLKITS: readonly string[] = ["asana"]
+export const UNSUPPORTED_TOOLKITS: readonly string[] = [
+  "asana",
+  // PR2.8a additions
+  "typefully",
+  "docusign",
+  "follow_up_boss",
+  "freshbooks",
+  "gitlab",
+  "googleads",
+  "googledocs",
+  "googledrive",
+  "harvest",
+  "jotform",
+  "lever",
+  "metaads",
+  "outlook",
+  "pipedrive",
+  "quickbooks",
+  "toggl",
+  "typeform",
+  "webflow",
+  "youtube",
+]
 
 /**
  * Tooltip copy for the disabled-Test state on unsupported toolkits.

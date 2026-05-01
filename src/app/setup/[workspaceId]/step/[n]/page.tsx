@@ -20,7 +20,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
-import { getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import {
   type ToolState,
   type ServerConnectionSummary,
@@ -390,16 +390,41 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
         const wsData = await wsRes.json()
 
-        let requiredNames: string[] = []
-        let recommendedNames: string[] = []
+        // PR2.8a Task 7: switched from name-based (`getToolByName(t.name)`)
+        // to slug-based (`getToolBySlug(t.slug)`) template-tool resolution.
+        // The API route at /api/templates/{slug} already returns both fields
+        // in each entry of `tools.required` / `tools.recommended`; pre-PR2.8a
+        // the wizard read only `.name` and substring-matched it back to the
+        // catalog (see the pre-PR2.7 Deploy-blocker for the "Claude API" vs
+        // "Anthropic (Claude)" miss that TOOL_NAME_ALIASES papered over).
+        //
+        // Each entry has shape:
+        //   { slug: string, name: string, category, connectionType, required,
+        //     alternatives?: string[] }
+        // `alternatives` is typed as a "oneOf" — the user can connect any one
+        // of `[slug, ...alternatives]` to satisfy the entry. Pre-PR2.8a this
+        // field was decorative (only the marketplace store page rendered it as
+        // a visual hint); now it's load-bearing in the resolver's default-pick
+        // logic. PR2.8b adds explicit picker UI.
+        interface TemplateToolEntry {
+          slug: string
+          name: string
+          category: string
+          connectionType: "API_KEY" | "OAUTH_COMPOSIO"
+          required: boolean
+          alternatives?: string[]
+        }
+
+        let requiredEntries: TemplateToolEntry[] = []
+        let recommendedEntries: TemplateToolEntry[] = []
 
         if (wsData.success && wsData.data?.clawTemplate?.slug) {
           try {
             const tplRes = await fetch(`/api/templates/${wsData.data.clawTemplate.slug}`)
             const tplData = await tplRes.json()
             if (tplData.success) {
-              requiredNames = (tplData.data.tools?.required ?? []).map((t: { name: string }) => t.name)
-              recommendedNames = (tplData.data.tools?.recommended ?? []).map((t: { name: string }) => t.name)
+              requiredEntries = (tplData.data.tools?.required ?? []) as TemplateToolEntry[]
+              recommendedEntries = (tplData.data.tools?.recommended ?? []) as TemplateToolEntry[]
             }
           } catch { /* fall through to defaults */ }
         }
@@ -411,67 +436,126 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null; createdAt?: string | null }> = toolsData.success ? toolsData.data.connections : []
 
-        const buildToolState = (names: string[], required: boolean): ToolState[] =>
-          names.map((name) => {
-            const def = getToolByName(name)
-            const templateSlug = def?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "_")
-            const templateCategory = def?.category || "CORE"
-
-            const directMatch = existingConnections.find((c) => c.toolSlug === templateSlug)
-            if (directMatch) {
-              const ui = connectionUiState(directMatch)
-              return {
-                slug: templateSlug,
-                name: def?.name || name,
-                connectionType: def?.connectionType || "API_KEY",
-                category: templateCategory,
-                status: ui.status,
-                errorMessage: ui.errorMessage,
-                warningMessage: ui.warningMessage,
-                connectionId: directMatch.id,
-                connectedAt: directMatch.createdAt ?? null,
-                helpUrl: def?.helpUrl,
-                keyPlaceholder: def?.keyPlaceholder,
-                required,
-              }
+        // Given a `{ slug, alternatives? }` pair, pick the slug the wizard
+        // should render today. Priority:
+        //   1. Any slug in the oneOf set with an already-connected
+        //      ToolConnection row (preserves user's prior choice).
+        //   2. The first non-`comingSoon` catalog entry in the oneOf set.
+        //   3. The primary slug (even if `comingSoon`) — caller then decides
+        //      whether to drop the row via comingSoon filtering.
+        // Returns the catalog ToolDefinition for the chosen slug, or undefined
+        // if the primary slug itself isn't in the catalog (shouldn't happen
+        // post-PR2.8a Task 5 — every seed slug is catalog-resident).
+        const resolveOneOfSlug = (entry: TemplateToolEntry): { slug: string; def: ToolDefinition | undefined } => {
+          const candidates = [entry.slug, ...(entry.alternatives ?? [])]
+          // 1. Already-connected?
+          for (const s of candidates) {
+            if (existingConnections.some((c) => c.toolSlug === s)) {
+              return { slug: s, def: getToolBySlug(s) }
             }
+          }
+          // 2. First non-comingSoon catalog entry?
+          for (const s of candidates) {
+            const d = getToolBySlug(s)
+            if (d && !d.comingSoon) return { slug: s, def: d }
+          }
+          // 3. Primary fallback (may be comingSoon or missing from catalog).
+          return { slug: entry.slug, def: getToolBySlug(entry.slug) }
+        }
 
-            const swapMatch = existingConnections.find((c) => {
-              const connDef = getToolBySlug(c.toolSlug)
-              return connDef && connDef.category === templateCategory && c.toolSlug !== templateSlug
-            })
-            if (swapMatch) {
-              const swapDef = getToolBySlug(swapMatch.toolSlug)
-              const ui = connectionUiState(swapMatch)
-              return {
-                slug: swapMatch.toolSlug,
-                name: swapDef?.name || swapMatch.displayName || name,
-                connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO",
-                category: templateCategory,
-                status: ui.status,
-                errorMessage: ui.errorMessage,
-                warningMessage: ui.warningMessage,
-                connectionId: swapMatch.id,
-                connectedAt: swapMatch.createdAt ?? null,
-                helpUrl: swapDef?.helpUrl,
-                keyPlaceholder: swapDef?.keyPlaceholder,
-                required,
-              }
-            }
+        // Turn one TemplateToolEntry into a ToolState row, or null if the
+        // entry resolves entirely to `comingSoon: true` catalog entries and
+        // should be filtered from render today. PR2.8b replaces the null
+        // return with proper "Coming Soon" badge rendering.
+        const resolveToolEntry = (entry: TemplateToolEntry, required: boolean): ToolState | null => {
+          const { slug: chosenSlug, def } = resolveOneOfSlug(entry)
 
+          if (!def) {
+            // Primary slug + alternatives all missing from catalog. PR2.8a
+            // Task 5 reconciliation + template-tool-references.test.ts
+            // guarantee this can't happen; fail loud if it ever does so a
+            // regression is caught at runtime rather than silently rendered
+            // as an "Enter all 0 required fields" modal.
+            throw new Error(
+              `[setup-wizard] template references slug "${entry.slug}" (+ alternatives ${JSON.stringify(entry.alternatives ?? [])}) but none resolve in ALL_TOOLS. Update the catalog or the template.`,
+            )
+          }
+
+          if (def.comingSoon) {
+            // Every slug in the oneOf set is `comingSoon: true` — the
+            // integration isn't shippable yet. Skip from render; PR2.8b
+            // replaces this with a "Coming Soon" badge.
+            console.info(
+              `[setup-wizard] filtering ${required ? "required" : "recommended"} tool entry "${entry.slug}" — all candidates are comingSoon (${def.comingSoonReason ?? "no reason given"}).`,
+            )
+            return null
+          }
+
+          const directMatch = existingConnections.find((c) => c.toolSlug === chosenSlug)
+          if (directMatch) {
+            const ui = connectionUiState(directMatch)
             return {
-              slug: templateSlug,
-              name: def?.name || name,
-              connectionType: def?.connectionType || "API_KEY",
-              category: templateCategory,
-              status: "disconnected" as const,
-              helpUrl: def?.helpUrl,
-              keyPlaceholder: def?.keyPlaceholder,
+              slug: chosenSlug,
+              name: def.name,
+              connectionType: def.connectionType,
+              category: def.category,
+              status: ui.status,
+              errorMessage: ui.errorMessage,
+              warningMessage: ui.warningMessage,
+              connectionId: directMatch.id,
+              connectedAt: directMatch.createdAt ?? null,
+              helpUrl: def.helpUrl,
+              keyPlaceholder: def.keyPlaceholder,
               required,
             }
-          })
+          }
 
-        const allTools = [...buildToolState(requiredNames, true), ...buildToolState(recommendedNames, false)]
+          // Existing category-level swap-match preserved — user may have
+          // connected a different tool in the same category via Browse Tools;
+          // surface that connection in this row. Pre-PR2.8a behavior.
+          const swapMatch = existingConnections.find((c) => {
+            const connDef = getToolBySlug(c.toolSlug)
+            return connDef && connDef.category === def.category && c.toolSlug !== chosenSlug
+          })
+          if (swapMatch) {
+            const swapDef = getToolBySlug(swapMatch.toolSlug)
+            const ui = connectionUiState(swapMatch)
+            return {
+              slug: swapMatch.toolSlug,
+              name: swapDef?.name || swapMatch.displayName || def.name,
+              connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO",
+              category: def.category,
+              status: ui.status,
+              errorMessage: ui.errorMessage,
+              warningMessage: ui.warningMessage,
+              connectionId: swapMatch.id,
+              connectedAt: swapMatch.createdAt ?? null,
+              helpUrl: swapDef?.helpUrl,
+              keyPlaceholder: swapDef?.keyPlaceholder,
+              required,
+            }
+          }
+
+          return {
+            slug: chosenSlug,
+            name: def.name,
+            connectionType: def.connectionType,
+            category: def.category,
+            status: "disconnected" as const,
+            helpUrl: def.helpUrl,
+            keyPlaceholder: def.keyPlaceholder,
+            required,
+          }
+        }
+
+        const resolvedRequired = requiredEntries
+          .map((e) => resolveToolEntry(e, true))
+          .filter((t): t is ToolState => t !== null)
+        const resolvedRecommended = recommendedEntries
+          .map((e) => resolveToolEntry(e, false))
+          .filter((t): t is ToolState => t !== null)
+
+        const allTools = [...resolvedRequired, ...resolvedRecommended]
           .filter(t => {
             const def = getToolBySlug(t.slug)
             return !def?.isAIProvider

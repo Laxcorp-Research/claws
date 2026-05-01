@@ -393,7 +393,7 @@ When delivering the morning briefing:
     "trade-thesis-reviewer",
   ),
   tools: [
-    { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+    { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: true },
     { slug: "polymarket", name: "Polymarket", category: "Prediction Markets", connectionType: "API_KEY", required: false, alternatives: ["kalshi"] },
     { slug: "binance", name: "Binance", category: "Crypto Exchange", connectionType: "API_KEY", required: false, alternatives: ["coinbase", "kraken"] },
@@ -729,10 +729,10 @@ const freelancerRevenueEngine: SeedTemplate = {
     "business-development-reviewer",
   ),
   tools: [
-    { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+    { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: true },
     { slug: "gmail", name: "Gmail", category: "Email", connectionType: "OAUTH_COMPOSIO", required: false },
-    { slug: "google-calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false },
+    { slug: "google_calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["outlook", "cal_com", "apple_calendar"] },
     { slug: "upwork", name: "Upwork", category: "Freelance Platform", connectionType: "API_KEY", required: false, alternatives: ["linkedin"] },
   ],
 }
@@ -1125,11 +1125,11 @@ const ecommerceProfitMaximizer: SeedTemplate = {
     "ecommerce-quality-gate",
   ),
   tools: [
-    { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
-    { slug: "shopify", name: "Shopify", category: "E-Commerce Platform", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["amazon-sp-api"] },
+    { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
+    { slug: "shopify", name: "Shopify", category: "E-Commerce Platform", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["amazon_sp_api"] },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: false },
-    { slug: "google-ads", name: "Google Ads", category: "Advertising", connectionType: "OAUTH_COMPOSIO", required: false },
-    { slug: "meta-ads", name: "Meta Ads", category: "Advertising", connectionType: "OAUTH_COMPOSIO", required: false },
+    { slug: "googleads", name: "Google Ads", category: "Advertising", connectionType: "OAUTH_COMPOSIO", required: false },
+    { slug: "metaads", name: "Meta Ads", category: "Advertising", connectionType: "OAUTH_COMPOSIO", required: false },
     { slug: "keepa", name: "Keepa", category: "Price Tracking", connectionType: "API_KEY", required: false },
   ],
 }
