@@ -205,10 +205,58 @@ describe("useOAuthConnection", () => {
       await vi.advanceTimersByTimeAsync(1)
     })
 
-    expect(cb.calls.onInitiateError).toEqual([[TOOL_SLUG, "Composio not configured"]])
+    // PR2.8a-fix1 Task 4: onInitiateError now passes { message, code? }
+    // not a bare string. Server-side errors with no code (here: 503
+    // COMPOSIO_NOT_CONFIGURED only sets message) leave code undefined.
+    expect(cb.calls.onInitiateError).toEqual([
+      [TOOL_SLUG, { message: "Composio not configured", code: undefined }],
+    ])
     expect(window.open).not.toHaveBeenCalled()
     expect(cb.calls.onInitiated).toEqual([])
     expect(cb.calls.onSuccess).toEqual([])
+  })
+
+  it("initiate failure: API returns code COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH → code piped through", async () => {
+    // PR2.8a-fix1 Task 4 regression: the wizard branches on this code to
+    // render a yellow warning instead of a red error. If the hook ever
+    // stops piping `error.code` through, the wizard silently falls back to
+    // the red-error path and the user sees a misleading message. Lock it
+    // here.
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: false,
+          error: {
+            code: "COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH",
+            message: "This integration requires custom setup. Available within a few days.",
+            statusCode: 422,
+          },
+        },
+        { status: 422 },
+      ),
+    )
+
+    const cb = makeCallbacks()
+    const { result } = renderHook(() =>
+      useOAuthConnection({ workspaceId: WORKSPACE_ID, callbacks: cb }),
+    )
+
+    await act(async () => {
+      result.current.connect(TOOL_SLUG)
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    expect(cb.calls.onInitiateError).toEqual([
+      [
+        TOOL_SLUG,
+        {
+          message: "This integration requires custom setup. Available within a few days.",
+          code: "COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH",
+        },
+      ],
+    ])
+    expect(window.open).not.toHaveBeenCalled()
   })
 
   it("network failure during initiate: onInitiateError surfaces the caught Error", async () => {
@@ -225,7 +273,7 @@ describe("useOAuthConnection", () => {
       await vi.advanceTimersByTimeAsync(1)
     })
 
-    expect(cb.calls.onInitiateError).toEqual([[TOOL_SLUG, "ECONNREFUSED"]])
+    expect(cb.calls.onInitiateError).toEqual([[TOOL_SLUG, { message: "ECONNREFUSED" }]])
   })
 
   it("popup blocked: onInitiateError fires, no polling", async () => {
@@ -248,7 +296,7 @@ describe("useOAuthConnection", () => {
 
     expect(cb.calls.onInitiated).toEqual([[TOOL_SLUG, "ca_pop"]])
     expect(cb.calls.onInitiateError).toEqual([
-      [TOOL_SLUG, "Popup blocked. Allow popups for this site and try again."],
+      [TOOL_SLUG, { message: "Popup blocked. Allow popups for this site and try again." }],
     ])
   })
 

@@ -716,10 +716,37 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           }),
         )
       },
-      onInitiateError: (toolSlug, errorMsg) => {
+      onInitiateError: (toolSlug, error) => {
+        // PR2.8a-fix1 Task 4: COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH is the
+        // 422 the route returns when a toolkit has no Composio-managed auth
+        // scheme (RED-state — operator must register a custom OAuth/API_KEY
+        // config in the Composio dashboard). Rendering this as a red error
+        // misrepresents user-fixable failure; surface it as a yellow
+        // "in-progress" warning on the row instead, leaving status
+        // disconnected so the row stays in the wizard but the user knows
+        // not to retry. Comingsoon-filtering covers the common path; this
+        // branch covers Browse-modal direct connects + race conditions.
+        if (error.code === "COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH") {
+          setTools((prev) =>
+            prev.map((t) =>
+              t.slug === toolSlug
+                ? {
+                    ...t,
+                    status: "disconnected" as const,
+                    warningMessage:
+                      "Setup in progress. Available within a few days.",
+                    errorMessage: undefined,
+                  }
+                : t,
+            ),
+          )
+          return
+        }
         setTools((prev) =>
           prev.map((t) =>
-            t.slug === toolSlug ? { ...t, status: "error" as const, errorMessage: errorMsg } : t,
+            t.slug === toolSlug
+              ? { ...t, status: "error" as const, errorMessage: error.message }
+              : t,
           ),
         )
       },

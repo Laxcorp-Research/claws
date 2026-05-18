@@ -64,8 +64,15 @@ export function BrowseToolsModal({
   const tools = remoteTools ?? ALL_TOOLS
   const categoryList = remoteCategories ?? [...TOOL_CATEGORIES]
 
+  // PR2.8a-fix1 Task 7: belt-and-suspenders comingSoon filter. The browse
+  // server endpoint already filters comingSoon entries from its payload, but
+  // when the fetch fails we fall back to the static `ALL_TOOLS` import which
+  // includes them — surfacing them here would let users click Connect on
+  // toolkits that 422 at the route. Filter again client-side to close that
+  // gap. Hidden until each toolkit's catalog entry ships with comingSoon=false.
   const filtered = useMemo(() => {
     return tools.filter((tool) => {
+      if (tool.comingSoon) return false
       const matchesSearch =
         !search ||
         tool.name.toLowerCase().includes(search.toLowerCase()) ||

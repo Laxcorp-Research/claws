@@ -24,10 +24,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   }
 
   const staticSlugs = new Set(ALL_TOOLS.map((t) => t.slug))
+  // PR2.8a-fix1 Task 7: comingSoon entries are reserved catalog slugs whose
+  // integration isn't deployable today. Hiding them from Browse keeps users
+  // from clicking Connect on a row that would 422 (RED toolkits) or have no
+  // runtime path (PR2.8c placeholders). Static catalog already flags these;
+  // live Composio toolkits never set comingSoon (filter is a no-op on them).
   const merged: ToolDefinition[] = [
     ...ALL_TOOLS,
     ...composioTools.filter((t) => !staticSlugs.has(t.slug)),
-  ]
+  ].filter((t) => !t.comingSoon)
 
   const categorySet = new Set<string>([...TOOL_CATEGORIES])
   for (const t of merged) {

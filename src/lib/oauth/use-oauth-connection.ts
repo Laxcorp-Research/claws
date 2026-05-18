@@ -60,8 +60,14 @@ export interface OAuthConnectionCallbacks {
   /**
    * Initiate POST itself failed (network error, 4xx/5xx, Composio not
    * configured, popup blocked, etc.) — fires before any polling starts.
+   *
+   * `error.code` carries the server-side error code when present (e.g.
+   * `COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH` for RED-state toolkits whose
+   * managed auth isn't configured). Client-side failure paths (network,
+   * popup blocked, JSON parse) leave `code` undefined. Wizard branches on
+   * the code to render yellow warnings vs. red errors.
    */
-  onInitiateError: (toolSlug: string, error: string) => void
+  onInitiateError: (toolSlug: string, error: { message: string; code?: string }) => void
 }
 
 export interface UseOAuthConnectionOptions {
@@ -141,20 +147,31 @@ export function useOAuthConnection({
             body: JSON.stringify({ toolSlug }),
           })
         } catch (err) {
-          cb.onInitiateError(toolSlug, err instanceof Error ? err.message : "Network error during OAuth initiate")
+          cb.onInitiateError(toolSlug, {
+            message: err instanceof Error ? err.message : "Network error during OAuth initiate",
+          })
           return
         }
 
-        let initiateData: { success?: boolean; data?: { redirectUrl?: string; connectionId?: string }; error?: { message?: string } }
+        let initiateData: {
+          success?: boolean
+          data?: { redirectUrl?: string; connectionId?: string }
+          error?: { message?: string; code?: string }
+        }
         try {
           initiateData = await initiateRes.json()
         } catch {
-          cb.onInitiateError(toolSlug, `Unexpected response from OAuth initiate (HTTP ${initiateRes.status})`)
+          cb.onInitiateError(toolSlug, {
+            message: `Unexpected response from OAuth initiate (HTTP ${initiateRes.status})`,
+          })
           return
         }
 
         if (!initiateData.success || !initiateData.data?.redirectUrl || !initiateData.data?.connectionId) {
-          cb.onInitiateError(toolSlug, initiateData.error?.message || "Failed to start OAuth")
+          cb.onInitiateError(toolSlug, {
+            message: initiateData.error?.message || "Failed to start OAuth",
+            code: initiateData.error?.code,
+          })
           return
         }
 
@@ -170,7 +187,9 @@ export function useOAuthConnection({
           `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`,
         )
         if (!popup) {
-          cb.onInitiateError(toolSlug, "Popup blocked. Allow popups for this site and try again.")
+          cb.onInitiateError(toolSlug, {
+            message: "Popup blocked. Allow popups for this site and try again.",
+          })
           return
         }
 

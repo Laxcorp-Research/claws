@@ -447,6 +447,71 @@ Any of the following during the POC means **stop, recall the recommendation, tel
 
 ---
 
+## Auth config lifecycle (PR2.8a-fix1 update)
+
+> **Status as of PR2.8a-fix1:** managed-auth configs are **lazily auto-created on first Connect click**. No operator action required for any toolkit Composio offers a managed-auth scheme for. The operator tracker below covers only the residual set where managed auth isn't available.
+
+The route handler at `src/app/api/tools/[workspaceId]/oauth/initiate/route.ts` calls `ensureAuthConfigForToolkit(composio, toolkitSlug)` (in `src/lib/composio-auth-config.ts`) before invoking `composio.connectedAccounts.initiate(...)`. The helper:
+
+1. Fetches `composio.toolkits.get(toolkitSlug)` and inspects `composioManagedAuthSchemes`.
+   - **Empty array** → throws `ComposioToolkitRequiresCustomOAuthError`. Route returns HTTP 422 with code `COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH`. Wizard renders a yellow "Setup in progress" warning, not a red error. The 8 RED-2 toolkits in the operator tracker below all land here.
+   - **Non-empty** → continue.
+2. Lists existing auth configs (`composio.authConfigs.list({ toolkit, limit: 25 })`). If one exists, returns its id immediately (idempotent / GREEN-state path — covers Gmail and Google Drive today and every toolkit after first Connect).
+3. Acquires a Postgres session-scope advisory lock keyed on `hashtext(toolkitSlug)` via `pg_try_advisory_lock`, inside a `prisma.$transaction(async tx => …)` (the transaction pins the connection across the pgbouncer pool — without the pin, the lock would land on a different backend than the unlock and leak). The lock is **session-scope, not transaction-scope**, and explicitly released with `pg_advisory_unlock` in a `finally` block.
+4. With the lock held, re-lists auth configs (closes the race window where another caller created + released between step 2 and step 3). If now-existing, return that id.
+5. Calls `composio.authConfigs.create(toolkitSlug, { type: "use_composio_managed_auth", name: \`${toolkit.name} (Claws)\` })`. On success returns the new id.
+6. **Defense-in-depth catch:** if step 5 throws with the captured RED error shape (`err.error.error.slug === "Auth_Config_DefaultAuthConfigNotFound"` or `code === 306` — verified verbatim against staging Composio in `scripts/pr2.8a-composio-authconfig-probe.mjs --negative-path`), translate to `ComposioToolkitRequiresCustomOAuthError`. Covers stale-toolkit-metadata races; the structural pre-check at step 1 catches the common case.
+7. Other create errors are re-thrown as-is so the route surfaces them as 500 with the original message preserved (transient quota / 502 / network — masking these as RequiresCustomOAuth would hide a fixable issue).
+
+**Contention semantics.** If `pg_try_advisory_lock` returns false (another caller is in step 5 right now), the helper sleeps 500 ms, re-lists once, and either returns the other caller's freshly-created id or throws an "in flight" error so the user retries. This trades worst-case latency (500 ms wait + a list call) for exactly-once create semantics across function instances.
+
+**Logging.** Every helper invocation emits one `composio.authconfig.ensure` log event with `{ toolkitSlug, action: "noop" | "created" | "requires_custom_oauth" | "failed", durationMs, errorCode? }`. Axiom dataset routing is the same as every other `log.info` in this codebase (see `src/lib/logger.ts`).
+
+**Replaces:** `resolveAuthConfigIdForToolkit` (deleted in PR2.8a-fix1). The old function checked `toolkit.authConfigDetails?.length` as its pre-check, which is non-empty for RED-state toolkits (they expose API_KEY/OAUTH2 schemes the operator could fill, just not managed-auth) — that's why the operator's typefully-Connect attempt reached the create call and surfaced a 500 with our generic "Could not create auth config" string. The fix is the field swap to `composioManagedAuthSchemes`.
+
+---
+
+## Custom OAuth toolkits (operator tracker)
+
+> Source of truth for the 8 toolkits where `composioManagedAuthSchemes` is empty in the staging Composio project. Until each is registered in the Composio dashboard, the catalog entry stays `comingSoon: true` and the route returns HTTP 422 on direct hits.
+
+| Slug | Status | Auth scheme(s) Composio offers (from probe) | Operator action |
+|---|---|---|---|
+| `twitter` | Pending | OAUTH2 (requires `client_id`, `client_secret`, `generic_id`) | Register OAuth app at Twitter Developer; create `use_custom_auth` config in Composio dashboard |
+| `shopify` | Pending | OAUTH2 (`client_id`, `client_secret`); API_KEY; S2S_OAUTH2 | Register OAuth app at Shopify Partners; pick OAUTH2 config |
+| `docusign` | Pending | OAUTH2 (`client_id`, `client_secret`, `full`) | Register at DocuSign Developer; OAUTH2 config |
+| `lever` | Pending | OAUTH2 (`client_id`, `client_secret`, `full`, `authorizationUrl`, `tokenUrl`); API_KEY | Register at Lever; OAUTH2 config |
+| `metaads` | Pending | OAUTH2 (`client_id`, `client_secret`); API_KEY | Register at Meta for Developers; OAUTH2 config |
+| `pipedrive` | Pending | OAUTH2 (`client_id`, `client_secret`); API_KEY | Register at Pipedrive Marketplace; OAUTH2 config |
+| `webflow` | Pending | OAUTH2 (`client_id`, `client_secret`); API_KEY | Register at Webflow; OAUTH2 config |
+| `follow_up_boss` | Pending | OAUTH2 (`client_id`, `client_secret`); API_KEY | Register at Follow Up Boss; OAUTH2 config |
+
+**As each toolkit is registered:**
+
+1. Verify with `COMPOSIO_API_KEY=<staging-key> node scripts/pr2.8a-composio-authconfig-probe.mjs` — slug should flip to GREEN or YELLOW.
+2. Update `src/data/tool-catalog.ts`: remove `comingSoon: true` and `comingSoonReason` from the entry.
+3. If the toolkit is referenced as `required: true` in any seed template with a TODO marker (currently only `shopify` in `prisma/seed-data/money-making-templates.ts`), restore `required: true`.
+4. Update this table's status column from "Pending" to "Registered <date>".
+
+The required-fields detail per toolkit is recorded verbatim in `probe-composio-authconfigs-staging.stderr.txt` (gitignored) and in the PR2.8a-fix1 PR description.
+
+---
+
+## API_KEY toolkits via Composio
+
+> **Status:** not implemented. Three toolkits in our catalog (`typefully`, `jotform`, `toggl`) expose only `API_KEY` auth schemes on Composio. They cannot use `use_composio_managed_auth` (which expects an OAuth flow) and the codebase has no path today for "Composio brokers an API_KEY connection".
+
+The shape of the missing path:
+
+- `composio.authConfigs.create(slug, { type: "use_custom_auth", authScheme: "API_KEY", val: {} })` instead of the managed variant.
+- `composio.connectedAccounts.initiate(...)` returns a non-redirect response shape (no consent screen needed); our `oauth/initiate` route currently rejects this and returns `COMPOSIO_NO_REDIRECT`.
+- The wizard would need to render an API-key form for `OAUTH_COMPOSIO`-typed rows whose underlying toolkit is API_KEY-only — currently the wizard branches on `connectionType` alone.
+- `connectedAccounts.create({ connectionParams: { val: { generic_api_key: "..." } } })` to set the actual key after the user submits it.
+
+Until this is built, `typefully` / `jotform` / `toggl` stay `comingSoon: true` with reason `"Composio API-key broker path pending — implementing in follow-up PR"`. Tracked in [GitHub issue #70: Composio API-key broker path for Typefully/Jotform/Toggl](https://github.com/Laxcorp-Research/claws/issues/70) — the issue contains the full implementation sketch.
+
+---
+
 ## Implications for downstream PRs
 
 ### PR #3 (tool connection fix — internal API-key skills)

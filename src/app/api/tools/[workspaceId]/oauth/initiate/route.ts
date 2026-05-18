@@ -4,7 +4,10 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getComposio, getComposioUserId } from "@/lib/composio"
-import { resolveAuthConfigIdForToolkit } from "@/lib/composio-auth-config"
+import {
+  ensureAuthConfigForToolkit,
+  ComposioToolkitRequiresCustomOAuthError,
+} from "@/lib/composio-auth-config"
 import { getToolBySlug } from "@/data/tool-catalog"
 import { log } from "@/lib/logger"
 
@@ -41,7 +44,7 @@ export async function POST(
 
   try {
     const composioUserId = getComposioUserId(user.id)
-    const authConfigId = await resolveAuthConfigIdForToolkit(composio, toolkitSlug)
+    const authConfigId = await ensureAuthConfigForToolkit(composio, toolkitSlug)
 
     const base = (process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "")
     const callbackUrl = `${base}/api/tools/${workspaceId}/oauth/callback?tool=${encodeURIComponent(toolSlug)}`
@@ -83,6 +86,19 @@ export async function POST(
       connectionId: connectionRequest.id,
     })
   } catch (err) {
+    if (err instanceof ComposioToolkitRequiresCustomOAuthError) {
+      // 422 Unprocessable: the request shape is fine but the targeted
+      // toolkit isn't configured for managed-auth in our Composio project.
+      // The wizard renders a yellow "Setup in progress" warning on this
+      // code (see src/app/setup/[workspaceId]/step/[n]/page.tsx + the
+      // useOAuthConnection hook). Operator action tracked in
+      // docs/COMPOSIO_RUNTIME_CONTRACT.md "Custom OAuth toolkits".
+      return apiError(
+        "COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH",
+        "This integration requires custom setup. Available within a few days.",
+        422
+      )
+    }
     const message = err instanceof Error ? err.message : "Failed to initiate OAuth connection"
     log.error("Composio OAuth initiate failed", { toolSlug, workspaceId, error: message })
     return apiError("COMPOSIO_INITIATE_FAILED", message, 500)
