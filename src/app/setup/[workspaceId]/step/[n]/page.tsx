@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
@@ -379,6 +379,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [isLoading, setIsLoading] = useState(true)
   const [composioOAuthAvailable, setComposioOAuthAvailable] = useState(false)
   const [apiKeyModal, setApiKeyModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
+  // PR2.9: BYOK modal state. Distinct from `apiKeyModal` because:
+  //   - apiKeyModal is for direct API_KEY tools (our DB stores the key,
+  //     POST to /api/tools/[wsId] with credentials).
+  //   - byokModal is for OAUTH_COMPOSIO toolkits that accept user-supplied
+  //     API keys (Composio stores the key, POST to /byok/submit).
+  // Sharing one state for both would conflate connectionType + endpoint.
+  const [byokModal, setByokModal] = useState<{
+    open: boolean
+    tool: ToolState | null
+    apiKeyForm: import("@/lib/oauth/use-oauth-connection").ApiKeyFormPayload | null
+  }>({ open: false, tool: null, apiKeyForm: null })
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
   const [customApiModal, setCustomApiModal] = useState(false)
@@ -750,8 +761,33 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           ),
         )
       },
+      onApiKeyFormRequired: (toolSlug, apiKeyForm) => {
+        // PR2.9: initiate route returned BYOK mode. Open the credentials
+        // modal pre-populated with the apiKeyForm fields. The hook has
+        // bowed out; submission goes through handleByokSubmit below.
+        //
+        // Roll back the "connecting" state we set in onInitiated so the
+        // row doesn't show a stuck spinner while the modal is open. The
+        // BYOK modal IS the user's path to completion.
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug
+              ? { ...t, status: "disconnected" as const, errorMessage: undefined, warningMessage: undefined }
+              : t,
+          ),
+        )
+        const tool = toolsRef.current.find((t) => t.slug === toolSlug) ?? null
+        setByokModal({ open: true, tool, apiKeyForm })
+      },
     },
   })
+
+  // Keep `tools` reachable from the BYOK callback without recreating the
+  // hook callbacks every render. The hook caches callbacks via a ref
+  // already (line 126-129 of use-oauth-connection.ts); using a separate
+  // ref here keeps the wiring clean.
+  const toolsRef = useRef<ToolState[]>(tools)
+  useEffect(() => { toolsRef.current = tools }, [tools])
 
   // PR #4 Commit 7: Reconnect is the same POST /oauth/initiate + poll flow
   // as a fresh connect — the user re-authorizes through Composio's consent
@@ -770,6 +806,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       )
       return
     }
+    // PR2.9 Task 7b: same immediate "connecting" flip as handleOAuthConnect
+    // so the Reconnect button doesn't look dead during the initiate fetch.
+    setTools((prev) =>
+      prev.map((t) =>
+        t.slug === tool.slug
+          ? { ...t, status: "connecting" as const, errorMessage: undefined, warningMessage: undefined }
+          : t,
+      ),
+    )
     oauth.connect(tool.slug)
   }, [oauth, composioOAuthAvailable])
 
@@ -791,6 +836,54 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch { return { success: false, error: "Network error" } }
   }, [apiKeyModal.tool, workspaceId, refreshTools])
 
+  // PR2.9 BYOK submit handler. Distinct from handleCredentialsSave above
+  // because the body shape, endpoint, and post-submit state-transition
+  // semantics are all different:
+  //   - Endpoint: /api/tools/[wsId]/byok/submit (synchronous create)
+  //   - Body: { toolSlug, apiKey } — single key, not a Record
+  //   - Status: row goes CONNECTED immediately (no PENDING polling)
+  //
+  // Reduces the multi-field credentials Record from the existing
+  // CredentialsModal contract to the single primary-field's value (which
+  // is all the BYOK route accepts — Composio takes one api_key).
+  const handleByokSubmit = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
+    if (!byokModal.tool || !byokModal.apiKeyForm) {
+      return { success: false, error: "No tool selected" }
+    }
+    const primaryField = byokModal.apiKeyForm.fields.find((f) => f.primary) ?? byokModal.apiKeyForm.fields[0]
+    if (!primaryField) return { success: false, error: "No API key field declared for this tool" }
+    const apiKey = credentials[primaryField.envVar]
+    if (!apiKey || !apiKey.trim()) {
+      return { success: false, error: "API key is required" }
+    }
+
+    try {
+      const res = await fetch(`/api/tools/${workspaceId}/byok/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toolSlug: byokModal.tool.slug, apiKey }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        // BYOK is synchronous-CONNECTED. Refetch so the row picks up the
+        // server's status + createdAt. Optimistic update for the rare race
+        // where refetch is in flight when the user closes the modal.
+        await refreshTools()
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === byokModal.tool!.slug
+              ? { ...t, status: "connected" as const, errorMessage: undefined, warningMessage: undefined }
+              : t,
+          ),
+        )
+        return { success: true }
+      }
+      return { success: false, error: data.error?.message }
+    } catch {
+      return { success: false, error: "Network error" }
+    }
+  }, [byokModal.tool, byokModal.apiKeyForm, workspaceId, refreshTools])
+
   // PR #4 Commit 7: initial "Connect with OAuth" flow delegates to the
   // shared useOAuthConnection hook (defined at the top of the component).
   // Pre-refactor this was ~120 LOC of inline fetch/popup/poll/cleanup that
@@ -809,6 +902,21 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
         return
       }
+      // PR2.9 Task 7b: flip row to "connecting" SYNCHRONOUSLY on click,
+      // before the initiate fetch starts. Previously the row stayed
+      // "disconnected" for 2-4s until `onInitiated` fired post-fetch,
+      // making the Connect button look dead. The hook's onInitiated
+      // re-applies "connecting" once initiate succeeds; the BYOK
+      // onApiKeyFormRequired path rolls back to "disconnected" when the
+      // form modal opens (so the row doesn't show a stuck spinner
+      // alongside the open modal).
+      setTools((prev) =>
+        prev.map((t) =>
+          t.slug === tool.slug
+            ? { ...t, status: "connecting" as const, errorMessage: undefined, warningMessage: undefined }
+            : t,
+        ),
+      )
       oauth.connect(tool.slug)
     },
     [oauth, composioOAuthAvailable],
@@ -1088,6 +1196,22 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         onSave={handleCredentialsSave}
       />
+      {/* PR2.9: BYOK credentials modal — same component as the direct
+          API_KEY tools above, different endpoint + payload shape. Fields
+          come from the server-side initiate response, not the catalog (the
+          catalog leaves credentialFields:[] for OAUTH_COMPOSIO entries by
+          design). */}
+      {byokModal.open && byokModal.apiKeyForm && byokModal.tool && (
+        <CredentialsModal
+          open={true}
+          onClose={() => setByokModal({ open: false, tool: null, apiKeyForm: null })}
+          toolName={byokModal.tool.name}
+          helpUrl={byokModal.apiKeyForm.helpUrl}
+          credentialFields={byokModal.apiKeyForm.fields}
+          description="Enter your API key. The key is held by Composio (not Claws) and never appears in logs."
+          onSave={handleByokSubmit}
+        />
+      )}
       <ToolSwapModal
         open={swapModal.open}
         onClose={() => setSwapModal({ open: false, tool: null })}
@@ -1103,6 +1227,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         onConnect={handleBrowseConnect}
         composioOAuthAvailable={composioOAuthAvailable}
         onOAuthConnect={(def) =>
+          handleOAuthConnect({
+            slug: def.slug,
+            connectionType: "OAUTH_COMPOSIO",
+          })
+        }
+        // PR2.9: parallel prop wired to the same handler. The OAuth-vs-BYOK
+        // discrimination happens server-side in oauth/initiate; the hook's
+        // onApiKeyFormRequired callback opens the BYOK form modal when
+        // the response carries mode:"byok". See BrowseToolsModal prop
+        // docstring + PR2.9 decision-3 in the prompt.
+        onByokConnect={(def) =>
           handleOAuthConnect({
             slug: def.slug,
             connectionType: "OAUTH_COMPOSIO",

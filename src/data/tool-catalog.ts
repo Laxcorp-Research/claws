@@ -228,43 +228,69 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   { slug: "clickup", name: "ClickUp", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "clickup", description: "Project management", credentialFields: [] },
   { slug: "notion", name: "Notion", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "notion", description: "Docs and wikis", credentialFields: [] },
   { slug: "linkedin", name: "LinkedIn", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "linkedin", description: "Professional networking", credentialFields: [] },
-  { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", description: "Social media", comingSoon: true, comingSoonReason: "Custom OAuth app pending — operator registering with Twitter Developer this week", credentialFields: [] },
+  // OAuth-only on Composio (no API_KEY mode, no managed-OAuth available) —
+  // operator must register a custom OAuth app with Twitter/X Developer
+  // before this toolkit becomes connectable. PR2.9 BYOK doesn't unblock
+  // it because there's no API_KEY mode to broker. Tracked in
+  // docs/COMPOSIO_RUNTIME_CONTRACT.md "Custom OAuth toolkits (operator tracker)".
+  { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", description: "Social media", comingSoon: true, comingSoonReason: "OAuth-only on Composio; operator registering with Twitter Developer this week", credentialFields: [] },
   { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "kit", description: "Email marketing (Composio slug is `kit` post-2024 rebrand)", credentialFields: [] },
-  { slug: "shopify", name: "Shopify", connectionType: "OAUTH_COMPOSIO", category: "ECOMMERCE", composioToolkitId: "shopify", description: "E-commerce platform", comingSoon: true, comingSoonReason: "Custom OAuth app pending — operator registering with Shopify Partners this week", credentialFields: [] },
+  { slug: "shopify", name: "Shopify", connectionType: "OAUTH_COMPOSIO", category: "ECOMMERCE", composioToolkitId: "shopify", description: "E-commerce platform", credentialFields: [] },
   { slug: "jira", name: "Jira", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "jira", description: "Issue tracking", credentialFields: [] },
   { slug: "calendly", name: "Calendly", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "calendly", description: "Scheduling", credentialFields: [] },
   // ─── PR2.8a additions (19) ───
   // Every composioToolkitId verified against tmp/composio-toolkits.txt at audit
-  // time (Composio API snapshot 2026-04-29; 1030 toolkits dumped). When an
-  // auth path is available for both OAUTH2 and API_KEY on Composio, we pick
-  // OAUTH2 for the user flow — managed OAuth via Composio, not API_KEY
-  // pass-through. Three toolkits expose only API_KEY on Composio (`typefully`,
-  // `jotform`, `toggl`); they remain OAUTH_COMPOSIO connectionType because
-  // Composio still brokers the credential — the `_COMPOSIO` suffix names the
-  // broker, not the protocol.
+  // time (Composio API snapshot 2026-04-29; 1030 toolkits dumped).
+  //
+  // PR2.9 update: auth-mode routing now classifies each entry at runtime
+  // via `classifyToolkitAuthMode(composio.toolkits.get(slug))`:
+  //   - managed-oauth  → Composio's own OAuth credentials (Gmail, Slack,
+  //                       Notion, Google Drive, etc.). Wizard runs the
+  //                       popup-and-poll flow.
+  //   - byok-api-key   → BYOK: user supplies their own API key, Composio
+  //                       brokers. Wizard shows an inline credentials
+  //                       form, no popup. Covers typefully, jotform,
+  //                       toggl (API_KEY-only on Composio) AND the dual-
+  //                       mode toolkits we ship via API_KEY for now
+  //                       (shopify, lever, metaads, pipedrive, webflow,
+  //                       follow_up_boss). Custom OAuth registration
+  //                       remains an OPTIONAL future upgrade for these
+  //                       six, not a launch prerequisite.
+  //   - requires-custom-oauth → no API_KEY mode + no managed scheme.
+  //                       Operator must register a custom OAuth app in
+  //                       Composio dashboard. Today: twitter, docusign.
+  //                       Catalog entry stays `comingSoon: true`.
+  //
+  // All entries below remain `connectionType: "OAUTH_COMPOSIO"` because
+  // Composio still brokers the credential at execute time regardless of
+  // the underlying auth scheme — the `_COMPOSIO` suffix names the
+  // broker, not the protocol. The runtime route (`oauth/initiate`)
+  // dispatches managed-oauth vs byok-api-key via the classifier.
   //
   // Categories chosen from TOOL_CATEGORIES; where no perfect category exists
   // (ads, time tracking, forms) we picked the closest existing bucket rather
   // than invent new categories. PR2.8b revisit tracked in
   // docs/PR2.8_AUDIT_DECISIONS.md.
-  { slug: "typefully", name: "Typefully", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "typefully", description: "Twitter/X content scheduling", comingSoon: true, comingSoonReason: "Composio API-key broker path pending — implementing in follow-up PR", credentialFields: [] },
-  { slug: "docusign", name: "DocuSign", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "docusign", description: "E-signature and document workflows", comingSoon: true, comingSoonReason: "Custom OAuth app pending — operator registering with DocuSign Developer", credentialFields: [] },
-  { slug: "follow_up_boss", name: "Follow Up Boss", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "follow_up_boss", description: "Real estate CRM", comingSoon: true, comingSoonReason: "Custom OAuth app pending", credentialFields: [] },
+  { slug: "typefully", name: "Typefully", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "typefully", description: "Twitter/X content scheduling", credentialFields: [] },
+  // OAuth-only on Composio (no API_KEY mode). PR2.9 BYOK can't unblock —
+  // operator must register a custom OAuth app at DocuSign Developer.
+  { slug: "docusign", name: "DocuSign", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "docusign", description: "E-signature and document workflows", comingSoon: true, comingSoonReason: "OAuth-only on Composio; operator registering custom app with DocuSign Developer", credentialFields: [] },
+  { slug: "follow_up_boss", name: "Follow Up Boss", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "follow_up_boss", description: "Real estate CRM", credentialFields: [] },
   { slug: "freshbooks", name: "FreshBooks", connectionType: "OAUTH_COMPOSIO", category: "PAYMENTS", composioToolkitId: "freshbooks", description: "Small-business accounting and invoicing", credentialFields: [] },
   { slug: "gitlab", name: "GitLab", connectionType: "OAUTH_COMPOSIO", category: "DEVELOPMENT", composioToolkitId: "gitlab", description: "Repos, issues, and CI", credentialFields: [] },
   { slug: "googleads", name: "Google Ads", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "googleads", description: "Google Ads campaigns and reporting", credentialFields: [] },
   { slug: "googledocs", name: "Google Docs", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "googledocs", description: "Google Docs read/write", credentialFields: [] },
   { slug: "googledrive", name: "Google Drive", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "googledrive", description: "Google Drive file storage", credentialFields: [] },
   { slug: "harvest", name: "Harvest", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "harvest", description: "Time tracking and invoicing", credentialFields: [] },
-  { slug: "jotform", name: "Jotform", connectionType: "OAUTH_COMPOSIO", category: "LEAD_DATABASE", composioToolkitId: "jotform", description: "Form builder and submissions", comingSoon: true, comingSoonReason: "Composio API-key broker path pending — implementing in follow-up PR", credentialFields: [] },
-  { slug: "lever", name: "Lever", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "lever", description: "Recruiting ATS", comingSoon: true, comingSoonReason: "Custom OAuth app pending", credentialFields: [] },
-  { slug: "metaads", name: "Meta Ads", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "metaads", description: "Meta (Facebook + Instagram) ads campaigns and reporting", comingSoon: true, comingSoonReason: "Custom OAuth app pending — operator registering with Meta for Developers", credentialFields: [] },
+  { slug: "jotform", name: "Jotform", connectionType: "OAUTH_COMPOSIO", category: "LEAD_DATABASE", composioToolkitId: "jotform", description: "Form builder and submissions", credentialFields: [] },
+  { slug: "lever", name: "Lever", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "lever", description: "Recruiting ATS", credentialFields: [] },
+  { slug: "metaads", name: "Meta Ads", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "metaads", description: "Meta (Facebook + Instagram) ads campaigns and reporting", credentialFields: [] },
   { slug: "outlook", name: "Outlook", connectionType: "OAUTH_COMPOSIO", category: "EMAIL", composioToolkitId: "outlook", description: "Microsoft Outlook email", credentialFields: [] },
-  { slug: "pipedrive", name: "Pipedrive", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "pipedrive", description: "Sales CRM", comingSoon: true, comingSoonReason: "Custom OAuth app pending", credentialFields: [] },
+  { slug: "pipedrive", name: "Pipedrive", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "pipedrive", description: "Sales CRM", credentialFields: [] },
   { slug: "quickbooks", name: "QuickBooks", connectionType: "OAUTH_COMPOSIO", category: "PAYMENTS", composioToolkitId: "quickbooks", description: "Small-business accounting", credentialFields: [] },
-  { slug: "toggl", name: "Toggl", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "toggl", description: "Time tracking", comingSoon: true, comingSoonReason: "Composio API-key broker path pending — implementing in follow-up PR", credentialFields: [] },
+  { slug: "toggl", name: "Toggl", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "toggl", description: "Time tracking", credentialFields: [] },
   { slug: "typeform", name: "Typeform", connectionType: "OAUTH_COMPOSIO", category: "LEAD_DATABASE", composioToolkitId: "typeform", description: "Form builder and responses", credentialFields: [] },
-  { slug: "webflow", name: "Webflow", connectionType: "OAUTH_COMPOSIO", category: "CMS", composioToolkitId: "webflow", description: "Visual web publishing", comingSoon: true, comingSoonReason: "Custom OAuth app pending", credentialFields: [] },
+  { slug: "webflow", name: "Webflow", connectionType: "OAUTH_COMPOSIO", category: "CMS", composioToolkitId: "webflow", description: "Visual web publishing", credentialFields: [] },
   { slug: "youtube", name: "YouTube", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "youtube", description: "YouTube channel management (replaces youtube-data-api API_KEY path)", credentialFields: [] },
 ]
 

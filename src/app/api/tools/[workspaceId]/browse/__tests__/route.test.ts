@@ -45,25 +45,33 @@ describe("GET /api/tools/[workspaceId]/browse — comingSoon filter (PR2.8a-fix1
       expect(t.comingSoon, `slug "${t.slug}" leaked through despite comingSoon=true`).not.toBe(true)
     }
 
-    // Spot-check: known PR2.8a-fix1 comingSoon slugs are absent.
     const slugs = new Set(tools.map((t) => t.slug))
-    for (const blocked of [
-      "twitter",
-      "shopify",
+
+    // PR2.9 update: the comingSoon set shrunk from 11 to 2. Of the
+    // original 11 PR2.8a-fix1 comingSoon slugs, 9 became BYOK-shippable
+    // (drop comingSoon) and 2 stayed OAuth-only (keep comingSoon).
+    //
+    // Spot-check: the 2 still-blocked slugs are absent.
+    for (const blocked of ["twitter", "docusign"]) {
+      expect(slugs.has(blocked), `expected slug "${blocked}" filtered (OAuth-only, comingSoon)`).toBe(false)
+    }
+
+    // Spot-check: the 9 BYOK-shippable slugs DO surface now (PR2.9).
+    for (const shipping of [
       "typefully",
       "jotform",
       "toggl",
-      "docusign",
-      "follow_up_boss",
+      "shopify",
       "lever",
       "metaads",
       "pipedrive",
       "webflow",
+      "follow_up_boss",
     ]) {
-      expect(slugs.has(blocked), `expected slug "${blocked}" filtered`).toBe(false)
+      expect(slugs.has(shipping), `expected BYOK slug "${shipping}" to surface (PR2.9)`).toBe(true)
     }
 
-    // Sanity: GREEN/YELLOW slugs that ARE deployable still surface.
+    // Sanity: GREEN/YELLOW slugs that have always been deployable still surface.
     expect(slugs.has("gmail")).toBe(true)
     expect(slugs.has("outlook")).toBe(true)
     expect(slugs.has("hubspot")).toBe(true)

@@ -4,6 +4,9 @@ Single source of truth for items blocking Phase 1 soft launch and Phase 2 public
 
 ## Phase 1 soft launch blockers
 
+### Resolved by PR2.9
+- [x] ~~[#70](https://github.com/Laxcorp-Research/claws/issues/70) Composio API-key broker path for Typefully/Jotform/Toggl~~ — **resolved** by PR2.9. BYOK now ships for 9 toolkits (typefully, jotform, toggl + shopify, lever, metaads, pipedrive, webflow, follow_up_boss). Twitter and docusign remain `comingSoon: true` (OAuth-only on Composio); tracked in `docs/COMPOSIO_RUNTIME_CONTRACT.md` "Custom OAuth toolkits (operator tracker)".
+
 ### Security
 - [ ] [#72](https://github.com/Laxcorp-Research/claws/issues/72) Dependency security advisories (1 critical, 3 high)
   - ~~`fast-uri` (2 high)~~ — **FIXED** in PR2.8a-fix1-deps via override `^3.1.2`

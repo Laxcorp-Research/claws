@@ -38,6 +38,27 @@ import { useCallback, useEffect, useRef } from "react"
 
 export type OAuthPollStatus = "PENDING" | "ACTIVE" | "FAILED"
 
+/**
+ * BYOK apiKeyForm payload — what the wizard renders when a toolkit is
+ * API-key-brokered through Composio (typefully, jotform, toggl, shopify,
+ * lever, metaads, pipedrive, webflow, follow_up_boss). The user provides
+ * the key inline; no OAuth popup; submit POSTs to
+ * /api/tools/[workspaceId]/byok/submit. See PR2.9.
+ */
+export interface ApiKeyFormPayload {
+  toolSlug: string
+  displayName: string
+  fields: ReadonlyArray<{
+    envVar: string
+    label: string
+    required: boolean
+    primary: boolean
+    helpUrl?: string
+    placeholder?: string
+  }>
+  helpUrl?: string
+}
+
 export interface OAuthConnectionCallbacks {
   /**
    * Fires after the initiate POST succeeds, before the popup opens. Useful
@@ -68,6 +89,20 @@ export interface OAuthConnectionCallbacks {
    * the code to render yellow warnings vs. red errors.
    */
   onInitiateError: (toolSlug: string, error: { message: string; code?: string }) => void
+  /**
+   * PR2.9: Initiate returned `mode: "byok"` — the toolkit is API-key-
+   * brokered through Composio, not OAuth. The hook detects this from the
+   * initiate response and short-circuits: no popup, no polling, no DB
+   * write side effects on the client. Caller opens a credentials modal
+   * with `apiKeyForm.fields` and POSTs the result to
+   * /api/tools/[workspaceId]/byok/submit. On submit success, caller
+   * fires its own state-update logic (parallel to `onSuccess` but driven
+   * by the caller, not this hook).
+   *
+   * Hook's responsibility ends after firing this callback. The BYOK
+   * submission flow does not flow through this hook.
+   */
+  onApiKeyFormRequired?: (toolSlug: string, apiKeyForm: ApiKeyFormPayload) => void
 }
 
 export interface UseOAuthConnectionOptions {
@@ -155,7 +190,12 @@ export function useOAuthConnection({
 
         let initiateData: {
           success?: boolean
-          data?: { redirectUrl?: string; connectionId?: string }
+          data?: {
+            mode?: "oauth" | "byok"
+            redirectUrl?: string
+            connectionId?: string
+            apiKeyForm?: ApiKeyFormPayload
+          }
           error?: { message?: string; code?: string }
         }
         try {
@@ -164,6 +204,33 @@ export function useOAuthConnection({
           cb.onInitiateError(toolSlug, {
             message: `Unexpected response from OAuth initiate (HTTP ${initiateRes.status})`,
           })
+          return
+        }
+
+        // PR2.9: BYOK short-circuit. If the route returned `mode: "byok"`
+        // with an apiKeyForm, hand off to the caller and bow out. No popup,
+        // no polling, no DB write side effects from the hook. The caller's
+        // onApiKeyFormRequired handler is responsible for opening the
+        // credentials modal and POSTing to /byok/submit.
+        if (
+          initiateData.success &&
+          initiateData.data?.mode === "byok" &&
+          initiateData.data?.apiKeyForm
+        ) {
+          if (cb.onApiKeyFormRequired) {
+            cb.onApiKeyFormRequired(toolSlug, initiateData.data.apiKeyForm)
+          } else {
+            // Caller didn't wire the BYOK callback. Treat as a configuration
+            // bug — surface via onInitiateError so the user sees something
+            // rather than a silent no-op. Code lets the wizard branch on
+            // it if desired (currently no special handling beyond the
+            // generic error path).
+            cb.onInitiateError(toolSlug, {
+              message:
+                "This tool needs an API key, but the wizard isn't wired to collect one. Reload and try again.",
+              code: "BYOK_HANDLER_MISSING",
+            })
+          }
           return
         }
 

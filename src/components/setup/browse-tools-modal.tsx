@@ -5,6 +5,7 @@ import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StatusDot } from "@/components/ui/status-dot"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { CredentialsModal } from "./credentials-modal"
 import { ALL_TOOLS, TOOL_CATEGORIES, type ToolDefinition } from "@/data/tool-catalog"
 
@@ -15,7 +16,22 @@ interface BrowseToolsModalProps {
   onConnect: (tool: ToolDefinition) => void
   /** Real Composio OAuth (popup + poll); must match server COMPOSIO_API_KEY */
   composioOAuthAvailable: boolean
+  /**
+   * Click handler for OAUTH_COMPOSIO rows. Routes through the wizard's
+   * `useOAuthConnection.connect()` flow, which itself branches at the
+   * initiate-response layer between true OAuth (popup + poll) and BYOK
+   * (apiKeyForm via `onApiKeyFormRequired`). The modal does NOT
+   * differentiate the two at click time — detection is server-side per
+   * PR2.9 design (decision 3) to avoid duplicating it across surfaces.
+   *
+   * `onByokConnect` exists as a parallel prop for future-proofing: if
+   * we later add a browse-time hint (catalog field, metadata cache),
+   * the modal can route true-OAuth vs BYOK clicks separately without an
+   * architecture change. Today both props can wire to the same wizard
+   * handler — the parallel prop is shape, not behavior.
+   */
   onOAuthConnect: (tool: ToolDefinition) => void
+  onByokConnect?: (tool: ToolDefinition) => void
   workspaceId?: string
 }
 
@@ -26,8 +42,10 @@ export function BrowseToolsModal({
   onConnect,
   composioOAuthAvailable,
   onOAuthConnect,
+  onByokConnect,
   workspaceId,
 }: BrowseToolsModalProps) {
+  void onByokConnect // reserved for future browse-time BYOK detection; see prop docstring
   const [search, setSearch] = useState("")
   const [activeCategory, setActiveCategory] = useState("All")
   const [apiKeyTool, setApiKeyTool] = useState<ToolDefinition | null>(null)
@@ -38,6 +56,12 @@ export function BrowseToolsModal({
 
   useEffect(() => {
     if (!open || !workspaceId) return
+    // PR2.9 Task 7a: reset transient view state on every modal open.
+    // Previously search + category persisted across reopens (e.g. user
+    // searched "outlook", closed, reopened, still saw "outlook" filter)
+    // which felt buggy.
+    setSearch("")
+    setActiveCategory("All")
     let cancelled = false
     setBrowseLoading(true)
     ;(async () => {
@@ -152,7 +176,12 @@ export function BrowseToolsModal({
           </div>
           <div className="border border-[var(--bd)] rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
             {browseLoading && (
-              <div className="px-3.5 py-6 text-center text-xs text-[var(--tx3)]">Loading tools…</div>
+              // PR2.9 Task 7c: shimmer skeleton (Design System §LoadingSkeleton)
+              // replaces the bare "Loading tools…" line. 4 card rows roughly
+              // matches the visible height of the rendered list.
+              <div className="px-3.5 py-3">
+                <LoadingSkeleton variant="card" count={4} />
+              </div>
             )}
             {!browseLoading && filtered.length === 0 && (
               <div className="px-3.5 py-6 text-center text-xs text-[var(--tx3)]">No tools found.</div>

@@ -1126,16 +1126,12 @@ const ecommerceProfitMaximizer: SeedTemplate = {
   ),
   tools: [
     { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
-    // TODO: Restore required=true once shopify is unblocked.
-    // Operator registering OAuth app at Shopify Partners.
-    // See docs/COMPOSIO_RUNTIME_CONTRACT.md "Custom OAuth toolkits" section.
-    // Both shopify and the amazon_sp_api alternative are comingSoon today
-    // (PR2.8a-fix1); the seed-template-tool-references test enforces that
-    // every required oneOf set has at least one non-comingSoon candidate,
-    // which is currently false here. Flipping to required:false keeps the
-    // template deployable end-to-end (sans an e-commerce platform) until
-    // either toolkit ships.
-    { slug: "shopify", name: "Shopify", category: "E-Commerce Platform", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["amazon_sp_api"] },
+    // PR2.9 restored required=true. shopify is now BYOK-shippable via the
+    // Composio API-key broker path (user supplies their Shopify Admin
+    // API key, no OAuth registration needed). amazon_sp_api stays an
+    // alternative but is still comingSoon until PR2.8c builds its direct
+    // integration.
+    { slug: "shopify", name: "Shopify", category: "E-Commerce Platform", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["amazon_sp_api"] },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: false },
     { slug: "googleads", name: "Google Ads", category: "Advertising", connectionType: "OAUTH_COMPOSIO", required: false },
     { slug: "metaads", name: "Meta Ads", category: "Advertising", connectionType: "OAUTH_COMPOSIO", required: false },

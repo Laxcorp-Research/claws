@@ -138,11 +138,10 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
-  it("RED toolkit (twitter — managed schemes empty): returns 422 with COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH", async () => {
-    // Even after Task 5's catalog comingSoon flag, the route is still the
-    // safety net for direct API hits + races. This test pins that
-    // contract: the structural pre-check fires, the route returns 422
-    // (not 500), and the create call never happens.
+  it("RED toolkit (twitter — managed schemes empty + no API_KEY): returns 422 with COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH", async () => {
+    // PR2.9 update: this branch fires only for toolkits with NEITHER
+    // managed-OAuth NOR API_KEY mode. With API_KEY present, BYOK fires
+    // instead — see the test below.
     mockToolkitsGet.mockResolvedValue({
       slug: "twitter",
       name: "Twitter",
@@ -158,5 +157,53 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(data.error.message).toMatch(/setup/i)
     expect(mockAuthConfigsCreate).not.toHaveBeenCalled()
     expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
+  })
+
+  it("BYOK toolkit (typefully — API_KEY-only): returns mode:byok + apiKeyForm, no OAuth init, no DB write", async () => {
+    // PR2.9: the initiate route now branches three ways. BYOK toolkits
+    // get an apiKeyForm payload and do NOT trigger composio.authConfigs
+    // .create OR connectedAccounts.initiate at this stage — those happen
+    // in the /byok/submit route AFTER the user supplies their key.
+    mockToolkitsGet.mockResolvedValue({
+      slug: "typefully",
+      name: "Typefully",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+
+    const { status, data } = await callRoute("typefully")
+    expect(status).toBe(200)
+    expect(data.success).toBe(true)
+    expect(data.data.mode).toBe("byok")
+    expect(data.data.apiKeyForm).toBeTruthy()
+    expect(data.data.apiKeyForm.toolSlug).toBe("typefully")
+    expect(data.data.apiKeyForm.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ required: true, primary: true }),
+      ]),
+    )
+    // Critical: BYOK detection does NOT create any auth config or
+    // connection at initiate time. Both must remain virgin.
+    expect(mockAuthConfigsCreate).not.toHaveBeenCalled()
+    expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
+    // And no toolConnection row written either — that comes from /byok/submit.
+    expect(prismaMock.toolConnection.upsert).not.toHaveBeenCalled()
+  })
+
+  it("dual-mode BYOK toolkit (shopify — OAUTH2 + API_KEY, no managed): BYOK takes precedence", async () => {
+    // PR2.9 design decision (Option 1, data-grounded): for the 6 dual-mode
+    // RED-2 toolkits (shopify, lever, metaads, pipedrive, webflow,
+    // follow_up_boss), BYOK is the shipping path. Custom OAuth
+    // registration becomes optional, not required.
+    mockToolkitsGet.mockResolvedValue({
+      slug: "shopify",
+      name: "Shopify",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "OAUTH2" }, { mode: "API_KEY" }],
+    })
+
+    const { status, data } = await callRoute("shopify")
+    expect(status).toBe(200)
+    expect(data.data.mode).toBe("byok")
   })
 })

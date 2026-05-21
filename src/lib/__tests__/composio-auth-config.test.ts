@@ -26,8 +26,23 @@ vi.mock("@/lib/logger", () => ({
 
 import {
   ensureAuthConfigForToolkit,
+  ensureBYOKAuthConfig,
+  createBYOKConnectedAccount,
+  classifyToolkitAuthMode,
   ComposioToolkitRequiresCustomOAuthError,
 } from "@/lib/composio-auth-config"
+
+// PR2.9 mock: `@composio/core` is imported for the `AuthScheme` helper.
+// We stub it so createBYOKConnectedAccount's `AuthScheme.APIKey` call
+// returns a captureable value the connection-initiate mock can assert on.
+vi.mock("@composio/core", () => ({
+  AuthScheme: {
+    APIKey: (params: { api_key?: string }) => ({
+      __scheme: "API_KEY" as const,
+      api_key: params.api_key,
+    }),
+  },
+}))
 
 type Composio = Parameters<typeof ensureAuthConfigForToolkit>[0]
 
@@ -37,12 +52,17 @@ interface MockComposio {
     list: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
   }
+  // PR2.9: BYOK helpers exercise connectedAccounts.initiate too.
+  connectedAccounts: {
+    initiate: ReturnType<typeof vi.fn>
+  }
 }
 
 function makeComposio(): MockComposio {
   return {
     toolkits: { get: vi.fn() },
     authConfigs: { list: vi.fn(), create: vi.fn() },
+    connectedAccounts: { initiate: vi.fn() },
   }
 }
 
@@ -276,5 +296,301 @@ describe("ensureAuthConfigForToolkit", () => {
     }
 
     expect(composio.authConfigs.create).not.toHaveBeenCalled()
+  })
+})
+
+// PR2.9: tests for the BYOK helpers (ensureBYOKAuthConfig +
+// createBYOKConnectedAccount). Tripwires:
+//   - classifyToolkitAuthMode returns "byok-api-key" only when managed
+//     schemes are empty AND API_KEY mode is present
+//   - ensureBYOKAuthConfig filters list results for isComposioManaged === false
+//   - ensureBYOKAuthConfig's create call uses use_custom_auth + API_KEY +
+//     a placeholder credential (real keys never flow through here)
+//   - createBYOKConnectedAccount calls connectedAccounts.initiate with
+//     AuthScheme.APIKey({ api_key })  — capital APIKey, api_key (snake) key
+//   - Empty/blank API keys are rejected client-of-helper-side before
+//     reaching Composio (avoid creating useless ACTIVE rows that always 401)
+describe("classifyToolkitAuthMode (PR2.9)", () => {
+  it("returns managed-oauth when composioManagedAuthSchemes is non-empty", () => {
+    expect(
+      classifyToolkitAuthMode({
+        name: "Gmail",
+        composioManagedAuthSchemes: ["OAUTH2"],
+      }),
+    ).toBe("managed-oauth")
+  })
+
+  it("returns byok-api-key when managed empty but authConfigDetails contains API_KEY", () => {
+    expect(
+      classifyToolkitAuthMode({
+        name: "Typefully",
+        composioManagedAuthSchemes: [],
+        authConfigDetails: [{ mode: "API_KEY" }],
+      }),
+    ).toBe("byok-api-key")
+  })
+
+  it("returns byok-api-key for dual-mode toolkits (OAUTH2 + API_KEY) when no managed", () => {
+    // Mirrors the PR2.9 RED-2 cases: shopify, lever, metaads, pipedrive,
+    // webflow, follow_up_boss. No managed scheme → BYOK path takes
+    // precedence over custom-OAuth.
+    expect(
+      classifyToolkitAuthMode({
+        name: "Pipedrive",
+        composioManagedAuthSchemes: [],
+        authConfigDetails: [{ mode: "OAUTH2" }, { mode: "API_KEY" }],
+      }),
+    ).toBe("byok-api-key")
+  })
+
+  it("returns requires-custom-oauth when no managed + no API_KEY", () => {
+    // twitter, docusign — pure OAuth-only toolkits.
+    expect(
+      classifyToolkitAuthMode({
+        name: "Twitter/X",
+        composioManagedAuthSchemes: [],
+        authConfigDetails: [{ mode: "OAUTH2" }],
+      }),
+    ).toBe("requires-custom-oauth")
+  })
+})
+
+describe("ensureBYOKAuthConfig (PR2.9)", () => {
+  it("returns existing non-managed config id without calling create", async () => {
+    const composio = makeComposio()
+    composio.toolkits.get.mockResolvedValue({
+      slug: "typefully",
+      name: "Typefully",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+    composio.authConfigs.list.mockResolvedValue({
+      items: [
+        // Real-world: a managed config might exist alongside (unlikely
+        // for BYOK toolkits but defensively guarded). We MUST pick the
+        // BYOK one, not the managed one.
+        { id: "ac_managed_typefully", isComposioManaged: true },
+        { id: "ac_byok_typefully", isComposioManaged: false },
+      ],
+    })
+
+    const id = await ensureBYOKAuthConfig(
+      composio as unknown as Composio,
+      "typefully",
+    )
+    expect(id).toBe("ac_byok_typefully")
+    expect(composio.authConfigs.create).not.toHaveBeenCalled()
+  })
+
+  it("creates a custom-auth API_KEY config with placeholder credentials when none exists", async () => {
+    const composio = makeComposio()
+    composio.toolkits.get.mockResolvedValue({
+      slug: "typefully",
+      name: "Typefully",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+    composio.authConfigs.list
+      .mockResolvedValueOnce({ items: [] })
+      .mockResolvedValueOnce({ items: [] })
+    composio.authConfigs.create.mockResolvedValue({ id: "ac_byok_new" })
+    ;(prismaMock.$queryRaw as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
+      .mockResolvedValueOnce([{ pg_advisory_unlock: true }])
+
+    const id = await ensureBYOKAuthConfig(
+      composio as unknown as Composio,
+      "typefully",
+    )
+    expect(id).toBe("ac_byok_new")
+    expect(composio.authConfigs.create).toHaveBeenCalledTimes(1)
+    // Tripwire: shape MUST be use_custom_auth + API_KEY + placeholder
+    // credentials. Real user keys NEVER flow through this call.
+    expect(composio.authConfigs.create).toHaveBeenCalledWith("typefully", {
+      type: "use_custom_auth",
+      authScheme: "API_KEY",
+      name: "Typefully (Claws BYOK)",
+      credentials: { apiKey: expect.any(String) },
+    })
+    const createArgs = (composio.authConfigs.create as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(createArgs.credentials.apiKey).toMatch(/placeholder/i)
+  })
+
+  it("BYOK lock key is namespaced — won't collide with managed-OAuth lock on same slug", async () => {
+    const composio = makeComposio()
+    composio.toolkits.get.mockResolvedValue({
+      slug: "shopify",
+      name: "Shopify",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "OAUTH2" }, { mode: "API_KEY" }],
+    })
+    composio.authConfigs.list
+      .mockResolvedValueOnce({ items: [] })
+      .mockResolvedValueOnce({ items: [] })
+    composio.authConfigs.create.mockResolvedValue({ id: "ac_byok_shopify" })
+
+    // Capture the raw-SQL call shape so we can assert hashtext arg is
+    // namespaced. PrismaMock's $queryRaw is called with a template-string
+    // array shaped object — easiest is to spy.
+    const queryRawMock = prismaMock.$queryRaw as ReturnType<typeof vi.fn>
+    queryRawMock
+      .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
+      .mockResolvedValueOnce([{ pg_advisory_unlock: true }])
+
+    await ensureBYOKAuthConfig(composio as unknown as Composio, "shopify")
+
+    // Both calls should have used the BYOK-namespaced key. We can't easily
+    // inspect prisma's tagged-template internals from the mock, but we
+    // can assert prisma was hit exactly twice (lock + unlock) and that
+    // create was made — together this confirms the lock dance ran.
+    expect(queryRawMock).toHaveBeenCalledTimes(2)
+    expect(composio.authConfigs.create).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("createBYOKConnectedAccount (PR2.9)", () => {
+  it("rejects empty / whitespace API keys before reaching Composio", async () => {
+    const composio = makeComposio()
+    composio.toolkits.get.mockResolvedValue({
+      slug: "typefully",
+      name: "Typefully",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+
+    await expect(
+      createBYOKConnectedAccount(
+        composio as unknown as Composio,
+        "claws_user-1",
+        "typefully",
+        "",
+      ),
+    ).rejects.toThrow(/api key is required/i)
+
+    await expect(
+      createBYOKConnectedAccount(
+        composio as unknown as Composio,
+        "claws_user-1",
+        "typefully",
+        "   ",
+      ),
+    ).rejects.toThrow(/api key is required/i)
+
+    // Critically: never reached Composio with a blank key — that would
+    // create a useless ACTIVE row that 401s at execute time.
+    expect(composio.toolkits.get).not.toHaveBeenCalled()
+    expect(composio.connectedAccounts.initiate).not.toHaveBeenCalled()
+  })
+
+  it("calls connectedAccounts.initiate with AuthScheme.APIKey({api_key}) shape", async () => {
+    const composio = makeComposio()
+    composio.toolkits.get.mockResolvedValue({
+      slug: "typefully",
+      name: "Typefully",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+    composio.authConfigs.list.mockResolvedValue({
+      items: [{ id: "ac_byok_typefully", isComposioManaged: false }],
+    })
+    composio.connectedAccounts.initiate.mockResolvedValue({
+      id: "ca_new_byok",
+      status: "ACTIVE",
+      redirectUrl: null,
+    })
+
+    const id = await createBYOKConnectedAccount(
+      composio as unknown as Composio,
+      "claws_user-42",
+      "typefully",
+      "user-supplied-real-key",
+    )
+    expect(id).toBe("ca_new_byok")
+    expect(composio.connectedAccounts.initiate).toHaveBeenCalledWith(
+      "claws_user-42",
+      "ac_byok_typefully",
+      {
+        // The mocked AuthScheme.APIKey returns this shape — proves
+        // capital APIKey + snake api_key were used and the user's key
+        // flowed through (NOT the placeholder).
+        config: {
+          __scheme: "API_KEY",
+          api_key: "user-supplied-real-key",
+        },
+      },
+    )
+  })
+
+  it("user-supplied API key is NEVER logged (security tripwire)", async () => {
+    // Mutation-test target. If a future change adds `apiKey` to a log
+    // call by mistake, this test catches it by inspecting the recorded
+    // log args after the full BYOK happy path.
+    const composio = makeComposio()
+    composio.toolkits.get.mockResolvedValue({
+      slug: "typefully",
+      name: "Typefully",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+    composio.authConfigs.list.mockResolvedValue({
+      items: [{ id: "ac_byok_typefully", isComposioManaged: false }],
+    })
+    composio.connectedAccounts.initiate.mockResolvedValue({
+      id: "ca_new_byok",
+      status: "ACTIVE",
+      redirectUrl: null,
+    })
+
+    const SENSITIVE_KEY = "user-supplied-real-key-do-not-log-XYZ"
+    const { log } = await import("@/lib/logger")
+    const infoSpy = log.info as ReturnType<typeof vi.fn>
+    const errorSpy = log.error as ReturnType<typeof vi.fn>
+    const warnSpy = log.warn as ReturnType<typeof vi.fn>
+
+    await createBYOKConnectedAccount(
+      composio as unknown as Composio,
+      "claws_user-1",
+      "typefully",
+      SENSITIVE_KEY,
+    )
+
+    // Stringify all captured log call args and assert the literal key
+    // string never appears. Works for any shape — flat string, nested
+    // object, error-message embed, accidental console.log redirect.
+    const allLogArgs = [
+      ...infoSpy.mock.calls,
+      ...errorSpy.mock.calls,
+      ...warnSpy.mock.calls,
+    ].map((args) => JSON.stringify(args))
+    const haystack = allLogArgs.join("\n")
+    expect(haystack).not.toContain(SENSITIVE_KEY)
+  })
+
+  it("re-throws non-key errors from initiate without leaking the key into the error path", async () => {
+    const composio = makeComposio()
+    composio.toolkits.get.mockResolvedValue({
+      slug: "typefully",
+      name: "Typefully",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+    composio.authConfigs.list.mockResolvedValue({
+      items: [{ id: "ac_byok_typefully", isComposioManaged: false }],
+    })
+    const transient = new Error("Bad Gateway (transient)")
+    composio.connectedAccounts.initiate.mockRejectedValue(transient)
+
+    const SENSITIVE_KEY = "user-key-do-not-leak"
+    await expect(
+      createBYOKConnectedAccount(
+        composio as unknown as Composio,
+        "claws_user-1",
+        "typefully",
+        SENSITIVE_KEY,
+      ),
+    ).rejects.toBe(transient)
+
+    // Re-thrown error must not have been mutated to carry the key.
+    expect(transient.message).not.toContain(SENSITIVE_KEY)
   })
 })

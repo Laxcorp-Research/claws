@@ -56,6 +56,7 @@ function makeCallbacks(): Callbacks & { calls: Record<keyof Callbacks, unknown[]
     onFailure: [] as unknown[],
     onTimeout: [] as unknown[],
     onInitiateError: [] as unknown[],
+    onApiKeyFormRequired: [] as unknown[],
   }
   return {
     onInitiated: (slug, id) => void calls.onInitiated.push([slug, id]),
@@ -63,6 +64,7 @@ function makeCallbacks(): Callbacks & { calls: Record<keyof Callbacks, unknown[]
     onFailure: (slug, err) => void calls.onFailure.push([slug, err]),
     onTimeout: (slug) => void calls.onTimeout.push([slug]),
     onInitiateError: (slug, err) => void calls.onInitiateError.push([slug, err]),
+    onApiKeyFormRequired: (slug, form) => void calls.onApiKeyFormRequired.push([slug, form]),
     calls,
   }
 }
@@ -214,6 +216,80 @@ describe("useOAuthConnection", () => {
     expect(window.open).not.toHaveBeenCalled()
     expect(cb.calls.onInitiated).toEqual([])
     expect(cb.calls.onSuccess).toEqual([])
+  })
+
+  it("BYOK response: initiate returns mode:byok → onApiKeyFormRequired fires, no popup, no polling", async () => {
+    // PR2.9 contract: hook detects BYOK at the initiate-response layer
+    // and bows out. The caller (wizard / browse-modal) opens the
+    // credentials modal and POSTs to /byok/submit on its own — that
+    // submission flow does NOT go through this hook.
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>
+    const apiKeyForm = {
+      toolSlug: "typefully",
+      displayName: "Typefully",
+      fields: [{ envVar: "TYPEFULLY_API_KEY", label: "API Key", required: true, primary: true }],
+      helpUrl: "https://typefully.com/api",
+    }
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: { mode: "byok", apiKeyForm },
+      }),
+    )
+
+    const cb = makeCallbacks()
+    const { result } = renderHook(() =>
+      useOAuthConnection({ workspaceId: WORKSPACE_ID, callbacks: cb }),
+    )
+
+    await act(async () => {
+      result.current.connect("typefully")
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    expect(cb.calls.onApiKeyFormRequired).toEqual([["typefully", apiKeyForm]])
+    // Critically: no popup, no polling, no managed-OAuth success/error
+    // callbacks fired. The hook handed off cleanly.
+    expect(window.open).not.toHaveBeenCalled()
+    expect(cb.calls.onInitiated).toEqual([])
+    expect(cb.calls.onSuccess).toEqual([])
+    expect(cb.calls.onInitiateError).toEqual([])
+    expect(cb.calls.onFailure).toEqual([])
+  })
+
+  it("BYOK response without onApiKeyFormRequired wired → falls back to onInitiateError with BYOK_HANDLER_MISSING code", async () => {
+    // Surfaces configuration bugs (caller didn't wire BYOK support) loudly
+    // instead of silently no-op'ing. Wizard tests should NEVER exercise
+    // this branch — its presence is purely a safety net.
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          mode: "byok",
+          apiKeyForm: { toolSlug: "typefully", displayName: "Typefully", fields: [] },
+        },
+      }),
+    )
+
+    const cb = makeCallbacks()
+    // Wipe out the BYOK callback for this test (simulate caller bug).
+    delete (cb as Partial<typeof cb>).onApiKeyFormRequired
+
+    const { result } = renderHook(() =>
+      useOAuthConnection({ workspaceId: WORKSPACE_ID, callbacks: cb }),
+    )
+
+    await act(async () => {
+      result.current.connect("typefully")
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    expect(cb.calls.onInitiateError).toHaveLength(1)
+    const [slug, errObj] = cb.calls.onInitiateError[0] as [string, { code?: string }]
+    expect(slug).toBe("typefully")
+    expect(errObj.code).toBe("BYOK_HANDLER_MISSING")
+    expect(window.open).not.toHaveBeenCalled()
   })
 
   it("initiate failure: API returns code COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH → code piped through", async () => {
