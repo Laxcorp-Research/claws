@@ -47,7 +47,14 @@ export type OAuthPollStatus = "PENDING" | "ACTIVE" | "FAILED"
  */
 export interface ApiKeyFormPayload {
   toolSlug: string
-  displayName: string
+  /**
+   * Optional — the route currently always sets it (sourced from
+   * `getToolBySlug(slug)?.name ?? slug`), but the wizard's
+   * `resolveByokModalProps` fallback chain defends against missing /
+   * empty values from a future server-side regression. Keeping it
+   * optional in the type reflects what the resolver actually accepts.
+   */
+  displayName?: string
   fields: ReadonlyArray<{
     envVar: string
     label: string

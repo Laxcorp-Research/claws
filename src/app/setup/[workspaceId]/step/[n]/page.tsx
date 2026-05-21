@@ -24,8 +24,10 @@ import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/t
 import {
   type ToolState,
   type ServerConnectionSummary,
+  type BYOKModalState,
   connectionUiState,
   buildExtraToolsFromConnections,
+  resolveByokModalProps,
 } from "@/components/setup/tools-state"
 import {
   UNSUPPORTED_TOOLKITS,
@@ -385,11 +387,11 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   //   - byokModal is for OAUTH_COMPOSIO toolkits that accept user-supplied
   //     API keys (Composio stores the key, POST to /byok/submit).
   // Sharing one state for both would conflate connectionType + endpoint.
-  const [byokModal, setByokModal] = useState<{
-    open: boolean
-    tool: ToolState | null
-    apiKeyForm: import("@/lib/oauth/use-oauth-connection").ApiKeyFormPayload | null
-  }>({ open: false, tool: null, apiKeyForm: null })
+  const [byokModal, setByokModal] = useState<BYOKModalState>({
+    open: false,
+    tool: null,
+    apiKeyForm: null,
+  })
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
   const [customApiModal, setCustomApiModal] = useState(false)
@@ -847,7 +849,11 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   // CredentialsModal contract to the single primary-field's value (which
   // is all the BYOK route accepts — Composio takes one api_key).
   const handleByokSubmit = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
-    if (!byokModal.tool || !byokModal.apiKeyForm) {
+    // PR2.9-fix1 (Bug 1B): toolSlug is sourced from apiKeyForm (server-
+    // canonical), not from byokModal.tool which may be null for non-
+    // template tools clicked via the Browse modal. byokModal.tool is
+    // optional state used only for the optimistic UI update below.
+    if (!byokModal.apiKeyForm) {
       return { success: false, error: "No tool selected" }
     }
     const primaryField = byokModal.apiKeyForm.fields.find((f) => f.primary) ?? byokModal.apiKeyForm.fields[0]
@@ -856,22 +862,30 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!apiKey || !apiKey.trim()) {
       return { success: false, error: "API key is required" }
     }
+    const toolSlug = byokModal.apiKeyForm.toolSlug
 
     try {
       const res = await fetch(`/api/tools/${workspaceId}/byok/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toolSlug: byokModal.tool.slug, apiKey }),
+        body: JSON.stringify({ toolSlug, apiKey }),
       })
       const data = await res.json()
       if (data.success) {
         // BYOK is synchronous-CONNECTED. Refetch so the row picks up the
-        // server's status + createdAt. Optimistic update for the rare race
-        // where refetch is in flight when the user closes the modal.
+        // server's status + createdAt. After PR2.9-fix1, refreshTools is
+        // the authoritative path for non-template tools — it pulls the
+        // new ToolConnection from DB and adds it as an "extra" row via
+        // buildExtraToolsFromConnections (same code path the OAuth-from-
+        // Browse-modal flow has always used).
         await refreshTools()
+        // Optimistic update covers the rare race where refetch hasn't
+        // landed when the user closes the modal AND the tool was already
+        // in `tools` state (template-row click). For Browse-clicked non-
+        // template tools, prev.map is a no-op — refreshTools handles it.
         setTools((prev) =>
           prev.map((t) =>
-            t.slug === byokModal.tool!.slug
+            t.slug === toolSlug
               ? { ...t, status: "connected" as const, errorMessage: undefined, warningMessage: undefined }
               : t,
           ),
@@ -882,7 +896,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch {
       return { success: false, error: "Network error" }
     }
-  }, [byokModal.tool, byokModal.apiKeyForm, workspaceId, refreshTools])
+  }, [byokModal.apiKeyForm, workspaceId, refreshTools])
 
   // PR #4 Commit 7: initial "Connect with OAuth" flow delegates to the
   // shared useOAuthConnection hook (defined at the top of the component).
@@ -910,6 +924,16 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       // onApiKeyFormRequired path rolls back to "disconnected" when the
       // form modal opens (so the row doesn't show a stuck spinner
       // alongside the open modal).
+      //
+      // PR2.9-fix1 (Bug 1B, option b): this setTools is a NO-OP when the
+      // clicked tool isn't in `tools` state (e.g., Browse-modal click on
+      // a non-template BYOK toolkit). That's intentional. The Browse
+      // modal stays open, the BYOK credentials modal stacks on top, and
+      // the user's path-to-completion runs through the modal. After
+      // submit, refreshTools() pulls the new connection from DB and adds
+      // it as an "extra" row via buildExtraToolsFromConnections —
+      // standard mechanism. Synthesizing a phantom `tools` entry here
+      // would leave a stuck row if the user cancelled out of the modal.
       setTools((prev) =>
         prev.map((t) =>
           t.slug === tool.slug
@@ -1075,6 +1099,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              // PR2.9-fix1 (Bug 1A): catalog-sourced authMode drives the
+              // connect-button label. ToolState doesn't carry authMode (it
+              // only mirrors connectionType for the connection-flow state
+              // machine), so we look it up via the catalog. Slug-drift
+              // tests enforce presence for every OAUTH_COMPOSIO entry.
+              authMode={getToolBySlug(tool.slug)?.authMode}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
@@ -1110,6 +1140,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              authMode={getToolBySlug(tool.slug)?.authMode}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
@@ -1146,6 +1177,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              authMode={getToolBySlug(tool.slug)?.authMode}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
@@ -1196,22 +1228,28 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         onSave={handleCredentialsSave}
       />
-      {/* PR2.9: BYOK credentials modal — same component as the direct
-          API_KEY tools above, different endpoint + payload shape. Fields
-          come from the server-side initiate response, not the catalog (the
-          catalog leaves credentialFields:[] for OAUTH_COMPOSIO entries by
-          design). */}
-      {byokModal.open && byokModal.apiKeyForm && byokModal.tool && (
-        <CredentialsModal
-          open={true}
-          onClose={() => setByokModal({ open: false, tool: null, apiKeyForm: null })}
-          toolName={byokModal.tool.name}
-          helpUrl={byokModal.apiKeyForm.helpUrl}
-          credentialFields={byokModal.apiKeyForm.fields}
-          description="Enter your API key. The key is held by Composio (not Claws) and never appears in logs."
-          onSave={handleByokSubmit}
-        />
-      )}
+      {/* PR2.9: BYOK credentials modal — same CredentialsModal component
+          as the direct API_KEY tools above, different endpoint + payload
+          shape (POSTs to /byok/submit, not /api/tools/[wsId]).
+          PR2.9-fix1 (Bug 1B): conditional + display-name resolution
+          extracted to `resolveByokModalProps` for unit-test coverage of
+          the null-tool path (Browse-modal click on a non-template tool).
+          See tools-state.ts. */}
+      {(() => {
+        const byokProps = resolveByokModalProps(byokModal)
+        if (!byokProps) return null
+        return (
+          <CredentialsModal
+            open={true}
+            onClose={() => setByokModal({ open: false, tool: null, apiKeyForm: null })}
+            toolName={byokProps.toolName}
+            helpUrl={byokProps.helpUrl}
+            credentialFields={byokProps.credentialFields}
+            description="Enter your API key. The key is held by Composio (not Claws) and never appears in logs."
+            onSave={handleByokSubmit}
+          />
+        )
+      })()}
       <ToolSwapModal
         open={swapModal.open}
         onClose={() => setSwapModal({ open: false, tool: null })}
@@ -1769,16 +1807,36 @@ export default function SetupStepPage() {
     }).catch(() => {})
   }, [workspaceId, router])
 
+  // PR2.9-fix1 (Bug 2): `isFromBuilder` was previously computed during
+  // render with a `typeof window !== "undefined"` ternary, which read
+  // sessionStorage on the client but not on the server. If sessionStorage
+  // had "builder" (from a prior visit via /builder/...) but the URL
+  // didn't carry `?from=builder`, server render produced
+  // `isFromBuilder=false` and client re-rendered with `isFromBuilder=true`
+  // — different rendered text in the back-button (line ~1652) →
+  // React error #418 (hydration mismatch).
+  //
+  // Fix: first render uses ONLY searchParams (deterministic across
+  // server + client). The sessionStorage augmentation runs in useEffect
+  // after mount, updating state. Second render incorporates sessionStorage
+  // safely because hydration is already complete.
+  //
+  // Trade-off: on slow client mounts, the back-button briefly says
+  // "← Back to My Claws" then flips to "← Back to Builder". Acceptable
+  // — much better than #418 noise in console. The mounted-flag gate is
+  // tracked at GH#78 as a follow-up UX polish.
+  const fromQuery = searchParams.get("from") === "builder"
+  const [isFromBuilder, setIsFromBuilder] = useState(fromQuery)
   useEffect(() => {
     const from = searchParams.get("from")
     if (from) {
       sessionStorage.setItem(`wizard-context-${workspaceId}`, from)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const isFromBuilder = typeof window !== "undefined"
-    ? (sessionStorage.getItem(`wizard-context-${workspaceId}`) === "builder" || searchParams.get("from") === "builder")
-    : searchParams.get("from") === "builder"
+    // After mount, augment with sessionStorage. Safe because this
+    // useEffect runs after hydration completes.
+    const stored = sessionStorage.getItem(`wizard-context-${workspaceId}`) === "builder"
+    setIsFromBuilder(fromQuery || stored)
+  }, [workspaceId, fromQuery, searchParams])
 
   const exitWizard = useCallback(() => {
     if (typeof window !== "undefined") sessionStorage.removeItem(`wizard-context-${workspaceId}`)

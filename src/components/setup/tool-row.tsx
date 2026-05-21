@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils"
 import { StatusDot } from "@/components/ui/status-dot"
 import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react"
+import type { ToolAuthMode } from "@/data/tool-catalog"
 
 export type ToolRowStatus =
   | "connected"
@@ -30,6 +31,13 @@ interface ToolRowProps {
   description?: string
   connectionStatus: ToolRowStatus
   connectionType: "API_KEY" | "OAUTH_COMPOSIO"
+  /**
+   * PR2.9-fix1 (Bug 1A): drives the connect-button label for OAUTH_COMPOSIO
+   * tools. Catalog-sourced; required on OAUTH_COMPOSIO entries (drift test
+   * enforces). Undefined falls back to "Connect with OAuth" for safety
+   * (e.g., dynamic Composio catalog entries that don't carry authMode).
+   */
+  authMode?: ToolAuthMode
   /** When false, OAuth tools show a disabled hint instead of starting a broken flow */
   composioOAuthAvailable?: boolean
   swappable?: boolean
@@ -85,7 +93,7 @@ function daysAgoLabel(from: ToolRowProps["connectedAt"]): string | null {
   return `Connected ${days} days ago`
 }
 
-export function ToolRow({ name, description, connectionStatus, connectionType, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, testDisabledReason, onDisconnect, onReconnect, onRevoke, className }: ToolRowProps) {
+export function ToolRow({ name, description, connectionStatus, connectionType, authMode, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, testDisabledReason, onDisconnect, onReconnect, onRevoke, className }: ToolRowProps) {
   const isError = connectionStatus === "error"
   const isTesting = connectionStatus === "testing"
   const needsCredentials = connectionStatus === "needs-credentials"
@@ -187,7 +195,18 @@ export function ToolRow({ name, description, connectionStatus, connectionType, c
               )}
               {connectionType === "OAUTH_COMPOSIO" && composioOAuthAvailable && onConnect && (
                 <button type="button" onClick={onConnect} className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity">
-                  Connect with OAuth
+                  {/* PR2.9-fix1 (Bug 1A): label-correct at first paint per
+                      catalog `authMode`. Server-side classifier remains
+                      canonical via the initiate response; the catalog
+                      field exists so the client doesn't have to round-trip
+                      to know the right label. Undefined authMode (e.g.,
+                      dynamic Composio catalog) defaults to "Connect with
+                      OAuth" — safe for managed; if a BYOK toolkit ever
+                      reaches here without authMode, the user sees an
+                      OAuth label but the click still routes through the
+                      server which detects BYOK and opens the API-key
+                      form (degraded label, not broken behavior). */}
+                  {authMode === "byok-api-key" ? "Enter API key" : "Connect with OAuth"}
                 </button>
               )}
               {swappable && onSwap && <button onClick={onSwap} className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)] transition-colors">Swap</button>}

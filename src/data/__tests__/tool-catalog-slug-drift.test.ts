@@ -127,6 +127,43 @@ describe("tool catalog slug-drift guards (PR2.8a)", () => {
     ).toEqual([])
   })
 
+  // PR2.9-fix1: every OAUTH_COMPOSIO entry must declare authMode so the
+  // wizard + Browse modal can render the correct connect-button label at
+  // first paint (no per-tool server round-trip). If you add a new
+  // OAUTH_COMPOSIO entry, run `--byok-eligibility <slug>` against staging
+  // Composio and set authMode based on the result:
+  //   managedSchemes non-empty       → "managed-oauth"
+  //   managedSchemes empty + API_KEY → "byok-api-key"
+  //   managedSchemes empty + no API_KEY → "custom-oauth-required"
+  //                                        (entry should also be comingSoon)
+  it("every OAUTH_COMPOSIO catalog entry declares authMode", () => {
+    const missing = ALL_TOOLS.filter(
+      (t) => t.connectionType === "OAUTH_COMPOSIO" && !t.authMode,
+    ).map((t) => t.slug)
+    expect(
+      missing,
+      `OAUTH_COMPOSIO catalog entries missing authMode. Add the field per the audit at scripts/pr2.8a-composio-authconfig-probe.mjs --byok-eligibility:\n${missing
+        .map((s) => `  ${s}`)
+        .join("\n")}`,
+    ).toEqual([])
+  })
+
+  // Defense: custom-oauth-required entries should also be comingSoon
+  // (we can't connect them today; the catalog flag keeps them out of the
+  // wizard render). If an operator drops comingSoon on twitter/docusign
+  // without registering a custom OAuth app first, this test catches it.
+  it("every custom-oauth-required entry is also comingSoon", () => {
+    const violations = ALL_TOOLS.filter(
+      (t) => t.connectionType === "OAUTH_COMPOSIO" && t.authMode === "custom-oauth-required" && !t.comingSoon,
+    ).map((t) => t.slug)
+    expect(
+      violations,
+      `custom-oauth-required entries must also be comingSoon (no functional connect path exists for them today):\n${violations
+        .map((s) => `  ${s}`)
+        .join("\n")}`,
+    ).toEqual([])
+  })
+
   it("every seed compatibleTools entry resolves in the catalog", () => {
     const catalogSlugs = new Set(ALL_TOOLS.map((t) => t.slug))
     const unknown: Array<{ skillSlug: string; toolSlug: string }> = []

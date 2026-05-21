@@ -212,7 +212,17 @@ export function BrowseToolsModal({
                           onClick={() => handleToolClick(tool)}
                           className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none shrink-0"
                         >
-                          Connect OAuth
+                          {/* PR2.9-fix1 (Bug 1A): label is auth-mode-correct
+                              at first paint, no server round-trip. The hook
+                              still does final BYOK detection from the
+                              initiate response — but the user sees the
+                              right intent before clicking.
+                              Fallback for OAUTH_COMPOSIO entries missing
+                              authMode (e.g., dynamic Composio catalog
+                              entries from composio-catalog.ts): treat as
+                              managed-oauth. Safe because the server
+                              classifier is canonical anyway. */}
+                          {tool.authMode === "byok-api-key" ? "Enter API key" : "Connect with OAuth"}
                         </button>
                       ) : (
                         <span className="text-[10px] text-[var(--tx3)] px-[8px] py-[3px] border border-[var(--bd)] rounded-[4px] shrink-0">
@@ -225,7 +235,11 @@ export function BrowseToolsModal({
                         onClick={() => handleToolClick(tool)}
                         className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none shrink-0"
                       >
-                        Connect
+                        {/* PR2.9-fix1 alignment: was "Connect", now "Enter
+                            API key" to match the inline ToolRow API_KEY
+                            label and the BYOK button above. Same user
+                            action (paste a key), same wording. */}
+                        Enter API key
                       </button>
                     )}
                   </div>
