@@ -1,7 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useCallback, useId } from "react";
+import { useEffect, useRef, useCallback, useId, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   open: boolean;
@@ -25,6 +26,38 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   const titleId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+
+  // PR2.9-fix2: portal to document.body so modal-on-modal stacking is
+  // deterministic and JSX-order-independent. Before this change, two
+  // open Modals at the same z-50 would stack by source-code order —
+  // which was fragile and produced a real bug on staging where the
+  // BYOK credentials modal opened from inside the Browse modal
+  // rendered BENEATH Browse (different JSX-parent locations: BYOK at
+  // Step2 level, Browse-internal CredentialsModal at Browse-fragment
+  // level). Portaling to body makes mount order the only signal, and
+  // the latest-opened modal always wins — correct UX universally.
+  //
+  // Audit confirmed (PR2.9-fix2 description, table of 16 call sites)
+  // that no Modal call site has a transform-creating ancestor, so
+  // portaling produces visually identical results at every existing
+  // site.
+  //
+  // SSR guard: createPortal cannot run during server render (no
+  // document). `mounted` flips true in useEffect, which only runs
+  // client-side. Modal renders null during SSR + first client paint;
+  // first useful render happens after hydration. This matches the
+  // tooltip pattern in src/components/ui/tooltip.tsx.
+  const [mounted, setMounted] = useState(false);
+  // This is the canonical SSR-safe portal mount pattern documented by
+  // the React team: createPortal cannot run during SSR, so we render
+  // null on the server + first client paint, then flip `mounted` true
+  // after hydration. The mount-effect is a deliberate one-shot
+  // initialization (deps=[]) and re-renders exactly once — not a
+  // cascading update. Same pattern as src/components/ui/tooltip.tsx:28
+  // (tooltip.tsx carries an identical pre-existing rule violation;
+  // out-of-scope for this PR per minimum-scope rule).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMounted(true); }, []);
 
   const trapFocus = useCallback((e: KeyboardEvent) => {
     if (e.key !== "Tab" || !boxRef.current) return;
@@ -79,8 +112,11 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   }, [open, onClose, trapFocus]);
 
   if (!open) return null;
+  // Skip SSR + first client paint until mounted flips true; then portal
+  // to document.body. Same pattern as tooltip.tsx.
+  if (!mounted) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.3)] z-50 flex items-center justify-center"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -101,6 +137,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         {children}
         {footer && <div className="flex gap-1.5 justify-end mt-4">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
