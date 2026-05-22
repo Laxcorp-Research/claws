@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
@@ -20,12 +20,15 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
-import { getToolByName, getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import {
   type ToolState,
   type ServerConnectionSummary,
+  type BYOKModalState,
   connectionUiState,
   buildExtraToolsFromConnections,
+  mergeRefreshedTools,
+  resolveByokModalProps,
 } from "@/components/setup/tools-state"
 import {
   UNSUPPORTED_TOOLKITS,
@@ -379,6 +382,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [isLoading, setIsLoading] = useState(true)
   const [composioOAuthAvailable, setComposioOAuthAvailable] = useState(false)
   const [apiKeyModal, setApiKeyModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
+  // PR2.9: BYOK modal state. Distinct from `apiKeyModal` because:
+  //   - apiKeyModal is for direct API_KEY tools (our DB stores the key,
+  //     POST to /api/tools/[wsId] with credentials).
+  //   - byokModal is for OAUTH_COMPOSIO toolkits that accept user-supplied
+  //     API keys (Composio stores the key, POST to /byok/submit).
+  // Sharing one state for both would conflate connectionType + endpoint.
+  const [byokModal, setByokModal] = useState<BYOKModalState>({
+    open: false,
+    tool: null,
+    apiKeyForm: null,
+  })
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
   const [customApiModal, setCustomApiModal] = useState(false)
@@ -390,16 +404,41 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
         const wsData = await wsRes.json()
 
-        let requiredNames: string[] = []
-        let recommendedNames: string[] = []
+        // PR2.8a Task 7: switched from name-based (`getToolByName(t.name)`)
+        // to slug-based (`getToolBySlug(t.slug)`) template-tool resolution.
+        // The API route at /api/templates/{slug} already returns both fields
+        // in each entry of `tools.required` / `tools.recommended`; pre-PR2.8a
+        // the wizard read only `.name` and substring-matched it back to the
+        // catalog (see the pre-PR2.7 Deploy-blocker for the "Claude API" vs
+        // "Anthropic (Claude)" miss that TOOL_NAME_ALIASES papered over).
+        //
+        // Each entry has shape:
+        //   { slug: string, name: string, category, connectionType, required,
+        //     alternatives?: string[] }
+        // `alternatives` is typed as a "oneOf" — the user can connect any one
+        // of `[slug, ...alternatives]` to satisfy the entry. Pre-PR2.8a this
+        // field was decorative (only the marketplace store page rendered it as
+        // a visual hint); now it's load-bearing in the resolver's default-pick
+        // logic. PR2.8b adds explicit picker UI.
+        interface TemplateToolEntry {
+          slug: string
+          name: string
+          category: string
+          connectionType: "API_KEY" | "OAUTH_COMPOSIO"
+          required: boolean
+          alternatives?: string[]
+        }
+
+        let requiredEntries: TemplateToolEntry[] = []
+        let recommendedEntries: TemplateToolEntry[] = []
 
         if (wsData.success && wsData.data?.clawTemplate?.slug) {
           try {
             const tplRes = await fetch(`/api/templates/${wsData.data.clawTemplate.slug}`)
             const tplData = await tplRes.json()
             if (tplData.success) {
-              requiredNames = (tplData.data.tools?.required ?? []).map((t: { name: string }) => t.name)
-              recommendedNames = (tplData.data.tools?.recommended ?? []).map((t: { name: string }) => t.name)
+              requiredEntries = (tplData.data.tools?.required ?? []) as TemplateToolEntry[]
+              recommendedEntries = (tplData.data.tools?.recommended ?? []) as TemplateToolEntry[]
             }
           } catch { /* fall through to defaults */ }
         }
@@ -411,67 +450,126 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null; createdAt?: string | null }> = toolsData.success ? toolsData.data.connections : []
 
-        const buildToolState = (names: string[], required: boolean): ToolState[] =>
-          names.map((name) => {
-            const def = getToolByName(name)
-            const templateSlug = def?.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "_")
-            const templateCategory = def?.category || "CORE"
-
-            const directMatch = existingConnections.find((c) => c.toolSlug === templateSlug)
-            if (directMatch) {
-              const ui = connectionUiState(directMatch)
-              return {
-                slug: templateSlug,
-                name: def?.name || name,
-                connectionType: def?.connectionType || "API_KEY",
-                category: templateCategory,
-                status: ui.status,
-                errorMessage: ui.errorMessage,
-                warningMessage: ui.warningMessage,
-                connectionId: directMatch.id,
-                connectedAt: directMatch.createdAt ?? null,
-                helpUrl: def?.helpUrl,
-                keyPlaceholder: def?.keyPlaceholder,
-                required,
-              }
+        // Given a `{ slug, alternatives? }` pair, pick the slug the wizard
+        // should render today. Priority:
+        //   1. Any slug in the oneOf set with an already-connected
+        //      ToolConnection row (preserves user's prior choice).
+        //   2. The first non-`comingSoon` catalog entry in the oneOf set.
+        //   3. The primary slug (even if `comingSoon`) — caller then decides
+        //      whether to drop the row via comingSoon filtering.
+        // Returns the catalog ToolDefinition for the chosen slug, or undefined
+        // if the primary slug itself isn't in the catalog (shouldn't happen
+        // post-PR2.8a Task 5 — every seed slug is catalog-resident).
+        const resolveOneOfSlug = (entry: TemplateToolEntry): { slug: string; def: ToolDefinition | undefined } => {
+          const candidates = [entry.slug, ...(entry.alternatives ?? [])]
+          // 1. Already-connected?
+          for (const s of candidates) {
+            if (existingConnections.some((c) => c.toolSlug === s)) {
+              return { slug: s, def: getToolBySlug(s) }
             }
+          }
+          // 2. First non-comingSoon catalog entry?
+          for (const s of candidates) {
+            const d = getToolBySlug(s)
+            if (d && !d.comingSoon) return { slug: s, def: d }
+          }
+          // 3. Primary fallback (may be comingSoon or missing from catalog).
+          return { slug: entry.slug, def: getToolBySlug(entry.slug) }
+        }
 
-            const swapMatch = existingConnections.find((c) => {
-              const connDef = getToolBySlug(c.toolSlug)
-              return connDef && connDef.category === templateCategory && c.toolSlug !== templateSlug
-            })
-            if (swapMatch) {
-              const swapDef = getToolBySlug(swapMatch.toolSlug)
-              const ui = connectionUiState(swapMatch)
-              return {
-                slug: swapMatch.toolSlug,
-                name: swapDef?.name || swapMatch.displayName || name,
-                connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO",
-                category: templateCategory,
-                status: ui.status,
-                errorMessage: ui.errorMessage,
-                warningMessage: ui.warningMessage,
-                connectionId: swapMatch.id,
-                connectedAt: swapMatch.createdAt ?? null,
-                helpUrl: swapDef?.helpUrl,
-                keyPlaceholder: swapDef?.keyPlaceholder,
-                required,
-              }
-            }
+        // Turn one TemplateToolEntry into a ToolState row, or null if the
+        // entry resolves entirely to `comingSoon: true` catalog entries and
+        // should be filtered from render today. PR2.8b replaces the null
+        // return with proper "Coming Soon" badge rendering.
+        const resolveToolEntry = (entry: TemplateToolEntry, required: boolean): ToolState | null => {
+          const { slug: chosenSlug, def } = resolveOneOfSlug(entry)
 
+          if (!def) {
+            // Primary slug + alternatives all missing from catalog. PR2.8a
+            // Task 5 reconciliation + template-tool-references.test.ts
+            // guarantee this can't happen; fail loud if it ever does so a
+            // regression is caught at runtime rather than silently rendered
+            // as an "Enter all 0 required fields" modal.
+            throw new Error(
+              `[setup-wizard] template references slug "${entry.slug}" (+ alternatives ${JSON.stringify(entry.alternatives ?? [])}) but none resolve in ALL_TOOLS. Update the catalog or the template.`,
+            )
+          }
+
+          if (def.comingSoon) {
+            // Every slug in the oneOf set is `comingSoon: true` — the
+            // integration isn't shippable yet. Skip from render; PR2.8b
+            // replaces this with a "Coming Soon" badge.
+            console.info(
+              `[setup-wizard] filtering ${required ? "required" : "recommended"} tool entry "${entry.slug}" — all candidates are comingSoon (${def.comingSoonReason ?? "no reason given"}).`,
+            )
+            return null
+          }
+
+          const directMatch = existingConnections.find((c) => c.toolSlug === chosenSlug)
+          if (directMatch) {
+            const ui = connectionUiState(directMatch)
             return {
-              slug: templateSlug,
-              name: def?.name || name,
-              connectionType: def?.connectionType || "API_KEY",
-              category: templateCategory,
-              status: "disconnected" as const,
-              helpUrl: def?.helpUrl,
-              keyPlaceholder: def?.keyPlaceholder,
+              slug: chosenSlug,
+              name: def.name,
+              connectionType: def.connectionType,
+              category: def.category,
+              status: ui.status,
+              errorMessage: ui.errorMessage,
+              warningMessage: ui.warningMessage,
+              connectionId: directMatch.id,
+              connectedAt: directMatch.createdAt ?? null,
+              helpUrl: def.helpUrl,
+              keyPlaceholder: def.keyPlaceholder,
               required,
             }
-          })
+          }
 
-        const allTools = [...buildToolState(requiredNames, true), ...buildToolState(recommendedNames, false)]
+          // Existing category-level swap-match preserved — user may have
+          // connected a different tool in the same category via Browse Tools;
+          // surface that connection in this row. Pre-PR2.8a behavior.
+          const swapMatch = existingConnections.find((c) => {
+            const connDef = getToolBySlug(c.toolSlug)
+            return connDef && connDef.category === def.category && c.toolSlug !== chosenSlug
+          })
+          if (swapMatch) {
+            const swapDef = getToolBySlug(swapMatch.toolSlug)
+            const ui = connectionUiState(swapMatch)
+            return {
+              slug: swapMatch.toolSlug,
+              name: swapDef?.name || swapMatch.displayName || def.name,
+              connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO",
+              category: def.category,
+              status: ui.status,
+              errorMessage: ui.errorMessage,
+              warningMessage: ui.warningMessage,
+              connectionId: swapMatch.id,
+              connectedAt: swapMatch.createdAt ?? null,
+              helpUrl: swapDef?.helpUrl,
+              keyPlaceholder: swapDef?.keyPlaceholder,
+              required,
+            }
+          }
+
+          return {
+            slug: chosenSlug,
+            name: def.name,
+            connectionType: def.connectionType,
+            category: def.category,
+            status: "disconnected" as const,
+            helpUrl: def.helpUrl,
+            keyPlaceholder: def.keyPlaceholder,
+            required,
+          }
+        }
+
+        const resolvedRequired = requiredEntries
+          .map((e) => resolveToolEntry(e, true))
+          .filter((t): t is ToolState => t !== null)
+        const resolvedRecommended = recommendedEntries
+          .map((e) => resolveToolEntry(e, false))
+          .filter((t): t is ToolState => t !== null)
+
+        const allTools = [...resolvedRequired, ...resolvedRecommended]
           .filter(t => {
             const def = getToolBySlug(t.slug)
             return !def?.isAIProvider
@@ -523,27 +621,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!data.success) return
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
     const existing: ServerConnectionSummary[] = data.data.connections
-    setTools((prev) => {
-      const updated = prev.map((t) => {
-        const conn = existing.find((c) => c.toolSlug === t.slug)
-        if (!conn) return t
-        const ui = connectionUiState(conn)
-        return {
-          ...t,
-          status: ui.status,
-          errorMessage: ui.errorMessage,
-          warningMessage: ui.warningMessage,
-          connectionId: conn.id,
-          connectedAt: conn.createdAt ?? t.connectedAt ?? null,
-        }
-      })
-      // PR #4 Commit 9: pick up any new non-template connections since
-      // the last state snapshot (e.g., user just completed OAuth for a
-      // tool added via Browse Tools modal). Without this, the OAuth
-      // success path writes CONNECTED to DB but the wizard UI stays blind.
-      const extras = buildExtraToolsFromConnections(updated, existing)
-      return extras.length > 0 ? [...updated, ...extras] : updated
-    })
+    // PR2.9-fix3: server response is authoritative. `mergeRefreshedTools`
+    // handles all four cases (server-present-template, server-present-
+    // extra-new, server-absent-template-reset, server-absent-extra-drop).
+    // Before this PR the merge was insert-only and disconnect/revoke left
+    // stale `status: "connected"` on rows until a manual page reload.
+    setTools((prev) => mergeRefreshedTools(prev, existing))
   }, [workspaceId])
 
   // PR #4 Commit 7: Revoke flow state. When a user clicks the Revoke button
@@ -568,9 +651,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     setRevokeState((s) => ({ ...s, loading: true, error: null }))
     try {
       await disconnectOauthTool(workspaceId, tool.slug)
-      // Refetch to sync the row state with the DB delete. Row disappears
-      // from the OAUTH_COMPOSIO-connected bucket; returns to "disconnected"
-      // if the tool is still in the template's required/recommended list.
+      // Refetch to sync row state with the DB delete. After PR2.9-fix3
+      // `mergeRefreshedTools` makes the server response authoritative:
+      // template rows (required/recommended) reset to "disconnected" so
+      // the user can re-connect; extra rows (Browse-added non-template
+      // tools) are dropped entirely. No optimistic local patch needed
+      // here — the primitive handles it.
       await refreshTools()
       setRevokeState({ tool: null, loading: false, error: null })
     } catch (err) {
@@ -632,15 +718,67 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           }),
         )
       },
-      onInitiateError: (toolSlug, errorMsg) => {
+      onInitiateError: (toolSlug, error) => {
+        // PR2.8a-fix1 Task 4: COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH is the
+        // 422 the route returns when a toolkit has no Composio-managed auth
+        // scheme (RED-state — operator must register a custom OAuth/API_KEY
+        // config in the Composio dashboard). Rendering this as a red error
+        // misrepresents user-fixable failure; surface it as a yellow
+        // "in-progress" warning on the row instead, leaving status
+        // disconnected so the row stays in the wizard but the user knows
+        // not to retry. Comingsoon-filtering covers the common path; this
+        // branch covers Browse-modal direct connects + race conditions.
+        if (error.code === "COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH") {
+          setTools((prev) =>
+            prev.map((t) =>
+              t.slug === toolSlug
+                ? {
+                    ...t,
+                    status: "disconnected" as const,
+                    warningMessage:
+                      "Setup in progress. Available within a few days.",
+                    errorMessage: undefined,
+                  }
+                : t,
+            ),
+          )
+          return
+        }
         setTools((prev) =>
           prev.map((t) =>
-            t.slug === toolSlug ? { ...t, status: "error" as const, errorMessage: errorMsg } : t,
+            t.slug === toolSlug
+              ? { ...t, status: "error" as const, errorMessage: error.message }
+              : t,
           ),
         )
       },
+      onApiKeyFormRequired: (toolSlug, apiKeyForm) => {
+        // PR2.9: initiate route returned BYOK mode. Open the credentials
+        // modal pre-populated with the apiKeyForm fields. The hook has
+        // bowed out; submission goes through handleByokSubmit below.
+        //
+        // Roll back the "connecting" state we set in onInitiated so the
+        // row doesn't show a stuck spinner while the modal is open. The
+        // BYOK modal IS the user's path to completion.
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug
+              ? { ...t, status: "disconnected" as const, errorMessage: undefined, warningMessage: undefined }
+              : t,
+          ),
+        )
+        const tool = toolsRef.current.find((t) => t.slug === toolSlug) ?? null
+        setByokModal({ open: true, tool, apiKeyForm })
+      },
     },
   })
+
+  // Keep `tools` reachable from the BYOK callback without recreating the
+  // hook callbacks every render. The hook caches callbacks via a ref
+  // already (line 126-129 of use-oauth-connection.ts); using a separate
+  // ref here keeps the wiring clean.
+  const toolsRef = useRef<ToolState[]>(tools)
+  useEffect(() => { toolsRef.current = tools }, [tools])
 
   // PR #4 Commit 7: Reconnect is the same POST /oauth/initiate + poll flow
   // as a fresh connect — the user re-authorizes through Composio's consent
@@ -659,6 +797,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       )
       return
     }
+    // PR2.9 Task 7b: same immediate "connecting" flip as handleOAuthConnect
+    // so the Reconnect button doesn't look dead during the initiate fetch.
+    setTools((prev) =>
+      prev.map((t) =>
+        t.slug === tool.slug
+          ? { ...t, status: "connecting" as const, errorMessage: undefined, warningMessage: undefined }
+          : t,
+      ),
+    )
     oauth.connect(tool.slug)
   }, [oauth, composioOAuthAvailable])
 
@@ -680,6 +827,66 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch { return { success: false, error: "Network error" } }
   }, [apiKeyModal.tool, workspaceId, refreshTools])
 
+  // PR2.9 BYOK submit handler. Distinct from handleCredentialsSave above
+  // because the body shape, endpoint, and post-submit state-transition
+  // semantics are all different:
+  //   - Endpoint: /api/tools/[wsId]/byok/submit (synchronous create)
+  //   - Body: { toolSlug, apiKey } — single key, not a Record
+  //   - Status: row goes CONNECTED immediately (no PENDING polling)
+  //
+  // Reduces the multi-field credentials Record from the existing
+  // CredentialsModal contract to the single primary-field's value (which
+  // is all the BYOK route accepts — Composio takes one api_key).
+  const handleByokSubmit = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
+    // PR2.9-fix1 (Bug 1B): toolSlug is sourced from apiKeyForm (server-
+    // canonical), not from byokModal.tool which may be null for non-
+    // template tools clicked via the Browse modal. byokModal.tool is
+    // optional state used only for the optimistic UI update below.
+    if (!byokModal.apiKeyForm) {
+      return { success: false, error: "No tool selected" }
+    }
+    const primaryField = byokModal.apiKeyForm.fields.find((f) => f.primary) ?? byokModal.apiKeyForm.fields[0]
+    if (!primaryField) return { success: false, error: "No API key field declared for this tool" }
+    const apiKey = credentials[primaryField.envVar]
+    if (!apiKey || !apiKey.trim()) {
+      return { success: false, error: "API key is required" }
+    }
+    const toolSlug = byokModal.apiKeyForm.toolSlug
+
+    try {
+      const res = await fetch(`/api/tools/${workspaceId}/byok/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toolSlug, apiKey }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        // BYOK is synchronous-CONNECTED. Refetch so the row picks up the
+        // server's status + createdAt. After PR2.9-fix1, refreshTools is
+        // the authoritative path for non-template tools — it pulls the
+        // new ToolConnection from DB and adds it as an "extra" row via
+        // buildExtraToolsFromConnections (same code path the OAuth-from-
+        // Browse-modal flow has always used).
+        await refreshTools()
+        // Optimistic update covers the rare race where refetch hasn't
+        // landed when the user closes the modal AND the tool was already
+        // in `tools` state (template-row click). For Browse-clicked non-
+        // template tools, prev.map is a no-op — refreshTools handles it.
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug
+              ? { ...t, status: "connected" as const, errorMessage: undefined, warningMessage: undefined }
+              : t,
+          ),
+        )
+        return { success: true }
+      }
+      return { success: false, error: data.error?.message }
+    } catch {
+      return { success: false, error: "Network error" }
+    }
+  }, [byokModal.apiKeyForm, workspaceId, refreshTools])
+
   // PR #4 Commit 7: initial "Connect with OAuth" flow delegates to the
   // shared useOAuthConnection hook (defined at the top of the component).
   // Pre-refactor this was ~120 LOC of inline fetch/popup/poll/cleanup that
@@ -698,6 +905,31 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
         return
       }
+      // PR2.9 Task 7b: flip row to "connecting" SYNCHRONOUSLY on click,
+      // before the initiate fetch starts. Previously the row stayed
+      // "disconnected" for 2-4s until `onInitiated` fired post-fetch,
+      // making the Connect button look dead. The hook's onInitiated
+      // re-applies "connecting" once initiate succeeds; the BYOK
+      // onApiKeyFormRequired path rolls back to "disconnected" when the
+      // form modal opens (so the row doesn't show a stuck spinner
+      // alongside the open modal).
+      //
+      // PR2.9-fix1 (Bug 1B, option b): this setTools is a NO-OP when the
+      // clicked tool isn't in `tools` state (e.g., Browse-modal click on
+      // a non-template BYOK toolkit). That's intentional. The Browse
+      // modal stays open, the BYOK credentials modal stacks on top, and
+      // the user's path-to-completion runs through the modal. After
+      // submit, refreshTools() pulls the new connection from DB and adds
+      // it as an "extra" row via buildExtraToolsFromConnections —
+      // standard mechanism. Synthesizing a phantom `tools` entry here
+      // would leave a stuck row if the user cancelled out of the modal.
+      setTools((prev) =>
+        prev.map((t) =>
+          t.slug === tool.slug
+            ? { ...t, status: "connecting" as const, errorMessage: undefined, warningMessage: undefined }
+            : t,
+        ),
+      )
       oauth.connect(tool.slug)
     },
     [oauth, composioOAuthAvailable],
@@ -748,6 +980,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const handleDisconnect = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return
     await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, { method: "DELETE" })
+    // PR2.9-fix3: `refreshTools` is now authoritative via
+    // `mergeRefreshedTools` — the deleted row's local UI state is reset
+    // to "disconnected" (template) or removed (extra). No optimistic
+    // local patch needed.
     await refreshTools()
   }, [workspaceId, refreshTools])
 
@@ -856,6 +1092,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              // PR2.9-fix1 (Bug 1A): catalog-sourced authMode drives the
+              // connect-button label. ToolState doesn't carry authMode (it
+              // only mirrors connectionType for the connection-flow state
+              // machine), so we look it up via the catalog. Slug-drift
+              // tests enforce presence for every OAUTH_COMPOSIO entry.
+              authMode={getToolBySlug(tool.slug)?.authMode}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
@@ -891,6 +1133,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              authMode={getToolBySlug(tool.slug)?.authMode}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
@@ -927,6 +1170,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               description={tool.category}
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
+              authMode={getToolBySlug(tool.slug)?.authMode}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
@@ -977,6 +1221,28 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         onSave={handleCredentialsSave}
       />
+      {/* PR2.9: BYOK credentials modal — same CredentialsModal component
+          as the direct API_KEY tools above, different endpoint + payload
+          shape (POSTs to /byok/submit, not /api/tools/[wsId]).
+          PR2.9-fix1 (Bug 1B): conditional + display-name resolution
+          extracted to `resolveByokModalProps` for unit-test coverage of
+          the null-tool path (Browse-modal click on a non-template tool).
+          See tools-state.ts. */}
+      {(() => {
+        const byokProps = resolveByokModalProps(byokModal)
+        if (!byokProps) return null
+        return (
+          <CredentialsModal
+            open={true}
+            onClose={() => setByokModal({ open: false, tool: null, apiKeyForm: null })}
+            toolName={byokProps.toolName}
+            helpUrl={byokProps.helpUrl}
+            credentialFields={byokProps.credentialFields}
+            description="Enter your API key. The key is held by Composio (not Claws) and never appears in logs."
+            onSave={handleByokSubmit}
+          />
+        )
+      })()}
       <ToolSwapModal
         open={swapModal.open}
         onClose={() => setSwapModal({ open: false, tool: null })}
@@ -992,6 +1258,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         onConnect={handleBrowseConnect}
         composioOAuthAvailable={composioOAuthAvailable}
         onOAuthConnect={(def) =>
+          handleOAuthConnect({
+            slug: def.slug,
+            connectionType: "OAUTH_COMPOSIO",
+          })
+        }
+        // PR2.9: parallel prop wired to the same handler. The OAuth-vs-BYOK
+        // discrimination happens server-side in oauth/initiate; the hook's
+        // onApiKeyFormRequired callback opens the BYOK form modal when
+        // the response carries mode:"byok". See BrowseToolsModal prop
+        // docstring + PR2.9 decision-3 in the prompt.
+        onByokConnect={(def) =>
           handleOAuthConnect({
             slug: def.slug,
             connectionType: "OAUTH_COMPOSIO",
@@ -1523,16 +1800,36 @@ export default function SetupStepPage() {
     }).catch(() => {})
   }, [workspaceId, router])
 
+  // PR2.9-fix1 (Bug 2): `isFromBuilder` was previously computed during
+  // render with a `typeof window !== "undefined"` ternary, which read
+  // sessionStorage on the client but not on the server. If sessionStorage
+  // had "builder" (from a prior visit via /builder/...) but the URL
+  // didn't carry `?from=builder`, server render produced
+  // `isFromBuilder=false` and client re-rendered with `isFromBuilder=true`
+  // — different rendered text in the back-button (line ~1652) →
+  // React error #418 (hydration mismatch).
+  //
+  // Fix: first render uses ONLY searchParams (deterministic across
+  // server + client). The sessionStorage augmentation runs in useEffect
+  // after mount, updating state. Second render incorporates sessionStorage
+  // safely because hydration is already complete.
+  //
+  // Trade-off: on slow client mounts, the back-button briefly says
+  // "← Back to My Claws" then flips to "← Back to Builder". Acceptable
+  // — much better than #418 noise in console. The mounted-flag gate is
+  // tracked at GH#78 as a follow-up UX polish.
+  const fromQuery = searchParams.get("from") === "builder"
+  const [isFromBuilder, setIsFromBuilder] = useState(fromQuery)
   useEffect(() => {
     const from = searchParams.get("from")
     if (from) {
       sessionStorage.setItem(`wizard-context-${workspaceId}`, from)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const isFromBuilder = typeof window !== "undefined"
-    ? (sessionStorage.getItem(`wizard-context-${workspaceId}`) === "builder" || searchParams.get("from") === "builder")
-    : searchParams.get("from") === "builder"
+    // After mount, augment with sessionStorage. Safe because this
+    // useEffect runs after hydration completes.
+    const stored = sessionStorage.getItem(`wizard-context-${workspaceId}`) === "builder"
+    setIsFromBuilder(fromQuery || stored)
+  }, [workspaceId, fromQuery, searchParams])
 
   const exitWizard = useCallback(() => {
     if (typeof window !== "undefined") sessionStorage.removeItem(`wizard-context-${workspaceId}`)

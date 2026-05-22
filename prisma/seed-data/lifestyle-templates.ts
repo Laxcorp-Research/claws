@@ -253,8 +253,8 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
       "health-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
+      { slug: "google_calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["outlook", "cal_com", "apple_calendar"] },
     ],
   },
 
@@ -516,9 +516,9 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
       "academic-integrity-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false },
-      { slug: "notion", name: "Notion", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["google-docs"] },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
+      { slug: "google_calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["outlook", "cal_com", "apple_calendar"] },
+      { slug: "notion", name: "Notion", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["googledocs"] },
       { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: false },
     ],
   },
@@ -822,11 +822,11 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
       "job-search-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
       { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: true },
       { slug: "linkedin", name: "LinkedIn", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
       { slug: "gmail", name: "Gmail", category: "Email", connectionType: "OAUTH_COMPOSIO", required: false },
-      { slug: "google-calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false },
+      { slug: "google_calendar", name: "Google Calendar", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["outlook", "cal_com", "apple_calendar"] },
       { slug: "notion", name: "Notion", category: "Productivity", connectionType: "OAUTH_COMPOSIO", required: false },
     ],
   },
@@ -1171,7 +1171,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
       "code-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
       { slug: "github", name: "GitHub", category: "Development", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["gitlab"] },
       { slug: "linear", name: "Linear", category: "Project Management", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["jira"] },
       { slug: "slack", name: "Slack", category: "Communication", connectionType: "OAUTH_COMPOSIO", required: false },

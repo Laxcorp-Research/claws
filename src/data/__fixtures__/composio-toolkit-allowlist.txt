@@ -1,0 +1,47 @@
+# Composio toolkit IDs referenced by OAUTH_COMPOSIO entries in
+# src/data/tool-catalog.ts. Every id here must exist on Composio's backend —
+# verified by paginated dump of composio.toolkits.list() (see
+# tmp/list-composio-toolkits.mjs). Guard: tool-catalog-slug-drift.test.ts
+# fails if the catalog references a toolkit not in this file, or if this
+# file references a toolkit not used by any catalog entry.
+#
+# Blank lines and `#`-prefixed comments are ignored.
+#
+# Sorted alphabetically. One toolkit id per line. No quoting.
+
+asana
+calendly
+clickup
+docusign
+follow_up_boss
+freshbooks
+github
+gitlab
+gmail
+google_analytics
+googleads
+googlecalendar
+googledocs
+googledrive
+harvest
+hubspot
+jira
+jotform
+kit
+lever
+linear
+linkedin
+metaads
+notion
+outlook
+pipedrive
+quickbooks
+salesforce
+shopify
+slack
+toggl
+twitter
+typeform
+typefully
+webflow
+youtube

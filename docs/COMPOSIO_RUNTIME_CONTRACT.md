@@ -447,6 +447,148 @@ Any of the following during the POC means **stop, recall the recommendation, tel
 
 ---
 
+## Auth config lifecycle (PR2.8a-fix1 update)
+
+> **Status as of PR2.8a-fix1:** managed-auth configs are **lazily auto-created on first Connect click**. No operator action required for any toolkit Composio offers a managed-auth scheme for. The operator tracker below covers only the residual set where managed auth isn't available.
+
+The route handler at `src/app/api/tools/[workspaceId]/oauth/initiate/route.ts` calls `ensureAuthConfigForToolkit(composio, toolkitSlug)` (in `src/lib/composio-auth-config.ts`) before invoking `composio.connectedAccounts.initiate(...)`. The helper:
+
+1. Fetches `composio.toolkits.get(toolkitSlug)` and inspects `composioManagedAuthSchemes`.
+   - **Empty array** → throws `ComposioToolkitRequiresCustomOAuthError`. Route returns HTTP 422 with code `COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH`. Wizard renders a yellow "Setup in progress" warning, not a red error. The 8 RED-2 toolkits in the operator tracker below all land here.
+   - **Non-empty** → continue.
+2. Lists existing auth configs (`composio.authConfigs.list({ toolkit, limit: 25 })`). If one exists, returns its id immediately (idempotent / GREEN-state path — covers Gmail and Google Drive today and every toolkit after first Connect).
+3. Acquires a Postgres session-scope advisory lock keyed on `hashtext(toolkitSlug)` via `pg_try_advisory_lock`, inside a `prisma.$transaction(async tx => …)` (the transaction pins the connection across the pgbouncer pool — without the pin, the lock would land on a different backend than the unlock and leak). The lock is **session-scope, not transaction-scope**, and explicitly released with `pg_advisory_unlock` in a `finally` block.
+4. With the lock held, re-lists auth configs (closes the race window where another caller created + released between step 2 and step 3). If now-existing, return that id.
+5. Calls `composio.authConfigs.create(toolkitSlug, { type: "use_composio_managed_auth", name: \`${toolkit.name} (Claws)\` })`. On success returns the new id.
+6. **Defense-in-depth catch:** if step 5 throws with the captured RED error shape (`err.error.error.slug === "Auth_Config_DefaultAuthConfigNotFound"` or `code === 306` — verified verbatim against staging Composio in `scripts/pr2.8a-composio-authconfig-probe.mjs --negative-path`), translate to `ComposioToolkitRequiresCustomOAuthError`. Covers stale-toolkit-metadata races; the structural pre-check at step 1 catches the common case.
+7. Other create errors are re-thrown as-is so the route surfaces them as 500 with the original message preserved (transient quota / 502 / network — masking these as RequiresCustomOAuth would hide a fixable issue).
+
+**Contention semantics.** If `pg_try_advisory_lock` returns false (another caller is in step 5 right now), the helper sleeps 500 ms, re-lists once, and either returns the other caller's freshly-created id or throws an "in flight" error so the user retries. This trades worst-case latency (500 ms wait + a list call) for exactly-once create semantics across function instances.
+
+**Logging.** Every helper invocation emits one `composio.authconfig.ensure` log event with `{ toolkitSlug, action: "noop" | "created" | "requires_custom_oauth" | "failed", durationMs, errorCode? }`. Axiom dataset routing is the same as every other `log.info` in this codebase (see `src/lib/logger.ts`).
+
+**Replaces:** `resolveAuthConfigIdForToolkit` (deleted in PR2.8a-fix1). The old function checked `toolkit.authConfigDetails?.length` as its pre-check, which is non-empty for RED-state toolkits (they expose API_KEY/OAUTH2 schemes the operator could fill, just not managed-auth) — that's why the operator's typefully-Connect attempt reached the create call and surfaced a 500 with our generic "Could not create auth config" string. The fix is the field swap to `composioManagedAuthSchemes`.
+
+---
+
+## Custom OAuth toolkits (operator tracker)
+
+> **PR2.9 update:** of the 8 toolkits originally on this tracker, 6 are now BYOK-shipping (no operator action required for launch). Only **twitter** and **docusign** remain truly blocked on custom OAuth registration. The other 6 toolkits' OAuth registration is now an **optional future upgrade**, not a prerequisite.
+
+### Genuinely blocking (`comingSoon: true` in catalog)
+
+| Slug | Status | Auth scheme(s) on Composio | Operator action required for launch |
+|---|---|---|---|
+| `twitter` | Pending | OAUTH2 only (requires `client_id`, `client_secret`, `generic_id`) | Register OAuth app at Twitter Developer; create `use_custom_auth` config in Composio dashboard |
+| `docusign` | Pending | OAUTH2 only (requires `client_id`, `client_secret`, `full`) | Register at DocuSign Developer; create `use_custom_auth` config in Composio dashboard |
+
+### Optional OAuth upgrade (not blocking — BYOK is the shipping path)
+
+These 6 toolkits ship via BYOK (the user supplies their own API key). Custom OAuth registration would let us offer a popup-based "Connect with OAuth" flow as an *additional* path, but is not required.
+
+| Slug | BYOK status | Optional OAuth upgrade |
+|---|---|---|
+| `shopify` | Shipping via BYOK (PR2.9) | OAuth at Shopify Partners (`client_id`, `client_secret`) — optional |
+| `lever` | Shipping via BYOK (PR2.9) | OAuth at Lever (`client_id`, `client_secret`, `full`, custom URLs) — optional |
+| `metaads` | Shipping via BYOK (PR2.9) | OAuth at Meta for Developers (`client_id`, `client_secret`) — optional |
+| `pipedrive` | Shipping via BYOK (PR2.9) | OAuth at Pipedrive Marketplace (`client_id`, `client_secret`) — optional |
+| `webflow` | Shipping via BYOK (PR2.9) | OAuth at Webflow (`client_id`, `client_secret`) — optional |
+| `follow_up_boss` | Shipping via BYOK (PR2.9) | OAuth at Follow Up Boss (`client_id`, `client_secret`) — optional |
+
+### Verifying state
+
+`COMPOSIO_API_KEY=<key> node scripts/pr2.8a-composio-authconfig-probe.mjs --byok-eligibility` dumps each toolkit's `composioManagedAuthSchemes` + `authConfigDetails.modes` + BYOK-eligibility verdict. Re-run any time a Composio-side change is suspected (e.g. metaads adds managed-OAuth, etc.).
+
+### As each tracker entry resolves
+
+1. Re-run `--byok-eligibility` (or the full probe) — verify the toolkit now has managed-OAuth or a registered custom config.
+2. Update `src/data/tool-catalog.ts`: remove `comingSoon: true` and `comingSoonReason`.
+3. If the toolkit is referenced as `required: true` in any seed template (e.g. `shopify` in money-making-templates was flipped `required: false` in PR2.8a-fix1, restored in PR2.9), confirm the template's `required` flag is correct for the new state.
+4. Update this table's status column accordingly.
+
+---
+
+## API_KEY toolkits via Composio (BYOK)
+
+> **Status:** shipping as of PR2.9. **Resolves [#70](https://github.com/Laxcorp-Research/claws/issues/70).** The user supplies their own API key for the toolkit; Composio brokers the credential and the runtime calls `composio.tools.execute` against the resulting connection identically to OAuth-managed connections.
+
+**Toolkit-classifier function** `classifyToolkitAuthMode(toolkit)` in `src/lib/composio-auth-config.ts` returns one of three modes from `composio.toolkits.get(slug)` metadata:
+
+| Mode | Trigger | Wizard flow |
+|---|---|---|
+| `managed-oauth` | `composioManagedAuthSchemes` non-empty | Existing popup-and-poll OAuth (`useOAuthConnection`) |
+| `byok-api-key` | managed empty AND `authConfigDetails` contains `API_KEY` mode | Inline credentials form via `CredentialsModal`; POST to `/api/tools/[wsId]/byok/submit` |
+| `requires-custom-oauth` | managed empty AND no `API_KEY` mode | 422 + `comingSoon: true` until operator registers a custom OAuth app in the Composio dashboard |
+
+### Lifecycle for BYOK toolkits
+
+1. User clicks **Connect** on a BYOK-mode toolkit row.
+2. `POST /api/tools/[wsId]/oauth/initiate` calls `fetchToolkitWithAuthMode` → classifies the toolkit → returns:
+   ```json
+   { "success": true, "data": { "mode": "byok", "apiKeyForm": { "toolSlug", "displayName", "fields", "helpUrl" } } }
+   ```
+   No auth-config or connection-object is created at this stage. **`composio.authConfigs.create` and `composio.connectedAccounts.initiate` are NOT called yet.**
+3. `useOAuthConnection` detects `mode === "byok"`, fires `onApiKeyFormRequired(toolSlug, apiKeyForm)`, and exits. The hook is uninvolved beyond detection.
+4. Wizard's callback opens `CredentialsModal` with the supplied fields.
+5. User submits → `POST /api/tools/[wsId]/byok/submit { toolSlug, apiKey }`.
+6. Submit route:
+   - Re-classifies toolkit (defense: rejects keys POSTed for managed-OAuth slugs with `BYOK_NOT_SUPPORTED_FOR_TOOLKIT`).
+   - Calls `createBYOKConnectedAccount(composio, composioUserId, toolkitSlug, apiKey)`.
+     - Inside: `ensureBYOKAuthConfig` finds-or-creates a project-level `use_custom_auth + API_KEY` config with placeholder credentials (lazy + advisory-locked, same pattern as `ensureAuthConfigForToolkit`).
+     - Then: `composio.connectedAccounts.initiate(userId, configId, { config: AuthScheme.APIKey({ api_key: userApiKey }) })`.
+     - Composio returns `status: "ACTIVE"` immediately. No redirect, no polling.
+   - Upserts `ToolConnection` with `status: "CONNECTED"`, `composioConnectionId`, `composioEntityId`, `encryptedCredentials: null`.
+7. Wizard refreshes; row transitions to CONNECTED.
+
+### Security guarantees
+
+- **User API keys never logged.** Enforced at three layers:
+  - `createBYOKConnectedAccount` (helper) only logs `toolkitSlug`, `composioUserId`, `durationMs`. Empty/blank keys rejected before reaching Composio.
+  - `/byok/submit` route extracts only the error `message` for log lines.
+  - Mutation test in `src/lib/__tests__/composio-auth-config.test.ts` ("user-supplied API key is NEVER logged") + the route-level equivalent test stringify all captured log calls and assert the literal key never appears.
+- **`encryptedCredentials: null`** on BYOK `ToolConnection` rows. Composio holds the user's key; our DB only holds `composioConnectionId` + `composioEntityId`. Same posture as every other `OAUTH_COMPOSIO` row.
+- **Project-level placeholder credential** at config creation is intentionally human-readable (`placeholder_user_keys_live_at_connection_level`). Visible in Composio dashboard so an operator inspecting auth configs sees the design intent without digging through code.
+- **`encryptedCredentials` is NOT used** by BYOK; per-user keys live at the Composio connection level via `AuthScheme.APIKey({ api_key })`.
+
+### SDK shape (verified)
+
+```ts
+// 1. (per-project, lazy on first BYOK Connect) — ensureBYOKAuthConfig
+await composio.authConfigs.create(toolkitSlug, {
+  type: "use_custom_auth",
+  authScheme: "API_KEY",
+  name: `${toolkit.name} (Claws BYOK)`,
+  credentials: { apiKey: PLACEHOLDER },
+})
+// Returns: { id, authScheme: "API_KEY", isComposioManaged: false, toolkit }
+
+// 2. (per-user, every BYOK Connect) — createBYOKConnectedAccount
+await composio.connectedAccounts.initiate(
+  composioUserId,
+  authConfigId,
+  { config: AuthScheme.APIKey({ api_key: userApiKey }) },  // capital APIKey
+)
+// Returns: { id: "ca_...", status: "ACTIVE", redirectUrl: null }
+```
+
+End-to-end verified by `scripts/pr2.8a-composio-authconfig-probe.mjs --byok-probe typefully` against staging Composio.
+
+### Catalog impact (PR2.9)
+
+9 toolkits dropped `comingSoon: true` thanks to BYOK:
+
+- **API_KEY-only (3):** typefully, jotform, toggl
+- **Dual-mode OAUTH2 + API_KEY (6):** shopify, lever, metaads, pipedrive, webflow, follow_up_boss
+
+The 6 dual-mode toolkits ship via BYOK as the primary integration. Custom OAuth registration (which would let us offer a popup-based flow) remains an **optional future upgrade**, not a launch prerequisite. See "Custom OAuth toolkits" tracker below.
+
+2 toolkits remain `comingSoon: true` (no API_KEY mode, OAuth-only):
+
+- **twitter** — operator registering with Twitter Developer
+- **docusign** — operator registering with DocuSign Developer
+
+---
+
 ## Implications for downstream PRs
 
 ### PR #3 (tool connection fix — internal API-key skills)

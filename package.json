@@ -69,6 +69,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "audit-ci": "^7.1.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/dockerode": "^4.0.1",
@@ -95,6 +96,7 @@
     "seed": "npx tsx prisma/seed.ts"
   },
   "overrides": {
-    "protobufjs": "^7.5.5"
+    "protobufjs": "^7.5.5",
+    "fast-uri": "^3.1.2"
   }
 }

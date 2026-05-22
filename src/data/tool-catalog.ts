@@ -1,6 +1,32 @@
 export type ToolConnectionType = "API_KEY" | "OAUTH_COMPOSIO"
 
 /**
+ * PR2.9-fix1: how an OAUTH_COMPOSIO tool actually authenticates with
+ * Composio. The wizard + Browse modal use this to render the correct
+ * button label at first paint, without waiting for a server round-trip.
+ *
+ *   - `managed-oauth`         Composio holds OAuth credentials and runs
+ *                              the consent flow. Button: "Connect with OAuth".
+ *   - `byok-api-key`          User supplies their own API key; Composio
+ *                              brokers (PR2.9). Button: "Enter API key".
+ *   - `custom-oauth-required` Composio offers no managed scheme AND no
+ *                              API_KEY mode (twitter, docusign). Operator
+ *                              must register a custom OAuth app in the
+ *                              Composio dashboard. Catalog entry stays
+ *                              `comingSoon: true` until that's done; no
+ *                              connect button rendered.
+ *
+ * Server-side classification (`classifyToolkitAuthMode` in
+ * src/lib/composio-auth-config.ts) reads Composio metadata at request
+ * time and is the runtime source of truth for the initiate route. The
+ * catalog `authMode` field mirrors that classification statically so
+ * client renders don't need a metadata round-trip per tool — kept in
+ * sync via `scripts/pr2.8a-composio-authconfig-probe.mjs --byok-eligibility`
+ * and the `tool-catalog-slug-drift.test.ts` invariants.
+ */
+export type ToolAuthMode = "managed-oauth" | "byok-api-key" | "custom-oauth-required"
+
+/**
  * One credential input for a tool. `envVar` is the env-var name OpenClaw's
  * skill will read at runtime (`$TAVILY_API_KEY`, `$BINANCE_API_SECRET`, …).
  * Single-credential tools have one field with `primary: true`; multi-cred
@@ -32,6 +58,34 @@ export interface ToolDefinition {
   composioToolkitId?: string
   description?: string
   isAIProvider?: boolean
+  /**
+   * Required for `connectionType: "OAUTH_COMPOSIO"` entries; absent for
+   * direct API_KEY tools. Drives the connect-button label at render time.
+   * Tested by `tool-catalog-slug-drift.test.ts`: every OAUTH_COMPOSIO
+   * entry must declare this.
+   */
+  authMode?: ToolAuthMode
+  /**
+   * Reserved catalog slot for a tool whose integration isn't built yet
+   * (PR2.8c direct integrations + pending partner-program approvals).
+   * Default false. True entries are filtered out of the wizard render
+   * list by the resolver at setup time, but remain valid slug references
+   * so seed data + oneOf-style `alternatives` arrays can name them.
+   */
+  comingSoon?: boolean
+  /**
+   * Optional operator-facing reason shown in the "coming soon" UI once
+   * PR2.8b lands its badge rendering. Ignored if `comingSoon` is false.
+   */
+  comingSoonReason?: string
+  /**
+   * True for entries that exist only to preserve historical
+   * `ToolConnection` rows under a legacy slug (see `youtube-data-api`
+   * after PR2.8a — replaced by `youtube` OAUTH_COMPOSIO). Templates
+   * should not reference deprecated slugs; the slug-drift test flags
+   * any references. Not rendered in the catalog browse UI.
+   */
+  deprecated?: boolean
   /**
    * Credential input fields. API_KEY tools declare one entry per env var the
    * container skill needs (single-cred = 1 entry; multi-cred = 2-3 entries).
@@ -108,7 +162,18 @@ export const API_KEY_TOOLS: ToolDefinition[] = [
       { envVar: "COINBASE_API_PASSPHRASE", label: "API Passphrase", required: true, primary: false },
     ],
   },
-  { slug: "youtube-data-api", name: "YouTube Data API", connectionType: "API_KEY", category: "SOCIAL", helpUrl: "https://console.cloud.google.com/apis/credentials", keyPlaceholder: "AIza...", credentialFields: singleApiKey("YOUTUBE_DATA_API_KEY", { placeholder: "AIza..." }) },
+  /**
+   * @deprecated PR2.8a. Use `youtube` (OAUTH_COMPOSIO) instead — it wraps
+   * the same YouTube Data API v3 scopes but authenticates via managed
+   * OAuth rather than a raw API key, which eliminates the Google Cloud
+   * project + quota management burden from the user.
+   *
+   * Kept in the catalog for historical `ToolConnection` rows tied to this
+   * slug. Templates must not reference it; `template-tool-references.test.ts`
+   * enforces this. Removable in a later PR once prod has zero connections
+   * on this slug (today's prod has none per the PR2.8a state 1 probe).
+   */
+  { slug: "youtube-data-api", name: "YouTube Data API", connectionType: "API_KEY", category: "SOCIAL", helpUrl: "https://console.cloud.google.com/apis/credentials", keyPlaceholder: "AIza...", deprecated: true, credentialFields: singleApiKey("YOUTUBE_DATA_API_KEY", { placeholder: "AIza..." }) },
   { slug: "twitter-api", name: "Twitter/X API", connectionType: "API_KEY", category: "SOCIAL", helpUrl: "https://developer.x.com/en/portal/dashboard", description: "Social media posting and monitoring", credentialFields: singleApiKey("TWITTER_API_KEY", { label: "Bearer Token" }) },
   { slug: "google-search-console", name: "Google Search Console", connectionType: "API_KEY", category: "SEO", helpUrl: "https://console.cloud.google.com/apis/credentials", credentialFields: singleApiKey("GSC_API_KEY") },
   { slug: "ahrefs", name: "Ahrefs", connectionType: "API_KEY", category: "SEO", helpUrl: "https://ahrefs.com/api", credentialFields: singleApiKey("AHREFS_API_KEY") },
@@ -184,26 +249,255 @@ export const API_KEY_TOOLS: ToolDefinition[] = [
 //     brand name the user knows); composioToolkitId fixed to `kit`
 //     (Composio follows the 2024 vendor rebrand to "Kit").
 export const OAUTH_TOOLS: ToolDefinition[] = [
-  { slug: "hubspot", name: "HubSpot", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "hubspot", description: "CRM pipeline management", credentialFields: [] },
-  { slug: "salesforce", name: "Salesforce", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "salesforce", description: "CRM data access (OAuth via Composio)", credentialFields: [] },
-  { slug: "gmail", name: "Gmail", connectionType: "OAUTH_COMPOSIO", category: "EMAIL", composioToolkitId: "gmail", description: "Email sending and monitoring", credentialFields: [] },
-  { slug: "google_calendar", name: "Google Calendar", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "googlecalendar", description: "Calendar events", credentialFields: [] },
-  { slug: "google-analytics", name: "Google Analytics", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "google_analytics", description: "Analytics data", credentialFields: [] },
-  { slug: "slack", name: "Slack", connectionType: "OAUTH_COMPOSIO", category: "MESSAGING", composioToolkitId: "slack", description: "Team messaging", credentialFields: [] },
-  { slug: "github", name: "GitHub", connectionType: "OAUTH_COMPOSIO", category: "DEVELOPMENT", composioToolkitId: "github", description: "Repos and issues", credentialFields: [] },
-  { slug: "linear", name: "Linear", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "linear", description: "Issue tracking", credentialFields: [] },
-  { slug: "asana", name: "Asana", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "asana", description: "Project management", credentialFields: [] },
-  { slug: "clickup", name: "ClickUp", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "clickup", description: "Project management", credentialFields: [] },
-  { slug: "notion", name: "Notion", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "notion", description: "Docs and wikis", credentialFields: [] },
-  { slug: "linkedin", name: "LinkedIn", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "linkedin", description: "Professional networking", credentialFields: [] },
-  { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", description: "Social media", credentialFields: [] },
-  { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "kit", description: "Email marketing (Composio slug is `kit` post-2024 rebrand)", credentialFields: [] },
-  { slug: "shopify", name: "Shopify", connectionType: "OAUTH_COMPOSIO", category: "ECOMMERCE", composioToolkitId: "shopify", description: "E-commerce platform", credentialFields: [] },
-  { slug: "jira", name: "Jira", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "jira", description: "Issue tracking", credentialFields: [] },
-  { slug: "calendly", name: "Calendly", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "calendly", description: "Scheduling", credentialFields: [] },
+  // PR2.9-fix1: `authMode` field added on every OAUTH_COMPOSIO entry.
+  // Values sourced from a full audit run of
+  // `scripts/pr2.8a-composio-authconfig-probe.mjs --byok-eligibility`
+  // against staging Composio (2026-05-21). See PR2.9-fix1 description for
+  // the audit table. Re-run the probe + update this field whenever
+  // Composio changes a toolkit's auth posture (e.g., adds managed-OAuth
+  // to a toolkit that was previously BYOK-only).
+  //
+  // Dual-mode managed-OAuth toolkits (hubspot, linear, clickup, notion,
+  // convertkit/kit, jira) ALSO expose API_KEY on Composio. We classify
+  // them as `managed-oauth` because that's the user-preferred flow
+  // (no token to manage). "BYOK fallback for OAuth toolkits" is tracked
+  // at GH#77.
+  { slug: "hubspot", name: "HubSpot", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "hubspot", authMode: "managed-oauth", description: "CRM pipeline management", credentialFields: [] },
+  { slug: "salesforce", name: "Salesforce", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "salesforce", authMode: "managed-oauth", description: "CRM data access (OAuth via Composio)", credentialFields: [] },
+  { slug: "gmail", name: "Gmail", connectionType: "OAUTH_COMPOSIO", category: "EMAIL", composioToolkitId: "gmail", authMode: "managed-oauth", description: "Email sending and monitoring", credentialFields: [] },
+  { slug: "google_calendar", name: "Google Calendar", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "googlecalendar", authMode: "managed-oauth", description: "Calendar events", credentialFields: [] },
+  { slug: "google-analytics", name: "Google Analytics", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "google_analytics", authMode: "managed-oauth", description: "Analytics data", credentialFields: [] },
+  { slug: "slack", name: "Slack", connectionType: "OAUTH_COMPOSIO", category: "MESSAGING", composioToolkitId: "slack", authMode: "managed-oauth", description: "Team messaging", credentialFields: [] },
+  { slug: "github", name: "GitHub", connectionType: "OAUTH_COMPOSIO", category: "DEVELOPMENT", composioToolkitId: "github", authMode: "managed-oauth", description: "Repos and issues", credentialFields: [] },
+  { slug: "linear", name: "Linear", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "linear", authMode: "managed-oauth", description: "Issue tracking", credentialFields: [] },
+  { slug: "asana", name: "Asana", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "asana", authMode: "managed-oauth", description: "Project management", credentialFields: [] },
+  { slug: "clickup", name: "ClickUp", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "clickup", authMode: "managed-oauth", description: "Project management", credentialFields: [] },
+  { slug: "notion", name: "Notion", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "notion", authMode: "managed-oauth", description: "Docs and wikis", credentialFields: [] },
+  { slug: "linkedin", name: "LinkedIn", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "linkedin", authMode: "managed-oauth", description: "Professional networking", credentialFields: [] },
+  // OAuth-only on Composio (no API_KEY mode, no managed-OAuth available) —
+  // operator must register a custom OAuth app with Twitter/X Developer
+  // before this toolkit becomes connectable. PR2.9 BYOK doesn't unblock
+  // it because there's no API_KEY mode to broker. Tracked in
+  // docs/COMPOSIO_RUNTIME_CONTRACT.md "Custom OAuth toolkits (operator tracker)".
+  { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", authMode: "custom-oauth-required", description: "Social media", comingSoon: true, comingSoonReason: "OAuth-only on Composio; operator registering with Twitter Developer this week", credentialFields: [] },
+  { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "kit", authMode: "managed-oauth", description: "Email marketing (Composio slug is `kit` post-2024 rebrand)", credentialFields: [] },
+  { slug: "shopify", name: "Shopify", connectionType: "OAUTH_COMPOSIO", category: "ECOMMERCE", composioToolkitId: "shopify", authMode: "byok-api-key", description: "E-commerce platform", credentialFields: [] },
+  { slug: "jira", name: "Jira", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "jira", authMode: "managed-oauth", description: "Issue tracking", credentialFields: [] },
+  { slug: "calendly", name: "Calendly", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "calendly", authMode: "managed-oauth", description: "Scheduling", credentialFields: [] },
+  // ─── PR2.8a additions (19) ───
+  // Every composioToolkitId verified against tmp/composio-toolkits.txt at audit
+  // time (Composio API snapshot 2026-04-29; 1030 toolkits dumped).
+  //
+  // PR2.9 update: auth-mode routing now classifies each entry at runtime
+  // via `classifyToolkitAuthMode(composio.toolkits.get(slug))`:
+  //   - managed-oauth  → Composio's own OAuth credentials (Gmail, Slack,
+  //                       Notion, Google Drive, etc.). Wizard runs the
+  //                       popup-and-poll flow.
+  //   - byok-api-key   → BYOK: user supplies their own API key, Composio
+  //                       brokers. Wizard shows an inline credentials
+  //                       form, no popup. Covers typefully, jotform,
+  //                       toggl (API_KEY-only on Composio) AND the dual-
+  //                       mode toolkits we ship via API_KEY for now
+  //                       (shopify, lever, metaads, pipedrive, webflow,
+  //                       follow_up_boss). Custom OAuth registration
+  //                       remains an OPTIONAL future upgrade for these
+  //                       six, not a launch prerequisite.
+  //   - requires-custom-oauth → no API_KEY mode + no managed scheme.
+  //                       Operator must register a custom OAuth app in
+  //                       Composio dashboard. Today: twitter, docusign.
+  //                       Catalog entry stays `comingSoon: true`.
+  //
+  // All entries below remain `connectionType: "OAUTH_COMPOSIO"` because
+  // Composio still brokers the credential at execute time regardless of
+  // the underlying auth scheme — the `_COMPOSIO` suffix names the
+  // broker, not the protocol. The runtime route (`oauth/initiate`)
+  // dispatches managed-oauth vs byok-api-key via the classifier.
+  //
+  // Categories chosen from TOOL_CATEGORIES; where no perfect category exists
+  // (ads, time tracking, forms) we picked the closest existing bucket rather
+  // than invent new categories. PR2.8b revisit tracked in
+  // docs/PR2.8_AUDIT_DECISIONS.md.
+  { slug: "typefully", name: "Typefully", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "typefully", authMode: "byok-api-key", description: "Twitter/X content scheduling", credentialFields: [] },
+  // OAuth-only on Composio (no API_KEY mode). PR2.9 BYOK can't unblock —
+  // operator must register a custom OAuth app at DocuSign Developer.
+  { slug: "docusign", name: "DocuSign", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "docusign", authMode: "custom-oauth-required", description: "E-signature and document workflows", comingSoon: true, comingSoonReason: "OAuth-only on Composio; operator registering custom app with DocuSign Developer", credentialFields: [] },
+  { slug: "follow_up_boss", name: "Follow Up Boss", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "follow_up_boss", authMode: "byok-api-key", description: "Real estate CRM", credentialFields: [] },
+  { slug: "freshbooks", name: "FreshBooks", connectionType: "OAUTH_COMPOSIO", category: "PAYMENTS", composioToolkitId: "freshbooks", authMode: "managed-oauth", description: "Small-business accounting and invoicing", credentialFields: [] },
+  { slug: "gitlab", name: "GitLab", connectionType: "OAUTH_COMPOSIO", category: "DEVELOPMENT", composioToolkitId: "gitlab", authMode: "managed-oauth", description: "Repos, issues, and CI", credentialFields: [] },
+  { slug: "googleads", name: "Google Ads", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "googleads", authMode: "managed-oauth", description: "Google Ads campaigns and reporting", credentialFields: [] },
+  { slug: "googledocs", name: "Google Docs", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "googledocs", authMode: "managed-oauth", description: "Google Docs read/write", credentialFields: [] },
+  { slug: "googledrive", name: "Google Drive", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "googledrive", authMode: "managed-oauth", description: "Google Drive file storage", credentialFields: [] },
+  { slug: "harvest", name: "Harvest", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "harvest", authMode: "managed-oauth", description: "Time tracking and invoicing", credentialFields: [] },
+  { slug: "jotform", name: "Jotform", connectionType: "OAUTH_COMPOSIO", category: "LEAD_DATABASE", composioToolkitId: "jotform", authMode: "byok-api-key", description: "Form builder and submissions", credentialFields: [] },
+  { slug: "lever", name: "Lever", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "lever", authMode: "byok-api-key", description: "Recruiting ATS", credentialFields: [] },
+  { slug: "metaads", name: "Meta Ads", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "metaads", authMode: "byok-api-key", description: "Meta (Facebook + Instagram) ads campaigns and reporting", credentialFields: [] },
+  { slug: "outlook", name: "Outlook", connectionType: "OAUTH_COMPOSIO", category: "EMAIL", composioToolkitId: "outlook", authMode: "managed-oauth", description: "Microsoft Outlook email", credentialFields: [] },
+  { slug: "pipedrive", name: "Pipedrive", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "pipedrive", authMode: "byok-api-key", description: "Sales CRM", credentialFields: [] },
+  { slug: "quickbooks", name: "QuickBooks", connectionType: "OAUTH_COMPOSIO", category: "PAYMENTS", composioToolkitId: "quickbooks", authMode: "managed-oauth", description: "Small-business accounting", credentialFields: [] },
+  { slug: "toggl", name: "Toggl", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "toggl", authMode: "byok-api-key", description: "Time tracking", credentialFields: [] },
+  { slug: "typeform", name: "Typeform", connectionType: "OAUTH_COMPOSIO", category: "LEAD_DATABASE", composioToolkitId: "typeform", authMode: "managed-oauth", description: "Form builder and responses", credentialFields: [] },
+  { slug: "webflow", name: "Webflow", connectionType: "OAUTH_COMPOSIO", category: "CMS", composioToolkitId: "webflow", authMode: "byok-api-key", description: "Visual web publishing", credentialFields: [] },
+  { slug: "youtube", name: "YouTube", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "youtube", authMode: "managed-oauth", description: "YouTube channel management (replaces youtube-data-api API_KEY path)", credentialFields: [] },
 ]
 
-export const ALL_TOOLS: ToolDefinition[] = [...API_KEY_TOOLS, ...OAUTH_TOOLS]
+// PR2.8a Task 3: placeholder catalog entries for direct integrations
+// arriving in PR2.8c + three pending partner-program entries. Every row has
+// `comingSoon: true` — the wizard resolver filters these from render. Slugs
+// are reserved here so seed data and `alternatives` arrays can reference
+// them now; each entry graduates out of this array into API_KEY_TOOLS or
+// OAUTH_TOOLS as its integration ships.
+//
+// `connectionType: "API_KEY"` is a placeholder. Several of these will land
+// as OAuth when PR2.8c builds them (Clio, ServiceTitan, etc.), which
+// will either require adding a third connectionType member or implementing
+// the OAuth-direct flow through the API_KEY token-based path. That's a
+// PR2.8c decision; keeping connectionType uniform here prevents the
+// wizard from accidentally routing placeholders to the OAuth path.
+//
+// `credentialFields: []` is intentional — no fields are wired yet.
+// `comingSoonReason` surfaces in the PR2.8b "Coming Soon" badge UI.
+export const COMING_SOON_TOOLS: ToolDefinition[] = [
+  // Direct integrations shipping in PR2.8c (16)
+  { slug: "buffer", name: "Buffer", connectionType: "API_KEY", category: "SOCIAL", description: "Social media scheduling across platforms", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "wordpress", name: "WordPress", connectionType: "API_KEY", category: "CMS", description: "Self-hosted WordPress via URL + application password", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "amazon_sp_api", name: "Amazon SP-API", connectionType: "API_KEY", category: "ECOMMERCE", description: "Amazon Selling Partner API (Login with Amazon OAuth)", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "greenhouse", name: "Greenhouse", connectionType: "API_KEY", category: "CRM", description: "Recruiting ATS", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "clio", name: "Clio", connectionType: "API_KEY", category: "CRM", description: "Legal practice management", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "mycase", name: "MyCase", connectionType: "API_KEY", category: "CRM", description: "Legal practice management", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "servicetitan", name: "ServiceTitan", connectionType: "API_KEY", category: "CRM", description: "Field service dispatch and invoicing", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "housecall_pro", name: "Housecall Pro", connectionType: "API_KEY", category: "CRM", description: "Home-services dispatch", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "drchrono", name: "DrChrono", connectionType: "API_KEY", category: "CRM", description: "Medical practice management and EHR", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "google_business_profile", name: "Google Business Profile", connectionType: "API_KEY", category: "ANALYTICS", description: "Local business listings + reviews", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "bullhorn", name: "Bullhorn", connectionType: "API_KEY", category: "CRM", description: "Staffing and recruiting ATS", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "snyk", name: "Snyk", connectionType: "API_KEY", category: "DEVELOPMENT", description: "Developer-first security scanning", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "keepa", name: "Keepa", connectionType: "API_KEY", category: "ECOMMERCE", description: "Amazon price and sales-rank history", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "sparkloop", name: "SparkLoop", connectionType: "API_KEY", category: "NEWSLETTER", description: "Newsletter cross-promotion and paid referrals", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "kraken", name: "Kraken", connectionType: "API_KEY", category: "TRADING", description: "Cryptocurrency exchange (API key + secret)", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  { slug: "apple_calendar", name: "Apple Calendar (CalDAV)", connectionType: "API_KEY", category: "CALENDAR", description: "Apple Calendar via CalDAV (URL + username + app password)", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  // Pending partner-program approvals (3)
+  { slug: "athena_health", name: "Athenahealth", connectionType: "API_KEY", category: "CRM", description: "Medical practice management and EHR", comingSoon: true, comingSoonReason: "Pending API access approval", credentialFields: [] },
+  { slug: "upwork", name: "Upwork", connectionType: "API_KEY", category: "LEAD_DATABASE", description: "Freelance marketplace", comingSoon: true, comingSoonReason: "Pending partner program approval", credentialFields: [] },
+  { slug: "zillow", name: "Zillow", connectionType: "API_KEY", category: "CRM", description: "Real estate listings and leads", comingSoon: true, comingSoonReason: "Pending partner program approval", credentialFields: [] },
+  // Orphan resolution (2) — previously referenced in seed alternatives without
+  // a catalog backing; upgraded to placeholders here per PR2.8a decision.
+  { slug: "kalshi", name: "Kalshi", connectionType: "API_KEY", category: "TRADING", description: "US-regulated event prediction market", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c (US-regulated prediction market alongside Polymarket)", credentialFields: [] },
+  { slug: "smartlead", name: "Smartlead", connectionType: "API_KEY", category: "EMAIL", description: "Cold email outreach", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+]
+
+export const ALL_TOOLS: ToolDefinition[] = [...API_KEY_TOOLS, ...OAUTH_TOOLS, ...COMING_SOON_TOOLS]
+
+/**
+ * Hand-maintained literal-union list of every slug in `ALL_TOOLS`. Kept in
+ * sync with `API_KEY_TOOLS` + `OAUTH_TOOLS` by the
+ * `tool-catalog-slug-drift.test.ts` contract, which asserts
+ * `ALL_TOOLS.map(t => t.slug).sort()` equals `[...ALL_TOOL_SLUGS].sort()`.
+ *
+ * Why hand-maintained instead of derived: TypeScript can't produce a literal
+ * union from `ToolDefinition[]` (the element type erases `slug` to `string`).
+ * Deriving from `as const satisfies readonly ToolDefinition[]` on the
+ * constituent arrays would work but forces every call site to accept
+ * `readonly ToolDefinition[]`. The hand-list + drift test is a smaller blast
+ * radius.
+ */
+export const ALL_TOOL_SLUGS = [
+  // API_KEY_TOOLS (29) — keep ordering aligned with the declaration above
+  "anthropic_api",
+  "tavily",
+  "serp_api",
+  "exa_search",
+  "brave_search",
+  "apollo",
+  "clay",
+  "instantly",
+  "sendgrid",
+  "mailgun",
+  "cal_com",
+  "stripe_api",
+  "polymarket",
+  "binance",
+  "alpaca",
+  "coinbase",
+  "youtube-data-api",
+  "twitter-api",
+  "google-search-console",
+  "ahrefs",
+  "semrush",
+  "twilio",
+  "posthog",
+  "mixpanel",
+  "elevenlabs",
+  "stabilityai",
+  "vidiq",
+  "salesforce-api",
+  "beehiiv-api",
+  // OAUTH_TOOLS (17)
+  "hubspot",
+  "salesforce",
+  "gmail",
+  "google_calendar",
+  "google-analytics",
+  "slack",
+  "github",
+  "linear",
+  "asana",
+  "clickup",
+  "notion",
+  "linkedin",
+  "twitter",
+  "convertkit",
+  "shopify",
+  "jira",
+  "calendly",
+  // PR2.8a Composio additions (19)
+  "typefully",
+  "docusign",
+  "follow_up_boss",
+  "freshbooks",
+  "gitlab",
+  "googleads",
+  "googledocs",
+  "googledrive",
+  "harvest",
+  "jotform",
+  "lever",
+  "metaads",
+  "outlook",
+  "pipedrive",
+  "quickbooks",
+  "toggl",
+  "typeform",
+  "webflow",
+  "youtube",
+  // PR2.8a Task 3 placeholder additions (21)
+  "buffer",
+  "wordpress",
+  "amazon_sp_api",
+  "greenhouse",
+  "clio",
+  "mycase",
+  "servicetitan",
+  "housecall_pro",
+  "drchrono",
+  "google_business_profile",
+  "bullhorn",
+  "snyk",
+  "keepa",
+  "sparkloop",
+  "kraken",
+  "apple_calendar",
+  "athena_health",
+  "upwork",
+  "zillow",
+  "kalshi",
+  "smartlead",
+] as const
+
+/**
+ * Literal union of every catalog slug. Use this in template references,
+ * seed data, and API request validators so new slugs get compile-time
+ * coverage end-to-end.
+ */
+export type ToolSlug = (typeof ALL_TOOL_SLUGS)[number]
 
 export const TOOL_CATEGORIES = [
   "All", "AI", "CRM", "EMAIL", "SEARCH", "SOCIAL", "ANALYTICS", "CALENDAR",
@@ -215,38 +509,14 @@ export function getToolBySlug(slug: string): ToolDefinition | undefined {
   return ALL_TOOLS.find((t) => t.slug === slug)
 }
 
-/**
- * Display-name aliases for template strings that don't resolve via substring.
- * Manually curated; validated by tool-catalog-aliases.test.ts which asserts
- * every target is a real catalog slug.
- *
- * Why this exists: claw-templates.ts declares required/recommended tools by
- * human display names like "Claude API" and "Twitter API". The catalog's
- * canonical names are "Anthropic (Claude)" and "Twitter/X API" respectively.
- * Bidirectional substring matching fails for both — the strings don't share
- * any common substring longer than partial-word. Without this alias, every
- * setup wizard for every template hits Deploy-blocked because Claude API
- * can't be resolved (see PR2.7 audit). See PR2.8 tracking issue for the
- * typed-slug migration that will eventually deprecate this map.
- */
-export const TOOL_NAME_ALIASES: Record<string, string> = {
-  "Claude API": "anthropic_api",
-  "Twitter API": "twitter-api",
-}
-
-export function getToolByName(name: string): ToolDefinition | undefined {
-  const aliasTarget = TOOL_NAME_ALIASES[name]
-  if (aliasTarget) {
-    const hit = getToolBySlug(aliasTarget)
-    if (hit) return hit
-    // Fall through to substring if the alias's target slug somehow went
-    // missing (shouldn't happen — guarded by the aliases test — but
-    // preserving the old behavior keeps us safe against catalog drift).
-  }
-  return ALL_TOOLS.find(
-    (t) => t.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(t.name.toLowerCase()),
-  )
-}
+// PR2.8a removed:
+//   - `TOOL_NAME_ALIASES` (PR2.7 map of "Claude API" -> "anthropic_api" etc.)
+//   - `getToolByName` (bidirectional substring matcher)
+// Templates now reference tools by slug directly via `ToolSlug`; the
+// name-based resolver that substring-matched a display name back to a
+// catalog entry is dead code. See `src/app/setup/[workspaceId]/step/[n]/page.tsx`
+// (the only former production caller) which now uses `getToolBySlug` on the
+// API response's slug field.
 
 export function getToolsByCategory(category: string): ToolDefinition[] {
   return ALL_TOOLS.filter((t) => t.category === category)

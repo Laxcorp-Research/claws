@@ -417,8 +417,14 @@ For each option:
       "content-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
-      { slug: "youtube-data-api", name: "YouTube Data API", category: "Platform", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
+      // PR2.8a Task 6: swapped from API_KEY `youtube-data-api` to OAUTH_COMPOSIO
+      // `youtube`. Same YouTube Data API v3 surface underneath; OAuth via
+      // Composio removes the user's Google Cloud project + quota setup burden.
+      // `youtube-data-api` remains in the catalog flagged `deprecated: true`
+      // to preserve any legacy ToolConnection rows (none in prod per PR2.8a
+      // Task 0 probe).
+      { slug: "youtube", name: "YouTube", category: "Platform", connectionType: "OAUTH_COMPOSIO", required: true },
       { slug: "tavily", name: "Tavily", category: "Research", connectionType: "API_KEY", required: false },
       { slug: "vidiq", name: "VidIQ", category: "YouTube Analytics", connectionType: "API_KEY", required: false },
       // Note: a Social Scheduling slot (previously `buffer` OAUTH_COMPOSIO)
@@ -738,7 +744,7 @@ For each piece:
       "social-content-reviewer",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
       { slug: "twitter-api", name: "Twitter API", category: "Platform", connectionType: "API_KEY", required: true },
       { slug: "typefully", name: "Typefully", category: "Content Scheduling", connectionType: "API_KEY", required: false },
       { slug: "tavily", name: "Tavily", category: "Research", connectionType: "API_KEY", required: false },
@@ -1059,13 +1065,17 @@ For each topic:
       "editorial-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
       // Newsletter Platform: swapped from OAUTH_COMPOSIO `beehiiv` to API_KEY
       // `beehiiv-api` (direct-token sibling in API_KEY_TOOLS) in PR #4, since
       // Composio does not publish a `beehiiv` toolkit. `substack` dropped from
       // alternatives for the same reason; `convertkit` retained (Composio
       // exposes it at slug `kit` post-rebrand — mapped via composioToolkitId).
-      { slug: "beehiiv-api", name: "Beehiiv (API Key)", category: "Newsletter Platform", connectionType: "API_KEY", required: false, alternatives: ["convertkit"] },
+      // PR2.8a Task 6: Newsletter Empire required newsletter-platform flipped
+      // from false -> true (the template is unusable without one). Substack
+      // dropped from alternatives in PR #4 (no public writer-facing API);
+      // beehiiv-api + convertkit are the two viable paths today.
+      { slug: "beehiiv-api", name: "Beehiiv (API Key)", category: "Newsletter Platform", connectionType: "API_KEY", required: true, alternatives: ["convertkit"] },
       { slug: "twitter", name: "Twitter", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
       { slug: "linkedin", name: "LinkedIn", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
       // Note: Social Scheduling `buffer` removed in PR #4 (no Composio toolkit).
@@ -1388,9 +1398,9 @@ For each topic:
       "podcast-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
       { slug: "gmail", name: "Gmail", category: "Email", connectionType: "OAUTH_COMPOSIO", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "Scheduling", connectionType: "OAUTH_COMPOSIO", required: true },
+      { slug: "google_calendar", name: "Google Calendar", category: "Scheduling", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook", "cal_com", "apple_calendar"] },
       { slug: "tavily", name: "Tavily", category: "Research", connectionType: "API_KEY", required: false },
       { slug: "twitter", name: "Twitter", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },
       { slug: "linkedin", name: "LinkedIn", category: "Social", connectionType: "OAUTH_COMPOSIO", required: false },

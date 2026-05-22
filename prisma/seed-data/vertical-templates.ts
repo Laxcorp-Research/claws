@@ -319,12 +319,12 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
       "real-estate-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "ai", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "ai", connectionType: "API_KEY", required: true },
       { slug: "gmail", name: "Gmail", category: "email", connectionType: "OAUTH_COMPOSIO", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true },
+      { slug: "google_calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook", "cal_com", "apple_calendar"] },
       { slug: "zillow", name: "Zillow", category: "real-estate", connectionType: "API_KEY", required: false },
       { slug: "twilio", name: "Twilio", category: "sms", connectionType: "API_KEY", required: false },
-      { slug: "follow-up-boss", name: "Follow Up Boss", category: "crm", connectionType: "API_KEY", required: false },
+      { slug: "follow_up_boss", name: "Follow Up Boss", category: "crm", connectionType: "OAUTH_COMPOSIO", required: false },
     ],
   },
 
@@ -630,10 +630,10 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
       "recruiting-quality-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "ai", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "ai", connectionType: "API_KEY", required: true },
       { slug: "linkedin", name: "LinkedIn", category: "social", connectionType: "OAUTH_COMPOSIO", required: true },
       { slug: "gmail", name: "Gmail", category: "email", connectionType: "OAUTH_COMPOSIO", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true },
+      { slug: "google_calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook", "cal_com", "apple_calendar"] },
       { slug: "greenhouse", name: "Greenhouse", category: "ats", connectionType: "API_KEY", required: false, alternatives: ["lever", "bullhorn"] },
       { slug: "tavily", name: "Tavily", category: "search", connectionType: "API_KEY", required: false },
       { slug: "calendly", name: "Calendly", category: "scheduling", connectionType: "OAUTH_COMPOSIO", required: false },
@@ -646,7 +646,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
     slug: "medical-practice-manager",
     tagline: "HIPAA-compliant practice management automation",
     description:
-      "6-agent team: patient intake, appointment management, recall campaigns, review management. HIPAA compliance enforced on every communication. Never stores or transmits PHI.",
+      "6-agent team: patient intake, appointment management, recall campaigns, review management. HIPAA compliance enforced on every communication. Never stores or transmits PHI. HIPAA-compliant deployment requires Twilio BAA configuration for the SMS slot.",
     flowDescription:
       "Patient Intake Agent handles new patient registration → Appointment Manager coordinates scheduling → Recall & Reactivation Agent brings back lapsed patients → Review & Reputation Manager builds online presence → Healthcare Communication Gate enforces HIPAA compliance.",
     category: "VERTICAL",
@@ -937,11 +937,15 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
       "healthcare-communication-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "ai", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "ai", connectionType: "API_KEY", required: true },
       { slug: "twilio", name: "Twilio", category: "sms", connectionType: "API_KEY", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true },
-      { slug: "google-business-profile", name: "Google Business Profile", category: "reputation", connectionType: "OAUTH_COMPOSIO", required: false },
-      { slug: "dentrix", name: "Dentrix", category: "practice-management", connectionType: "API_KEY", required: false, alternatives: ["athena", "drchrono"] },
+      { slug: "google_calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook", "cal_com", "apple_calendar"] },
+      { slug: "google_business_profile", name: "Google Business Profile", category: "reputation", connectionType: "API_KEY", required: false },
+      // PR2.8a Task 6: Dentrix dropped (no public REST). DrChrono promoted
+      // to primary; athena_health moved in as the renamed alternative.
+      // Both entries are comingSoon: true in the catalog and filtered from
+      // wizard render today; PR2.8c ships the direct integrations.
+      { slug: "drchrono", name: "DrChrono", category: "practice-management", connectionType: "API_KEY", required: false, alternatives: ["athena_health"] },
     ],
   },
 
@@ -1239,13 +1243,13 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
       "legal-communication-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "ai", connectionType: "API_KEY", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "ai", connectionType: "API_KEY", required: true },
       { slug: "gmail", name: "Gmail", category: "email", connectionType: "OAUTH_COMPOSIO", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true },
+      { slug: "google_calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook", "cal_com", "apple_calendar"] },
       { slug: "clio", name: "Clio", category: "legal-management", connectionType: "API_KEY", required: false, alternatives: ["mycase"] },
       { slug: "typeform", name: "Typeform", category: "forms", connectionType: "API_KEY", required: false },
       { slug: "twilio", name: "Twilio", category: "sms", connectionType: "API_KEY", required: false },
-      { slug: "google-business-profile", name: "Google Business Profile", category: "reputation", connectionType: "OAUTH_COMPOSIO", required: false },
+      { slug: "google_business_profile", name: "Google Business Profile", category: "reputation", connectionType: "API_KEY", required: false },
     ],
   },
 
@@ -1505,11 +1509,11 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
       "service-communication-gate",
     ),
     tools: [
-      { slug: "anthropic", name: "Anthropic", category: "ai", connectionType: "API_KEY", required: true },
-      { slug: "google-calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true },
+      { slug: "anthropic_api", name: "Anthropic (Claude)", category: "ai", connectionType: "API_KEY", required: true },
+      { slug: "google_calendar", name: "Google Calendar", category: "calendar", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook", "cal_com", "apple_calendar"] },
       { slug: "twilio", name: "Twilio", category: "sms", connectionType: "API_KEY", required: true },
-      { slug: "servicetitan", name: "ServiceTitan", category: "field-service", connectionType: "API_KEY", required: false, alternatives: ["housecall-pro"] },
-      { slug: "google-business-profile", name: "Google Business Profile", category: "reputation", connectionType: "OAUTH_COMPOSIO", required: false },
+      { slug: "servicetitan", name: "ServiceTitan", category: "field-service", connectionType: "API_KEY", required: false, alternatives: ["housecall_pro"] },
+      { slug: "google_business_profile", name: "Google Business Profile", category: "reputation", connectionType: "API_KEY", required: false },
     ],
   },
 ]

@@ -388,7 +388,7 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
     "outbound-quality-gate",
   ),
   tools: [
-    { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+    { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: true },
     { slug: "apollo", name: "Apollo", category: "Sales", connectionType: "API_KEY", required: false, alternatives: ["clay"] },
     { slug: "instantly", name: "Instantly", category: "Email", connectionType: "API_KEY", required: false, alternatives: ["smartlead"] },
@@ -745,11 +745,11 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
     "agency-quality-gate",
   ),
   tools: [
-    { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+    { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
     { slug: "linear", name: "Linear", category: "Project Management", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["asana", "clickup"] },
     { slug: "slack", name: "Slack", category: "Communication", connectionType: "OAUTH_COMPOSIO", required: false },
     { slug: "gmail", name: "Gmail", category: "Email", connectionType: "OAUTH_COMPOSIO", required: false },
-    { slug: "google-calendar", name: "Google Calendar", category: "Calendar", connectionType: "OAUTH_COMPOSIO", required: false },
+    { slug: "google_calendar", name: "Google Calendar", category: "Calendar", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["outlook", "cal_com", "apple_calendar"] },
     { slug: "toggl", name: "Toggl", category: "Time Tracking", connectionType: "API_KEY", required: false },
   ],
 }
@@ -1055,9 +1055,12 @@ Use when: calendar conflict detected, overdue commitment approaching deadline, u
     "executive-quality-gate",
   ),
   tools: [
-    { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
-    { slug: "gmail", name: "Gmail", category: "Email", connectionType: "OAUTH_COMPOSIO", required: true },
-    { slug: "google-calendar", name: "Google Calendar", category: "Calendar", connectionType: "OAUTH_COMPOSIO", required: true },
+    { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
+    // PR2.8a Task 6: gmail gets outlook as an alternative per audit Q5 (the
+    // "Gmail or Outlook" compound from claw-templates.ts becomes a typed
+    // oneOf here).
+    { slug: "gmail", name: "Gmail", category: "Email", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook"] },
+    { slug: "google_calendar", name: "Google Calendar", category: "Calendar", connectionType: "OAUTH_COMPOSIO", required: true, alternatives: ["outlook", "cal_com", "apple_calendar"] },
     { slug: "slack", name: "Slack", category: "Communication", connectionType: "OAUTH_COMPOSIO", required: false },
     { slug: "linear", name: "Linear", category: "Project Management", connectionType: "OAUTH_COMPOSIO", required: false, alternatives: ["asana"] },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: false },
@@ -1435,7 +1438,7 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
     "seo-quality-gate",
   ),
   tools: [
-    { slug: "anthropic", name: "Anthropic", category: "AI", connectionType: "API_KEY", required: true },
+    { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
     { slug: "google-search-console", name: "Google Search Console", category: "SEO", connectionType: "OAUTH_COMPOSIO", required: true },
     { slug: "google-analytics", name: "Google Analytics", category: "Analytics", connectionType: "OAUTH_COMPOSIO", required: true },
     { slug: "ahrefs", name: "Ahrefs", category: "SEO", connectionType: "API_KEY", required: false, alternatives: ["semrush"] },

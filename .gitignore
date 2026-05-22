@@ -77,3 +77,9 @@ audit-report-*.json
 composio-poc/
 poc-*/
 /.scratch/
+
+# Ephemeral audit/investigation artifacts (PR2.8 Phase A and similar)
+/tmp/
+
+# PR2.8a probe outputs (staging/prod DB state snapshots; regeneratable)
+/probe-*.json
