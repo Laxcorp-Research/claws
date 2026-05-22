@@ -27,6 +27,7 @@ import {
   type BYOKModalState,
   connectionUiState,
   buildExtraToolsFromConnections,
+  mergeRefreshedTools,
   resolveByokModalProps,
 } from "@/components/setup/tools-state"
 import {
@@ -620,27 +621,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!data.success) return
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
     const existing: ServerConnectionSummary[] = data.data.connections
-    setTools((prev) => {
-      const updated = prev.map((t) => {
-        const conn = existing.find((c) => c.toolSlug === t.slug)
-        if (!conn) return t
-        const ui = connectionUiState(conn)
-        return {
-          ...t,
-          status: ui.status,
-          errorMessage: ui.errorMessage,
-          warningMessage: ui.warningMessage,
-          connectionId: conn.id,
-          connectedAt: conn.createdAt ?? t.connectedAt ?? null,
-        }
-      })
-      // PR #4 Commit 9: pick up any new non-template connections since
-      // the last state snapshot (e.g., user just completed OAuth for a
-      // tool added via Browse Tools modal). Without this, the OAuth
-      // success path writes CONNECTED to DB but the wizard UI stays blind.
-      const extras = buildExtraToolsFromConnections(updated, existing)
-      return extras.length > 0 ? [...updated, ...extras] : updated
-    })
+    // PR2.9-fix3: server response is authoritative. `mergeRefreshedTools`
+    // handles all four cases (server-present-template, server-present-
+    // extra-new, server-absent-template-reset, server-absent-extra-drop).
+    // Before this PR the merge was insert-only and disconnect/revoke left
+    // stale `status: "connected"` on rows until a manual page reload.
+    setTools((prev) => mergeRefreshedTools(prev, existing))
   }, [workspaceId])
 
   // PR #4 Commit 7: Revoke flow state. When a user clicks the Revoke button
@@ -665,9 +651,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     setRevokeState((s) => ({ ...s, loading: true, error: null }))
     try {
       await disconnectOauthTool(workspaceId, tool.slug)
-      // Refetch to sync the row state with the DB delete. Row disappears
-      // from the OAUTH_COMPOSIO-connected bucket; returns to "disconnected"
-      // if the tool is still in the template's required/recommended list.
+      // Refetch to sync row state with the DB delete. After PR2.9-fix3
+      // `mergeRefreshedTools` makes the server response authoritative:
+      // template rows (required/recommended) reset to "disconnected" so
+      // the user can re-connect; extra rows (Browse-added non-template
+      // tools) are dropped entirely. No optimistic local patch needed
+      // here — the primitive handles it.
       await refreshTools()
       setRevokeState({ tool: null, loading: false, error: null })
     } catch (err) {
@@ -991,6 +980,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const handleDisconnect = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return
     await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, { method: "DELETE" })
+    // PR2.9-fix3: `refreshTools` is now authoritative via
+    // `mergeRefreshedTools` — the deleted row's local UI state is reset
+    // to "disconnected" (template) or removed (extra). No optimistic
+    // local patch needed.
     await refreshTools()
   }, [workspaceId, refreshTools])
 

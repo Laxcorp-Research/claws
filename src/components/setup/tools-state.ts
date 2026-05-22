@@ -211,3 +211,80 @@ export function buildExtraToolsFromConnections(
   }
   return out
 }
+
+/**
+ * PR2.9-fix3: reconcile the local `tools` state against the server's
+ * authoritative connection list returned by `GET /api/tools/{workspaceId}`.
+ * The server response is the source of truth; this function makes the
+ * client match it.
+ *
+ * Bug fixed: pre-fix the merge was insert-only — slugs present locally
+ * but ABSENT on the server kept their stale `status: "connected"` and
+ * `connectionId`. After a successful revoke or disconnect the row UI
+ * still said "Connected" until a full page reload. The connect path
+ * incidentally dodged this because `useOAuthConnection.onSuccess`
+ * applies an optimistic `setTools(... status: "connected")` AFTER
+ * `refreshTools`; the disconnect handlers had no such optimistic patch
+ * so the broken primitive was exposed.
+ *
+ * The fix is at the primitive (this function) so every present and
+ * future mutation path inherits correct behavior without per-handler
+ * patches.
+ *
+ * Reconciliation rules:
+ *   1. Server has a connection for the slug → apply server state
+ *      (status, errorMessage, warningMessage, connectionId, connectedAt).
+ *   2. Server has NO connection for an "extra" row (came from a non-
+ *      template connection — `extra: true`) → drop the row entirely.
+ *      Extras exist ONLY because of a server connection; without that
+ *      backing row they shouldn't be displayed.
+ *   3. Server has NO connection for a template row (required /
+ *      recommended) → reset the row to `status: "disconnected"`, clear
+ *      `connectionId`, `connectedAt`, `errorMessage`, `warningMessage`.
+ *      The row stays visible in its bucket so the user can re-connect.
+ *   4. Server has a connection whose slug isn't in `prev` → append via
+ *      `buildExtraToolsFromConnections` (existing insert path unchanged).
+ *
+ * @param prev        Current local `tools` array (template rows + any
+ *                    previously-loaded extras).
+ * @param connections Authoritative server connection list (full, not
+ *                    paginated — see GET /api/tools/{ws}).
+ */
+export function mergeRefreshedTools(
+  prev: ToolState[],
+  connections: ServerConnectionSummary[],
+): ToolState[] {
+  const reconciled = prev
+    .map((t): ToolState | null => {
+      const conn = connections.find((c) => c.toolSlug === t.slug)
+      if (conn) {
+        const ui = connectionUiState(conn)
+        return {
+          ...t,
+          status: ui.status,
+          errorMessage: ui.errorMessage,
+          warningMessage: ui.warningMessage,
+          connectionId: conn.id,
+          connectedAt: conn.createdAt ?? t.connectedAt ?? null,
+        }
+      }
+      // Server has no record for this slug. Two cases:
+      //   - extra row: existed only because of a server connection that's
+      //     now gone → drop entirely.
+      //   - template row: the user needs to see it as re-connectable, so
+      //     it stays but gets reset to disconnected.
+      if (t.extra) return null
+      return {
+        ...t,
+        status: "disconnected" as const,
+        connectionId: undefined,
+        connectedAt: null,
+        errorMessage: undefined,
+        warningMessage: undefined,
+      }
+    })
+    .filter((t): t is ToolState => t !== null)
+
+  const extras = buildExtraToolsFromConnections(reconciled, connections)
+  return extras.length > 0 ? [...reconciled, ...extras] : reconciled
+}
