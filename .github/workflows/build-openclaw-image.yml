@@ -72,25 +72,69 @@ jobs:
             echo "Using forced version: $VERSION"
           else
             # Releases API is the only reliable source for "newest stable".
-            # Walks pages until the first prerelease==false && draft==false
-            # release. Strips the leading `v` from the tag name (upstream
-            # convention from openclaw/openclaw RELEASING.md: vYYYY.M.D or
-            # vYYYY.M.D-N for stable, vYYYY.M.D-beta.N for pre-release).
+            #
+            # Why this is NOT `gh api --paginate ... --jq '...'`:
+            # `--jq` runs PER PAGE under `--paginate`. The first iteration
+            # of this workflow (#84 + #85) used
+            # `--jq '[.[] | select(...) | .tag_name] | first'` which
+            # returned ONE value per page across 4 pages — 4 lines of
+            # output, multi-line `$VERSION`, broken `$GITHUB_OUTPUT` write
+            # ("Unable to process file command 'output'"). Fixed by
+            # dropping `--jq` and piping the concatenated JSON array to a
+            # standalone `jq` that processes the full set in one pass.
+            #
+            # Sort policy: explicit date-version-tuple sort, not
+            # publish-date order. A back-published correction for an
+            # older version (e.g. 2026.4.27-1 cut after 2026.5.20)
+            # must NOT win over a newer stable.
+            #
+            # Tag-shape filter: ancient upstream releases (e.g.
+            # v2.0.0-beta5) are flagged prerelease=false but predate
+            # the YYYY.M.D convention. `test()` filters them out
+            # explicitly so a future jq version stricter about null
+            # capture cannot break the sort.
             VERSION=$(gh api \
               -H 'X-GitHub-Api-Version: 2022-11-28' \
               "/repos/${{ env.UPSTREAM_REPO }}/releases?per_page=50" \
               --paginate \
-              --jq '[.[] | select(.prerelease==false and .draft==false) | .tag_name] | first' \
-              | tr -d '"' \
-              | sed 's/^v//')
+              | jq -r '
+                  map(select(.prerelease == false and .draft == false))
+                  | map(.tag_name)
+                  | map(select(test("^v?\\d+\\.\\d+\\.\\d+(-\\d+)?$")))
+                  | sort_by(
+                      capture("^v?(?<y>\\d+)\\.(?<m>\\d+)\\.(?<d>\\d+)(-(?<n>\\d+))?$")
+                      | [(.y | tonumber), (.m | tonumber), (.d | tonumber), ((.n // "0") | tonumber)]
+                    )
+                  | last
+                  | sub("^v"; "")
+                ')
             echo "Detected upstream stable: $VERSION"
           fi
 
-          # Strict shape check defends against a bad force_version input and
-          # against any future upstream tag-convention drift. Accepts
-          # YYYY.M.D (stable) and YYYY.M.D-N (stable correction). Rejects
-          # beta.N / alpha.N / rc.N suffixes and anything malformed.
-          if [ -z "$VERSION" ] || ! echo "$VERSION" | grep -Eq '^[0-9]{4}\.[0-9]+\.[0-9]+(-[0-9]+)?$'; then
+          # ---- Sanity checks BEFORE we touch $GITHUB_OUTPUT --------------
+          # The prior workflow leaked a multi-line value into $GITHUB_OUTPUT
+          # because the shape check used `echo "$VERSION" | grep -Eq` which
+          # returns 0 if ANY line matches — false-clean on a 4-line value.
+          # These three checks each fail loud, separately, with the actual
+          # offending value in the log:
+          #   1) non-empty
+          #   2) exactly one line (no embedded newlines)
+          #   3) matches stable shape (YYYY.M.D or YYYY.M.D-N)
+          # No heredoc-wrap on the OUTPUT write — by this point VERSION is
+          # guaranteed single-line so plain `key=value` is correct.
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::Detection returned an empty VERSION. No stable release found in upstream Releases API (or jq filter excluded all candidates)."
+            exit 1
+          fi
+
+          if [[ "$VERSION" == *$'\n'* ]]; then
+            echo "::error::Detection returned a multi-line VERSION (jq should emit one scalar — see step comment for the regression history). Got:"
+            printf '%s\n' "$VERSION"
+            exit 1
+          fi
+
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]{4}\.[0-9]+\.[0-9]+(-[0-9]+)?$'; then
             echo "::error::Detected version '$VERSION' does not match stable shape (YYYY.M.D[-N]). Refusing to build."
             exit 1
           fi
