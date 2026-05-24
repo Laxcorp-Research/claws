@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build:deploy",
   "crons": [
     {
       "path": "/api/admin/payouts/release",

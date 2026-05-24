@@ -1025,9 +1025,20 @@ model OpenClawVersion {
   isLatest  Boolean  @default(false)
   isSecurityPatch Boolean @default(false)
 
+  // dockerImage MUST point at an immutable :<version> reference (e.g.
+  // ghcr.io/laxcorp-research/openclaw-runtime:2026.5.20), never a moving
+  // pointer like :latest or :candidate. The deployer reads this field for
+  // the current stable row and passes it through to Railway, so a moving
+  // pointer here would make Deployment.containerImage unreliable across
+  // future :latest rewrites.
   dockerImage String
 
-  releaseNotes    String? @db.Text
+  // PR-1 provenance fields (nullable; existing rows pre-date the pipeline).
+  // Both written by the image pipeline's /api/internal/versions/register call.
+  imageDigest    String?  // sha256:... — immutable digest of the manifest the dockerImage tag resolves to at push time
+  buildSourceTag String?  // upstream git tag the image was built from (e.g. "v2026.5.20")
+
+  releaseNotes    String? @db.Text  // free-form notes, or a URL to upstream changelog
   breakingChanges String? @db.Text
 
   releasedAt DateTime

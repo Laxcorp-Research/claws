@@ -184,7 +184,14 @@ export interface RailwayServiceStatus {
 export async function createService(config: {
   name: string;
   envVars: Record<string, string>;
+  // PR-1: caller (deployer.resolveDeployImage) picks the image from the
+  // canonical OpenClawVersion stable row at deploy time. When omitted, we
+  // fall back to the module-level OPENCLAW_IMAGE (env var or hardcoded
+  // default) so callers that haven't migrated keep working.
+  image?: string;
 }): Promise<RailwayServiceResult> {
+  const imageToUse = config.image ?? OPENCLAW_IMAGE;
+
   const createData = await railwayGql<{ serviceCreate: { id: string } }>(
     `mutation($input: ServiceCreateInput!) {
       serviceCreate(input: $input) { id }
@@ -207,7 +214,7 @@ export async function createService(config: {
       serviceId,
       environmentId: RAILWAY_ENVIRONMENT_ID,
       input: {
-        source: { image: OPENCLAW_IMAGE },
+        source: { image: imageToUse },
         startCommand: START_COMMAND,
         healthcheckPath: '/healthz',
         healthcheckTimeout: 120,
@@ -302,7 +309,12 @@ async function queryServiceDomain(serviceId: string): Promise<string | null> {
 export async function updateAndRedeployService(
   serviceId: string,
   envVars: Record<string, string>,
+  // PR-1: explicit image at the call site (from deployer.resolveDeployImage).
+  // Falls back to the module-level OPENCLAW_IMAGE when omitted.
+  image?: string,
 ): Promise<{ serviceId: string; domain: string }> {
+  const imageToUse = image ?? OPENCLAW_IMAGE;
+
   await railwayGql(
     `mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
       serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
@@ -311,7 +323,7 @@ export async function updateAndRedeployService(
       serviceId,
       environmentId: RAILWAY_ENVIRONMENT_ID,
       input: {
-        source: { image: OPENCLAW_IMAGE },
+        source: { image: imageToUse },
         startCommand: START_COMMAND,
         healthcheckPath: '/healthz',
         healthcheckTimeout: 120,

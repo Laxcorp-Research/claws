@@ -79,6 +79,54 @@ async function updateDeploymentStatus(
 }
 
 // ---------------------------------------------------------------------------
+// Image Resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves the container image to use for a deploy at deploy time.
+ *
+ * Priority:
+ *   1. Current `isStable` OpenClawVersion row (canonical — set by the
+ *      promote-openclaw-image.yml workflow after manual QA). The row's
+ *      `dockerImage` is an immutable `:<version>` reference per the
+ *      register-route validator.
+ *   2. `OPENCLAW_DOCKER_IMAGE` env var (Vercel-set; used as dev/bootstrap
+ *      fallback before the first promote has happened).
+ *   3. Hard-coded default at the railway-client level — last-resort safety
+ *      net so a deploy never tries to pull an empty image string.
+ *
+ * Returning the string here (instead of mutating module state in
+ * railway-client.ts) lets the caller also persist it on
+ * `Deployment.containerImage`, which is what makes that column finally
+ * reflect what's actually deployed.
+ */
+export async function resolveDeployImage(): Promise<string> {
+  const stable = await prisma.openClawVersion.findFirst({
+    where: { isStable: true },
+    orderBy: { releasedAt: 'desc' },
+    select: { dockerImage: true, version: true },
+  });
+
+  if (stable?.dockerImage) {
+    return stable.dockerImage;
+  }
+
+  const envFallback = process.env.OPENCLAW_DOCKER_IMAGE?.trim();
+  if (envFallback) {
+    log.warn('resolveDeployImage: no isStable OpenClawVersion row; using OPENCLAW_DOCKER_IMAGE env fallback', {
+      envFallback,
+    });
+    return envFallback;
+  }
+
+  const HARDCODED_FALLBACK = 'ghcr.io/laxcorp-research/openclaw-runtime:latest';
+  log.warn('resolveDeployImage: no isStable row and OPENCLAW_DOCKER_IMAGE unset; using hardcoded default', {
+    fallback: HARDCODED_FALLBACK,
+  });
+  return HARDCODED_FALLBACK;
+}
+
+// ---------------------------------------------------------------------------
 // Deploy to Cloud (Railway)
 // ---------------------------------------------------------------------------
 
@@ -95,13 +143,23 @@ export async function deployToCloud(workspaceId: string): Promise<{
     where: { id: workspace.userId },
   });
 
+  // PR-1: resolve once and persist on the Deployment row so the column
+  // finally matches what Railway actually pulls. Previously the
+  // `Deployment.containerImage` schema default ('ghcr.io/openclaw/openclaw:latest')
+  // was never overwritten — every Deployment row carried that string
+  // regardless of the real image used, which broke the admin
+  // versions deployment-count query and the force-update WHERE clause.
+  const image = await resolveDeployImage();
+
   const deployment = await prisma.deployment.create({
     data: {
       workspaceId,
       status: 'PENDING',
       version: await getNextDeploymentVersion(workspaceId),
+      containerImage: image,
       configSnapshot: JSON.stringify({
         workspaceId,
+        image,
         createdAt: new Date().toISOString(),
       }),
     },
@@ -179,10 +237,10 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
     if (workspace.containerId) {
       try {
-        log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId });
+        log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId, image });
         const beforeStatus = await getServiceStatus(workspace.containerId);
         previousDeploymentId = beforeStatus.deploymentId;
-        result = await updateAndRedeployService(workspace.containerId, envVars);
+        result = await updateAndRedeployService(workspace.containerId, envVars, image);
         if (!result.domain && workspace.containerHost) {
           result.domain = workspace.containerHost;
         }
@@ -197,11 +255,11 @@ export async function deployToCloud(workspaceId: string): Promise<{
           where: { id: workspaceId },
           data: { containerId: null, containerName: null, containerHost: null },
         });
-        result = await createService({ name: serviceName, envVars });
+        result = await createService({ name: serviceName, envVars, image });
       }
     } else {
       try {
-        result = await createService({ name: serviceName, envVars });
+        result = await createService({ name: serviceName, envVars, image });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : '';
         if (msg.includes('already exists')) {
@@ -210,7 +268,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
           if (!existingId) throw new Error(`Service "${serviceName}" exists but could not be found`);
           const beforeStatus = await getServiceStatus(existingId);
           previousDeploymentId = beforeStatus.deploymentId;
-          result = await updateAndRedeployService(existingId, envVars);
+          result = await updateAndRedeployService(existingId, envVars, image);
         } else {
           throw err;
         }
