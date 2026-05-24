@@ -1,12 +1,43 @@
 name: Build OpenClaw Runtime Image
 
+# PR-1 (2026-05-24): fixed the three defects identified in Phase 0/1 diagnosis:
+#   1. Version detection: replaced unpaginated GHCR /tags/list call (which missed
+#      newer tags because GHCR returns only the first page by default — upstream
+#      has 60+ date-versioned tags but we were seeing 100 alphabetical tags max)
+#      with the GitHub Releases API filtered on prerelease==false. This is the
+#      only reliable source for "what is the newest STABLE release upstream".
+#   2. Skip-check: anonymous GHCR token mint returned 401 against our PRIVATE
+#      package, the previous code emitted a warning and proceeded with build,
+#      causing weekly unconditional rebuilds. Now uses an authenticated mint
+#      via secrets.GHCR_READ_PAT + vars.GHCR_READ_USER and fails the job if
+#      the credentials aren't usable.
+#   3. Unsafe `|| git clone main` fallback: removed. If the v-prefixed tag clone
+#      fails the job fails loudly instead of silently shipping unpinned HEAD.
+#
+# Tagging policy (PR-1, "candidate" pattern):
+#   - :base-<version>  immutable per-version base image (upstream OpenClaw)
+#   - :<version>       immutable per-version extended image (with our overlay)
+#   - :candidate       MOVING pointer to the newest auto-built extended image
+#   - :latest          NOT moved here. Only the manual
+#                      promote-openclaw-image.yml workflow rewrites :latest,
+#                      so production deploys never advance without a human gate.
+#
+# After successful push we POST to /api/internal/versions/register with
+# isCandidate=true so OpenClawVersion gets a row that matches the actual
+# pushed image + digest. See the "Register OpenClawVersion" step.
+
 on:
   workflow_dispatch:
     inputs:
       force_version:
-        description: 'Force build a specific upstream version (e.g., 2026.4.11). Leave empty for auto-detect.'
+        description: 'Force build a specific upstream STABLE version (e.g., 2026.5.20 or 2026.5.20-1). Leave empty for auto-detect of newest stable.'
         required: false
         type: string
+      register_endpoint:
+        description: 'Register endpoint URL (default: staging). Set to https://app.buildclaws.ai/api/internal/versions/register for prod.'
+        required: false
+        type: string
+        default: 'https://staging.app.buildclaws.ai/api/internal/versions/register'
   schedule:
     - cron: '0 6 * * 1'  # Every Monday at 6am UTC
 
@@ -17,8 +48,9 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: laxcorp-research/openclaw-runtime
-  UPSTREAM_IMAGE: ghcr.io/openclaw/openclaw
+  UPSTREAM_REPO: openclaw/openclaw
   EXTENSIONS: "telegram discord slack whatsapp msteams signal"
+  DEFAULT_REGISTER_ENDPOINT: 'https://staging.app.buildclaws.ai/api/internal/versions/register'
 
 jobs:
   build:
@@ -28,77 +60,93 @@ jobs:
       - name: Checkout Claws repo
         uses: actions/checkout@v4
 
-      - name: Detect latest upstream version
+      - name: Detect latest upstream STABLE release
         id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+
           if [ -n "${{ inputs.force_version }}" ]; then
             VERSION="${{ inputs.force_version }}"
             echo "Using forced version: $VERSION"
           else
-            # Get token for public GHCR read
-            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:openclaw/openclaw:pull&service=ghcr.io" | jq -r .token)
-            # List tags, filter out slim/beta/arm64/amd64, get latest versioned tag
-            TAGS=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/openclaw/openclaw/tags/list" | jq -r '.tags[]')
-            VERSION=$(echo "$TAGS" | grep -E '^[0-9]{4}\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
-            echo "Detected latest upstream version: $VERSION"
+            # Releases API is the only reliable source for "newest stable".
+            # Walks pages until the first prerelease==false && draft==false
+            # release. Strips the leading `v` from the tag name (upstream
+            # convention from openclaw/openclaw RELEASING.md: vYYYY.M.D or
+            # vYYYY.M.D-N for stable, vYYYY.M.D-beta.N for pre-release).
+            VERSION=$(gh api \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "/repos/${{ env.UPSTREAM_REPO }}/releases?per_page=50" \
+              --paginate \
+              --jq '[.[] | select(.prerelease==false and .draft==false) | .tag_name] | first' \
+              | tr -d '"' \
+              | sed 's/^v//')
+            echo "Detected upstream stable: $VERSION"
           fi
 
-          if [ -z "$VERSION" ]; then
-            echo "::error::Could not detect upstream version"
+          # Strict shape check defends against a bad force_version input and
+          # against any future upstream tag-convention drift. Accepts
+          # YYYY.M.D (stable) and YYYY.M.D-N (stable correction). Rejects
+          # beta.N / alpha.N / rc.N suffixes and anything malformed.
+          if [ -z "$VERSION" ] || ! echo "$VERSION" | grep -Eq '^[0-9]{4}\.[0-9]+\.[0-9]+(-[0-9]+)?$'; then
+            echo "::error::Detected version '$VERSION' does not match stable shape (YYYY.M.D[-N]). Refusing to build."
             exit 1
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Check if image already exists
+      - name: Check if image already exists in GHCR (skip if so)
         id: check
+        env:
+          GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+          GHCR_READ_PAT:  ${{ secrets.GHCR_READ_PAT }}
         run: |
+          set -euo pipefail
           VERSION="${{ steps.detect.outputs.version }}"
 
-          # PR2 fix (2026-04-28): the prior version of this step fetched a GHCR
-          # JWT using Basic auth with `github.actor:secrets.GITHUB_TOKEN`,
-          # which GHCR rejects (GHCR expects a PAT in the password slot, not
-          # a GITHUB_TOKEN). That made TOKEN empty, skip defaulted to false,
-          # and the workflow rebuilt unconditionally every Monday — producing
-          # fresh :<version> and :latest digests even when nothing had changed.
-          #
-          # Fix: fetch an anonymous JWT for pulling the manifest. The image
-          # is published to a private-by-default GHCR package but GHCR still
-          # issues anonymous pull tokens for pull-scope queries when the
-          # caller has read access via package visibility; for our org's
-          # package this works because it's set to "public" visibility.
-          # The OCI manifest Accept header also needs to cover OCI + Docker
-          # media types so the 200 check is reliable for both index and
-          # single-manifest images.
-          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
-            | jq -r .token 2>/dev/null || echo "")
-
-          if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "Authorization: Bearer $TOKEN" \
-              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
-              "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION")
-
-            if [ "$STATUS" = "200" ] && [ -z "${{ inputs.force_version }}" ]; then
-              echo "Image ${{ env.IMAGE_NAME }}:$VERSION already exists. Skipping build."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            echo "Manifest check: version=$VERSION status=$STATUS force_version='${{ inputs.force_version }}'"
-          else
-            echo "::warning::Failed to obtain anonymous GHCR pull token; proceeding with build (skip check bypassed)"
+          if [ -z "${GHCR_READ_USER:-}" ] || [ -z "${GHCR_READ_PAT:-}" ]; then
+            echo "::error::vars.GHCR_READ_USER and secrets.GHCR_READ_PAT must both be configured (skip-check cannot use anonymous tokens against a private GHCR package — see PR-1)."
+            exit 1
           fi
 
+          # Authenticated GHCR pull token mint. Basic auth with PAT in the
+          # password slot; GHCR rejects GITHUB_TOKEN here (Actions-issued
+          # tokens cannot mint cross-org package pulls).
+          TOKEN=$(curl -sS -u "${GHCR_READ_USER}:${GHCR_READ_PAT}" \
+            "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
+            | jq -r .token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Failed to mint GHCR pull token. Verify GHCR_READ_PAT has 'read:packages' scope and matches GHCR_READ_USER."
+            exit 1
+          fi
+
+          # HEAD the manifest. Accept multiple media types so both OCI single
+          # and Docker manifest-list responses count as "exists".
+          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION")
+
+          if [ "$STATUS" = "200" ] && [ -z "${{ inputs.force_version }}" ]; then
+            echo "Image ${{ env.IMAGE_NAME }}:$VERSION already exists. Skipping build."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Manifest check: version=$VERSION status=$STATUS force_version='${{ inputs.force_version }}'"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout OpenClaw source
+      - name: Checkout OpenClaw source at v$VERSION
         if: steps.check.outputs.skip != 'true'
         run: |
+          set -euo pipefail
           VERSION="${{ steps.detect.outputs.version }}"
-          git clone --depth 1 --branch "v$VERSION" https://github.com/openclaw/openclaw.git openclaw-src || \
-          git clone --depth 1 --branch "$VERSION" https://github.com/openclaw/openclaw.git openclaw-src || \
-          git clone --depth 1 https://github.com/openclaw/openclaw.git openclaw-src
+          # Releases API guarantees the v-prefixed tag exists. No fallback —
+          # if this fails, fail the build instead of cloning HEAD silently.
+          git clone --depth 1 --branch "v$VERSION" https://github.com/${{ env.UPSTREAM_REPO }}.git openclaw-src
 
       - name: Set up Docker Buildx
         if: steps.check.outputs.skip != 'true'
@@ -127,6 +175,7 @@ jobs:
 
       - name: Build extended image with credit proxy
         if: steps.check.outputs.skip != 'true'
+        id: build_extended
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -134,26 +183,98 @@ jobs:
           push: true
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}
+          # PR-1: auto-build pushes :<version> (immutable) and :candidate
+          # (moving). NEVER :latest — only promote-openclaw-image.yml
+          # rewrites :latest, gated by manual review.
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:candidate
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Resolve register endpoint
+        if: steps.check.outputs.skip != 'true'
+        id: register_endpoint
+        run: |
+          set -euo pipefail
+          URL="${{ inputs.register_endpoint }}"
+          if [ -z "$URL" ]; then
+            URL="${{ env.DEFAULT_REGISTER_ENDPOINT }}"
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Using register endpoint: $URL"
+
+      - name: Register OpenClawVersion (candidate)
+        if: steps.check.outputs.skip != 'true'
+        env:
+          VERSION_PIPELINE_SECRET: ${{ secrets.VERSION_PIPELINE_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERSION_PIPELINE_SECRET:-}" ]; then
+            echo "::error::secrets.VERSION_PIPELINE_SECRET is not set; cannot register OpenClawVersion candidate row."
+            exit 1
+          fi
+
+          VERSION="${{ steps.detect.outputs.version }}"
+          SOURCE_TAG="${{ steps.detect.outputs.source_tag }}"
+          DOCKER_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
+          # docker/build-push-action@v5 exports `digest` as a step output — the
+          # immutable sha256 of the pushed extended image.
+          DIGEST="${{ steps.build_extended.outputs.digest }}"
+          PUSHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          RELEASE_NOTES_URL="https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$SOURCE_TAG"
+
+          # Fail loud if the digest is missing — the register endpoint will
+          # accept a null digest (the column is nullable) but we want the
+          # provenance recorded for every pipeline-produced row.
+          if [ -z "$DIGEST" ]; then
+            echo "::error::build-push-action did not export a digest for the extended image. Cannot register a complete candidate row."
+            exit 1
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg version       "$VERSION" \
+            --arg dockerImage   "$DOCKER_IMAGE" \
+            --arg imageDigest   "$DIGEST" \
+            --arg buildSourceTag "$SOURCE_TAG" \
+            --arg buildPushedAt "$PUSHED_AT" \
+            --arg releaseNotesUrl "$RELEASE_NOTES_URL" \
+            '{version: $version, dockerImage: $dockerImage, imageDigest: $imageDigest, buildSourceTag: $buildSourceTag, buildPushedAt: $buildPushedAt, releaseNotesUrl: $releaseNotesUrl, isStable: false, isCandidate: true}')
+
+          echo "Posting register payload (truncated):"
+          echo "$PAYLOAD" | jq -c .
+
+          # -f makes curl exit non-zero on HTTP >=400 so the step fails the job.
+          # --max-time bounds the call in case the endpoint hangs.
+          HTTP_RESPONSE=$(curl -sS -f --max-time 30 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Pipeline-Secret: $VERSION_PIPELINE_SECRET" \
+            -d "$PAYLOAD" \
+            "${{ steps.register_endpoint.outputs.url }}")
+
+          echo "Register response:"
+          echo "$HTTP_RESPONSE" | jq .
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'
         run: |
-          echo "### OpenClaw Runtime Image Built" >> $GITHUB_STEP_SUMMARY
+          echo "### OpenClaw Runtime Image Built (candidate)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version:** ${{ steps.detect.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Base:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Latest:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream version:** \`${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream tag:** \`${{ steps.detect.outputs.source_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Base image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Immutable tag:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Candidate pointer:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:candidate\` (NOT :latest)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest:** \`${{ steps.build_extended.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Extensions:** ${{ env.EXTENSIONS }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Includes:** process-manager.mjs, credit-proxy.mjs" >> $GITHUB_STEP_SUMMARY
+          echo "- **Includes overlay:** process-manager.mjs, credit-proxy.mjs" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registered against:** ${{ steps.register_endpoint.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Production deploys will NOT pick this up automatically. Run \`promote-openclaw-image.yml\` after QA to move \`:latest\`." >> $GITHUB_STEP_SUMMARY
 
       - name: Skipped summary
         if: steps.check.outputs.skip == 'true'
         run: |
           echo "### Build Skipped" >> $GITHUB_STEP_SUMMARY
-          echo "Image \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\` already exists." >> $GITHUB_STEP_SUMMARY
+          echo "Image \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\` already exists in GHCR." >> $GITHUB_STEP_SUMMARY

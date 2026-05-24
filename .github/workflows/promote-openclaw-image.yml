@@ -1,0 +1,239 @@
+name: Promote OpenClaw Runtime Image to :latest
+
+# PR-1: manual gate for moving production from one OpenClaw runtime version
+# to another. The auto-build workflow (build-openclaw-image.yml) only writes
+# :candidate; this workflow is the only path that rewrites :latest, the tag
+# the production deployer pulls.
+#
+# Safety checks before re-tagging:
+#   1. The :<version> immutable tag must exist in GHCR.
+#   2. The :candidate moving pointer must currently resolve to the SAME
+#      digest as :<version>. This proves no concurrent auto-build slipped
+#      a different candidate in between QA and promotion — if someone
+#      ran build-openclaw-image.yml between the QA review and this click,
+#      we want the promotion to fail loudly rather than silently promote
+#      an unreviewed image.
+#   3. Re-tag uses `docker buildx imagetools create` which is a server-side
+#      manifest copy — atomic, no re-upload, preserves digest.
+#   4. POST to /api/internal/versions/register with isStable=true so the DB
+#      record matches what's now at :latest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable version to promote (e.g., 2026.5.20 or 2026.5.20-1). Must already exist as :<version> in GHCR.'
+        required: true
+        type: string
+      register_endpoint:
+        description: 'Register endpoint URL (default: production).'
+        required: false
+        type: string
+        default: 'https://app.buildclaws.ai/api/internal/versions/register'
+      skip_candidate_check:
+        description: 'Emergency override: promote without verifying :candidate digest matches :<version> digest. Only use if a hotfix needs to jump candidates.'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: laxcorp-research/openclaw-runtime
+
+jobs:
+  promote:
+    name: Promote :<version> → :latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate input version format
+        id: validate
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          # Same shape check as the build workflow's detect step.
+          if ! echo "$VERSION" | grep -Eq '^[0-9]{4}\.[0-9]+\.[0-9]+(-[0-9]+)?$'; then
+            echo "::error::version '$VERSION' must match YYYY.M.D or YYYY.M.D-N (stable correction). Beta/alpha versions cannot be promoted."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve GHCR digests for :<version> and :candidate
+        id: digests
+        env:
+          GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+          GHCR_READ_PAT:  ${{ secrets.GHCR_READ_PAT }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.validate.outputs.version }}"
+
+          if [ -z "${GHCR_READ_USER:-}" ] || [ -z "${GHCR_READ_PAT:-}" ]; then
+            echo "::error::vars.GHCR_READ_USER and secrets.GHCR_READ_PAT must both be configured."
+            exit 1
+          fi
+
+          TOKEN=$(curl -sS -u "${GHCR_READ_USER}:${GHCR_READ_PAT}" \
+            "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
+            | jq -r .token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Failed to mint GHCR pull token. Verify GHCR_READ_PAT has 'read:packages' scope."
+            exit 1
+          fi
+
+          ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
+
+          # Resolve :<version> digest. Must exist or we cannot promote.
+          VERSION_DIGEST=$(curl -sS -D - -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: $ACCEPT" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION" \
+            | tr -d '\r' | awk '/^docker-content-digest:/{print $2}')
+          if [ -z "$VERSION_DIGEST" ]; then
+            echo "::error:::$VERSION does not exist in GHCR (or HEAD did not return a digest). Cannot promote a version that has not been built."
+            exit 1
+          fi
+          echo "Resolved :$VERSION → $VERSION_DIGEST"
+          echo "version_digest=$VERSION_DIGEST" >> "$GITHUB_OUTPUT"
+
+          # Resolve :candidate digest. May not exist on a totally fresh
+          # registry, but should exist any time the build workflow has run.
+          CANDIDATE_DIGEST=$(curl -sS -D - -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: $ACCEPT" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/candidate" \
+            | tr -d '\r' | awk '/^docker-content-digest:/{print $2}' || echo "")
+          echo "Resolved :candidate → ${CANDIDATE_DIGEST:-<missing>}"
+          echo "candidate_digest=${CANDIDATE_DIGEST:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify :candidate matches :<version>
+        if: inputs.skip_candidate_check != true
+        run: |
+          set -euo pipefail
+          VD="${{ steps.digests.outputs.version_digest }}"
+          CD="${{ steps.digests.outputs.candidate_digest }}"
+
+          if [ -z "$CD" ]; then
+            echo "::error:::candidate does not exist in GHCR. Re-run build-openclaw-image.yml first, or set skip_candidate_check=true for an emergency override."
+            exit 1
+          fi
+
+          if [ "$VD" != "$CD" ]; then
+            echo "::error::Digest mismatch: :candidate=$CD vs :${{ steps.validate.outputs.version }}=$VD. Another build ran between QA and promotion. Re-run QA against the current :candidate, then retry, or set skip_candidate_check=true if this is intentional."
+            exit 1
+          fi
+
+          echo "Candidate digest matches :${{ steps.validate.outputs.version }} ($VD). Safe to promote."
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Re-tag :<version> → :latest (atomic, server-side)
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.validate.outputs.version }}"
+          # imagetools create copies the manifest by digest reference, so this
+          # is atomic on the registry side (no re-upload, no race window).
+          docker buildx imagetools create \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
+          echo "Re-tagged :$VERSION → :latest"
+
+      - name: Verify :latest now resolves to the version digest
+        env:
+          GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+          GHCR_READ_PAT:  ${{ secrets.GHCR_READ_PAT }}
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ steps.digests.outputs.version_digest }}"
+
+          TOKEN=$(curl -sS -u "${GHCR_READ_USER}:${GHCR_READ_PAT}" \
+            "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
+            | jq -r .token)
+
+          LATEST_DIGEST=$(curl -sS -D - -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/latest" \
+            | tr -d '\r' | awk '/^docker-content-digest:/{print $2}')
+
+          if [ "$LATEST_DIGEST" != "$EXPECTED" ]; then
+            echo "::error::Post-promote verification failed: :latest=$LATEST_DIGEST expected=$EXPECTED"
+            exit 1
+          fi
+          echo ":latest now points at $LATEST_DIGEST (matches :${{ steps.validate.outputs.version }})"
+
+      - name: Register OpenClawVersion (stable)
+        env:
+          VERSION_PIPELINE_SECRET: ${{ secrets.VERSION_PIPELINE_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERSION_PIPELINE_SECRET:-}" ]; then
+            echo "::error::secrets.VERSION_PIPELINE_SECRET is not set; cannot register OpenClawVersion stable row."
+            exit 1
+          fi
+
+          VERSION="${{ steps.validate.outputs.version }}"
+          SOURCE_TAG="${{ steps.validate.outputs.source_tag }}"
+          DIGEST="${{ steps.digests.outputs.version_digest }}"
+          # The version row's dockerImage MUST be the immutable :<version> ref,
+          # not :latest. The deployer reads this row and pulls by tag — using
+          # :latest here would re-introduce the moving-pointer problem the
+          # candidate/latest split is meant to solve.
+          DOCKER_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
+          PUSHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          RELEASE_NOTES_URL="https://github.com/openclaw/openclaw/releases/tag/$SOURCE_TAG"
+
+          PAYLOAD=$(jq -n \
+            --arg version       "$VERSION" \
+            --arg dockerImage   "$DOCKER_IMAGE" \
+            --arg imageDigest   "$DIGEST" \
+            --arg buildSourceTag "$SOURCE_TAG" \
+            --arg buildPushedAt "$PUSHED_AT" \
+            --arg releaseNotesUrl "$RELEASE_NOTES_URL" \
+            '{version: $version, dockerImage: $dockerImage, imageDigest: $imageDigest, buildSourceTag: $buildSourceTag, buildPushedAt: $buildPushedAt, releaseNotesUrl: $releaseNotesUrl, isStable: true, isCandidate: false}')
+
+          echo "Posting promote payload:"
+          echo "$PAYLOAD" | jq -c .
+
+          HTTP_RESPONSE=$(curl -sS -f --max-time 30 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Pipeline-Secret: $VERSION_PIPELINE_SECRET" \
+            -d "$PAYLOAD" \
+            "${{ inputs.register_endpoint }}")
+
+          echo "Register response:"
+          echo "$HTTP_RESPONSE" | jq .
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          echo "### OpenClaw Runtime Image Promoted to :latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** \`${{ steps.validate.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Upstream tag:** \`${{ steps.validate.outputs.source_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Immutable tag:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.validate.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Promoted to:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Digest:** \`${{ steps.digests.outputs.version_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          # Shell-side conditional so the workflow expression doesn't have to
+          # do ternary string selection (which GitHub Actions doesn't reliably
+          # support in all contexts).
+          if [ "${{ inputs.skip_candidate_check }}" = "true" ]; then
+            echo "- **Candidate check:** SKIPPED (emergency override — verify out of band)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Candidate check:** verified :candidate digest matches :${{ steps.validate.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "- **OpenClawVersion row:** registered with isStable=true at ${{ inputs.register_endpoint }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Next workspace deploy will pull this image. Existing running containers are NOT affected — they keep their pinned digest until they redeploy. To force a fleet-wide update, see admin → Versions → Force Update All (PR-1b will implement the actual redeploy)." >> "$GITHUB_STEP_SUMMARY"
