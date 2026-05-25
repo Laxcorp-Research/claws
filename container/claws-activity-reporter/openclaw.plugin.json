@@ -1,0 +1,13 @@
+{
+  "id": "claws-activity-reporter",
+  "name": "Claws Activity Reporter",
+  "description": "Posts agent lifecycle events (task start/complete/failed, messages in/out, tool calls, heartbeats) from this OpenClaw container to the Claws control plane.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

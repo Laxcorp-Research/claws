@@ -568,6 +568,16 @@ export function buildRailwayEnvVars(
   vars.CLAWS_METERING_ENDPOINT = process.env.METERING_ENDPOINT || 'https://app.buildclaws.ai/api/internal/metering';
   vars.CLAWS_METERING_SECRET = process.env.METERING_MASTER_SECRET || '';
 
+  // PR-2: Activity Wire — universal, mirrors the metering triplet above.
+  // The claws-activity-reporter plugin (overlay at /opt/claws-activity-reporter)
+  // reads both, then POSTs batched events to
+  //   ${CLAWS_ACTIVITY_ENDPOINT}/${CLAWS_WORKSPACE_ID}
+  // with header X-Activity-Secret: ${CLAWS_ACTIVITY_SECRET}.
+  // The matching env var in Vercel is ACTIVITY_PIPELINE_SECRET (and
+  // ACTIVITY_ENDPOINT for the optional URL override).
+  vars.CLAWS_ACTIVITY_ENDPOINT = process.env.ACTIVITY_ENDPOINT || 'https://app.buildclaws.ai/api/internal/activity';
+  vars.CLAWS_ACTIVITY_SECRET = process.env.ACTIVITY_PIPELINE_SECRET || '';
+
   if (creditConfig.creditMode) {
     vars.CLAWS_CREDIT_MODE = 'true';
     vars.CLAWS_USER_ID = creditConfig.userId;
