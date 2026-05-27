@@ -37,6 +37,15 @@ export async function POST(req: NextRequest) {
   )
   envVars.push(`CLAWS_METERING_SECRET=${process.env.METERING_MASTER_SECRET}`)
 
+  // PR-2: Activity Wire — universal, mirrors the metering triplet above.
+  // The claws-activity-reporter overlay plugin (loaded by the OpenClaw
+  // gateway from /opt/claws-activity-reporter) reads both and POSTs
+  // batched events. Must match src/lib/openclaw/deployer.ts:buildRailwayEnvVars.
+  envVars.push(
+    `CLAWS_ACTIVITY_ENDPOINT=${process.env.ACTIVITY_ENDPOINT || "https://app.buildclaws.ai/api/internal/activity"}`
+  )
+  envVars.push(`CLAWS_ACTIVITY_SECRET=${process.env.ACTIVITY_PIPELINE_SECRET ?? ""}`)
+
   if (source === "PLATFORM_CREDIT") {
     envVars.push(`ANTHROPIC_API_KEY=${process.env.CLAWS_MASTER_ANTHROPIC_KEY}`)
     envVars.push(`ANTHROPIC_BASE_URL=http://localhost:3789`)

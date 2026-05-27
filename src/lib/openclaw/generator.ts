@@ -331,6 +331,24 @@ function generateOpenClawConfig(
     config.skills = { entries: skillsEntries };
   }
 
+  // PR-2: Claws Activity Reporter plugin (overlay baked into the Docker
+  // image at /opt/claws-activity-reporter — see docker/Dockerfile + the
+  // plugin source at container/claws-activity-reporter/). Always emit;
+  // every workspace needs the reporter.
+  //
+  // Schema verified against upstream v2026.5.22:
+  //   - plugins.load.paths: z.array(z.string()).optional()
+  //       (zod-schema.ts:1167-1172, .strict())
+  //   - plugins.entries.<id>: PluginEntrySchema with enabled?: boolean
+  //       (zod-schema.ts:235-264, .strict())
+  // The strict() wrapper means any unknown key would fail validation, so
+  // do NOT add fields inside `entries.claws-activity-reporter` beyond the
+  // PluginEntrySchema-allowed set.
+  config.plugins = {
+    load: { paths: ['/opt/claws-activity-reporter'] },
+    entries: { 'claws-activity-reporter': { enabled: true } },
+  };
+
   return config;
 }
 
@@ -1516,6 +1534,13 @@ export function buildHeartbeatSchedule(
   const expr = `${minute} ${hour} * * ${dayOfWeek}`;
   const tz = timezone && timezone.trim().length > 0 ? timezone : undefined;
 
+  // CROSS-REFERENCE — DO NOT CHANGE WITHOUT UPDATING claws-activity-reporter.
+  // The `orchestrator-heartbeat-` prefix here is the SAME string the
+  // claws-activity-reporter plugin filters on at:
+  //   container/claws-activity-reporter/index.mjs (HEARTBEAT_CRON_NAME_PREFIX)
+  // If you rename the prefix, the plugin's HEARTBEAT activity-log emission
+  // goes silent (it does NOT misclassify other crons — it just stops).
+  // Searchable string for find-references: HEARTBEAT_CRON_NAME_PREFIX
   return {
     cronJob: {
       name: `orchestrator-heartbeat-${frequency}`,
