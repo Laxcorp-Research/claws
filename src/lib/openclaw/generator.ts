@@ -1601,6 +1601,54 @@ export function buildHeartbeatSchedule(
     case 'hourly':    return { intervalConfig: { every: '1h' } };
     case 'every_6h':  return { intervalConfig: { every: '6h' } };
     case 'every_12h': return { intervalConfig: { every: '12h' } };
+    // PR-2c: TEST-ONLY frequency for activity-wire validation. Emits a
+    // cron-shaped job (NOT intervalConfig) so it fires through the same
+    // code path as daily/weekday and surfaces cron_changed events to the
+    // claws-activity-reporter plugin. "*/5" fires every 5 minutes, which
+    // lets a wire-validation deploy redeploy-then-wait-5-min instead of
+    // racing a wall-clock fire window (the operational pain we hit
+    // 4 times during PR-2/PR-2b validation).
+    //
+    // Production safety:
+    //   - Setting heartbeatFrequency='test_5min' via DB causes the cron
+    //     to fire every 5 minutes FOREVER until reset to null/off.
+    //   - The Builder UI does NOT expose this option; opaque-string-only.
+    //   - The frequency name is loud on purpose ("test_5min") so anyone
+    //     spotting it in DB/logs knows it's a debug knob.
+    //   - Audit query: SELECT id, workspaceId FROM "Agent" WHERE
+    //     "heartbeatFrequency"='test_5min'  (should be 0 on prod normally).
+    //
+    // All PR-2b correctness invariants preserved:
+    //   - id: required by OpenClaw cron-store load
+    //   - name with "orchestrator-heartbeat-" prefix: required by the
+    //     plugin's isHeartbeatJob filter
+    //   - explicit agentId: explicit cron routing
+    //   - session-keyed sessionTarget: full context preservation
+    //   - payload.kind=agentTurn compatible with session-keyed target
+    case 'test_5min': {
+      return {
+        cronJob: {
+          id: `heartbeat-${orchestratorAgentSlug}-test_5min`,
+          name: `orchestrator-heartbeat-test_5min`,
+          description: 'Orchestrator heartbeat (every 5 minutes — TEST ONLY)',
+          enabled: true,
+          deleteAfterRun: false,
+          // No `tz` field — */5 fires on UTC minute marks regardless of
+          // workspace timezone, which is what we want for predictable
+          // wire-validation timing.
+          schedule: { kind: 'cron', expr: '*/5 * * * *' },
+          agentId: orchestratorAgentSlug,
+          sessionTarget: `session:agent:${orchestratorAgentSlug}:main`,
+          wakeMode: 'now',
+          payload: {
+            kind: 'agentTurn',
+            message:
+              'Heartbeat (test_5min). Read HEARTBEAT.md and follow it strictly. ' +
+              'If nothing needs attention, reply HEARTBEAT_OK.',
+          },
+        },
+      };
+    }
   }
 
   if (frequency !== 'daily' && frequency !== 'weekday') {

@@ -287,6 +287,49 @@ describe('buildHeartbeatSchedule', () => {
     });
   });
 
+  // ───────────────────────────────────────────────────────────────────
+  // PR-2c: TEST-ONLY `test_5min` frequency. Emits a cron-shaped job
+  // (NOT an interval) with */5 * * * * so wire-validation deploys can
+  // redeploy-then-wait-5-min instead of racing a wall-clock fire window.
+  // ───────────────────────────────────────────────────────────────────
+  describe('PR-2c TEST-ONLY: test_5min frequency', () => {
+    it('emits a cron job (NOT an interval) with */5 * * * * expression', () => {
+      const result = buildHeartbeatSchedule('test_5min', null, null, SLUG);
+      expect(result?.intervalConfig).toBeUndefined();
+      expect(result?.cronJob?.schedule.kind).toBe('cron');
+      expect(result?.cronJob?.schedule.expr).toBe('*/5 * * * *');
+    });
+
+    it('test_5min preserves all PR-2b correctness fields (id, agentId, session-keyed sessionTarget, plugin-filter-matching name)', () => {
+      const result = buildHeartbeatSchedule('test_5min', null, null, SLUG);
+      const job = result?.cronJob;
+      expect(job?.id).toBe(`heartbeat-${SLUG}-test_5min`);
+      expect(job?.agentId).toBe(SLUG);
+      expect(job?.sessionTarget).toBe(`session:agent:${SLUG}:main`);
+      // The plugin's isHeartbeatJob filter checks job.name.startsWith(
+      // 'orchestrator-heartbeat-'). If this prefix ever breaks, HEARTBEAT
+      // activity rows go silent.
+      expect(job?.name.startsWith('orchestrator-heartbeat-')).toBe(true);
+      expect(job?.payload.kind).toBe('agentTurn');
+      expect(job?.wakeMode).toBe('now');
+      expect(job?.enabled).toBe(true);
+      expect(job?.deleteAfterRun).toBe(false);
+    });
+
+    it('test_5min ignores time + timezone args (interval-style cron, no tz needed)', () => {
+      // Whatever the operator passes for time/timezone, the cron is
+      // always */5 * * * * with no tz field. Predictable for testing.
+      const a = buildHeartbeatSchedule('test_5min', '08:00', 'America/New_York', SLUG);
+      const b = buildHeartbeatSchedule('test_5min', null, null, SLUG);
+      expect(a?.cronJob?.schedule).toEqual({ kind: 'cron', expr: '*/5 * * * *' });
+      expect(b?.cronJob?.schedule).toEqual({ kind: 'cron', expr: '*/5 * * * *' });
+      // Explicit assertion that we omitted the tz field (the cron expr
+      // is timezone-agnostic for */5 — but we still want the absence
+      // documented so a future refactor doesn't accidentally add it).
+      expect(a?.cronJob?.schedule as unknown as Record<string, unknown>).not.toHaveProperty('tz');
+    });
+  });
+
   describe('invalid time fallback', () => {
     it('falls back to hourly interval when time is "not-a-time"', () => {
       const result = buildHeartbeatSchedule('daily', 'not-a-time', TZ, SLUG);
