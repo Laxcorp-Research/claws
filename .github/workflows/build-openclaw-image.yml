@@ -142,6 +142,35 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "source_tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Compute overlay source hash (for skip-check overlay-awareness)
+        id: overlay
+        run: |
+          set -euo pipefail
+          # PR-2b #7: hash the files that comprise the Claws overlay applied
+          # on top of the upstream OpenClaw base image. If these change,
+          # the resulting image differs even when upstream version doesn't,
+          # so the scheduled Monday skip-check MUST rebuild.
+          #
+          # Files included: anything that ends up in the image (Dockerfile
+          # plus everything under container/ that the Dockerfile COPYs in).
+          # The find pattern is intentionally broad — better to over-rebuild
+          # than to ship a stale overlay. Sort to make the hash
+          # deterministic across filesystems.
+          OVERLAY_SHA=$(find docker container -type f \
+            \( -name '*.mjs' -o -name '*.json' -o -name '*.md' -o -name 'Dockerfile' \) \
+            -print0 2>/dev/null \
+            | sort -z \
+            | xargs -0 sha256sum 2>/dev/null \
+            | sha256sum \
+            | cut -d' ' -f1)
+          echo "Overlay source SHA: $OVERLAY_SHA"
+          # Sanity: non-empty + 64 hex chars
+          if ! printf '%s' "$OVERLAY_SHA" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::Computed overlay SHA looks invalid: '$OVERLAY_SHA'. Likely missing find/sha256sum output."
+            exit 1
+          fi
+          echo "sha=$OVERLAY_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Check if image already exists in GHCR (skip if so)
         id: check
         env:
@@ -150,6 +179,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.detect.outputs.version }}"
+          OVERLAY_SHA="${{ steps.overlay.outputs.sha }}"
+          FORCE_VERSION="${{ inputs.force_version }}"
 
           if [ -z "${GHCR_READ_USER:-}" ] || [ -z "${GHCR_READ_PAT:-}" ]; then
             echo "::error::vars.GHCR_READ_USER and secrets.GHCR_READ_PAT must both be configured (skip-check cannot use anonymous tokens against a private GHCR package — see PR-1)."
@@ -174,13 +205,77 @@ jobs:
             -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
             "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION")
 
-          if [ "$STATUS" = "200" ] && [ -z "${{ inputs.force_version }}" ]; then
-            echo "Image ${{ env.IMAGE_NAME }}:$VERSION already exists. Skipping build."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          # PR-2b #6: immutable-tag policy. If the operator passed
+          # force_version explicitly and the tag already exists, REQUIRE
+          # the version to carry a -N suffix (e.g. 2026.5.22-1) so the
+          # canonical :<upstream-version> tag stays immutable. This is the
+          # exact footgun we hit on 2026-05-26: overwriting :2026.5.22
+          # silently swapped the digest under :latest for anyone who'd
+          # already promoted, with no audit signal.
+          if [ "$STATUS" = "200" ] && [ -n "$FORCE_VERSION" ]; then
+            if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]{4}\.[0-9]+\.[0-9]+-[0-9]+$'; then
+              echo "::error::Refusing to overwrite immutable tag ${{ env.IMAGE_NAME }}:$VERSION. Force-rebuilds of an already-published tag require a -N suffix to keep per-version digests immutable. Use force_version=$VERSION-1 (or higher -N) instead."
+              exit 1
+            fi
+            echo "Force-rebuild with suffix-bumped version $VERSION accepted (existing tag will NOT be overwritten — this is a new immutable tag)."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Manifest check: version=$VERSION status=$STATUS force_version='${{ inputs.force_version }}'"
+          # PR-2b #7: overlay-aware skip-check. If the upstream :<version>
+          # tag exists AND we're on a scheduled build (no force_version),
+          # we used to skip unconditionally. That was the blind spot that
+          # caused our PR-2 plugin to never ship in the Monday auto-build:
+          # upstream version was unchanged, but our overlay (Dockerfile +
+          # container/) had a new COPY line. Now: read the
+          # ai.buildclaws.overlay-sha label from the existing image's
+          # config blob. If it matches the current overlay SHA, skip; if
+          # it differs (or is absent — never-tagged images), rebuild.
+          if [ "$STATUS" = "200" ] && [ -z "$FORCE_VERSION" ]; then
+            # Resolve manifest → config digest → config blob → label.
+            # Pass Accept for both v2 and OCI manifest media types; in some
+            # cases the manifest is a manifest-list (index) — handle that
+            # by drilling to the first platform manifest.
+            MANIFEST_JSON=$(curl -sS \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+              "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION")
+
+            # If it's a manifest list, pick the linux/amd64 entry and re-fetch.
+            FIRST_LIST_DIGEST=$(printf '%s' "$MANIFEST_JSON" | jq -r '
+              if (.mediaType // "") | test("manifest.list|image.index") then
+                (.manifests | map(select(.platform.os=="linux" and .platform.architecture=="amd64")) | .[0].digest // .manifests[0].digest // "")
+              else "" end
+            ')
+            if [ -n "$FIRST_LIST_DIGEST" ] && [ "$FIRST_LIST_DIGEST" != "null" ]; then
+              MANIFEST_JSON=$(curl -sS \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+                "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$FIRST_LIST_DIGEST")
+            fi
+
+            CONFIG_DIGEST=$(printf '%s' "$MANIFEST_JSON" | jq -r '.config.digest // ""')
+            BAKED_OVERLAY_SHA=""
+            if [ -n "$CONFIG_DIGEST" ] && [ "$CONFIG_DIGEST" != "null" ]; then
+              CONFIG_BLOB=$(curl -sS \
+                -H "Authorization: Bearer $TOKEN" \
+                "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/blobs/$CONFIG_DIGEST")
+              BAKED_OVERLAY_SHA=$(printf '%s' "$CONFIG_BLOB" | jq -r '.config.Labels["ai.buildclaws.overlay-sha"] // ""')
+            fi
+
+            if [ -n "$BAKED_OVERLAY_SHA" ] && [ "$BAKED_OVERLAY_SHA" = "$OVERLAY_SHA" ]; then
+              echo "Image ${{ env.IMAGE_NAME }}:$VERSION already exists with overlay-sha=$BAKED_OVERLAY_SHA matching current. Skipping build."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ -z "$BAKED_OVERLAY_SHA" ]; then
+              echo "Image ${{ env.IMAGE_NAME }}:$VERSION exists but carries NO ai.buildclaws.overlay-sha label (pre-PR-2b build). Treating as overlay-mismatched → rebuilding."
+            else
+              echo "Image ${{ env.IMAGE_NAME }}:$VERSION overlay-sha=$BAKED_OVERLAY_SHA != current=$OVERLAY_SHA. Rebuilding."
+            fi
+          fi
+
+          echo "Manifest check: version=$VERSION status=$STATUS force_version='$FORCE_VERSION' overlay_sha=$OVERLAY_SHA"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Checkout OpenClaw source at v$VERSION
@@ -233,6 +328,15 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:candidate
+          # PR-2b #7: bake the overlay source SHA into the image as a
+          # Docker label. The skip-check on the next run reads this back
+          # via GHCR manifest/config blob lookup to decide whether to
+          # rebuild. Pre-PR-2b builds carry no label → treated as
+          # mismatched → rebuilt once. After that, the label is
+          # authoritative.
+          labels: |
+            ai.buildclaws.overlay-sha=${{ steps.overlay.outputs.sha }}
+            ai.buildclaws.upstream-version=${{ steps.detect.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

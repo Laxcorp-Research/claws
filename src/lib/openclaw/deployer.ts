@@ -19,6 +19,11 @@
 
 import { prisma } from '@/lib/db';
 import { encrypt, decrypt } from '@/lib/encryption';
+import {
+  requireActivityEndpoint,
+  requireMeteringEndpoint,
+  assertEndpointHostMatchesApp,
+} from './env-guards';
 import { generateWorkspace, type GeneratedWorkspace } from './generator';
 import {
   isRailwayConfigured,
@@ -565,7 +570,11 @@ export function buildRailwayEnvVars(
   // NODE_OPTIONS memory cap). creditConfig is now a required parameter,
   // so these three emit unconditionally — no silent-no-op failure mode.
   vars.CLAWS_WORKSPACE_ID = creditConfig.workspaceId;
-  vars.CLAWS_METERING_ENDPOINT = process.env.METERING_ENDPOINT || 'https://app.buildclaws.ai/api/internal/metering';
+  // PR-2b #1 + #2: fail-closed on unset/mismatched endpoint env. See
+  // src/lib/openclaw/env-guards.ts for the full root-cause writeup.
+  const meteringEndpoint = requireMeteringEndpoint();
+  assertEndpointHostMatchesApp({ endpointUrl: meteringEndpoint, endpointName: 'METERING_ENDPOINT' });
+  vars.CLAWS_METERING_ENDPOINT = meteringEndpoint;
   vars.CLAWS_METERING_SECRET = process.env.METERING_MASTER_SECRET || '';
 
   // PR-2: Activity Wire — universal, mirrors the metering triplet above.
@@ -574,8 +583,10 @@ export function buildRailwayEnvVars(
   //   ${CLAWS_ACTIVITY_ENDPOINT}/${CLAWS_WORKSPACE_ID}
   // with header X-Activity-Secret: ${CLAWS_ACTIVITY_SECRET}.
   // The matching env var in Vercel is ACTIVITY_PIPELINE_SECRET (and
-  // ACTIVITY_ENDPOINT for the optional URL override).
-  vars.CLAWS_ACTIVITY_ENDPOINT = process.env.ACTIVITY_ENDPOINT || 'https://app.buildclaws.ai/api/internal/activity';
+  // ACTIVITY_ENDPOINT for the URL — REQUIRED, no fallback).
+  const activityEndpoint = requireActivityEndpoint();
+  assertEndpointHostMatchesApp({ endpointUrl: activityEndpoint, endpointName: 'ACTIVITY_ENDPOINT' });
+  vars.CLAWS_ACTIVITY_ENDPOINT = activityEndpoint;
   vars.CLAWS_ACTIVITY_SECRET = process.env.ACTIVITY_PIPELINE_SECRET || '';
 
   if (creditConfig.creditMode) {

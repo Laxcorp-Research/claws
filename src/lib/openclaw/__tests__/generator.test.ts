@@ -762,7 +762,18 @@ describe('generateWorkspace', () => {
       expect(cronJobs).toHaveLength(1);
       const job = cronJobs[0];
       expect(job.schedule).toEqual({ kind: 'cron', expr: '0 8 * * *', tz: 'America/New_York' });
-      expect(job.sessionTarget).toBe('main');
+      // PR-2b #9: sessionTarget is now the session-keyed form for the
+      // orchestrator's main session. "main" (the pre-PR-2b value) is
+      // rejected at fire time by OpenClaw for agentTurn payloads, so
+      // the heartbeat was silently no-firing. The mock orchestrator name
+      // is "Test Commander" → toAgentId → "test-commander".
+      expect(job.sessionTarget).toBe('session:agent:test-commander:main');
+      expect(job.agentId).toBe('test-commander');
+      // PR-2b #8: id is REQUIRED by OpenClaw's cron store load. Was missing
+      // pre-PR-2b → every daily/weekday heartbeat was silently dropped.
+      expect(typeof job.id).toBe('string');
+      expect(String(job.id).length).toBeGreaterThan(0);
+      expect(job.id).toContain('test-commander');
       expect(job.wakeMode).toBe('now');
       expect(job.payload.kind).toBe('agentTurn');
       expect(job.enabled).toBe(true);
@@ -797,6 +808,102 @@ describe('generateWorkspace', () => {
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       expect(config.agents.defaults.heartbeat).toBeUndefined();
       expect(cronJobs).toEqual([]);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PR-2b #4: plugin entry emits hooks.allowConversationAccess so the
+  // upstream sandbox doesn't block before_agent_run + agent_end (those
+  // hooks are gated behind explicit opt-in for non-bundled plugins).
+  // ─────────────────────────────────────────────────────────────────────
+  describe('PR-2b #4: plugins.entries.claws-activity-reporter.hooks.allowConversationAccess', () => {
+    it('emits hooks.allowConversationAccess: true on the activity-reporter entry', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildMockWorkspace()
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const entry = config.plugins?.entries?.['claws-activity-reporter'];
+      expect(entry).toBeDefined();
+      // Sanity: enabled is still set from PR-2.
+      expect(entry.enabled).toBe(true);
+      // PR-2b #4: the new opt-in. Without it, before_agent_run and
+      // agent_end (TASK_START / TASK_COMPLETE / TASK_FAILED) are blocked
+      // by the OpenClaw plugin sandbox.
+      expect(entry.hooks?.allowConversationAccess).toBe(true);
+    });
+
+    it('plugins.load.paths still points at /opt/claws-activity-reporter', async () => {
+      // Sanity that we didn't accidentally break the PR-2 load path.
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildMockWorkspace()
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      expect(config.plugins?.load?.paths).toEqual(['/opt/claws-activity-reporter']);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PR-2b #10: scheduledTasks cron emit (currently dormant — no Prisma
+  // column populated — but the code path exists and would emit the same
+  // platform-wide bug shape if/when wired. Lock the correct shape now.)
+  // ─────────────────────────────────────────────────────────────────────
+  describe('PR-2b #10: scheduledTasks cron emit shape', () => {
+    function withScheduledTasks(tasks: Array<Record<string, unknown>>) {
+      const ws = buildMockWorkspace();
+      (ws as Record<string, unknown>).scheduledTasks = tasks;
+      return ws;
+    }
+
+    it('emits scheduled-task crons with id, agentId, and session-keyed sessionTarget for non-isolated tasks', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withScheduledTasks([
+          { name: 'Daily Report', schedule: '0 9 * * *', timezone: 'UTC', isolated: false, urgent: false, prompt: 'Send the daily report.', fullContext: true },
+        ])
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+      // 1 heartbeat (hourly by default mock) is an INTERVAL, so cron/jobs.json
+      // only has the scheduled-task cron. If the mock orchestrator's hourly
+      // frequency ever changes to daily, this length may be 2.
+      const taskJob = cronJobs.find((j: Record<string, unknown>) => j.name === 'Daily Report');
+      expect(taskJob).toBeDefined();
+      expect(typeof taskJob.id).toBe('string');
+      expect(String(taskJob.id).length).toBeGreaterThan(0);
+      expect(taskJob.id).toContain('daily-report');
+      expect(taskJob.agentId).toBe('test-commander');
+      expect(taskJob.sessionTarget).toBe('session:agent:test-commander:main');
+      // NOT "main" (which would be rejected at fire time for agentTurn payloads).
+      expect(taskJob.sessionTarget).not.toBe('main');
+    });
+
+    it('emits sessionTarget="isolated" for isolated scheduled tasks (valid for agentTurn)', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        withScheduledTasks([
+          { name: 'Background Analysis', schedule: '0 */6 * * *', timezone: 'UTC', isolated: true, urgent: false, prompt: 'Run background analysis.', fullContext: false },
+        ])
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+      const taskJob = cronJobs.find((j: Record<string, unknown>) => j.name === 'Background Analysis');
+      expect(taskJob.sessionTarget).toBe('isolated');
+      // Still has id + agentId regardless.
+      expect(typeof taskJob.id).toBe('string');
+      expect(taskJob.agentId).toBe('test-commander');
+    });
+
+    it('scheduledTasks ids are deterministic across calls', async () => {
+      const tasks = [{ name: 'My Task', schedule: '0 0 * * *', timezone: 'UTC', isolated: false, urgent: false, prompt: 'do it', fullContext: true }];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(withScheduledTasks(tasks));
+      const a = await generateWorkspace('ws-test-1');
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(withScheduledTasks(tasks));
+      const b = await generateWorkspace('ws-test-1');
+      const aJobs = JSON.parse(a['cron/jobs.json']);
+      const bJobs = JSON.parse(b['cron/jobs.json']);
+      expect(aJobs.find((j: Record<string, unknown>) => j.name === 'My Task').id).toBe(
+        bJobs.find((j: Record<string, unknown>) => j.name === 'My Task').id,
+      );
     });
   });
 });

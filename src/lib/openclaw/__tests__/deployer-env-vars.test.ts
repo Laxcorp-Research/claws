@@ -1,5 +1,5 @@
 // deployer-env-vars.test.ts — regression coverage for buildRailwayEnvVars'
-// Composio emission.
+// Composio emission + PR-2b env-guards (fail-closed + host-match).
 //
 // Scope is intentionally narrow: this file tests ONLY the env-var-building
 // function. Deploy orchestration (Railway GraphQL, Prisma updates, service
@@ -14,6 +14,10 @@
 //   3. Pre-PR #4 backward compatibility: when COMPOSIO_API_KEY is unset
 //      (dev/local, CI without the secret), the function silently omits
 //      Composio vars — no throw, no breakage.
+//   4. PR-2b #1 fail-closed: throws when ACTIVITY_ENDPOINT or
+//      METERING_ENDPOINT is unset (no silent prod fallback).
+//   5. PR-2b #2 host-match: throws when endpoint host doesn't match
+//      NEXT_PUBLIC_APP_URL host (catches misrouted-env-baked-into-container).
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildRailwayEnvVars } from '@/lib/openclaw/deployer';
@@ -31,16 +35,40 @@ const minimalGenerated: GeneratedWorkspace = {
 
 const workspace = { timezone: 'UTC', containerHost: null };
 
+// PR-2b: every successful path needs these three set together so the host
+// guard agrees. Tests that exercise the unset/mismatch branches override
+// them inline.
+function setStagingLikeEnv() {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+  process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
+  process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+}
+
 describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', () => {
   // Vitest does not isolate process.env between tests. Stash + restore so
-  // nothing leaks to other files in the same test run.
+  // nothing leaks to other files in the same test run. PR-2b: also stash
+  // the new required env vars (ACTIVITY_ENDPOINT, METERING_ENDPOINT,
+  // NEXT_PUBLIC_APP_URL) since the env-guards read them.
   let prevComposioApiKey: string | undefined;
+  let prevActivityEndpoint: string | undefined;
+  let prevMeteringEndpoint: string | undefined;
+  let prevAppUrl: string | undefined;
   beforeEach(() => {
     prevComposioApiKey = process.env.COMPOSIO_API_KEY;
+    prevActivityEndpoint = process.env.ACTIVITY_ENDPOINT;
+    prevMeteringEndpoint = process.env.METERING_ENDPOINT;
+    prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    setStagingLikeEnv();
   });
   afterEach(() => {
     if (prevComposioApiKey === undefined) delete process.env.COMPOSIO_API_KEY;
     else process.env.COMPOSIO_API_KEY = prevComposioApiKey;
+    if (prevActivityEndpoint === undefined) delete process.env.ACTIVITY_ENDPOINT;
+    else process.env.ACTIVITY_ENDPOINT = prevActivityEndpoint;
+    if (prevMeteringEndpoint === undefined) delete process.env.METERING_ENDPOINT;
+    else process.env.METERING_ENDPOINT = prevMeteringEndpoint;
+    if (prevAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
   });
 
   it('emits COMPOSIO_API_KEY + COMPOSIO_USER_ID together when COMPOSIO_API_KEY is set', () => {
@@ -169,15 +197,24 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
 describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution', () => {
   let prevMeteringEndpoint: string | undefined;
   let prevMeteringSecret: string | undefined;
+  let prevActivityEndpoint: string | undefined;
   let prevComposioApiKey: string | undefined;
+  let prevAppUrl: string | undefined;
 
   beforeEach(() => {
     prevMeteringEndpoint = process.env.METERING_ENDPOINT;
     prevMeteringSecret = process.env.METERING_MASTER_SECRET;
+    prevActivityEndpoint = process.env.ACTIVITY_ENDPOINT;
     prevComposioApiKey = process.env.COMPOSIO_API_KEY;
+    prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
     // Composio unset for this whole block to keep it orthogonal.
     delete process.env.COMPOSIO_API_KEY;
-    process.env.METERING_ENDPOINT = 'https://custom-metering.example.com/api/internal/metering';
+    // PR-2b: set all three required env vars so the host-match guard
+    // agrees. Tests that need to vary the metering URL set it again
+    // inline with a host that still matches NEXT_PUBLIC_APP_URL.
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+    process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
     process.env.METERING_MASTER_SECRET = 'test_metering_secret_abc';
   });
 
@@ -186,8 +223,12 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
     else process.env.METERING_ENDPOINT = prevMeteringEndpoint;
     if (prevMeteringSecret === undefined) delete process.env.METERING_MASTER_SECRET;
     else process.env.METERING_MASTER_SECRET = prevMeteringSecret;
+    if (prevActivityEndpoint === undefined) delete process.env.ACTIVITY_ENDPOINT;
+    else process.env.ACTIVITY_ENDPOINT = prevActivityEndpoint;
     if (prevComposioApiKey === undefined) delete process.env.COMPOSIO_API_KEY;
     else process.env.COMPOSIO_API_KEY = prevComposioApiKey;
+    if (prevAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
   });
 
   it('emits CLAWS_WORKSPACE_ID for non-credit users (regression: was credit-mode-gated)', () => {
@@ -205,7 +246,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
       workspaceId: 'ws-non-credit-2',
       userId: 'user-non-credit-2',
     });
-    expect(env.CLAWS_METERING_ENDPOINT).toBe('https://custom-metering.example.com/api/internal/metering');
+    expect(env.CLAWS_METERING_ENDPOINT).toBe('https://staging.app.buildclaws.ai/api/internal/metering');
   });
 
   it('emits CLAWS_METERING_SECRET for non-credit users (regression: was credit-mode-gated)', () => {
@@ -215,16 +256,6 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
       userId: 'user-non-credit-3',
     });
     expect(env.CLAWS_METERING_SECRET).toBe('test_metering_secret_abc');
-  });
-
-  it('falls back to default metering endpoint when METERING_ENDPOINT env is unset', () => {
-    delete process.env.METERING_ENDPOINT;
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
-      creditMode: false,
-      workspaceId: 'ws-default',
-      userId: 'user-default',
-    });
-    expect(env.CLAWS_METERING_ENDPOINT).toBe('https://app.buildclaws.ai/api/internal/metering');
   });
 
   it('still gates credit-proxy-specific vars on creditMode=true (non-credit does NOT get them)', () => {
@@ -263,5 +294,127 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
     expect(env.ANTHROPIC_API_KEY).toBe('sk-ant-test-master');
     expect(env.ANTHROPIC_BASE_URL).toBe('http://localhost:3789');
     expect(env.NODE_OPTIONS).toBe('--max-old-space-size=700');
+  });
+
+  it('emits CLAWS_ACTIVITY_ENDPOINT alongside metering (PR-2)', () => {
+    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+      creditMode: false,
+      workspaceId: 'ws-activity-1',
+      userId: 'user-activity-1',
+    });
+    expect(env.CLAWS_ACTIVITY_ENDPOINT).toBe('https://staging.app.buildclaws.ai/api/internal/activity');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// PR-2b #1 + #2: fail-closed + host-match guards on the endpoint env vars.
+//
+// Background: PR-2 originally hardcoded a fallback to
+//   'https://app.buildclaws.ai/api/internal/activity'
+// when ACTIVITY_ENDPOINT was unset. That fallback was the silent-misroute
+// bug we discovered during PR-2 staging validation: staging containers
+// without the env set posted activity events at prod's endpoint, which
+// rejected them but with no obvious surface signal. METERING_ENDPOINT
+// had the same shape. Both are now required.
+//
+// Each test in this block targets a specific failure mode of the deploy
+// pipeline that the guard must catch loudly.
+// ─────────────────────────────────────────────────────────────────────────
+describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => {
+  let prev: Record<string, string | undefined>;
+  beforeEach(() => {
+    prev = {
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+      ACTIVITY_ENDPOINT: process.env.ACTIVITY_ENDPOINT,
+      METERING_ENDPOINT: process.env.METERING_ENDPOINT,
+      METERING_MASTER_SECRET: process.env.METERING_MASTER_SECRET,
+      COMPOSIO_API_KEY: process.env.COMPOSIO_API_KEY,
+    };
+    // Composio off so it can't be the cause of any unexpected throws.
+    delete process.env.COMPOSIO_API_KEY;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  function callIt() {
+    return buildRailwayEnvVars(minimalGenerated, workspace, {
+      creditMode: false,
+      workspaceId: 'ws-guard',
+      userId: 'user-guard',
+    });
+  }
+
+  it('MUTATION-anchored: throws when ACTIVITY_ENDPOINT is unset (no silent prod fallback)', () => {
+    // This is the bug we shipped in PR-2 and discovered during staging
+    // validation. If a future change re-introduces the silent fallback
+    // (e.g., `process.env.ACTIVITY_ENDPOINT || '<prod-url>'`), this test
+    // fails. Lock the fail-closed posture in code-and-tests.
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+    delete process.env.ACTIVITY_ENDPOINT;
+    expect(callIt).toThrow(/ACTIVITY_ENDPOINT env var is required but not set/);
+  });
+
+  it('throws when METERING_ENDPOINT is unset (same fail-closed treatment)', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
+    delete process.env.METERING_ENDPOINT;
+    expect(callIt).toThrow(/METERING_ENDPOINT env var is required but not set/);
+  });
+
+  it('throws when ACTIVITY_ENDPOINT is whitespace-only', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+    process.env.ACTIVITY_ENDPOINT = '   ';
+    expect(callIt).toThrow(/ACTIVITY_ENDPOINT env var is required but not set/);
+  });
+
+  it('throws on host mismatch — ACTIVITY_ENDPOINT host != NEXT_PUBLIC_APP_URL host', () => {
+    // The exact misconfig we want to catch at deploy time, not at
+    // request time. A staging deploy pointed at a prod endpoint URL
+    // (or vice versa) silently routed traffic to the wrong control
+    // plane in PR-2 — visible only because the workspace ID didn't
+    // exist in the wrong DB.
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+    process.env.ACTIVITY_ENDPOINT = 'https://app.buildclaws.ai/api/internal/activity'; // prod
+    expect(callIt).toThrow(/Host mismatch refusing deploy.*ACTIVITY_ENDPOINT/);
+  });
+
+  it('throws on host mismatch — METERING_ENDPOINT host != NEXT_PUBLIC_APP_URL host', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
+    process.env.METERING_ENDPOINT = 'https://app.buildclaws.ai/api/internal/metering'; // prod
+    expect(callIt).toThrow(/Host mismatch refusing deploy.*METERING_ENDPOINT/);
+  });
+
+  it('throws when NEXT_PUBLIC_APP_URL is unset (cannot run host-match guard)', () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+    process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
+    expect(callIt).toThrow(/NEXT_PUBLIC_APP_URL env var is required/);
+  });
+
+  it('accepts matching staging-shaped env (all three on same host)', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+    process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
+    expect(callIt).not.toThrow();
+    const env = callIt();
+    expect(env.CLAWS_ACTIVITY_ENDPOINT).toBe('https://staging.app.buildclaws.ai/api/internal/activity');
+    expect(env.CLAWS_METERING_ENDPOINT).toBe('https://staging.app.buildclaws.ai/api/internal/metering');
+  });
+
+  it('accepts matching prod-shaped env (all three on same host)', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://app.buildclaws.ai';
+    process.env.METERING_ENDPOINT = 'https://app.buildclaws.ai/api/internal/metering';
+    process.env.ACTIVITY_ENDPOINT = 'https://app.buildclaws.ai/api/internal/activity';
+    expect(callIt).not.toThrow();
+    const env = callIt();
+    expect(env.CLAWS_ACTIVITY_ENDPOINT).toBe('https://app.buildclaws.ai/api/internal/activity');
   });
 });

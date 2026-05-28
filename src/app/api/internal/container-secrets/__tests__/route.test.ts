@@ -51,38 +51,37 @@ function parseEnvVars(data: { envVars?: string[] }): Record<string, string> {
 }
 
 describe("POST /api/internal/container-secrets", () => {
-  let prevAgentSecret: string | undefined
-  let prevMeteringEndpoint: string | undefined
-  let prevMeteringSecret: string | undefined
-  let prevMasterAnthropic: string | undefined
-  let prevTransportKey: string | undefined
+  let prev: Record<string, string | undefined>
 
   beforeEach(() => {
-    prevAgentSecret = process.env.CONTAINER_AGENT_SECRET
-    prevMeteringEndpoint = process.env.METERING_ENDPOINT
-    prevMeteringSecret = process.env.METERING_MASTER_SECRET
-    prevMasterAnthropic = process.env.CLAWS_MASTER_ANTHROPIC_KEY
-    prevTransportKey = process.env.AGENT_TRANSPORT_KEY
-
+    prev = {
+      CONTAINER_AGENT_SECRET: process.env.CONTAINER_AGENT_SECRET,
+      METERING_ENDPOINT: process.env.METERING_ENDPOINT,
+      METERING_MASTER_SECRET: process.env.METERING_MASTER_SECRET,
+      ACTIVITY_ENDPOINT: process.env.ACTIVITY_ENDPOINT,
+      ACTIVITY_PIPELINE_SECRET: process.env.ACTIVITY_PIPELINE_SECRET,
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+      CLAWS_MASTER_ANTHROPIC_KEY: process.env.CLAWS_MASTER_ANTHROPIC_KEY,
+      AGENT_TRANSPORT_KEY: process.env.AGENT_TRANSPORT_KEY,
+    }
     process.env.CONTAINER_AGENT_SECRET = AGENT_SECRET
+    // PR-2b: all three required env vars set to a matching staging-shaped host
+    // so the env-guards (require + host-match) pass in the happy path.
+    process.env.NEXT_PUBLIC_APP_URL = "https://staging-metering.test"
     process.env.METERING_ENDPOINT = "https://staging-metering.test/api/internal/metering"
     process.env.METERING_MASTER_SECRET = "test_metering_secret_pr2"
+    process.env.ACTIVITY_ENDPOINT = "https://staging-metering.test/api/internal/activity"
+    process.env.ACTIVITY_PIPELINE_SECRET = "test_activity_secret_pr2b"
     process.env.CLAWS_MASTER_ANTHROPIC_KEY = "sk-ant-test-master-pr2"
     // Disable transport-key path so the route returns plain envVars[] for assertion.
     delete process.env.AGENT_TRANSPORT_KEY
   })
 
   afterEach(() => {
-    if (prevAgentSecret === undefined) delete process.env.CONTAINER_AGENT_SECRET
-    else process.env.CONTAINER_AGENT_SECRET = prevAgentSecret
-    if (prevMeteringEndpoint === undefined) delete process.env.METERING_ENDPOINT
-    else process.env.METERING_ENDPOINT = prevMeteringEndpoint
-    if (prevMeteringSecret === undefined) delete process.env.METERING_MASTER_SECRET
-    else process.env.METERING_MASTER_SECRET = prevMeteringSecret
-    if (prevMasterAnthropic === undefined) delete process.env.CLAWS_MASTER_ANTHROPIC_KEY
-    else process.env.CLAWS_MASTER_ANTHROPIC_KEY = prevMasterAnthropic
-    if (prevTransportKey === undefined) delete process.env.AGENT_TRANSPORT_KEY
-    else process.env.AGENT_TRANSPORT_KEY = prevTransportKey
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
   })
 
   it("returns 401 when Authorization header is missing", async () => {
@@ -159,20 +158,85 @@ describe("POST /api/internal/container-secrets", () => {
     expect(env.ANTHROPIC_BASE_URL).toBe("http://localhost:3789")
   })
 
-  it("falls back to default metering endpoint when METERING_ENDPOINT env is unset", async () => {
-    delete process.env.METERING_ENDPOINT
+  it("also emits CLAWS_ACTIVITY_ENDPOINT + CLAWS_ACTIVITY_SECRET (PR-2)", async () => {
     ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "ws-default",
-      userId: "user-default",
+      id: "ws-activity",
+      userId: "user-activity",
       gatewayToken: null,
       channelConfigEncrypted: null,
       apiKeySourceOverride: null,
-      user: { id: "user-default", apiKeySource: "NONE", apiKeys: [], creditAccount: null },
+      user: { id: "user-activity", apiKeySource: "USER_OWN_KEY", apiKeys: [], creditAccount: null },
     })
-    const res = await callRoute({ workspaceId: "ws-default" }, `Bearer ${AGENT_SECRET}`)
+    const res = await callRoute({ workspaceId: "ws-activity" }, `Bearer ${AGENT_SECRET}`)
     expect(res.status).toBe(200)
     const body = await res.json()
     const env = parseEnvVars(body.data)
-    expect(env.CLAWS_METERING_ENDPOINT).toBe("https://app.buildclaws.ai/api/internal/metering")
+    expect(env.CLAWS_ACTIVITY_ENDPOINT).toBe("https://staging-metering.test/api/internal/activity")
+    expect(env.CLAWS_ACTIVITY_SECRET).toBe("test_activity_secret_pr2b")
+  })
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PR-2b #1 + #2: same guards as deployer.ts:buildRailwayEnvVars. The
+  // container-secrets path is the SECOND emission point for these env
+  // vars; it MUST enforce the same fail-closed + host-match invariants
+  // or containers provisioned via the agent path will silently misroute.
+  // ─────────────────────────────────────────────────────────────────────
+  describe("PR-2b fail-closed + host-match guards", () => {
+    const wsMock = {
+      id: "ws-guard",
+      userId: "user-guard",
+      gatewayToken: null,
+      channelConfigEncrypted: null,
+      apiKeySourceOverride: null,
+      user: { id: "user-guard", apiKeySource: "USER_OWN_KEY", apiKeys: [], creditAccount: null },
+    }
+
+    it("MUTATION-anchored: returns 500 ENDPOINT_CONFIG_INVALID when ACTIVITY_ENDPOINT unset (no silent prod fallback)", async () => {
+      delete process.env.ACTIVITY_ENDPOINT
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(wsMock)
+      const res = await callRoute({ workspaceId: "ws-guard" }, `Bearer ${AGENT_SECRET}`)
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.error.code).toBe("ENDPOINT_CONFIG_INVALID")
+      expect(body.error.message).toMatch(/ACTIVITY_ENDPOINT env var is required/)
+    })
+
+    it("returns 500 when METERING_ENDPOINT unset", async () => {
+      delete process.env.METERING_ENDPOINT
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(wsMock)
+      const res = await callRoute({ workspaceId: "ws-guard" }, `Bearer ${AGENT_SECRET}`)
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.error.message).toMatch(/METERING_ENDPOINT env var is required/)
+    })
+
+    it("returns 500 on host mismatch — ACTIVITY_ENDPOINT host != NEXT_PUBLIC_APP_URL host", async () => {
+      process.env.ACTIVITY_ENDPOINT = "https://app.buildclaws.ai/api/internal/activity" // prod
+      // METERING already matches staging host from beforeEach
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(wsMock)
+      const res = await callRoute({ workspaceId: "ws-guard" }, `Bearer ${AGENT_SECRET}`)
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.error.message).toMatch(/Host mismatch refusing deploy.*ACTIVITY_ENDPOINT/)
+    })
+
+    it("returns 500 on host mismatch — METERING_ENDPOINT host != NEXT_PUBLIC_APP_URL host", async () => {
+      process.env.METERING_ENDPOINT = "https://app.buildclaws.ai/api/internal/metering" // prod
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(wsMock)
+      const res = await callRoute({ workspaceId: "ws-guard" }, `Bearer ${AGENT_SECRET}`)
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.error.message).toMatch(/Host mismatch refusing deploy.*METERING_ENDPOINT/)
+    })
+
+    it("guards run BEFORE the workspace lookup (so a missing workspace can't mask a misconfigured env)", async () => {
+      delete process.env.ACTIVITY_ENDPOINT
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+      const res = await callRoute({ workspaceId: "ws-nonexistent" }, `Bearer ${AGENT_SECRET}`)
+      // Should be 500 from the guard, NOT 404 from workspace.findUnique returning null.
+      expect(res.status).toBe(500)
+      // prisma.workspace.findUnique should not even have been called.
+      expect(prismaMock.workspace.findUnique).not.toHaveBeenCalled()
+    })
   })
 })

@@ -1709,28 +1709,30 @@ function Step4({ workspaceId }: { workspaceId: string }) {
 function Step5({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
   const [wsName, setWsName] = useState("Your Claw")
-  const [activated, setActivated] = useState(false)
 
+  // PR-2b #3: this useEffect previously also fired a PATCH to set
+  // workspace.status='RUNNING' unconditionally. That was wrong on two
+  // counts: (1) the PATCH happens on mount with no guard, so just
+  // navigating to /setup/<id>/step/5 (including via a stale bookmark)
+  // would flip the status without any deploy actually running, leaving
+  // workspaces in a "claims to be RUNNING but containerId=null and
+  // ActivityLog empty" state we hit during PR-2 staging validation; and
+  // (2) the legit RUNNING transition is already handled by
+  // /api/deploy/[id]/complete/route.ts:33-37 which runs at the end of
+  // the actual deploy. Step5 is the celebration page — it READS state,
+  // never writes it.
   useEffect(() => {
-    async function activate() {
+    async function loadName() {
       try {
         const res = await fetch(`/api/workspaces/${workspaceId}`)
         const json = await res.json()
         if (json.success) setWsName(json.data.name || "Your Claw")
-
-        if (!activated) {
-          await fetch(`/api/workspaces/${workspaceId}`, {
-            method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "RUNNING" }),
-          })
-          setActivated(true)
-        }
       } catch (err) {
-        console.error("Failed to activate workspace:", err)
+        console.error("Failed to load workspace name:", err)
       }
     }
-    activate()
-  }, [workspaceId, activated])
+    loadName()
+  }, [workspaceId])
 
   return (
     <div className="text-center py-[30px] px-5">

@@ -183,6 +183,15 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     mockIsRailwayConfigured.mockReturnValue(true);
     mockGenerateWorkspace.mockResolvedValue(generatedStub());
 
+    // PR-2b: env-guards in buildRailwayEnvVars now require ACTIVITY_ENDPOINT
+    // + METERING_ENDPOINT to be set and match NEXT_PUBLIC_APP_URL host.
+    // Tests here don't care about those vars per se, but the deployer
+    // calls buildRailwayEnvVars on the happy path, so set a coherent
+    // staging-shaped triple.
+    process.env.NEXT_PUBLIC_APP_URL = "https://staging.app.buildclaws.ai";
+    process.env.METERING_ENDPOINT = "https://staging.app.buildclaws.ai/api/internal/metering";
+    process.env.ACTIVITY_ENDPOINT = "https://staging.app.buildclaws.ai/api/internal/activity";
+
     (prismaMock.containerState.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "cs-1" });
     (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (prismaMock.deployment.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "dep-1" });
