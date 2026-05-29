@@ -5,6 +5,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // PR-2d note: Prisma 7 explicitly REMOVED schema-level `url` and
+  // `directUrl` declarations (validate errors P1012 if you add them
+  // back). Connection URLs live ONLY in prisma.config.ts on Prisma 7+.
+  // See docs/MIGRATIONS.md and https://pris.ly/d/config-datasource.
 }
 
 // ─── AUTH & USERS ───────────────────────────────────────
