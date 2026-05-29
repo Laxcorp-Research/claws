@@ -193,16 +193,35 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   //    `agents.defaults.heartbeat` field; time-of-day frequencies feed
   //    cron/jobs.json. Computed up front so both downstream generators stay
   //    in sync (no risk of one path forgetting to call buildHeartbeatSchedule).
+  //
+  // PR-2b #8 + #9: orchestrator's slugified agent id is threaded into the
+  // cron emit so the emitted job carries `id` (required by OpenClaw cron
+  // store load), `agentId` (explicit routing target), and the correct
+  // `sessionTarget` shape (`session:agent:<slug>:main`, NOT the literal
+  // "main" which is reserved for systemEvent payloads). We use
+  // `toAgentId(orchestrator.name)` instead of reading
+  // `orchestrator.agentSlug` directly — both resolve to the same value
+  // for current rows (slug stored at create-time by route.ts via the
+  // same slugifier) but `toAgentId(name)` is the same source-of-truth
+  // the rest of this generator uses (see agentsList build below at
+  // generator.ts:252), so any future drift between the stored slug and
+  // the slug emitted into openclaw.json's agents.list is impossible.
+  const orchestratorAgentSlug = toAgentId(orchestrator.name);
   const heartbeat = buildHeartbeatSchedule(
     orchestrator.heartbeatFrequency,
     orchestrator.heartbeatTime,
     workspaceWithChannels.timezone,
+    orchestratorAgentSlug,
   );
 
-  // 5. Build all outputs
+  // 5. Build all outputs.
+  // PR-2b #10: orchestrator agent slug also threaded into generateCronJobs
+  // so the scheduledTasks emit path (currently dormant — no Prisma column —
+  // but kept fixed to avoid landing the same latent bug for a future
+  // feature) uses the correct cron job shape too.
   const openclawConfig = generateOpenClawConfig(workspaceWithChannels, orchestrator, workers, critic, heartbeat);
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
-  const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat);
+  const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug);
   const workspaces = generateAllWorkspaceFiles(workspaceWithChannels, orchestrator, workers, critic);
 
   return {
@@ -339,14 +358,49 @@ function generateOpenClawConfig(
   // Schema verified against upstream v2026.5.22:
   //   - plugins.load.paths: z.array(z.string()).optional()
   //       (zod-schema.ts:1167-1172, .strict())
-  //   - plugins.entries.<id>: PluginEntrySchema with enabled?: boolean
+  //   - plugins.entries.<id>: PluginEntrySchema with enabled?: boolean,
+  //       hooks?: { allowConversationAccess?: boolean, ... }, etc.
   //       (zod-schema.ts:235-264, .strict())
   // The strict() wrapper means any unknown key would fail validation, so
   // do NOT add fields inside `entries.claws-activity-reporter` beyond the
   // PluginEntrySchema-allowed set.
+  //
+  // PR-2b #4: `hooks.allowConversationAccess: true` is REQUIRED here. The
+  // upstream plugin sandbox blocks `before_agent_run` and `agent_end` hook
+  // registrations from non-bundled plugins UNLESS this opt-in is set
+  // (per types.plugins.ts comment: "Controls access to raw conversation
+  // content from conversation hooks including before_agent_run, ..., and
+  // agent_end"). Without this, the plugin loads but TASK_START /
+  // TASK_COMPLETE / TASK_FAILED never reach ActivityLog — observed in the
+  // staging boot log as: "[gateway] [plugins] typed hook \"before_agent_run\"
+  // blocked because non-bundled plugins must set
+  // plugins.entries.claws-activity-reporter.hooks.allowConversationAccess=true".
+  // Our plugin only USES conversation hooks for observation (build a record,
+  // push to buffer, return) — it does NOT mutate prompts or read raw
+  // model output. Granting access is appropriate for the activity-tracking
+  // use case.
+  // PR-3: admin-http-rpc is a BUNDLED OpenClaw extension (ships at
+  // extensions/admin-http-rpc/ in the upstream image — NOT an overlay
+  // we COPY in via Dockerfile). It is off by default upstream. We enable
+  // it here so the host's health-monitor cron can call
+  //   POST https://{containerHost}/api/v1/admin/rpc
+  //   Authorization: Bearer ${OPENCLAW_GATEWAY_TOKEN}
+  //   body: { "method": "health" }
+  // The plugin's configSchema declares
+  // `{ properties: {}, additionalProperties: false }`, so `{ enabled: true }`
+  // is the entire permitted config — any other field would fail the
+  // openclaw.json strict() validation and the gateway would refuse to boot.
   config.plugins = {
     load: { paths: ['/opt/claws-activity-reporter'] },
-    entries: { 'claws-activity-reporter': { enabled: true } },
+    entries: {
+      'claws-activity-reporter': {
+        enabled: true,
+        hooks: { allowConversationAccess: true },
+      },
+      'admin-http-rpc': {
+        enabled: true,
+      },
+    },
   };
 
   return config;
@@ -645,6 +699,10 @@ function generateEnvFile(
 function generateCronJobs(
   workspace: WorkspaceWithRelations,
   heartbeat: HeartbeatScheduleResult | null,
+  // PR-2b #10: orchestrator's agentSlug. Used as the routing agentId on
+  // scheduledTasks crons and to build their sessionTarget for the
+  // non-isolated path.
+  orchestratorAgentSlug: string,
 ): any[] {
   const jobs: any[] = [];
 
@@ -655,13 +713,32 @@ function generateCronJobs(
     jobs.push(heartbeat.cronJob);
   }
 
-  // Add any workspace-specific scheduled tasks from the template
+  // Add any workspace-specific scheduled tasks from the template.
+  //
+  // PR-2b #10: this code path was emitting cron jobs WITHOUT `id` (would be
+  // dropped at load by OpenClaw's getInvalidPersistedCronJobReason "missing-id"
+  // check; see upstream src/cron/persisted-shape.ts:13-16) AND with
+  // `sessionTarget: 'main'` paired with `payload.kind: 'agentTurn'`, which
+  // upstream src/cron/service/jobs.ts:267-268 rejects:
+  //   throw new Error('main cron jobs require payload.kind="systemEvent"')
+  // The path is currently dormant (no Prisma column for scheduledTasks),
+  // but fixing it here prevents the latent bug from shipping if/when the
+  // feature is wired.
   if (workspace.scheduledTasks && Array.isArray(workspace.scheduledTasks)) {
     for (const task of workspace.scheduledTasks) {
+      const taskIdSlug = String(task.name ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+        .substring(0, 48) || 'unnamed';
       jobs.push({
+        id: `task-${taskIdSlug}`,
         name: task.name,
         schedule: parseCronSchedule(task.schedule, task.timezone),
-        sessionTarget: task.isolated ? 'isolated' : 'main',
+        agentId: orchestratorAgentSlug,
+        sessionTarget: task.isolated
+          ? 'isolated'
+          : `session:agent:${orchestratorAgentSlug}:main`,
         wakeMode: task.urgent ? 'now' : 'next-heartbeat',
         payload: {
           kind: 'agentTurn',
@@ -1452,12 +1529,31 @@ type AgentWithRelations = {
  * deliberately avoided.
  */
 export type HeartbeatCronJob = {
+  // PR-2b #8: REQUIRED by OpenClaw cron store load. Upstream
+  // src/cron/persisted-shape.ts:13-16 drops jobs with missing/empty id
+  // before they reach the scheduler:
+  //   if (typeof id !== "string" || !id.trim()) return "missing-id";
+  // Was unset pre-PR-2b → every heartbeat cron was silently skipped.
+  id: string;
   name: string;
   description: string;
   enabled: boolean;
   deleteAfterRun: boolean;
   schedule: { kind: 'cron'; expr: string; tz?: string };
-  sessionTarget: 'main';
+  // PR-2b #9: REQUIRED for explicit routing. Without it, the cron service
+  // falls back to defaultAgentId from openclaw config. Setting it
+  // explicitly removes the implicit coupling and makes the job
+  // self-documenting.
+  agentId: string;
+  // PR-2b #9: was the literal "main" pre-PR-2b. Upstream
+  // src/cron/service/jobs.ts:267-268 rejects sessionTarget="main" paired
+  // with payload.kind="agentTurn" — "main" is reserved for systemEvent
+  // payloads only. Use a session-keyed target instead so the agent's
+  // main session context (transcripts, memory, HEARTBEAT.md) is loaded
+  // when the cron fires. "isolated" would also pass validation but
+  // spins a throwaway session with no memory continuity, which defeats
+  // the heartbeat semantics.
+  sessionTarget: string;
   wakeMode: 'now';
   payload: { kind: 'agentTurn'; message: string };
 };
@@ -1497,11 +1593,21 @@ export type HeartbeatScheduleResult = {
  * weekday degrade to `{ intervalConfig: { every: "1h" } }` so the gateway
  * still wakes up periodically rather than failing schema validation on a
  * malformed cron expression.
+ *
+ * @param orchestratorAgentSlug — Required when frequency resolves to a cron
+ *   job (daily/weekday). The slug is baked into the cron job's `id`,
+ *   `agentId`, and `sessionTarget` fields so the job loads correctly into
+ *   OpenClaw's cron store and routes to the orchestrator's main session
+ *   when it fires. Optional for interval frequencies (it's only used by
+ *   the cron path). Pre-PR-2b this was missing entirely → every heartbeat
+ *   cron was silently dropped at load by OpenClaw's missing-id check.
+ *   See PR-2b items #8 and #9.
  */
 export function buildHeartbeatSchedule(
   frequency: string | null | undefined,
   time: string | null | undefined,
   timezone: string | null | undefined,
+  orchestratorAgentSlug: string,
 ): HeartbeatScheduleResult | null {
   if (!frequency || frequency === 'off') return null;
 
@@ -1509,6 +1615,54 @@ export function buildHeartbeatSchedule(
     case 'hourly':    return { intervalConfig: { every: '1h' } };
     case 'every_6h':  return { intervalConfig: { every: '6h' } };
     case 'every_12h': return { intervalConfig: { every: '12h' } };
+    // PR-2c: TEST-ONLY frequency for activity-wire validation. Emits a
+    // cron-shaped job (NOT intervalConfig) so it fires through the same
+    // code path as daily/weekday and surfaces cron_changed events to the
+    // claws-activity-reporter plugin. "*/5" fires every 5 minutes, which
+    // lets a wire-validation deploy redeploy-then-wait-5-min instead of
+    // racing a wall-clock fire window (the operational pain we hit
+    // 4 times during PR-2/PR-2b validation).
+    //
+    // Production safety:
+    //   - Setting heartbeatFrequency='test_5min' via DB causes the cron
+    //     to fire every 5 minutes FOREVER until reset to null/off.
+    //   - The Builder UI does NOT expose this option; opaque-string-only.
+    //   - The frequency name is loud on purpose ("test_5min") so anyone
+    //     spotting it in DB/logs knows it's a debug knob.
+    //   - Audit query: SELECT id, workspaceId FROM "Agent" WHERE
+    //     "heartbeatFrequency"='test_5min'  (should be 0 on prod normally).
+    //
+    // All PR-2b correctness invariants preserved:
+    //   - id: required by OpenClaw cron-store load
+    //   - name with "orchestrator-heartbeat-" prefix: required by the
+    //     plugin's isHeartbeatJob filter
+    //   - explicit agentId: explicit cron routing
+    //   - session-keyed sessionTarget: full context preservation
+    //   - payload.kind=agentTurn compatible with session-keyed target
+    case 'test_5min': {
+      return {
+        cronJob: {
+          id: `heartbeat-${orchestratorAgentSlug}-test_5min`,
+          name: `orchestrator-heartbeat-test_5min`,
+          description: 'Orchestrator heartbeat (every 5 minutes — TEST ONLY)',
+          enabled: true,
+          deleteAfterRun: false,
+          // No `tz` field — */5 fires on UTC minute marks regardless of
+          // workspace timezone, which is what we want for predictable
+          // wire-validation timing.
+          schedule: { kind: 'cron', expr: '*/5 * * * *' },
+          agentId: orchestratorAgentSlug,
+          sessionTarget: `session:agent:${orchestratorAgentSlug}:main`,
+          wakeMode: 'now',
+          payload: {
+            kind: 'agentTurn',
+            message:
+              'Heartbeat (test_5min). Read HEARTBEAT.md and follow it strictly. ' +
+              'If nothing needs attention, reply HEARTBEAT_OK.',
+          },
+        },
+      };
+    }
   }
 
   if (frequency !== 'daily' && frequency !== 'weekday') {
@@ -1535,14 +1689,22 @@ export function buildHeartbeatSchedule(
   const tz = timezone && timezone.trim().length > 0 ? timezone : undefined;
 
   // CROSS-REFERENCE — DO NOT CHANGE WITHOUT UPDATING claws-activity-reporter.
-  // The `orchestrator-heartbeat-` prefix here is the SAME string the
+  // The `orchestrator-heartbeat-` prefix on `name` is the SAME string the
   // claws-activity-reporter plugin filters on at:
   //   container/claws-activity-reporter/index.mjs (HEARTBEAT_CRON_NAME_PREFIX)
   // If you rename the prefix, the plugin's HEARTBEAT activity-log emission
   // goes silent (it does NOT misclassify other crons — it just stops).
   // Searchable string for find-references: HEARTBEAT_CRON_NAME_PREFIX
+  //
+  // The `id` and `name` are deliberately independent: `id` is the cron
+  // store's key (multi-agent-future-safe), `name` is what the plugin
+  // matches on. Don't merge them; the prefix invariant on `name` is the
+  // load-bearing one.
   return {
     cronJob: {
+      // PR-2b #8: deterministic id, agent-slug-scoped for multi-agent safety
+      // when future versions emit per-agent heartbeats.
+      id: `heartbeat-${orchestratorAgentSlug}-${frequency}`,
       name: `orchestrator-heartbeat-${frequency}`,
       description: `Orchestrator heartbeat (${frequency} at ${rawTime}${tz ? ` ${tz}` : ''})`,
       enabled: true,
@@ -1552,7 +1714,14 @@ export function buildHeartbeatSchedule(
         expr,
         ...(tz ? { tz } : {}),
       },
-      sessionTarget: 'main',
+      // PR-2b #9: explicit routing target.
+      agentId: orchestratorAgentSlug,
+      // PR-2b #9: full-context session key. The orchestrator's main session
+      // (transcripts, memory) is loaded when this fires, so HEARTBEAT.md
+      // can be read with full context. NOT "isolated" (throwaway session,
+      // no memory), NOT "main" literal (rejected at fire time for
+      // agentTurn payloads — see upstream cron/service/jobs.ts:267-268).
+      sessionTarget: `session:agent:${orchestratorAgentSlug}:main`,
       wakeMode: 'now',
       payload: {
         kind: 'agentTurn',

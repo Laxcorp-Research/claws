@@ -114,6 +114,15 @@ beforeEach(() => {
   mockIsRailwayConfigured.mockReturnValue(true)
   mockGenerateWorkspace.mockResolvedValue(generatedStub())
 
+  // PR-2b: buildRailwayEnvVars now throws if ACTIVITY_ENDPOINT /
+  // METERING_ENDPOINT are unset or host-mismatched with NEXT_PUBLIC_APP_URL.
+  // Set a matching staging-shaped triple so tests focused on the
+  // create/update ordering don't fail in the env-guard layer. See
+  // src/lib/openclaw/env-guards.ts.
+  process.env.NEXT_PUBLIC_APP_URL = "https://staging.app.buildclaws.ai"
+  process.env.METERING_ENDPOINT = "https://staging.app.buildclaws.ai/api/internal/metering"
+  process.env.ACTIVITY_ENDPOINT = "https://staging.app.buildclaws.ai/api/internal/activity"
+
   // Return the call order index so we can assert "upsert.ts < createService.ts"
   ;(prismaMock.containerState.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "cs-1" })
   ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({})

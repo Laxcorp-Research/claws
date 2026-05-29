@@ -5,6 +5,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // PR-2d note: Prisma 7 explicitly REMOVED schema-level `url` and
+  // `directUrl` declarations (validate errors P1012 if you add them
+  // back). Connection URLs live ONLY in prisma.config.ts on Prisma 7+.
+  // See docs/MIGRATIONS.md and https://pris.ly/d/config-datasource.
 }
 
 // ─── AUTH & USERS ───────────────────────────────────────
@@ -167,6 +171,12 @@ model Workspace {
   timezone        String?  @default("UTC")
   lastHealthCheck DateTime?
   healthStatus    HealthStatus @default(UNKNOWN)
+  // PR-3: Health monitor debounce counter. Incremented on each failed
+  // /api/v1/admin/rpc health probe (HTTP error, timeout, or ok:false envelope)
+  // and reset to 0 on success. Reaching 2 flips healthStatus to UNHEALTHY;
+  // reaching 5 also flips status to ERROR. Default 0; never null.
+  // See src/app/api/cron/health-monitor/route.ts for the algorithm.
+  consecutiveHealthFailures Int @default(0)
 
   channelConfigEncrypted String?
 

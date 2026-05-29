@@ -3,12 +3,39 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { decrypt } from "@/lib/encryption"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
+import {
+  requireActivityEndpoint,
+  requireMeteringEndpoint,
+  assertEndpointHostMatchesApp,
+} from "@/lib/openclaw/env-guards"
 import { randomBytes, createCipheriv } from "crypto"
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("Authorization")
   if (auth !== `Bearer ${process.env.CONTAINER_AGENT_SECRET}`) {
     return apiError("UNAUTHORIZED", "Invalid agent secret", 401)
+  }
+
+  // PR-2b #1 + #2: fail-closed on unset/mismatched endpoint env BEFORE we
+  // load workspace data. This route is called on-demand by containers to
+  // refresh their secrets; we must NEVER hand back a misrouted env. See
+  // src/lib/openclaw/env-guards.ts for full root-cause writeup.
+  //
+  // We run the guards up-front (before workspace lookup) so a misconfigured
+  // deploy fails the same way for every workspace — no per-workspace skew.
+  let activityEndpoint: string
+  let meteringEndpoint: string
+  try {
+    meteringEndpoint = requireMeteringEndpoint()
+    assertEndpointHostMatchesApp({ endpointUrl: meteringEndpoint, endpointName: "METERING_ENDPOINT" })
+    activityEndpoint = requireActivityEndpoint()
+    assertEndpointHostMatchesApp({ endpointUrl: activityEndpoint, endpointName: "ACTIVITY_ENDPOINT" })
+  } catch (err) {
+    return apiError(
+      "ENDPOINT_CONFIG_INVALID",
+      err instanceof Error ? err.message : String(err),
+      500,
+    )
   }
 
   const { workspaceId } = await req.json()
@@ -32,18 +59,14 @@ export async function POST(req: NextRequest) {
   // preservation universal. Credit-proxy-specific vars (CLAWS_USER_ID,
   // ANTHROPIC_*) stay gated below because they require the proxy process.
   envVars.push(`CLAWS_WORKSPACE_ID=${workspaceId}`)
-  envVars.push(
-    `CLAWS_METERING_ENDPOINT=${process.env.METERING_ENDPOINT || "https://app.buildclaws.ai/api/internal/metering"}`
-  )
+  envVars.push(`CLAWS_METERING_ENDPOINT=${meteringEndpoint}`)
   envVars.push(`CLAWS_METERING_SECRET=${process.env.METERING_MASTER_SECRET}`)
 
   // PR-2: Activity Wire — universal, mirrors the metering triplet above.
   // The claws-activity-reporter overlay plugin (loaded by the OpenClaw
   // gateway from /opt/claws-activity-reporter) reads both and POSTs
   // batched events. Must match src/lib/openclaw/deployer.ts:buildRailwayEnvVars.
-  envVars.push(
-    `CLAWS_ACTIVITY_ENDPOINT=${process.env.ACTIVITY_ENDPOINT || "https://app.buildclaws.ai/api/internal/activity"}`
-  )
+  envVars.push(`CLAWS_ACTIVITY_ENDPOINT=${activityEndpoint}`)
   envVars.push(`CLAWS_ACTIVITY_SECRET=${process.env.ACTIVITY_PIPELINE_SECRET ?? ""}`)
 
   if (source === "PLATFORM_CREDIT") {

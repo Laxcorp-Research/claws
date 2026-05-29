@@ -16,6 +16,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PR-2d: hard-fail any prisma/migrations/**/*.sql whose first 3 bytes
+      # are EF BB BF (UTF-8 BOM). PostgreSQL's parser rejects the BOM at
+      # position 0 before any DDL runs, causing `prisma migrate deploy` to
+      # fail with code 42601 on Vercel — which then strands an advisory
+      # lock in pgbouncer. Failure mode bit PR-3 once; this gate makes the
+      # next occurrence impossible to land. Runs before setup-node so it's
+      # fast-fail and uses zero npm deps (POSIX head/od/find only).
+      # See docs/MIGRATIONS.md for the remedy when authoring on Windows.
+      - name: Guard against UTF-8 BOM in migration SQL files
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r -d '' f; do
+            if [ "$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ]; then
+              echo "::error file=$f::SQL migration starts with UTF-8 BOM (EF BB BF). PostgreSQL rejects this on 'prisma migrate deploy'. Re-author without a BOM. PowerShell: use [System.IO.File]::WriteAllBytes + [System.Text.UTF8Encoding]::new(\$false). See docs/MIGRATIONS.md."
+              fail=1
+            fi
+          done < <(find prisma/migrations -type f -name '*.sql' -print0)
+          exit "$fail"
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}

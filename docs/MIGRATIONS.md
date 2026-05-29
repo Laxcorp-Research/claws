@@ -46,6 +46,130 @@ without redeploying code — e.g. retrying after a transient Neon failure
 during the Vercel build, or applying a hotfix migration ahead of the
 matching code deploy.
 
+## DIRECT_URL — why migrations bypass pgbouncer
+
+`prisma migrate deploy` uses `DIRECT_URL` (direct Neon endpoint), not
+`DATABASE_URL` (pooled endpoint through pgbouncer). The selection is
+declared in **`prisma.config.ts` only** — Prisma 7 removed both
+schema-level `url`/`directUrl` declarations (validate fails with P1012
+if you add them back) AND the dedicated `directUrl` field in
+`prisma.config.ts`. The entire `directUrl` concept is gone in favour of
+driver adapters at runtime. See <https://pris.ly/d/config-datasource>.
+
+The new pattern is to make `datasource.url` an explicit fallback chain:
+
+```ts
+// prisma.config.ts
+datasource: {
+  url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
+},
+```
+
+When `DIRECT_URL` is set (Vercel preview + production both have it), the
+CLI uses it for migrations. When `DIRECT_URL` is unset (local dev
+pointed at a local Postgres, or any environment that hasn't configured
+both), it falls back to `DATABASE_URL` with no error.
+
+> If you tried to keep using Prisma 6's `directUrl =` syntax in the
+> schema, `prisma validate` returns P1012:
+> `The datasource property 'directUrl' is no longer supported in schema
+> files.` Same story for the `datasource.directUrl` field in
+> `prisma.config.ts` — its TypeScript type doesn't include it.
+
+### Why bypass pgbouncer for migrations?
+
+pgbouncer's transaction pooling holds Postgres sessions across short
+client lifetimes. When Vercel kills a build mid-migration (timeout,
+deploy cancel, OOM), the session that held Prisma's advisory lock
+(`SELECT pg_advisory_lock(72707369)`) sticks around in the pool until
+something terminates it. The next migration attempt sees a held lock,
+waits 10s, fails with `P1002 Timed out trying to acquire postgres
+advisory lock`. We hit this twice — once on PR-2b validation, again on
+PR-3's BOM-fix deploy. Bypassing pgbouncer means the lock is released
+when the migration client disconnects (or is killed) — no pool-level
+sticky state.
+
+### Runtime app traffic is unaffected
+
+Every `PrismaClient` instance in the codebase is instantiated via
+`new PrismaPg({ connectionString: process.env.DATABASE_URL })` — the
+driver adapter is fed the pooled URL explicitly. The schema's `url` and
+`directUrl` declarations do not change runtime behavior. Only the
+Prisma CLI (`migrate`, `db push`, `db pull`) consults them.
+
+### `.env.local` recommendation for devs
+
+If you run migrations against a remote DB from your machine (e.g.
+`npm run migrate:staging` to retry a failed Vercel deploy), set
+`DIRECT_URL` in `.env.local` too — otherwise you'll hit the same
+lock-strand risk against staging or prod. Derive it from the existing
+`DATABASE_URL` by stripping the `-pooler` infix from the Neon host:
+
+```
+DATABASE_URL=postgresql://...@ep-X-pooler.c-6.us-east-1.aws.neon.tech/...
+DIRECT_URL=postgresql://...@ep-X.c-6.us-east-1.aws.neon.tech/...
+```
+
+Or copy the "Direct connection" string from the Neon dashboard for your
+branch.
+
+If you only run migrations against a local Postgres, `DIRECT_URL` is
+not needed — Prisma falls back to `DATABASE_URL`.
+
+## Authoring migrations on Windows — the UTF-8 BOM gotcha
+
+PowerShell's `Set-Content -Encoding utf8` writes a UTF-8 byte-order
+mark (`EF BB BF`) as the first 3 bytes of the file. PostgreSQL rejects
+that mark at parse position 0, BEFORE any DDL runs:
+
+```
+ERROR: syntax error at or near "<U+FEFF>"
+Position: 0
+```
+
+This bit PR-3's initial Vercel deploy. The migration row was left in
+an unfinished state (`finished_at=null`, `rolled_back_at=null`),
+blocking every subsequent deploy until `prisma migrate resolve
+--rolled-back <name>` cleared it.
+
+### Remedy when authoring on Windows
+
+Write SQL via `WriteAllBytes` with `UTF8Encoding($false)`:
+
+```powershell
+$sql = @"
+ALTER TABLE "Workspace" ADD COLUMN "foo" INTEGER NOT NULL DEFAULT 0;
+"@
+[System.IO.File]::WriteAllBytes(
+  "prisma/migrations/<TIMESTAMP>_<name>/migration.sql",
+  [System.Text.UTF8Encoding]::new($false).GetBytes($sql)
+)
+```
+
+Or just use `npm run db:migrate:dev` and let Prisma generate the file —
+Prisma writes BOM-free files.
+
+### Verifying a file is BOM-free
+
+```powershell
+$bytes = [System.IO.File]::ReadAllBytes("prisma/migrations/<TIMESTAMP>_<name>/migration.sql")
+"{0:X2} {1:X2} {2:X2}" -f $bytes[0], $bytes[1], $bytes[2]
+# Expect: starts with "-- " (2D 2D 20) or any other ASCII char.
+# Bad:    EF BB BF (the BOM).
+```
+
+### CI guard
+
+`.github/workflows/ci.yml` has a `Guard against UTF-8 BOM in migration
+SQL files` step in the `quality` job that runs before npm install. If
+any `prisma/migrations/**/*.sql` starts with `EF BB BF`, the step
+fails with a GitHub annotation pointing at the offending file. This
+means a BOM'd migration cannot reach `main` — it's blocked at PR.
+
+To interpret a failure: open the file, fix the encoding using the
+PowerShell remedy above, commit, push. The check re-runs and goes
+green.
+
 ## Rules
 
 - NEVER use `prisma db push` in staging or production (it can drop data)
