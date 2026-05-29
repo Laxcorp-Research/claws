@@ -379,12 +379,26 @@ function generateOpenClawConfig(
   // push to buffer, return) — it does NOT mutate prompts or read raw
   // model output. Granting access is appropriate for the activity-tracking
   // use case.
+  // PR-3: admin-http-rpc is a BUNDLED OpenClaw extension (ships at
+  // extensions/admin-http-rpc/ in the upstream image — NOT an overlay
+  // we COPY in via Dockerfile). It is off by default upstream. We enable
+  // it here so the host's health-monitor cron can call
+  //   POST https://{containerHost}/api/v1/admin/rpc
+  //   Authorization: Bearer ${OPENCLAW_GATEWAY_TOKEN}
+  //   body: { "method": "health" }
+  // The plugin's configSchema declares
+  // `{ properties: {}, additionalProperties: false }`, so `{ enabled: true }`
+  // is the entire permitted config — any other field would fail the
+  // openclaw.json strict() validation and the gateway would refuse to boot.
   config.plugins = {
     load: { paths: ['/opt/claws-activity-reporter'] },
     entries: {
       'claws-activity-reporter': {
         enabled: true,
         hooks: { allowConversationAccess: true },
+      },
+      'admin-http-rpc': {
+        enabled: true,
       },
     },
   };

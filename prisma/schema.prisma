@@ -167,6 +167,12 @@ model Workspace {
   timezone        String?  @default("UTC")
   lastHealthCheck DateTime?
   healthStatus    HealthStatus @default(UNKNOWN)
+  // PR-3: Health monitor debounce counter. Incremented on each failed
+  // /api/v1/admin/rpc health probe (HTTP error, timeout, or ok:false envelope)
+  // and reset to 0 on success. Reaching 2 flips healthStatus to UNHEALTHY;
+  // reaching 5 also flips status to ERROR. Default 0; never null.
+  // See src/app/api/cron/health-monitor/route.ts for the algorithm.
+  consecutiveHealthFailures Int @default(0)
 
   channelConfigEncrypted String?
 

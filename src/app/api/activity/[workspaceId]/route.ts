@@ -120,13 +120,25 @@ export async function GET(
     lastActiveMap.set(row.agentSlug, new Date(row.latest).toISOString())
   }
 
+  // PR-3: status derivation depends on the workspace's REAL healthStatus
+  // (written by /api/cron/health-monitor every 2 min) — not the prior
+  // tautology that derived "healthy" purely from workspace.status===RUNNING.
+  // Order of precedence is intentional:
+  //   1. agent.isPaused or workspace.status===PAUSED → "paused" (operator intent)
+  //   2. workspace.status !== RUNNING (HIBERNATED, ERROR, STOPPED, etc.) → "offline"
+  //   3. workspace.healthStatus===UNHEALTHY → "error" (monitor saw 2+ failures)
+  //   4. workspace.healthStatus===DEGRADED → "degraded" (gateway answered but reports
+  //      plugin errors / zero agents / bad token / plugin-not-loaded — reachable
+  //      but partially broken; surfaced distinctly so operators don't read
+  //      "totally down" into a partial outage)
+  //   5. otherwise → "healthy"
   const agentStatuses = agents.map((a) => {
-    let status: "healthy" | "paused" | "error" | "offline"
-    if (a.isPaused) status = "paused"
-    else if (workspace!.status === "PAUSED") status = "paused"
+    let status: "healthy" | "paused" | "error" | "offline" | "degraded"
+    if (a.isPaused || workspace!.status === "PAUSED") status = "paused"
+    else if (workspace!.status !== "RUNNING") status = "offline"
     else if (workspace!.healthStatus === "UNHEALTHY") status = "error"
-    else if (workspace!.status === "RUNNING") status = "healthy"
-    else status = "offline"
+    else if (workspace!.healthStatus === "DEGRADED") status = "degraded"
+    else status = "healthy"
 
     const lastActive = lastActiveMap.get(a.agentSlug)
       ?? (a.lastActiveAt ? a.lastActiveAt.toISOString() : undefined)
@@ -144,6 +156,14 @@ export async function GET(
   })
 
   const pausedCount = agentStatuses.filter((a) => a.status === "paused").length
+  // PR-3: prior code returned `agents.length - pausedCount`, which counted
+  // "running" agents even when workspace.healthStatus===UNHEALTHY. With
+  // honest health data, count only agents that are actually contributing
+  // (healthy or degraded — degraded is still partially-working). UNHEALTHY
+  // / offline / paused agents are excluded.
+  const agentsRunningCount = agentStatuses.filter(
+    (a) => a.status === "healthy" || a.status === "degraded",
+  ).length
 
   const perAgentCosts = agentSlugs.length > 0
     ? await prisma.$queryRawUnsafe<{ agentSlug: string; calls: bigint; cost: number }[]>(
@@ -175,7 +195,7 @@ export async function GET(
       apiKeySource,
     },
     stats: {
-      agentsRunning: agents.length - pausedCount,
+      agentsRunning: agentsRunningCount,
       agentsPaused: pausedCount,
       tasksToday,
       tasksYesterday,

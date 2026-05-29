@@ -447,60 +447,16 @@ export async function redeployWorkspace(workspaceId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Health Monitoring
+// Health Monitoring — moved to src/app/api/cron/health-monitor/route.ts
 // ---------------------------------------------------------------------------
-
-export async function healthCheckAllContainers(): Promise<void> {
-  if (!isRailwayConfigured()) return;
-
-  const runningWorkspaces = await prisma.workspace.findMany({
-    where: { status: 'RUNNING', containerId: { not: null } },
-    select: { id: true, containerId: true, containerHost: true, userId: true },
-  });
-
-  for (const ws of runningWorkspaces) {
-    if (!ws.containerId) continue;
-
-    try {
-      const status = await getServiceStatus(ws.containerId);
-      if (!status.healthy) {
-        await markUnhealthy(ws.id, ws.userId, `Railway deployment status: ${status.status}`);
-        continue;
-      }
-
-      if (ws.containerHost) {
-        try {
-          const res = await fetchWithTimeout(`https://${ws.containerHost}/healthz`, 5000);
-          if (!res.ok) {
-            await markUnhealthy(ws.id, ws.userId, 'Gateway /healthz check failed');
-            continue;
-          }
-        } catch {
-          log.warn('Direct health check failed, but Railway reports healthy', { workspaceId: ws.id });
-        }
-      }
-
-      await prisma.workspace.update({
-        where: { id: ws.id },
-        data: { healthStatus: 'HEALTHY', lastHealthCheck: new Date() },
-      });
-      await prisma.containerState.updateMany({
-        where: { workspaceId: ws.id },
-        data: { lastActiveAt: new Date() },
-      }).catch(() => {});
-    } catch {
-      await markUnhealthy(ws.id, ws.userId, 'Railway service unreachable');
-    }
-  }
-}
-
-async function markUnhealthy(workspaceId: string, userId: string, reason: string): Promise<void> {
-  await prisma.workspace.update({
-    where: { id: workspaceId },
-    data: { healthStatus: 'UNHEALTHY' },
-  });
-  log.warn(`Workspace ${workspaceId} unhealthy: ${reason}`, { workspaceId });
-}
+// PR-3 deleted the previous `healthCheckAllContainers` + `markUnhealthy`
+// pair that lived here. They had ZERO callers (verified via repo grep)
+// and were silently dead since landed. The replacement is the Vercel
+// cron at /api/cron/health-monitor which:
+//   - polls admin-http-rpc on the container directly (not just /healthz)
+//   - debounces failures (UNHEALTHY at 2, ERROR at 5)
+//   - logs every transition per workspace
+// Do NOT reintroduce a health check here — that would race the cron.
 
 // ---------------------------------------------------------------------------
 // Gateway WebSocket Connection (for monitoring)

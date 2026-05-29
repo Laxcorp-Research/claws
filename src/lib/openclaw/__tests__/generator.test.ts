@@ -845,6 +845,39 @@ describe('generateWorkspace', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // PR-3: enable the bundled `admin-http-rpc` plugin so the host-side
+  // health-monitor cron can call POST /api/v1/admin/rpc on the gateway.
+  // The plugin's configSchema is { properties: {}, additionalProperties:
+  // false }, so the entry MUST be exactly { enabled: true } — anything
+  // extra fails the openclaw.json strict() validation and the gateway
+  // refuses to boot.
+  // ─────────────────────────────────────────────────────────────────────
+  describe('PR-3: plugins.entries.admin-http-rpc enabled (bundled, strict config)', () => {
+    it('emits exactly { enabled: true } for admin-http-rpc (no extra fields)', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildMockWorkspace()
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const entry = config.plugins?.entries?.['admin-http-rpc'];
+      expect(entry).toBeDefined();
+      expect(entry).toEqual({ enabled: true });
+    });
+
+    it('does not break the existing claws-activity-reporter entry', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildMockWorkspace()
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const reporter = config.plugins?.entries?.['claws-activity-reporter'];
+      expect(reporter).toBeDefined();
+      expect(reporter.enabled).toBe(true);
+      expect(reporter.hooks?.allowConversationAccess).toBe(true);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // PR-2b #10: scheduledTasks cron emit (currently dormant — no Prisma
   // column populated — but the code path exists and would emit the same
   // platform-wide bug shape if/when wired. Lock the correct shape now.)
