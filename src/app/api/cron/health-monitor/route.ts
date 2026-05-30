@@ -54,11 +54,16 @@ export const maxDuration = 55
 const UNHEALTHY_THRESHOLD = 2
 const ERROR_THRESHOLD = 5
 const ADMIN_RPC_TIMEOUT_MS = 5_000
+// PR-4b: the /healthz liveness confirmation (only fired on the ambiguous 404
+// branch) gets a tighter budget than the admin-rpc probe — it's a trivial
+// plugin-independent endpoint, and we don't want the disambiguation to double
+// the worst-case per-workspace probe time.
+const HEALTHZ_TIMEOUT_MS = 3_000
 
 type ProbeResult =
   | { kind: "healthy" }
   | { kind: "degraded"; reason: "plugin-errors" | "no-agents" | "bad-token" | "plugin-not-loaded" }
-  | { kind: "failure"; reason: "no-container" | "envelope-failed" | "http-5xx" | "http-other" | "timeout" | "network" }
+  | { kind: "failure"; reason: "no-container" | "envelope-failed" | "http-5xx" | "http-other" | "timeout" | "network" | "no-route" }
 
 type WorkspaceRow = {
   id: string
@@ -81,8 +86,48 @@ type AdminRpcEnvelope = {
   error?: { code?: string; message?: string }
 }
 
+// PR-4b: a 401 is only trusted as `bad-token` (alive-but-stale-token config
+// drift, heal-eligible) when it carries OUR gateway's auth-failure envelope:
+// sendUnauthorized() emits { error: { type: "unauthorized" } }. A bare/edge
+// 401 (text, HTML, or a different JSON shape) is NOT trustworthy → the caller
+// treats it as a no-route failure. Reads the body; any parse failure or shape
+// mismatch returns false (fail closed).
+async function isGatewayUnauthorized(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.json()) as { error?: { type?: unknown } }
+    return body?.error?.type === "unauthorized"
+  } catch {
+    return false
+  }
+}
+
+// PR-4b: disambiguate an ambiguous 404 from POST /api/v1/admin/rpc. Our
+// gateway returns 404 text/plain "Not Found" when the admin-http-rpc plugin
+// is disabled (config drift — the container is ALIVE). But an edge/CDN/dead
+// service can also 404. /healthz is a plugin-independent, auth-free gateway
+// liveness route returning 200 {"ok":true,"status":"live"}. FAIL CLOSED: only
+// a clean HTTP 200 confirms our gateway is up; any non-200, timeout, network
+// error → not confirmed (caller treats the 404 as a no-route failure). We
+// intentionally check ONLY the status code, not the body — any 200 from
+// /healthz is good enough (a dead service can't 200 this path).
+async function confirmGatewayLive(host: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), HEALTHZ_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://${host}/healthz`, {
+      method: "GET",
+      signal: controller.signal,
+    })
+    return res.status === 200
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // Audit-mapped probe. Pure(-ish): observable side effects are only the
-// HTTP call. Decision about DB writes happens in the caller.
+// HTTP call(s). Decision about DB writes happens in the caller.
 async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; httpStatus: number | null }> {
   if (!ws.containerId || !ws.containerHost || !ws.gatewayToken) {
     return { result: { kind: "failure", reason: "no-container" }, httpStatus: null }
@@ -124,10 +169,22 @@ async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; 
   }
 
   if (res.status === 401) {
-    return { result: { kind: "degraded", reason: "bad-token" }, httpStatus: 401 }
+    // PR-4b: gate on the gateway's auth-failure envelope. Only a recognizable
+    // { error: { type: "unauthorized" } } proves it's OUR gateway rejecting a
+    // stale token (config drift, heal-eligible). Anything else → no-route.
+    const gatewayAuth = await isGatewayUnauthorized(res)
+    return gatewayAuth
+      ? { result: { kind: "degraded", reason: "bad-token" }, httpStatus: 401 }
+      : { result: { kind: "failure", reason: "no-route" }, httpStatus: 401 }
   }
   if (res.status === 404) {
-    return { result: { kind: "degraded", reason: "plugin-not-loaded" }, httpStatus: 404 }
+    // PR-4b: a 404 is ambiguous (our plugin-disabled gateway vs an edge/dead
+    // service). Confirm liveness via the plugin-independent /healthz before
+    // healing. Fail closed: only a confirmed-live gateway → plugin-not-loaded.
+    const live = await confirmGatewayLive(ws.containerHost)
+    return live
+      ? { result: { kind: "degraded", reason: "plugin-not-loaded" }, httpStatus: 404 }
+      : { result: { kind: "failure", reason: "no-route" }, httpStatus: 404 }
   }
   if (res.status >= 500) {
     return { result: { kind: "failure", reason: "http-5xx" }, httpStatus: res.status }
@@ -175,6 +232,7 @@ export type HealthReason =
   | "http-other"
   | "timeout"
   | "network"
+  | "no-route"
 
 function probeReason(result: ProbeResult): HealthReason | null {
   return result.kind === "healthy" ? null : result.reason

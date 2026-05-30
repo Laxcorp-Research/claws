@@ -75,6 +75,33 @@ const HEALTHY_PAYLOAD = {
   },
 };
 
+// PR-4b helpers: build non-JSON responses + route the fetch mock by URL
+// (probeWorkspace fires the admin-rpc POST and, only on a 404, a /healthz GET).
+function textResponse(body: string, status: number, contentType = "text/plain; charset=utf-8") {
+  return new Response(body, { status, headers: { "Content-Type": contentType } });
+}
+
+function rawResponse(body: string, status: number, contentType: string) {
+  return new Response(body, { status, headers: { "Content-Type": contentType } });
+}
+
+function aborted(): never {
+  const e = new Error("aborted");
+  e.name = "AbortError";
+  throw e;
+}
+
+function mockProbeFetch(opts: { adminRpc: Response | (() => never); healthz?: Response | (() => never) }) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input: unknown) => {
+    const u = String(input);
+    if (u.includes("/healthz")) {
+      if (opts.healthz === undefined) throw new Error("test: unexpected /healthz fetch");
+      return typeof opts.healthz === "function" ? opts.healthz() : opts.healthz;
+    }
+    return typeof opts.adminRpc === "function" ? opts.adminRpc() : opts.adminRpc;
+  });
+}
+
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET;
   vi.restoreAllMocks();
@@ -186,22 +213,6 @@ describe("probeWorkspace: HTTP responses", () => {
     if (result.result.kind === "failure") expect(result.result.reason).toBe("envelope-failed");
   });
 
-  it("HTTP 401 → degraded/bad-token", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 401));
-    const result = await __internal.probeWorkspace(makeWs() as never);
-    expect(result.result.kind).toBe("degraded");
-    if (result.result.kind === "degraded") expect(result.result.reason).toBe("bad-token");
-    expect(result.httpStatus).toBe(401);
-  });
-
-  it("HTTP 404 → degraded/plugin-not-loaded", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 404));
-    const result = await __internal.probeWorkspace(makeWs() as never);
-    expect(result.result.kind).toBe("degraded");
-    if (result.result.kind === "degraded") expect(result.result.reason).toBe("plugin-not-loaded");
-    expect(result.httpStatus).toBe(404);
-  });
-
   it("HTTP 5xx → failure/http-5xx", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 503));
     const result = await __internal.probeWorkspace(makeWs() as never);
@@ -224,6 +235,130 @@ describe("probeWorkspace: HTTP responses", () => {
     const result = await __internal.probeWorkspace(makeWs() as never);
     expect(result.result.kind).toBe("failure");
     if (result.result.kind === "failure") expect(result.result.reason).toBe("timeout");
+  });
+});
+
+// ─── PR-4b: 404 / 401 false-heal guard ───────────────────────────────────
+// A bare 404/401 from an edge/CDN/dead service must NOT heal a stuck ERROR.
+// 404 → plugin-not-loaded only if /healthz confirms our gateway is live.
+// 401 → bad-token only if the body carries the gateway's { error.type:
+// "unauthorized" } envelope. Everything else → no-route failure.
+
+describe("PR-4b: 404 disambiguation via /healthz", () => {
+  // (a) our gateway, plugin disabled: 404 text/plain "Not Found" + /healthz 200
+  it("(a) gateway 404 'Not Found' + /healthz 200 → plugin-not-loaded (heal-eligible)", async () => {
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ ok: true, status: "live" }, 200),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("degraded");
+    if (r.result.kind === "degraded") expect(r.result.reason).toBe("plugin-not-loaded");
+    expect(r.httpStatus).toBe(404);
+  });
+
+  // (b) bare HTML 404 (e.g. an intermediary), /healthz also fails → no-route
+  it("(b) bare HTML 404 + /healthz fails → no-route failure (no heal)", async () => {
+    mockProbeFetch({
+      adminRpc: rawResponse("<html><body>not found</body></html>", 404, "text/html"),
+      healthz: rawResponse("<html>nope</html>", 404, "text/html"),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (c) Railway-edge-style JSON 404 (NOT our gateway), /healthz fails → no-route.
+  // This is the one that defeats a naive "404 + JSON ⟹ heal" rule.
+  it("(c) Railway-edge JSON 404 + /healthz fails → no-route failure (no heal)", async () => {
+    mockProbeFetch({
+      adminRpc: jsonResponse({ status: "error", message: "Application not found" }, 404),
+      healthz: jsonResponse({ status: "error", message: "Application not found" }, 404),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (f) /healthz times out on the 404 path → fail closed → no-route
+  it("(f) gateway 404 + /healthz timeout → no-route failure (fail closed)", async () => {
+    mockProbeFetch({ adminRpc: textResponse("Not Found", 404), healthz: aborted });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (g) /healthz returns 200 with NON-gateway JSON → still heal (status-only check)
+  it("(g) 404 + /healthz 200 with non-gateway JSON body → plugin-not-loaded (any 200 is good enough)", async () => {
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ totally: "different", shape: true }, 200),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("degraded");
+    if (r.result.kind === "degraded") expect(r.result.reason).toBe("plugin-not-loaded");
+  });
+
+  // REGRESSION LOCK — the exact PR-4a WIRE-TEST heal path must still work.
+  // text/plain "Not Found" on admin-rpc, 200 {"ok":true,"status":"live"} on
+  // /healthz → plugin-not-loaded → (via decideUpdate) heals ERROR→RUNNING.
+  it("REGRESSION: PR-4a WIRE-TEST path (404 'Not Found' + /healthz live 200) still heals", async () => {
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ ok: true, status: "live" }, 200),
+    });
+    const probe = await __internal.probeWorkspace(makeWs({ status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 5 }) as never);
+    expect(probe.result.kind).toBe("degraded");
+    if (probe.result.kind === "degraded") expect(probe.result.reason).toBe("plugin-not-loaded");
+    // and decideUpdate still heals it
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 5 },
+      probe.result,
+      1_700_000_000_000,
+    );
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+    expect(u.lastHealthReason).toBe("plugin-not-loaded");
+  });
+});
+
+describe("PR-4b: 401 gating on gateway envelope", () => {
+  // (d) gateway 401 with { error.type: "unauthorized" } → bad-token (heal-eligible)
+  it("(d) gateway 401 envelope → bad-token", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ error: { message: "Unauthorized", type: "unauthorized" } }, 401),
+    );
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("degraded");
+    if (r.result.kind === "degraded") expect(r.result.reason).toBe("bad-token");
+    expect(r.httpStatus).toBe(401);
+  });
+
+  // (e) bare text/plain 401 (non-gateway) → no-route
+  it("(e) bare text 401 → no-route failure (no heal)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(textResponse("Unauthorized", 401));
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+    expect(r.httpStatus).toBe(401);
+  });
+
+  // (h) 401 with valid JSON but a different error.type → no-route (exact match only)
+  it("(h) 401 JSON with error.type !== 'unauthorized' → no-route failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ error: { type: "some-other-thing" } }, 401),
+    );
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (i) 401 with truncated/invalid JSON → no-route (parse failure fails closed)
+  it("(i) 401 with invalid JSON body → no-route failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(rawResponse('{"error":{"type":"unaut', 401, "application/json"));
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
   });
 });
 
@@ -575,7 +710,12 @@ describe("GET end-to-end", () => {
     ]);
     (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
     // 404 = admin-http-rpc plugin not enabled in this (pre-upgrade) container.
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 404));
+    // PR-4b: the gated 404 path now also fires /healthz to confirm liveness;
+    // mock both so the heal still fires.
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ ok: true, status: "live" }, 200),
+    });
 
     const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
     expect(res.status).toBe(200);
