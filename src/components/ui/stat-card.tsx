@@ -4,9 +4,18 @@ interface StatCardProps {
   label: string;
   value: string | number;
   trend?: string;
-  trendType?: "up" | "down";
+  // PR-4: "warn" (amber) added for DEGRADED — distinct from "down" (red/error)
+  // and "up" (green/ok). DEGRADED is "alive but partially broken", which must
+  // not read the same as a hard failure.
+  trendType?: "up" | "down" | "warn";
   alert?: boolean;
 }
+
+const trendColor: Record<NonNullable<StatCardProps["trendType"]>, string> = {
+  up: "text-[var(--ok)]",
+  down: "text-[var(--err)]",
+  warn: "text-[var(--warn)]",
+};
 
 export function StatCard({ label, value, trend, trendType, alert }: StatCardProps) {
   return (
@@ -16,7 +25,7 @@ export function StatCard({ label, value, trend, trendType, alert }: StatCardProp
         {value}
       </div>
       {trend && (
-        <div className={cn("text-[10px] mt-[1px]", trendType === "down" ? "text-[var(--err)]" : "text-[var(--ok)]")}>
+        <div className={cn("text-[10px] mt-[1px]", trendColor[trendType ?? "up"])}>
           {trend}
         </div>
       )}

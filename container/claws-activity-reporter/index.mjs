@@ -202,6 +202,10 @@ function buildBaseRecord(actionType, ctx, extraMetadata) {
     sessionKey: typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null,
     channelId: typeof ctx?.channelId === "string" ? ctx.channelId : null,
     action: "",
+    // PR-4: `action` is a SHORT human-readable summary; `detail` (set per
+    // handler, optional) holds the full untruncated context for the
+    // dashboard's expand-on-click. Default undefined → no detail row.
+    detail: undefined,
     metadata: { ...extraMetadata },
   };
 }
@@ -209,30 +213,92 @@ function buildBaseRecord(actionType, ctx, extraMetadata) {
 // Truncate human-readable strings before posting. We never want the full
 // content of an agent prompt or model response in ActivityLog.action —
 // the activity feed shows a short preview, transcripts live elsewhere.
+// Collapses internal whitespace (single-line action text).
 function truncate(s, max = 240) {
   if (typeof s !== "string") return "";
   const trimmed = s.trim().replace(/\s+/g, " ");
   return trimmed.length <= max ? trimmed : trimmed.substring(0, max - 1) + "…";
 }
 
+// PR-4: short cap for the inline action preview; full text goes to `detail`.
+const ACTION_PREVIEW_MAX = 100;
+// PR-4: detail cap (the endpoint hard-rejects > 4096; stay under it).
+const DETAIL_MAX = 4000;
+
+// Length-cap WITHOUT collapsing internal whitespace — `detail` preserves the
+// original formatting (newlines, the [cron:...] trace prefix, stack traces).
+// Returns undefined for empty/non-string so the record omits the field.
+function clip(s, max = DETAIL_MAX) {
+  if (typeof s !== "string") return undefined;
+  const t = s.trim();
+  if (t.length === 0) return undefined;
+  return t.length <= max ? t : t.substring(0, max - 1) + "…";
+}
+
+// PR-4: the cron-JOB-ID prefix Claws' generator uses for the orchestrator
+// heartbeat — `heartbeat-${slug}-${frequency}` (and `...-test_5min`). Distinct
+// from HEARTBEAT_CRON_NAME_PREFIX above (the job NAME prefix). The
+// before_agent_run hook context carries ctx.jobId for cron-triggered runs
+// (upstream propagates it — verified against v2026.5.22
+// run.before-agent-reply-cron.test.ts), so we detect a heartbeat-triggered
+// agent turn STRUCTURALLY rather than string-matching the prompt.
+// CROSS-REFERENCE: src/lib/openclaw/generator.ts emits `id: heartbeat-...`.
+const HEARTBEAT_CRON_ID_PREFIX = "heartbeat-";
+
+// Classify what triggered a before_agent_run, so TASK_START gets a human
+// action instead of dumping the raw (often engineer-only) prompt. Prefers the
+// structured hook context (ctx.jobId / ctx.trigger); falls back to the cron
+// trace prefix OpenClaw prepends to the delivered prompt: "[cron:<id> <name>]".
+function classifyTrigger(event, ctx) {
+  const jobId =
+    typeof ctx?.jobId === "string" ? ctx.jobId
+      : typeof event?.jobId === "string" ? event.jobId
+        : "";
+  const trigger = typeof ctx?.trigger === "string" ? ctx.trigger : "";
+  const prompt = typeof event?.prompt === "string" ? event.prompt : "";
+
+  if (jobId.startsWith(HEARTBEAT_CRON_ID_PREFIX)) return "heartbeat";
+  if (prompt.startsWith("[cron:") && prompt.includes(HEARTBEAT_CRON_NAME_PREFIX)) return "heartbeat";
+  // Any other cron-triggered run (a template-defined scheduled task).
+  if (trigger === "cron" || jobId.length > 0 || prompt.startsWith("[cron:")) return "cron";
+  return "task";
+}
+
 function handleBeforeAgentRun(event, ctx) {
-  const promptPreview = truncate(event?.prompt ?? "");
+  const fullPrompt = typeof event?.prompt === "string" ? event.prompt : "";
+  const triggerKind = classifyTrigger(event, ctx);
+  // promptPreview kept in metadata for backward compat (240, single-line).
+  const promptPreview = truncate(fullPrompt);
   const record = buildBaseRecord("TASK_START", ctx, {
+    triggerKind,
     promptPreview,
     senderId: typeof event?.senderId === "string" ? event.senderId : undefined,
     accountId: typeof event?.accountId === "string" ? event.accountId : undefined,
+    jobId: typeof ctx?.jobId === "string" ? ctx.jobId : undefined,
   });
-  record.action = `Task started: ${promptPreview || "(no prompt)"}`;
+  // PR-4: SHORT human action. A heartbeat-triggered run is pure plumbing
+  // ("[cron:...] Read HEARTBEAT.md ...") — collapse it to a label and stash
+  // the raw prompt in detail. A real channel/user task keeps a short preview.
+  if (triggerKind === "heartbeat") {
+    record.action = "Heartbeat check";
+  } else if (triggerKind === "cron") {
+    record.action = "Scheduled task started";
+  } else {
+    const shortPreview = truncate(fullPrompt, ACTION_PREVIEW_MAX);
+    record.action = shortPreview ? `Task started: ${shortPreview}` : "Task started";
+  }
+  record.detail = clip(fullPrompt);
   reporter.add(record);
 }
 
 function handleAgentEnd(event, ctx) {
   const success = event?.success === true;
   const actionType = success ? "TASK_COMPLETE" : "TASK_FAILED";
+  const fullError = typeof event?.error === "string" ? event.error : "";
   const record = buildBaseRecord(actionType, ctx, {
     success,
     durationMs: typeof event?.durationMs === "number" ? event.durationMs : undefined,
-    error: typeof event?.error === "string" ? truncate(event.error) : undefined,
+    error: fullError ? truncate(fullError) : undefined,
   });
   if (success) {
     const durationSec = record.metadata.durationMs
@@ -240,55 +306,72 @@ function handleAgentEnd(event, ctx) {
       : "";
     record.action = `Task completed${durationSec}`;
   } else {
-    record.action = record.metadata.error
-      ? `Task failed: ${record.metadata.error}`
-      : "Task failed";
+    // PR-4: short error in the action, full error text in detail.
+    const shortErr = truncate(fullError, ACTION_PREVIEW_MAX);
+    record.action = shortErr ? `Task failed: ${shortErr}` : "Task failed";
+    record.detail = clip(fullError);
   }
   reporter.add(record);
 }
 
 function handleMessageReceived(event, ctx) {
   const from = typeof event?.from === "string" ? event.from : "(unknown)";
-  const preview = truncate(event?.content ?? "", 120);
+  const fullContent = typeof event?.content === "string" ? event.content : "";
+  const preview = truncate(fullContent, ACTION_PREVIEW_MAX);
   const record = buildBaseRecord("MESSAGE_RECEIVED", ctx, {
     from,
     threadId: event?.threadId,
     messageId: typeof event?.messageId === "string" ? event.messageId : undefined,
     senderId: typeof event?.senderId === "string" ? event.senderId : undefined,
   });
-  record.action = `Received from ${from}: ${preview}`;
+  // PR-4: short preview in action, full message body in detail.
+  record.action = preview ? `Received from ${from}: ${preview}` : `Received a message from ${from}`;
+  record.detail = clip(fullContent);
   reporter.add(record);
 }
 
 function handleMessageSent(event, ctx) {
   const to = typeof event?.to === "string" ? event.to : "(unknown)";
-  const preview = truncate(event?.content ?? "", 120);
+  const fullContent = typeof event?.content === "string" ? event.content : "";
+  const preview = truncate(fullContent, ACTION_PREVIEW_MAX);
   const success = event?.success === true;
+  const fullError = typeof event?.error === "string" ? event.error : "";
   const record = buildBaseRecord("MESSAGE_SENT", ctx, {
     to,
     success,
     messageId: typeof event?.messageId === "string" ? event.messageId : undefined,
-    error: typeof event?.error === "string" ? truncate(event.error) : undefined,
+    error: fullError ? truncate(fullError) : undefined,
   });
-  record.action = success
-    ? `Sent to ${to}: ${preview}`
-    : `Send to ${to} failed: ${record.metadata.error ?? "unknown error"}`;
+  if (success) {
+    record.action = preview ? `Sent to ${to}: ${preview}` : `Sent a message to ${to}`;
+    record.detail = clip(fullContent);
+  } else {
+    const shortErr = truncate(fullError, ACTION_PREVIEW_MAX);
+    record.action = `Send to ${to} failed${shortErr ? `: ${shortErr}` : ""}`;
+    record.detail = clip(fullError);
+  }
   reporter.add(record);
 }
 
 function handleAfterToolCall(event, ctx) {
   const toolName = typeof event?.toolName === "string" ? event.toolName : "(unknown)";
   const errored = typeof event?.error === "string" && event.error.length > 0;
+  const fullError = errored ? event.error : "";
   const actionType = errored ? "ERROR" : "SKILL_INVOKED";
   const record = buildBaseRecord(actionType, ctx, {
     toolName,
     durationMs: typeof event?.durationMs === "number" ? event.durationMs : undefined,
     toolCallId: typeof event?.toolCallId === "string" ? event.toolCallId : undefined,
-    error: errored ? truncate(event.error) : undefined,
+    error: errored ? truncate(fullError) : undefined,
   });
-  record.action = errored
-    ? `Tool ${toolName} failed: ${record.metadata.error}`
-    : `Tool ${toolName} invoked`;
+  if (errored) {
+    // PR-4: short error in action, full error text in detail.
+    const shortErr = truncate(fullError, ACTION_PREVIEW_MAX);
+    record.action = `Tool ${toolName} failed${shortErr ? `: ${shortErr}` : ""}`;
+    record.detail = clip(fullError);
+  } else {
+    record.action = `Tool ${toolName} invoked`;
+  }
   reporter.add(record);
 }
 
@@ -380,7 +463,10 @@ export const __test__ = {
   reporter,
   isHeartbeatJob,
   HEARTBEAT_CRON_NAME_PREFIX,
+  HEARTBEAT_CRON_ID_PREFIX,
   HANDLER_TIMEOUT_MS,
+  ACTION_PREVIEW_MAX,
+  DETAIL_MAX,
   handleBeforeAgentRun,
   handleAgentEnd,
   handleMessageReceived,
@@ -388,4 +474,6 @@ export const __test__ = {
   handleAfterToolCall,
   handleCronChanged,
   truncate,
+  clip,
+  classifyTrigger,
 };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { sanitizeHtml, sanitizeText, sanitizeMarkdown, sanitizeActivityText } from "../sanitize"
+import { sanitizeHtml, sanitizeText, sanitizeMarkdown, sanitizeActivityText, sanitizeActivityDetail } from "../sanitize"
 
 describe("sanitizeHtml", () => {
   it("preserves safe HTML", () => {
@@ -188,5 +188,34 @@ describe("sanitizeActivityText", () => {
     const result = sanitizeActivityText(input)
     expect(result).toContain("price")
     expect(result).toContain("threshold")
+  })
+})
+
+describe("sanitizeActivityDetail (PR-4)", () => {
+  it("returns null for empty/absent input (no expand affordance)", () => {
+    expect(sanitizeActivityDetail(null)).toBeNull()
+    expect(sanitizeActivityDetail(undefined)).toBeNull()
+    expect(sanitizeActivityDetail("")).toBeNull()
+    expect(sanitizeActivityDetail("   ")).toBeNull()
+  })
+
+  it("strips HTML tags from the detail body", () => {
+    const result = sanitizeActivityDetail("[cron:heartbeat-x] Read <b>HEARTBEAT.md</b> and follow it strictly.")
+    expect(result).toBe("[cron:heartbeat-x] Read HEARTBEAT.md and follow it strictly.")
+    expect(result).not.toContain("<b>")
+  })
+
+  it("allows a much longer body than the feed text (caps at 4096, not 500)", () => {
+    const input = "a".repeat(2000)
+    const result = sanitizeActivityDetail(input)
+    expect(result).toHaveLength(2000)
+    expect(result!.endsWith("\u2026")).toBe(false)
+  })
+
+  it("truncates over 4096 chars with an ellipsis", () => {
+    const input = "a".repeat(5000)
+    const result = sanitizeActivityDetail(input)
+    expect(result).toHaveLength(4097)
+    expect(result!.endsWith("\u2026")).toBe(true)
   })
 })

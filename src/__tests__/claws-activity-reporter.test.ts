@@ -31,6 +31,7 @@ interface ActivityRecord {
   agentId: string | null;
   runId: string | null;
   action: string;
+  detail?: string;
   metadata: Record<string, unknown>;
 }
 
@@ -45,7 +46,10 @@ interface PluginTestSurface {
   reporter: { pending: ActivityRecord[]; dropped: number };
   isHeartbeatJob: (job: unknown) => boolean;
   HEARTBEAT_CRON_NAME_PREFIX: string;
+  HEARTBEAT_CRON_ID_PREFIX: string;
   HANDLER_TIMEOUT_MS: number;
+  ACTION_PREVIEW_MAX: number;
+  DETAIL_MAX: number;
   handleBeforeAgentRun: (event: unknown, ctx: unknown) => void;
   handleAgentEnd: (event: unknown, ctx: unknown) => void;
   handleMessageReceived: (event: unknown, ctx: unknown) => void;
@@ -53,6 +57,8 @@ interface PluginTestSurface {
   handleAfterToolCall: (event: unknown, ctx: unknown) => void;
   handleCronChanged: (event: unknown, ctx: unknown) => void;
   truncate: (s: unknown, max?: number) => string;
+  clip: (s: unknown, max?: number) => string | undefined;
+  classifyTrigger: (event: unknown, ctx: unknown) => string;
 }
 
 // Module-scope singleton captured by all the handlers in index.mjs.
@@ -345,6 +351,119 @@ describe("claws-activity-reporter — event mapping", () => {
         { port: 18789 },
       );
     });
+  });
+});
+
+// ─── PR-4: short human action + full detail + trigger classification ──────
+
+describe("claws-activity-reporter — PR-4 short action + detail", () => {
+  const HEARTBEAT_PROMPT =
+    "[cron:heartbeat-dispatch-commander-daily orchestrator-heartbeat-daily] Heartbeat. " +
+    "Read HEARTBEAT.md and follow it strictly. If nothing needs attention, reply HEARTBEAT_OK.";
+
+  describe("classifyTrigger", () => {
+    it("detects heartbeat via structured ctx.jobId prefix", () => {
+      expect(plugin.classifyTrigger({ prompt: "x" }, { jobId: "heartbeat-dispatch-commander-daily" })).toBe("heartbeat");
+      expect(plugin.classifyTrigger({ prompt: "x" }, { jobId: "heartbeat-orch-test_5min" })).toBe("heartbeat");
+    });
+
+    it("detects heartbeat via the cron trace-prefix fallback when ctx.jobId is absent", () => {
+      expect(plugin.classifyTrigger({ prompt: HEARTBEAT_PROMPT }, {})).toBe("heartbeat");
+    });
+
+    it("classifies a non-heartbeat cron run as 'cron'", () => {
+      expect(plugin.classifyTrigger({ prompt: "[cron:job-7 Daily revenue summary] Summarize..." }, { jobId: "job-7" })).toBe("cron");
+      expect(plugin.classifyTrigger({ prompt: "do it" }, { trigger: "cron" })).toBe("cron");
+    });
+
+    it("classifies a channel/user prompt as 'task'", () => {
+      expect(plugin.classifyTrigger({ prompt: "Investigate the latest crypto trends" }, { channelId: "discord:abc" })).toBe("task");
+    });
+
+    it("HEARTBEAT_CRON_ID_PREFIX is the generator's cron id prefix", () => {
+      expect(plugin.HEARTBEAT_CRON_ID_PREFIX).toBe("heartbeat-");
+    });
+  });
+
+  it("heartbeat-triggered TASK_START → action 'Heartbeat check', raw prompt in detail", () => {
+    plugin.handleBeforeAgentRun(
+      { prompt: HEARTBEAT_PROMPT, messages: [] },
+      { agentId: "dispatch-commander", jobId: "heartbeat-dispatch-commander-daily", trigger: "cron" },
+    );
+    const rec = plugin.reporter.pending[0];
+    expect(rec.type).toBe("TASK_START");
+    expect(rec.action).toBe("Heartbeat check");
+    expect(rec.metadata.triggerKind).toBe("heartbeat");
+    // The raw plumbing prompt is preserved in detail for expand-on-click.
+    expect(rec.detail).toContain("HEARTBEAT.md");
+    expect(rec.detail).toContain("[cron:");
+  });
+
+  it("MUTATION-anchored: heartbeat action must NOT leak the raw prompt plumbing", () => {
+    plugin.handleBeforeAgentRun(
+      { prompt: HEARTBEAT_PROMPT, messages: [] },
+      { agentId: "dispatch-commander", jobId: "heartbeat-dispatch-commander-daily" },
+    );
+    const rec = plugin.reporter.pending[0];
+    // If the shortening is reverted (action = `Task started: ${promptPreview}`),
+    // the action would contain the [cron:...] prefix and/or "HEARTBEAT.md" —
+    // exactly the engineer-output the dashboard must not show. This is the
+    // mutation guard for the action-shortening behavior.
+    expect(rec.action).not.toContain("[cron:");
+    expect(rec.action).not.toContain("HEARTBEAT.md");
+    expect(rec.action).not.toContain("HEARTBEAT_OK");
+    expect(rec.action.length).toBeLessThanOrEqual(40);
+  });
+
+  it("cron-triggered (non-heartbeat) TASK_START → 'Scheduled task started'", () => {
+    plugin.handleBeforeAgentRun(
+      { prompt: "[cron:job-7 Daily revenue summary] Summarize today's revenue", messages: [] },
+      { agentId: "orchestrator", jobId: "job-7", trigger: "cron" },
+    );
+    const rec = plugin.reporter.pending[0];
+    expect(rec.action).toBe("Scheduled task started");
+    expect(rec.metadata.triggerKind).toBe("cron");
+    expect(rec.detail).toContain("Daily revenue summary");
+  });
+
+  it("normal task TASK_START → short preview in action, full prompt in detail", () => {
+    const longPrompt = "Investigate the latest crypto trends and " + "x".repeat(300);
+    plugin.handleBeforeAgentRun({ prompt: longPrompt, messages: [] }, { agentId: "orch", channelId: "discord:1" });
+    const rec = plugin.reporter.pending[0];
+    expect(rec.metadata.triggerKind).toBe("task");
+    expect(rec.action.startsWith("Task started: ")).toBe(true);
+    // action preview capped at ACTION_PREVIEW_MAX (100) → "Task started: " + ≤100.
+    expect(rec.action.length).toBeLessThanOrEqual("Task started: ".length + plugin.ACTION_PREVIEW_MAX);
+    // full prompt preserved in detail (longer than the action preview).
+    expect((rec.detail as string).length).toBeGreaterThan(rec.action.length);
+  });
+
+  it("agent_end failure puts the full error in detail, short error in action", () => {
+    const longErr = "Provider 500: " + "stacktrace ".repeat(60);
+    plugin.handleAgentEnd({ success: false, error: longErr, messages: [] }, { agentId: "orch" });
+    const rec = plugin.reporter.pending[0];
+    expect(rec.type).toBe("TASK_FAILED");
+    expect(rec.action.startsWith("Task failed: ")).toBe(true);
+    expect(rec.action.length).toBeLessThanOrEqual("Task failed: ".length + plugin.ACTION_PREVIEW_MAX);
+    expect((rec.detail as string).length).toBeGreaterThan(rec.action.length);
+  });
+
+  it("after_tool_call error puts the full error in detail", () => {
+    const longErr = "Twitter API 403: " + "y".repeat(300);
+    plugin.handleAfterToolCall({ toolName: "twitter_post", error: longErr }, { agentId: "tw" });
+    const rec = plugin.reporter.pending[0];
+    expect(rec.type).toBe("ERROR");
+    expect(rec.action.startsWith("Tool twitter_post failed")).toBe(true);
+    expect((rec.detail as string).length).toBeGreaterThan(rec.action.length);
+  });
+
+  it("clip() preserves newlines (no whitespace collapse) and caps length", () => {
+    expect(plugin.clip("a\n\nb")).toBe("a\n\nb");
+    expect(plugin.clip("")).toBeUndefined();
+    expect(plugin.clip(123 as unknown)).toBeUndefined();
+    const capped = plugin.clip("z".repeat(5000));
+    expect((capped as string).length).toBe(plugin.DETAIL_MAX);
+    expect((capped as string).endsWith("…")).toBe(true);
   });
 });
 

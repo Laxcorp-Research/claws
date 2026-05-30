@@ -160,6 +160,26 @@ async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; 
   return { result: { kind: "healthy" }, httpStatus: 200 }
 }
 
+// The DB-persisted classification string for a probe result. Written to
+// Workspace.lastHealthReason every pass so the dashboard can pick the right
+// banner. "healthy" for the success path; the reason discriminant otherwise.
+export type HealthReason =
+  | "healthy"
+  | "plugin-errors"
+  | "no-agents"
+  | "bad-token"
+  | "plugin-not-loaded"
+  | "no-container"
+  | "envelope-failed"
+  | "http-5xx"
+  | "http-other"
+  | "timeout"
+  | "network"
+
+function probeReason(result: ProbeResult): HealthReason {
+  return result.kind === "healthy" ? "healthy" : result.reason
+}
+
 // Pure function: takes the workspace as it is + a probe result, returns
 // the DB write payload. Extracted so unit tests can assert the mapping
 // table without faking the network. Mutation tests live alongside.
@@ -167,43 +187,51 @@ export function decideUpdate(
   ws: Pick<WorkspaceRow, "status" | "healthStatus" | "consecutiveHealthFailures">,
   result: ProbeResult,
   nowMs: number,
-): { status: WorkspaceStatus; healthStatus: HealthStatus; consecutiveHealthFailures: number; lastHealthCheck: Date | null } {
-  if (result.kind === "healthy" || result.kind === "degraded") {
-    const success = result.kind === "healthy"
-    const nextHealth: HealthStatus = success ? "HEALTHY" : "DEGRADED"
-    // bad-token / plugin-not-loaded count as failures for debounce purposes
-    // (the operator must intervene) but we already classified them as
-    // DEGRADED above so the dashboard surfaces them distinctly from a
-    // hard network failure. Touching the failure counter on these would
-    // promote them to status=ERROR after 10 min which is the right
-    // pressure — they are not normal blips.
-    const counterDelta =
-      result.kind === "degraded" && (result.reason === "bad-token" || result.reason === "plugin-not-loaded")
-        ? ws.consecutiveHealthFailures + 1
-        : 0
+): {
+  status: WorkspaceStatus
+  healthStatus: HealthStatus
+  consecutiveHealthFailures: number
+  lastHealthCheck: Date | null
+  lastHealthReason: HealthReason
+} {
+  const lastHealthReason = probeReason(result)
 
-    let nextStatus: WorkspaceStatus = ws.status
-    let nextHealthAfterEscalation: HealthStatus = nextHealth
-    if (counterDelta >= UNHEALTHY_THRESHOLD) {
-      nextHealthAfterEscalation = "UNHEALTHY"
-    }
-    if (counterDelta >= ERROR_THRESHOLD) {
-      nextStatus = "ERROR"
-    }
+  if (result.kind === "healthy" || result.kind === "degraded") {
+    // PR-4: ANY HTTP response (200 / 401 / 404) proves the container is
+    // alive. So every healthy/degraded probe resets the failure counter to 0
+    // and refreshes lastHealthCheck=now — including the 4xx config-drift
+    // cases (bad-token / plugin-not-loaded), which PR-3 wrongly counted
+    // toward status=ERROR. A misconfigured-but-running container must never
+    // read as "not responding".
+    const nextHealth: HealthStatus = result.kind === "healthy" ? "HEALTHY" : "DEGRADED"
+
+    // PR-4 bulk-reclassify-on-next-pass (Q2.1, symmetric rule): a workspace
+    // stuck at status=ERROR + healthStatus=UNHEALTHY that NOW returns ANY
+    // degraded result self-heals back to RUNNING.
+    // SYMMETRY RULE: any successful HTTP response heals a stuck ERROR — both
+    // 4xx (bad-token / plugin-not-loaded: alive-but-misconfigured) and
+    // 200-degraded (plugin-errors / no-agents) prove the container is
+    // reachable. A genuinely broken container returns 5xx/timeout/network
+    // (a `failure`, handled below), so this can't paper over a real outage —
+    // the next failing probe re-escalates. NOTE the deliberate asymmetry with
+    // the *healthy* path: a clean HEALTHY probe does NOT auto-clear ERROR
+    // (PR-3 intent — the operator acknowledges a real outage); only a degraded
+    // response, which means "alive but you should still look", self-heals.
+    const reclassifyErrorToRunning =
+      result.kind === "degraded" && ws.status === "ERROR" && ws.healthStatus === "UNHEALTHY"
 
     return {
-      status: nextStatus,
-      healthStatus: nextHealthAfterEscalation,
-      consecutiveHealthFailures: counterDelta,
-      // Only update lastHealthCheck on a clean HEALTHY/DEGRADED with
-      // counter=0 (the gateway returned a real answer about its own
-      // state). On bad-token / plugin-not-loaded we got a 4xx envelope
-      // but we did NOT get a state-of-the-gateway answer, so preserve
-      // the operator's "last time we KNEW it was alive" anchor.
-      lastHealthCheck: counterDelta === 0 ? new Date(nowMs) : null,
+      status: reclassifyErrorToRunning ? "RUNNING" : ws.status,
+      healthStatus: nextHealth,
+      consecutiveHealthFailures: 0,
+      lastHealthCheck: new Date(nowMs),
+      lastHealthReason,
     }
   }
 
+  // failure: NO usable HTTP response (5xx / timeout / network / no-container /
+  // envelope-failed / http-other). These count toward escalation and preserve
+  // the "last time we KNEW it was alive" anchor by not touching lastHealthCheck.
   const nextCounter = ws.consecutiveHealthFailures + 1
   const escalateUnhealthy = nextCounter >= UNHEALTHY_THRESHOLD
   const escalateError = nextCounter >= ERROR_THRESHOLD
@@ -212,6 +240,7 @@ export function decideUpdate(
     healthStatus: escalateUnhealthy ? "UNHEALTHY" : ws.healthStatus,
     consecutiveHealthFailures: nextCounter,
     lastHealthCheck: null,
+    lastHealthReason,
   }
 }
 
@@ -241,6 +270,7 @@ export async function GET(req: NextRequest) {
   let failed = 0
   let escalatedUnhealthy = 0
   let escalatedError = 0
+  let reclassified = 0
   const errors: string[] = []
 
   for (const ws of candidates) {
@@ -266,6 +296,9 @@ export async function GET(req: NextRequest) {
 
     if (update.healthStatus === "UNHEALTHY" && before.healthStatus !== "UNHEALTHY") escalatedUnhealthy++
     if (update.status === "ERROR" && before.status !== "ERROR") escalatedError++
+    // PR-4: count the config-drift self-heal (ERROR → RUNNING on a 4xx probe).
+    const wasReclassified = before.status === "ERROR" && update.status === "RUNNING"
+    if (wasReclassified) reclassified++
 
     try {
       await prisma.workspace.update({
@@ -274,6 +307,7 @@ export async function GET(req: NextRequest) {
           status: update.status,
           healthStatus: update.healthStatus,
           consecutiveHealthFailures: update.consecutiveHealthFailures,
+          lastHealthReason: update.lastHealthReason,
           ...(update.lastHealthCheck ? { lastHealthCheck: update.lastHealthCheck } : {}),
         },
       })
@@ -284,7 +318,7 @@ export async function GET(req: NextRequest) {
     log.info("health-monitor: probed workspace", {
       workspaceId: ws.id,
       probeKind: probe.result.kind,
-      probeReason: probe.result.kind === "healthy" ? null : probe.result.reason,
+      probeReason: update.lastHealthReason,
       httpStatus: probe.httpStatus,
       statusBefore: before.status,
       statusAfter: update.status,
@@ -293,6 +327,7 @@ export async function GET(req: NextRequest) {
       counterBefore: before.consecutiveHealthFailures,
       counterAfter: update.consecutiveHealthFailures,
       lastHealthCheckTouched: update.lastHealthCheck !== null,
+      reclassifiedFromError: wasReclassified,
     })
   }
 
@@ -304,6 +339,7 @@ export async function GET(req: NextRequest) {
     failed,
     escalatedUnhealthy,
     escalatedError,
+    reclassified,
     errorCount: errors.length,
     durationMs,
   })
@@ -317,6 +353,7 @@ export async function GET(req: NextRequest) {
       failed,
       escalatedUnhealthy,
       escalatedError,
+      reclassified,
       errorCount: errors.length,
       durationMs,
     },

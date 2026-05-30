@@ -377,4 +377,42 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       expect(body.data.rowFailures).toBe(0);
     });
   });
+
+  // ─── PR-4: optional `detail` field ──────────────────────────────────────
+
+  describe("detail field", () => {
+    it("persists a provided detail to ActivityLog.detail", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        { events: [makeEvent({ detail: "[cron:heartbeat-x] full raw prompt here" })] },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      const createArg = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(createArg.data.detail).toBe("[cron:heartbeat-x] full raw prompt here");
+    });
+
+    it("persists null detail when absent", async () => {
+      defaultMocks();
+      const res = await callRoute({ events: [makeEvent()] }, { secret: SECRET });
+      expect(res.status).toBe(200);
+      const createArg = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(createArg.data.detail).toBeNull();
+    });
+
+    it("rejects a non-string detail with 400", async () => {
+      defaultMocks();
+      const res = await callRoute({ events: [makeEvent({ detail: 123 })] }, { secret: SECRET });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a detail over 4096 chars with 400", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        { events: [makeEvent({ detail: "x".repeat(4097) })] },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(400);
+    });
+  });
 });

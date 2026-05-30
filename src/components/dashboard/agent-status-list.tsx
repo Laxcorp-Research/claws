@@ -6,7 +6,7 @@ interface AgentStatus {
   id: string
   name: string
   role: "ORCHESTRATOR" | "WORKER" | "CRITIC"
-  status: "running" | "healthy" | "paused" | "error" | "starting" | "offline"
+  status: "running" | "healthy" | "paused" | "error" | "starting" | "offline" | "degraded"
   lastActive?: string
   errorMessage?: string
   retryIn?: string

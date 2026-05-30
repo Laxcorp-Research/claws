@@ -243,6 +243,7 @@ describe("decideUpdate: healthy paths", () => {
       healthStatus: "HEALTHY",
       consecutiveHealthFailures: 0,
       lastHealthCheck: new Date(NOW),
+      lastHealthReason: "healthy",
     });
   });
 
@@ -292,26 +293,115 @@ describe("decideUpdate: degraded paths (gateway answered)", () => {
     expect(u.lastHealthCheck).toEqual(new Date(NOW));
   });
 
-  it("bad-token: counter++, healthStatus=DEGRADED, lastHealthCheck preserved", () => {
+  // PR-4: 4xx config drift no longer escalates. The container's HTTP server
+  // answered (401/404) → it's alive. counter resets to 0, lastHealthCheck=now.
+  it("bad-token (4xx config drift): counter=0, DEGRADED, lastHealthCheck=now, NO escalate", () => {
     const u = __internal.decideUpdate(
-      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 0 },
+      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 4 },
       { kind: "degraded", reason: "bad-token" },
       NOW,
     );
     expect(u.healthStatus).toBe("DEGRADED");
-    expect(u.consecutiveHealthFailures).toBe(1);
-    expect(u.lastHealthCheck).toBeNull();
+    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.status).toBe("RUNNING");
+    expect(u.lastHealthReason).toBe("bad-token");
   });
 
-  it("plugin-not-loaded: counter++, healthStatus=DEGRADED, lastHealthCheck preserved", () => {
+  it("plugin-not-loaded (4xx config drift): counter=0, DEGRADED, lastHealthCheck=now, NO escalate", () => {
     const u = __internal.decideUpdate(
-      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 0 },
+      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 4 },
       { kind: "degraded", reason: "plugin-not-loaded" },
       NOW,
     );
     expect(u.healthStatus).toBe("DEGRADED");
-    expect(u.consecutiveHealthFailures).toBe(1);
-    expect(u.lastHealthCheck).toBeNull();
+    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.status).toBe("RUNNING");
+    expect(u.lastHealthReason).toBe("plugin-not-loaded");
+  });
+
+  it("writes lastHealthReason for every degraded reason", () => {
+    for (const reason of ["plugin-errors", "no-agents", "bad-token", "plugin-not-loaded"] as const) {
+      const u = __internal.decideUpdate(
+        { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 0 },
+        { kind: "degraded", reason },
+        NOW,
+      );
+      expect(u.lastHealthReason).toBe(reason);
+    }
+  });
+});
+
+// ─── PR-4: bulk-reclassify-on-next-pass (config-drift self-heal) ──────────
+
+describe("PR-4 bulk-reclassify: ERROR+UNHEALTHY + any degraded response → RUNNING (symmetric)", () => {
+  it("MUTATION-anchored: a stuck ERROR row returning plugin-not-loaded resets to RUNNING", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 7 },
+      { kind: "degraded", reason: "plugin-not-loaded" },
+      NOW,
+    );
+    // If the reclassify guard is broken (status left as ws.status), this
+    // fails: status would stay "ERROR" — a wrongly-stuck row.
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.lastHealthReason).toBe("plugin-not-loaded");
+  });
+
+  it("bad-token also self-heals a stuck ERROR row", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 5 },
+      { kind: "degraded", reason: "bad-token" },
+      NOW,
+    );
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+  });
+
+  it("ALSO reclassifies a 200-degraded (plugin-errors) ERROR row — symmetric rule", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "plugin-errors" },
+      NOW,
+    );
+    // Symmetry rule (Q2.1 audit-correction): a 200-degraded response is MORE
+    // definitively "alive" than a 404 — it would be perverse to heal the 404
+    // case and not this one. Any degraded result heals a stuck ERROR row.
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+  });
+
+  it("ALSO reclassifies a 200-degraded (no-agents) ERROR row — symmetric rule", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "no-agents" },
+      NOW,
+    );
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+  });
+
+  it("does NOT reclassify a RUNNING+DEGRADED row (only ERROR+UNHEALTHY is the stuck shape)", () => {
+    const u = __internal.decideUpdate(
+      { status: "RUNNING", healthStatus: "DEGRADED", consecutiveHealthFailures: 0 },
+      { kind: "degraded", reason: "plugin-not-loaded" },
+      NOW,
+    );
+    expect(u.status).toBe("RUNNING");
+  });
+
+  it("does NOT reclassify when a failure (5xx/timeout) hits a stuck ERROR row", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 7 },
+      { kind: "failure", reason: "http-5xx" },
+      NOW,
+    );
+    // Genuinely failing → stays ERROR, counter keeps climbing.
+    expect(u.status).toBe("ERROR");
+    expect(u.consecutiveHealthFailures).toBe(8);
   });
 });
 
@@ -449,6 +539,30 @@ describe("GET end-to-end", () => {
     expect(update.data.consecutiveHealthFailures).toBe(1);
     // healthStatus unchanged at counter=1
     expect(update.data.healthStatus).toBe("HEALTHY");
+    // PR-4: every write now records the probe reason.
+    expect(update.data.lastHealthReason).toBe("no-container");
+  });
+
+  it("PR-4: a stuck ERROR workspace returning 404 self-heals to RUNNING + reports reclassified", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({ id: "ws-stuck", status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    // 404 = admin-http-rpc plugin not enabled in this (pre-upgrade) container.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 404));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.reclassified).toBe(1);
+    expect(body.data.degraded).toBe(1);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.status).toBe("RUNNING");
+    expect(update.data.healthStatus).toBe("DEGRADED");
+    expect(update.data.consecutiveHealthFailures).toBe(0);
+    expect(update.data.lastHealthReason).toBe("plugin-not-loaded");
+    expect(update.data.lastHealthCheck).toBeInstanceOf(Date);
   });
 
   it("continues past update failures so one bad row doesn't poison the loop", async () => {
