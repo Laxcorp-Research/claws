@@ -162,9 +162,9 @@ async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; 
 
 // The DB-persisted classification string for a probe result. Written to
 // Workspace.lastHealthReason every pass so the dashboard can pick the right
-// banner. "healthy" for the success path; the reason discriminant otherwise.
+// banner. PR-4a: a fully-healthy probe records `null` (no remaining issue to
+// flag); only degraded/failure outcomes carry a reason discriminant.
 export type HealthReason =
-  | "healthy"
   | "plugin-errors"
   | "no-agents"
   | "bad-token"
@@ -176,8 +176,8 @@ export type HealthReason =
   | "timeout"
   | "network"
 
-function probeReason(result: ProbeResult): HealthReason {
-  return result.kind === "healthy" ? "healthy" : result.reason
+function probeReason(result: ProbeResult): HealthReason | null {
+  return result.kind === "healthy" ? null : result.reason
 }
 
 // Pure function: takes the workspace as it is + a probe result, returns
@@ -192,7 +192,7 @@ export function decideUpdate(
   healthStatus: HealthStatus
   consecutiveHealthFailures: number
   lastHealthCheck: Date | null
-  lastHealthReason: HealthReason
+  lastHealthReason: HealthReason | null
 } {
   const lastHealthReason = probeReason(result)
 
@@ -205,26 +205,26 @@ export function decideUpdate(
     // read as "not responding".
     const nextHealth: HealthStatus = result.kind === "healthy" ? "HEALTHY" : "DEGRADED"
 
-    // PR-4 bulk-reclassify-on-next-pass (Q2.1, symmetric rule): a workspace
-    // stuck at status=ERROR + healthStatus=UNHEALTHY that NOW returns ANY
-    // degraded result self-heals back to RUNNING.
-    // SYMMETRY RULE: any successful HTTP response heals a stuck ERROR — both
-    // 4xx (bad-token / plugin-not-loaded: alive-but-misconfigured) and
-    // 200-degraded (plugin-errors / no-agents) prove the container is
-    // reachable. A genuinely broken container returns 5xx/timeout/network
-    // (a `failure`, handled below), so this can't paper over a real outage —
-    // the next failing probe re-escalates. NOTE the deliberate asymmetry with
-    // the *healthy* path: a clean HEALTHY probe does NOT auto-clear ERROR
-    // (PR-3 intent — the operator acknowledges a real outage); only a degraded
-    // response, which means "alive but you should still look", self-heals.
-    const reclassifyErrorToRunning =
-      result.kind === "degraded" && ws.status === "ERROR" && ws.healthStatus === "UNHEALTHY"
+    // PR-4a SYMMETRIC SELF-HEAL: a workspace stuck at status=ERROR self-heals
+    // back to RUNNING on ANY successful HTTP response — healthy, 4xx config
+    // drift (bad-token / plugin-not-loaded), or 200-degraded (plugin-errors /
+    // no-agents). All of them prove the container is reachable. PR-4 healed
+    // only degraded; that left a perverse asymmetry (a fully-healthy container
+    // stuck at ERROR while a degraded one healed). PR-4a removes it: "any
+    // successful response heals ERROR" is a simpler invariant than "degraded
+    // heals but healthy doesn't". The PR-3 "operator acknowledges" trace is
+    // preserved by lastHealthReason + lastHealthCheck recording what happened.
+    // A genuinely broken container returns 5xx/timeout/network (a `failure`,
+    // handled below) and re-escalates, so this never papers over a real outage.
+    const reclassifyErrorToRunning = ws.status === "ERROR"
 
     return {
       status: reclassifyErrorToRunning ? "RUNNING" : ws.status,
       healthStatus: nextHealth,
       consecutiveHealthFailures: 0,
       lastHealthCheck: new Date(nowMs),
+      // On full recovery (healthy) lastHealthReason is null — nothing left to
+      // flag. Degraded keeps its reason so the dashboard banner can explain.
       lastHealthReason,
     }
   }
@@ -252,8 +252,20 @@ export async function GET(req: NextRequest) {
 
   const startedAt = Date.now()
 
+  // PR-4a: probe RUNNING **and** ERROR workspaces. ERROR is included so a
+  // workspace stuck at ERROR can SELF-HEAL the moment its container is
+  // reachable again (the PR-4 reclassify in decideUpdate is unreachable
+  // otherwise — an ERROR workspace would never be re-probed). PAUSED /
+  // HIBERNATED / STOPPED / DRAFT / SETUP_INCOMPLETE / DEPLOYING / WAKING stay
+  // excluded — those are deliberately off or transient.
+  //
+  // Cost note: genuinely-dead ERROR workspaces are now re-probed every 2 min
+  // indefinitely (until redeployed or deleted). The cost is ~5s timeout + 1 DB
+  // write per workspace per pass — bounded and acceptable. Stop-probing-after-
+  // N-ERROR-passes is a possible optimization but not worth the complexity for
+  // current scale.
   const candidates = await prisma.workspace.findMany({
-    where: { status: "RUNNING" },
+    where: { status: { in: ["RUNNING", "ERROR"] } },
     select: {
       id: true,
       status: true,

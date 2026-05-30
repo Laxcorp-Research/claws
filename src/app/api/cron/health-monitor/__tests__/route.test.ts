@@ -112,11 +112,11 @@ describe("auth gate", () => {
 // ─── Iteration scope ───────────────────────────────────────────────────
 
 describe("iteration scope", () => {
-  it("only iterates workspaces with status=RUNNING (deliberate-off skipped)", async () => {
+  it("iterates RUNNING + ERROR workspaces (PR-4a: ERROR re-probed to self-heal; deliberate-off skipped)", async () => {
     (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
     const call = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(call?.where).toEqual({ status: "RUNNING" });
+    expect(call?.where).toEqual({ status: { in: ["RUNNING", "ERROR"] } });
   });
 });
 
@@ -243,7 +243,8 @@ describe("decideUpdate: healthy paths", () => {
       healthStatus: "HEALTHY",
       consecutiveHealthFailures: 0,
       lastHealthCheck: new Date(NOW),
-      lastHealthReason: "healthy",
+      // PR-4a: a fully-healthy probe records no reason (null) — nothing to flag.
+      lastHealthReason: null,
     });
   });
 
@@ -256,17 +257,42 @@ describe("decideUpdate: healthy paths", () => {
     expect(u.healthStatus).toBe("HEALTHY");
     expect(u.consecutiveHealthFailures).toBe(0);
     expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.lastHealthReason).toBeNull();
   });
 
-  it("status=ERROR is NOT downgraded on recovery (intentional: operator clears)", () => {
-    const u = __internal.decideUpdate(
+  // PR-4a — CANONICAL STATEMENT OF THE SYMMETRIC SELF-HEAL RULE.
+  // Supersedes the PR-3/PR-4 "status=ERROR is NOT downgraded on recovery"
+  // intent: ERROR now heals to RUNNING on ANY successful HTTP response. The
+  // "what happened" trace is preserved by lastHealthReason + lastHealthCheck.
+  it("status=ERROR heals to RUNNING on any successful response (HEALTHY, 4xx-config-drift, or 200-degraded)", () => {
+    const healthy = __internal.decideUpdate(
       { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
       { kind: "healthy" },
       NOW,
     );
-    expect(u.status).toBe("ERROR");
-    expect(u.healthStatus).toBe("HEALTHY");
-    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(healthy.status).toBe("RUNNING");
+    expect(healthy.healthStatus).toBe("HEALTHY");
+    expect(healthy.consecutiveHealthFailures).toBe(0);
+    expect(healthy.lastHealthCheck).toEqual(new Date(NOW));
+    expect(healthy.lastHealthReason).toBeNull();
+
+    const configDrift = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "plugin-not-loaded" },
+      NOW,
+    );
+    expect(configDrift.status).toBe("RUNNING");
+    expect(configDrift.healthStatus).toBe("DEGRADED");
+    expect(configDrift.lastHealthReason).toBe("plugin-not-loaded");
+
+    const gatewayIssue = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "no-agents" },
+      NOW,
+    );
+    expect(gatewayIssue.status).toBe("RUNNING");
+    expect(gatewayIssue.healthStatus).toBe("DEGRADED");
+    expect(gatewayIssue.lastHealthReason).toBe("no-agents");
   });
 });
 
@@ -562,6 +588,43 @@ describe("GET end-to-end", () => {
     expect(update.data.healthStatus).toBe("DEGRADED");
     expect(update.data.consecutiveHealthFailures).toBe(0);
     expect(update.data.lastHealthReason).toBe("plugin-not-loaded");
+    expect(update.data.lastHealthCheck).toBeInstanceOf(Date);
+  });
+
+  // PR-4a REGRESSION LOCK — the testing blind spot that hid the unreachable
+  // reclassify: the candidate query MUST include ERROR, or stuck ERROR rows
+  // are never re-probed and can never self-heal. This asserts the real
+  // `findMany` where-clause (the prior tests mocked findMany and so never
+  // exercised the actual query). Mutation-tested: reverting the candidate
+  // query to `{ status: "RUNNING" }` makes this fail.
+  it("PR-4a: candidate query includes ERROR workspaces (so they can self-heal)", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    const call = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(call?.where).toEqual({ status: { in: ["RUNNING", "ERROR"] } });
+    const statuses = call?.where?.status?.in as string[];
+    expect(statuses).toContain("ERROR");
+    expect(statuses).toContain("RUNNING");
+  });
+
+  it("PR-4a: a stuck ERROR workspace returning HEALTHY self-heals to RUNNING (full recovery)", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({ id: "ws-recovered", status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.reclassified).toBe(1);
+    expect(body.data.healthy).toBe(1);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.status).toBe("RUNNING");
+    expect(update.data.healthStatus).toBe("HEALTHY");
+    expect(update.data.consecutiveHealthFailures).toBe(0);
+    expect(update.data.lastHealthReason).toBeNull();
     expect(update.data.lastHealthCheck).toBeInstanceOf(Date);
   });
 
