@@ -22,7 +22,10 @@ export function ActivityLogEntry({ timestamp, agentName, agentColor, message, de
 
   return (
     <div className="flex gap-2 py-[5px] border-b border-[var(--bd)] last:border-b-0 text-[11px] items-start">
-      <span className="text-[var(--tx3)] min-w-[40px] font-mono text-[10px]">{timestamp}</span>
+      {/* PR-4d: widened from 40px → 64px to fit the " UTC" suffix that
+          formatTime now emits (e.g. "14:10:00 UTC"). The font-mono digit
+          width keeps the column edge stable across rows. */}
+      <span className="text-[var(--tx3)] min-w-[64px] font-mono text-[10px]">{timestamp}</span>
       <span className="font-semibold min-w-[56px]" style={{ color: agentColor }}>{agentName}</span>
       <div className="flex-1 min-w-0">
         {hasDetail ? (
@@ -36,6 +39,18 @@ export function ActivityLogEntry({ timestamp, agentName, agentColor, message, de
             )}
             title={expanded ? "Click to collapse" : "Click to expand"}
           >
+            {/* PR-4d: explicit chevron glyph instead of implicit
+                cursor:pointer + line-clamp affordance. The user reported the
+                previous affordance wasn't discoverable enough — rows with
+                hidden detail looked identical to rows without. The chevron
+                fixes that. aria-hidden because the button's aria-expanded
+                already conveys the state to assistive tech. */}
+            <span
+              className="inline-block w-[10px] mr-1 text-[var(--tx3)] select-none"
+              aria-hidden="true"
+            >
+              {expanded ? "▾" : "▸"}
+            </span>
             {message}
           </button>
         ) : (

@@ -139,8 +139,33 @@ jobs:
             exit 1
           fi
 
+          # PR-4c: $VERSION carries TWO semantically different concepts:
+          #   - OUR output tag (suffixed when overlay-only rebuild): "2026.5.22-1"
+          #   - UPSTREAM source version (always unsuffixed, what github.com/openclaw
+          #     actually publishes a tag for): "2026.5.22"
+          # Export them as DISTINCT output names so every reference site
+          # MUST choose one — the variable name carries the contract.
+          # The strip uses `${VAR%%-*}` (longest-match) to be robust to any
+          # future suffix shape (e.g. -rc.N) even though the shape regex above
+          # currently only allows -[0-9]+.
+          #
+          # Strip cases (verified locally — see tmp/pr4c-strip-sim.sh):
+          #   "2026.5.22"     -> upstream_version="2026.5.22"   (no-op)
+          #   "2026.5.22-1"   -> upstream_version="2026.5.22"
+          #   "2026.5.22-12"  -> upstream_version="2026.5.22"
+          UPSTREAM_VERSION="${VERSION%%-*}"
+
+          echo "output_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "upstream_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "upstream_tag=v$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          # Backward-compat aliases for any external consumer / log reader
+          # mid-cycle. Deprecated; remove in a follow-up after we've verified
+          # nothing reads `version` / `source_tag` from this run's outputs
+          # (no other workflow does today; left for one release cycle as a
+          # belt-and-suspenders measure).
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "source_tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_tag=v$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Compute overlay source hash (for skip-check overlay-awareness)
         id: overlay
@@ -178,7 +203,9 @@ jobs:
           GHCR_READ_PAT:  ${{ secrets.GHCR_READ_PAT }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.detect.outputs.version }}"
+          # PR-4c: this step looks up OUR output tag in GHCR — uses the
+          # suffixed value (output_version), not upstream.
+          VERSION="${{ steps.detect.outputs.output_version }}"
           OVERLAY_SHA="${{ steps.overlay.outputs.sha }}"
           FORCE_VERSION="${{ inputs.force_version }}"
 
@@ -278,14 +305,19 @@ jobs:
           echo "Manifest check: version=$VERSION status=$STATUS force_version='$FORCE_VERSION' overlay_sha=$OVERLAY_SHA"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout OpenClaw source at v$VERSION
+      - name: Checkout OpenClaw upstream source
         if: steps.check.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          VERSION="${{ steps.detect.outputs.version }}"
-          # Releases API guarantees the v-prefixed tag exists. No fallback —
-          # if this fails, fail the build instead of cloning HEAD silently.
-          git clone --depth 1 --branch "v$VERSION" https://github.com/${{ env.UPSTREAM_REPO }}.git openclaw-src
+          # PR-4c: this step pulls from upstream openclaw/openclaw — MUST use
+          # the unsuffixed upstream_version. The "-N" suffix on output_version
+          # is OUR overlay-rebuild marker and does not exist as a tag upstream.
+          # (Failing here at clone is exactly what broke PR-4b's first plugin
+          # rebuild attempt with force_version=2026.5.22-1.)
+          # Releases API guarantees the v-prefixed upstream tag exists. No
+          # fallback — if this fails, fail the build instead of cloning HEAD
+          # silently.
+          git clone --depth 1 --branch "${{ steps.detect.outputs.upstream_tag }}" https://github.com/${{ env.UPSTREAM_REPO }}.git openclaw-src
 
       - name: Set up Docker Buildx
         if: steps.check.outputs.skip != 'true'
@@ -307,8 +339,11 @@ jobs:
           push: true
           build-args: |
             OPENCLAW_EXTENSIONS=${{ env.EXTENSIONS }}
+          # PR-4c: base image contains ONLY upstream content — tag by
+          # upstream_version so overlay-only rebuilds reuse the same base
+          # (one base per upstream release, not one per overlay revision).
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.upstream_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -321,12 +356,16 @@ jobs:
           file: ./docker/Dockerfile
           push: true
           build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}
+            # PR-4c: refer to the same upstream_version-tagged base.
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.upstream_version }}
           # PR-1: auto-build pushes :<version> (immutable) and :candidate
           # (moving). NEVER :latest — only promote-openclaw-image.yml
           # rewrites :latest, gated by manual review.
+          # PR-4c: output tags carry the SUFFIXED output_version so a
+          # container/-only rebuild lands on a NEW immutable tag
+          # (e.g. :2026.5.22-1) without overwriting :<upstream-version>.
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.output_version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:candidate
           # PR-2b #7: bake the overlay source SHA into the image as a
           # Docker label. The skip-check on the next run reads this back
@@ -334,9 +373,13 @@ jobs:
           # rebuild. Pre-PR-2b builds carry no label → treated as
           # mismatched → rebuilt once. After that, the label is
           # authoritative.
+          # PR-4c: the `upstream-version` label name LITERALLY refers to
+          # upstream's published version — must be the unsuffixed value.
+          # Pre-PR-4c builds with force_version=X-1 wrote "X-1" here,
+          # which lied about what upstream tag is baked.
           labels: |
             ai.buildclaws.overlay-sha=${{ steps.overlay.outputs.sha }}
-            ai.buildclaws.upstream-version=${{ steps.detect.outputs.version }}
+            ai.buildclaws.upstream-version=${{ steps.detect.outputs.upstream_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -363,14 +406,19 @@ jobs:
             exit 1
           fi
 
-          VERSION="${{ steps.detect.outputs.version }}"
-          SOURCE_TAG="${{ steps.detect.outputs.source_tag }}"
-          DOCKER_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
+          # PR-4c: explicit dual-version naming. OUTPUT_VERSION goes into
+          # OpenClawVersion.version + dockerImage tag (deployer pulls this).
+          # UPSTREAM_TAG goes into the releaseNotesUrl + buildSourceTag (audit
+          # trail of upstream provenance). Pre-PR-4c stored "v2026.5.22-1" in
+          # buildSourceTag and a 404 link in releaseNotesUrl when -N was used.
+          OUTPUT_VERSION="${{ steps.detect.outputs.output_version }}"
+          UPSTREAM_TAG="${{ steps.detect.outputs.upstream_tag }}"
+          DOCKER_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$OUTPUT_VERSION"
           # docker/build-push-action@v5 exports `digest` as a step output — the
           # immutable sha256 of the pushed extended image.
           DIGEST="${{ steps.build_extended.outputs.digest }}"
           PUSHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          RELEASE_NOTES_URL="https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$SOURCE_TAG"
+          RELEASE_NOTES_URL="https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$UPSTREAM_TAG"
 
           # Fail loud if the digest is missing — the register endpoint will
           # accept a null digest (the column is nullable) but we want the
@@ -381,10 +429,10 @@ jobs:
           fi
 
           PAYLOAD=$(jq -n \
-            --arg version       "$VERSION" \
+            --arg version       "$OUTPUT_VERSION" \
             --arg dockerImage   "$DOCKER_IMAGE" \
             --arg imageDigest   "$DIGEST" \
-            --arg buildSourceTag "$SOURCE_TAG" \
+            --arg buildSourceTag "$UPSTREAM_TAG" \
             --arg buildPushedAt "$PUSHED_AT" \
             --arg releaseNotesUrl "$RELEASE_NOTES_URL" \
             '{version: $version, dockerImage: $dockerImage, imageDigest: $imageDigest, buildSourceTag: $buildSourceTag, buildPushedAt: $buildPushedAt, releaseNotesUrl: $releaseNotesUrl, isStable: false, isCandidate: true}')
@@ -409,10 +457,11 @@ jobs:
         run: |
           echo "### OpenClaw Runtime Image Built (candidate)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Upstream version:** \`${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Upstream tag:** \`${{ steps.detect.outputs.source_tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Base image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Immutable tag:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Output version (our tag):** \`${{ steps.detect.outputs.output_version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream version:** \`${{ steps.detect.outputs.upstream_version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream tag:** \`${{ steps.detect.outputs.upstream_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Base image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.upstream_version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Immutable tag:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.output_version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Candidate pointer:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:candidate\` (NOT :latest)" >> $GITHUB_STEP_SUMMARY
           echo "- **Digest:** \`${{ steps.build_extended.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Extensions:** ${{ env.EXTENSIONS }}" >> $GITHUB_STEP_SUMMARY
@@ -425,4 +474,4 @@ jobs:
         if: steps.check.outputs.skip == 'true'
         run: |
           echo "### Build Skipped" >> $GITHUB_STEP_SUMMARY
-          echo "Image \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.version }}\` already exists in GHCR." >> $GITHUB_STEP_SUMMARY
+          echo "Image \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.output_version }}\` already exists in GHCR." >> $GITHUB_STEP_SUMMARY

@@ -43,7 +43,7 @@ I checked the `main` HEAD against the pinned image for changes that could affect
 | `TOOL_API_KEY` references anywhere | 0 | 0 | none |
 | Env merge logic (`src/agents/skills/env-overrides.ts`) | globally mutates `process.env`, reverts on return, sanitization allowlist from `primaryEnv + requires.env` | same architecture, adds a reference-count + baseline tracking for multi-agent concurrent skill activation | **non-breaking hardening**, not a convention change |
 
-**Conclusion:** the convention has not shifted in 1.5 months. Safe to recommend without waiting for an image bump. Whatever we ship remains correct when Railway pulls the next `:latest`.
+**Conclusion:** the convention has not shifted in 1.5 months. Safe to recommend without waiting for an image bump. Whatever we ship remains correct when the next `promote-openclaw-image.yml` run flips the `OpenClawVersion.isStable` row and the deployer picks up the new `:<version>` (post-PR-1, Railway pulls the immutable `:<version>` from the DB, not `:latest`).
 
 ---
 
