@@ -157,8 +157,21 @@ function mapRedeployStatus(status: string | null, failedAtStage?: string | null)
 }
 
 function formatTime(isoStr: string) {
+  // PR-4d: render in UTC with an explicit " UTC" suffix. The activity log is a
+  // log surface that gets cross-correlated with Railway logs, OpenClawVersion
+  // records, GitHub Actions runs — all of which are UTC. Showing local time
+  // without a tz label here forced operators to do mental tz math; the user
+  // hit this when staging WIRE-TEST events at 14:10 UTC were rendering as
+  // 18:10 (Dubai local) with no indication of which tz was shown.
   const d = new Date(isoStr)
-  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+  const hms = d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  })
+  return `${hms} UTC`
 }
 
 function relativeTime(isoStr: string | undefined): string {

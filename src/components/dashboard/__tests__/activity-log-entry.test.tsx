@@ -49,4 +49,41 @@ describe("ActivityLogEntry expand affordance", () => {
     expect(button.getAttribute("aria-expanded")).toBe("false")
     expect(screen.queryByText(/Read HEARTBEAT\.md and follow it strictly\./)).toBeNull()
   })
+
+  // PR-4d: the visible chevron glyph was added because the previous
+  // implicit cursor:pointer + line-clamp affordance was not discoverable —
+  // rows with hidden detail looked identical to rows without. The chevron
+  // is the load-bearing visual signal.
+  it("PR-4d: renders the ▸ chevron when collapsed and ▾ when expanded (only when detail says more)", () => {
+    render(
+      <ActivityLogEntry
+        timestamp="08:00"
+        agentName="Orch"
+        agentColor="#fff"
+        message="Heartbeat check"
+        detail="[cron:heartbeat-x] Read HEARTBEAT.md and follow it strictly."
+      />,
+    )
+    const button = screen.getByRole("button")
+    // collapsed → ▸
+    expect(button.textContent).toContain("▸")
+    expect(button.textContent).not.toContain("▾")
+    fireEvent.click(button)
+    // expanded → ▾
+    expect(button.textContent).toContain("▾")
+    expect(button.textContent).not.toContain("▸")
+  })
+
+  it("PR-4d: does NOT render any chevron when there's no detail (no false affordance)", () => {
+    render(
+      <ActivityLogEntry
+        timestamp="08:00"
+        agentName="Orch"
+        agentColor="#fff"
+        message="Heartbeat tick"
+      />,
+    )
+    // The whole entry shouldn't contain either chevron glyph.
+    expect(screen.queryByText(/[▸▾]/)).toBeNull()
+  })
 })

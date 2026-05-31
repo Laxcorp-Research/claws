@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { prisma } from "@/lib/db"
-import { sanitizeActivityText } from "@/lib/security/sanitize"
+import { sanitizeActivityText, sanitizeActivityDetail } from "@/lib/security/sanitize"
 
 export const dynamic = "force-dynamic"
 
@@ -99,12 +99,25 @@ export async function GET(
   })
 }
 
-function formatLog(log: {
+// PR-4d: `detail` was missing from this serializer. The regular
+// /api/activity/[workspaceId] GET endpoint (PR-4) added it, but the SSE
+// stream — which is what actually feeds the dashboard's live activity feed
+// — was not updated, so the activity-log-entry component never saw a
+// populated `detail` prop and the click-to-expand affordance never lit
+// up in production. The new test file in __tests__/route.test.ts asserts
+// every scalar field on the ActivityLog model is either in this output
+// or in the explicit SSE_EXCLUDED_FIELDS list, so this class of bug
+// cannot recur on a future column addition.
+//
+// Exported so the structural test can assert the field set without
+// spinning up the full SSE stream consumer.
+export function formatLog(log: {
   id: string
   timestamp: Date
   agentName: string | null
   agentSlug: string | null
   action: string
+  detail: string | null
   actionType: string
   apiCost: number | null
 }) {
@@ -114,6 +127,7 @@ function formatLog(log: {
     agentName: log.agentName ?? "System",
     agentSlug: log.agentSlug,
     action: sanitizeActivityText(log.action),
+    detail: sanitizeActivityDetail(log.detail),
     actionType: log.actionType,
     apiCost: log.apiCost,
   }
