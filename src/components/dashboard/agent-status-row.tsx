@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button"
 interface AgentStatusRowProps {
   name: string
   role: "ORCHESTRATOR" | "WORKER" | "CRITIC"
-  status: "running" | "healthy" | "paused" | "error" | "starting" | "offline"
+  // PR-4: "degraded" = alive but partially broken (amber), distinct from
+  // "error" (red, unreachable) and "offline" (grey, not running).
+  status: "running" | "healthy" | "paused" | "error" | "starting" | "offline" | "degraded"
   lastActive?: string
   errorMessage?: string
   retryIn?: string
@@ -26,6 +28,7 @@ const statusDotColor: Record<string, string> = {
   error: "bg-[var(--err)]",
   starting: "bg-[var(--tx3)]",
   offline: "bg-[var(--tx3)]",
+  degraded: "bg-[var(--warn)]",
 }
 
 const rowBg: Record<string, string> = {
@@ -35,6 +38,7 @@ const rowBg: Record<string, string> = {
   error: "bg-[var(--errbg)]",
   starting: "bg-[var(--bg2)]",
   offline: "bg-[var(--bg2)]",
+  degraded: "bg-[var(--warnbg)]",
 }
 
 function isRunning(s: string) {
@@ -56,6 +60,10 @@ function buildMetaText(role: string, status: string, lastActive?: string, errorM
     return parts.join(" · ")
   }
 
+  if (status === "degraded") {
+    return `${roleName} · Running an older configuration · Redeploy to update`
+  }
+
   if (role === "CRITIC" && passRate !== undefined) {
     return `${roleName} · Last review: ${lastActive ?? "unknown"} · Pass rate: ${passRate}%`
   }
@@ -65,7 +73,7 @@ function buildMetaText(role: string, status: string, lastActive?: string, errorM
 
 function getMetaColor(status: string): string {
   if (status === "error") return "text-[#991b1b]"
-  if (status === "paused") return "text-[#92400e]"
+  if (status === "paused" || status === "degraded") return "text-[#92400e]"
   return "text-[var(--tx2)]"
 }
 
@@ -89,11 +97,12 @@ export function AgentStatusRow({
   const statusLabel = normalizedStatus === "running" ? "Running"
     : normalizedStatus === "paused" ? "Paused"
     : normalizedStatus === "error" ? "Error"
+    : normalizedStatus === "degraded" ? "Degraded"
     : normalizedStatus === "starting" ? "Starting"
     : "Offline"
 
   const statusColor = normalizedStatus === "running" ? "text-[var(--ok)]"
-    : normalizedStatus === "paused" ? "text-[var(--warn)]"
+    : normalizedStatus === "paused" || normalizedStatus === "degraded" ? "text-[var(--warn)]"
     : normalizedStatus === "error" ? "text-[var(--err)]"
     : "text-[var(--tx3)]"
 

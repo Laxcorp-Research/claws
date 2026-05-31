@@ -75,6 +75,33 @@ const HEALTHY_PAYLOAD = {
   },
 };
 
+// PR-4b helpers: build non-JSON responses + route the fetch mock by URL
+// (probeWorkspace fires the admin-rpc POST and, only on a 404, a /healthz GET).
+function textResponse(body: string, status: number, contentType = "text/plain; charset=utf-8") {
+  return new Response(body, { status, headers: { "Content-Type": contentType } });
+}
+
+function rawResponse(body: string, status: number, contentType: string) {
+  return new Response(body, { status, headers: { "Content-Type": contentType } });
+}
+
+function aborted(): never {
+  const e = new Error("aborted");
+  e.name = "AbortError";
+  throw e;
+}
+
+function mockProbeFetch(opts: { adminRpc: Response | (() => never); healthz?: Response | (() => never) }) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input: unknown) => {
+    const u = String(input);
+    if (u.includes("/healthz")) {
+      if (opts.healthz === undefined) throw new Error("test: unexpected /healthz fetch");
+      return typeof opts.healthz === "function" ? opts.healthz() : opts.healthz;
+    }
+    return typeof opts.adminRpc === "function" ? opts.adminRpc() : opts.adminRpc;
+  });
+}
+
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET;
   vi.restoreAllMocks();
@@ -112,11 +139,11 @@ describe("auth gate", () => {
 // ─── Iteration scope ───────────────────────────────────────────────────
 
 describe("iteration scope", () => {
-  it("only iterates workspaces with status=RUNNING (deliberate-off skipped)", async () => {
+  it("iterates RUNNING + ERROR workspaces (PR-4a: ERROR re-probed to self-heal; deliberate-off skipped)", async () => {
     (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
     const call = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(call?.where).toEqual({ status: "RUNNING" });
+    expect(call?.where).toEqual({ status: { in: ["RUNNING", "ERROR"] } });
   });
 });
 
@@ -186,22 +213,6 @@ describe("probeWorkspace: HTTP responses", () => {
     if (result.result.kind === "failure") expect(result.result.reason).toBe("envelope-failed");
   });
 
-  it("HTTP 401 → degraded/bad-token", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 401));
-    const result = await __internal.probeWorkspace(makeWs() as never);
-    expect(result.result.kind).toBe("degraded");
-    if (result.result.kind === "degraded") expect(result.result.reason).toBe("bad-token");
-    expect(result.httpStatus).toBe(401);
-  });
-
-  it("HTTP 404 → degraded/plugin-not-loaded", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 404));
-    const result = await __internal.probeWorkspace(makeWs() as never);
-    expect(result.result.kind).toBe("degraded");
-    if (result.result.kind === "degraded") expect(result.result.reason).toBe("plugin-not-loaded");
-    expect(result.httpStatus).toBe(404);
-  });
-
   it("HTTP 5xx → failure/http-5xx", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }, 503));
     const result = await __internal.probeWorkspace(makeWs() as never);
@@ -227,6 +238,130 @@ describe("probeWorkspace: HTTP responses", () => {
   });
 });
 
+// ─── PR-4b: 404 / 401 false-heal guard ───────────────────────────────────
+// A bare 404/401 from an edge/CDN/dead service must NOT heal a stuck ERROR.
+// 404 → plugin-not-loaded only if /healthz confirms our gateway is live.
+// 401 → bad-token only if the body carries the gateway's { error.type:
+// "unauthorized" } envelope. Everything else → no-route failure.
+
+describe("PR-4b: 404 disambiguation via /healthz", () => {
+  // (a) our gateway, plugin disabled: 404 text/plain "Not Found" + /healthz 200
+  it("(a) gateway 404 'Not Found' + /healthz 200 → plugin-not-loaded (heal-eligible)", async () => {
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ ok: true, status: "live" }, 200),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("degraded");
+    if (r.result.kind === "degraded") expect(r.result.reason).toBe("plugin-not-loaded");
+    expect(r.httpStatus).toBe(404);
+  });
+
+  // (b) bare HTML 404 (e.g. an intermediary), /healthz also fails → no-route
+  it("(b) bare HTML 404 + /healthz fails → no-route failure (no heal)", async () => {
+    mockProbeFetch({
+      adminRpc: rawResponse("<html><body>not found</body></html>", 404, "text/html"),
+      healthz: rawResponse("<html>nope</html>", 404, "text/html"),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (c) Railway-edge-style JSON 404 (NOT our gateway), /healthz fails → no-route.
+  // This is the one that defeats a naive "404 + JSON ⟹ heal" rule.
+  it("(c) Railway-edge JSON 404 + /healthz fails → no-route failure (no heal)", async () => {
+    mockProbeFetch({
+      adminRpc: jsonResponse({ status: "error", message: "Application not found" }, 404),
+      healthz: jsonResponse({ status: "error", message: "Application not found" }, 404),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (f) /healthz times out on the 404 path → fail closed → no-route
+  it("(f) gateway 404 + /healthz timeout → no-route failure (fail closed)", async () => {
+    mockProbeFetch({ adminRpc: textResponse("Not Found", 404), healthz: aborted });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (g) /healthz returns 200 with NON-gateway JSON → still heal (status-only check)
+  it("(g) 404 + /healthz 200 with non-gateway JSON body → plugin-not-loaded (any 200 is good enough)", async () => {
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ totally: "different", shape: true }, 200),
+    });
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("degraded");
+    if (r.result.kind === "degraded") expect(r.result.reason).toBe("plugin-not-loaded");
+  });
+
+  // REGRESSION LOCK — the exact PR-4a WIRE-TEST heal path must still work.
+  // text/plain "Not Found" on admin-rpc, 200 {"ok":true,"status":"live"} on
+  // /healthz → plugin-not-loaded → (via decideUpdate) heals ERROR→RUNNING.
+  it("REGRESSION: PR-4a WIRE-TEST path (404 'Not Found' + /healthz live 200) still heals", async () => {
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ ok: true, status: "live" }, 200),
+    });
+    const probe = await __internal.probeWorkspace(makeWs({ status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 5 }) as never);
+    expect(probe.result.kind).toBe("degraded");
+    if (probe.result.kind === "degraded") expect(probe.result.reason).toBe("plugin-not-loaded");
+    // and decideUpdate still heals it
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 5 },
+      probe.result,
+      1_700_000_000_000,
+    );
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+    expect(u.lastHealthReason).toBe("plugin-not-loaded");
+  });
+});
+
+describe("PR-4b: 401 gating on gateway envelope", () => {
+  // (d) gateway 401 with { error.type: "unauthorized" } → bad-token (heal-eligible)
+  it("(d) gateway 401 envelope → bad-token", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ error: { message: "Unauthorized", type: "unauthorized" } }, 401),
+    );
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("degraded");
+    if (r.result.kind === "degraded") expect(r.result.reason).toBe("bad-token");
+    expect(r.httpStatus).toBe(401);
+  });
+
+  // (e) bare text/plain 401 (non-gateway) → no-route
+  it("(e) bare text 401 → no-route failure (no heal)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(textResponse("Unauthorized", 401));
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+    expect(r.httpStatus).toBe(401);
+  });
+
+  // (h) 401 with valid JSON but a different error.type → no-route (exact match only)
+  it("(h) 401 JSON with error.type !== 'unauthorized' → no-route failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ error: { type: "some-other-thing" } }, 401),
+    );
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+
+  // (i) 401 with truncated/invalid JSON → no-route (parse failure fails closed)
+  it("(i) 401 with invalid JSON body → no-route failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(rawResponse('{"error":{"type":"unaut', 401, "application/json"));
+    const r = await __internal.probeWorkspace(makeWs() as never);
+    expect(r.result.kind).toBe("failure");
+    if (r.result.kind === "failure") expect(r.result.reason).toBe("no-route");
+  });
+});
+
 // ─── decideUpdate: the mapping table is the spec ──────────────────────
 
 const NOW = 1_700_000_000_000;
@@ -243,6 +378,8 @@ describe("decideUpdate: healthy paths", () => {
       healthStatus: "HEALTHY",
       consecutiveHealthFailures: 0,
       lastHealthCheck: new Date(NOW),
+      // PR-4a: a fully-healthy probe records no reason (null) — nothing to flag.
+      lastHealthReason: null,
     });
   });
 
@@ -255,17 +392,42 @@ describe("decideUpdate: healthy paths", () => {
     expect(u.healthStatus).toBe("HEALTHY");
     expect(u.consecutiveHealthFailures).toBe(0);
     expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.lastHealthReason).toBeNull();
   });
 
-  it("status=ERROR is NOT downgraded on recovery (intentional: operator clears)", () => {
-    const u = __internal.decideUpdate(
+  // PR-4a — CANONICAL STATEMENT OF THE SYMMETRIC SELF-HEAL RULE.
+  // Supersedes the PR-3/PR-4 "status=ERROR is NOT downgraded on recovery"
+  // intent: ERROR now heals to RUNNING on ANY successful HTTP response. The
+  // "what happened" trace is preserved by lastHealthReason + lastHealthCheck.
+  it("status=ERROR heals to RUNNING on any successful response (HEALTHY, 4xx-config-drift, or 200-degraded)", () => {
+    const healthy = __internal.decideUpdate(
       { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
       { kind: "healthy" },
       NOW,
     );
-    expect(u.status).toBe("ERROR");
-    expect(u.healthStatus).toBe("HEALTHY");
-    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(healthy.status).toBe("RUNNING");
+    expect(healthy.healthStatus).toBe("HEALTHY");
+    expect(healthy.consecutiveHealthFailures).toBe(0);
+    expect(healthy.lastHealthCheck).toEqual(new Date(NOW));
+    expect(healthy.lastHealthReason).toBeNull();
+
+    const configDrift = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "plugin-not-loaded" },
+      NOW,
+    );
+    expect(configDrift.status).toBe("RUNNING");
+    expect(configDrift.healthStatus).toBe("DEGRADED");
+    expect(configDrift.lastHealthReason).toBe("plugin-not-loaded");
+
+    const gatewayIssue = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "no-agents" },
+      NOW,
+    );
+    expect(gatewayIssue.status).toBe("RUNNING");
+    expect(gatewayIssue.healthStatus).toBe("DEGRADED");
+    expect(gatewayIssue.lastHealthReason).toBe("no-agents");
   });
 });
 
@@ -292,26 +454,115 @@ describe("decideUpdate: degraded paths (gateway answered)", () => {
     expect(u.lastHealthCheck).toEqual(new Date(NOW));
   });
 
-  it("bad-token: counter++, healthStatus=DEGRADED, lastHealthCheck preserved", () => {
+  // PR-4: 4xx config drift no longer escalates. The container's HTTP server
+  // answered (401/404) → it's alive. counter resets to 0, lastHealthCheck=now.
+  it("bad-token (4xx config drift): counter=0, DEGRADED, lastHealthCheck=now, NO escalate", () => {
     const u = __internal.decideUpdate(
-      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 0 },
+      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 4 },
       { kind: "degraded", reason: "bad-token" },
       NOW,
     );
     expect(u.healthStatus).toBe("DEGRADED");
-    expect(u.consecutiveHealthFailures).toBe(1);
-    expect(u.lastHealthCheck).toBeNull();
+    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.status).toBe("RUNNING");
+    expect(u.lastHealthReason).toBe("bad-token");
   });
 
-  it("plugin-not-loaded: counter++, healthStatus=DEGRADED, lastHealthCheck preserved", () => {
+  it("plugin-not-loaded (4xx config drift): counter=0, DEGRADED, lastHealthCheck=now, NO escalate", () => {
     const u = __internal.decideUpdate(
-      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 0 },
+      { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 4 },
       { kind: "degraded", reason: "plugin-not-loaded" },
       NOW,
     );
     expect(u.healthStatus).toBe("DEGRADED");
-    expect(u.consecutiveHealthFailures).toBe(1);
-    expect(u.lastHealthCheck).toBeNull();
+    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.status).toBe("RUNNING");
+    expect(u.lastHealthReason).toBe("plugin-not-loaded");
+  });
+
+  it("writes lastHealthReason for every degraded reason", () => {
+    for (const reason of ["plugin-errors", "no-agents", "bad-token", "plugin-not-loaded"] as const) {
+      const u = __internal.decideUpdate(
+        { status: "RUNNING", healthStatus: "HEALTHY", consecutiveHealthFailures: 0 },
+        { kind: "degraded", reason },
+        NOW,
+      );
+      expect(u.lastHealthReason).toBe(reason);
+    }
+  });
+});
+
+// ─── PR-4: bulk-reclassify-on-next-pass (config-drift self-heal) ──────────
+
+describe("PR-4 bulk-reclassify: ERROR+UNHEALTHY + any degraded response → RUNNING (symmetric)", () => {
+  it("MUTATION-anchored: a stuck ERROR row returning plugin-not-loaded resets to RUNNING", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 7 },
+      { kind: "degraded", reason: "plugin-not-loaded" },
+      NOW,
+    );
+    // If the reclassify guard is broken (status left as ws.status), this
+    // fails: status would stay "ERROR" — a wrongly-stuck row.
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+    expect(u.consecutiveHealthFailures).toBe(0);
+    expect(u.lastHealthCheck).toEqual(new Date(NOW));
+    expect(u.lastHealthReason).toBe("plugin-not-loaded");
+  });
+
+  it("bad-token also self-heals a stuck ERROR row", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 5 },
+      { kind: "degraded", reason: "bad-token" },
+      NOW,
+    );
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+  });
+
+  it("ALSO reclassifies a 200-degraded (plugin-errors) ERROR row — symmetric rule", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "plugin-errors" },
+      NOW,
+    );
+    // Symmetry rule (Q2.1 audit-correction): a 200-degraded response is MORE
+    // definitively "alive" than a 404 — it would be perverse to heal the 404
+    // case and not this one. Any degraded result heals a stuck ERROR row.
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+  });
+
+  it("ALSO reclassifies a 200-degraded (no-agents) ERROR row — symmetric rule", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
+      { kind: "degraded", reason: "no-agents" },
+      NOW,
+    );
+    expect(u.status).toBe("RUNNING");
+    expect(u.healthStatus).toBe("DEGRADED");
+  });
+
+  it("does NOT reclassify a RUNNING+DEGRADED row (only ERROR+UNHEALTHY is the stuck shape)", () => {
+    const u = __internal.decideUpdate(
+      { status: "RUNNING", healthStatus: "DEGRADED", consecutiveHealthFailures: 0 },
+      { kind: "degraded", reason: "plugin-not-loaded" },
+      NOW,
+    );
+    expect(u.status).toBe("RUNNING");
+  });
+
+  it("does NOT reclassify when a failure (5xx/timeout) hits a stuck ERROR row", () => {
+    const u = __internal.decideUpdate(
+      { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 7 },
+      { kind: "failure", reason: "http-5xx" },
+      NOW,
+    );
+    // Genuinely failing → stays ERROR, counter keeps climbing.
+    expect(u.status).toBe("ERROR");
+    expect(u.consecutiveHealthFailures).toBe(8);
   });
 });
 
@@ -449,6 +700,72 @@ describe("GET end-to-end", () => {
     expect(update.data.consecutiveHealthFailures).toBe(1);
     // healthStatus unchanged at counter=1
     expect(update.data.healthStatus).toBe("HEALTHY");
+    // PR-4: every write now records the probe reason.
+    expect(update.data.lastHealthReason).toBe("no-container");
+  });
+
+  it("PR-4: a stuck ERROR workspace returning 404 self-heals to RUNNING + reports reclassified", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({ id: "ws-stuck", status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    // 404 = admin-http-rpc plugin not enabled in this (pre-upgrade) container.
+    // PR-4b: the gated 404 path now also fires /healthz to confirm liveness;
+    // mock both so the heal still fires.
+    mockProbeFetch({
+      adminRpc: textResponse("Not Found", 404),
+      healthz: jsonResponse({ ok: true, status: "live" }, 200),
+    });
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.reclassified).toBe(1);
+    expect(body.data.degraded).toBe(1);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.status).toBe("RUNNING");
+    expect(update.data.healthStatus).toBe("DEGRADED");
+    expect(update.data.consecutiveHealthFailures).toBe(0);
+    expect(update.data.lastHealthReason).toBe("plugin-not-loaded");
+    expect(update.data.lastHealthCheck).toBeInstanceOf(Date);
+  });
+
+  // PR-4a REGRESSION LOCK — the testing blind spot that hid the unreachable
+  // reclassify: the candidate query MUST include ERROR, or stuck ERROR rows
+  // are never re-probed and can never self-heal. This asserts the real
+  // `findMany` where-clause (the prior tests mocked findMany and so never
+  // exercised the actual query). Mutation-tested: reverting the candidate
+  // query to `{ status: "RUNNING" }` makes this fail.
+  it("PR-4a: candidate query includes ERROR workspaces (so they can self-heal)", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    const call = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(call?.where).toEqual({ status: { in: ["RUNNING", "ERROR"] } });
+    const statuses = call?.where?.status?.in as string[];
+    expect(statuses).toContain("ERROR");
+    expect(statuses).toContain("RUNNING");
+  });
+
+  it("PR-4a: a stuck ERROR workspace returning HEALTHY self-heals to RUNNING (full recovery)", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({ id: "ws-recovered", status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.reclassified).toBe(1);
+    expect(body.data.healthy).toBe(1);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.status).toBe("RUNNING");
+    expect(update.data.healthStatus).toBe("HEALTHY");
+    expect(update.data.consecutiveHealthFailures).toBe(0);
+    expect(update.data.lastHealthReason).toBeNull();
+    expect(update.data.lastHealthCheck).toBeInstanceOf(Date);
   });
 
   it("continues past update failures so one bad row doesn't poison the loop", async () => {

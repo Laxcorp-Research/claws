@@ -54,11 +54,16 @@ export const maxDuration = 55
 const UNHEALTHY_THRESHOLD = 2
 const ERROR_THRESHOLD = 5
 const ADMIN_RPC_TIMEOUT_MS = 5_000
+// PR-4b: the /healthz liveness confirmation (only fired on the ambiguous 404
+// branch) gets a tighter budget than the admin-rpc probe — it's a trivial
+// plugin-independent endpoint, and we don't want the disambiguation to double
+// the worst-case per-workspace probe time.
+const HEALTHZ_TIMEOUT_MS = 3_000
 
 type ProbeResult =
   | { kind: "healthy" }
   | { kind: "degraded"; reason: "plugin-errors" | "no-agents" | "bad-token" | "plugin-not-loaded" }
-  | { kind: "failure"; reason: "no-container" | "envelope-failed" | "http-5xx" | "http-other" | "timeout" | "network" }
+  | { kind: "failure"; reason: "no-container" | "envelope-failed" | "http-5xx" | "http-other" | "timeout" | "network" | "no-route" }
 
 type WorkspaceRow = {
   id: string
@@ -81,8 +86,48 @@ type AdminRpcEnvelope = {
   error?: { code?: string; message?: string }
 }
 
+// PR-4b: a 401 is only trusted as `bad-token` (alive-but-stale-token config
+// drift, heal-eligible) when it carries OUR gateway's auth-failure envelope:
+// sendUnauthorized() emits { error: { type: "unauthorized" } }. A bare/edge
+// 401 (text, HTML, or a different JSON shape) is NOT trustworthy → the caller
+// treats it as a no-route failure. Reads the body; any parse failure or shape
+// mismatch returns false (fail closed).
+async function isGatewayUnauthorized(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.json()) as { error?: { type?: unknown } }
+    return body?.error?.type === "unauthorized"
+  } catch {
+    return false
+  }
+}
+
+// PR-4b: disambiguate an ambiguous 404 from POST /api/v1/admin/rpc. Our
+// gateway returns 404 text/plain "Not Found" when the admin-http-rpc plugin
+// is disabled (config drift — the container is ALIVE). But an edge/CDN/dead
+// service can also 404. /healthz is a plugin-independent, auth-free gateway
+// liveness route returning 200 {"ok":true,"status":"live"}. FAIL CLOSED: only
+// a clean HTTP 200 confirms our gateway is up; any non-200, timeout, network
+// error → not confirmed (caller treats the 404 as a no-route failure). We
+// intentionally check ONLY the status code, not the body — any 200 from
+// /healthz is good enough (a dead service can't 200 this path).
+async function confirmGatewayLive(host: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), HEALTHZ_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://${host}/healthz`, {
+      method: "GET",
+      signal: controller.signal,
+    })
+    return res.status === 200
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // Audit-mapped probe. Pure(-ish): observable side effects are only the
-// HTTP call. Decision about DB writes happens in the caller.
+// HTTP call(s). Decision about DB writes happens in the caller.
 async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; httpStatus: number | null }> {
   if (!ws.containerId || !ws.containerHost || !ws.gatewayToken) {
     return { result: { kind: "failure", reason: "no-container" }, httpStatus: null }
@@ -124,10 +169,22 @@ async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; 
   }
 
   if (res.status === 401) {
-    return { result: { kind: "degraded", reason: "bad-token" }, httpStatus: 401 }
+    // PR-4b: gate on the gateway's auth-failure envelope. Only a recognizable
+    // { error: { type: "unauthorized" } } proves it's OUR gateway rejecting a
+    // stale token (config drift, heal-eligible). Anything else → no-route.
+    const gatewayAuth = await isGatewayUnauthorized(res)
+    return gatewayAuth
+      ? { result: { kind: "degraded", reason: "bad-token" }, httpStatus: 401 }
+      : { result: { kind: "failure", reason: "no-route" }, httpStatus: 401 }
   }
   if (res.status === 404) {
-    return { result: { kind: "degraded", reason: "plugin-not-loaded" }, httpStatus: 404 }
+    // PR-4b: a 404 is ambiguous (our plugin-disabled gateway vs an edge/dead
+    // service). Confirm liveness via the plugin-independent /healthz before
+    // healing. Fail closed: only a confirmed-live gateway → plugin-not-loaded.
+    const live = await confirmGatewayLive(ws.containerHost)
+    return live
+      ? { result: { kind: "degraded", reason: "plugin-not-loaded" }, httpStatus: 404 }
+      : { result: { kind: "failure", reason: "no-route" }, httpStatus: 404 }
   }
   if (res.status >= 500) {
     return { result: { kind: "failure", reason: "http-5xx" }, httpStatus: res.status }
@@ -160,6 +217,27 @@ async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; 
   return { result: { kind: "healthy" }, httpStatus: 200 }
 }
 
+// The DB-persisted classification string for a probe result. Written to
+// Workspace.lastHealthReason every pass so the dashboard can pick the right
+// banner. PR-4a: a fully-healthy probe records `null` (no remaining issue to
+// flag); only degraded/failure outcomes carry a reason discriminant.
+export type HealthReason =
+  | "plugin-errors"
+  | "no-agents"
+  | "bad-token"
+  | "plugin-not-loaded"
+  | "no-container"
+  | "envelope-failed"
+  | "http-5xx"
+  | "http-other"
+  | "timeout"
+  | "network"
+  | "no-route"
+
+function probeReason(result: ProbeResult): HealthReason | null {
+  return result.kind === "healthy" ? null : result.reason
+}
+
 // Pure function: takes the workspace as it is + a probe result, returns
 // the DB write payload. Extracted so unit tests can assert the mapping
 // table without faking the network. Mutation tests live alongside.
@@ -167,43 +245,51 @@ export function decideUpdate(
   ws: Pick<WorkspaceRow, "status" | "healthStatus" | "consecutiveHealthFailures">,
   result: ProbeResult,
   nowMs: number,
-): { status: WorkspaceStatus; healthStatus: HealthStatus; consecutiveHealthFailures: number; lastHealthCheck: Date | null } {
-  if (result.kind === "healthy" || result.kind === "degraded") {
-    const success = result.kind === "healthy"
-    const nextHealth: HealthStatus = success ? "HEALTHY" : "DEGRADED"
-    // bad-token / plugin-not-loaded count as failures for debounce purposes
-    // (the operator must intervene) but we already classified them as
-    // DEGRADED above so the dashboard surfaces them distinctly from a
-    // hard network failure. Touching the failure counter on these would
-    // promote them to status=ERROR after 10 min which is the right
-    // pressure — they are not normal blips.
-    const counterDelta =
-      result.kind === "degraded" && (result.reason === "bad-token" || result.reason === "plugin-not-loaded")
-        ? ws.consecutiveHealthFailures + 1
-        : 0
+): {
+  status: WorkspaceStatus
+  healthStatus: HealthStatus
+  consecutiveHealthFailures: number
+  lastHealthCheck: Date | null
+  lastHealthReason: HealthReason | null
+} {
+  const lastHealthReason = probeReason(result)
 
-    let nextStatus: WorkspaceStatus = ws.status
-    let nextHealthAfterEscalation: HealthStatus = nextHealth
-    if (counterDelta >= UNHEALTHY_THRESHOLD) {
-      nextHealthAfterEscalation = "UNHEALTHY"
-    }
-    if (counterDelta >= ERROR_THRESHOLD) {
-      nextStatus = "ERROR"
-    }
+  if (result.kind === "healthy" || result.kind === "degraded") {
+    // PR-4: ANY HTTP response (200 / 401 / 404) proves the container is
+    // alive. So every healthy/degraded probe resets the failure counter to 0
+    // and refreshes lastHealthCheck=now — including the 4xx config-drift
+    // cases (bad-token / plugin-not-loaded), which PR-3 wrongly counted
+    // toward status=ERROR. A misconfigured-but-running container must never
+    // read as "not responding".
+    const nextHealth: HealthStatus = result.kind === "healthy" ? "HEALTHY" : "DEGRADED"
+
+    // PR-4a SYMMETRIC SELF-HEAL: a workspace stuck at status=ERROR self-heals
+    // back to RUNNING on ANY successful HTTP response — healthy, 4xx config
+    // drift (bad-token / plugin-not-loaded), or 200-degraded (plugin-errors /
+    // no-agents). All of them prove the container is reachable. PR-4 healed
+    // only degraded; that left a perverse asymmetry (a fully-healthy container
+    // stuck at ERROR while a degraded one healed). PR-4a removes it: "any
+    // successful response heals ERROR" is a simpler invariant than "degraded
+    // heals but healthy doesn't". The PR-3 "operator acknowledges" trace is
+    // preserved by lastHealthReason + lastHealthCheck recording what happened.
+    // A genuinely broken container returns 5xx/timeout/network (a `failure`,
+    // handled below) and re-escalates, so this never papers over a real outage.
+    const reclassifyErrorToRunning = ws.status === "ERROR"
 
     return {
-      status: nextStatus,
-      healthStatus: nextHealthAfterEscalation,
-      consecutiveHealthFailures: counterDelta,
-      // Only update lastHealthCheck on a clean HEALTHY/DEGRADED with
-      // counter=0 (the gateway returned a real answer about its own
-      // state). On bad-token / plugin-not-loaded we got a 4xx envelope
-      // but we did NOT get a state-of-the-gateway answer, so preserve
-      // the operator's "last time we KNEW it was alive" anchor.
-      lastHealthCheck: counterDelta === 0 ? new Date(nowMs) : null,
+      status: reclassifyErrorToRunning ? "RUNNING" : ws.status,
+      healthStatus: nextHealth,
+      consecutiveHealthFailures: 0,
+      lastHealthCheck: new Date(nowMs),
+      // On full recovery (healthy) lastHealthReason is null — nothing left to
+      // flag. Degraded keeps its reason so the dashboard banner can explain.
+      lastHealthReason,
     }
   }
 
+  // failure: NO usable HTTP response (5xx / timeout / network / no-container /
+  // envelope-failed / http-other). These count toward escalation and preserve
+  // the "last time we KNEW it was alive" anchor by not touching lastHealthCheck.
   const nextCounter = ws.consecutiveHealthFailures + 1
   const escalateUnhealthy = nextCounter >= UNHEALTHY_THRESHOLD
   const escalateError = nextCounter >= ERROR_THRESHOLD
@@ -212,6 +298,7 @@ export function decideUpdate(
     healthStatus: escalateUnhealthy ? "UNHEALTHY" : ws.healthStatus,
     consecutiveHealthFailures: nextCounter,
     lastHealthCheck: null,
+    lastHealthReason,
   }
 }
 
@@ -223,8 +310,20 @@ export async function GET(req: NextRequest) {
 
   const startedAt = Date.now()
 
+  // PR-4a: probe RUNNING **and** ERROR workspaces. ERROR is included so a
+  // workspace stuck at ERROR can SELF-HEAL the moment its container is
+  // reachable again (the PR-4 reclassify in decideUpdate is unreachable
+  // otherwise — an ERROR workspace would never be re-probed). PAUSED /
+  // HIBERNATED / STOPPED / DRAFT / SETUP_INCOMPLETE / DEPLOYING / WAKING stay
+  // excluded — those are deliberately off or transient.
+  //
+  // Cost note: genuinely-dead ERROR workspaces are now re-probed every 2 min
+  // indefinitely (until redeployed or deleted). The cost is ~5s timeout + 1 DB
+  // write per workspace per pass — bounded and acceptable. Stop-probing-after-
+  // N-ERROR-passes is a possible optimization but not worth the complexity for
+  // current scale.
   const candidates = await prisma.workspace.findMany({
-    where: { status: "RUNNING" },
+    where: { status: { in: ["RUNNING", "ERROR"] } },
     select: {
       id: true,
       status: true,
@@ -241,6 +340,7 @@ export async function GET(req: NextRequest) {
   let failed = 0
   let escalatedUnhealthy = 0
   let escalatedError = 0
+  let reclassified = 0
   const errors: string[] = []
 
   for (const ws of candidates) {
@@ -266,6 +366,9 @@ export async function GET(req: NextRequest) {
 
     if (update.healthStatus === "UNHEALTHY" && before.healthStatus !== "UNHEALTHY") escalatedUnhealthy++
     if (update.status === "ERROR" && before.status !== "ERROR") escalatedError++
+    // PR-4: count the config-drift self-heal (ERROR → RUNNING on a 4xx probe).
+    const wasReclassified = before.status === "ERROR" && update.status === "RUNNING"
+    if (wasReclassified) reclassified++
 
     try {
       await prisma.workspace.update({
@@ -274,6 +377,7 @@ export async function GET(req: NextRequest) {
           status: update.status,
           healthStatus: update.healthStatus,
           consecutiveHealthFailures: update.consecutiveHealthFailures,
+          lastHealthReason: update.lastHealthReason,
           ...(update.lastHealthCheck ? { lastHealthCheck: update.lastHealthCheck } : {}),
         },
       })
@@ -284,7 +388,7 @@ export async function GET(req: NextRequest) {
     log.info("health-monitor: probed workspace", {
       workspaceId: ws.id,
       probeKind: probe.result.kind,
-      probeReason: probe.result.kind === "healthy" ? null : probe.result.reason,
+      probeReason: update.lastHealthReason,
       httpStatus: probe.httpStatus,
       statusBefore: before.status,
       statusAfter: update.status,
@@ -293,6 +397,7 @@ export async function GET(req: NextRequest) {
       counterBefore: before.consecutiveHealthFailures,
       counterAfter: update.consecutiveHealthFailures,
       lastHealthCheckTouched: update.lastHealthCheck !== null,
+      reclassifiedFromError: wasReclassified,
     })
   }
 
@@ -304,6 +409,7 @@ export async function GET(req: NextRequest) {
     failed,
     escalatedUnhealthy,
     escalatedError,
+    reclassified,
     errorCount: errors.length,
     durationMs,
   })
@@ -317,6 +423,7 @@ export async function GET(req: NextRequest) {
       failed,
       escalatedUnhealthy,
       escalatedError,
+      reclassified,
       errorCount: errors.length,
       durationMs,
     },

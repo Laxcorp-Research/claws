@@ -177,6 +177,13 @@ model Workspace {
   // reaching 5 also flips status to ERROR. Default 0; never null.
   // See src/app/api/cron/health-monitor/route.ts for the algorithm.
   consecutiveHealthFailures Int @default(0)
+  // PR-4: last health-probe classification reason, written by the health
+  // monitor every pass. One of the ProbeResult reasons (e.g.
+  // "plugin-not-loaded", "no-agents", "timeout", "healthy"). The dashboard
+  // reads this to pick the correct banner — distinguishing config drift
+  // (4xx: alive-but-misconfigured) from a genuinely unreachable container
+  // (5xx/timeout). Null until the first probe writes it.
+  lastHealthReason String?
 
   channelConfigEncrypted String?
 
@@ -716,6 +723,13 @@ model ActivityLog {
   actionType  ActivityType
 
   metadata    String?  @db.Text
+  // PR-4: full human-expandable detail behind a short `action` summary.
+  // `action` is the one-line feed text (e.g. "Heartbeat check"); `detail`
+  // holds the full untruncated context (e.g. the raw heartbeat prompt with
+  // the [cron:...] trace prefix, a full error stack, or a complete message
+  // body). Rendered only on click-to-expand in the activity feed. Nullable —
+  // most rows don't need a detail beyond their action.
+  detail      String?  @db.Text
 
   tokenCount  Int?
   apiCost     Float?

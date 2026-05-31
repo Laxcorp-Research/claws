@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
-import { sanitizeActivityText } from "@/lib/security/sanitize"
+import { sanitizeActivityText, sanitizeActivityDetail } from "@/lib/security/sanitize"
 
 export async function GET(
   _req: NextRequest,
@@ -164,6 +164,12 @@ export async function GET(
   const agentsRunningCount = agentStatuses.filter(
     (a) => a.status === "healthy" || a.status === "degraded",
   ).length
+  // PR-4: full per-status breakdown so the StatCard subtext can tell the
+  // truth (precedence error > offline > degraded > paused > healthy) instead
+  // of the hardcoded "All healthy". pausedCount above is reused as agentsPaused.
+  const agentsError = agentStatuses.filter((a) => a.status === "error").length
+  const agentsOffline = agentStatuses.filter((a) => a.status === "offline").length
+  const agentsDegraded = agentStatuses.filter((a) => a.status === "degraded").length
 
   const perAgentCosts = agentSlugs.length > 0
     ? await prisma.$queryRawUnsafe<{ agentSlug: string; calls: bigint; cost: number }[]>(
@@ -189,6 +195,10 @@ export async function GET(
       name: workspace!.name,
       status: workspace!.status,
       healthStatus: workspace!.healthStatus,
+      // PR-4: the dashboard banner derivation reads these to distinguish
+      // config drift (alive-but-misconfigured) from a dead container.
+      lastHealthCheck: workspace!.lastHealthCheck ? workspace!.lastHealthCheck.toISOString() : null,
+      lastHealthReason: workspace!.lastHealthReason,
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,
       costAlertThreshold: workspace!.costAlertThreshold,
@@ -197,6 +207,10 @@ export async function GET(
     stats: {
       agentsRunning: agentsRunningCount,
       agentsPaused: pausedCount,
+      // PR-4: per-status counts for the truthful StatCard subtext.
+      agentsError,
+      agentsOffline,
+      agentsDegraded,
       tasksToday,
       tasksYesterday,
       apiCostThisMonth: totalApiCost,
@@ -226,6 +240,9 @@ export async function GET(
       timestamp: log.timestamp.toISOString(),
       agentName: log.agentName ?? "System",
       action: sanitizeActivityText(log.action),
+      // PR-4: full expand-on-click context. null when the row has no detail
+      // beyond its action (the client then renders no expand affordance).
+      detail: sanitizeActivityDetail(log.detail),
       actionType: log.actionType,
       apiCost: log.apiCost,
     })),

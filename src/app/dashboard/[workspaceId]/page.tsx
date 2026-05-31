@@ -24,6 +24,10 @@ import type { ApiKeySource } from "@/generated/prisma/client"
 interface DashboardStats {
   agentsRunning: number
   agentsPaused: number
+  // PR-4: per-status breakdown for the truthful "Agents running" subtext.
+  agentsError: number
+  agentsOffline: number
+  agentsDegraded: number
   tasksToday: number
   tasksYesterday: number
   apiCostThisMonth: number
@@ -39,7 +43,9 @@ interface WorkspaceInfo {
   currentMonthApiCost: number
   apiSpendLimit: number
   costAlertThreshold: number
-  lastHealthCheck?: string
+  lastHealthCheck?: string | null
+  // PR-4: health monitor's last probe classification — drives the 3-state banner.
+  lastHealthReason?: string | null
   apiKeySource?: ApiKeySource
 }
 
@@ -50,7 +56,7 @@ interface AgentInfo {
   color: string
   model: string
   agentSlug: string
-  status: "healthy" | "paused" | "error" | "offline"
+  status: "healthy" | "paused" | "error" | "offline" | "degraded"
   lastActive?: string
 }
 
@@ -60,6 +66,9 @@ interface LogEntry {
   agentName: string
   agentSlug?: string
   action: string
+  // PR-4: full expand-on-click context behind the short action. null/absent
+  // when the row has no extra detail.
+  detail?: string | null
   actionType: string
   apiCost?: number
 }
@@ -493,7 +502,13 @@ export default function DashboardPage() {
   const alerts = useMemo(() => {
     const list: DashboardAlert[] = []
 
+    // PR-4: 3-state health banner. The pre-PR-4 single banner said "not
+    // responding" for every unhealthy state — false for a container that's
+    // alive but running a stale config (the health monitor now classifies
+    // those as DEGRADED via lastHealthReason, never UNHEALTHY/ERROR).
     if (isError) {
+      // status=ERROR or healthStatus=UNHEALTHY → genuinely unreachable
+      // (5xx/timeout/network repeated past the debounce threshold).
       list.push({
         key: "container-error",
         priority: 0,
@@ -501,7 +516,7 @@ export default function DashboardPage() {
         content: (
           <>
             <p className="font-medium">Agent container is not responding</p>
-            <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck)}. Try redeploying to restore the container.</p>
+            <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck ?? undefined)}. Try redeploying to restore the container.</p>
           </>
         ),
         actions: (
@@ -510,6 +525,33 @@ export default function DashboardPage() {
             <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Redeploy</Button>
           </div>
         ),
+      })
+    } else if (workspace?.status === "RUNNING" && workspace?.healthStatus === "DEGRADED") {
+      // Alive (the gateway answered) but partially broken. Split by reason:
+      // config drift (4xx: stale token / plugin not in this image) → redeploy
+      // fixes it; everything else (plugin errors / zero agents at the gateway)
+      // → point the operator at the activity log.
+      const isConfigDrift =
+        workspace.lastHealthReason === "bad-token" ||
+        workspace.lastHealthReason === "plugin-not-loaded"
+      list.push({
+        key: "container-degraded",
+        priority: 0,
+        variant: "warning",
+        content: isConfigDrift ? (
+          <>
+            <p className="font-medium">Agent is running an older configuration</p>
+            <p className="mt-0.5 opacity-80">Redeploy to update it to the latest runtime.</p>
+          </>
+        ) : (
+          <>
+            <p className="font-medium">Agent is running but reports issues</p>
+            <p className="mt-0.5 opacity-80">Check the activity log for details.</p>
+          </>
+        ),
+        actions: isConfigDrift ? (
+          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Redeploy</Button>
+        ) : undefined,
       })
     }
 
@@ -860,6 +902,9 @@ export default function DashboardPage() {
         <StatCards
           agentsRunning={stats.agentsRunning}
           agentsPaused={stats.agentsPaused}
+          agentsError={stats.agentsError}
+          agentsOffline={stats.agentsOffline}
+          agentsDegraded={stats.agentsDegraded}
           tasksToday={stats.tasksToday}
           tasksYesterday={stats.tasksYesterday}
           apiCostThisMonth={stats.apiCostThisMonth}
@@ -903,6 +948,7 @@ export default function DashboardPage() {
             agentName: l.agentName,
             agentColor: agentColorMapRef.current[l.agentName] ?? AGENT_COLORS["WORKER"],
             message: l.action,
+            detail: l.detail ?? null,
           }))}
         />
 

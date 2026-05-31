@@ -56,6 +56,7 @@ interface IncomingEvent {
   sessionKey?: unknown;
   channelId?: unknown;
   action?: unknown;
+  detail?: unknown;
   metadata?: unknown;
 }
 
@@ -67,8 +68,14 @@ interface ValidatedEvent {
   sessionKey: string | null;
   channelId: string | null;
   action: string;
+  detail: string | null;
   metadata: Record<string, unknown>;
 }
+
+// PR-4: `detail` holds the full expand-on-click context behind the short
+// `action`. The plugin caps at ~4000; we enforce a hard ceiling so a runaway
+// payload can't bloat a DB row. Optional — most rows have no detail.
+const MAX_DETAIL_LEN = 4096;
 
 function isAllowedActionType(value: unknown): value is ActivityType {
   return typeof value === "string" && ALLOWED_ACTION_TYPES.has(value as ActivityType);
@@ -103,6 +110,17 @@ function validateEvent(raw: IncomingEvent, index: number):
   if (raw.action.length > 1024) {
     return { ok: false, message: `events[${index}].action exceeds 1024 chars` };
   }
+  // PR-4: optional `detail`. Absent/empty → null (no expand affordance).
+  let detail: string | null = null;
+  if (raw.detail !== undefined && raw.detail !== null) {
+    if (typeof raw.detail !== "string") {
+      return { ok: false, message: `events[${index}].detail must be a string` };
+    }
+    if (raw.detail.length > MAX_DETAIL_LEN) {
+      return { ok: false, message: `events[${index}].detail exceeds ${MAX_DETAIL_LEN} chars` };
+    }
+    detail = raw.detail.length > 0 ? raw.detail : null;
+  }
   const agentId =
     typeof raw.agentId === "string" && raw.agentId.length > 0 ? raw.agentId : null;
   const runId = typeof raw.runId === "string" && raw.runId.length > 0 ? raw.runId : null;
@@ -124,6 +142,7 @@ function validateEvent(raw: IncomingEvent, index: number):
       sessionKey,
       channelId,
       action: raw.action,
+      detail,
       metadata,
     },
   };
@@ -243,6 +262,7 @@ export async function POST(
           // attributable to the right agent slot.
           agentSlug: agent?.agentSlug ?? ev.agentId ?? null,
           action: ev.action,
+          detail: ev.detail,
           actionType: ev.type,
           metadata: JSON.stringify({
             ...ev.metadata,

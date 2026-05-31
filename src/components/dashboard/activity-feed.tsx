@@ -8,6 +8,8 @@ interface LogEntry {
   agentName: string
   agentColor: string
   message: string
+  // PR-4: optional full context for expand-on-click in the entry.
+  detail?: string | null
 }
 
 interface ActivityFeedProps {
@@ -23,7 +25,7 @@ export function ActivityFeed({ logs }: ActivityFeedProps) {
           <p className="text-[11px] text-[var(--tx3)] text-center py-4">No activity yet. Your agents will appear here once they start working.</p>
         ) : (
           logs.map((log) => (
-            <ActivityLogEntry key={log.id} timestamp={log.timestamp} agentName={log.agentName} agentColor={log.agentColor} message={log.message} />
+            <ActivityLogEntry key={log.id} timestamp={log.timestamp} agentName={log.agentName} agentColor={log.agentColor} message={log.message} detail={log.detail} />
           ))
         )}
       </div>

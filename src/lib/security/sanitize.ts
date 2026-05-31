@@ -55,6 +55,20 @@ export function sanitizeActivityText(raw: string | null | undefined): string {
   return cleaned.slice(0, ACTIVITY_TEXT_MAX_LEN) + "\u2026"
 }
 
+// PR-4: the expand-on-click `detail` body behind a short `action` summary.
+// Same HTML-strip as the feed text, but a higher cap (the whole point of
+// detail is to hold the full context the action elides). Returns null for
+// empty/absent input so the client can omit the expand affordance.
+const ACTIVITY_DETAIL_MAX_LEN = 4096
+
+export function sanitizeActivityDetail(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const cleaned = sanitizeText(raw).trim()
+  if (cleaned.length === 0) return null
+  if (cleaned.length <= ACTIVITY_DETAIL_MAX_LEN) return cleaned
+  return cleaned.slice(0, ACTIVITY_DETAIL_MAX_LEN) + "\u2026"
+}
+
 export function sanitizeMarkdown(dirty: string): string {
   if (!dirty) return ""
   let clean = dirty
