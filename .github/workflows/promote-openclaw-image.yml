@@ -59,8 +59,26 @@ jobs:
             echo "::error::version '$VERSION' must match YYYY.M.D or YYYY.M.D-N (stable correction). Beta/alpha versions cannot be promoted."
             exit 1
           fi
+          # PR-4c: $VERSION can be suffixed (e.g. "2026.5.22-1") to promote a
+          # container/-only rebuild without overwriting the canonical
+          # :<upstream-version> tag. Export OUR output and UPSTREAM identifiers
+          # as distinct names so every reference site picks the right one.
+          # `%%-*` is the longest-match strip — robust to any future suffix
+          # shape (the shape regex above currently only allows -[0-9]+).
+          #
+          # Strip cases (verified locally — see tmp/pr4c-strip-sim.sh):
+          #   "2026.5.22"     -> upstream_version="2026.5.22"   (no-op)
+          #   "2026.5.22-1"   -> upstream_version="2026.5.22"
+          #   "2026.5.22-12"  -> upstream_version="2026.5.22"
+          UPSTREAM_VERSION="${VERSION%%-*}"
+
+          echo "output_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "upstream_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "upstream_tag=v$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          # Backward-compat aliases (deprecated; remove after one release cycle).
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "source_tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_tag=v$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Resolve GHCR digests for :<version> and :candidate
         id: digests
@@ -69,7 +87,8 @@ jobs:
           GHCR_READ_PAT:  ${{ secrets.GHCR_READ_PAT }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.validate.outputs.version }}"
+          # PR-4c: GHCR lookups use OUR output tag (suffixed when -N).
+          VERSION="${{ steps.validate.outputs.output_version }}"
 
           if [ -z "${GHCR_READ_USER:-}" ] || [ -z "${GHCR_READ_PAT:-}" ]; then
             echo "::error::vars.GHCR_READ_USER and secrets.GHCR_READ_PAT must both be configured."
@@ -122,11 +141,11 @@ jobs:
           fi
 
           if [ "$VD" != "$CD" ]; then
-            echo "::error::Digest mismatch: :candidate=$CD vs :${{ steps.validate.outputs.version }}=$VD. Another build ran between QA and promotion. Re-run QA against the current :candidate, then retry, or set skip_candidate_check=true if this is intentional."
+            echo "::error::Digest mismatch: :candidate=$CD vs :${{ steps.validate.outputs.output_version }}=$VD. Another build ran between QA and promotion. Re-run QA against the current :candidate, then retry, or set skip_candidate_check=true if this is intentional."
             exit 1
           fi
 
-          echo "Candidate digest matches :${{ steps.validate.outputs.version }} ($VD). Safe to promote."
+          echo "Candidate digest matches :${{ steps.validate.outputs.output_version }} ($VD). Safe to promote."
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -141,7 +160,8 @@ jobs:
       - name: Re-tag :<version> → :latest (atomic, server-side)
         run: |
           set -euo pipefail
-          VERSION="${{ steps.validate.outputs.version }}"
+          # PR-4c: re-tag uses OUR output tag (suffixed when -N).
+          VERSION="${{ steps.validate.outputs.output_version }}"
           # imagetools create copies the manifest by digest reference, so this
           # is atomic on the registry side (no re-upload, no race window).
           docker buildx imagetools create \
@@ -171,7 +191,7 @@ jobs:
             echo "::error::Post-promote verification failed: :latest=$LATEST_DIGEST expected=$EXPECTED"
             exit 1
           fi
-          echo ":latest now points at $LATEST_DIGEST (matches :${{ steps.validate.outputs.version }})"
+          echo ":latest now points at $LATEST_DIGEST (matches :${{ steps.validate.outputs.output_version }})"
 
       - name: Register OpenClawVersion (stable)
         env:
@@ -183,22 +203,27 @@ jobs:
             exit 1
           fi
 
-          VERSION="${{ steps.validate.outputs.version }}"
-          SOURCE_TAG="${{ steps.validate.outputs.source_tag }}"
+          # PR-4c: explicit dual-version naming (mirrors build workflow).
+          # OUTPUT_VERSION → OpenClawVersion.version + dockerImage tag.
+          # UPSTREAM_TAG  → buildSourceTag + releaseNotesUrl (audit trail of
+          # upstream provenance). Pre-PR-4c promote of force_version=X-1 would
+          # have stored "vX-1" + a 404 link here.
+          OUTPUT_VERSION="${{ steps.validate.outputs.output_version }}"
+          UPSTREAM_TAG="${{ steps.validate.outputs.upstream_tag }}"
           DIGEST="${{ steps.digests.outputs.version_digest }}"
           # The version row's dockerImage MUST be the immutable :<version> ref,
           # not :latest. The deployer reads this row and pulls by tag — using
           # :latest here would re-introduce the moving-pointer problem the
           # candidate/latest split is meant to solve.
-          DOCKER_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
+          DOCKER_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$OUTPUT_VERSION"
           PUSHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          RELEASE_NOTES_URL="https://github.com/openclaw/openclaw/releases/tag/$SOURCE_TAG"
+          RELEASE_NOTES_URL="https://github.com/openclaw/openclaw/releases/tag/$UPSTREAM_TAG"
 
           PAYLOAD=$(jq -n \
-            --arg version       "$VERSION" \
+            --arg version       "$OUTPUT_VERSION" \
             --arg dockerImage   "$DOCKER_IMAGE" \
             --arg imageDigest   "$DIGEST" \
-            --arg buildSourceTag "$SOURCE_TAG" \
+            --arg buildSourceTag "$UPSTREAM_TAG" \
             --arg buildPushedAt "$PUSHED_AT" \
             --arg releaseNotesUrl "$RELEASE_NOTES_URL" \
             '{version: $version, dockerImage: $dockerImage, imageDigest: $imageDigest, buildSourceTag: $buildSourceTag, buildPushedAt: $buildPushedAt, releaseNotesUrl: $releaseNotesUrl, isStable: true, isCandidate: false}')
@@ -221,9 +246,10 @@ jobs:
           set -euo pipefail
           echo "### OpenClaw Runtime Image Promoted to :latest" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Version:** \`${{ steps.validate.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Upstream tag:** \`${{ steps.validate.outputs.source_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Immutable tag:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.validate.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version (our tag):** \`${{ steps.validate.outputs.output_version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Upstream version:** \`${{ steps.validate.outputs.upstream_version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Upstream tag:** \`${{ steps.validate.outputs.upstream_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Immutable tag:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.validate.outputs.output_version }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Promoted to:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Digest:** \`${{ steps.digests.outputs.version_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
           # Shell-side conditional so the workflow expression doesn't have to
@@ -232,7 +258,7 @@ jobs:
           if [ "${{ inputs.skip_candidate_check }}" = "true" ]; then
             echo "- **Candidate check:** SKIPPED (emergency override — verify out of band)" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- **Candidate check:** verified :candidate digest matches :${{ steps.validate.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Candidate check:** verified :candidate digest matches :${{ steps.validate.outputs.output_version }}" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "- **OpenClawVersion row:** registered with isStable=true at ${{ inputs.register_endpoint }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

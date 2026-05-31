@@ -37,6 +37,44 @@ jobs:
           done < <(find prisma/migrations -type f -name '*.sql' -print0)
           exit "$fail"
 
+      # PR-4c: hard-fail any GHCR-touching workflow that clones the openclaw
+      # upstream under a variable that isn't the unsuffixed upstream identifier.
+      # PR-2b's immutable-tag policy lets us trigger overlay-only rebuilds via
+      # `force_version=2026.5.22-N`; the suffixed value is OUR output tag but
+      # upstream only publishes `v2026.5.22`. Pre-PR-4c, a single shared
+      # `version` output meant `git clone --branch v$VERSION` looked for the
+      # suffixed tag upstream and failed (this exact bug blocked the PR-4
+      # plugin rebuild and surfaced PR-4c).
+      #
+      # Narrow invariant: any line in .github/workflows/*.yml that runs
+      # `git clone ...openclaw...` MUST reference one of `upstream_version`
+      # or `upstream_tag` (the unsuffixed outputs) — never `output_version`,
+      # `version`, or `source_version` alone. Class of bug cannot recur
+      # without showing up here.
+      #
+      # Matcher catches the literal `openclaw/openclaw.git` AND the templated
+      # `${{ env.UPSTREAM_REPO }}.git` form (workflows resolve UPSTREAM_REPO
+      # to openclaw/openclaw via the env block). Multi-line clones aren't
+      # used today; if they ever become a thing we tighten the matcher.
+      - name: Guard openclaw upstream-clone references upstream_* outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r -d '' f; do
+            # grep -n surfaces line numbers; comment-line skip prevents the
+            # guard's own documentation from tripping it.
+            while IFS=: read -r lineno content; do
+              if ! printf '%s' "$content" | grep -Eq 'upstream_(version|tag)'; then
+                echo "::error file=$f,line=$lineno::workflow clones openclaw upstream but does not use \`upstream_version\` / \`upstream_tag\`. Cloning under a suffixed value (e.g. 'v2026.5.22-1') points at a tag upstream does not publish. Use \`steps.<id>.outputs.upstream_tag\` or \`upstream_version\` instead. Found: $content"
+                fail=1
+              fi
+            done < <(grep -nE 'git[[:space:]]+clone[[:space:]].*(openclaw/openclaw\.git|\$\{\{[[:space:]]*env\.UPSTREAM_REPO[[:space:]]*\}\}\.git)' "$f" \
+                     | grep -vE '^[0-9]+:[[:space:]]*#' \
+                     || true)
+          done < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0)
+          exit "$fail"
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
