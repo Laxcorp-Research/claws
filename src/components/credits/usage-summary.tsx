@@ -9,8 +9,11 @@ interface UsageSummaryProps {
   loading?: boolean
 }
 
-function formatDollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`
+// PR-7: defense-in-depth — never render "$NaN". A nullish/NaN/Infinity input
+// (e.g. an undefined totalConsumedCents that slipped past the hook) renders
+// "$0.00" instead of propagating a bad number into toFixed.
+export function formatDollars(cents?: number | null): string {
+  return `$${((Number.isFinite(cents) ? (cents as number) : 0) / 100).toFixed(2)}`
 }
 
 export function UsageSummary({
