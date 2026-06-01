@@ -2,19 +2,18 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
-import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { OctagonX, Pause, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Modal } from "@/components/ui/modal"
 import { DeployProgress } from "@/components/setup/deploy-progress"
-import { StatCards } from "@/components/dashboard/stat-cards"
-import { ActivityFeed } from "@/components/dashboard/activity-feed"
-import { AgentStatusList } from "@/components/dashboard/agent-status-list"
-import { CostBreakdownTable } from "@/components/dashboard/cost-breakdown-table"
-import { PendingApprovals } from "@/components/dashboard/pending-approvals"
+import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
+import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
+import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
+import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
@@ -195,6 +194,7 @@ interface AgentCostRow {
 export default function DashboardPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const router = useRouter()
+  const { data: session } = useSession()
 
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null)
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -798,8 +798,6 @@ export default function DashboardPage() {
     }),
     [agentCosts],
   )
-  const costTotal = useMemo(() => costRows.reduce((sum, r) => sum + r.cost, 0), [costRows])
-
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => {
       const ra = ROLE_ORDER[a.role] ?? 1
@@ -811,24 +809,21 @@ export default function DashboardPage() {
   )
 
   if (loading) {
+    // PR-6: calm placeholder matching the briefing layout — a serif-height
+    // greeting line, a health-pill stub, then 3 narrative-row placeholders.
+    // Uses a gentle animate-pulse (no shimmer sweep) per the briefing aesthetic.
     return (
-      <div className="max-w-5xl mx-auto px-5 py-6">
-        <div className="h-6 bg-[var(--bg2)] rounded w-48 mb-4" />
-        <div className="grid grid-cols-4 gap-2 mb-3.5">
-          <LoadingSkeleton variant="card" />
-          <LoadingSkeleton variant="card" />
-          <LoadingSkeleton variant="card" />
-          <LoadingSkeleton variant="card" />
-        </div>
-        <div className="grid grid-cols-[1fr_300px] gap-3.5 mb-3.5">
-          <div className="border border-[var(--bd)] rounded-lg p-3 space-y-2">
-            <LoadingSkeleton variant="short" />
-            <LoadingSkeleton variant="line" count={5} />
-          </div>
-          <div className="border border-[var(--bd)] rounded-xl p-3.5 space-y-2">
-            <LoadingSkeleton variant="short" />
-            <LoadingSkeleton variant="line" count={4} />
-          </div>
+      <div className="max-w-5xl mx-auto px-5 py-6" role="status" aria-label="Loading briefing">
+        <span className="sr-only">Loading…</span>
+        <div className="h-8 w-64 rounded-md bg-[var(--bg2)] animate-pulse mb-2.5" />
+        <div className="h-5 w-24 rounded-full bg-[var(--bg2)] animate-pulse mb-8" />
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="border border-[var(--bd)] rounded-lg p-3.5">
+              <div className="h-3 w-20 rounded bg-[var(--bg2)] animate-pulse mb-2" />
+              <div className="h-4 w-3/4 rounded bg-[var(--bg2)] animate-pulse" />
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -843,6 +838,38 @@ export default function DashboardPage() {
       </div>
     )
   }
+
+  // PR-6: greeting name comes from the session (not the activity payload),
+  // with a graceful fallback chain name → email local-part → "there".
+  const greetingName = session?.user?.name ?? (session?.user?.email ? session.user.email.split("@")[0] : null)
+
+  // Empty/not-yet-working state: workspace exists but there's nothing to brief
+  // on (never deployed, mid-setup, stopped, or no agents). Renders the calm
+  // empty path instead of the populated briefing.
+  const isEmpty =
+    !workspace ||
+    workspace.status === "DRAFT" ||
+    workspace.status === "SETUP_INCOMPLETE" ||
+    workspace.status === "STOPPED" ||
+    agents.length === 0
+
+  const briefingLogs = logs.map((l) => ({
+    id: l.id,
+    timestamp: formatTime(l.timestamp),
+    agentName: l.agentName,
+    agentColor: agentColorMapRef.current[l.agentName] ?? AGENT_COLORS["WORKER"],
+    message: l.action,
+    detail: l.detail ?? null,
+  }))
+
+  const rosterAgents = sortedAgents.map((a) => ({
+    id: a.id,
+    name: a.name,
+    role: a.role,
+    status: a.status,
+    lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
+    color: a.color,
+  }))
 
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
@@ -911,69 +938,59 @@ export default function DashboardPage() {
         />
       )}
 
-      {stats && (
-        <StatCards
-          agentsRunning={stats.agentsRunning}
-          agentsPaused={stats.agentsPaused}
-          agentsError={stats.agentsError}
-          agentsOffline={stats.agentsOffline}
-          agentsDegraded={stats.agentsDegraded}
-          tasksToday={stats.tasksToday}
-          tasksYesterday={stats.tasksYesterday}
-          apiCostThisMonth={stats.apiCostThisMonth}
-          apiCostProjected={stats.apiCostProjected}
-          pendingReview={stats.pendingReview}
-          isPaused={isPaused}
-          isStopped={isStopped}
-          isHibernated={workspace?.status === "HIBERNATED"}
-          creditMode={creditMode && credit.status === "ACTIVE"}
-          creditBalanceCents={creditMode ? credit.balanceCents : undefined}
-          creditDaysEstimate={
-            creditMode && credit.totalConsumedCents > 0 && credit.grantedAt
-              ? (() => {
-                  const days = Math.max(1, Math.floor((Date.now() - new Date(credit.grantedAt).getTime()) / 86400000))
-                  const dailyRate = credit.totalConsumedCents / days
-                  const remaining = dailyRate > 0 ? Math.round(credit.balanceCents / dailyRate) : 0
-                  return remaining > 0 ? `~${remaining} day${remaining !== 1 ? "s" : ""} at current usage` : "Running low"
-                })()
-              : undefined
-          }
-        />
-      )}
+      {isEmpty ? (
+        <div className="py-8">
+          <h1 className="font-serif font-normal text-[28px] leading-tight text-[var(--tx)] mb-3">
+            {clawGreeting(greetingName)}
+          </h1>
+          <p className="text-[14px] text-[var(--tx)]">
+            {workspace?.name ?? "This Claw"} is ready, but hasn&apos;t started working yet.
+          </p>
+          <p className="text-[12px] text-[var(--tx3)] mt-1">
+            Once it&apos;s running, your briefing shows up here each day.
+          </p>
+          <div className="mt-5 flex gap-1.5">
+            {(workspace?.status === "DRAFT" || workspace?.status === "SETUP_INCOMPLETE") && (
+              <Button variant="primary" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/1`)}>
+                Finish setup
+              </Button>
+            )}
+            {workspace?.status === "STOPPED" && (
+              <Button variant="primary" size="sm" onClick={() => setRedeployFromStoppedConfirmOpen(true)}>
+                Redeploy
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <BriefingHeader
+            name={greetingName}
+            status={workspace!.status}
+            healthStatus={workspace!.healthStatus}
+            lastHealthReason={workspace?.lastHealthReason}
+          />
 
-      {pendingApprovals.length > 0 && (
-        <PendingApprovals
-          workspaceId={workspaceId}
-          approvals={pendingApprovals.map((a) => ({
-            ...a,
-            agentColor: agentColorMapRef.current[a.agentName] ?? AGENT_COLORS["WORKER"],
-          }))}
-          onApprove={handleApprove}
-          onReject={handleReject}
-        />
-      )}
-
-      <div className="grid grid-cols-[1fr_280px] gap-3">
-        <ActivityFeed
-          logs={logs.map((l) => ({
-            id: l.id,
-            timestamp: formatTime(l.timestamp),
-            agentName: l.agentName,
-            agentColor: agentColorMapRef.current[l.agentName] ?? AGENT_COLORS["WORKER"],
-            message: l.action,
-            detail: l.detail ?? null,
-          }))}
-        />
-
-        <div className="flex flex-col gap-3">
-          <AgentStatusList
-            agents={sortedAgents.map((a) => ({
-              id: a.id,
-              name: a.name,
-              role: a.role,
-              status: a.status === "healthy" ? "running" as const : a.status,
-              lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
+          <NeedsYouSection
+            approvals={pendingApprovals.map((a) => ({
+              ...a,
+              agentColor: agentColorMapRef.current[a.agentName] ?? AGENT_COLORS["WORKER"],
             }))}
+            onApprove={handleApprove}
+            onReject={handleReject}
+          />
+
+          <ClawNarrativeRow
+            clawName={workspace!.name}
+            status={workspace!.status}
+            tasksToday={stats?.tasksToday ?? 0}
+            tasksYesterday={stats?.tasksYesterday ?? 0}
+            agentsError={stats?.agentsError ?? 0}
+            pendingReview={stats?.pendingReview ?? 0}
+            agents={rosterAgents}
+            logs={briefingLogs}
+            agentCosts={costRows}
+            showCosts={isCreditUser(workspace?.apiKeySource)}
             clawPaused={isPaused || isStopped}
             onPauseAgent={handleAgentPause}
             onResumeAgent={handleAgentResume}
@@ -981,14 +998,9 @@ export default function DashboardPage() {
             actionLoadingId={agentActionLoadingId}
           />
 
-          <CostBreakdownTable
-            rows={costRows}
-            totalCost={costTotal}
-            period={new Date().toLocaleString("default", { month: "long", year: "numeric" })}
-            workspaceId={workspaceId}
-          />
-        </div>
-      </div>
+          <BriefingFooter consumedCents={credit.totalConsumedCents} />
+        </>
+      )}
 
       <ConfirmDialog
         open={redeployConfirmOpen}
