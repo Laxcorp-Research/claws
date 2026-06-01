@@ -5,6 +5,13 @@ import { PendingApprovalCard } from "./pending-approval-card"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 
+// PR-6: replaces the old <PendingApprovals> wrapper. Same behaviour (approve
+// inline, reject-with-optional-feedback via modal) but calm-by-default — the
+// whole section is absent when there's nothing waiting, so a quiet Claw shows
+// no "Needs you" chrome at all. (Today this is always empty: nothing produces
+// HUMAN_REQUEST yet — see the PR-6 audit. The section is built so it lights up
+// for free once a producer lands.)
+
 interface PendingApproval {
   id: string
   title: string
@@ -14,14 +21,13 @@ interface PendingApproval {
   timestamp: string
 }
 
-interface PendingApprovalsProps {
-  workspaceId: string
+interface NeedsYouSectionProps {
   approvals: PendingApproval[]
   onApprove: (id: string) => Promise<void>
   onReject: (id: string, feedback?: string) => Promise<void>
 }
 
-export function PendingApprovals({ approvals, onApprove, onReject }: PendingApprovalsProps) {
+export function NeedsYouSection({ approvals, onApprove, onReject }: NeedsYouSectionProps) {
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
   const [rejectTarget, setRejectTarget] = useState<string | null>(null)
   const [rejectFeedback, setRejectFeedback] = useState("")
@@ -66,10 +72,13 @@ export function PendingApprovals({ approvals, onApprove, onReject }: PendingAppr
 
   return (
     <>
-      <div className="border border-[var(--warn)] rounded-[var(--r,8px)] p-[12px] bg-[var(--warnbg)] mb-[14px]">
-        <h4 className="text-[12px] font-semibold text-[#92400e] dark:text-amber-300 mb-[6px]">
-          Pending your approval ({approvals.length} {approvals.length === 1 ? "item" : "items"})
-        </h4>
+      <section
+        aria-label="Needs you"
+        className="border border-[var(--warn)] rounded-[8px] p-[12px] bg-[var(--warnbg)] mb-6"
+      >
+        <h2 className="text-[12px] font-semibold text-[#92400e] dark:text-amber-300 mb-[6px]">
+          Needs you ({approvals.length} {approvals.length === 1 ? "item" : "items"})
+        </h2>
         <div className="flex flex-col gap-[6px]">
           {approvals.map((a) => (
             <PendingApprovalCard
@@ -86,7 +95,7 @@ export function PendingApprovals({ approvals, onApprove, onReject }: PendingAppr
             />
           ))}
         </div>
-      </div>
+      </section>
 
       <Modal
         open={rejectTarget !== null}
