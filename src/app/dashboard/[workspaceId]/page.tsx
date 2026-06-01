@@ -998,7 +998,11 @@ export default function DashboardPage() {
             actionLoadingId={agentActionLoadingId}
           />
 
-          <BriefingFooter consumedCents={credit.totalConsumedCents} />
+          <BriefingFooter
+            apiKeySource={workspace!.apiKeySource}
+            consumedCents={credit.totalConsumedCents}
+            creditStatus={credit.status}
+          />
         </>
       )}
 
