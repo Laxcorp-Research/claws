@@ -32,7 +32,12 @@ export function useCreditBalance(pollIntervalMs?: number) {
       const res = await fetch("/api/credits/balance")
       const json = await res.json()
       if (json.success) {
-        setData(json.data)
+        // PR-7: spread over EMPTY so a partial API response (e.g. the
+        // no-account branch returns only {hasCredits,balanceCents,status})
+        // can't leave numeric fields undefined → downstream formatters got
+        // `undefined/100 = NaN` ("$NaN" on the Usage page). Every consumer
+        // now gets fully-shaped data with zeroed numerics.
+        setData({ ...EMPTY, ...json.data })
       } else {
         setError(json.error?.message || "Failed to fetch credit balance")
       }

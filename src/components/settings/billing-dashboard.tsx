@@ -50,6 +50,7 @@ export function BillingDashboard() {
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([])
   const [loading, setLoading] = useState(true)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [portalMessage, setPortalMessage] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -64,13 +65,25 @@ export function BillingDashboard() {
   }, [])
 
   const openPortal = async () => {
+    // PR-7: open the tab synchronously (inside the click gesture) so the
+    // post-fetch navigation isn't blocked as a popup. If the portal isn't
+    // available (Dodo mock mode / no dodoCustomerId), close the blank tab
+    // and surface the server's message instead of silently doing nothing.
+    const win = window.open("about:blank", "_blank")
     setPortalLoading(true)
+    setPortalMessage(null)
     try {
       const res = await fetch("/api/dodo-payments/portal", { method: "POST" })
       const json = await res.json()
-      if (json.data?.portalUrl) {
-        window.open(json.data.portalUrl, "_blank")
+      if (json.data?.portalUrl && win) {
+        win.location.href = json.data.portalUrl
+      } else {
+        win?.close()
+        setPortalMessage(json.data?.message || "Billing portal unavailable.")
       }
+    } catch {
+      win?.close()
+      setPortalMessage("Couldn't reach the billing portal. Please try again.")
     } finally {
       setPortalLoading(false)
     }
@@ -162,6 +175,11 @@ export function BillingDashboard() {
           View invoices
         </Button>
       </div>
+      {portalMessage && (
+        <p role="status" className="text-[11px] text-[var(--tx2)] mt-[6px]">
+          {portalMessage}
+        </p>
+      )}
     </div>
   )
 }
