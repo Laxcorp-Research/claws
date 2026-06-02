@@ -206,6 +206,7 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "user-1",
       trialUsed: false,
+      apiKeys: [],
     });
     (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(STABLE_ROW);
 
@@ -224,6 +225,32 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     expect(createServiceArgs.image).toBe(STABLE_DOCKER_IMAGE);
   });
 
+  it("loads the user's apiKeys relation (include) so deriveContainerEnv sees BYOK keys (PR-8a)", async () => {
+    // PR-8a: buildRailwayEnvVars -> deriveContainerEnv reads user.apiKeys. If a
+    // caller drops `include: { apiKeys: true }`, the real Prisma client returns
+    // a user WITHOUT the relation and deriveContainerEnv throws at deploy time.
+    // The prisma mock ignores query args, so the runtime throw can't surface
+    // here — instead we lock the include shape directly. Mutation: remove the
+    // include from deployToCloud's user query -> this assertion fails.
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ containerId: null }),
+    );
+    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-1",
+      trialUsed: false,
+      apiKeys: [],
+    });
+    (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(STABLE_ROW);
+    mockCreateService.mockResolvedValue({ serviceId: "svc-new", domain: "svc-new.up.railway.app" });
+    mockGetServiceStatus.mockResolvedValue({ status: "SUCCESS", deploymentId: "dep-rw-1", healthy: true });
+
+    await deployToCloud("ws-1");
+
+    expect(prismaMock.user.findUniqueOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { apiKeys: true } }),
+    );
+  });
+
   it("existing-service redeploy: passes the resolved image to updateAndRedeployService", async () => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       workspaceStub({ containerId: "svc-existing", containerHost: "svc-existing.up.railway.app" }),
@@ -231,6 +258,7 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "user-1",
       trialUsed: false,
+      apiKeys: [],
     });
     (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(STABLE_ROW);
 
@@ -261,6 +289,7 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "user-1",
       trialUsed: false,
+      apiKeys: [],
     });
     (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     process.env.OPENCLAW_DOCKER_IMAGE = "ghcr.io/laxcorp-research/openclaw-runtime:bootstrap";

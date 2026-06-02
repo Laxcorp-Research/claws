@@ -33,7 +33,17 @@ const minimalGenerated: GeneratedWorkspace = {
   gatewayToken: 'tok-abc-123',
 };
 
-const workspace = { timezone: 'UTC', containerHost: null };
+// PR-8a: buildRailwayEnvVars now takes (generated, workspace, user). The
+// shared workspace fixture carries the fields deriveContainerEnv +
+// getApiKeySource read (apiKeySourceOverride) plus id/userId; per-test
+// id/userId are overridden via buildEnv() below.
+const workspace = {
+  id: 'ws-default',
+  userId: 'user-default',
+  timezone: 'UTC',
+  containerHost: null,
+  apiKeySourceOverride: null,
+};
 
 // PR-2b: every successful path needs these three set together so the host
 // guard agrees. Tests that exercise the unset/mismatch branches override
@@ -42,6 +52,22 @@ function setStagingLikeEnv() {
   process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
   process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
   process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+}
+
+// PR-8a signature-change adapter. buildRailwayEnvVars went from
+// (generated, workspace, creditConfig{creditMode,workspaceId,userId}) to
+// (generated, workspace, user). These tests still express intent in the old
+// {creditMode,workspaceId,userId} shape, so this maps that onto the new
+// (workspace, user) objects: creditMode=true → a PLATFORM_CREDIT user (master
+// key path), creditMode=false → a USER_OWN_KEY user with no stored keys
+// (non-credit path). Both keep apiKeys=[] so no decrypt is exercised here —
+// decrypted-BYOK derivation is covered in derive-container-env.test.ts.
+function buildEnv(cfg: { creditMode: boolean; workspaceId: string; userId: string }) {
+  return buildRailwayEnvVars(
+    minimalGenerated,
+    { ...workspace, id: cfg.workspaceId, userId: cfg.userId },
+    { apiKeySource: cfg.creditMode ? 'PLATFORM_CREDIT' : 'USER_OWN_KEY', apiKeys: [] },
+  );
 }
 
 describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', () => {
@@ -73,7 +99,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
 
   it('emits COMPOSIO_API_KEY + COMPOSIO_USER_ID together when COMPOSIO_API_KEY is set', () => {
     process.env.COMPOSIO_API_KEY = 'ak_platform_secret_deadbeef';
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-test-1',
       userId: 'user-abc',
@@ -89,7 +115,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
     // from the same getComposioUserId helper, so this test guards against
     // drift if either side's formatting changes.
     process.env.COMPOSIO_API_KEY = 'ak_fmt_test';
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: true,
       workspaceId: 'ws-fmt-1',
       userId: 'abc123',
@@ -99,7 +125,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
 
   it('does not emit any Composio env vars when COMPOSIO_API_KEY is unset (pre-PR #4 backward compat)', () => {
     delete process.env.COMPOSIO_API_KEY;
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-test-2',
       userId: 'user-xyz',
@@ -120,10 +146,10 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
   // via the type-safe test surface. The empty-userId case below still
   // exercises the runtime throw with a valid CreditConfig shape.
 
-  it('throws when creditConfig is passed but userId is empty (defense in depth)', () => {
+  it('throws when COMPOSIO_API_KEY is set but workspace.userId is empty (defense in depth)', () => {
     process.env.COMPOSIO_API_KEY = 'ak_platform_secret';
     expect(() =>
-      buildRailwayEnvVars(minimalGenerated, workspace, {
+      buildEnv({
         creditMode: false,
         workspaceId: 'ws-test-3',
         userId: '',
@@ -131,10 +157,10 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
     ).toThrow(/refusing to emit platform API key without a user-id scope pin/);
   });
 
-  it('does NOT throw when COMPOSIO_API_KEY is unset even if creditConfig.userId is empty (no platform key → no security boundary to enforce)', () => {
+  it('does NOT throw when COMPOSIO_API_KEY is unset even if workspace.userId is empty (no platform key → no security boundary to enforce)', () => {
     delete process.env.COMPOSIO_API_KEY;
     expect(() =>
-      buildRailwayEnvVars(minimalGenerated, workspace, {
+      buildEnv({
         creditMode: false,
         workspaceId: 'ws-no-composio',
         userId: '',
@@ -144,7 +170,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
 
   it('preserves existing creditMode behavior (CLAWS_USER_ID and CLAWS_WORKSPACE_ID) alongside the new Composio vars', () => {
     process.env.COMPOSIO_API_KEY = 'ak_mixed';
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: true,
       workspaceId: 'ws-mixed',
       userId: 'user-mixed',
@@ -160,7 +186,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
 
   it('COMPOSIO_API_KEY value is trimmed (handles whitespace in server env)', () => {
     process.env.COMPOSIO_API_KEY = '   ak_padded   ';
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-trim',
       userId: 'user-trim',
@@ -170,7 +196,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
 
   it('treats whitespace-only COMPOSIO_API_KEY as unset (no emission, no throw)', () => {
     process.env.COMPOSIO_API_KEY = '   ';
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-ws',
       userId: 'user-ws',
@@ -232,7 +258,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
   });
 
   it('emits CLAWS_WORKSPACE_ID for non-credit users (regression: was credit-mode-gated)', () => {
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-non-credit-1',
       userId: 'user-non-credit-1',
@@ -241,7 +267,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
   });
 
   it('emits CLAWS_METERING_ENDPOINT for non-credit users (regression: was credit-mode-gated)', () => {
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-non-credit-2',
       userId: 'user-non-credit-2',
@@ -250,7 +276,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
   });
 
   it('emits CLAWS_METERING_SECRET for non-credit users (regression: was credit-mode-gated)', () => {
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-non-credit-3',
       userId: 'user-non-credit-3',
@@ -259,7 +285,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
   });
 
   it('still gates credit-proxy-specific vars on creditMode=true (non-credit does NOT get them)', () => {
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-non-credit-4',
       userId: 'user-non-credit-4',
@@ -279,7 +305,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
 
   it('credit-mode users get BOTH state-sync vars AND credit-proxy vars', () => {
     process.env.CLAWS_MASTER_ANTHROPIC_KEY = 'sk-ant-test-master';
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: true,
       workspaceId: 'ws-credit-1',
       userId: 'user-credit-1',
@@ -297,7 +323,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
   });
 
   it('emits CLAWS_ACTIVITY_ENDPOINT alongside metering (PR-2)', () => {
-    const env = buildRailwayEnvVars(minimalGenerated, workspace, {
+    const env = buildEnv({
       creditMode: false,
       workspaceId: 'ws-activity-1',
       userId: 'user-activity-1',
@@ -341,7 +367,7 @@ describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => 
   });
 
   function callIt() {
-    return buildRailwayEnvVars(minimalGenerated, workspace, {
+    return buildEnv({
       creditMode: false,
       workspaceId: 'ws-guard',
       userId: 'user-guard',
@@ -416,5 +442,69 @@ describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => 
     expect(callIt).not.toThrow();
     const env = callIt();
     expect(env.CLAWS_ACTIVITY_ENDPOINT).toBe('https://app.buildclaws.ai/api/internal/activity');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// PR-8a: Composio fail-closed pin now sources workspace.userId.
+//
+// The signature change (creditConfig{userId} → user) moved the
+// COMPOSIO_USER_ID scope pin from creditConfig.userId to workspace.userId.
+// This block calls buildRailwayEnvVars DIRECTLY with explicit (workspace,
+// user) objects — NOT through the buildEnv() adapter — so the auth boundary
+// is locked to workspace.userId against a future caller refactor that forgets
+// to pass a userId-bearing workspace.
+//
+// Mutation coverage: hardcode COMPOSIO_USER_ID to a wrong value → the first
+// test fails; flip the `!workspace.userId` guard → the fail-closed test fails.
+// ─────────────────────────────────────────────────────────────────────────
+describe('buildRailwayEnvVars — Composio fail-closed pin sources workspace.userId (PR-8a signature-change regression)', () => {
+  let prev: Record<string, string | undefined>;
+  beforeEach(() => {
+    prev = {
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+      ACTIVITY_ENDPOINT: process.env.ACTIVITY_ENDPOINT,
+      METERING_ENDPOINT: process.env.METERING_ENDPOINT,
+      COMPOSIO_API_KEY: process.env.COMPOSIO_API_KEY,
+    };
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  // Non-credit user (USER_OWN_KEY, no stored keys) keeps the focus on the
+  // Composio pin, not credit-mode credential derivation. apiKeys=[] → no decrypt.
+  const nonCreditUser = { apiKeySource: 'USER_OWN_KEY' as const, apiKeys: [] };
+  const wsWith = (userId: string) => ({
+    id: 'ws-pin',
+    userId,
+    timezone: 'UTC',
+    containerHost: null,
+    apiKeySourceOverride: null,
+  });
+
+  it('COMPOSIO_USER_ID is claws_<workspace.userId> (pin reads workspace.userId, not a creditConfig)', () => {
+    process.env.COMPOSIO_API_KEY = 'ak_pin_secret';
+    const env = buildRailwayEnvVars(minimalGenerated, wsWith('user-pin-1'), nonCreditUser);
+    expect(env.COMPOSIO_API_KEY).toBe('ak_pin_secret');
+    expect(env.COMPOSIO_USER_ID).toBe('claws_user-pin-1');
+  });
+
+  it('throws fail-closed when workspace.userId is empty and COMPOSIO_API_KEY is set', () => {
+    process.env.COMPOSIO_API_KEY = 'ak_pin_secret';
+    expect(() => buildRailwayEnvVars(minimalGenerated, wsWith(''), nonCreditUser)).toThrow(
+      /refusing to emit platform API key without a user-id scope pin/,
+    );
+  });
+
+  it('does NOT throw when workspace.userId is empty but COMPOSIO_API_KEY is unset', () => {
+    delete process.env.COMPOSIO_API_KEY;
+    expect(() => buildRailwayEnvVars(minimalGenerated, wsWith(''), nonCreditUser)).not.toThrow();
   });
 });

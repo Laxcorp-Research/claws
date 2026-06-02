@@ -38,7 +38,7 @@ import {
 } from './railway-client';
 import { log } from '@/lib/logger';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
-import { getApiKeySource } from '@/lib/credits/api-key-source';
+import { deriveContainerEnv, type DeriveWorkspaceInput, type DeriveUserInput } from './derive-container-env';
 import { getComposioUserId } from '@/lib/composio';
 import { CronExpressionParser } from 'cron-parser';
 
@@ -146,6 +146,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: workspace.userId },
+    include: { apiKeys: true },
   });
 
   // PR-1: resolve once and persist on the Deployment row so the column
@@ -226,12 +227,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'PROVISIONING');
     const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);
-    const apiKeySource = getApiKeySource(workspace, user);
-    const envVars = buildRailwayEnvVars(generated, workspace, {
-      creditMode: apiKeySource === 'PLATFORM_CREDIT',
-      workspaceId,
-      userId: workspace.userId,
-    });
+    const envVars = buildRailwayEnvVars(generated, workspace, user);
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'CONFIGURING');
 
@@ -430,14 +426,10 @@ export async function redeployWorkspace(workspaceId: string): Promise<void> {
   if (isRailwayConfigured() && workspace.containerId && workspace.status === 'RUNNING') {
     const redeployUser = await prisma.user.findUniqueOrThrow({
       where: { id: workspace.userId },
+      include: { apiKeys: true },
     });
     const generated = await generateWorkspace(workspaceId);
-    const redeploySource = getApiKeySource(workspace, redeployUser);
-    const envVars = buildRailwayEnvVars(generated, workspace, {
-      creditMode: redeploySource === 'PLATFORM_CREDIT',
-      workspaceId,
-      userId: workspace.userId,
-    });
+    const envVars = buildRailwayEnvVars(generated, workspace, redeployUser);
     await updateServiceVariables(workspace.containerId, envVars);
     await redeployService(workspace.containerId);
     return;
@@ -481,21 +473,20 @@ export async function getGatewayConnectionInfo(
 // Railway Env Var Builder
 // ---------------------------------------------------------------------------
 
-interface CreditConfig {
-  creditMode: boolean;
-  workspaceId: string;
-  userId: string;
-}
-
 export function buildRailwayEnvVars(
   generated: GeneratedWorkspace,
-  workspace: { timezone?: string | null; containerHost?: string | null },
-  // PR2: creditConfig is now REQUIRED. Previously optional, which meant
-  // callers could silently skip the 3 state-sync env vars by omitting
-  // the arg. TypeScript now enforces the invariant; the runtime throw
-  // inside the Composio section remains as defense-in-depth for
-  // `as any` bypasses.
-  creditConfig: CreditConfig,
+  // PR-8a: workspace + user are passed explicitly so credit mode AND the
+  // credential vars are derived from the SINGLE source of truth
+  // (deriveContainerEnv) shared with the reconciliation cron and the
+  // container-secrets path — not from a precomputed creditMode boolean.
+  // The runtime throw in the Composio section remains as defense-in-depth.
+  workspace: DeriveWorkspaceInput & {
+    id: string;
+    userId: string;
+    timezone?: string | null;
+    containerHost?: string | null;
+  },
+  user: DeriveUserInput,
 ): Record<string, string> {
   const configJson = generated['openclaw.json'];
   const envFileContent = generated['.env'];
@@ -525,7 +516,7 @@ export function buildRailwayEnvVars(
   // those genuinely require the proxy process (CLAWS_USER_ID, ANTHROPIC_*,
   // NODE_OPTIONS memory cap). creditConfig is now a required parameter,
   // so these three emit unconditionally — no silent-no-op failure mode.
-  vars.CLAWS_WORKSPACE_ID = creditConfig.workspaceId;
+  vars.CLAWS_WORKSPACE_ID = workspace.id;
   // PR-2b #1 + #2: fail-closed on unset/mismatched endpoint env. See
   // src/lib/openclaw/env-guards.ts for the full root-cause writeup.
   const meteringEndpoint = requireMeteringEndpoint();
@@ -545,11 +536,18 @@ export function buildRailwayEnvVars(
   vars.CLAWS_ACTIVITY_ENDPOINT = activityEndpoint;
   vars.CLAWS_ACTIVITY_SECRET = process.env.ACTIVITY_PIPELINE_SECRET || '';
 
-  if (creditConfig.creditMode) {
+  // PR-8a: credit mode + the credential vars come from deriveContainerEnv —
+  // the single source of truth shared with the reconciliation cron and the
+  // container-secrets path. Non-credit deploys still emit NO ANTHROPIC_API_KEY
+  // here: the user's BYOK key is baked into CLAWS_ENV_B64 by the generator,
+  // not a Railway var (behavior preserved). CLAWS_USER_ID is pinned to
+  // workspace.userId in credit mode (was creditConfig.userId).
+  const credential = deriveContainerEnv(workspace, user);
+  if (credential.CLAWS_CREDIT_MODE) {
     vars.CLAWS_CREDIT_MODE = 'true';
-    vars.CLAWS_USER_ID = creditConfig.userId;
-    vars.ANTHROPIC_API_KEY = process.env.CLAWS_MASTER_ANTHROPIC_KEY || '';
-    vars.ANTHROPIC_BASE_URL = 'http://localhost:3789';
+    vars.CLAWS_USER_ID = workspace.userId;
+    vars.ANTHROPIC_API_KEY = credential.ANTHROPIC_API_KEY ?? '';
+    if (credential.ANTHROPIC_BASE_URL) vars.ANTHROPIC_BASE_URL = credential.ANTHROPIC_BASE_URL;
     vars.NODE_OPTIONS = '--max-old-space-size=700';
   } else {
     vars.CLAWS_CREDIT_MODE = 'false';
@@ -585,18 +583,18 @@ export function buildRailwayEnvVars(
   // ---------------------------------------------------------------------
   const composioApiKey = process.env.COMPOSIO_API_KEY?.trim();
   if (composioApiKey) {
-    if (!creditConfig?.userId) {
+    if (!workspace.userId) {
       // Fail-closed: refuse to deploy a platform API key into a container
-      // that we cannot scope to a specific user. Existing callers (see
-      // deployWorkspace + redeployWorkspace) always pass creditConfig.userId;
-      // this throw catches a future regression where a new call site
-      // forgets. Error message is explicit so the fix is obvious.
+      // that we cannot scope to a specific user. PR-8a: the user-id scope pin
+      // now comes from workspace.userId (was creditConfig.userId). This throw
+      // catches a future regression where a caller passes a workspace without
+      // a userId. Error message is explicit so the fix is obvious.
       throw new Error(
-        'buildRailwayEnvVars: COMPOSIO_API_KEY is set but creditConfig.userId is missing; refusing to emit platform API key without a user-id scope pin (security boundary — see docs/COMPOSIO_RUNTIME_CONTRACT.md §"Security considerations")',
+        'buildRailwayEnvVars: COMPOSIO_API_KEY is set but workspace.userId is missing; refusing to emit platform API key without a user-id scope pin (security boundary — see docs/COMPOSIO_RUNTIME_CONTRACT.md §"Security considerations")',
       );
     }
     vars.COMPOSIO_API_KEY = composioApiKey;
-    vars.COMPOSIO_USER_ID = getComposioUserId(creditConfig.userId);
+    vars.COMPOSIO_USER_ID = getComposioUserId(workspace.userId);
   }
 
   return vars;

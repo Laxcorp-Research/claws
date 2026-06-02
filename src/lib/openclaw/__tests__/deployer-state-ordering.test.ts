@@ -139,6 +139,7 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
     ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "user-1",
       trialUsed: false,
+      apiKeys: [],
     })
 
     let upsertWhenCreateServiceRan: boolean | null = null
@@ -170,6 +171,7 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
     ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "user-1",
       trialUsed: false,
+      apiKeys: [],
     })
     mockGetServiceStatus
       .mockResolvedValueOnce({ status: "SUCCESS", deploymentId: "dep-rw-prev", healthy: true })
