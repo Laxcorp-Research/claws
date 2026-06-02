@@ -29,6 +29,11 @@ vi.mock("@/lib/encryption", () => ({
 }))
 
 import { POST } from "@/app/api/internal/container-secrets/route"
+import {
+  deriveContainerEnv,
+  type DeriveWorkspaceInput,
+  type DeriveUserInput,
+} from "@/lib/openclaw/derive-container-env"
 
 const AGENT_SECRET = "test_agent_secret_pr2"
 
@@ -237,6 +242,62 @@ describe("POST /api/internal/container-secrets", () => {
       expect(res.status).toBe(500)
       // prisma.workspace.findUnique should not even have been called.
       expect(prismaMock.workspace.findUnique).not.toHaveBeenCalled()
+    })
+  })
+
+  // PR-8a: this route and the deploy path (buildRailwayEnvVars) must derive the
+  // credential env from the SAME source (deriveContainerEnv). These assert the
+  // route's emitted credential subset equals the helper's output for the same
+  // input — so a future divergence (e.g. a hardcoded base URL) fails loudly.
+  describe("PR-8a: credential derivation unified with deriveContainerEnv", () => {
+    it("non-credit user WITH a BYOK ANTHROPIC key → emits the decrypted key, matching the helper", async () => {
+      const wsInput: DeriveWorkspaceInput = { apiKeySourceOverride: null }
+      const userInput: DeriveUserInput = {
+        apiKeySource: "USER_OWN_KEY",
+        apiKeys: [{ provider: "ANTHROPIC", encryptedKey: "ENC_BYOK" }],
+      }
+      const workspace = {
+        id: "ws-byok",
+        userId: "user-byok",
+        gatewayToken: null,
+        channelConfigEncrypted: null,
+        ...wsInput,
+        user: { id: "user-byok", ...userInput, creditAccount: null },
+      }
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(workspace)
+
+      const res = await callRoute({ workspaceId: "ws-byok" }, `Bearer ${AGENT_SECRET}`)
+      expect(res.status).toBe(200)
+      const env = parseEnvVars((await res.json()).data)
+
+      // decrypt() is mocked passthrough, so the helper + route agree on "ENC_BYOK".
+      const expected = deriveContainerEnv(wsInput, userInput)
+      expect(env.ANTHROPIC_API_KEY).toBe(expected.ANTHROPIC_API_KEY)
+      expect(env.CLAWS_CREDIT_MODE).toBe(String(expected.CLAWS_CREDIT_MODE))
+      expect(env.ANTHROPIC_BASE_URL).toBeUndefined()
+    })
+
+    it("PLATFORM_CREDIT → emitted credential env matches deriveContainerEnv (base URL from the shared constant)", async () => {
+      const wsInput: DeriveWorkspaceInput = { apiKeySourceOverride: null }
+      const userInput: DeriveUserInput = { apiKeySource: "PLATFORM_CREDIT", apiKeys: [] }
+      const workspace = {
+        id: "ws-cred",
+        userId: "user-cred",
+        gatewayToken: null,
+        channelConfigEncrypted: null,
+        ...wsInput,
+        user: { id: "user-cred", ...userInput, creditAccount: { id: "ca" } },
+      }
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(workspace)
+
+      const res = await callRoute({ workspaceId: "ws-cred" }, `Bearer ${AGENT_SECRET}`)
+      expect(res.status).toBe(200)
+      const env = parseEnvVars((await res.json()).data)
+
+      const expected = deriveContainerEnv(wsInput, userInput)
+      expect(env.ANTHROPIC_API_KEY).toBe(expected.ANTHROPIC_API_KEY) // master key
+      expect(env.ANTHROPIC_BASE_URL).toBe(expected.ANTHROPIC_BASE_URL) // ANTHROPIC_PROXY_URL — divergence-proof
+      expect(env.CLAWS_CREDIT_MODE).toBe("true")
     })
   })
 })

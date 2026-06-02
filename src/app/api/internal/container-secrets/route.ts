@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { decrypt } from "@/lib/encryption"
-import { getApiKeySource } from "@/lib/credits/api-key-source"
+import { deriveContainerEnv } from "@/lib/openclaw/derive-container-env"
 import {
   requireActivityEndpoint,
   requireMeteringEndpoint,
@@ -50,7 +50,8 @@ export async function POST(req: NextRequest) {
   if (!workspace) return ERRORS.NOT_FOUND("Workspace")
 
   const envVars: string[] = []
-  const source = getApiKeySource(workspace, workspace.user)
+  // PR-8a: credential env from the single source of truth.
+  const credential = deriveContainerEnv(workspace, workspace.user)
 
   // PR2: ungated for universal state preservation. These 3 vars (WORKSPACE_ID,
   // METERING_ENDPOINT, METERING_SECRET) were credit-mode-gated until 2026-04-28.
@@ -69,16 +70,21 @@ export async function POST(req: NextRequest) {
   envVars.push(`CLAWS_ACTIVITY_ENDPOINT=${activityEndpoint}`)
   envVars.push(`CLAWS_ACTIVITY_SECRET=${process.env.ACTIVITY_PIPELINE_SECRET ?? ""}`)
 
-  if (source === "PLATFORM_CREDIT") {
-    envVars.push(`ANTHROPIC_API_KEY=${process.env.CLAWS_MASTER_ANTHROPIC_KEY}`)
-    envVars.push(`ANTHROPIC_BASE_URL=http://localhost:3789`)
+  // Stamp the derived credential into this route's envVars[] shape. NOTE the
+  // distinction from buildRailwayEnvVars (deploy path): this runtime path emits
+  // the decrypted BYOK key DIRECTLY (non-credit), whereas the deploy path bakes
+  // the BYOK key into CLAWS_ENV_B64 via the generator. Both now derive from the
+  // same deriveContainerEnv output; only the output SHAPE differs.
+  if (credential.ANTHROPIC_API_KEY) {
+    envVars.push(`ANTHROPIC_API_KEY=${credential.ANTHROPIC_API_KEY}`)
+  }
+  if (credential.ANTHROPIC_BASE_URL) {
+    envVars.push(`ANTHROPIC_BASE_URL=${credential.ANTHROPIC_BASE_URL}`)
+  }
+  if (credential.CLAWS_CREDIT_MODE) {
     envVars.push(`CLAWS_CREDIT_MODE=true`)
     envVars.push(`CLAWS_USER_ID=${workspace.userId}`)
   } else {
-    const anthropicKey = workspace.user.apiKeys.find((k) => k.provider === "ANTHROPIC")
-    if (anthropicKey) {
-      envVars.push(`ANTHROPIC_API_KEY=${decrypt(anthropicKey.encryptedKey)}`)
-    }
     envVars.push(`CLAWS_CREDIT_MODE=false`)
   }
 
