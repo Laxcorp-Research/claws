@@ -1,4 +1,5 @@
 import { log } from '@/lib/logger';
+import type { RawContainerEnv } from './container-env-actual';
 
 const RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 
@@ -84,6 +85,37 @@ interface GqlResponse<T = Record<string, unknown>> {
 const RAILWAY_MAX_RETRIES = 3;
 const RAILWAY_RETRY_DELAYS = [1000, 3000, 8000];
 
+/**
+ * Typed Railway API failure. `status` is the HTTP status (401, 404, 429, 5xx),
+ * `0` for a transport/network failure with no HTTP response, or the 2xx status
+ * that carried a GraphQL `errors[]` payload. Lets callers (the PR-8
+ * reconciliation cron) branch on the failure kind without string-matching the
+ * message. Extends Error, so existing broad `catch` sites are unaffected.
+ */
+export class RailwayApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'RailwayApiError';
+    this.status = status;
+    Object.setPrototypeOf(this, RailwayApiError.prototype);
+  }
+}
+
+/**
+ * Parse a `Retry-After` header to milliseconds. Railway sends seconds (per the
+ * public-API rate-limit docs); an HTTP-date form is tolerated defensively.
+ * Returns `null` when absent/unparseable → caller falls back to default backoff.
+ */
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const secs = Number(header);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const dateMs = Date.parse(header);
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
+}
+
 async function railwayGql<T = Record<string, unknown>>(
   query: string,
   variables?: Record<string, unknown>,
@@ -116,7 +148,7 @@ async function railwayGql<T = Record<string, unknown>>(
         await new Promise((r) => setTimeout(r, RAILWAY_RETRY_DELAYS[attempt]));
         continue;
       }
-      throw new Error(`Railway API network error after ${RAILWAY_MAX_RETRIES + 1} attempts: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`);
+      throw new RailwayApiError(0, `Railway API network error after ${RAILWAY_MAX_RETRIES + 1} attempts: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`);
     }
 
     if (res.ok) {
@@ -124,11 +156,11 @@ async function railwayGql<T = Record<string, unknown>>(
 
       if (json.errors?.length) {
         const msg = json.errors.map((e) => e.message).join('; ');
-        throw new Error(`Railway GraphQL error: ${msg}`);
+        throw new RailwayApiError(res.status, `Railway GraphQL error: ${msg}`);
       }
 
       if (!json.data) {
-        throw new Error('Railway API returned no data');
+        throw new RailwayApiError(res.status, 'Railway API returned no data');
       }
 
       return json.data;
@@ -140,13 +172,29 @@ async function railwayGql<T = Record<string, unknown>>(
       continue;
     }
 
+    // PR-8a/B: honor 429 rate limiting. Railway sends Retry-After (seconds);
+    // sleep that long (or the default backoff if absent) and retry within the
+    // existing budget. The read-heavy reconciliation cron is the first caller
+    // that can realistically hit this (limits: 1000 RPH Hobby / 10000 Pro).
+    if (res.status === 429 && attempt < RAILWAY_MAX_RETRIES) {
+      const retryAfterMs = parseRetryAfterMs(res.headers.get('retry-after'));
+      const delay = retryAfterMs ?? RAILWAY_RETRY_DELAYS[attempt];
+      log.warn('Railway API 429 rate-limited, retrying', {
+        attempt: attempt + 1,
+        delayMs: delay,
+        retryAfter: res.headers.get('retry-after') ?? null,
+      });
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
+    }
+
     const respBody = await res.text();
     const isHtml = respBody.trimStart().startsWith('<');
     const detail = isHtml ? `(HTML error page)` : respBody.substring(0, 200);
-    throw new Error(`Railway API returned ${res.status}: ${detail}`);
+    throw new RailwayApiError(res.status, `Railway API returned ${res.status}: ${detail}`);
   }
 
-  throw new Error('Railway API: unreachable');
+  throw new RailwayApiError(0, 'Railway API: unreachable');
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +464,37 @@ export async function updateServiceVariables(
       },
     },
   );
+}
+
+/**
+ * SECURITY — RAW SECRET MATERIAL. Returns the service's FULL rendered env: real
+ * ANTHROPIC keys, gateway/Composio tokens, channel tokens, CLAWS_ENV_B64, etc.
+ * The result is branded `RawContainerEnv` and must flow ONLY into the
+ * credential-comparison reducer (fingerprints/booleans) — NEVER logged,
+ * returned in a response, or persisted. See container-env-actual.ts banner +
+ * CONTAINER_ENV_RECONCILIATION_CONTRACT.md §6.
+ *
+ * Read counterpart to updateServiceVariables. Uses Railway's `variables` query,
+ * verified by live introspection to return the NON_NULL scalar
+ * `EnvironmentVariables!` — a flat Record<string,string> of RENDERED (resolved)
+ * values, i.e. exactly what the container runs with. `unrendered` is omitted on
+ * purpose so references resolve to their real values for comparison.
+ */
+export async function getServiceVariables(serviceId: string): Promise<RawContainerEnv> {
+  const data = await railwayGql<{ variables: Record<string, string> | null }>(
+    `query($projectId: String!, $environmentId: String!, $serviceId: String) {
+      variables(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId)
+    }`,
+    {
+      projectId: RAILWAY_PROJECT_ID,
+      environmentId: RAILWAY_ENVIRONMENT_ID,
+      serviceId,
+    },
+  );
+  // Schema is EnvironmentVariables! (non-null), but coerce defensively: a
+  // deleted/missing service can surface as null data downstream. Empty map is
+  // the right "nothing to compare" signal for the cron.
+  return (data.variables ?? {}) as RawContainerEnv;
 }
 
 // ---------------------------------------------------------------------------

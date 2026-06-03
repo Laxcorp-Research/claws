@@ -49,6 +49,7 @@
     "cron-parser": "^5.5.0",
     "dockerode": "^4.0.10",
     "dodopayments": "^2.23.2",
+    "dotenv": "^17.4.2",
     "lucide-react": "^0.577.0",
     "next": "^16.2.3",
     "next-auth": "^4.24.13",
@@ -69,7 +70,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "audit-ci": "^7.1.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/dockerode": "^4.0.1",
@@ -80,6 +80,7 @@
     "@types/sanitize-html": "^2.16.1",
     "@types/tar-stream": "^3.1.4",
     "@vitejs/plugin-react": "^6.0.1",
+    "audit-ci": "^7.1.0",
     "autoprefixer": "^10.4.27",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9",
