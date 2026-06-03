@@ -10,6 +10,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/reconcile-container-env",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/aggregate-credit-usage",
       "schedule": "0 2 * * *"
     },

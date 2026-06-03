@@ -168,3 +168,58 @@ describe('getServiceVariables (PR-8a/B/A)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('getServiceVariables timeout/retry options (PR-8a/C/B)', () => {
+  it('default (no options) → 3 retries on persistent 5xx (4 fetch calls): behavior unchanged', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('err', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { getServiceVariables } = await loadClient();
+
+    const p = getServiceVariables('svc'); // no options → default maxRetries=3
+    const assertion = expect(p).rejects.toMatchObject({ name: 'RailwayApiError', status: 500 });
+    await vi.advanceTimersByTimeAsync(15000); // 1s + 3s + 8s backoffs
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(4); // initial + 3 retries
+  });
+
+  it('maxRetries: 1 → exactly 2 fetch calls on persistent 5xx', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('err', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { getServiceVariables } = await loadClient();
+
+    const p = getServiceVariables('svc', { maxRetries: 1 });
+    const assertion = expect(p).rejects.toMatchObject({ name: 'RailwayApiError', status: 500 });
+    await vi.advanceTimersByTimeAsync(2000); // one 1s backoff
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(2); // initial + 1 retry
+  });
+
+  it('maxRetries: 0 → exactly 1 fetch call (no retry) on 5xx', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('err', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { getServiceVariables } = await loadClient();
+
+    await expect(getServiceVariables('svc', { maxRetries: 0 })).rejects.toMatchObject({ status: 500 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('custom timeoutMs is threaded to AbortSignal.timeout', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ data: { variables: {} } })));
+    const { getServiceVariables } = await loadClient();
+
+    await getServiceVariables('svc', { timeoutMs: 5000, maxRetries: 0 });
+    expect(timeoutSpy).toHaveBeenCalledWith(5000);
+    timeoutSpy.mockRestore();
+  });
+
+  it('default timeoutMs is 90_000 (regression lock for existing callers)', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ data: { variables: {} } })));
+    const { getServiceVariables } = await loadClient();
+
+    await getServiceVariables('svc'); // no options
+    expect(timeoutSpy).toHaveBeenCalledWith(90_000);
+    timeoutSpy.mockRestore();
+  });
+});
