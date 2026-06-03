@@ -185,6 +185,13 @@ model Workspace {
   // (5xx/timeout). Null until the first probe writes it.
   lastHealthReason String?
 
+  // PR-8a/C: rotation cursor for the env-reconciliation cron. Stamped with
+  // now() after each reconcile check; the cron orders by this ASC (NULLS
+  // FIRST) so never-checked (null) and least-recently-checked workspaces get
+  // priority, giving fair rotation under the per-tick cap. Distinct from
+  // lastHealthCheck, which the health monitor owns.
+  lastEnvReconcileAt DateTime?
+
   channelConfigEncrypted String?
 
   currentMonthApiCost Float    @default(0)
@@ -228,6 +235,7 @@ model Workspace {
   @@index([userId])
   @@index([status])
   @@index([containerId])
+  @@index([lastEnvReconcileAt])
   @@index([subscriptionStatus, currentPeriodEnd])
 }
 

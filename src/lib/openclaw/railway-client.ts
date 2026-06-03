@@ -119,14 +119,22 @@ function parseRetryAfterMs(header: string | null): number | null {
 async function railwayGql<T = Record<string, unknown>>(
   query: string,
   variables?: Record<string, unknown>,
+  options?: { timeoutMs?: number; maxRetries?: number },
 ): Promise<T> {
   if (!RAILWAY_TOKEN) {
     throw new Error('RAILWAY_API_TOKEN is not configured');
   }
 
+  // PR-8a/C: timeout + retry budget are tunable per call. Defaults preserve the
+  // original behavior (90s timeout, 3 retries) for the deploy/write callers; the
+  // reconciliation cron passes a tight budget ({ timeoutMs: 10_000, maxRetries:
+  // 1 }) so one slow/hung Railway read can't blow the 55s cron tick.
+  const timeoutMs = options?.timeoutMs ?? 90_000;
+  const maxRetries = options?.maxRetries ?? RAILWAY_MAX_RETRIES;
+
   const body = JSON.stringify({ query, variables });
 
-  for (let attempt = 0; attempt <= RAILWAY_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     let res: Response;
 
     try {
@@ -137,10 +145,10 @@ async function railwayGql<T = Record<string, unknown>>(
           Authorization: `Bearer ${RAILWAY_TOKEN}`,
         },
         body,
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (networkErr) {
-      if (attempt < RAILWAY_MAX_RETRIES) {
+      if (attempt < maxRetries) {
         log.warn('Railway API network error, retrying', {
           attempt: attempt + 1,
           error: networkErr instanceof Error ? networkErr.message : String(networkErr),
@@ -148,7 +156,7 @@ async function railwayGql<T = Record<string, unknown>>(
         await new Promise((r) => setTimeout(r, RAILWAY_RETRY_DELAYS[attempt]));
         continue;
       }
-      throw new RailwayApiError(0, `Railway API network error after ${RAILWAY_MAX_RETRIES + 1} attempts: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`);
+      throw new RailwayApiError(0, `Railway API network error after ${maxRetries + 1} attempts: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`);
     }
 
     if (res.ok) {
@@ -166,7 +174,7 @@ async function railwayGql<T = Record<string, unknown>>(
       return json.data;
     }
 
-    if (res.status >= 500 && attempt < RAILWAY_MAX_RETRIES) {
+    if (res.status >= 500 && attempt < maxRetries) {
       log.warn('Railway API 5xx, retrying', { status: res.status, attempt: attempt + 1 });
       await new Promise((r) => setTimeout(r, RAILWAY_RETRY_DELAYS[attempt]));
       continue;
@@ -176,7 +184,7 @@ async function railwayGql<T = Record<string, unknown>>(
     // sleep that long (or the default backoff if absent) and retry within the
     // existing budget. The read-heavy reconciliation cron is the first caller
     // that can realistically hit this (limits: 1000 RPH Hobby / 10000 Pro).
-    if (res.status === 429 && attempt < RAILWAY_MAX_RETRIES) {
+    if (res.status === 429 && attempt < maxRetries) {
       const retryAfterMs = parseRetryAfterMs(res.headers.get('retry-after'));
       const delay = retryAfterMs ?? RAILWAY_RETRY_DELAYS[attempt];
       log.warn('Railway API 429 rate-limited, retrying', {
@@ -479,8 +487,15 @@ export async function updateServiceVariables(
  * `EnvironmentVariables!` — a flat Record<string,string> of RENDERED (resolved)
  * values, i.e. exactly what the container runs with. `unrendered` is omitted on
  * purpose so references resolve to their real values for comparison.
+ *
+ * `options` (PR-8a/C) tunes the timeout + retry budget. Defaults match the rest
+ * of the client (90s / 3 retries); the reconciliation cron passes a tight
+ * budget so a single slow/hung read can't blow the tick.
  */
-export async function getServiceVariables(serviceId: string): Promise<RawContainerEnv> {
+export async function getServiceVariables(
+  serviceId: string,
+  options?: { timeoutMs?: number; maxRetries?: number },
+): Promise<RawContainerEnv> {
   const data = await railwayGql<{ variables: Record<string, string> | null }>(
     `query($projectId: String!, $environmentId: String!, $serviceId: String) {
       variables(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId)
@@ -490,6 +505,7 @@ export async function getServiceVariables(serviceId: string): Promise<RawContain
       environmentId: RAILWAY_ENVIRONMENT_ID,
       serviceId,
     },
+    options,
   );
   // Schema is EnvironmentVariables! (non-null), but coerce defensively: a
   // deleted/missing service can surface as null data downstream. Empty map is
