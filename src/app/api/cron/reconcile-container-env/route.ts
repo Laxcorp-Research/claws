@@ -5,6 +5,8 @@ import { log } from "@/lib/logger"
 import { deriveContainerEnv, fingerprintKey } from "@/lib/openclaw/derive-container-env"
 import { getServiceVariables, RailwayApiError } from "@/lib/openclaw/railway-client"
 import { parseClawsEnvB64, type RawContainerEnv } from "@/lib/openclaw/container-env-actual"
+import { resolveMode } from "@/lib/openclaw/reconcile-mode"
+import { healWorkspace } from "@/lib/openclaw/heal-workspace"
 
 // PR-8a/C — Container env reconciliation cron (DETECT-ONLY).
 //
@@ -35,24 +37,10 @@ const TICK_LOCK_TTL_SEC = 65
 // a deploy/redeploy). Strict less-than, so exactly RECONCILE_GRACE_MS proceeds.
 const RECONCILE_GRACE_MS = 60_000
 
-type ReconcileMode = "detect_only" | "auto_heal"
-
-// PR-8a/C ships DETECT-ONLY only. An operator who sets ENV_RECONCILE_MODE=
-// auto_heal today gets DETECT-ONLY behavior with a loud warning (AUTO-HEAL is
-// explicitly added in PR-8b) — better than a silent no-op or a surprise
-// behavior change. Any other value is a misconfiguration → fail closed (throw).
-function resolveMode(): ReconcileMode {
-  const raw = process.env.ENV_RECONCILE_MODE
-  if (raw === undefined || raw === "" || raw === "detect_only") return "detect_only"
-  if (raw === "auto_heal") {
-    log.warn(
-      "env reconciliation: ENV_RECONCILE_MODE=auto_heal requested, but AUTO-HEAL is not implemented until PR-8b — running DETECT-ONLY",
-      { category: "env_reconciliation", event: "mode_downgraded", requested: "auto_heal", effective: "detect_only" },
-    )
-    return "detect_only"
-  }
-  throw new Error(`Invalid ENV_RECONCILE_MODE="${raw}"; expected "detect_only" or "auto_heal"`)
-}
+// PR-8b/B: resolveMode() + ReconcileMode moved to @/lib/openclaw/reconcile-mode
+// (the shared gate, imported above). The in-route copy — and its
+// auto_heal→detect_only downgrade-with-warning — is gone: auto_heal is REAL now.
+// The shared resolveMode still fails closed (throws) on any invalid value.
 
 type RailwayErrorKind =
   | "railway_auth"
@@ -69,6 +57,9 @@ type SkipReason =
   | "no_deployment_record"
   | "workspace_deleted_midwindow"
   | "tick_capped"
+  // PR-8b/B: AUTO-HEAL was suppressed because the per-workspace cooldown lock is
+  // held (a recent heal — cron or event fast-path). Counted under summary.skipped.
+  | "cooldown_active"
 
 // railwayGql collapses timeouts into a status-0 "network error" RailwayApiError
 // with the original message embedded, so timeout-vs-generic-network is a
@@ -142,6 +133,7 @@ export async function GET(req: NextRequest) {
   const summary = {
     checked: 0,
     drifts: 0,
+    healed: 0, // PR-8b/B: drift workspaces successfully redeployed (auto_heal only)
     skipped: {
       recent_deploy: 0,
       deploy_in_progress: 0,
@@ -149,6 +141,7 @@ export async function GET(req: NextRequest) {
       no_deployment_record: 0,
       workspace_deleted_midwindow: 0,
       tick_capped: 0,
+      cooldown_active: 0, // PR-8b/B: heal suppressed by the per-workspace cooldown lock
     },
     errors: {
       railway_auth: 0,
@@ -159,6 +152,7 @@ export async function GET(req: NextRequest) {
       railway_network: 0,
       db_read: 0,
       decrypt: 0,
+      heal_error: 0, // PR-8b/B: redeployWorkspace threw during an auto_heal
     },
     mode,
   }
@@ -347,6 +341,50 @@ export async function GET(req: NextRequest) {
           },
           mode: summary.mode,
         })
+
+        // (e2) AUTO-HEAL (PR-8b/B). In auto_heal mode, redeploy to re-apply the
+        // DB-derived env. healWorkspace is the shared cooldown-gated core (also
+        // used by the event fast-path), so the cron and events can never
+        // double-fire a restart on the same workspace. detect_only never reaches
+        // this branch (gated below), and healWorkspace re-checks the mode itself.
+        if (mode === "auto_heal") {
+          const heal = await healWorkspace(ws.id)
+          if (!heal.ok) {
+            summary.errors.heal_error++
+            log.error("env reconciliation: heal failed", {
+              category: "env_reconciliation",
+              event: "heal_error",
+              workspaceId: ws.id,
+              error: heal.error,
+              mode,
+            })
+          } else if (heal.action === "healed") {
+            summary.healed++
+            log.info("env reconciliation: workspace healed", {
+              category: "env_reconciliation",
+              event: "healed",
+              workspaceId: ws.id,
+              mode,
+            })
+          } else if (heal.action === "cooldown_skipped") {
+            summary.skipped.cooldown_active++
+            log.info("env reconciliation: heal skipped (cooldown active)", {
+              category: "env_reconciliation",
+              event: "heal_skipped_cooldown",
+              workspaceId: ws.id,
+              mode,
+            })
+          } else {
+            // detect_only_noop: mode is auto_heal here, so the shared gate should
+            // never return this. Surface loudly if the two ever disagree.
+            log.warn("env reconciliation: unexpected detect_only_noop under auto_heal", {
+              category: "env_reconciliation",
+              event: "heal_unexpected_noop",
+              workspaceId: ws.id,
+              mode,
+            })
+          }
+        }
       }
 
       // (f) rotate + (g) count the completed comparison.

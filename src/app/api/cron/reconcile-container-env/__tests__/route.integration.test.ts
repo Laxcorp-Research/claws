@@ -83,6 +83,10 @@ beforeEach(() => {
   mockRedisDel.mockResolvedValue(1)
   mockGetServiceVariables.mockReset()
   mockGetServiceVariables.mockResolvedValue({ CLAWS_CREDIT_MODE: "false" })
+  // PR-8b/B: integration runs the REAL healWorkspace; only the redeploy I/O is
+  // mocked. Default to a successful trigger; per-scenario tests override.
+  mockRedeployWorkspace.mockReset()
+  mockRedeployWorkspace.mockResolvedValue(undefined)
   ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
   ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(pastGraceDeploy())
@@ -196,7 +200,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     )
   })
 
-  it("Scenario E — ENV_RECONCILE_MODE=auto_heal downgrades to detect_only, NEVER heals", async () => {
+  it("Scenario E — ENV_RECONCILE_MODE=auto_heal HEALS the drifted workspace (downgrade gone)", async () => {
     vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
     vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
     ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
@@ -211,15 +215,66 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
 
     const body = await (await GET(req())).json()
 
-    expect(body.data.mode).toBe("detect_only")
-    expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining("auto_heal"),
-      expect.objectContaining({ event: "mode_downgraded", effective: "detect_only" }),
+    expect(body.data.mode).toBe("auto_heal")
+    // The PR-8a/C downgrade is gone — no mode_downgraded warning.
+    expect(log.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ event: "mode_downgraded" }),
     )
-    // THE key invariant: detect-only never triggers a heal.
-    expect(mockRedeployWorkspace).not.toHaveBeenCalled()
-    // Drift is still detected + logged, just not healed.
-    expect(driftLogs()).toHaveLength(1) // e2
-    expect(body.data.drifts).toBe(1)
+    // e2 drifts (key_fp) and is healed via the REAL healWorkspace → redeployWorkspace.
+    expect(body.data.drifts).toBe(1) // e2
+    expect(body.data.healed).toBe(1)
+    expect(driftLogs()).toHaveLength(1)
+    expect(mockRedeployWorkspace).toHaveBeenCalledTimes(1)
+    expect(mockRedeployWorkspace).toHaveBeenCalledWith("e2")
+  })
+
+  it("Scenario F — AUTO-HEAL + cooldown chain: 3 drift, 2 cooldown-held → healed=1, cooldown_active=2", async () => {
+    vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
+    vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      wsRow("f1", { apiKeySource: "PLATFORM_CREDIT" }),
+      wsRow("f2", { apiKeySource: "PLATFORM_CREDIT" }),
+      wsRow("f3", { apiKeySource: "PLATFORM_CREDIT" }),
+      wsRow("f4"),
+      wsRow("f5"),
+    ])
+    // f1/f2/f3 drift (expected credit_mode=true vs actual false); f4/f5 match.
+    // Per-key Redis: tick lock OK; f1 cooldown free; f2/f3 cooldown held.
+    mockRedisSet.mockImplementation((key: string) => {
+      if (key === "reconcile:env:tick") return Promise.resolve("OK")
+      if (key === "reconcile:cooldown:f1") return Promise.resolve("OK")
+      return Promise.resolve(null)
+    })
+
+    const body = await (await GET(req())).json()
+
+    expect(body.data.drifts).toBe(3)
+    expect(body.data.healed).toBe(1)
+    expect(body.data.skipped.cooldown_active).toBe(2)
+    expect(mockRedeployWorkspace).toHaveBeenCalledTimes(1)
+    expect(mockRedeployWorkspace).toHaveBeenCalledWith("f1")
+  })
+
+  it("Scenario G — AUTO-HEAL + heal error isolation: 3 drift, one redeploy throws → healed=2, heal_error=1", async () => {
+    vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
+    vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      wsRow("g1", { apiKeySource: "PLATFORM_CREDIT" }),
+      wsRow("g2", { apiKeySource: "PLATFORM_CREDIT" }),
+      wsRow("g3", { apiKeySource: "PLATFORM_CREDIT" }),
+    ])
+    mockRedeployWorkspace.mockImplementation((id: string) =>
+      id === "g2" ? Promise.reject(new Error("railway boom")) : Promise.resolve(undefined),
+    )
+
+    const body = await (await GET(req())).json()
+
+    expect(body.data.drifts).toBe(3)
+    expect(body.data.healed).toBe(2)
+    expect(body.data.errors.heal_error).toBe(1)
+    // g2's failed heal released its cooldown so a later tick can retry.
+    expect(mockRedisDel).toHaveBeenCalledWith("reconcile:cooldown:g2")
+    expect(mockRedeployWorkspace).toHaveBeenCalledTimes(3)
   })
 })

@@ -1,7 +1,12 @@
+import { after } from "next/server"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
-import { log } from "@/lib/logger"
+import { requestReconcileForUser } from "@/lib/openclaw/request-reconcile"
+import { resolveMode } from "@/lib/openclaw/reconcile-mode"
+
+// PR-8b/C: headroom for after()'s fire-and-forget reconcile.
+export const maxDuration = 30
 
 export async function POST() {
   const user = await getSessionUser()
@@ -31,14 +36,22 @@ export async function POST() {
     where: { userId, status: { in: ["RUNNING", "HIBERNATED", "WAKING"] } },
   })
 
-  // TODO: Queue container recycle via DO agent
-  for (const ws of running) {
-    log.info("Container recycle needed", { workspaceId: ws.id, reason: "API_KEY_SOURCE_CHANGED" })
-  }
+  // PR-8b/C (E3): the switch is REAL now — fire-and-forget reconcile of the
+  // user's RUNNING containers (gated by ENV_RECONCILE_MODE inside healWorkspace).
+  // Replaces the old TODO loop that only logged "Container recycle needed" while
+  // the "~30 seconds" message was a lie.
+  after(() => requestReconcileForUser(userId))
+
+  // Mode-aware, truthful UX: only promise the ~30s restart when AUTO-HEAL is live;
+  // under detect_only the change applies on the next sync, not in 30s.
+  const message =
+    resolveMode() === "auto_heal"
+      ? "Your agents will restart with your own API key. This takes about ~30 seconds."
+      : "Your agents will switch to your key on the next sync."
 
   return apiSuccess({
     switched: true,
     recyclingCount: running.length,
-    message: "Your agents will restart with your own API key. This takes about 30 seconds.",
+    message,
   })
 }
