@@ -1,8 +1,14 @@
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { encrypt, generateKeyHint } from "@/lib/encryption"
+import { requestReconcileForUser } from "@/lib/openclaw/request-reconcile"
+
+// PR-8b/C: headroom for after()'s fire-and-forget reconcile (E1 add/update BYOK
+// key → reconcile the user's RUNNING containers). Gated by ENV_RECONCILE_MODE
+// inside healWorkspace, so it's a no-op until the auto_heal flag-flip.
+export const maxDuration = 30
 
 export async function GET() {
   const user = await getSessionUser()
@@ -41,6 +47,7 @@ export async function POST(req: NextRequest) {
       data: { encryptedKey: encrypt(apiKey), keyHint: generateKeyHint(apiKey), label: label || existing.label, isValid: true, lastError: null },
       select: { id: true, provider: true, keyHint: true, label: true, isValid: true, createdAt: true },
     })
+    after(() => requestReconcileForUser(user.id))
     return apiSuccess(updated)
   }
 
@@ -48,5 +55,6 @@ export async function POST(req: NextRequest) {
     data: { userId: user.id, provider, encryptedKey: encrypt(apiKey), keyHint: generateKeyHint(apiKey), label: label || null },
     select: { id: true, provider: true, keyHint: true, label: true, isValid: true, createdAt: true },
   })
+  after(() => requestReconcileForUser(user.id))
   return apiSuccess(created, 201)
 }

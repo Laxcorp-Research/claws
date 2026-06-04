@@ -7,6 +7,7 @@ import EmailProvider from "next-auth/providers/email"
 import { prisma } from "@/lib/db"
 import { getResend } from "./resend"
 import { grantStarterCredits } from "@/lib/credits/grant"
+import { requestReconcileForUser } from "@/lib/openclaw/request-reconcile"
 
 function CustomPrismaAdapter(p: typeof prisma): Adapter {
   const base = PrismaAdapter(p) as Adapter;
@@ -133,6 +134,14 @@ export const authOptions: NextAuthOptions = {
         }).catch(() => {})
         await grantStarterCredits(user.id, "signup").catch((err) => {
           console.error("Failed to grant starter credits:", err)
+        })
+        // PR-8b/C (E4): reconcile the user's RUNNING containers after the grant.
+        // Synchronous (not after()) — this is a NextAuth event callback, not a
+        // route handler. At signup there are no running workspaces, so it's a
+        // no-op; healWorkspace's ENV_RECONCILE_MODE gate keeps it dormant until
+        // the auto_heal flag-flip regardless.
+        await requestReconcileForUser(user.id).catch((err) => {
+          console.error("Failed to reconcile after grant:", err)
         })
       }
     },

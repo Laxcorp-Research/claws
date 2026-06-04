@@ -40,6 +40,14 @@ vi.mock("@/lib/encryption", () => ({
   decrypt: (v: string) => v.replace(/^enc:/, ""),
 }))
 
+// PR-8b/B: healWorkspace (the shared AUTO-HEAL core) is mocked here so these
+// unit tests pin the cron's WIRING (gate + counters + log shapes); the helper's
+// own cooldown/redeploy behavior is covered in heal-workspace.test.ts.
+const mockHealWorkspace = vi.fn()
+vi.mock("@/lib/openclaw/heal-workspace", () => ({
+  healWorkspace: (...a: unknown[]) => mockHealWorkspace(...a),
+}))
+
 import { GET } from "@/app/api/cron/reconcile-container-env/route"
 import { log } from "@/lib/logger"
 import { RailwayApiError } from "@/lib/openclaw/railway-client"
@@ -87,6 +95,8 @@ beforeEach(() => {
     status: "RUNNING",
     deployments: [{ completedAt: new Date(Date.now() - 120_000), status: "COMPLETED" }],
   })
+  mockHealWorkspace.mockReset()
+  mockHealWorkspace.mockResolvedValue({ ok: true, action: "healed" })
 })
 
 afterEach(() => {
@@ -172,20 +182,82 @@ describe("reconcile-container-env cron — PR-8a/C/A skeleton", () => {
     )
   })
 
-  it('ENV_RECONCILE_MODE="auto_heal" → runs DETECT-ONLY with a downgrade warning', async () => {
+  // PR-8b/B: the PR-8a/C downgrade is GONE — auto_heal is real now.
+  it('ENV_RECONCILE_MODE="auto_heal" → runs AUTO-HEAL, no downgrade warning', async () => {
     vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
     const res = await GET(req("Bearer test-cron-secret"))
     const body = await res.json()
-    expect(body.data.mode).toBe("detect_only")
-    expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining("auto_heal"),
-      expect.objectContaining({ event: "mode_downgraded", effective: "detect_only" }),
+    expect(body.data.mode).toBe("auto_heal")
+    expect(log.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ event: "mode_downgraded" }),
     )
   })
 
   it("invalid ENV_RECONCILE_MODE → throws (fail-closed on misconfig)", async () => {
     vi.stubEnv("ENV_RECONCILE_MODE", "garbage")
     await expect(GET(req("Bearer test-cron-secret"))).rejects.toThrow(/Invalid ENV_RECONCILE_MODE/)
+  })
+
+  // PR-8b/B — AUTO-HEAL wiring into the drift branch. Drift is produced with a
+  // PLATFORM_CREDIT workspace (expected credit_mode=true) vs the default actual
+  // (credit_mode=false) → all three fields drift. healWorkspace is mocked.
+  it("auto_heal + drift + cooldown free → healWorkspace called, summary.healed=1", async () => {
+    vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
+    vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      wsRow("ws-d", { apiKeySource: "PLATFORM_CREDIT" }),
+    ])
+    mockHealWorkspace.mockResolvedValue({ ok: true, action: "healed" })
+    const body = await (await GET(req("Bearer test-cron-secret"))).json()
+    expect(body.data.drifts).toBe(1)
+    expect(mockHealWorkspace).toHaveBeenCalledWith("ws-d")
+    expect(body.data.healed).toBe(1)
+    expect(log.info).toHaveBeenCalledWith(
+      "env reconciliation: workspace healed",
+      expect.objectContaining({ event: "healed", workspaceId: "ws-d" }),
+    )
+  })
+
+  it("auto_heal + drift + cooldown held → cooldown_skipped, summary.skipped.cooldown_active=1", async () => {
+    vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
+    vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      wsRow("ws-d", { apiKeySource: "PLATFORM_CREDIT" }),
+    ])
+    mockHealWorkspace.mockResolvedValue({ ok: true, action: "cooldown_skipped" })
+    const body = await (await GET(req("Bearer test-cron-secret"))).json()
+    expect(body.data.drifts).toBe(1)
+    expect(body.data.healed).toBe(0)
+    expect(body.data.skipped.cooldown_active).toBe(1)
+  })
+
+  it("auto_heal + drift + heal error → summary.errors.heal_error=1", async () => {
+    vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
+    vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      wsRow("ws-d", { apiKeySource: "PLATFORM_CREDIT" }),
+    ])
+    mockHealWorkspace.mockResolvedValue({ ok: false, error: "railway down" })
+    const body = await (await GET(req("Bearer test-cron-secret"))).json()
+    expect(body.data.drifts).toBe(1)
+    expect(body.data.errors.heal_error).toBe(1)
+    expect(log.error).toHaveBeenCalledWith(
+      "env reconciliation: heal failed",
+      expect.objectContaining({ event: "heal_error", workspaceId: "ws-d", error: "railway down" }),
+    )
+  })
+
+  it("detect_only + drift → drift logged but healWorkspace NEVER called (PR-8a/C behavior preserved)", async () => {
+    vi.stubEnv("ENV_RECONCILE_MODE", "detect_only")
+    vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      wsRow("ws-d", { apiKeySource: "PLATFORM_CREDIT" }),
+    ])
+    const body = await (await GET(req("Bearer test-cron-secret"))).json()
+    expect(body.data.drifts).toBe(1)
+    expect(mockHealWorkspace).not.toHaveBeenCalled()
+    expect(body.data.healed).toBe(0)
   })
 })
 
