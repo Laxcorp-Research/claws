@@ -1,7 +1,7 @@
 # Container Env Reconciliation Contract (PR-8)
 
 **Status:** DRAFT — Phase 1 (contract spec, pre-implementation). No code in this PR.
-**Rollout:** PR-8a (detection cron, DETECT-ONLY) → observe 48–72h → PR-8b (event triggers + cron AUTO-HEAL).
+**Rollout:** PR-8a (detection cron, DETECT-ONLY; merged `da128a7`) → manual E1–E4 validation on staging (curl-triggered — the staging cron does not auto-fire; see §11) → PR-8b (event triggers; ship DETECT-ONLY on prod, observe 24h real traffic, then flip AUTO-HEAL).
 **Related:** PR-7 (UI hardening for the same no-account states), PR-9 (billing-model overhaul — changes exhaustion behavior; see §8).
 
 ---
@@ -155,17 +155,14 @@ This reuses the existing cron pattern (`reconcile-credit-balances`) and `redeplo
 
 ## 7. Rollout plan
 
-- **PR-8a — detection only:** this contract doc + the cron in **DETECT-ONLY** mode (`*/15`) + Railway `getServiceVariables` read helper + the env-fingerprint comparison + the transient-window exclusions (§6). Deploy; observe Axiom for a **48–72h** window.
-  - **Exit criteria to flip → AUTO-HEAL (ALL required):**
-    1. **Zero false positives OUTSIDE known transient windows** (§6 exclusions a/b/c) across the window. Deltas suppressed as `drift_skipped_transient` do not count; every genuine `drift_detected` must be manually confirmed against DB + Railway.
-    2. **Each trigger event E1–E4 manually exercised at least once** on a test workspace, with the cron observed emitting `drift_detected` for each:
-       - **E1** — add/update a BYOK key → observe `drift_detected` (field `anthropic_key`).
-       - **E2** — remove the BYOK key → observe `drift_detected`.
-       - **E3** — `switch-source` (credit→BYOK) → observe `drift_detected` (the canonical TODO case).
-       - **E4** — credit grant to a user with a RUNNING container → observe `drift_detected` (`credit_mode` + `base_url`); skip only if no running container can be arranged for the granted user.
-    3. For each detected drift, **manually confirm it matches what AUTO-HEAL would heal** (i.e., `redeployWorkspace` would produce the expected DB-derived env).
-  - **Exit met = all 4 manual exercises observed + zero non-transient false positives in the window.** Record the confirmed-drift count and the 4 exercise log links in the PR-8b description.
-- **PR-8b — the fix:** event-triggered `requestReconcile()` wired into E1–E4 (+ the `switch-source` message becomes truthful) + cron flipped to **AUTO-HEAL** (stays at `*/15` for the first 24h) + cooldown/cap/lock. **Pre-merge: complete the §7.5 staging log check.** Contract tests assert I1–I6 and the §4 policies; a regression test asserts `switch-source` actually triggers reconcile (locks in the TODO fix).
+- **PR-8a — detection only:** this contract doc + the cron in **DETECT-ONLY** mode (`*/15`) + Railway `getServiceVariables` read helper + the env-fingerprint comparison + the transient-window exclusions (§6). **Deployed and live (PR-8a/C, merged `da128a7`).**
+  - **Observation-window revision — see §11.** Vercel runs `vercel.json` crons on **Production deployments only**; the staging cron never auto-fires, and prod has **zero in-scope workspaces** (no customers). The original passive 48–72h staging watch is therefore replaced by **active, curl-triggered validation on staging** plus **deferred real observation in PR-8b's prod deploy**.
+  - **Exit criteria to unlock PR-8b *implementation* (ALL required):**
+    1. **E1–E4 manually exercised on staging** against the reprovisioned WIRE-TEST workspace by driving DB state changes and **triggering the cron via curl** (`GET …/api/cron/reconcile-container-env`, `Authorization: Bearer ${CRON_SECRET}`). Record, for each case, the DB state change made and the actual cron response — a `drift_detected` with its `driftFields` (∈ {`credit_mode`, `base_url`, `key_fp`}) or a clean `run_complete`.
+    2. For each detected drift, **confirm it matches what AUTO-HEAL would heal** (`redeployWorkspace` would produce the expected DB-derived env).
+    3. **Green test + mutation coverage** on the cron logic (unit + integration + mutation sweep).
+  - **Exit met = E1–E4 curl-triggered exercises recorded + drift-matches-heal confirmed + green test/mutation coverage.** This unlocks PR-8b *implementation*; **real observation is deferred to PR-8b's prod deploy (next bullet).** Record the exercise log links in the PR-8b description.
+- **PR-8b — the fix:** event-triggered `requestReconcile()` wired into E1–E4 (+ the `switch-source` message becomes truthful) + cooldown/cap/lock. **Ships in DETECT-ONLY on prod** (not AUTO-HEAL at merge): because staging cannot provide a real observation window (§11), the genuine signal is the flip moment under real traffic — **monitor prod for 24h with real customer traffic (or the first real workspace) in DETECT-ONLY, then flip `ENV_RECONCILE_MODE → auto_heal` only after that 24h is clean** (stays at `*/15` for the first 24h of AUTO-HEAL). **Pre-merge: complete the §7.5 staging log check.** Contract tests assert I1–I6 and the §4 policies; a regression test asserts `switch-source` actually triggers reconcile (locks in the TODO fix).
 - **PR-8c — cadence tighten:** after **24h of clean AUTO-HEAL at `*/15`**, tighten the cron to `*/5` (`vercel.json` schedule + any log-volume threshold). Small standalone PR, **no logic change**. Rationale: the `switch-source` UX promise needs a backstop faster than `*/15` once healing is trusted.
 
 ## 7.5. Pre-PR-8b staging log check (a pre-merge gate for PR-8b, not a separate PR)
@@ -207,3 +204,19 @@ Before PR-8b merges, query staging Axiom for historical `"Container recycle need
 ## 10. Non-goals / derivation scope (why `deriveContainerEnv` is Anthropic-only)
 
 `deriveContainerEnv` (`src/lib/openclaw/derive-container-env.ts`) is deliberately scoped to the **credit-mode / Anthropic credential triple** (`ANTHROPIC_API_KEY`, `CLAWS_CREDIT_MODE`, `ANTHROPIC_BASE_URL`, plus the drift `keyFingerprint`) because that triple — and only that triple — is what *drifts* between DB state and a running container when a user's `apiKeySource` or keys change. It is the contract surface for this reconciliation effort, not a general-purpose provider-env manager. As of PR-8a it is the single source of truth for the two paths that inject those vars into a live container: the deploy path (`deployer.ts:buildRailwayEnvVars`) and the runtime secret-fetch path (`container-secrets/route.ts`). The remaining emission of `ANTHROPIC_API_KEY` in the codebase — `generator.ts` baking it into the workspace `.env` (`generator.ts:647`) — is **intentionally left separate**: the generator is a multi-provider `.env` baker that provisions *every* configured provider key for the workspace (Anthropic, OpenAI, etc. — see `generator.ts:84`), which is a workspace-provisioning concern unrelated to credit-mode drift. Folding it into `deriveContainerEnv` today would force an Anthropic-only helper to grow multi-provider responsibilities it doesn't need. If multi-provider metering is ever introduced (the platform currently meters only `provider="ANTHROPIC"` in `report-batch`), the expansion path is: extend `deriveContainerEnv` to emit the full provider set, then unify `generator.ts`'s `.env` baking onto it — at which point the "single source of truth" guarantee extends to all providers. Until then, `generator.ts` is the documented, expected exception, and the §9 assertions cover only the Anthropic/credit-mode surface.
+
+---
+
+## 11. Staging-cron limitation discovered post-merge (PR-8a/C amendment)
+
+**Discovered:** 2026-06-04, after PR-8a/C (`da128a7`) shipped the DETECT-ONLY cron to both prod and staging.
+
+**Finding — Vercel runs `vercel.json` crons on Production deployments only.** The cron route is *deployed* on staging (reachable, `Bearer`-auth-gated — verified returning 401 unauthenticated), but Vercel's scheduler **never invokes it there**. Confirmed via Axiom: ~2h of `category=env_reconciliation` logs are **100% `environment=production`**, with **zero** preview/staging entries. Prod fires on `*/15` correctly, but it has **zero in-scope workspaces** (`status=RUNNING` + `containerId`), because there are no customers yet — so every prod tick is a clean all-zero `run_complete`.
+
+**Impact on §7's original gate.** The original PR-8a exit window assumed the *staging* cron would, on Vercel's schedule, observe the WIRE-TEST workspace and emit `drift_detected` over a passive 48–72h watch. **That assumption does not hold:** with no staging scheduler tick, nothing fires automatically there, and the only Production subject is an empty scope. A passive observation window, as originally written, cannot run.
+
+**Resolution — gating sequence changed, safety net preserved.**
+1. **Staging validation becomes active, not passive.** Drive DB state changes against the reprovisioned WIRE-TEST workspace and **manually trigger the cron via curl** (`GET …/api/cron/reconcile-container-env` with `Authorization: Bearer ${CRON_SECRET}`). Each curl is a single deterministic tick that exercises the detect-and-compare path for one E-case (see revised §7). This proves E1–E4 immediately instead of waiting for a scheduler that never runs.
+2. **Real observation moves to PR-8b's prod deploy.** The genuinely informative signal is the **flag-flip moment under real customer traffic**, not a known-broken test fixture. PR-8b ships DETECT-ONLY on prod, observes 24h with real traffic (or the first real workspace), and flips to AUTO-HEAL only after that 24h is clean.
+
+**Why this is sound, not a shortcut.** WIRE-TEST is a *known-broken* fixture producing *known* drift; passively watching it for 72h would add latency without adding confidence beyond the first observed tick. The deterministic curl-triggered exercise proves the comparison path for every E-case at once, and false-positive risk is only meaningful against *real* workspaces — which is exactly what the 24h real-traffic gate in PR-8b covers. **This is a contract amendment, not an abandonment:** the cron, its DETECT-ONLY-first discipline, the §6 transient-window exclusions, and the 24h-clean-before-AUTO-HEAL safety gate are all preserved. Only the *location* and *trigger* of the observation change — staging-passive → staging-manual (curl) + prod-real (PR-8b).
