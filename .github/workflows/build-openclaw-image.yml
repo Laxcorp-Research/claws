@@ -60,6 +60,24 @@ jobs:
       - name: Checkout Claws repo
         uses: actions/checkout@v4
 
+      # Fix (2026-06-08): the scheduled build started failing with
+      # "No space left on device" — the GitHub-hosted runner (~14GB free) is
+      # exhausted by two docker buildx builds in one job (upstream base +
+      # extended image) both using cache-to: type=gha,mode=max, plus the 6
+      # bundled extensions, as the upstream image has grown over time. Reclaim
+      # ~30GB of pre-installed tooling we don't use BEFORE any Docker work.
+      # docker-images:false — this job builds Docker, so keep the buildx cache.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
       - name: Detect latest upstream STABLE release
         id: detect
         env:
