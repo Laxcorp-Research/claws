@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Claws repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Fix (2026-06-08): the scheduled build started failing with
       # "No space left on device" — the GitHub-hosted runner (~14GB free) is
@@ -339,11 +339,11 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.check.outputs.skip != 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
         if: steps.check.outputs.skip != 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -351,10 +351,17 @@ jobs:
 
       - name: Build upstream base image
         if: steps.check.outputs.skip != 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./openclaw-src
           push: true
+          # PR-B (Node 24 migration): build-push@v6 attaches provenance/SBOM
+          # attestations by default, which turns a single image manifest into a
+          # manifest INDEX. The skip-check below walks manifest → config blob for
+          # the `ai.buildclaws.overlay-sha` label; keep the pre-v6 single-manifest
+          # shape so that lookup (and the digest-based Register step) is unchanged.
+          provenance: false
+          sbom: false
           build-args: |
             OPENCLAW_EXTENSIONS=${{ env.EXTENSIONS }}
           # PR-4c: base image contains ONLY upstream content — tag by
@@ -368,11 +375,16 @@ jobs:
       - name: Build extended image with credit proxy
         if: steps.check.outputs.skip != 'true'
         id: build_extended
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
           push: true
+          # PR-B (Node 24 migration): keep the pre-v6 single-manifest shape so the
+          # skip-check's manifest→config-blob label read + the digest exported to
+          # the Register step stay correct (v6 defaults to attaching attestations).
+          provenance: false
+          sbom: false
           build-args: |
             # PR-4c: refer to the same upstream_version-tagged base.
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.upstream_version }}
