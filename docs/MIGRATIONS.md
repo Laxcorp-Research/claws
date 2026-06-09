@@ -38,6 +38,38 @@ For risky multi-stage migrations (column rename, type change), split into
 N additive PRs so each migration step lands in lockstep with a code
 deploy that tolerates both old and new schema.
 
+## PR preview deploys mutate the staging Neon DB pre-merge
+
+Vercel's **preview** deployment for a PR runs `prisma migrate deploy` (via
+`build:deploy`) against the **shared staging Neon branch** — *before* the PR is
+merged. The migration therefore hits staging Neon as soon as the preview build
+runs, not when the PR lands.
+
+- **Additive nullable column** (the standard case): benign. The preview's
+  `prisma migrate deploy` applies the migration to staging Neon; staging then has
+  the column ahead of `main`, but the column is null-tolerant so existing code is
+  unaffected.
+- **Destructive migration** (drop column, rename table, change column type, drop
+  index): the migration hits staging Neon when the PR's **preview** deploy runs.
+  **Reverting the PR does NOT revert the migration** — staging Neon is now in a
+  state ahead of `main`, possibly incompatible with the code `main` is serving.
+
+### Mitigation for destructive migrations
+
+- Manually verify on a local Neon branch (or a throwaway branch) **before**
+  opening the PR.
+- If a PR carrying a destructive migration must be reverted, plan to also write a
+  **forward-migration** to restore the staging state — a git revert of the PR
+  will not undo the schema change already applied to staging Neon.
+- For high-risk migrations, consider giving the feature branch **its own Neon
+  branch** instead of letting the preview deploy mutate shared staging.
+
+**Discovered during the PR-8a/C staging deploy (2026-06):** staging Neon's
+`_prisma_migrations.finished_at` for the new column *predated* the staging-branch
+push, because the PR's preview deploy had already run the migration against shared
+staging Neon. The column was additive + nullable, so it was benign in that case —
+but the pattern is a known gotcha for any future destructive migration.
+
 ### Manual migrate (escape hatch)
 
 The `npm run migrate:staging` / `npm run migrate:production` scripts still
