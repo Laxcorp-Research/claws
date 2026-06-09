@@ -7,7 +7,6 @@
   "skip-dev": true,
   "report-type": "full",
   "allowlist": [
-    "GHSA-rpr9-rxv7-x643",
     "GHSA-8h8q-6873-q5fj",
     "GHSA-26hh-7cqf-hhc6",
     "GHSA-3g8h-86w9-wvmq",
