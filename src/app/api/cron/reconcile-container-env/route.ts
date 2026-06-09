@@ -25,7 +25,13 @@ export const maxDuration = 55
 // Per-tick processing cap (contract §6). Bounds Railway reads + tick duration;
 // the oldest-first ordering (lastEnvReconcileAt ASC NULLS FIRST) + the
 // post-check stamp give fair rotation so no workspace starves under the cap.
-const RECONCILE_MAX_PER_RUN = 20
+//
+// PR-8c: capped at 10 per tick to bound worst-case duration.
+// At */5 cadence with cap=10 = 120 workspaces/hr throughput
+// (vs */15 × 20 = 80/hr — higher cadence + smaller batch is net better).
+// Bounds against: (a) Railway read timeouts (10s × cap), (b) heal triggers
+// (~2-3s × cap). Worst case 40-50s comfortably under maxDuration=55s.
+const RECONCILE_MAX_PER_RUN = 10
 
 const TICK_LOCK_KEY = "reconcile:env:tick"
 // TTL safety net (> maxDuration) in case the explicit release never runs (e.g.

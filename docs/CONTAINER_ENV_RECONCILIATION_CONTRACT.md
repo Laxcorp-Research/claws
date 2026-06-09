@@ -125,11 +125,12 @@ This reuses the existing cron pattern (`reconcile-credit-balances`) and `redeplo
 
 ## 6. Reconciliation cron spec (the safety net)
 
-- **Route:** `GET /api/cron/reconcile-container-env`. **Auth:** `Bearer ${CRON_SECRET}` (verbatim from `reconcile-credit-balances/route.ts:9-12`). `export const maxDuration = 60`.
+- **Route:** `GET /api/cron/reconcile-container-env`. **Auth:** `Bearer ${CRON_SECRET}` (verbatim from `reconcile-credit-balances/route.ts:9-12`). `export const maxDuration = 55`.
 - **Schedule (milestone progression):**
   - DETECT-ONLY: `*/15 * * * *` (bounds Railway API load during the observation window).
   - AUTO-HEAL initial: `*/15` stays for the first 24h after the flip (prove healing is safe at the slow cadence first).
-  - AUTO-HEAL stable: tighten to `*/5 * * * *` after 24h of clean AUTO-HEAL, matching `reconcile-credit-balances` cadence — shipped as **PR-8c** (a `vercel.json` schedule + log-threshold change only; no logic change). Rationale: the cron is the backstop, and the per-event fast-path (§5, PR-8b) is what actually delivers the `switch-source` "~30 seconds" promise — but the backstop cadence still needs to be tighter than `*/15` once healing is trusted. Added to `vercel.json crons[]`.
+  - AUTO-HEAL stable: tighten to `*/5 * * * *` after 24h of clean AUTO-HEAL, matching `reconcile-credit-balances` cadence — shipped as **PR-8c** (a `vercel.json` schedule + cap + log-threshold change; no logic change). Rationale: the cron is the backstop, and the per-event fast-path (§5, PR-8b) is what actually delivers the `switch-source` "~30 seconds" promise — but the backstop cadence still needs to be tighter than `*/15` once healing is trusted. Added to `vercel.json crons[]`.
+  - **LIVE — `*/5` is the current production cadence as of PR-8c (2026-06-09)**, after 40h+ of clean AUTO-HEAL at `*/15`. PR-8c also reduced `RECONCILE_MAX_PER_RUN` 20 → **10** so the worst-case tick (read timeouts ~10s × cap + heal triggers ~2-3s × cap) stays comfortably under `maxDuration = 55s`; net throughput rises (`*/5` × 10 = 120 ws/hr vs `*/15` × 20 = 80 ws/hr).
 - **Scope query:** `workspace.findMany({ where: { status: 'RUNNING', containerId: { not: null } } })` with `user { apiKeys, creditAccount }`.
 - **Expected env:** re-derive via `getApiKeySource()` + the env-builder (a pure helper extracted from `buildRailwayEnvVars`/generator in Phase 2). Compare only the **credential-relevant** subset: `CLAWS_CREDIT_MODE`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`.
   - Credit users: `ANTHROPIC_API_KEY` is a plain Railway var (master key) → compare directly.
@@ -163,7 +164,7 @@ This reuses the existing cron pattern (`reconcile-credit-balances`) and `redeplo
     3. **Green test + mutation coverage** on the cron logic (unit + integration + mutation sweep).
   - **Exit met = E1–E4 curl-triggered exercises recorded + drift-matches-heal confirmed + green test/mutation coverage.** This unlocks PR-8b *implementation*; **real observation is deferred to PR-8b's prod deploy (next bullet).** Record the exercise log links in the PR-8b description.
 - **PR-8b — the fix:** event-triggered `requestReconcile()` wired into E1–E4 (+ the `switch-source` message becomes truthful) + cooldown/cap/lock. **Ships in DETECT-ONLY on prod** (not AUTO-HEAL at merge): because staging cannot provide a real observation window (§11), the genuine signal is the flip moment under real traffic — **monitor prod for 24h with real customer traffic (or the first real workspace) in DETECT-ONLY, then flip `ENV_RECONCILE_MODE → auto_heal` only after that 24h is clean** (stays at `*/15` for the first 24h of AUTO-HEAL). **Pre-merge: complete the §7.5 staging log check.** Contract tests assert I1–I6 and the §4 policies; a regression test asserts `switch-source` actually triggers reconcile (locks in the TODO fix).
-- **PR-8c — cadence tighten:** after **24h of clean AUTO-HEAL at `*/15`**, tighten the cron to `*/5` (`vercel.json` schedule + any log-volume threshold). Small standalone PR, **no logic change**. Rationale: the `switch-source` UX promise needs a backstop faster than `*/15` once healing is trusted.
+- **PR-8c — cadence tighten (SHIPPED 2026-06-09):** after **40h+ of clean AUTO-HEAL at `*/15`**, tightened the cron to `*/5` (`vercel.json` schedule) and reduced `RECONCILE_MAX_PER_RUN` 20 → 10 to bound the worst-case tick under `maxDuration = 55s`. Small standalone PR, **no logic change**. Rationale: the `switch-source` UX promise needs a backstop faster than `*/15` once healing is trusted. **Completes the PR-8 family** — the platform credential drift safety net (detect → heal → cadence) is in place.
 
 ## 7.5. Pre-PR-8b staging log check (a pre-merge gate for PR-8b, not a separate PR)
 

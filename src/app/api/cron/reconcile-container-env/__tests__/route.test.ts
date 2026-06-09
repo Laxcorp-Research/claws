@@ -148,14 +148,24 @@ describe("reconcile-container-env cron — PR-8a/C/A skeleton", () => {
     }
   })
 
-  it("scope query targets RUNNING + containerId not null, oldest-first, capped at 20", async () => {
+  it("scope query targets RUNNING + containerId not null, oldest-first, capped at 10", async () => {
     await GET(req("Bearer test-cron-secret"))
     const args = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(args.where).toEqual({ status: "RUNNING", containerId: { not: null } })
     expect(args.orderBy).toEqual({ lastEnvReconcileAt: { sort: "asc", nulls: "first" } })
-    expect(args.take).toBe(20)
+    expect(args.take).toBe(10)
     // user.apiKeys included so deriveContainerEnv (PR-8a/C/B) can derive expected.
     expect(args.select.user.select.apiKeys).toBeTruthy()
+  })
+
+  // PR-8c invariant lock: the per-tick cap is 10. At */5 cadence this bounds the
+  // worst-case tick (read timeouts + heal triggers, ~cap × a few s) under
+  // maxDuration=55s. Asserted via the actual scope-query `take` so it can't drift
+  // even if the constant is renamed/reorganized. Defends against a future bump.
+  it("RECONCILE_MAX_PER_RUN is 10 (bounded for */5 cadence + maxDuration=55s)", async () => {
+    await GET(req("Bearer test-cron-secret"))
+    const args = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(args.take).toBe(10)
   })
 
   it("lock already held (NX returns null) → 200 skipped:locked, no DB query, no release", async () => {
