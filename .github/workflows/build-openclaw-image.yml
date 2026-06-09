@@ -76,7 +76,13 @@ jobs:
           haskell: true
           large-packages: true
           docker-images: false
-          swap-storage: true
+          # swap-storage MUST stay false: removing the runner's ~4GB swapfile
+          # eliminated the memory cushion the upstream `pnpm build:docker`
+          # (tsdown UI bundle, NODE_OPTIONS=--max-old-space-size=8192) relies on.
+          # It OOM-killed the cold-cache rebuild after PR #114's build-push v6
+          # bump invalidated the gha cache. The swap removal freed ~0 disk anyway
+          # ("Swap storage: Saved 0B" in PR #110's run) — pure cost, no benefit.
+          swap-storage: false
 
       - name: Detect latest upstream STABLE release
         id: detect
