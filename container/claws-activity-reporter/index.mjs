@@ -235,6 +235,18 @@ function clip(s, max = DETAIL_MAX) {
   return t.length <= max ? t : t.substring(0, max - 1) + "…";
 }
 
+// PR-9/A: clip() variant that REPORTS whether it truncated, for the reply
+// row's metadata.truncated flag (contract C3: never silently cut). Same
+// semantics as clip() otherwise; clip() itself and its call sites are
+// deliberately untouched.
+function clipWithFlag(s, max = DETAIL_MAX) {
+  if (typeof s !== "string") return { text: undefined, truncated: false };
+  const t = s.trim();
+  if (t.length === 0) return { text: undefined, truncated: false };
+  if (t.length <= max) return { text: t, truncated: false };
+  return { text: t.substring(0, max - 1) + "…", truncated: true };
+}
+
 // PR-4: the cron-JOB-ID prefix Claws' generator uses for the orchestrator
 // heartbeat — `heartbeat-${slug}-${frequency}` (and `...-test_5min`). Distinct
 // from HEARTBEAT_CRON_NAME_PREFIX above (the job NAME prefix). The
@@ -291,6 +303,70 @@ function handleBeforeAgentRun(event, ctx) {
   reporter.add(record);
 }
 
+// ─── PR-9/A: webchat reply-row emission (contract C1–C5) ──────────────────
+//
+// Dashboard chat replies never reach the activity wire by themselves:
+// `message_sent` only fires for EXTERNAL outbound delivery (upstream
+// deliver.ts), while webchat replies go out as gateway WS `chat` events. The
+// reply text IS present in agent_end's `messages` snapshot, so we emit a
+// MESSAGE_SENT row from here for webchat turns. Full protocol evidence:
+// docs/OPENCLAW_GATEWAY_PROTOCOL.md §5/§7.
+
+// C1 detection. Each leg is evidence-backed (PR-9/A-container Phase A audit):
+//   - channelId === "webchat": agent_end ctx carries the run's originating
+//     channel via upstream buildAgentHookContextChannelFields (derived from
+//     the run's own message params, NOT the session's lastChannel) — verified
+//     live: spike TASK_COMPLETE rows carried metadata.channelId "webchat".
+//   - trigger gates: cron-executor runs carry trigger "cron", interval
+//     heartbeats trigger "heartbeat" (upstream run-executor.ts:194,
+//     attempt.prompt-helpers.ts:134). A heartbeat on the SAME main session
+//     must not look like a chat reply (C5).
+//   - subagent gate: sessions_spawn worker runs carry ":subagent:" in their
+//     session key (upstream subagent-registry.ts) and may inherit message
+//     context — only the top-level turn answers the user (C5).
+function isWebchatReplyTurn(ctx) {
+  return (
+    ctx?.channelId === "webchat" &&
+    ctx?.trigger !== "cron" &&
+    ctx?.trigger !== "heartbeat" &&
+    !String(ctx?.sessionKey ?? "").includes(":subagent:")
+  );
+}
+
+// C2/C4 extraction rule (mirrors upstream's own lastAssistant selection in
+// attempt.ts): last role==="assistant" item; text = type==="text" content
+// blocks concatenated in array order; stopReason/errorMessage/usage from that
+// same item. Errored turns persist a synthetic assistant item with
+// stopReason "error" (captured live in the PR-9/0 spike), so they still
+// yield a row. If NO assistant item exists (crash before any message
+// persisted), fall back to the event's error so C4 still holds.
+function extractAssistantReply(messages, event) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m && typeof m === "object" && m.role === "assistant") {
+      const blocks = Array.isArray(m.content) ? m.content : [];
+      const text = blocks
+        .filter((b) => b && typeof b === "object" && b.type === "text" && typeof b.text === "string")
+        .map((b) => b.text)
+        .join("\n");
+      return {
+        text,
+        stopReason: typeof m.stopReason === "string" ? m.stopReason : undefined,
+        errorMessage: typeof m.errorMessage === "string" ? m.errorMessage : undefined,
+        usage: m.usage && typeof m.usage === "object" ? m.usage : undefined,
+      };
+    }
+  }
+  const eventError = typeof event?.error === "string" && event.error.length > 0 ? event.error : "";
+  return {
+    text: eventError || "(no reply produced)",
+    stopReason: undefined,
+    errorMessage: eventError || "(no assistant message in snapshot)",
+    usage: undefined,
+  };
+}
+
 function handleAgentEnd(event, ctx) {
   const success = event?.success === true;
   const actionType = success ? "TASK_COMPLETE" : "TASK_FAILED";
@@ -312,6 +388,51 @@ function handleAgentEnd(event, ctx) {
     record.detail = clip(fullError);
   }
   reporter.add(record);
+
+  // PR-9/A: ONE additional MESSAGE_SENT reply row for webchat turns —
+  // emitted AFTER the (unchanged) TASK_COMPLETE/TASK_FAILED record. agent_end
+  // fires once per run, so C1's "exactly one" holds by construction.
+  if (!isWebchatReplyTurn(ctx)) return;
+
+  const reply = extractAssistantReply(event?.messages, event);
+  // C2 HARD REQUIREMENT: turn health from the transcript's error state —
+  // NEVER from event.success (which is true even for errored turns; captured
+  // live in the PR-9/0 spike, doc §8 risk 4).
+  const turnHealth =
+    reply.stopReason === "error" || reply.errorMessage || fullError ? "error" : "ok";
+  const { text: detail, truncated } = clipWithFlag(
+    turnHealth === "error" && !reply.text ? reply.errorMessage ?? "" : reply.text,
+  );
+  // C2: usage trimmed to exactly these four keys (metadata only — the ingest
+  // route owns apiCost and hard-codes it null; PR-2b scope).
+  const usage = reply.usage
+    ? {
+        input: typeof reply.usage.input === "number" ? reply.usage.input : undefined,
+        output: typeof reply.usage.output === "number" ? reply.usage.output : undefined,
+        totalTokens: typeof reply.usage.totalTokens === "number" ? reply.usage.totalTokens : undefined,
+        costTotal:
+          reply.usage.cost && typeof reply.usage.cost.total === "number"
+            ? reply.usage.cost.total
+            : undefined,
+      }
+    : undefined;
+
+  const replyRecord = buildBaseRecord("MESSAGE_SENT", ctx, {
+    to: "webchat",
+    stopReason: reply.stopReason,
+    turnHealth,
+    truncated,
+    usage,
+  });
+  const preview = truncate(reply.text || reply.errorMessage || "", ACTION_PREVIEW_MAX);
+  replyRecord.action =
+    turnHealth === "error"
+      ? `Reply failed${preview ? `: ${preview}` : ""}`
+      : preview
+        ? `Replied: ${preview}`
+        : "Replied";
+  replyRecord.detail = detail;
+  reporter.add(replyRecord);
 }
 
 function handleMessageReceived(event, ctx) {
@@ -455,9 +576,9 @@ const pluginEntry = {
 export default pluginEntry;
 
 // ─── Exposed for unit tests only ─────────────────────────────────────────
-// The tests in __tests__/event-mapping.test.js import these to assert the
-// marshalling logic + the sync-handler invariant. NOT part of the runtime
-// surface used by OpenClaw.
+// The tests in src/__tests__/claws-activity-reporter.test.ts (vitest, repo
+// root) import these to assert the marshalling logic + the sync-handler
+// invariant. NOT part of the runtime surface used by OpenClaw.
 export const __test__ = {
   ActivityReporter,
   reporter,
@@ -475,5 +596,8 @@ export const __test__ = {
   handleCronChanged,
   truncate,
   clip,
+  clipWithFlag,
   classifyTrigger,
+  isWebchatReplyTurn,
+  extractAssistantReply,
 };

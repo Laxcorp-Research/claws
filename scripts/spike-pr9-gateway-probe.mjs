@@ -34,8 +34,14 @@ import { fileURLToPath } from "node:url"
 import { Client as PgClient } from "pg"
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const WORKSPACE_ID = "cmq81n2cp000210hq54sxz61c" // SPIKE-PR9 (staging)
-const ORCH_SESSION_KEY = "agent:dev-commander:main"
+// PR-9/A C7: parameterized so validation workspaces don't require editing the
+// script (the original SPIKE-PR9 workspace was purged after the PR-9/0 spike).
+const WORKSPACE_ID = process.env.SPIKE_WORKSPACE_ID
+if (!WORKSPACE_ID) {
+  console.error("Set SPIKE_WORKSPACE_ID to the target staging workspace id (e.g. $env:SPIKE_WORKSPACE_ID = \"cm...\")")
+  process.exit(1)
+}
+const ORCH_SESSION_KEY = process.env.SPIKE_SESSION_KEY ?? "agent:dev-commander:main"
 const PROTOCOL_VERSION = 4
 
 function envOf(file) {
