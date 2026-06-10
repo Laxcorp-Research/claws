@@ -241,7 +241,6 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 //   - .strict() objects: unknown keys cause validation failure
 //   - agents.list[].id is the ONLY required field per agent
 //   - Empty {} is valid (but useless)
-//   - bindings[].agentId must reference an agent in agents.list
 // ---------------------------------------------------------------------------
 
 function generateOpenClawConfig(
@@ -270,6 +269,11 @@ function generateOpenClawConfig(
     };
 
     if (isOrchestrator) {
+      // `default: true` is THE routing mechanism: OpenClaw's route resolution
+      // falls back to the default agent for any inbound traffic without an
+      // exact-channel binding, so all channel/webchat messages land on the
+      // Orchestrator. (A channel:'*' binding does NOT do this — see the
+      // comment at the config assembly below and #117.)
       entry.default = true;
       // Allow orchestrator to spawn workers and critic as subagents
       entry.subagents = {
@@ -331,13 +335,15 @@ function generateOpenClawConfig(
       },
       list: agentsList,
     },
-    // Only the Orchestrator receives channel messages
-    bindings: [
-      {
-        agentId: toAgentId(orchestrator.name),
-        match: { channel: '*' },
-      },
-    ],
+    // NO `bindings` key — deliberately (#117). We previously emitted
+    // `bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]`
+    // believing it routed all channel traffic to the Orchestrator. It was a
+    // no-op: OpenClaw's binding index is an exact-string map keyed by channel
+    // name (upstream src/routing/resolve-route.ts @ v2026.5.22), so
+    // channel:'*' only matches a channel literally named "*". Routing to the
+    // Orchestrator actually works because it carries `default: true` in
+    // agents.list (route resolution falls back to the default agent). See
+    // docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 and §8 risk 2.
   };
 
   // Add channels if any are configured

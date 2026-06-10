@@ -446,6 +446,25 @@ describe('generateWorkspace', () => {
     expect(orchestrator.subagents.allowAgents).toContain('quality-reviewer');
   });
 
+  it('emits NO bindings key — Orchestrator routing is via default:true (#117, dead config removed)', async () => {
+    // Regression guard: we used to emit
+    //   bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]
+    // believing it routed all channels to the Orchestrator. Upstream's binding
+    // index is an exact-string map (channel:'*' matches nothing); routing
+    // works via the default-agent fallback. The dead key misled readers, so
+    // the generator must not emit it — and the actual mechanism must hold.
+    // See docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 / §8 risk 2.
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    expect(config).not.toHaveProperty('bindings');
+    const defaults = config.agents.list.filter(
+      (a: Record<string, unknown>) => a.default === true
+    );
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0].name).toBe('Test Commander');
+  });
+
   it('only orchestrator has meaningful HEARTBEAT.md', async () => {
     const result = await generateWorkspace('ws-test-1');
 
