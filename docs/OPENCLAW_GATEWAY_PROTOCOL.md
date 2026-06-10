@@ -400,10 +400,14 @@ Full frame sequence (every step captured; see appendix A for verbatim frames):
    with "answered" is wrong; reply rows must carry `stopReason`/error state (§5).
 5. **Device pairing adds a bootstrap state.** Pairing is per-gateway: every fresh container
    (first deploy, redeploy-after-stop, hibernation wake) starts with zero paired devices.
-   PR-9/A's send path must treat `NOT_PAIRED` as a normal, recoverable state and self-approve
-   idempotently — not as an error. Also note: hello-ok returns a `deviceToken` whose reuse
-   avoids re-signing, but it dies with the container; the Ed25519 keypair is the durable
-   credential.
+   **Design consequence: pairing must be re-bootstrapped after every redeploy/wake (fresh
+   gateway = unpaired), so PR-9/A's pairing flow must be idempotent and lazy on first-send —
+   not deploy-time-only.** A deploy-time-only bootstrap silently breaks chat on the first
+   message after any container replacement. PR-9/A's send path must treat `NOT_PAIRED` as a
+   normal, recoverable state and self-approve idempotently — not as an error. (Re-verified
+   live on the spike's second deploy: same keypair, fresh gateway → `NOT_PAIRED` → admin-RPC
+   approve → scoped connect.) Also note: hello-ok returns a `deviceToken` whose reuse avoids
+   re-signing, but it dies with the container; the Ed25519 keypair is the durable credential.
 6. **Local-tooling footnote** (affects probe reruns, not production): the probe machine's
    TLS-intercepting proxy requires `node --use-system-ca`; Vercel runtime is unaffected.
 
