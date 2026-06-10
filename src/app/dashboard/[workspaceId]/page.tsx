@@ -17,6 +17,7 @@ import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
+import { useActivityStream } from "@/hooks/use-activity-stream"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
 
@@ -218,7 +219,6 @@ export default function DashboardPage() {
   const [redeployError, setRedeployError] = useState<string | null>(null)
   const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
 
-  const eventSourceRef = useRef<EventSource | null>(null)
   const redeployEsRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
 
@@ -325,33 +325,13 @@ export default function DashboardPage() {
     return () => window.removeEventListener("message", onMessage)
   }, [fetchStats])
 
-  useEffect(() => {
-    const es = new EventSource(`/api/activity/${workspaceId}/stream`)
-    eventSourceRef.current = es
-
-    es.addEventListener("init", (e) => {
-      const initial: LogEntry[] = JSON.parse(e.data)
-      setLogs(initial.slice(-MAX_LOG_ENTRIES))
-    })
-
-    es.addEventListener("log", (e) => {
-      const entry: LogEntry = JSON.parse(e.data)
-      setLogs((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES))
-    })
-
-    es.onerror = () => {
-      es.close()
-      setTimeout(() => {
-        const reconnect = new EventSource(`/api/activity/${workspaceId}/stream`)
-        eventSourceRef.current = reconnect
-      }, 5000)
-    }
-
-    return () => {
-      es.close()
-      eventSourceRef.current?.close()
-    }
-  }, [workspaceId])
+  // PR-9/pre: connection + listener lifecycle lives in useActivityStream —
+  // the old inline effect's reconnect path created a bare EventSource with
+  // no listeners attached (see the hook's header comment).
+  useActivityStream<LogEntry>(workspaceId, {
+    onInit: (initial) => setLogs(initial.slice(-MAX_LOG_ENTRIES)),
+    onLog: (entry) => setLogs((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES)),
+  })
 
   useEffect(() => {
     if (workspace?.status === "WAKING" || workspace?.status === "HIBERNATED") {
