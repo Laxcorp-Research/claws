@@ -1,0 +1,373 @@
+// PR-9/A-vercel: connect-send-disconnect gateway chat client.
+//
+// Implements docs/OPENCLAW_GATEWAY_PROTOCOL.md §7 — the verified send
+// mechanism for dashboard chat:
+//
+//   1. open  wss://<containerHost>            (root path, no subprotocol)
+//   2. ⇦ event connect.challenge {nonce}
+//   3. ⇨ req  connect {minProtocol:4, maxProtocol:4, client, role:"operator",
+//             scopes:[operator.read, operator.write], auth:{token},
+//             device:{id, publicKey, signature(v3 over nonce), signedAt, nonce}}
+//   4. ⇦ res  hello-ok  (or NOT_PAIRED → admin-RPC self-approve → reconnect ONCE)
+//   5. ⇨ req  chat.send {sessionKey, message, idempotencyKey, deliver:false}
+//   6. ⇦ res  {runId, status:"started"|"ok"}   ← acceptance-time ack (<500ms live)
+//   7. close 1000
+//
+// Design decisions (PR-9/A-vercel Phase A, all operator-approved):
+//   - Re-sign per send; NO deviceToken persistence (A4): the deviceToken
+//     dies with the container (every redeploy/wake = fresh gateway), the
+//     signature is ~0ms, and the connect round trip happens regardless.
+//   - Lazy pairing is the NORMAL path, not an error (V5): every fresh
+//     container starts unpaired. NOT_PAIRED carries details.requestId
+//     directly — no device.pair.list scan needed.
+//   - WebSocket factory is INJECTABLE and the default resolves
+//     globalThis.WebSocket LAZILY inside the send call (never at module
+//     import): Vercel runs Node 24 (native client WebSocket), but CI runs
+//     Node 20 (none) — tests must always inject a mock, and importing this
+//     module must never touch the real implementation.
+//
+// TIMEOUTS AS THE HONESTY LINE (A6): every captured failure signature is
+// FAST — edge-404/non-101 against a destroyed container in ~440-670ms,
+// close 1008 (auth) and 1013 (gateway starting) sub-second. So a 5s
+// per-attempt connect timeout (matching the health monitor's
+// ADMIN_RPC_TIMEOUT_MS) cleanly separates "we got a definitive signature"
+// from "the host is silently hanging" — only the latter consumes the full
+// 5s, and both honestly map to `unreachable`. Anything still pending at the
+// ~10s total budget is aborted rather than left to Vercel's function
+// timeout, so the caller always gets a typed result.
+
+import crypto from "node:crypto"
+import { log } from "@/lib/logger"
+import {
+  signDeviceAuthV3,
+  type ChatDeviceIdentity,
+} from "@/lib/openclaw/device-identity"
+
+const PROTOCOL_VERSION = 4
+const CONNECT_TIMEOUT_MS = 5_000
+const TOTAL_BUDGET_MS = 10_000
+const OPERATOR_SCOPES = ["operator.read", "operator.write"]
+const CLIENT_INFO = {
+  id: "gateway-client",
+  version: "claws-chat-send",
+  platform: "node",
+  mode: "backend",
+} as const
+
+// Minimal structural WebSocket surface — satisfied by both the native
+// (undici) WebSocket and test doubles. Event objects are typed loosely on
+// purpose: the native implementation hands DOM-flavored events; mocks hand
+// plain objects.
+export interface ChatSocket {
+  send(data: string): void
+  close(code?: number, reason?: string): void
+  addEventListener(type: "open" | "message" | "close" | "error", fn: (ev: never) => void): void
+}
+export type ChatSocketFactory = (url: string) => ChatSocket
+
+export type SendChatFailureReason =
+  | "unreachable" // edge-404 / non-101 / timeout / auth mismatch / no ack
+  | "transitioning" // close 1013 — container up, gateway still starting
+
+export type SendChatResult =
+  | { ok: true; runId: string; status: string; paired: boolean }
+  | { ok: false; reason: SendChatFailureReason; detail: string }
+
+export interface SendChatMessageParams {
+  wsUrl: string
+  token: string
+  deviceKey: ChatDeviceIdentity
+  sessionKey: string
+  message: string
+  idempotencyKey: string
+  /** Injectable for tests; default resolves globalThis.WebSocket LAZILY. */
+  socketFactory?: ChatSocketFactory
+  /** Injectable fetch for the pairing admin-RPC call (tests). */
+  fetchImpl?: typeof fetch
+}
+
+interface GatewayFrame {
+  type?: string
+  id?: string
+  ok?: boolean
+  event?: string
+  payload?: Record<string, unknown>
+  error?: { code?: string; message?: string; details?: Record<string, unknown> }
+}
+
+// Lazy default: never resolved at module import (CI runs Node 20 with no
+// native client WebSocket; tests always inject). Fail loud, not silent.
+function resolveDefaultFactory(): ChatSocketFactory {
+  const NativeWebSocket = (globalThis as Record<string, unknown>).WebSocket as
+    | (new (url: string) => ChatSocket)
+    | undefined
+  if (!NativeWebSocket) {
+    throw new Error(
+      "gateway-chat-client: no native WebSocket in this runtime and no socketFactory injected " +
+        "(Vercel runs Node >=22 which has one; tests must inject a mock)",
+    )
+  }
+  return (url) => new NativeWebSocket(url)
+}
+
+/** One WS connection attempt: connect frame → hello-ok | NOT_PAIRED | failure. */
+interface ConnectAttemptResult {
+  kind: "hello-ok" | "not-paired" | "failure"
+  socket?: GatewaySession
+  requestId?: string
+  reason?: SendChatFailureReason
+  detail?: string
+}
+
+/** Live session wrapper: request/response correlation over the socket. */
+class GatewaySession {
+  private pending = new Map<string, (frame: GatewayFrame) => void>()
+  private closed = false
+
+  constructor(private socket: ChatSocket) {}
+
+  attach(onUncorrelated?: (frame: GatewayFrame) => void) {
+    this.socket.addEventListener("message", ((ev: { data: unknown }) => {
+      let frame: GatewayFrame
+      try {
+        frame = JSON.parse(String(ev.data)) as GatewayFrame
+      } catch {
+        return
+      }
+      if (frame.type === "res" && frame.id && this.pending.has(frame.id)) {
+        const resolve = this.pending.get(frame.id)!
+        this.pending.delete(frame.id)
+        resolve(frame)
+      } else {
+        onUncorrelated?.(frame)
+      }
+    }) as (ev: never) => void)
+  }
+
+  request(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<GatewayFrame> {
+    const id = crypto.randomUUID()
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        resolve({ type: "res", id, ok: false, error: { code: "CLIENT_TIMEOUT", message: `no res to ${method} within ${timeoutMs}ms` } })
+      }, timeoutMs)
+      // Register the resolver BEFORE sending: a synchronous transport (or a
+      // very fast gateway) can deliver the response during send(), so the
+      // pending entry must exist first or the res is dropped as uncorrelated.
+      this.pending.set(id, (frame) => {
+        clearTimeout(timer)
+        resolve(frame)
+      })
+      this.socket.send(JSON.stringify({ type: "req", id, method, params }))
+    })
+  }
+
+  close() {
+    if (this.closed) return
+    this.closed = true
+    try {
+      this.socket.close(1000, "send complete")
+    } catch {
+      // closing an already-failed socket is best-effort
+    }
+  }
+}
+
+async function connectAttempt(params: SendChatMessageParams, factory: ChatSocketFactory): Promise<ConnectAttemptResult> {
+  let socket: ChatSocket
+  try {
+    socket = factory(params.wsUrl)
+  } catch (err) {
+    return { kind: "failure", reason: "unreachable", detail: `socket construction failed: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  return new Promise<ConnectAttemptResult>((resolve) => {
+    let settled = false
+    const session = new GatewaySession(socket)
+    let challengeNonce: string | null = null
+
+    const settle = (result: ConnectAttemptResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (result.kind === "failure") session.close()
+      resolve(result)
+    }
+
+    // 5s per-attempt cap: all captured definitive signatures arrive in
+    // <1s; only a silent hang reaches this. See header comment.
+    const timer = setTimeout(() => {
+      settle({ kind: "failure", reason: "unreachable", detail: `no challenge/hello within ${CONNECT_TIMEOUT_MS}ms` })
+    }, CONNECT_TIMEOUT_MS)
+
+    session.attach(async (frame) => {
+      // Pre-auth server push: the challenge. Sign + send connect.
+      if (frame.type === "event" && frame.event === "connect.challenge") {
+        challengeNonce = String(frame.payload?.nonce ?? "")
+        if (!challengeNonce) {
+          settle({ kind: "failure", reason: "unreachable", detail: "challenge frame without nonce" })
+          return
+        }
+        const signedAtMs = Date.now()
+        const signature = signDeviceAuthV3({
+          identity: params.deviceKey,
+          clientId: CLIENT_INFO.id,
+          clientMode: CLIENT_INFO.mode,
+          role: "operator",
+          scopes: OPERATOR_SCOPES,
+          signedAtMs,
+          token: params.token,
+          nonce: challengeNonce,
+          platform: CLIENT_INFO.platform,
+        })
+        const connectRes = await session.request(
+          "connect",
+          {
+            minProtocol: PROTOCOL_VERSION,
+            maxProtocol: PROTOCOL_VERSION,
+            client: { ...CLIENT_INFO },
+            role: "operator",
+            scopes: OPERATOR_SCOPES,
+            auth: { token: params.token },
+            device: {
+              id: params.deviceKey.deviceId,
+              publicKey: params.deviceKey.publicKeyRawB64u,
+              signature,
+              signedAt: signedAtMs,
+              nonce: challengeNonce,
+            },
+          },
+          CONNECT_TIMEOUT_MS,
+        )
+        if (connectRes.ok) {
+          settle({ kind: "hello-ok", socket: session })
+          return
+        }
+        const code = connectRes.error?.code ?? ""
+        const detailCode = String(connectRes.error?.details?.code ?? "")
+        if (code === "NOT_PAIRED" || detailCode === "PAIRING_REQUIRED") {
+          const requestId = String(connectRes.error?.details?.requestId ?? "")
+          settle(requestId
+            ? { kind: "not-paired", requestId }
+            : { kind: "failure", reason: "unreachable", detail: "NOT_PAIRED without requestId" })
+          return
+        }
+        if (detailCode === "AUTH_TOKEN_MISMATCH") {
+          // Token drift: the DB token no longer matches the container's.
+          // Outside the reconciliation cron's 3-field contract — log loudly
+          // (docs/OPENCLAW_GATEWAY_PROTOCOL.md §8 risk 1) and report
+          // unreachable; the user can't act on auth internals.
+          log.error("gateway-chat-client: gateway token mismatch — possible token drift", {
+            wsUrl: params.wsUrl,
+          })
+          settle({ kind: "failure", reason: "unreachable", detail: "gateway token mismatch" })
+          return
+        }
+        settle({ kind: "failure", reason: "unreachable", detail: `connect rejected: ${code} ${connectRes.error?.message ?? ""}` })
+      }
+    })
+
+    socket.addEventListener("close", ((ev: { code?: number; reason?: string }) => {
+      // 1013 = gateway still starting (captured) → honest "transitioning".
+      if (ev?.code === 1013) {
+        settle({ kind: "failure", reason: "transitioning", detail: "gateway starting (close 1013)" })
+        return
+      }
+      settle({ kind: "failure", reason: "unreachable", detail: `socket closed pre-auth (code ${ev?.code ?? "?"})` })
+    }) as (ev: never) => void)
+
+    socket.addEventListener("error", (() => {
+      // Native WebSocket fires `error` WITHOUT a subsequent `close` for
+      // non-101 upgrades (destroyed-container signature, captured ~440ms).
+      settle({ kind: "failure", reason: "unreachable", detail: "socket error (non-101 upgrade or network failure)" })
+    }) as (ev: never) => void)
+  })
+}
+
+/** Admin HTTP RPC device.pair.approve — same Bearer + AbortController pattern as the health monitor. */
+async function approvePairing(params: SendChatMessageParams, requestId: string): Promise<boolean> {
+  const fetchImpl = params.fetchImpl ?? fetch
+  const httpsUrl = params.wsUrl.replace(/^wss:/, "https:")
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
+  try {
+    const res = await fetchImpl(`${httpsUrl}/api/v1/admin/rpc`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${params.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id: crypto.randomUUID(), method: "device.pair.approve", params: { requestId } }),
+    })
+    if (!res.ok) return false
+    const json = (await res.json()) as { ok?: boolean }
+    return json.ok === true
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Connect-send-disconnect. Resolves with a typed result — never throws for
+ * gateway-side failures. Lazy pairing: one NOT_PAIRED → approve → reconnect
+ * cycle; an already-paired device skips pairing entirely (zero admin-RPC
+ * calls — asserted by the V5 test).
+ */
+export async function sendChatMessage(params: SendChatMessageParams): Promise<SendChatResult> {
+  const factory = params.socketFactory ?? resolveDefaultFactory()
+  const startedAt = Date.now()
+  let paired = false
+
+  let attempt = await connectAttempt(params, factory)
+
+  if (attempt.kind === "not-paired") {
+    const approved = await approvePairing(params, attempt.requestId!)
+    if (!approved) {
+      return { ok: false, reason: "unreachable", detail: "device pairing approval failed" }
+    }
+    paired = true
+    if (Date.now() - startedAt > TOTAL_BUDGET_MS - CONNECT_TIMEOUT_MS) {
+      return { ok: false, reason: "unreachable", detail: "budget exhausted before reconnect" }
+    }
+    // Exactly ONE reconnect after pairing (V5) — a second NOT_PAIRED here
+    // means the gateway is misbehaving; fail honestly rather than loop.
+    attempt = await connectAttempt(params, factory)
+    if (attempt.kind === "not-paired") {
+      return { ok: false, reason: "unreachable", detail: "still NOT_PAIRED after approval" }
+    }
+  }
+
+  if (attempt.kind === "failure") {
+    return { ok: false, reason: attempt.reason!, detail: attempt.detail ?? "connect failed" }
+  }
+
+  const session = attempt.socket!
+  try {
+    const remaining = Math.max(1_000, TOTAL_BUDGET_MS - (Date.now() - startedAt))
+    const ack = await session.request(
+      "chat.send",
+      {
+        sessionKey: params.sessionKey,
+        message: params.message,
+        idempotencyKey: params.idempotencyKey,
+        deliver: false,
+      },
+      remaining,
+    )
+    if (ack.ok) {
+      const payload = (ack.payload ?? {}) as { runId?: string; status?: string }
+      return {
+        ok: true,
+        runId: String(payload.runId ?? params.idempotencyKey),
+        status: String(payload.status ?? "started"),
+        paired,
+      }
+    }
+    return { ok: false, reason: "unreachable", detail: `chat.send rejected: ${ack.error?.code ?? "?"} ${ack.error?.message ?? ""}` }
+  } finally {
+    session.close()
+  }
+}

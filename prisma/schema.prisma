@@ -168,6 +168,14 @@ model Workspace {
   containerPort   Int?
   hostPort        Int?
   gatewayToken    String?
+  // PR-9/A-vercel: AES-256-GCM-encrypted JSON blob
+  // {deviceId, publicKeyRawB64u, privateKeyPem} — the Ed25519 device
+  // identity the chat send endpoint presents to the workspace's gateway
+  // (remote clients without a device identity get their scopes cleared;
+  // see docs/OPENCLAW_GATEWAY_PROTOCOL.md §3). Generated LAZILY on first
+  // send; NULL until then. Single blob (not split columns): the triple is
+  // read/written atomically and never queried by part.
+  chatDeviceKeyEncrypted String?
   timezone        String?  @default("UTC")
   lastHealthCheck DateTime?
   healthStatus    HealthStatus @default(UNKNOWN)
