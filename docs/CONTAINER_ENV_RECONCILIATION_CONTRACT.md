@@ -41,7 +41,7 @@ The endpoint **logs a TODO and tells the user agents will restart in ~30s — bu
 | E5 | Credit exhaustion | `report-batch` → `onCreditsExhausted` (`exhaustion.ts:14-39`) | `creditAccount.status → EXHAUSTED`; **destroys container** (PLATFORM_CREDIT) | **Already handled** — container destroyed, so no stale key persists (changes under PR-9; see §8) |
 | E6 | Key validate / test | `POST /api/api-keys/[id]/validate`, `/api/api-keys/test` | `userApiKey.update(isValid, lastError)` | **No** — `isValid` is a UI flag; neither `container-secrets` nor the generator gate the key *value* on it. **Not a trigger.** |
 | E7 | `apiKeySourceOverride` set/clear | **No writer exists today** (grep: only read at `api-key-source.ts:13`; unused field) | — | **Future** — if a writer is ever added, it MUST trigger (see §1.1) |
-| E8 | Credit reactivation `EXHAUSTED → ACTIVE` (top-up) | **No path today** (one-time $25 grant; `CONVERTED` on BYOK switch) | — | **Future** — relevant once PR-9 adds top-ups |
+| E8 | Credit reactivation `EXHAUSTED → ACTIVE` (top-up) | **No path today** (one-time $50 grant; `CONVERTED` on BYOK switch) | — | **Future** — relevant once PR-9 adds top-ups |
 
 **§1.1 — Forward guard:** E7 and E8 are not reachable today but are first-class contract triggers. Any future PR that writes `Workspace.apiKeySourceOverride`, flips `CreditAccount.status → ACTIVE`, or otherwise changes the inputs to `getApiKeySource()` MUST call the reconcile path (and a test must assert it). The cron (§6) is the backstop if a future author forgets.
 

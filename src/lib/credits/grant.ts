@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db"
 import { redis } from "@/lib/redis"
 import { createHash } from "crypto"
 import { log } from "@/lib/logger"
+import { STARTER_CREDIT_CENTS } from "@/lib/credits/constants"
 
 function normalizeEmail(email: string): string {
   const [local, domain] = email.toLowerCase().trim().split("@")
@@ -43,7 +44,11 @@ export async function grantStarterCredits(userId: string, ip: string) {
   }
   const flagged = ipCount >= 3
 
-  const starterCreditCents = parseInt(process.env.CLAWS_STARTER_CREDIT_CENTS || "2500")
+  // Default to the single-source-of-truth constant ($50). The env var remains
+  // an operational override knob, but the literal lives only in constants.ts.
+  const starterCreditCents = parseInt(
+    process.env.CLAWS_STARTER_CREDIT_CENTS || String(STARTER_CREDIT_CENTS),
+  )
 
   try {
     const account = await prisma.creditAccount.create({

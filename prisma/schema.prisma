@@ -1116,8 +1116,11 @@ model CreditAccount {
   id                  String       @id @default(cuid())
   userId              String       @unique
 
-  initialGrantCents   Int          @default(2500)
-  balanceCents        Int          @default(2500)
+  // $50 one-time starter credit (cents). Mirrors STARTER_CREDIT_CENTS in
+  // src/lib/credits/constants.ts. grantStarterCredits always sets these
+  // explicitly; this @default is a secondary safety net for direct inserts.
+  initialGrantCents   Int          @default(5000)
+  balanceCents        Int          @default(5000)
   totalConsumedCents  Int          @default(0)
 
   status              CreditStatus @default(ACTIVE)

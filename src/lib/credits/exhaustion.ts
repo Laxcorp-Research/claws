@@ -2,14 +2,24 @@ import { prisma } from "@/lib/db"
 import { getResend } from "@/lib/resend"
 import { log } from "@/lib/logger"
 import { destroyContainer } from "@/lib/openclaw/deployer"
+import { STARTER_CREDIT_CENTS, formatCreditDollars } from "@/lib/credits/constants"
 
 export async function onCreditsExhausted(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { workspaces: { where: { status: { in: ["RUNNING"] } } } },
+    include: {
+      workspaces: { where: { status: { in: ["RUNNING"] } } },
+      creditAccount: { select: { initialGrantCents: true } },
+    },
   })
 
   if (!user) return
+
+  // Show the amount the user was ACTUALLY granted (accurate for legacy $25/$5
+  // accounts), falling back to the current grant constant if absent.
+  const grantedLabel = formatCreditDollars(
+    user.creditAccount?.initialGrantCents ?? STARTER_CREDIT_CENTS,
+  )
 
   for (const ws of user.workspaces) {
     if (user.apiKeySource === "PLATFORM_CREDIT") {
@@ -55,7 +65,7 @@ export async function onCreditsExhausted(userId: string) {
                 <div style="font-size:20px;font-weight:700;color:#0A0A0B;margin-bottom:8px;">Claws</div>
                 <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">Hey ${user.name || "there"},</div>
                 <div style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.6;">
-                  Your $25 starter credits have been used up.
+                  Your ${grantedLabel} starter credits have been used up.
                   ${user.workspaces.length > 0 ? `We've paused ${user.workspaces.length} running Claw${user.workspaces.length > 1 ? "s" : ""}.` : ""}
                   Add your own API key or subscribe to keep your Claws running.
                 </div>
