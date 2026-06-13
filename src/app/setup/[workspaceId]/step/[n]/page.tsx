@@ -21,6 +21,7 @@ import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import { STARTER_CREDIT_CENTS, formatCreditDollars } from "@/lib/credits/constants"
 import {
   type ToolState,
   type ServerConnectionSummary,
@@ -215,7 +216,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           <CheckCircle className="w-4 h-4 text-[var(--ok)] flex-shrink-0 mt-[1px]" />
           <div>
             <p className="text-[13px] font-medium mb-0.5">AI models powered by Claws Starter Credits</p>
-            <p className="text-[11px] text-[var(--tx2)]">You have $25.00 in free credits — no API key needed.</p>
+            <p className="text-[11px] text-[var(--tx2)]">You have {formatCreditDollars(STARTER_CREDIT_CENTS)} in free credits — no API key needed.</p>
           </div>
         </div>
       )}
