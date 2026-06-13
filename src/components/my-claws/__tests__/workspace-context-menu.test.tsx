@@ -5,17 +5,22 @@
 //     hasDeployment didn't include STOPPED)
 //   - STOPPED shows "Redeploy" and clicking it routes to /dashboard/[id]
 //     (the dashboard page owns the /cloud confirmation dialog from PR #52)
-//   - STOPPED does NOT show Pause or the (now-removed) Resume items
+//   - STOPPED does NOT show Stop or the (now-removed) Resume items
 //   - PAUSED no longer shows the Resume item (dead code after PR #52)
 //   - Running path and Draft/Setup paths continue to work
+//
+// fix/pause-rename-to-stop: the workspace-level "Pause" was renamed to "Stop"
+// (it always destroyed the container) and gated behind a ConfirmDialog. The
+// RUNNING action now reads "Stop" and fires POST /stop ONLY after confirmation.
 
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent, cleanup } from "@testing-library/react"
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react"
 import { WorkspaceContextMenu } from "@/components/my-claws/workspace-context-menu"
 
 const mockPush = vi.fn()
+const mockRefresh = vi.fn()
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
 }))
 
 afterEach(() => {
@@ -24,6 +29,8 @@ afterEach(() => {
 
 beforeEach(() => {
   mockPush.mockReset()
+  mockRefresh.mockReset()
+  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }) as unknown as typeof fetch
 })
 
 function openMenu(status: string) {
@@ -56,9 +63,9 @@ describe("WorkspaceContextMenu — STOPPED branch (PR #52 follow-up)", () => {
     expect(mockPush).toHaveBeenCalledWith("/dashboard/ws-1")
   })
 
-  it("does NOT render Pause or Resume for STOPPED workspaces", () => {
+  it("does NOT render Stop or Resume for STOPPED workspaces", () => {
     openMenu("STOPPED")
-    expect(screen.queryByText("Pause")).toBeNull()
+    expect(screen.queryByText("Stop")).toBeNull()
     expect(screen.queryByText("Resume")).toBeNull()
   })
 })
@@ -74,16 +81,17 @@ describe("WorkspaceContextMenu — PAUSED branch (Resume item removed)", () => {
     expect(screen.getByText("Open Dashboard")).toBeDefined()
   })
 
-  it("does NOT render Pause for PAUSED (only RUNNING gets Pause)", () => {
+  it("does NOT render Stop for PAUSED (only RUNNING gets Stop)", () => {
     openMenu("PAUSED")
-    expect(screen.queryByText("Pause")).toBeNull()
+    expect(screen.queryByText("Stop")).toBeNull()
   })
 })
 
-describe("WorkspaceContextMenu — RUNNING branch (unchanged by this PR)", () => {
-  it("renders 'Pause' for RUNNING workspaces", () => {
+describe("WorkspaceContextMenu — RUNNING branch (Pause renamed to Stop)", () => {
+  it("renders 'Stop' (not 'Pause') for RUNNING workspaces", () => {
     openMenu("RUNNING")
-    expect(screen.getByText("Pause")).toBeDefined()
+    expect(screen.getByText("Stop")).toBeDefined()
+    expect(screen.queryByText("Pause")).toBeNull()
   })
 
   it("does NOT render Redeploy for RUNNING workspaces", () => {
@@ -94,6 +102,38 @@ describe("WorkspaceContextMenu — RUNNING branch (unchanged by this PR)", () =>
   it("renders 'Open Dashboard' for RUNNING workspaces", () => {
     openMenu("RUNNING")
     expect(screen.getByText("Open Dashboard")).toBeDefined()
+  })
+})
+
+describe("WorkspaceContextMenu — Stop is confirm-gated (regression: no instant destructive fire)", () => {
+  it("clicking 'Stop' opens the confirm dialog and does NOT call /stop on first click", () => {
+    openMenu("RUNNING")
+    fireEvent.click(screen.getByText("Stop"))
+
+    // Dialog is shown…
+    expect(screen.getByText("Stop this Claw?")).toBeDefined()
+    // …but the destructive call has NOT fired yet.
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it("calls POST /stop only AFTER the user confirms in the dialog", async () => {
+    openMenu("RUNNING")
+    fireEvent.click(screen.getByText("Stop"))
+    expect(global.fetch).not.toHaveBeenCalled()
+
+    // Confirm button inside the dialog.
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }))
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/stop", { method: "POST" })
+  })
+
+  it("cancelling with 'Keep running' never calls /stop", () => {
+    openMenu("RUNNING")
+    fireEvent.click(screen.getByText("Stop"))
+    fireEvent.click(screen.getByRole("button", { name: "Keep running" }))
+
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })
 
