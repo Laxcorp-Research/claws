@@ -9,10 +9,11 @@ import {
   Rocket,
   LayoutDashboard,
   Upload,
-  Pause,
+  Square,
   RotateCcw,
   Trash2,
 } from "lucide-react"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 interface WorkspaceContextMenuProps {
   workspaceId: string
@@ -36,8 +37,21 @@ export function WorkspaceContextMenu({
   onDelete,
 }: WorkspaceContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+
+  async function handleStop() {
+    setStopping(true)
+    try {
+      await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
+      router.refresh()
+    } finally {
+      setStopping(false)
+      setStopConfirmOpen(false)
+    }
+  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -110,7 +124,7 @@ export function WorkspaceContextMenu({
           {isRunning && (
             <>
               <Divider />
-              <Item icon={Pause} label="Pause" onClick={() => act(() => fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" }))} />
+              <Item icon={Square} label="Stop" onClick={() => act(() => setStopConfirmOpen(true))} />
             </>
           )}
           {isStopped && (
@@ -128,6 +142,17 @@ export function WorkspaceContextMenu({
           <Item icon={Trash2} label="Delete" danger onClick={() => act(() => onDelete(workspaceId, workspaceName))} />
         </div>
       )}
+
+      <ConfirmDialog
+        open={stopConfirmOpen}
+        onClose={() => setStopConfirmOpen(false)}
+        onConfirm={handleStop}
+        title="Stop this Claw?"
+        description="Agents will stop running. Your configuration and history are saved — redeploying takes about 2 minutes."
+        confirmLabel="Stop"
+        cancelLabel="Keep running"
+        loading={stopping}
+      />
     </div>
   )
 }
