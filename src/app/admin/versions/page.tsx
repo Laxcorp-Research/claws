@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
 
 interface VersionItem {
   id: string
@@ -40,6 +41,7 @@ function relativeTime(date: string | Date): string {
 export default function AdminVersionsPage() {
   const [versions, setVersions] = useState<VersionItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [forbidden, setForbidden] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addForm, setAddForm] = useState({
     version: "",
@@ -69,6 +71,13 @@ export default function AdminVersionsPage() {
   const fetchVersions = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/versions")
+      // Defense-in-depth: a 403 means unauthorized, NOT an empty list. Branch
+      // on the status (wire code is FORBIDDEN) so it never falls through to
+      // the "No versions registered" empty state (GH #127).
+      if (res.status === 403) {
+        setForbidden(true)
+        return
+      }
       if (res.ok) {
         const json = await res.json()
         setVersions(json.data ?? [])
@@ -182,6 +191,8 @@ export default function AdminVersionsPage() {
       setEditLoading(false)
     }
   }
+
+  if (forbidden) return <AdminAccessDenied />
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-4">
