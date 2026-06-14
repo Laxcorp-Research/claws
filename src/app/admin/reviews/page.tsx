@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/modal"
 import { Textarea } from "@/components/ui/textarea"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
 
 interface CreatorInfo {
   id: string
@@ -407,6 +408,7 @@ export default function AdminReviewsPage() {
   const [templates, setTemplates] = useState<ReviewTemplate[]>([])
   const [skills, setSkills] = useState<ReviewSkill[]>([])
   const [loading, setLoading] = useState(true)
+  const [forbidden, setForbidden] = useState(false)
   const [selectedItem, setSelectedItem] = useState<ReviewItem | null>(null)
   const [rejectItem, setRejectItem] = useState<ReviewItem | null>(null)
   const [rejectReason, setRejectReason] = useState("")
@@ -419,6 +421,12 @@ export default function AdminReviewsPage() {
         fetch("/api/admin/review-queue/templates"),
         fetch("/api/admin/review-queue/skills"),
       ])
+
+      // Defense-in-depth: a 403 is unauthorized, not "nothing to review" (GH #127).
+      if (tplRes.status === 403 || skillRes.status === 403) {
+        setForbidden(true)
+        return
+      }
 
       if (tplRes.ok) {
         const tplJson = await tplRes.json()
@@ -490,6 +498,8 @@ export default function AdminReviewsPage() {
     { id: "templates", label: `Templates (${templates.length})` },
     { id: "skills", label: `Skills (${skills.length})` },
   ]
+
+  if (forbidden) return <AdminAccessDenied />
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-4">

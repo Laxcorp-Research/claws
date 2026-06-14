@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/modal"
 import { Textarea } from "@/components/ui/textarea"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
 
 interface EnrichedReport {
   id: string
@@ -57,6 +58,7 @@ export default function AdminReportsPage() {
   const [openReports, setOpenReports] = useState<EnrichedReport[]>([])
   const [resolvedReports, setResolvedReports] = useState<EnrichedReport[]>([])
   const [loading, setLoading] = useState(true)
+  const [forbidden, setForbidden] = useState(false)
   const [resolveItem, setResolveItem] = useState<EnrichedReport | null>(null)
   const [resolution, setResolution] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -68,6 +70,12 @@ export default function AdminReportsPage() {
         fetch("/api/admin/reports?resolved=false"),
         fetch("/api/admin/reports?resolved=true"),
       ])
+
+      // Defense-in-depth: a 403 is unauthorized, not "no reports" (GH #127).
+      if (openRes.status === 403 || resolvedRes.status === 403) {
+        setForbidden(true)
+        return
+      }
 
       if (openRes.ok) {
         const openJson = await openRes.json()
@@ -117,6 +125,8 @@ export default function AdminReportsPage() {
     { id: "open", label: `Open (${openReports.length})` },
     { id: "resolved", label: `Resolved (${resolvedReports.length})` },
   ]
+
+  if (forbidden) return <AdminAccessDenied />
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-4">
