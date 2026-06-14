@@ -194,6 +194,17 @@ export default function AdminVersionsPage() {
 
   if (forbidden) return <AdminAccessDenied />
 
+  // GH #5: derive "Latest" from data (newest by releasedAt) instead of the
+  // stored isLatest flag, which drifts on prod (the seed sets it on v2.5.0 and
+  // the stable/promote path never updates it). Latest != Stable: the newest
+  // row by releasedAt gets "Latest"; the isStable row gets "Stable"; they can
+  // differ. (deployer.resolveDeployImage reads isStable, never isLatest.)
+  const latestVersionId = versions.length
+    ? versions.reduce((newest, v) =>
+        new Date(v.releasedAt).getTime() > new Date(newest.releasedAt).getTime() ? v : newest,
+      ).id
+    : null
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-4">
       <div className="flex items-center justify-between mb-3">
@@ -239,7 +250,7 @@ export default function AdminVersionsPage() {
                       Stable
                     </span>
                   )}
-                  {v.isLatest && (
+                  {v.id === latestVersionId && (
                     <span className="bg-[#dbeafe] text-[#1e40af] text-[10px] font-medium px-[6px] py-[1px] rounded-full">
                       Latest
                     </span>

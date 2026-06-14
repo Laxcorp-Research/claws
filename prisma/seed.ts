@@ -202,17 +202,29 @@ async function main() {
   // FK), so the old deleteMany was safe on its own, but upsert-by-version is
   // idempotent and safer as a default pattern. `releasedAt` only sets on create;
   // updates preserve the original release timestamp.
-  const openClawVersionSeed = {
-    isStable: true,
-    isLatest: true,
-    isSecurityPatch: false,
-    dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:latest",
-    releaseNotes: "Initial stable release for Claws platform launch.",
-  }
+  // GH #5: seed v2.5.0 ONLY on create. The previous `update: openClawVersionSeed`
+  // re-asserted isStable/isLatest/dockerImage on every run, which (a) kept the
+  // stale "Latest" flag stuck on v2.5.0 in prod and (b) was a latent hazard — a
+  // re-run would re-flag v2.5.0 as a SECOND isStable row and reintroduce a
+  // moving-pointer ":latest" image record (the register endpoint forbids those).
+  // An existing v2.5.0 row is now left untouched on re-run (update: {} no-op).
+  //
+  // NOTE: the create still uses a ":latest" dockerImage — a bootstrap default so
+  // a brand-new DB has a deployable isStable row before any real version is
+  // registered. It is intentionally a moving pointer ONLY for this dev bootstrap
+  // row; real versions arrive pinned via the register/promote pipeline.
   await prisma.openClawVersion.upsert({
     where: { version: "2.5.0" },
-    create: { version: "2.5.0", ...openClawVersionSeed, releasedAt: new Date() },
-    update: openClawVersionSeed,
+    create: {
+      version: "2.5.0",
+      isStable: true,
+      isLatest: true,
+      isSecurityPatch: false,
+      dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:latest",
+      releaseNotes: "Initial stable release for Claws platform launch.",
+      releasedAt: new Date(),
+    },
+    update: {},
   })
   console.log("  ✅ OpenClawVersion: 2.5.0 (stable)")
 
