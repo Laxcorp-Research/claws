@@ -26,7 +26,12 @@ export function ActivityLogEntry({ timestamp, agentName, agentColor, message, de
           formatTime now emits (e.g. "14:10:00 UTC"). The font-mono digit
           width keeps the column edge stable across rows. */}
       <span className="text-[var(--tx3)] min-w-[64px] font-mono text-[10px]">{timestamp}</span>
-      <span className="font-semibold min-w-[56px]" style={{ color: agentColor }}>{agentName}</span>
+      {/* Agent color as a decorative dot, name in --tx for WCAG AA readability
+          (the agent hues were near-invisible as text on white). */}
+      <span className="font-semibold min-w-[56px] text-[var(--tx)] inline-flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: agentColor }} aria-hidden="true" />
+        {agentName}
+      </span>
       <div className="flex-1 min-w-0">
         {hasDetail ? (
           <button

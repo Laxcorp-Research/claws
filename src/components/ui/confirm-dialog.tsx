@@ -42,7 +42,7 @@ export function ConfirmDialog({
           {variant === "danger" ? (
             <Button variant="danger" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
           ) : (
-            <Button variant="primary" className="bg-[var(--warn)]" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
+            <Button variant="primary" className="bg-[var(--caution)]" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
           )}
         </>
       }
