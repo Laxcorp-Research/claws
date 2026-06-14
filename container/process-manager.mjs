@@ -10,6 +10,11 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
+// PR-1 (sync-now): bundle + upload logic is the single source of truth in
+// state-sync.mjs, imported by BOTH this entrypoint and the gateway plugin's
+// /internal/sync-now route. The image copies that one file to both
+// /usr/local/bin/state-sync.mjs (here) and /opt/state-sync.mjs (the plugin).
+import { OPENCLAW_DATA_DIR, runStateSync } from './state-sync.mjs';
 
 const CREDIT_MODE = process.env.CLAWS_CREDIT_MODE === 'true';
 const GATEWAY_PORT = process.env.PORT || '18789';
@@ -20,7 +25,6 @@ const PROXY_HEALTH_POLL_MS = 500;
 
 const STATE_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const OPENCLAW_APP_DIR = '/app';
-const OPENCLAW_DATA_DIR = '/home/node/.openclaw';
 const METERING_ENDPOINT = process.env.CLAWS_METERING_ENDPOINT;
 const METERING_SECRET = process.env.CLAWS_METERING_SECRET;
 const WORKSPACE_ID = process.env.CLAWS_WORKSPACE_ID;
@@ -33,55 +37,10 @@ let proxyRestartCount = 0;
 let shuttingDown = false;
 
 // ─── Runtime State Sync ─────────────────────────────────
-
-const CONFIG_FILES = new Set([
-  'openclaw.json',
-  '.env',
-  'cron',
-]);
-
-function isRuntimeFile(relativePath) {
-  const topLevel = relativePath.split('/')[0];
-  if (CONFIG_FILES.has(topLevel)) return false;
-  if (topLevel.startsWith('.') && topLevel !== '.openclaw') return false;
-  if (topLevel === 'node_modules') return false;
-  return true;
-}
-
-function bundleRuntimeState() {
-  const files = {};
-  let totalSize = 0;
-
-  function walkDir(dir, prefix = '') {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (!isRuntimeFile(relativePath)) continue;
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        walkDir(fullPath, relativePath);
-      } else if (entry.isFile()) {
-        try {
-          const content = fs.readFileSync(fullPath);
-          files[relativePath] = content.toString('base64');
-          totalSize += content.length;
-        } catch {
-          // Skip unreadable files
-        }
-      }
-    }
-  }
-
-  walkDir(OPENCLAW_DATA_DIR);
-  return { files, totalSize };
-}
+// bundleRuntimeState + the gzip/upload/count-check now live in state-sync.mjs
+// (single source, shared with the gateway plugin's /internal/sync-now route).
+// syncState() below is a thin wrapper that calls the shared runStateSync() and
+// reproduces this entrypoint's existing three-state logging UNCHANGED.
 
 function restoreRuntimeState(stateJson) {
   const { files } = stateJson;
@@ -101,65 +60,34 @@ function restoreRuntimeState(stateJson) {
   console.log(`[process-manager] Restored ${restored} runtime files`);
 }
 
+// Thin wrapper over the shared runStateSync(). Delegates the bundle/gzip/upload
+// to state-sync.mjs (single source) and reproduces this entrypoint's existing
+// three-state logging UNCHANGED:
+//   1. HTTP !ok            -> server rejected; state NOT persisted
+//   2. HTTP ok, count=0    -> accepted but updateMany matched 0 rows; discarded
+//   3. HTTP ok, count>=1   -> persisted (the only safe case)
+// (count===null from an older server is treated as a benign success, same as
+// before; 'unconfigured'/'empty' are silent early-returns, same as before.)
 async function syncState() {
-  if (!STATE_ENDPOINT || !METERING_SECRET || !WORKSPACE_ID) return;
-
-  try {
-    const state = bundleRuntimeState();
-    if (Object.keys(state.files).length === 0) return;
-
-    const jsonStr = JSON.stringify(state);
-    const compressed = zlib.gzipSync(Buffer.from(jsonStr));
-    const fileCount = Object.keys(state.files).length;
-    const sizeKb = Math.round(compressed.length / 1024);
-
-    const res = await fetch(`${STATE_ENDPOINT}/upload`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Metering-Secret': METERING_SECRET,
-      },
-      body: JSON.stringify({
-        workspaceId: WORKSPACE_ID,
-        compressedState: compressed.toString('base64'),
-        uncompressedSize: Buffer.byteLength(jsonStr),
-      }),
-      signal: AbortSignal.timeout(30000),
-    });
-
-    // PR2.5: differentiated outcomes instead of always logging "synced"
-    // regardless of server acceptance. Three distinct states:
-    //   1. HTTP !ok       -> server rejected; state NOT persisted
-    //   2. HTTP ok, count=0 -> server accepted but updateMany matched 0
-    //                        rows; state silently discarded (this was
-    //                        the PR2 initial-sync race — now closed at
-    //                        deployer.ts, but we keep the tripwire here
-    //                        in case a future regression opens it back up)
-    //   3. HTTP ok, count>=1 -> state persisted; the only safe case
-    if (!res.ok) {
-      console.warn(`[process-manager] State sync failed (HTTP ${res.status}): server rejected (${fileCount} files, ${sizeKb}KB)`);
+  const r = await runStateSync();
+  switch (r.status) {
+    case 'unconfigured':
+    case 'empty':
       return;
-    }
-
-    let bodyCount = null;
-    try {
-      const body = await res.json();
-      if (typeof body?.count === 'number') bodyCount = body.count;
-    } catch {
-      // Older server version that doesn't return count — treat as unknown
-      // and fall through to the success log so we don't flag a benign
-      // version skew. The server-side log.warn is still the source of
-      // truth for count=0 on any server >=PR2.5.
-    }
-
-    if (bodyCount === 0) {
-      console.warn(`[process-manager] State sync accepted but NOT persisted (count=0; ContainerState row missing) — ${fileCount} files, ${sizeKb}KB discarded`);
+    case 'error':
+      console.error('[process-manager] State sync failed:', r.error);
       return;
-    }
-
-    console.log(`[process-manager] State synced (${fileCount} files, ${sizeKb}KB compressed)`);
-  } catch (err) {
-    console.error('[process-manager] State sync failed:', err.message);
+    case 'rejected':
+      if (typeof r.httpStatus === 'number') {
+        console.warn(`[process-manager] State sync failed (HTTP ${r.httpStatus}): server rejected (${r.fileCount} files, ${r.sizeKb}KB)`);
+      } else {
+        console.warn(`[process-manager] State sync accepted but NOT persisted (count=0; ContainerState row missing) — ${r.fileCount} files, ${r.sizeKb}KB discarded`);
+      }
+      return;
+    case 'accepted-unconfirmed':
+    case 'persisted':
+      console.log(`[process-manager] State synced (${r.fileCount} files, ${r.sizeKb}KB compressed)`);
+      return;
   }
 }
 
