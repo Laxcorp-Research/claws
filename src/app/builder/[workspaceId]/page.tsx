@@ -154,7 +154,7 @@ export default function BuilderPage() {
             </button>
             <button
               onClick={restoreDraft}
-              className="px-[10px] py-[4px] text-[11px] text-white bg-[var(--warn)] rounded-[4px] hover:opacity-90 cursor-pointer border-none"
+              className="px-[10px] py-[4px] text-[11px] text-white bg-[var(--caution)] rounded-[4px] hover:opacity-90 cursor-pointer border-none"
             >
               Restore changes
             </button>
