@@ -15,8 +15,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   try {
-    const { destroyContainer } = await import("@/lib/openclaw/deployer")
-    await destroyContainer(workspaceId)
+    // PR-2: route Stop through syncThenDestroy so the container's runtime
+    // state is confirmed-persisted before teardown. It never throws on a sync
+    // failure (destroys anyway + records an incomplete-sync marker), so a slow
+    // or unreachable container can never trap the user on the Stop button.
+    // Single workspace under maxDuration=60 → full default (~18s) sync budget.
+    const { syncThenDestroy } = await import("@/lib/openclaw/deployer")
+    await syncThenDestroy(workspaceId)
     return apiSuccess({ stopped: true })
   } catch (err: unknown) {
     return apiError("STOP_FAILED", err instanceof Error ? err.message : "Stop failed", 500)
