@@ -1215,6 +1215,17 @@ model ContainerState {
   runtimeStateUpdatedAt     DateTime?
   runtimeStateSizeBytes     Int?
 
+  // PR-2 (syncThenDestroy): teardown-time snapshot freshness marker. When a
+  // Stop/hibernate routes through syncThenDestroy and the pre-destroy
+  // /internal/sync-now call does NOT confirm a persist (non-200, timeout, or
+  // unreachable container), we record the failure here and destroy anyway —
+  // so this row's runtimeStateSnapshot may lag the container's last live
+  // state. Cleared (both NULL) on a confirmed sync and reset on the next
+  // deployToCloud upsert (a fresh container makes prior staleness moot).
+  // Mirrors the Workspace.lastHealthCheck / lastHealthReason pairing.
+  lastSyncIncompleteAt      DateTime?
+  lastSyncIncompleteReason  String?
+
   workspace                 Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   createdAt                 DateTime       @default(now())

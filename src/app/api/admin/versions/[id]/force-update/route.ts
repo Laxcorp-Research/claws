@@ -59,7 +59,12 @@ export async function POST(
       data: { containerImage: targetVersion.dockerImage },
     })
 
-    // TODO: When container infrastructure is live (Tier 3):
+    // TODO (PR-1b restart): When the live image-swap restart is built, the
+    // STOP step MUST go through syncThenDestroy(workspaceId) (PR-2), NOT bare
+    // destroyContainer — otherwise a forced security update silently discards
+    // the latest session/MEMORY state. Per the PR-2 plan, PR-1b should add a
+    // stopForReplace(workspaceId) wrapper around syncThenDestroy so bare
+    // destroy is structurally unreachable on the restart path.
     // For each affected deployment: stop container, pull new image, restart, health check
 
     const uniqueUsers = new Map<string, { email: string; name: string | null; workspaceNames: string[] }>()

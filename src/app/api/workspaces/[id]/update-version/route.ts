@@ -46,7 +46,12 @@ export async function POST(
       data: { containerImage: stableVersion.dockerImage },
     })
 
-    // TODO: When container infrastructure is live (Tier 3):
+    // TODO (PR-1b restart): When the live image-swap restart is built, step 1
+    // (stop) MUST go through syncThenDestroy(workspaceId) (PR-2), NOT bare
+    // destroyContainer — otherwise updating the image silently discards the
+    // latest session/MEMORY state. Per the PR-2 plan, PR-1b should add a
+    // stopForReplace(workspaceId) wrapper around syncThenDestroy so bare
+    // destroy is structurally unreachable on the restart path.
     // 1. Stop current container  2. Pull new image  3. Restart  4. Health check
 
     return apiSuccess({
