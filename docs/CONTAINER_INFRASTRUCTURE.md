@@ -269,7 +269,7 @@ The verified end-to-end sequence for shipping a `container/` overlay change
    activity wire (see
    [#122](https://github.com/Laxcorp-Research/claws/issues/122)).
 5. **Prod promotion (separate, operator-gated step)**:
-   `promote-openclaw-image.yml` with the prod register endpoint — moves
+   `promote-openclaw-image.yml` with `target_env=production` — moves
    `:latest` and writes prod's stable row.
 
 **Pre-first-customer-deploy verification item:** as of 2026-06-11 the
@@ -303,10 +303,19 @@ the stable slot:
 ```bash
 gh workflow run promote-openclaw-image.yml --ref main \
   -f version=<version-to-promote> \
-  -f register_endpoint=https://app.buildclaws.ai/api/internal/versions/register
-# Default register_endpoint is prod. Pass the staging URL to soak a candidate
-# on staging without affecting prod's stable pointer (prod's deployer reads
-# its own DB's isStable row, which the staging endpoint never touches).
+  -f target_env=production
+# target_env is REQUIRED — no default (the old free-text register_endpoint
+# defaulted to PROD, so a staging-intended dispatch silently flipped prod's
+# stable row). Choose `production` or `staging`. The workflow maps the enum to
+# the register endpoint and FAIL-CLOSED verifies the resolved host before
+# POSTing (mirrors src/lib/openclaw/env-guards.ts assertEndpointHostMatchesApp).
+# Use `-f target_env=staging` to soak a candidate's stable row on staging
+# without affecting prod's pointer (prod's deployer reads its own DB's isStable
+# row, which the staging endpoint never touches). Auth: the single
+# secrets.VERSION_PIPELINE_SECRET authenticates against BOTH envs (the build
+# workflow already registers staging candidates with it). If a staging register
+# ever 401s, flip the staging stable row via the admin promote route instead
+# (POST /api/admin/versions/<id>/promote, session auth).
 ```
 
 The workflow:
@@ -323,7 +332,7 @@ The workflow:
    `prisma.$transaction`), so the DB never holds two stable rows.
 
 Note that `:latest` is moved unconditionally by the promote workflow even
-when `register_endpoint` is staging. This is safe because nothing in the
+when `target_env` is staging. This is safe because nothing in the
 prod runtime path reads `:latest` — the prod deployer pulls
 `OpenClawVersion.dockerImage` from its own DB's stable row, which is an
 immutable `:<version>` reference. The `:latest` tag is operational
@@ -338,9 +347,8 @@ The full sequence to move a prod workspace onto a new runtime version:
 2. Soak the candidate on staging: redeploy a staging workspace; the staging
    deployer reads the (post-promote) staging stable row and pulls the new
    image. Validate Railway logs, plugin load, dashboard behavior.
-3. `promote-openclaw-image.yml` runs with the **prod** register endpoint
-   (the default) — flips prod's `OpenClawVersion` stable row and retags
-   GHCR `:latest`.
+3. `promote-openclaw-image.yml` runs with `target_env=production` — flips
+   prod's `OpenClawVersion` stable row and retags GHCR `:latest`.
 4. Prod workspaces continue running on their old image until they are
    redeployed (env change, builder save, `/api/deploy/.../redeploy`, or a
    user-triggered redeploy from the dashboard). The change is opt-in per
