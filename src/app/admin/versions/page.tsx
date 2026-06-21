@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
+import { compareOpenClawVersions } from "@/lib/openclaw/version-order"
 
 interface VersionItem {
   id: string
@@ -194,14 +195,21 @@ export default function AdminVersionsPage() {
 
   if (forbidden) return <AdminAccessDenied />
 
-  // GH #5: derive "Latest" from data (newest by releasedAt) instead of the
-  // stored isLatest flag, which drifts on prod (the seed sets it on v2.5.0 and
-  // the stable/promote path never updates it). Latest != Stable: the newest
-  // row by releasedAt gets "Latest"; the isStable row gets "Stable"; they can
-  // differ. (deployer.resolveDeployImage reads isStable, never isLatest.)
+  // GH #5: derive "Latest" from data instead of the stored isLatest flag, which
+  // drifts on prod (the seed sets it on v2.5.0 and the stable/promote path never
+  // updates it). Latest != Stable: the highest version gets "Latest"; the
+  // isStable row gets "Stable"; they can differ. (deployer.resolveDeployImage
+  // reads isStable, never isLatest.)
+  //
+  // Ordering is by VERSION (compareOpenClawVersions), not releasedAt: a -N
+  // overlay hotfix rebuilt after a higher base (e.g. 2026.5.22-4 rebuilt after
+  // 2026.6.6) gets a later releasedAt but is NOT the latest version — the
+  // version comparator ranks it correctly. Shared with the version-update
+  // banner / per-workspace update guard so "newest" means the same thing
+  // everywhere.
   const latestVersionId = versions.length
     ? versions.reduce((newest, v) =>
-        new Date(v.releasedAt).getTime() > new Date(newest.releasedAt).getTime() ? v : newest,
+        compareOpenClawVersions(v.version, newest.version) > 0 ? v : newest,
       ).id
     : null
 
@@ -480,8 +488,8 @@ export default function AdminVersionsPage() {
         onClose={() => setForceUpdateTarget(null)}
         onConfirm={handleForceUpdate}
         title="Force Update All Deployments"
-        description={`Update all running containers to v${forceUpdateTarget?.version || ""}`}
-        warningText={`This will update ALL running containers to v${forceUpdateTarget?.version || ""}. Containers will be briefly unavailable during the update. Users will be notified via email.`}
+        description={`Queue all deployments to move to v${forceUpdateTarget?.version || ""} on next redeploy`}
+        warningText={`This re-points ALL deployments to v${forceUpdateTarget?.version || ""}; it applies to each Claw on its next redeploy. Containers are NOT restarted now and nothing goes offline. Users will be emailed that the update is scheduled.`}
         confirmLabel="Force Update All"
         variant="danger"
         loading={forceUpdateLoading}
