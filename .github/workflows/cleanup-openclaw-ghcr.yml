@@ -1,0 +1,75 @@
+# Prune UNTAGGED openclaw-runtime manifests from GHCR, safely.
+#
+# Ships DRY-RUN ONLY: it computes the keep-set and lists exactly what it WOULD
+# delete (id + digest + date), and deletes nothing. Enabling live deletion is a
+# deliberate follow-up (set the GHCR_DELETE_PAT secret and dispatch with
+# dry_run=false). The scheduled run is always dry-run.
+#
+# Keep-set (see scripts/ghcr-cleanup.ts + src/lib/ghcr/cleanup.ts, unit-tested):
+#   every tagged version + every manifest reachable from a tag (index -> child
+#   walk, GHCR #128) + every digest the prod/staging DBs reference + a recent
+#   buffer. FAIL-CLOSED: deletes nothing if the registry walk fails or EITHER
+#   database is unreachable.
+#
+# Required repo configuration:
+#   vars.GHCR_READ_USER                  (existing) — GHCR pull-token username
+#   secrets.GHCR_READ_PAT                (existing) — read:packages PAT
+#   secrets.CLEANUP_DATABASE_URL_STAGING    (NEW)   — staging Neon pooled URL (read-only ok)
+#   secrets.CLEANUP_DATABASE_URL_PRODUCTION (NEW)   — production Neon pooled URL (read-only ok)
+#   secrets.GHCR_DELETE_PAT              (LIVE ONLY) — delete:packages PAT; not needed for dry-run
+
+name: Cleanup openclaw-runtime GHCR (dry-run)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (list only, delete nothing). Live deletion is a deliberate follow-up — leave checked.'
+        type: boolean
+        default: true
+      buffer_days:
+        description: 'Recent-buffer window in days; untagged manifests younger than this are never deleted.'
+        type: string
+        default: '14'
+  schedule:
+    - cron: '0 8 * * 1' # Mondays 08:00 UTC, ~2h after the build-openclaw-image cron
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ghcr-cleanup-openclaw
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  cleanup:
+    name: Compute keep-set and report delete-set
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: GHCR cleanup (dry-run computes keep-set, lists would-delete)
+        env:
+          # Passing inputs.dry_run directly: empty on schedule -> the script
+          # defaults to dry-run. Do NOT use `|| 'true'` here (boolean false is
+          # falsy and would be coerced back to dry-run, masking a live request).
+          DRY_RUN: ${{ inputs.dry_run }}
+          BUFFER_DAYS: ${{ inputs.buffer_days || '14' }}
+          GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+          GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
+          GHCR_DELETE_PAT: ${{ secrets.GHCR_DELETE_PAT }}
+          CLEANUP_DATABASE_URL_STAGING: ${{ secrets.CLEANUP_DATABASE_URL_STAGING }}
+          CLEANUP_DATABASE_URL_PRODUCTION: ${{ secrets.CLEANUP_DATABASE_URL_PRODUCTION }}
+        run: npx tsx scripts/ghcr-cleanup.ts
