@@ -9,7 +9,10 @@ import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/re
 import {
   ChatPanel,
   reconcileChatMessages,
+  isAgentWorking,
+  isNearBottom,
   type ChatRow,
+  type ChatMessageView,
   type OptimisticMessage,
 } from "@/components/dashboard/chat-panel"
 
@@ -201,5 +204,132 @@ describe("ChatPanel — composer", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" />)
     expect(screen.getByText("On it — pulling the latest now.")).toBeTruthy()
     expect(screen.getByText("Dev Commander")).toBeTruthy()
+  })
+})
+
+describe("isNearBottom (GAP #3 scroll guard)", () => {
+  it("is true at/near the bottom (within threshold)", () => {
+    expect(isNearBottom({ scrollHeight: 1000, scrollTop: 700, clientHeight: 300 })).toBe(true) // 0 from bottom
+    expect(isNearBottom({ scrollHeight: 1000, scrollTop: 640, clientHeight: 300 })).toBe(true) // 60 <= 80
+  })
+  it("is false when scrolled up beyond the threshold", () => {
+    expect(isNearBottom({ scrollHeight: 1000, scrollTop: 200, clientHeight: 300 })).toBe(false) // 500 > 80
+  })
+})
+
+describe("isAgentWorking (GAP #2 pending)", () => {
+  const u = (status?: "sending" | "sent" | "failed"): ChatMessageView => ({
+    key: "u", sender: "user", senderName: "You", sortTs: 0, detail: "", action: "", status,
+  })
+  const a = (): ChatMessageView => ({
+    key: "a", sender: "agent", senderName: "X", sortTs: 0, detail: "", action: "",
+  })
+  it("true while a started user turn has no reply", () => {
+    expect(isAgentWorking([u("sent")])).toBe(true)
+    expect(isAgentWorking([u(undefined)])).toBe(true) // streamed MESSAGE_RECEIVED
+  })
+  it("false once the reply arrives", () => {
+    expect(isAgentWorking([u("sent"), a()])).toBe(false)
+  })
+  it("ignores sending (pre-202) and failed (no run started)", () => {
+    expect(isAgentWorking([u("sending")])).toBe(false)
+    expect(isAgentWorking([u("failed")])).toBe(false)
+  })
+  it("true under rapid sends (more user turns than replies)", () => {
+    expect(isAgentWorking([u("sent"), u("sent"), a()])).toBe(true)
+  })
+})
+
+describe("ChatPanel — working indicator (GAP #2)", () => {
+  const userRow: ChatRow = {
+    id: "u1", actionType: "MESSAGE_RECEIVED", timestamp: "2026-06-22T08:00:00.000Z",
+    agentName: "System", action: "Received from : hi", detail: "hi", messageId: "r1",
+  }
+  const replyRow: ChatRow = {
+    id: "a1", actionType: "MESSAGE_SENT", timestamp: "2026-06-22T08:00:05.000Z",
+    agentName: "Dev Commander", action: "Replied: hey", detail: "hey there", messageId: null,
+  }
+
+  it("shows the agent working indicator while a user turn is unreplied", () => {
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow]} orchestratorName="Dev Commander" />)
+    expect(screen.getByText(/is working/i)).toBeTruthy()
+  })
+
+  it("replaces the working indicator with the reply when MESSAGE_SENT arrives", () => {
+    const { rerender } = render(
+      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow]} orchestratorName="Dev Commander" />,
+    )
+    expect(screen.getByText(/is working/i)).toBeTruthy()
+    rerender(
+      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow, replyRow]} orchestratorName="Dev Commander" />,
+    )
+    expect(screen.queryByText(/is working/i)).toBeNull()
+    expect(screen.getByText("hey there")).toBeTruthy()
+  })
+
+  it("does NOT show the working indicator on a non-sendable Claw (no false 'working' on stale history)", () => {
+    render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[userRow]} orchestratorName="Dev Commander" />)
+    expect(screen.queryByText(/is working/i)).toBeNull()
+  })
+})
+
+describe("ChatPanel — scroll (GAP #3: container only, near-bottom guard)", () => {
+  const userRow: ChatRow = {
+    id: "u1", actionType: "MESSAGE_RECEIVED", timestamp: "2026-06-22T08:00:00.000Z",
+    agentName: "System", action: "Received from : hi", detail: "hi", messageId: "r1",
+  }
+  const replyRow: ChatRow = {
+    id: "a1", actionType: "MESSAGE_SENT", timestamp: "2026-06-22T08:00:05.000Z",
+    agentName: "Dev Commander", action: "Replied: hey", detail: "hey there", messageId: null,
+  }
+
+  // jsdom does no layout, so we instrument the container's scroll metrics and
+  // record every scrollTop WRITE (robust to any jsdom clamping).
+  function instrument(list: HTMLElement, initialTop: number): number[] {
+    let top = initialTop
+    const writes: number[] = []
+    Object.defineProperty(list, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => { top = v; writes.push(v) },
+    })
+    Object.defineProperty(list, "scrollHeight", { value: 1000, configurable: true })
+    Object.defineProperty(list, "clientHeight", { value: 300, configurable: true })
+    return writes
+  }
+
+  it("pins to bottom by scrolling the CONTAINER (never scrollIntoView) when near bottom", () => {
+    const scrollIntoView = vi.fn()
+    const proto = Element.prototype as unknown as { scrollIntoView?: () => void }
+    const orig = proto.scrollIntoView
+    proto.scrollIntoView = scrollIntoView
+    try {
+      const { rerender } = render(
+        <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow]} orchestratorName="Dev Commander" />,
+      )
+      const list = screen.getByRole("log")
+      const writes = instrument(list, 700) // 1000 - 700 - 300 = 0 → near bottom
+      fireEvent.scroll(list)
+      rerender(
+        <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow, replyRow]} orchestratorName="Dev Commander" />,
+      )
+      expect(writes).toContain(1000) // container scrolled to its own scrollHeight
+      expect(scrollIntoView).not.toHaveBeenCalled() // no page jump — MUTATION: use scrollIntoView → fails
+    } finally {
+      proto.scrollIntoView = orig
+    }
+  })
+
+  it("does NOT yank to bottom when the user has scrolled up to read history", () => {
+    const { rerender } = render(
+      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow]} orchestratorName="Dev Commander" />,
+    )
+    const list = screen.getByRole("log")
+    const writes = instrument(list, 100) // 1000 - 100 - 300 = 600 → scrolled up
+    fireEvent.scroll(list)
+    rerender(
+      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow, replyRow]} orchestratorName="Dev Commander" />,
+    )
+    expect(writes).not.toContain(1000) // left where the user put it
   })
 })

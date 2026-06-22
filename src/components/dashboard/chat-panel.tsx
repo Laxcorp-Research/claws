@@ -117,6 +117,54 @@ export function reconcileChatMessages(
   return views
 }
 
+// PR-9/B polish (GAP #2): the agent is "working" while at least one started
+// user turn has no reply yet. Every webchat turn emits exactly one MESSAGE_SENT
+// (success OR error) per agent_end, so (started user turns) − (agent replies)
+// is the count of in-flight turns. Count-based, NOT runId-keyed, deliberately:
+// it needs no new SSE field (runId is not on the wire), is order-independent,
+// and survives rapid sends. "Started" = a user view that is acked or streamed
+// (status "sent", or a streamed MESSAGE_RECEIVED whose status is undefined) —
+// NOT "sending" (pre-202) or "failed" (no run ever started).
+export function isAgentWorking(views: ChatMessageView[]): boolean {
+  let started = 0
+  let replied = 0
+  for (const v of views) {
+    if (v.sender === "agent") replied++
+    else if (v.status !== "sending" && v.status !== "failed") started++
+  }
+  return started > replied
+}
+
+// PR-9/B polish (GAP #3): is the scroll container within `threshold`px of the
+// bottom? Drives the "only auto-scroll if already near the bottom" guard so a
+// late reply never yanks a user who scrolled up to read history.
+export function isNearBottom(
+  el: { scrollHeight: number; scrollTop: number; clientHeight: number },
+  threshold = 80,
+): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
+}
+
+function WorkingIndicator({ orchestratorName }: { orchestratorName: string }) {
+  const name = orchestratorName || "Orchestrator"
+  return (
+    <div className="flex flex-col gap-[3px] max-w-[85%] self-start items-start">
+      <div className="flex items-center gap-1.5 text-[10px] leading-none">
+        <span className="font-semibold text-[var(--tx2)]">{name}</span>
+      </div>
+      <div
+        role="status"
+        className="rounded-lg px-3 py-2 bg-[var(--bg2)] border border-[var(--bd)] inline-flex items-center gap-1"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce [animation-delay:-0.3s]" aria-hidden="true" />
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce [animation-delay:-0.15s]" aria-hidden="true" />
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce" aria-hidden="true" />
+        <span className="sr-only">{name} is working…</span>
+      </div>
+    </div>
+  )
+}
+
 function makeTempId(): string {
   const rnd =
     typeof globalThis.crypto !== "undefined" && "randomUUID" in globalThis.crypto
@@ -147,7 +195,13 @@ interface ChatPanelProps {
 export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatPanelProps) {
   const [optimistic, setOptimistic] = useState<OptimisticMessage[]>([])
   const [draft, setDraft] = useState("")
-  const listEndRef = useRef<HTMLDivElement | null>(null)
+  // GAP #3: ref to the SCROLL CONTAINER (not a sentinel) so we move only this
+  // element's scrollTop — never the page viewport (scrollIntoView moved all
+  // scrollable ancestors and jumped the whole dashboard).
+  const listRef = useRef<HTMLDivElement | null>(null)
+  // Start pinned; recomputed on every user scroll. When the user scrolls up to
+  // read history this goes false and new messages stop yanking them down.
+  const nearBottomRef = useRef(true)
 
   const sendable = SENDABLE_STATUSES.has(status)
 
@@ -156,10 +210,23 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
     [optimistic, rows, orchestratorName],
   )
 
+  // GAP #2: run-level pending state — the agent owes a reply. Gated to a
+  // sendable Claw so stale unanswered history on an asleep Claw can't show a
+  // permanent "working…".
+  const working = sendable && isAgentWorking(messages)
+
+  const handleScroll = useCallback(() => {
+    const el = listRef.current
+    if (el) nearBottomRef.current = isNearBottom(el)
+  }, [])
+
+  // Pin to newest ONLY when the user is already near the bottom. Scrolls the
+  // container directly (no scrollIntoView → no page jump). Re-runs when a
+  // message lands or the working indicator toggles.
   useEffect(() => {
-    // Optional-chain the method too: jsdom doesn't implement scrollIntoView.
-    listEndRef.current?.scrollIntoView?.({ block: "end" })
-  }, [messages.length])
+    const el = listRef.current
+    if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [messages.length, working])
 
   const send = useCallback(async () => {
     const text = draft.trim()
@@ -214,11 +281,13 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
       </div>
 
       <div
+        ref={listRef}
+        onScroll={handleScroll}
         className="flex flex-col gap-3 p-3.5 min-h-[120px] max-h-[360px] overflow-y-auto"
         role="log"
         aria-label="Chat messages"
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && !working ? (
           <p className="text-[11px] text-[var(--tx3)] py-6 text-center">
             No messages yet. Say hello to get started.
           </p>
@@ -235,7 +304,7 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
             />
           ))
         )}
-        <div ref={listEndRef} />
+        {working && <WorkingIndicator orchestratorName={orchestratorName} />}
       </div>
 
       <div className="border-t border-[var(--bd)] p-3.5">
