@@ -48,6 +48,8 @@ const MD_PROSE = cn(
 function MarkdownBody({ content }: { content: string }): ReactElement {
   return (
     <div className={MD_PROSE}>
+      {/* SECURITY: never add rehype-raw — agent replies are untrusted; raw HTML = XSS.
+          The injection test in chat-message.test.tsx locks this. */}
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
         {content}
       </ReactMarkdown>
