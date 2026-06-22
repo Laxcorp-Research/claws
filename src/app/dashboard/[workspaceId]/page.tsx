@@ -15,6 +15,7 @@ import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
+import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
@@ -71,6 +72,13 @@ interface LogEntry {
   detail?: string | null
   actionType: string
   apiCost?: number
+  // PR-9/B: chat fields projected from metadata by the SSE serializer
+  // (formatLog). messageId is the optimistic-reconciliation key; channelId
+  // gates the chat panel to webchat rows. Optional for back-compat with any
+  // pre-9/B payload.
+  messageId?: string | null
+  channelId?: string | null
+  from?: string | null
 }
 
 interface PendingApprovalItem {
@@ -860,6 +868,26 @@ export default function DashboardPage() {
     color: a.color,
   }))
 
+  // PR-9/B: the dashboard chat reuses the SAME activity stream (no second
+  // EventSource). Filter the live logs to webchat MESSAGE_* rows — channelId
+  // keeps external-channel sends/receives (Slack, etc.) out of dashboard chat.
+  const orchestratorName = agents.find((a) => a.role === "ORCHESTRATOR")?.name ?? "Orchestrator"
+  const chatRows: ChatRow[] = logs
+    .filter(
+      (l) =>
+        (l.actionType === "MESSAGE_RECEIVED" || l.actionType === "MESSAGE_SENT") &&
+        l.channelId === "webchat",
+    )
+    .map((l) => ({
+      id: l.id,
+      actionType: l.actionType,
+      timestamp: l.timestamp,
+      agentName: l.agentName,
+      action: l.action,
+      detail: l.detail ?? null,
+      messageId: l.messageId ?? null,
+    }))
+
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
       <PageHeader
@@ -971,6 +999,15 @@ export default function DashboardPage() {
             }))}
             onApprove={handleApprove}
             onReject={handleReject}
+          />
+
+          {/* PR-9/B: chat is a PRIMARY surface — a sibling section above the
+              collapsible drill-down, below time-sensitive approvals. */}
+          <ChatPanel
+            workspaceId={workspaceId}
+            status={workspace!.status}
+            rows={chatRows}
+            orchestratorName={orchestratorName}
           />
 
           <ClawNarrativeRow
