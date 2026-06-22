@@ -63,10 +63,23 @@ describe("WCAG AA contrast tokens (a11y fix)", () => {
     expect(ratio(dark["--warn"], dark["--bg"])).toBeGreaterThanOrEqual(AA)
   })
 
-  it("locks the chosen light values (regression: reverting to the failing reds/ambers fails here)", () => {
+  // #135: --ac-text is the accent TEXT color (deep blue on white in light mode,
+  // the light --ac value on the dark bg in dark mode). --ac itself stays the
+  // brand fill/border and is intentionally NOT AA as text on white.
+  it("--ac-text as text passes AA: light (deep blue on white) + dark (light blue on dark bg)", () => {
+    expect(ratio(light["--ac-text"], light["--bg"])).toBeGreaterThanOrEqual(AA)
+    expect(ratio(dark["--ac-text"], dark["--bg"])).toBeGreaterThanOrEqual(AA)
+  })
+
+  it("--ac as text passes AA in DARK mode (it is used as accent text there)", () => {
+    expect(ratio(dark["--ac"], dark["--bg"])).toBeGreaterThanOrEqual(AA)
+  })
+
+  it("locks the chosen light values (regression: reverting to the failing reds/ambers/blue fails here)", () => {
     expect(light["--err"]).toBe("#dc2626")
     expect(light["--warn"]).toBe("#b45309")
     expect(light["--danger"]).toBe("#dc2626")
     expect(light["--caution"]).toBe("#b45309")
+    expect(light["--ac-text"]).toBe("#2563EB")
   })
 })

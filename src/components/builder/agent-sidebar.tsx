@@ -60,7 +60,7 @@ export function AgentSidebar() {
                 "flex items-center gap-1.5 py-1.5 px-2 rounded-[6px] cursor-pointer transition-colors w-full text-left border-none bg-transparent",
                 isSelected && "bg-[var(--bg3)] text-[var(--tx)] font-semibold",
                 !isSelected && "hover:bg-[var(--bg2)]",
-                isOrch && "bg-[var(--acbg)] text-[var(--ac)] border-l-[3px] border-l-[var(--ac)] font-semibold",
+                isOrch && "bg-[var(--acbg)] text-[var(--ac-text)] border-l-[3px] border-l-[var(--ac)] font-semibold",
                 isCritic && "border-l-[3px] border-l-[#8b5cf6] font-semibold"
               )}
             >
@@ -99,13 +99,13 @@ export function AgentSidebar() {
                   onClick={() => setPreviewSkill(isPreview ? null : skill)}
                   className={cn(
                     "w-full flex items-center gap-[6px] px-[8px] py-[5px] rounded-[6px] text-[11px] text-left transition-colors border-none bg-transparent hover:bg-[var(--bg2)] cursor-pointer",
-                    isAssigned && "text-[var(--ac)] font-medium",
+                    isAssigned && "text-[var(--ac-text)] font-medium",
                     !isAssigned && "text-[var(--tx2)]"
                   )}
                 >
                   <TruncateWithTooltip className="flex-1">{skill.name}</TruncateWithTooltip>
                   {isAssigned && (
-                    <span className="text-[9px] text-[var(--ac)] flex-shrink-0">assigned</span>
+                    <span className="text-[9px] text-[var(--ac-text)] flex-shrink-0">assigned</span>
                   )}
                 </button>
                 {isPreview && (
@@ -128,7 +128,7 @@ export function AgentSidebar() {
                       href={`/store/skills/${skill.slug || skill.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac)] hover:underline mt-[4px]"
+                      className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac-text)] hover:underline mt-[4px]"
                     >
                       View full details
                       <ExternalLink className="w-[10px] h-[10px]" />
@@ -148,7 +148,7 @@ export function AgentSidebar() {
       <button
         type="button"
         onClick={() => setShowMarketplace(true)}
-        className="w-full flex items-center gap-[6px] px-[8px] py-[6px] rounded-[6px] text-[11px] text-[var(--ac)] hover:bg-[var(--acbg)] transition-colors mt-[4px] cursor-pointer border-none bg-transparent"
+        className="w-full flex items-center gap-[6px] px-[8px] py-[6px] rounded-[6px] text-[11px] text-[var(--ac-text)] hover:bg-[var(--acbg)] transition-colors mt-[4px] cursor-pointer border-none bg-transparent"
       >
         <Plus className="w-[14px] h-[14px]" />
         Browse marketplace

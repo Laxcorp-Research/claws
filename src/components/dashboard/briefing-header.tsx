@@ -45,7 +45,7 @@ const pillBg: Record<PillTone, string> = {
   muted: "text-[var(--tx3)]",
   warn: "bg-[var(--warnbg)] text-[#92400e]",
   error: "bg-[var(--errbg)] text-[#991b1b]",
-  info: "bg-[var(--acbg)] text-[var(--ac)]",
+  info: "bg-[var(--acbg)] text-[var(--ac-text)]",
 }
 
 const pillDot: Record<PillTone, string> = {

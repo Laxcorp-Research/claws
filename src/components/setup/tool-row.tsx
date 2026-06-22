@@ -145,7 +145,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
           <div>
             <div className="text-xs font-semibold">{name}</div>
             {effectiveDescription && <div className={cn("text-[10px]", effectiveDescriptionTone)}>{effectiveDescription}</div>}
-            {connectionStatus === "connecting" && <div className="text-[10px] text-[var(--ac)] mt-0.5 inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Connecting...</div>}
+            {connectionStatus === "connecting" && <div className="text-[10px] text-[var(--ac-text)] mt-0.5 inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Connecting...</div>}
             {isError && !errorMessage && <div className="text-[10px] text-[var(--err)] mt-0.5">Connection failed</div>}
             {needsCredentials && <div className="text-[10px] text-[var(--warn)] mt-0.5">Incomplete credentials</div>}
           </div>

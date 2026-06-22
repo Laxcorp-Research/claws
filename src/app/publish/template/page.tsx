@@ -243,7 +243,7 @@ function PublishContent() {
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Workspace to publish *</label>
               <CustomSelect value={selectedWorkspaceId} onChange={setSelectedWorkspaceId} placeholder="Select a workspace..." options={workspaces.map((ws) => ({ value: ws.id, label: `${ws.name} (${ws.agentCount} agents)` }))} />
-              {workspaces.length === 0 && <p className="text-[11px] text-[var(--tx3)] mt-1">No workspaces with agents found. <Link href="/my-claws" className="text-[var(--ac)]">Build a Claw first.</Link></p>}
+              {workspaces.length === 0 && <p className="text-[11px] text-[var(--tx3)] mt-1">No workspaces with agents found. <Link href="/my-claws" className="text-[var(--ac-text)]">Build a Claw first.</Link></p>}
             </div>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Name *</label>

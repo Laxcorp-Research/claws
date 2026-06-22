@@ -146,17 +146,17 @@ export default function CreatorProfilePage() {
             )}
             <div className="flex gap-3 mt-2">
               {profile.twitterUrl && (
-                <a href={profile.twitterUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] flex items-center gap-1">
+                <a href={profile.twitterUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] flex items-center gap-1">
                   <Twitter size={12} aria-hidden="true" /> Twitter
                 </a>
               )}
               {profile.githubUrl && (
-                <a href={profile.githubUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] flex items-center gap-1">
+                <a href={profile.githubUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] flex items-center gap-1">
                   <Github size={12} aria-hidden="true" /> GitHub
                 </a>
               )}
               {profile.websiteUrl && (
-                <a href={profile.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] flex items-center gap-1">
+                <a href={profile.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] flex items-center gap-1">
                   <Globe size={12} aria-hidden="true" /> Website
                 </a>
               )}

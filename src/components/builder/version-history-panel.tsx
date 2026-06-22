@@ -49,7 +49,7 @@ export function VersionHistoryPanel({ open, onClose, refreshKey }: VersionHistor
                     )}
                   </div>
                   <span className={`text-[9px] px-1.5 py-[1px] rounded-[4px] ${
-                    snap.trigger === "TEMPLATE_LOAD" ? "bg-[var(--acbg)] text-[var(--ac)]"
+                    snap.trigger === "TEMPLATE_LOAD" ? "bg-[var(--acbg)] text-[var(--ac-text)]"
                     : snap.trigger === "MANUAL_SAVE" || snap.trigger === "USER_LABELED" ? "bg-[var(--okbg)] text-[var(--ok)]"
                     : snap.trigger === "PRE_DEPLOY" ? "bg-[var(--warnbg)] text-[var(--warn)]"
                     : "bg-[var(--bg2)] text-[var(--tx3)]"

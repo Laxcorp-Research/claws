@@ -12,13 +12,13 @@ interface AlertBannerProps {
 const variantClasses = {
   error: "bg-[var(--errbg)] border-[var(--err)] text-[#991b1b]",
   warning: "bg-[var(--warnbg)] border-[var(--warn)] text-[#92400e]",
-  info: "bg-[var(--acbg)] border-[var(--ac)] text-[var(--ac)]",
+  info: "bg-[var(--acbg)] border-[var(--ac)] text-[var(--ac-text)]",
 } as const;
 
 const iconColors = {
   error: "text-[var(--err)]",
   warning: "text-[var(--warn)]",
-  info: "text-[var(--ac)]",
+  info: "text-[var(--ac-text)]",
 } as const;
 
 const defaultIcons: Record<string, ReactNode> = {
