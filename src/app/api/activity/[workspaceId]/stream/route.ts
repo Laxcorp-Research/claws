@@ -120,7 +120,34 @@ export function formatLog(log: {
   detail: string | null
   actionType: string
   apiCost: number | null
+  metadata: string | null
 }) {
+  // PR-9/B: surface a WHITELISTED subset of `metadata` for the dashboard chat
+  // panel. The raw metadata blob stays OFF the wire (it remains in the SSE
+  // serializer's exclusion list — see SSE_EXCLUDED_FIELDS in the route test);
+  // only these three derived projections are exposed:
+  //   - messageId: the chat reconciliation key. A user's webchat send is
+  //     persisted by the container as MESSAGE_RECEIVED whose
+  //     metadata.messageId === the runId returned by POST /chat (202). The
+  //     composer dedupes its optimistic bubble against this (no double-render).
+  //   - channelId: lets the panel render ONLY webchat messages so external
+  //     channel sends/receives (Slack, etc.) never leak into dashboard chat.
+  //   - from: sender hint (empty for webchat today; surfaced for parity).
+  // Parse defensively — `metadata` is a TEXT column written as JSON by the
+  // ingest route; a malformed/absent value degrades to nulls, never throws.
+  let messageId: string | null = null
+  let channelId: string | null = null
+  let from: string | null = null
+  if (log.metadata) {
+    try {
+      const m = JSON.parse(log.metadata) as Record<string, unknown>
+      messageId = typeof m.messageId === "string" ? m.messageId : null
+      channelId = typeof m.channelId === "string" ? m.channelId : null
+      from = typeof m.from === "string" ? m.from : null
+    } catch {
+      // malformed metadata → leave the derived chat fields null
+    }
+  }
   return {
     id: log.id,
     timestamp: log.timestamp.toISOString(),
@@ -130,5 +157,9 @@ export function formatLog(log: {
     detail: sanitizeActivityDetail(log.detail),
     actionType: log.actionType,
     apiCost: log.apiCost,
+    // PR-9/B derived chat fields (sourced from metadata, NOT 1:1 columns):
+    messageId,
+    channelId,
+    from,
   }
 }
