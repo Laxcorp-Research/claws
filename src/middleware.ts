@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { apiRateLimit, authRateLimit } from "./lib/rate-limit";
+import { getAdminEmails, isAdminEmail } from "./lib/admin-emails";
 
 const allowedOrigins = [
   "https://app.buildclaws.ai",
@@ -198,6 +199,32 @@ export async function middleware(request: NextRequest) {
       const signInUrl = new URL("/auth/signin", request.url);
       signInUrl.searchParams.set("callbackUrl", request.url);
       return NextResponse.redirect(signInUrl);
+    }
+
+    // #133: server-side admin authorization at the edge. Admin is the
+    // ADMIN_EMAILS env var (not a DB field), so we can enforce here without a
+    // DB call — a non-admin never receives the admin route HTML.
+    if (pathname.startsWith("/admin")) {
+      const configuredAdmins = getAdminEmails();
+      if (configuredAdmins.length === 0) {
+        // Fail-SAFE on CONFIG: an env wipe must not brick the whole admin
+        // surface for every admin. Degrade to pre-#133 behavior (route loads;
+        // the API's requireAdmin 403s still protect every operation) and log
+        // loudly so the misconfig is visible.
+        console.warn(
+          "ADMIN_EMAILS unset — edge admin enforcement DISABLED, falling back to API requireAdmin",
+        );
+      } else {
+        const email = typeof token.email === "string" ? token.email : "";
+        if (!email || !isAdminEmail(email)) {
+          // Fail-CLOSED on the USER: rewrite (not redirect) to the styled
+          // not-found for information-hiding — the URL stays /admin/* and the
+          // response reveals nothing about /admin existing.
+          return addSecurityHeaders(
+            NextResponse.rewrite(new URL("/_not-found", request.url)),
+          );
+        }
+      }
     }
   }
 
