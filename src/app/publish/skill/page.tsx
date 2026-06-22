@@ -252,7 +252,7 @@ function PublishSkillContent() {
             <p className="text-[10px] text-[var(--tx3)]">{skillMd.length.toLocaleString()} / 50,000 characters</p>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-[var(--tx3)]">OR</span>
-              <label className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] cursor-pointer flex items-center gap-1">
+              <label className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] cursor-pointer flex items-center gap-1">
                 <FileText size={12} aria-hidden="true" /> Upload SKILL.md file
                 <input type="file" accept=".md,.txt" className="hidden" onChange={async (e) => {
                   const file = e.target.files?.[0]

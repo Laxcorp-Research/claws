@@ -100,7 +100,7 @@ export default function PricingPage() {
           </p>
           <Link
             href="/store?price=free"
-            className="text-[11px] text-[var(--ac)] mt-2.5 inline-block hover:underline"
+            className="text-[11px] text-[var(--ac-text)] mt-2.5 inline-block hover:underline"
           >
             Browse free templates →
           </Link>
@@ -130,7 +130,7 @@ export default function PricingPage() {
               </p>
               <Link
                 href="/store?price=paid"
-                className="text-[11px] text-[var(--ac)] mt-3 inline-block hover:underline"
+                className="text-[11px] text-[var(--ac-text)] mt-3 inline-block hover:underline"
               >
                 Browse templates →
               </Link>

@@ -16,6 +16,11 @@
   --bd2: #E0E0E0;
   --ac: #5BA1F5;
   --acbg: #EEF5FF;
+  /* WCAG AA: --ac (#5BA1F5) is ~2.67:1 on white — fine as a brand FILL/border/
+     decorative, but fails as TEXT. --ac-text is the accessible deeper blue for
+     accent TEXT on light backgrounds: #2563EB ~5.17:1 on white. Dark mode keeps
+     the light --ac value (it already passes ~7.41:1 on the near-black bg). */
+  --ac-text: #2563EB;
   --ok: #10b981;
   --okbg: #dcfce7;
   /* WCAG AA: #f59e0b was ~2.15:1 as text on white. #b45309 (amber-700) is
@@ -47,6 +52,9 @@
   --bd2: #3A3A3C;
   --ac: #5BA1F5;
   --acbg: #1A2A40;
+  /* Dark mode: accent TEXT on the near-black bg already passes AA at the light
+     value (~7.41:1), so --ac-text matches --ac here — dark is visually unchanged. */
+  --ac-text: #5BA1F5;
   --ok: #34d399;
   --okbg: #064e3b;
   /* Dark mode: light amber/red as TEXT on the near-black bg already passes AA

@@ -259,7 +259,7 @@ export function ApiKeyManager() {
                 href={providerInfo.helpUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[var(--ac)] hover:underline"
+                className="text-[var(--ac-text)] hover:underline"
               >
                 Where do I find my {providerInfo.shortName} API key? →
               </a>

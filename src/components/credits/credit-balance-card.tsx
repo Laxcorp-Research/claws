@@ -56,7 +56,7 @@ export function CreditBalanceCard({
   return (
     <div className="border border-[var(--bd)] rounded-xl p-3.5 mb-3.5">
       <div className="flex items-center gap-2 mb-2">
-        <Gift className="w-4 h-4 text-[var(--ac)]" />
+        <Gift className="w-4 h-4 text-[var(--ac-text)]" />
         <h3 className="text-[13px] font-semibold">Claws Starter Credits</h3>
       </div>
 
@@ -107,7 +107,7 @@ export function CreditBalanceCard({
       )}
 
       {!isExhausted && (
-        <Link href="/settings?tab=usage" className="text-[11px] text-[var(--ac)] hover:underline mt-1.5 inline-block">
+        <Link href="/settings?tab=usage" className="text-[11px] text-[var(--ac-text)] hover:underline mt-1.5 inline-block">
           View detailed usage →
         </Link>
       )}

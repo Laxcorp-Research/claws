@@ -36,7 +36,7 @@ export function BriefingFooter({ apiKeySource, consumedCents, creditStatus }: Br
           href={ANTHROPIC_USAGE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[var(--ac)] hover:underline"
+          className="text-[var(--ac-text)] hover:underline"
         >
           View usage at console.anthropic.com →
         </a>

@@ -17,7 +17,7 @@ interface ModelSelectionTableProps {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  ORCHESTRATOR: "text-[var(--ac)]",
+  ORCHESTRATOR: "text-[var(--ac-text)]",
   WORKER: "text-[var(--tx2)]",
   CRITIC: "text-[#5b21b6]",
 }

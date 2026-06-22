@@ -426,7 +426,7 @@ function StoreContent() {
                       </div>
                       {!showAllOfficial && officialSkills.items.length > INITIAL_OFFICIAL_SKILLS && (
                         <button
-                          className="text-[12px] text-[var(--ac)] mt-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
+                          className="text-[12px] text-[var(--ac-text)] mt-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
                           onClick={() => setShowAllOfficial(true)}
                         >
                           Show all {officialSkills.items.length} official skills

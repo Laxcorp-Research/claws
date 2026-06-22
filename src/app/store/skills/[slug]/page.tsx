@@ -333,7 +333,7 @@ export default function SkillDetailPage() {
           {reviewCount > 5 && !showAllReviews && (
             <button
               onClick={() => { setShowAllReviews(true); if (reviews.length <= 5) loadMoreReviews() }}
-              className="text-[12px] text-[var(--ac)] hover:text-[var(--tx)] cursor-pointer mt-2 bg-transparent border-0 p-0"
+              className="text-[12px] text-[var(--ac-text)] hover:text-[var(--tx)] cursor-pointer mt-2 bg-transparent border-0 p-0"
             >
               Show all {reviewCount} reviews
             </button>

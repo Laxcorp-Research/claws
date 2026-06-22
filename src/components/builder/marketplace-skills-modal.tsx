@@ -220,7 +220,7 @@ export function MarketplaceSkillsModal({ isOpen, onClose, existingSkillIds, onIn
                             href={`/store/skills/${skill.slug}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac)] hover:underline mt-[6px]"
+                            className="inline-flex items-center gap-[3px] text-[10px] text-[var(--ac-text)] hover:underline mt-[6px]"
                           >
                             View full details
                             <ExternalLink className="w-[10px] h-[10px]" />
@@ -238,7 +238,7 @@ export function MarketplaceSkillsModal({ isOpen, onClose, existingSkillIds, onIn
                     type="button"
                     onClick={() => fetchSkills(nextCursor)}
                     disabled={loading}
-                    className="text-[11px] text-[var(--ac)] hover:underline disabled:opacity-50 cursor-pointer border-none bg-transparent"
+                    className="text-[11px] text-[var(--ac-text)] hover:underline disabled:opacity-50 cursor-pointer border-none bg-transparent"
                   >
                     {loading ? "Loading..." : "Load more skills"}
                   </button>

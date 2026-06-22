@@ -161,7 +161,7 @@ export function PropertiesPanel() {
         <Label text="Role" tooltip="Orchestrator coordinates all agents. Workers execute tasks. Critic reviews quality." />
         <span className={cn(
           "inline-block text-[10px] font-semibold px-2 py-[2px] rounded-[6px]",
-          isOrch && "bg-[var(--acbg)] text-[var(--ac)]",
+          isOrch && "bg-[var(--acbg)] text-[var(--ac-text)]",
           isCritic && "bg-[#ede9fe] text-[#5b21b6]",
           !isOrch && !isCritic && "bg-[var(--bg2)] text-[var(--tx2)]"
         )}>
