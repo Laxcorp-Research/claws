@@ -1,8 +1,59 @@
 "use client"
 
+import type { ReactElement } from "react"
+import ReactMarkdown from "react-markdown"
+import type { Components } from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
 
 export type ChatBubbleStatus = "sending" | "sent" | "failed"
+
+// PR-9/B polish — SECURITY: agent reply text is UNTRUSTED (LLM/container output,
+// potentially prompt-injected). We render it with react-markdown v10 whose
+// DEFAULT config does NOT parse raw HTML (no `rehype-raw` is added) — so an
+// embedded `<script>`/`<img onerror>` is never turned into a DOM element, and
+// react-markdown's built-in url sanitizer strips `javascript:`/`vbscript:` hrefs.
+// Locked by the XSS test in chat-message.test.tsx (mutation: add rehype-raw →
+// the injection test fails). NEVER add rehype-raw or override urlTransform here.
+const MD_COMPONENTS: Components = {
+  a({ children, href }): ReactElement {
+    // href has already passed react-markdown's safe urlTransform.
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline text-[var(--ac-text)] break-words"
+      >
+        {children}
+      </a>
+    )
+  },
+}
+
+// Scoped prose styling for the (12px) agent bubble. Kept as arbitrary variants
+// so the markdown stays in this component (no global CSS). Uses design tokens.
+const MD_PROSE = cn(
+  "[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
+  "[&_h1]:text-[14px] [&_h1]:font-semibold [&_h1]:mt-2 [&_h1]:mb-1",
+  "[&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:mt-2 [&_h2]:mb-1",
+  "[&_h3]:text-[12px] [&_h3]:font-semibold [&_h3]:mt-1.5 [&_h3]:mb-0.5",
+  "[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1 [&_li]:my-0.5",
+  "[&_blockquote]:border-l-2 [&_blockquote]:border-[var(--bd2)] [&_blockquote]:pl-2 [&_blockquote]:text-[var(--tx2)]",
+  "[&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[11px] [&_:not(pre)>code]:bg-[var(--bg3)] [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:rounded",
+  "[&_pre]:bg-[var(--bg3)] [&_pre]:p-2 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-1 [&_pre_code]:font-mono [&_pre_code]:text-[11px]",
+  "[&_table]:block [&_table]:overflow-x-auto [&_th]:text-left [&_th]:pr-3 [&_td]:pr-3 [&_th]:border-b [&_th]:border-[var(--bd)]",
+)
+
+function MarkdownBody({ content }: { content: string }): ReactElement {
+  return (
+    <div className={MD_PROSE}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+}
 
 interface ChatMessageProps {
   sender: "user" | "agent"
@@ -17,10 +68,9 @@ interface ChatMessageProps {
   // ("[assistant turn failed before producing content]" or, via
   // extractAssistantReply's fallback, "(no reply produced)"). The ONLY
   // null-detail case (errored + empty text + empty errorMessage) still carries
-  // a non-empty `action` ("Reply failed"). A contentless healthy tool-only turn
-  // yields action "Replied". So `detail || action` guarantees a bubble is never
-  // blank — worst case the literal failure text. This is what lets 9/B NOT
-  // render turnHealth (deferred to 9/C) while never showing an empty bubble.
+  // a non-empty `action` ("Reply failed"). So `detail || action` guarantees a
+  // bubble is never blank — and the markdown layer below receives the already-
+  // guarded body, so it cannot reintroduce a blank bubble.
   detail: string | null
   action: string
   status?: ChatBubbleStatus
@@ -40,12 +90,14 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
       </div>
       <div
         className={cn(
-          "rounded-lg px-3 py-2 text-[12px] leading-snug whitespace-pre-wrap break-words text-[var(--tx)]",
+          "rounded-lg px-3 py-2 text-[12px] leading-snug break-words text-[var(--tx)]",
           isUser ? "bg-[var(--acbg)]" : "bg-[var(--bg2)] border border-[var(--bd)]",
           status === "failed" && "opacity-70",
         )}
       >
-        {body}
+        {/* User input is rendered as PLAIN text (typing "**hi**" shows "**hi**").
+            Only agent replies are markdown — and they are sanitized (see MD_COMPONENTS). */}
+        {isUser ? <span className="whitespace-pre-wrap">{body}</span> : <MarkdownBody content={body} />}
       </div>
       {status === "sending" && <span className="text-[10px] text-[var(--tx3)]">Sending…</span>}
       {status === "failed" && <span className="text-[10px] text-[var(--err)]">Failed to send</span>}
