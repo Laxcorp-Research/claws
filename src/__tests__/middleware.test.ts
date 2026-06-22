@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 vi.mock('next-auth/jwt', () => ({
   getToken: vi.fn().mockResolvedValue(null),
@@ -171,5 +173,105 @@ describe('Middleware', () => {
       const res = await middleware(createReq('/api/workspaces'));
       expect(res.status).toBe(200);
     });
+  });
+});
+
+describe('Admin authorization at the edge (#133)', () => {
+  const ADMIN = 'chatianyalaxman118@gmail.com';
+  const origAdminEmails = process.env.ADMIN_EMAILS;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (apiRateLimit.limit as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true, remaining: 99, reset: Date.now() + 60000 });
+  });
+
+  afterEach(() => {
+    if (origAdminEmails === undefined) delete process.env.ADMIN_EMAILS;
+    else process.env.ADMIN_EMAILS = origAdminEmails;
+    vi.restoreAllMocks();
+  });
+
+  it('no token on /admin → sign-in redirect (auth gate unchanged)', async () => {
+    process.env.ADMIN_EMAILS = ADMIN;
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const res = await middleware(createReq('/admin/versions'));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('Location')).toContain('/auth/signin');
+  });
+
+  // The #133 fix: a logged-in NON-admin must NOT receive the admin route.
+  // Mutation: delete the /admin block in middleware.ts → this fails (the
+  // non-admin would pass through with no rewrite, the old vulnerable behavior).
+  it('non-admin token + ADMIN_EMAILS set → 404 rewrite to not-found, NOT the admin route', async () => {
+    process.env.ADMIN_EMAILS = ADMIN;
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    const res = await middleware(createReq('/admin/versions'));
+    expect(res.headers.get('x-middleware-rewrite') ?? '').toContain('/_not-found');
+    expect(res.headers.get('Location')).toBeNull(); // not a redirect; a rewrite (URL stays /admin/*)
+  });
+
+  it('admin token (the operator account) → passes through to the admin route', async () => {
+    process.env.ADMIN_EMAILS = ADMIN;
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-1', email: ADMIN });
+    const res = await middleware(createReq('/admin/versions'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull();
+    expect(res.headers.get('X-Frame-Options')).toBe('DENY');
+  });
+
+  it('admin match is case-insensitive', async () => {
+    process.env.ADMIN_EMAILS = ADMIN;
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-1', email: ADMIN.toUpperCase() });
+    const res = await middleware(createReq('/admin'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull();
+  });
+
+  // Fail-SAFE on config: an env wipe must NOT 404 every admin (self-lockout).
+  // Mutation: make an empty allowlist hard-404 → this fails.
+  it('ADMIN_EMAILS unset → does NOT 404 a non-admin; falls through + logs', async () => {
+    delete process.env.ADMIN_EMAILS;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    const res = await middleware(createReq('/admin/versions'));
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull();
+    expect(res.status).toBe(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('edge admin enforcement DISABLED'));
+  });
+
+  it('ADMIN_EMAILS whitespace-only → treated as unset (fall through, no 404)', async () => {
+    process.env.ADMIN_EMAILS = '   ';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    const res = await middleware(createReq('/admin'));
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it('non-admin on a NON-admin protected route is unaffected (still passes)', async () => {
+    process.env.ADMIN_EMAILS = ADMIN;
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    const res = await middleware(createReq('/my-claws'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull();
+  });
+});
+
+describe('Edge-safety guard (#133)', () => {
+  const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
+
+  // admin-emails.ts must stay import-free so it can't drag Node-only or
+  // next-auth/server code into the edge middleware bundle.
+  // Mutation: add any import to admin-emails.ts → this fails.
+  it('src/lib/admin-emails.ts is import-free', () => {
+    const src = read('src/lib/admin-emails.ts');
+    expect(/^\s*import\s/m.test(src)).toBe(false);
+  });
+
+  it('middleware imports the allowlist from the edge-safe module, not the server admin module', () => {
+    const src = read('src/middleware.ts');
+    expect(src).toContain('./lib/admin-emails');
+    expect(src).not.toContain('@/lib/api/admin'); // would pull in getServerSession/Prisma into the edge bundle
+    expect(src).not.toContain('getServerSession');
   });
 });

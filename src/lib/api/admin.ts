@@ -1,15 +1,11 @@
 import { getSessionUser } from '@/lib/api/auth'
+import { getAdminEmails, isAdminEmail } from '@/lib/admin-emails'
 
-function getAdminEmails(): string[] {
-  return (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean)
-}
-
-export function isAdminEmail(email: string): boolean {
-  return getAdminEmails().includes(email.toLowerCase())
-}
+// Admin allowlist logic now lives in the edge-safe '@/lib/admin-emails' module
+// (so middleware can use it at the edge without pulling in getServerSession/
+// Prisma). Re-exported here so existing server callers keep importing from
+// '@/lib/api/admin'.
+export { getAdminEmails, isAdminEmail }
 
 export async function getAdminUser() {
   const user = await getSessionUser()
