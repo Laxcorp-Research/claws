@@ -118,10 +118,21 @@ describe("ChatPanel — composer", () => {
     expect(textarea.disabled).toBe(false)
   })
 
-  it("marks the optimistic bubble failed (and does NOT throw) when the send returns 409", async () => {
+  // The composer must tolerate EVERY non-202 send response — the full 409
+  // family (HIBERNATED / STOPPED / TRANSITIONING), 502 (gateway unreachable),
+  // and 429 (rate limit) — by marking the bubble failed and NEVER throwing.
+  // The component treats all non-202 identically; this matrix locks that the
+  // whole set is handled (rich per-code copy is deferred to 9/C).
+  it.each<[number, string]>([
+    [409, "WORKSPACE_HIBERNATED"],
+    [409, "WORKSPACE_STOPPED"],
+    [409, "WORKSPACE_TRANSITIONING"],
+    [502, "GATEWAY_UNREACHABLE"],
+    [429, "RATE_LIMITED"],
+  ])("marks the bubble failed (no throw) when the send returns %i %s", async (status, code) => {
     const fetchMock = vi.fn().mockResolvedValue({
-      status: 409,
-      json: async () => ({ success: false, error: { code: "WORKSPACE_TRANSITIONING" } }),
+      status,
+      json: async () => ({ success: false, error: { code } }),
     })
     vi.stubGlobal("fetch", fetchMock)
 
@@ -129,13 +140,34 @@ describe("ChatPanel — composer", () => {
     fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello" } })
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
 
-    // Optimistic bubble appears immediately, then flips to failed.
+    // Optimistic bubble appears immediately, then flips to failed — and the
+    // message body is preserved (never blanked).
     expect(await screen.findByText("hello")).toBeTruthy()
     expect(await screen.findByText(/Failed to send/i)).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/workspaces/ws-1/chat",
       expect.objectContaining({ method: "POST" }),
     )
+  })
+
+  it("marks the bubble failed via the catch path when fetch rejects (network error) — NO unhandled rejection", async () => {
+    const onUnhandled = vi.fn()
+    window.addEventListener("unhandledrejection", onUnhandled)
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "offline msg" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    // MUTATION: remove send()'s try/catch → the rejection is unhandled and the
+    // bubble is never flipped to failed (stuck "Sending…") → this times out → fails.
+    expect(await screen.findByText("offline msg")).toBeTruthy()
+    expect(await screen.findByText(/Failed to send/i)).toBeTruthy()
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    window.removeEventListener("unhandledrejection", onUnhandled)
+    expect(onUnhandled).not.toHaveBeenCalled()
   })
 
   it("shows the optimistic bubble as sent (no failure) on a 202", async () => {
