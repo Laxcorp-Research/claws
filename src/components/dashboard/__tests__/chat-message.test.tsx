@@ -148,3 +148,34 @@ describe("ChatMessage — agent markdown (sanitized) vs user plain text (GAP #1)
     expect(screen.getByText("Reply failed")).toBeTruthy()
   })
 })
+
+describe("ChatMessage — long-unbroken-token wrap (no horizontal overflow)", () => {
+  // A ~100-char unbroken query token, the case that overflowed the panel.
+  const LONG = "https://example.com/x?token=" + "a".repeat(120)
+
+  // The bubble must carry overflow-wrap:anywhere — NOT `break-words`
+  // (overflow-wrap:break-word leaves min-content = the whole token, so the
+  // content-sized bubble grows past max-w-[85%] and runs off the panel). And
+  // NOT break-all (that mid-word-breaks normal text). MUTATION: revert to
+  // `break-words` → this fails.
+  it("user bubble uses overflow-wrap:anywhere (not break-word/break-all)", () => {
+    const { container } = render(
+      <ChatMessage sender="user" senderName="You" timestamp="08:00 UTC" detail={LONG} action={LONG} />,
+    )
+    const bubble = container.querySelector('[class*="rounded-lg"]') as HTMLElement
+    expect(bubble).not.toBeNull()
+    expect(bubble.className).toContain("overflow-wrap:anywhere")
+    expect(bubble.className).not.toContain("break-all")
+    expect(screen.getByText(LONG)).toBeTruthy()
+  })
+
+  it("agent bubble uses overflow-wrap:anywhere too (markdown reply with a long token)", () => {
+    const { container } = render(
+      <ChatMessage sender="agent" senderName="Orchestrator" timestamp="08:00 UTC" detail={`See ${LONG} for details.`} action="x" />,
+    )
+    const bubble = container.querySelector('[class*="rounded-lg"]') as HTMLElement
+    expect(bubble).not.toBeNull()
+    expect(bubble.className).toContain("overflow-wrap:anywhere")
+    expect(bubble.className).not.toContain("break-all")
+  })
+})

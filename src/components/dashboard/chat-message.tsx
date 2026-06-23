@@ -23,7 +23,7 @@ const MD_COMPONENTS: Components = {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="underline text-[var(--ac-text)] break-words"
+        className="underline text-[var(--ac-text)] [overflow-wrap:anywhere]"
       >
         {children}
       </a>
@@ -92,7 +92,11 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
       </div>
       <div
         className={cn(
-          "rounded-lg px-3 py-2 text-[12px] leading-snug break-words text-[var(--tx)]",
+          // overflow-wrap:anywhere (not `break-words`/break-word): only `anywhere`
+          // collapses the bubble's min-content width so a long unbroken token (e.g. a
+          // 100-char URL) wraps inside the max-w-[85%] bubble instead of overflowing
+          // the panel. `break-all` is wrong here — it would mid-word-break normal text.
+          "rounded-lg px-3 py-2 text-[12px] leading-snug [overflow-wrap:anywhere] text-[var(--tx)]",
           isUser ? "bg-[var(--acbg)]" : "bg-[var(--bg2)] border border-[var(--bd)]",
           status === "failed" && "opacity-70",
         )}
