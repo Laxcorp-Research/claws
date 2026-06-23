@@ -18,7 +18,7 @@
 // ============================================================================
 
 import { prisma } from '@/lib/db';
-import { encrypt, decrypt } from '@/lib/encryption';
+import { encrypt, decrypt, decryptAndMaybeReencrypt } from '@/lib/encryption';
 import {
   requireActivityEndpoint,
   requireMeteringEndpoint,
@@ -633,9 +633,25 @@ export async function getGatewayConnectionInfo(
 
   if (!workspace.containerHost || !workspace.gatewayToken) return null;
 
+  // Re-encrypt-on-read: if the token only decrypts under the PREVIOUS master key
+  // (mid key-rotation), transparently migrate it to the current key. The write
+  // is best-effort — a failure must NOT break the read, so we always return the
+  // decrypted token regardless.
+  const token = await decryptAndMaybeReencrypt(workspace.gatewayToken, async (newBlob) => {
+    try {
+      await prisma.workspace.update({ where: { id: workspaceId }, data: { gatewayToken: newBlob } });
+      log.info('gatewayToken migrated to current encryption key', { workspaceId });
+    } catch (e) {
+      log.warn('gatewayToken re-encrypt write failed (continuing with decrypted token)', {
+        workspaceId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
   return {
     wsUrl: `wss://${workspace.containerHost}`,
-    token: decrypt(workspace.gatewayToken),
+    token,
   };
 }
 
