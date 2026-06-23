@@ -23,7 +23,7 @@ describe('encryption', () => {
     });
 
     it('encrypts and decrypts unicode content', () => {
-      const plaintext = '-????? ?? mojis';
+      const plaintext = 'æ-¥æœ¬èªžãƒ†ã‚¹ãƒˆ ðŸ”‘ Ã©mojis';
       const encrypted = encrypt(plaintext);
       expect(decrypt(encrypted)).toBe(plaintext);
     });
@@ -94,7 +94,7 @@ describe('encryption', () => {
   });
 });
 
-// ??? Key-rotation guardrail (old-key fallback, re-encrypt-on-read, health) ???
+// --- Key-rotation guardrail (old-key fallback, re-encrypt-on-read, health) ---
 
 const KA = 'a'.repeat(64); // 32-byte hex
 const KB = 'b'.repeat(64);
@@ -207,7 +207,7 @@ describe('encryption key-rotation guardrail', () => {
       persisted.push(nb);
     });
     expect(plaintext).toBe('read-then-migrate');
-    expect(persisted).toHaveLength(1); // MUTATION: skip re-encrypt ? length 0 ? fails
+    expect(persisted).toHaveLength(1); // MUTATION: skip re-encrypt -> length 0 -> fails
     setEnv('ENCRYPTION_MASTER_KEY_PREVIOUS', undefined);
     expect(decrypt(persisted[0])).toBe('read-then-migrate');
   });
@@ -235,7 +235,7 @@ describe('encryption key-rotation guardrail', () => {
   });
 
   // 3) Decrypt-health probe (pass/fail only).
-  it('assessDecryptHealth: all-good ? ok; an undecryptable blob ? not ok', () => {
+  it('assessDecryptHealth: all-good -> ok; an undecryptable blob -> not ok', () => {
     setEnv('ENCRYPTION_MASTER_KEY', KB);
     setEnv('ENCRYPTION_MASTER_KEY_PREVIOUS', undefined);
     const good = encryptUnder(KB, 'g');
