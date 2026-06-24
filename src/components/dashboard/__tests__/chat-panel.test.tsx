@@ -5,12 +5,14 @@
 // non-202 send, never a throw).
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react"
 import {
   ChatPanel,
   reconcileChatMessages,
-  isAgentWorking,
+  computeTurnStatuses,
+  hasPendingTurn,
   isNearBottom,
+  PENDING_TURN_TIMEOUT_MS,
   type ChatRow,
   type ChatMessageView,
   type OptimisticMessage,
@@ -217,59 +219,239 @@ describe("isNearBottom (GAP #3 scroll guard)", () => {
   })
 })
 
-describe("isAgentWorking (GAP #2 pending)", () => {
-  const u = (status?: "sending" | "sent" | "failed"): ChatMessageView => ({
-    key: "u", sender: "user", senderName: "You", sortTs: 0, detail: "", action: "", status,
+describe("computeTurnStatuses — per-runId, time-bounded pending (working-indicator fix)", () => {
+  const T = Date.parse("2026-06-22T08:00:00.000Z") // fixed "now"
+  const within = T - 10_000 // 10s ago → inside the 2-min window
+  const past = T - (PENDING_TURN_TIMEOUT_MS + 60_000) // well past the window
+
+  const userView = (
+    runId: string | null,
+    sortTs: number,
+    status?: "sending" | "sent" | "failed",
+  ): ChatMessageView => ({
+    key: "u-" + runId, sender: "user", senderName: "You", sortTs, detail: "", action: "", status, runId,
   })
-  const a = (): ChatMessageView => ({
-    key: "a", sender: "agent", senderName: "X", sortTs: 0, detail: "", action: "",
+  const agentView = (runId: string, sortTs: number): ChatMessageView => ({
+    key: "a-" + runId, sender: "agent", senderName: "X", sortTs, detail: "", action: "", runId,
   })
-  it("true while a started user turn has no reply", () => {
-    expect(isAgentWorking([u("sent")])).toBe(true)
-    expect(isAgentWorking([u(undefined)])).toBe(true) // streamed MESSAGE_RECEIVED
+
+  // ORPHAN REGRESSION — the exact live bug. A started user turn with no
+  // MESSAGE_SENT, timestamped past the window, is "no_response" → indicator OFF.
+  // The OLD count-based logic returned working=true here (started 1 > replied 0)
+  // and stuck forever. This asserts the new behavior the old code FAILS.
+  it("orphan past the window → no_response, NOT pending (the stuck-forever bug)", () => {
+    const st = computeTurnStatuses([userView("rA", past, "sent")], T)
+    expect(st.get("rA")).toBe("no_response")
+    expect(hasPendingTurn(st)).toBe(false)
   })
-  it("false once the reply arrives", () => {
-    expect(isAgentWorking([u("sent"), a()])).toBe(false)
+
+  // PER-RUNID RESOLVE — a recent send is pending; the reply carrying the SAME
+  // runId resolves it.
+  it("recent send with no reply → pending; matching MESSAGE_SENT.runId → resolved", () => {
+    expect(hasPendingTurn(computeTurnStatuses([userView("rB", within, "sent")], T))).toBe(true)
+    const resolved = computeTurnStatuses(
+      [userView("rB", within, "sent"), agentView("rB", within + 5_000)],
+      T,
+    )
+    expect(resolved.has("rB")).toBe(false)
+    expect(hasPendingTurn(resolved)).toBe(false)
   })
-  it("ignores sending (pre-202) and failed (no run started)", () => {
-    expect(isAgentWorking([u("sending")])).toBe(false)
-    expect(isAgentWorking([u("failed")])).toBe(false)
+
+  it("a reply with a DIFFERENT runId does NOT resolve the turn (correlation is by runId)", () => {
+    // MUTATION: resolve on any agent reply (ignore runId) → this turn resolves
+    // and hasPendingTurn flips false → fails.
+    const st = computeTurnStatuses(
+      [userView("rB", within, "sent"), agentView("rOTHER", within + 5_000)],
+      T,
+    )
+    expect(st.get("rB")).toBe("pending")
+    expect(hasPendingTurn(st)).toBe(true)
   })
-  it("true under rapid sends (more user turns than replies)", () => {
-    expect(isAgentWorking([u("sent"), u("sent"), a()])).toBe(true)
+
+  // INDEPENDENCE — THE live bug: an earlier orphaned turn must not keep the
+  // indicator on once a later turn has replied.
+  it("orphaned earlier turn + replied later turn → indicator OFF (independence)", () => {
+    const st = computeTurnStatuses(
+      [
+        userView("rA", past, "sent"), // orphan, never replied
+        userView("rB", within, "sent"), // later turn
+        agentView("rB", within + 5_000), // later turn's reply
+      ],
+      T,
+    )
+    expect(st.get("rA")).toBe("no_response")
+    expect(st.has("rB")).toBe(false)
+    expect(hasPendingTurn(st)).toBe(false) // NOT stuck on rA — the old bug
+  })
+
+  it("a genuinely-pending later turn keeps the indicator on via ITS OWN pending, not the orphan", () => {
+    const st = computeTurnStatuses(
+      [userView("rA", past, "sent"), userView("rB", within, "sent")],
+      T,
+    )
+    expect(st.get("rA")).toBe("no_response")
+    expect(st.get("rB")).toBe("pending")
+    expect(hasPendingTurn(st)).toBe(true)
+  })
+
+  // TIMEOUT — same turn, evaluated before vs after the ceiling.
+  it("pending within the window flips to no_response past PENDING_TURN_TIMEOUT_MS", () => {
+    const views = [userView("rC", T, "sent")]
+    expect(computeTurnStatuses(views, T + 10_000).get("rC")).toBe("pending")
+    // MUTATION: drop the timeout (always pending) → this line fails.
+    expect(computeTurnStatuses(views, T + PENDING_TURN_TIMEOUT_MS + 1).get("rC")).toBe("no_response")
+  })
+
+  it("does not track pre-202 (sending), failed, or keyless user turns", () => {
+    expect(computeTurnStatuses([userView("rD", within, "sending")], T).size).toBe(0)
+    expect(computeTurnStatuses([userView("rE", within, "failed")], T).size).toBe(0)
+    expect(computeTurnStatuses([userView(null, within, "sent")], T).size).toBe(0)
+  })
+
+  it("streamed MESSAGE_RECEIVED (status undefined) counts as a started turn", () => {
+    expect(computeTurnStatuses([userView("rF", within, undefined)], T).get("rF")).toBe("pending")
   })
 })
 
-describe("ChatPanel — working indicator (GAP #2)", () => {
-  const userRow: ChatRow = {
-    id: "u1", actionType: "MESSAGE_RECEIVED", timestamp: "2026-06-22T08:00:00.000Z",
-    agentName: "System", action: "Received from : hi", detail: "hi", messageId: "r1",
-  }
-  const replyRow: ChatRow = {
-    id: "a1", actionType: "MESSAGE_SENT", timestamp: "2026-06-22T08:00:05.000Z",
-    agentName: "Dev Commander", action: "Replied: hey", detail: "hey there", messageId: null,
-  }
-
-  it("shows the agent working indicator while a user turn is unreplied", () => {
-    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow]} orchestratorName="Dev Commander" />)
-    expect(screen.getByText(/is working/i)).toBeTruthy()
+describe("ChatPanel — working indicator (per-runId + timeout)", () => {
+  // Rows are timestamped relative to a FAKED wall clock so the time-bounded
+  // pending logic is deterministic. The user send carries the turn key as
+  // messageId (=== runId); the agent reply carries it as runId.
+  const BASE = Date.parse("2026-06-22T08:00:00.000Z")
+  const iso = (ms: number) => new Date(ms).toISOString()
+  const userRow = (runId: string, agoMs: number): ChatRow => ({
+    id: "u-" + runId, actionType: "MESSAGE_RECEIVED", timestamp: iso(BASE - agoMs),
+    agentName: "System", action: "Received from : hi", detail: "hi", messageId: runId,
+  })
+  const replyRow = (runId: string, agoMs: number, text = "hey there"): ChatRow => ({
+    id: "a-" + runId, actionType: "MESSAGE_SENT", timestamp: iso(BASE - agoMs),
+    agentName: "Dev Commander", action: "Replied: " + text, detail: text, runId,
   })
 
-  it("replaces the working indicator with the reply when MESSAGE_SENT arrives", () => {
-    const { rerender } = render(
-      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow]} orchestratorName="Dev Commander" />,
-    )
-    expect(screen.getByText(/is working/i)).toBeTruthy()
-    rerender(
-      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow, replyRow]} orchestratorName="Dev Commander" />,
-    )
-    expect(screen.queryByText(/is working/i)).toBeNull()
-    expect(screen.getByText("hey there")).toBeTruthy()
+  it("shows the indicator while a recent user turn is unreplied", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
+      expect(screen.getByText(/is working/i)).toBeTruthy()
+      expect(screen.queryByText("No response")).toBeNull()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
   })
 
-  it("does NOT show the working indicator on a non-sendable Claw (no false 'working' on stale history)", () => {
-    render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[userRow]} orchestratorName="Dev Commander" />)
-    expect(screen.queryByText(/is working/i)).toBeNull()
+  it("resolves the indicator when MESSAGE_SENT with the MATCHING runId arrives", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      const { rerender } = render(
+        <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />,
+      )
+      expect(screen.getByText(/is working/i)).toBeTruthy()
+      rerender(
+        <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("r1", 10_000), replyRow("r1", 5_000)]} orchestratorName="Dev Commander" />,
+      )
+      expect(screen.queryByText(/is working/i)).toBeNull()
+      expect(screen.getByText("hey there")).toBeTruthy()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  it("does NOT stick on a single OLD orphaned turn — indicator off, shows quiet 'No response'", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("rOLD", PENDING_TURN_TIMEOUT_MS + 60_000)]} orchestratorName="Dev Commander" />)
+      expect(screen.queryByText(/is working/i)).toBeNull()
+      expect(screen.getByText("No response")).toBeTruthy()
+      expect(screen.queryByText("Failed to send")).toBeNull() // NOT a send failure
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  // THE live bug: an earlier orphaned turn must not hold the indicator on once a
+  // later turn has replied. MUTATION: count-based logic → started 2 > replied 1
+  // → stuck ON → this fails.
+  it("indicator OFF when an earlier turn is orphaned but a later turn replied (the live bug)", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      const rows = [
+        userRow("rOLD", PENDING_TURN_TIMEOUT_MS + 120_000), // orphan, no reply
+        userRow("rNEW", 10_000),
+        replyRow("rNEW", 5_000, "done"),
+      ]
+      render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" />)
+      expect(screen.queryByText(/is working/i)).toBeNull() // not stuck on the orphan
+      expect(screen.getByText("No response")).toBeTruthy() // orphan annotated
+      expect(screen.getByText("done")).toBeTruthy() // later reply rendered
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  // TIMEOUT via the live tick: a pending turn flips to "No response" after the
+  // ceiling WITHOUT a new message. MUTATION: remove the timeout → stays "working".
+  it("times out a pending turn after PENDING_TURN_TIMEOUT_MS → indicator off + 'No response'", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("rT", 5_000)]} orchestratorName="Dev Commander" />)
+      expect(screen.getByText(/is working/i)).toBeTruthy()
+      expect(screen.queryByText("No response")).toBeNull()
+
+      // The re-eval tick fires across the ceiling and recomputes — no new row.
+      act(() => {
+        vi.advanceTimersByTime(PENDING_TURN_TIMEOUT_MS + 30_000)
+      })
+
+      expect(screen.queryByText(/is working/i)).toBeNull()
+      expect(screen.getByText("No response")).toBeTruthy()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  // A late reply (past the timeout) is NOT rejected — it renders and clears the
+  // "No response" note when it finally streams in.
+  it("a LATE reply after timeout still renders the reply bubble and clears 'No response'", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      const { rerender } = render(
+        <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("rL", PENDING_TURN_TIMEOUT_MS + 60_000)]} orchestratorName="Dev Commander" />,
+      )
+      expect(screen.queryByText(/is working/i)).toBeNull()
+      expect(screen.getByText("No response")).toBeTruthy()
+
+      rerender(
+        <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("rL", PENDING_TURN_TIMEOUT_MS + 60_000), replyRow("rL", 1_000, "late but here")]} orchestratorName="Dev Commander" />,
+      )
+      expect(screen.getByText("late but here")).toBeTruthy()
+      expect(screen.queryByText("No response")).toBeNull()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  it("does NOT show the indicator on a non-sendable Claw (no false 'working' on stale history)", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
+      expect(screen.queryByText(/is working/i)).toBeNull()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
   })
 })
 

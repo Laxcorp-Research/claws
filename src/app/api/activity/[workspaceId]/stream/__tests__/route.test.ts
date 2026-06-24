@@ -77,10 +77,11 @@ const SSE_EXCLUDED_FIELDS: ReadonlyArray<string> = [
 // 1:1 schema column. `metadata` itself stays in SSE_EXCLUDED_FIELDS (the raw
 // blob is off the wire); these are the explicit projections the dashboard chat
 // panel needs (messageId = reconciliation key; channelId = webchat filter;
-// from = sender hint). Enumerated here so the structural assertion stays exact:
+// from = sender hint; runId = turn-correlation key for the working indicator).
+// Enumerated here so the structural assertion stays exact:
 //   formatLog output === (scalar fields − SSE_EXCLUDED_FIELDS) + SSE_DERIVED_FIELDS.
 // Adding a projection without listing it here (or vice versa) MUST fail (d).
-const SSE_DERIVED_FIELDS: ReadonlyArray<string> = ["messageId", "channelId", "from"]
+const SSE_DERIVED_FIELDS: ReadonlyArray<string> = ["messageId", "channelId", "from", "runId"]
 
 function getActivityLogScalarFields(): string[] {
   const schemaPath = join(process.cwd(), "prisma/schema.prisma")
@@ -150,6 +151,8 @@ describe("SSE /api/activity/[workspaceId]/stream — formatLog", () => {
   })
 
   // PR-9/B: the reconciliation key + webchat filter must reach the wire.
+  // A user send is persisted as MESSAGE_RECEIVED: the key is in metadata.messageId
+  // (runId is null until the orchestrator starts the turn — protocol §A.3).
   it("(PR-9/B) projects messageId/channelId/from out of metadata for the chat panel", () => {
     const out = formatLog({
       ...baseRow,
@@ -159,19 +162,41 @@ describe("SSE /api/activity/[workspaceId]/stream — formatLog", () => {
         messageId: "7ba631e0-033a-46f9-ade7-839345efe8ce",
         channelId: "webchat",
         senderId: "gateway-client",
+        runId: null,
       }),
     })
     expect(out.messageId).toBe("7ba631e0-033a-46f9-ade7-839345efe8ce")
     expect(out.channelId).toBe("webchat")
     expect(out.from).toBe("")
+    expect(out.runId).toBeNull()
+  })
+
+  // WORKING-INDICATOR FIX: the agent reply (MESSAGE_SENT) carries the turn key in
+  // metadata.runId === the original send's runId. Projecting it lets the panel
+  // pair a reply to its send per-turn. MUTATION: drop `runId` from formatLog's
+  // output → out.runId is undefined → this fails (and so does the structural (d)).
+  it("(working-indicator) projects runId out of metadata for the agent reply (MESSAGE_SENT)", () => {
+    const out = formatLog({
+      ...baseRow,
+      actionType: "MESSAGE_SENT",
+      metadata: JSON.stringify({
+        to: "webchat",
+        channelId: "webchat",
+        runId: "093bd07b-fae0-4c11-9a2a-7b6f0c0d1e2f",
+      }),
+    })
+    expect(out.runId).toBe("093bd07b-fae0-4c11-9a2a-7b6f0c0d1e2f")
+    expect(out.channelId).toBe("webchat")
   })
 
   it("(PR-9/B) derived chat fields are null when metadata is absent or malformed (never throws)", () => {
     expect(formatLog({ ...baseRow, metadata: null }).messageId).toBeNull()
+    expect(formatLog({ ...baseRow, metadata: null }).runId).toBeNull()
     const malformed = formatLog({ ...baseRow, metadata: "}{ not json" })
     expect(malformed.messageId).toBeNull()
     expect(malformed.channelId).toBeNull()
     expect(malformed.from).toBeNull()
+    expect(malformed.runId).toBeNull()
   })
 })
 
