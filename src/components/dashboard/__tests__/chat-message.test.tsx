@@ -82,6 +82,51 @@ describe("ChatMessage — never-blank bubble (detail || action)", () => {
     expect(screen.getByText("this never sent")).toBeTruthy()
     expect(screen.getByText("Failed to send")).toBeTruthy()
   })
+
+  // WORKING-INDICATOR FIX (Q2): a sent-but-unanswered turn shows a quiet
+  // "No response" note that is VISUALLY DISTINCT from the red "Failed to send".
+  // The send SUCCEEDED — only the reply is missing — so styling it like a send
+  // failure would be wrong information.
+  it("renders a quiet 'No response' note (muted --tx3, NOT the red --err 'Failed to send')", () => {
+    render(
+      <ChatMessage
+        sender="user"
+        senderName="You"
+        timestamp="08:00 UTC"
+        detail="went through, no reply"
+        action="went through, no reply"
+        status="sent"
+        noResponse
+      />,
+    )
+    expect(screen.getByText("went through, no reply")).toBeTruthy()
+    const note = screen.getByText("No response")
+    expect(note).toBeTruthy()
+    // Muted token, NOT the error token. MUTATION: style it with --err (like a
+    // failure) → this fails.
+    expect(note.className).toContain("var(--tx3)")
+    expect(note.className).not.toContain("var(--err)")
+    // And it is NOT the send-failure note.
+    expect(screen.queryByText("Failed to send")).toBeNull()
+  })
+
+  it("does NOT render 'No response' when the send itself failed (mutually exclusive)", () => {
+    render(
+      <ChatMessage
+        sender="user"
+        senderName="You"
+        timestamp="08:00 UTC"
+        detail="never sent"
+        action="never sent"
+        status="failed"
+        noResponse
+      />,
+    )
+    // A failed SEND is "Failed to send", never "No response" — the latter would
+    // wrongly imply it sent.
+    expect(screen.getByText("Failed to send")).toBeTruthy()
+    expect(screen.queryByText("No response")).toBeNull()
+  })
 })
 
 describe("ChatMessage — agent markdown (sanitized) vs user plain text (GAP #1)", () => {

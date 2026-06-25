@@ -27,7 +27,12 @@ export interface ChatRow {
   agentName: string
   action: string
   detail?: string | null
+  // MESSAGE_RECEIVED carries the turn key here (=== the 202 runId).
   messageId?: string | null
+  // MESSAGE_SENT (the agent reply) carries the turn key here (=== the same
+  // 202 runId). Projected by formatLog so the working indicator can pair a
+  // reply to its send per-turn.
+  runId?: string | null
 }
 
 // A message the composer rendered optimistically. The send endpoint writes NO
@@ -50,6 +55,10 @@ export interface ChatMessageView {
   detail: string | null
   action: string
   status?: ChatBubbleStatus
+  // The turn-correlation key (=== the 202 runId). For a user view it's the
+  // optimistic send's runId or the streamed MESSAGE_RECEIVED.messageId; for an
+  // agent view it's the streamed MESSAGE_SENT.runId. Drives per-turn pending.
+  runId?: string | null
 }
 
 /**
@@ -95,6 +104,7 @@ export function reconcileChatMessages(
       detail: o.text,
       action: o.text,
       status: o.status,
+      runId: o.runId ?? null,
     })
   }
 
@@ -110,6 +120,11 @@ export function reconcileChatMessages(
       sortTs: Number.isNaN(parsed) ? 0 : parsed,
       detail: r.detail ?? null,
       action: r.action,
+      // The turn key lives in different metadata fields per row type: a user
+      // send (MESSAGE_RECEIVED) carries it as messageId; the agent reply
+      // (MESSAGE_SENT) carries it as runId. Normalize both into `runId` so
+      // pending-matching pairs them by a single value.
+      runId: isUser ? r.messageId ?? null : r.runId ?? null,
     })
   }
 
@@ -117,22 +132,72 @@ export function reconcileChatMessages(
   return views
 }
 
-// PR-9/B polish (GAP #2): the agent is "working" while at least one started
-// user turn has no reply yet. Every webchat turn emits exactly one MESSAGE_SENT
-// (success OR error) per agent_end, so (started user turns) − (agent replies)
-// is the count of in-flight turns. Count-based, NOT runId-keyed, deliberately:
-// it needs no new SSE field (runId is not on the wire), is order-independent,
-// and survives rapid sends. "Started" = a user view that is acked or streamed
-// (status "sent", or a streamed MESSAGE_RECEIVED whose status is undefined) —
-// NOT "sending" (pre-202) or "failed" (no run ever started).
-export function isAgentWorking(views: ChatMessageView[]): boolean {
-  let started = 0
-  let replied = 0
+// A turn that gets no reply must NOT spin "working…" forever. Turns finish in
+// ~10s; 2 min is a very generous ceiling after which an unreplied turn is
+// declared "no response" (stale container, hung turn, dropped reply). Named so
+// the timeout is auditable, not a magic number.
+export const PENDING_TURN_TIMEOUT_MS = 2 * 60 * 1000
+
+// How often the panel re-evaluates time-bounded pending state WITHOUT a new
+// message — long enough to be cheap, short enough that "no response" appears
+// promptly after the 2-min ceiling. The interval runs ONLY while a turn is
+// pending (see the effect in ChatPanel) — never on a quiet panel.
+export const PENDING_TICK_MS = 15 * 1000
+
+export type TurnState = "pending" | "no_response"
+
+// WORKING-INDICATOR FIX (replaces the old count-based isAgentWorking).
+//
+// The old logic was `(started user turns) − (agent replies) > 0`. It assumed
+// every user turn eventually yields a MESSAGE_SENT; a single orphaned turn (an
+// old "hello" to a stale container that never emitted a reply) permanently made
+// started > replied → the indicator stuck ON forever, even after later turns
+// replied. Count-based cannot recover from an unreplied turn.
+//
+// This is PER-TURN, keyed by runId, and TIME-BOUNDED. For each user turn (an
+// optimistic send or a streamed MESSAGE_RECEIVED) that carries a runId and
+// actually started a run (status not "sending"/"failed"):
+//   - replied   → a MESSAGE_SENT with the SAME runId exists → not tracked.
+//   - pending   → no reply yet AND within PENDING_TURN_TIMEOUT_MS of turn start.
+//   - no_response → no reply AND past the timeout (stops the spinner; the bubble
+//                   gets a quiet "No response" note — distinct from a send
+//                   failure, because the send SUCCEEDED).
+// Because it's per-runId and time-bounded: a later replied turn resolves on its
+// own, and an earlier orphan ages out instead of holding the indicator hostage.
+export function computeTurnStatuses(
+  views: ChatMessageView[],
+  now: number,
+  timeoutMs: number = PENDING_TURN_TIMEOUT_MS,
+): Map<string, TurnState> {
+  const repliedRunIds = new Set<string>()
   for (const v of views) {
-    if (v.sender === "agent") replied++
-    else if (v.status !== "sending" && v.status !== "failed") started++
+    if (v.sender === "agent" && typeof v.runId === "string" && v.runId.length > 0) {
+      repliedRunIds.add(v.runId)
+    }
   }
-  return started > replied
+
+  const statuses = new Map<string, TurnState>()
+  for (const v of views) {
+    if (v.sender !== "user") continue
+    // No run started yet (pre-202) or the send failed (no run will start) →
+    // not a pending turn; the bubble's own "Sending…"/"Failed to send" covers it.
+    if (v.status === "sending" || v.status === "failed") continue
+    // Need the turn key to correlate a reply; a keyless user row can't be paired.
+    if (typeof v.runId !== "string" || v.runId.length === 0) continue
+    // The reply already arrived → resolved, nothing to show.
+    if (repliedRunIds.has(v.runId)) continue
+    statuses.set(v.runId, now - v.sortTs < timeoutMs ? "pending" : "no_response")
+  }
+  return statuses
+}
+
+// The agent owes a reply iff at least one turn is genuinely pending (unreplied
+// AND within the timeout). Drives the working indicator.
+export function hasPendingTurn(statuses: Map<string, TurnState>): boolean {
+  for (const s of statuses.values()) {
+    if (s === "pending") return true
+  }
+  return false
 }
 
 // PR-9/B polish (GAP #3): is the scroll container within `threshold`px of the
@@ -210,10 +275,20 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
     [optimistic, rows, orchestratorName],
   )
 
-  // GAP #2: run-level pending state — the agent owes a reply. Gated to a
-  // sendable Claw so stale unanswered history on an asleep Claw can't show a
-  // permanent "working…".
-  const working = sendable && isAgentWorking(messages)
+  // Re-eval clock for time-bounded pending. Advanced ONLY by the tick effect
+  // below while a turn is pending — a quiet panel never touches it (no idle
+  // timer). Initialised lazily so SSR/first paint is stable.
+  const [nowTick, setNowTick] = useState(() => Date.now())
+
+  // Per-turn pending state: runId-keyed + time-bounded (see computeTurnStatuses).
+  const turnStatuses = useMemo(() => computeTurnStatuses(messages, nowTick), [messages, nowTick])
+
+  // GAP #2 (fixed): the agent is "working" only while a turn is GENUINELY
+  // pending — unreplied AND within PENDING_TURN_TIMEOUT_MS. Gated to a sendable
+  // Claw. Per-turn + time-bounded means an orphaned turn ages out to
+  // "No response" instead of sticking the indicator on forever.
+  const pending = hasPendingTurn(turnStatuses)
+  const working = sendable && pending
 
   const handleScroll = useCallback(() => {
     const el = listRef.current
@@ -227,6 +302,20 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
     const el = listRef.current
     if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages.length, working])
+
+  // GAP #2 timeout tick: advance the clock WITHOUT a new message so a turn that
+  // never replies flips from "working…" to "No response" once it crosses
+  // PENDING_TURN_TIMEOUT_MS. START-ON-PENDING / STOP-ON-EMPTY: the interval is
+  // created only while a turn is pending and torn down the instant none is (the
+  // crossing turn recomputes `pending` → false → cleanup runs). No idle interval
+  // on a quiet panel; cleared on unmount → no leak. (When a turn stays pending
+  // across ticks, `pending` is unchanged so the same interval persists — it does
+  // not churn a new timer each tick.)
+  useEffect(() => {
+    if (!pending) return
+    const id = setInterval(() => setNowTick(Date.now()), PENDING_TICK_MS)
+    return () => clearInterval(id)
+  }, [pending])
 
   const send = useCallback(async () => {
     const text = draft.trim()
@@ -292,17 +381,26 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
             No messages yet. Say hello to get started.
           </p>
         ) : (
-          messages.map((m) => (
-            <ChatMessage
-              key={m.key}
-              sender={m.sender}
-              senderName={m.senderName}
-              timestamp={formatClock(m.sortTs)}
-              detail={m.detail}
-              action={m.action}
-              status={m.status}
-            />
-          ))
+          messages.map((m) => {
+            // A user turn whose runId aged out with no reply → quiet "No
+            // response" note (distinct from a send failure: the send succeeded).
+            const noResponse =
+              m.sender === "user" &&
+              typeof m.runId === "string" &&
+              turnStatuses.get(m.runId) === "no_response"
+            return (
+              <ChatMessage
+                key={m.key}
+                sender={m.sender}
+                senderName={m.senderName}
+                timestamp={formatClock(m.sortTs)}
+                detail={m.detail}
+                action={m.action}
+                status={m.status}
+                noResponse={noResponse}
+              />
+            )
+          })
         )}
         {working && <WorkingIndicator orchestratorName={orchestratorName} />}
       </div>

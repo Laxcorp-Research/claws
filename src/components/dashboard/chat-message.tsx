@@ -76,9 +76,14 @@ interface ChatMessageProps {
   detail: string | null
   action: string
   status?: ChatBubbleStatus
+  // WORKING-INDICATOR FIX: the turn was sent (202) but no reply arrived within
+  // the timeout. Renders a SUBTLE, muted "No response" note — deliberately
+  // DISTINCT from the red "Failed to send": the message DID send; the agent just
+  // never replied. Same styling for both would be wrong information.
+  noResponse?: boolean
 }
 
-export function ChatMessage({ sender, senderName, timestamp, detail, action, status }: ChatMessageProps) {
+export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse }: ChatMessageProps) {
   const isUser = sender === "user"
   // NEVER `detail` alone — see the guard note above. Empty-string detail also
   // falls through to action.
@@ -107,6 +112,12 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
       </div>
       {status === "sending" && <span className="text-[10px] text-[var(--tx3)]">Sending…</span>}
       {status === "failed" && <span className="text-[10px] text-[var(--err)]">Failed to send</span>}
+      {/* Muted (--tx3), NOT red (--err): the send succeeded; only the reply is
+          missing. `status === "failed"` and `noResponse` are mutually exclusive
+          by construction (a failed send never starts a tracked turn). */}
+      {noResponse && status !== "failed" && (
+        <span className="text-[10px] italic text-[var(--tx3)]">No response</span>
+      )}
     </div>
   )
 }

@@ -74,11 +74,13 @@ interface LogEntry {
   apiCost?: number
   // PR-9/B: chat fields projected from metadata by the SSE serializer
   // (formatLog). messageId is the optimistic-reconciliation key; channelId
-  // gates the chat panel to webchat rows. Optional for back-compat with any
-  // pre-9/B payload.
+  // gates the chat panel to webchat rows; runId is the working-indicator
+  // turn-correlation key (MESSAGE_SENT.runId pairs a reply to its send).
+  // Optional for back-compat with any pre-9/B payload.
   messageId?: string | null
   channelId?: string | null
   from?: string | null
+  runId?: string | null
 }
 
 interface PendingApprovalItem {
@@ -886,6 +888,7 @@ export default function DashboardPage() {
       action: l.action,
       detail: l.detail ?? null,
       messageId: l.messageId ?? null,
+      runId: l.runId ?? null,
     }))
 
   return (
