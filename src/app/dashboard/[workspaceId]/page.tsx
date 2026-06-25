@@ -1011,6 +1011,7 @@ export default function DashboardPage() {
             status={workspace!.status}
             rows={chatRows}
             orchestratorName={orchestratorName}
+            onWake={handleWakeNow}
           />
 
           <ClawNarrativeRow

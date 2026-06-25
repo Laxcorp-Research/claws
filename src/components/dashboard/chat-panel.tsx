@@ -13,8 +13,88 @@ const MESSAGE_MAX_CHARS = 4000
 // PR-9/B: chat is only sendable on a contactable Claw. RUNNING is the happy
 // path; ERROR is attempted as a recovery path (the send endpoint maps the
 // failure honestly). Every other status disables the composer here and the
-// endpoint would 409/502 anyway. Rich per-state copy is 9/C.
+// endpoint would 409/502 anyway.
 const SENDABLE_STATUSES: ReadonlySet<string> = new Set(["RUNNING", "ERROR"])
+
+// PR-9/C: rich per-state UX. Two surfaces resolve to ONE of these reasons so
+// they show the SAME words: (1) the disabled composer (pre-send, from the
+// workspace status) and (2) a failed send bubble (the mid-compose race — a
+// RUNNING Claw that changed state between compose and send returns a 409/502,
+// surfaced from error.code). `cta` is the affordance the surface MAY offer:
+// "wake" (HIBERNATED — needs the page's onWake) or "retry" (transient — re-POST
+// the same text without retyping).
+export type ChatUnavailableReason =
+  | "asleep" // HIBERNATED / WORKSPACE_HIBERNATED
+  | "waking" // WAKING
+  | "deploying" // DEPLOYING
+  | "paused" // PAUSED (defensive — no writer today, §audit)
+  | "stopped" // WORKSPACE_STOPPED (send-time race; panel is hidden pre-send)
+  | "transitioning" // WORKSPACE_TRANSITIONING (send-time; status ambiguous)
+  | "unreachable" // GATEWAY_UNREACHABLE (RUNNING but container down)
+  | "rate_limited" // RATE_LIMITED (429)
+  | "unknown" // network error / unmapped — the legacy "Failed to send"
+
+export interface ChatUnavailableCopy {
+  message: string
+  cta?: "wake" | "retry"
+}
+
+const REASON_COPY: Record<ChatUnavailableReason, ChatUnavailableCopy> = {
+  asleep: { message: "Your Claw is asleep — wake it to chat.", cta: "wake" },
+  waking: { message: "Starting up — chat unlocks automatically." },
+  deploying: { message: "Deploying — chat unlocks when it's live." },
+  paused: { message: "Chat is paused." },
+  stopped: { message: "This Claw is stopped — redeploy it to chat." },
+  transitioning: { message: "Your Claw is starting up — try again shortly.", cta: "retry" },
+  unreachable: { message: "Can't reach your Claw.", cta: "retry" },
+  rate_limited: { message: "Too many messages — wait a moment, then retry.", cta: "retry" },
+  unknown: { message: "Failed to send", cta: "retry" },
+}
+
+export function chatUnavailableCopy(reason: ChatUnavailableReason): ChatUnavailableCopy {
+  return REASON_COPY[reason]
+}
+
+// Pre-send: workspace status → reason. Only the non-sendable states that
+// actually render reach the composer (RUNNING/ERROR are sendable; DRAFT/
+// SETUP_INCOMPLETE/STOPPED are hidden by the dashboard isEmpty gate). STOPPED is
+// mapped anyway so the send-time path can reuse the same copy.
+export function statusToReason(status: string): ChatUnavailableReason {
+  switch (status) {
+    case "HIBERNATED":
+      return "asleep"
+    case "WAKING":
+      return "waking"
+    case "DEPLOYING":
+      return "deploying"
+    case "PAUSED":
+      return "paused"
+    case "STOPPED":
+      return "stopped"
+    default:
+      return "unknown"
+  }
+}
+
+// Send-time: the 409/502 error.code → the SAME reason set, so a state change
+// mid-compose shows the same words as the pre-send panel. No/unmapped code (a
+// network error) → "unknown" (the legacy generic copy).
+export function errorCodeToReason(code: string | null | undefined): ChatUnavailableReason {
+  switch (code) {
+    case "WORKSPACE_HIBERNATED":
+      return "asleep"
+    case "WORKSPACE_STOPPED":
+      return "stopped"
+    case "WORKSPACE_TRANSITIONING":
+      return "transitioning"
+    case "GATEWAY_UNREACHABLE":
+      return "unreachable"
+    case "RATE_LIMITED":
+      return "rate_limited"
+    default:
+      return "unknown"
+  }
+}
 
 // A webchat MESSAGE_* row projected from the dashboard's existing activity
 // stream (LogEntry). The page filters to channelId === "webchat" before
@@ -45,6 +125,10 @@ export interface OptimisticMessage {
   createdAt: number
   status: ChatBubbleStatus
   runId?: string
+  // PR-9/C: the non-202 error.code captured when a send fails (e.g.
+  // "WORKSPACE_HIBERNATED"), so the failed bubble can show the matching
+  // per-state copy. Undefined for a network error (→ the "unknown" reason).
+  failureCode?: string
 }
 
 export interface ChatMessageView {
@@ -59,6 +143,9 @@ export interface ChatMessageView {
   // optimistic send's runId or the streamed MESSAGE_RECEIVED.messageId; for an
   // agent view it's the streamed MESSAGE_SENT.runId. Drives per-turn pending.
   runId?: string | null
+  // PR-9/C: only on a failed optimistic send — the non-202 error.code, used to
+  // pick the failed bubble's tailored copy. Streamed rows never carry it.
+  failureCode?: string
 }
 
 /**
@@ -105,6 +192,7 @@ export function reconcileChatMessages(
       action: o.text,
       status: o.status,
       runId: o.runId ?? null,
+      failureCode: o.failureCode,
     })
   }
 
@@ -255,9 +343,13 @@ interface ChatPanelProps {
   status: string
   rows: ChatRow[]
   orchestratorName: string
+  // PR-9/C: wakes a HIBERNATED Claw — wired from the dashboard page to its
+  // existing wake action (POST /api/dashboard/[id]/wake). Optional so the panel
+  // degrades to copy-only if a caller doesn't provide it.
+  onWake?: () => void
 }
 
-export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatPanelProps) {
+export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake }: ChatPanelProps) {
   const [optimistic, setOptimistic] = useState<OptimisticMessage[]>([])
   const [draft, setDraft] = useState("")
   // GAP #3: ref to the SCROLL CONTAINER (not a sentinel) so we move only this
@@ -269,6 +361,17 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
   const nearBottomRef = useRef(true)
 
   const sendable = SENDABLE_STATUSES.has(status)
+
+  // PR-9/C: tailored disabled-composer copy + (HIBERNATED only) an inline Wake
+  // CTA. An unmapped non-sendable status falls back to the legacy templated note
+  // rather than the "Failed to send" wording, which would be wrong here.
+  const unavailableReason = statusToReason(status)
+  const unavailableCopy = chatUnavailableCopy(unavailableReason)
+  const composerNote =
+    unavailableReason === "unknown"
+      ? `Chat is unavailable while your Claw is ${status.toLowerCase()}.`
+      : unavailableCopy.message
+  const showWake = unavailableCopy.cta === "wake" && !!onWake
 
   const messages = useMemo(
     () => reconcileChatMessages(optimistic, rows, orchestratorName),
@@ -317,40 +420,64 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
     return () => clearInterval(id)
   }, [pending])
 
+  // PR-9/C: the core POST for ONE bubble + text — shared by a fresh send and
+  // Retry. Marks the bubble failed (NEVER throws) and, on a non-202, captures
+  // error.code so the failed bubble can render the matching per-state copy.
+  const performSend = useCallback(
+    async (tempId: string, text: string) => {
+      const mark = (patch: Partial<OptimisticMessage>) =>
+        setOptimistic((prev) => prev.map((m) => (m.tempId === tempId ? { ...m, ...patch } : m)))
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        })
+        if (res.status === 202) {
+          // Store runId so the optimistic bubble reconciles against the streamed
+          // MESSAGE_RECEIVED (messageId === runId). Clear any prior failureCode
+          // (a successful Retry).
+          const json = (await res.json().catch(() => null)) as { data?: { runId?: string } } | null
+          mark({ status: "sent", runId: json?.data?.runId, failureCode: undefined })
+        } else {
+          // 409 (hibernated/stopped/transitioning) / 502 (gateway) / 429 (rate)
+          // / 4xx — mark failed (NEVER throw) and capture error.code so the
+          // bubble shows the matching per-state copy (covers the mid-compose
+          // race: a RUNNING Claw that changed state between compose and send).
+          const json = (await res.json().catch(() => null)) as { error?: { code?: string } } | null
+          mark({ status: "failed", failureCode: json?.error?.code ?? undefined })
+        }
+      } catch {
+        // Network error — no code; the "unknown" reason renders "Failed to send".
+        mark({ status: "failed", failureCode: undefined })
+      }
+    },
+    [workspaceId],
+  )
+
   const send = useCallback(async () => {
     const text = draft.trim()
     if (!text || !sendable) return
-
     const tempId = makeTempId()
-    const createdAt = Date.now()
-    setOptimistic((prev) => [...prev, { tempId, text, createdAt, status: "sending" }])
+    setOptimistic((prev) => [...prev, { tempId, text, createdAt: Date.now(), status: "sending" }])
     setDraft("")
+    await performSend(tempId, text)
+  }, [draft, sendable, performSend])
 
-    const mark = (patch: Partial<OptimisticMessage>) =>
-      setOptimistic((prev) => prev.map((m) => (m.tempId === tempId ? { ...m, ...patch } : m)))
-
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      })
-      if (res.status === 202) {
-        // Store runId so the optimistic bubble reconciles against the streamed
-        // MESSAGE_RECEIVED (messageId === runId).
-        const json = (await res.json().catch(() => null)) as { data?: { runId?: string } } | null
-        mark({ status: "sent", runId: json?.data?.runId })
-      } else {
-        // 409 (hibernated/stopped/transitioning) / 502 (gateway) / 429 (rate)
-        // / 4xx — mark failed, NEVER throw. 9/B tolerates these; rich per-code
-        // copy + retry is 9/C.
-        mark({ status: "failed" })
-      }
-    } catch {
-      // Network error — same honest "failed" bubble, no throw.
-      mark({ status: "failed" })
-    }
-  }, [draft, sendable, workspaceId])
+  // PR-9/C: Retry re-POSTs the SAME text from the failed bubble (the user never
+  // retypes). The first attempt genuinely failed, so a fresh server runId is
+  // correct — there is no accepted turn to dedupe against.
+  const retry = useCallback(
+    (tempId: string) => {
+      const target = optimistic.find((m) => m.tempId === tempId)
+      if (!target) return
+      setOptimistic((prev) =>
+        prev.map((m) => (m.tempId === tempId ? { ...m, status: "sending", failureCode: undefined } : m)),
+      )
+      void performSend(tempId, target.text)
+    },
+    [optimistic, performSend],
+  )
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends; Shift+Enter inserts a newline.
@@ -388,6 +515,11 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
               m.sender === "user" &&
               typeof m.runId === "string" &&
               turnStatuses.get(m.runId) === "no_response"
+            // PR-9/C: a failed send shows the SAME tailored per-state copy as the
+            // disabled composer (keyed off the captured error.code) instead of a
+            // flat "Failed to send", plus a Retry on the transient reasons.
+            const failure =
+              m.status === "failed" ? chatUnavailableCopy(errorCodeToReason(m.failureCode)) : null
             return (
               <ChatMessage
                 key={m.key}
@@ -398,6 +530,8 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
                 action={m.action}
                 status={m.status}
                 noResponse={noResponse}
+                failureMessage={failure?.message ?? null}
+                onRetry={failure?.cta === "retry" ? () => retry(m.key) : undefined}
               />
             )
           })
@@ -407,9 +541,14 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName }: ChatP
 
       <div className="border-t border-[var(--bd)] p-3.5">
         {!sendable && (
-          <p className="text-[11px] text-[var(--tx3)] mb-2">
-            Chat is unavailable while your Claw is {status.toLowerCase()}.
-          </p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-[var(--tx3)]">{composerNote}</p>
+            {showWake && (
+              <Button variant="primary" size="xs" onClick={onWake}>
+                Wake
+              </Button>
+            )}
+          </div>
         )}
         <div className="flex items-end gap-2">
           <Textarea
