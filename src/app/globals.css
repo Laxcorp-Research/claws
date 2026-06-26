@@ -16,12 +16,28 @@
   --bd2: #E0E0E0;
   --ac: #5BA1F5;
   --acbg: #EEF5FF;
+  /* WCAG AA: --ac (#5BA1F5) is ~2.67:1 on white — fine as a brand FILL/border/
+     decorative, but fails as TEXT. --ac-text is the accessible deeper blue for
+     accent TEXT on light backgrounds: #2563EB ~5.17:1 on white. Dark mode keeps
+     the light --ac value (it already passes ~7.41:1 on the near-black bg). */
+  --ac-text: #2563EB;
   --ok: #10b981;
   --okbg: #dcfce7;
-  --warn: #f59e0b;
+  /* WCAG AA: #f59e0b was ~2.15:1 as text on white. #b45309 (amber-700) is
+     ~5.05:1 on white. Used for warning TEXT; dark --warn stays light (passes
+     on the dark bg). */
+  --warn: #b45309;
   --warnbg: #FFFCE8;
-  --err: #ef4444;
+  /* WCAG AA: #ef4444 was ~3.76:1 as text on white. #dc2626 (red-600) is
+     ~4.82:1 on white. Used for error TEXT; dark --err stays light. */
+  --err: #dc2626;
   --errbg: #fee2e2;
+  /* Solid button backgrounds with WHITE text — AA in BOTH modes (button bg is
+     a fixed value, independent of page bg): white-on-#dc2626 ~4.82:1,
+     white-on-#b45309 ~5.05:1. Decoupled from --err/--warn so those can stay
+     light-on-dark for text in dark mode. */
+  --danger: #dc2626;
+  --caution: #b45309;
 }
 
 .dark {
@@ -36,12 +52,21 @@
   --bd2: #3A3A3C;
   --ac: #5BA1F5;
   --acbg: #1A2A40;
+  /* Dark mode: accent TEXT on the near-black bg already passes AA at the light
+     value (~7.41:1), so --ac-text matches --ac here — dark is visually unchanged. */
+  --ac-text: #5BA1F5;
   --ok: #34d399;
   --okbg: #064e3b;
+  /* Dark mode: light amber/red as TEXT on the near-black bg already passes AA
+     (~10.8:1 / ~6.8:1); darkening would regress it, so keep them light. */
   --warn: #fbbf24;
   --warnbg: #451a03;
   --err: #f87171;
   --errbg: #450a0a;
+  /* Solid button backgrounds (white text) — same fixed values as light so the
+     destructive/caution buttons pass AA with white text in dark mode too. */
+  --danger: #dc2626;
+  --caution: #b45309;
 }
 
 body {

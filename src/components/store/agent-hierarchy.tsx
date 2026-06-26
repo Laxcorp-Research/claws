@@ -20,7 +20,7 @@ export function AgentHierarchy({ agents }: AgentHierarchyProps) {
     <div className="flex flex-col items-center gap-1.5 my-3">
       {orchestrator && (
         <div className="bg-[var(--acbg)] border-2 border-[var(--ac)] rounded-[8px] py-2 px-[18px] text-center min-w-[180px]">
-          <div className="text-[9px] font-semibold text-[var(--ac)] uppercase tracking-[0.5px]">Orchestrator</div>
+          <div className="text-[9px] font-semibold text-[var(--ac-text)] uppercase tracking-[0.5px]">Orchestrator</div>
           <div className="text-[13px] font-semibold">{orchestrator.name}</div>
           <div className="text-[10px] text-[var(--tx2)]">{orchestrator.model.split("/")[1]}</div>
         </div>

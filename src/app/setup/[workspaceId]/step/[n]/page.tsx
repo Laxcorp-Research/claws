@@ -21,6 +21,7 @@ import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import { STARTER_CREDIT_CENTS, formatCreditDollars } from "@/lib/credits/constants"
 import {
   type ToolState,
   type ServerConnectionSummary,
@@ -215,7 +216,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           <CheckCircle className="w-4 h-4 text-[var(--ok)] flex-shrink-0 mt-[1px]" />
           <div>
             <p className="text-[13px] font-medium mb-0.5">AI models powered by Claws Starter Credits</p>
-            <p className="text-[11px] text-[var(--tx2)]">You have $25.00 in free credits — no API key needed.</p>
+            <p className="text-[11px] text-[var(--tx2)]">You have {formatCreditDollars(STARTER_CREDIT_CENTS)} in free credits — no API key needed.</p>
           </div>
         </div>
       )}
@@ -267,7 +268,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
                     )}
                     <button
                       onClick={() => setOverrideModal({ provider, providerName })}
-                      className="text-[11px] text-[var(--ac)] hover:underline cursor-pointer bg-transparent border-none"
+                      className="text-[11px] text-[var(--ac-text)] hover:underline cursor-pointer bg-transparent border-none"
                     >
                       {status.hasOverride ? "Change key" : "Use different key"}
                     </button>
@@ -1561,9 +1562,9 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       <h2 className="text-[15px] font-semibold mb-0.5">Deploy your Claw</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
       {creditUser ? (
-        <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">Powered by Claws Starter Credits — no payment needed.</p>
+        <p className="text-[10px] text-[var(--ac-text)] font-medium mb-3.5">Powered by Claws Starter Credits — no payment needed.</p>
       ) : eligibility?.isFirstDeploy ? (
-        <p className="text-[10px] text-[var(--ac)] font-medium mb-3.5">3-day free trial - no payment required. $79/mo after trial.</p>
+        <p className="text-[10px] text-[var(--ac-text)] font-medium mb-3.5">3-day free trial - no payment required. $79/mo after trial.</p>
       ) : (
         <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
       )}

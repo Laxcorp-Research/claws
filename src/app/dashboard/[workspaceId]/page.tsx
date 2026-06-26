@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react"
 import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
-import { OctagonX, Pause, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
+import { OctagonX, Pause, Square, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Modal } from "@/components/ui/modal"
 import { DeployProgress } from "@/components/setup/deploy-progress"
@@ -15,8 +15,10 @@ import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
+import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
+import { useActivityStream } from "@/hooks/use-activity-stream"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
 
@@ -70,6 +72,15 @@ interface LogEntry {
   detail?: string | null
   actionType: string
   apiCost?: number
+  // PR-9/B: chat fields projected from metadata by the SSE serializer
+  // (formatLog). messageId is the optimistic-reconciliation key; channelId
+  // gates the chat panel to webchat rows; runId is the working-indicator
+  // turn-correlation key (MESSAGE_SENT.runId pairs a reply to its send).
+  // Optional for back-compat with any pre-9/B payload.
+  messageId?: string | null
+  channelId?: string | null
+  from?: string | null
+  runId?: string | null
 }
 
 interface PendingApprovalItem {
@@ -212,13 +223,14 @@ export default function DashboardPage() {
   const [subscribing, setSubscribing] = useState(false)
   const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
   const [redeployFromStoppedConfirmOpen, setRedeployFromStoppedConfirmOpen] = useState(false)
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [redeployModalOpen, setRedeployModalOpen] = useState(false)
   const [redeployStatus, setRedeployStatus] = useState<string | null>(null)
   const [redeployLastStage, setRedeployLastStage] = useState<string | null>(null)
   const [redeployError, setRedeployError] = useState<string | null>(null)
   const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
 
-  const eventSourceRef = useRef<EventSource | null>(null)
   const redeployEsRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
 
@@ -325,33 +337,13 @@ export default function DashboardPage() {
     return () => window.removeEventListener("message", onMessage)
   }, [fetchStats])
 
-  useEffect(() => {
-    const es = new EventSource(`/api/activity/${workspaceId}/stream`)
-    eventSourceRef.current = es
-
-    es.addEventListener("init", (e) => {
-      const initial: LogEntry[] = JSON.parse(e.data)
-      setLogs(initial.slice(-MAX_LOG_ENTRIES))
-    })
-
-    es.addEventListener("log", (e) => {
-      const entry: LogEntry = JSON.parse(e.data)
-      setLogs((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES))
-    })
-
-    es.onerror = () => {
-      es.close()
-      setTimeout(() => {
-        const reconnect = new EventSource(`/api/activity/${workspaceId}/stream`)
-        eventSourceRef.current = reconnect
-      }, 5000)
-    }
-
-    return () => {
-      es.close()
-      eventSourceRef.current?.close()
-    }
-  }, [workspaceId])
+  // PR-9/pre: connection + listener lifecycle lives in useActivityStream —
+  // the old inline effect's reconnect path created a bare EventSource with
+  // no listeners attached (see the hook's header comment).
+  useActivityStream<LogEntry>(workspaceId, {
+    onInit: (initial) => setLogs(initial.slice(-MAX_LOG_ENTRIES)),
+    onLog: (entry) => setLogs((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES)),
+  })
 
   useEffect(() => {
     if (workspace?.status === "WAKING" || workspace?.status === "HIBERNATED") {
@@ -375,9 +367,15 @@ export default function DashboardPage() {
     setWorkspace((prev) => prev ? { ...prev, status: "WAKING" } : prev)
   }, [workspaceId])
 
-  const handlePauseAll = async () => {
-    await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
-    fetchStats()
+  const handleStopConfirmed = async () => {
+    setStopping(true)
+    try {
+      await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
+      fetchStats()
+    } finally {
+      setStopping(false)
+      setStopConfirmOpen(false)
+    }
   }
 
   const handleResumeAll = async () => {
@@ -702,6 +700,7 @@ export default function DashboardPage() {
       }
     }
 
+    // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today — do not remove
     if (isPaused) {
       list.push({
         key: "paused",
@@ -726,7 +725,7 @@ export default function DashboardPage() {
         content: (
           <>
             <p className="font-medium">This Claw is stopped</p>
-            <p className="mt-0.5 opacity-80">The container was destroyed (trial ended, subscription lapsed, or manual stop). Click Redeploy to recreate it &mdash; this usually takes ~2 minutes.</p>
+            <p className="mt-0.5 opacity-80">Your agents, setup, and history are saved &mdash; only the running container stopped. Click Redeploy to bring it back (~2 minutes).</p>
           </>
         ),
         actions: <Button variant="primary" size="xs" onClick={handleResumeAll}>Redeploy</Button>,
@@ -871,6 +870,27 @@ export default function DashboardPage() {
     color: a.color,
   }))
 
+  // PR-9/B: the dashboard chat reuses the SAME activity stream (no second
+  // EventSource). Filter the live logs to webchat MESSAGE_* rows — channelId
+  // keeps external-channel sends/receives (Slack, etc.) out of dashboard chat.
+  const orchestratorName = agents.find((a) => a.role === "ORCHESTRATOR")?.name ?? "Orchestrator"
+  const chatRows: ChatRow[] = logs
+    .filter(
+      (l) =>
+        (l.actionType === "MESSAGE_RECEIVED" || l.actionType === "MESSAGE_SENT") &&
+        l.channelId === "webchat",
+    )
+    .map((l) => ({
+      id: l.id,
+      actionType: l.actionType,
+      timestamp: l.timestamp,
+      agentName: l.agentName,
+      action: l.action,
+      detail: l.detail ?? null,
+      messageId: l.messageId ?? null,
+      runId: l.runId ?? null,
+    }))
+
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
       <PageHeader
@@ -899,9 +919,13 @@ export default function DashboardPage() {
             {isStopped ? (
               <Button variant="primary" size="sm" onClick={handleResumeAll}>Redeploy</Button>
             ) : isPaused ? (
+              // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today — do not remove
               <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
             ) : (
-              <Button variant="outline" size="sm" onClick={handlePauseAll}>Pause</Button>
+              <Button variant="outline" size="sm" onClick={() => setStopConfirmOpen(true)}>
+                <Square className="w-3.5 h-3.5" />
+                Stop
+              </Button>
             )}
           </div>
         }
@@ -980,6 +1004,16 @@ export default function DashboardPage() {
             onReject={handleReject}
           />
 
+          {/* PR-9/B: chat is a PRIMARY surface — a sibling section above the
+              collapsible drill-down, below time-sensitive approvals. */}
+          <ChatPanel
+            workspaceId={workspaceId}
+            status={workspace!.status}
+            rows={chatRows}
+            orchestratorName={orchestratorName}
+            onWake={handleWakeNow}
+          />
+
           <ClawNarrativeRow
             clawName={workspace!.name}
             status={workspace!.status}
@@ -1024,6 +1058,17 @@ export default function DashboardPage() {
         description="The container was stopped and destroyed. Redeploying recreates it from scratch — this usually takes ~2 minutes. Continue?"
         confirmLabel="Redeploy"
         variant="warning"
+      />
+
+      <ConfirmDialog
+        open={stopConfirmOpen}
+        onClose={() => setStopConfirmOpen(false)}
+        onConfirm={handleStopConfirmed}
+        title="Stop this Claw?"
+        description="Agents will stop running. Your configuration and history are saved — redeploying takes about 2 minutes."
+        confirmLabel="Stop"
+        cancelLabel="Keep running"
+        loading={stopping}
       />
 
       <Modal

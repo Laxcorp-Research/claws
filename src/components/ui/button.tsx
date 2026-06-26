@@ -10,7 +10,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const variantClasses = {
   primary: "bg-[var(--tx)] text-white hover:bg-[var(--tx)]/90",
   outline: "bg-transparent border border-[var(--bd)] text-[var(--tx2)] hover:bg-[var(--bg2)]",
-  danger: "bg-[var(--err)] text-white hover:brightness-110",
+  danger: "bg-[var(--danger)] text-white hover:brightness-110",
   ghost: "bg-transparent text-[var(--tx2)] hover:bg-[var(--bg2)]",
 } as const;
 

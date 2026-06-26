@@ -1,5 +1,5 @@
 {
-  "$documentation": "Per-GHSA rationale and re-audit deadline (2026-06-15) live in docs/LAUNCH_BLOCKERS.md. Filed by PR2.8a-fix1-deps.",
+  "$documentation": "Per-GHSA rationale and re-audit deadline (2026-07-15) live in docs/LAUNCH_BLOCKERS.md. Filed by PR2.8a-fix1-deps; re-audited 2026-06-11 (GH #72): protobufjs entries cleared via in-range bump to 7.6.3. 2026-06-21: GHSA-88fw-hqm2-52qc (hono) and GHSA-p6gq-j5cr-w38f (nodemailer) CLEARED via dependency bump — hono override ^4.12.25, nodemailer direct + override ^9.0.1 — so both allowlist entries were removed (fixed on the merits, no longer suppressed). Remaining entries are all next, fixed upstream in 16.2.5, pending the dedicated Next-bump PR.",
   "low": false,
   "moderate": false,
   "high": true,
@@ -19,13 +19,6 @@
     "GHSA-492v-c6pp-mqqv",
     "GHSA-wfc6-r584-vfw7",
     "GHSA-267c-6grr-h53f",
-    "GHSA-36qx-fr4f-26g5",
-    "GHSA-66ff-xgx4-vchm",
-    "GHSA-2pr8-phx7-x9h3",
-    "GHSA-fx83-v9x8-x52w",
-    "GHSA-75px-5xx7-5xc7",
-    "GHSA-jvwf-75h9-cwgg",
-    "GHSA-685m-2w69-288q",
-    "GHSA-q6x5-8v7m-xcrf"
+    "GHSA-36qx-fr4f-26g5"
   ]
 }

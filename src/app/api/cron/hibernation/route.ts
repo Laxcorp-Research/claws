@@ -5,6 +5,18 @@ import { hibernateWorkspace, wakeWorkspace } from "@/lib/hibernation/manager"
 
 export const maxDuration = 55
 
+// PR-2 (syncThenDestroy budget guard): hibernate routes through
+// syncThenDestroy, which adds a bounded pre-destroy /internal/sync-now call.
+// On this cron we use a 10s sync budget (matches the container's SIGTERM sync
+// window in process-manager.mjs). To avoid a sync being killed mid-write by
+// the 55s function cap, we stop starting NEW syncs once too little of the
+// budget remains and bare-destroy the rest (they get re-attempted with sync on
+// the next 2-min pass). The margin covers the Railway deleteService + DB writes
+// that follow each sync.
+const HIBERNATE_SYNC_TIMEOUT_MS = 10_000
+const SYNC_DELETE_MARGIN_MS = 8_000
+const SYNC_BUDGET_CUTOFF_MS = maxDuration * 1000 - HIBERNATE_SYNC_TIMEOUT_MS - SYNC_DELETE_MARGIN_MS
+
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization")
   if (auth !== `Bearer ${process.env.CRON_SECRET}` || !process.env.CRON_SECRET) {
@@ -16,9 +28,11 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date()
+  const startedAt = Date.now()
   let hibernated = 0
   let woke = 0
   let errors = 0
+  let syncSkippedForBudget = 0
 
   // ─── HIBERNATE CANDIDATES ────────────────────────────
 
@@ -52,8 +66,16 @@ export async function GET(req: NextRequest) {
   )
 
   for (const candidate of hibernateCandidates) {
+    // Budget guard: once too little of the 55s ceiling remains, stop starting
+    // new syncs and bare-destroy the rest (skipSync) so a sync can't be killed
+    // mid-write. elapsed only grows, so this is monotonic.
+    const skipSync = Date.now() - startedAt > SYNC_BUDGET_CUTOFF_MS
+    if (skipSync) syncSkippedForBudget++
     try {
-      await hibernateWorkspace(candidate.workspaceId)
+      await hibernateWorkspace(candidate.workspaceId, {
+        syncTimeoutMs: HIBERNATE_SYNC_TIMEOUT_MS,
+        skipSync,
+      })
       hibernated++
     } catch (err) {
       errors++
@@ -139,7 +161,8 @@ export async function GET(req: NextRequest) {
     woke,
     errors,
     stuckRetried: stuckWaking.length,
+    syncSkippedForBudget,
   })
 
-  return Response.json({ success: true, data: { hibernated, woke, errors } })
+  return Response.json({ success: true, data: { hibernated, woke, errors, syncSkippedForBudget } })
 }

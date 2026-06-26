@@ -63,15 +63,25 @@ const SSE_EXCLUDED_FIELDS: ReadonlyArray<string> = [
   // implicit in the SSE URL (/api/activity/[workspaceId]/stream); repeating
   // per-row would waste bytes on every event payload.
   "workspaceId",
-  // structured JSON payload; not consumed by the activity feed UI; can
-  // contain large arrays (per-event metadata). Keep off the wire to bound
-  // per-row payload size on the stream.
+  // structured JSON payload; the RAW blob is not consumed by the UI and can
+  // contain large arrays. Stays off the wire — but PR-9/B projects a small
+  // whitelist out of it (see SSE_DERIVED_FIELDS) for the chat panel.
   "metadata",
   // per-row token counts are not surfaced in the live feed; aggregate
   // costs are exposed via the regular /api/activity/[workspaceId] GET
   // (cost-breakdown-table). No consumer would render this on the live feed.
   "tokenCount",
 ]
+
+// PR-9/B: fields formatLog DERIVES from `metadata` rather than serializing a
+// 1:1 schema column. `metadata` itself stays in SSE_EXCLUDED_FIELDS (the raw
+// blob is off the wire); these are the explicit projections the dashboard chat
+// panel needs (messageId = reconciliation key; channelId = webchat filter;
+// from = sender hint; runId = turn-correlation key for the working indicator).
+// Enumerated here so the structural assertion stays exact:
+//   formatLog output === (scalar fields − SSE_EXCLUDED_FIELDS) + SSE_DERIVED_FIELDS.
+// Adding a projection without listing it here (or vice versa) MUST fail (d).
+const SSE_DERIVED_FIELDS: ReadonlyArray<string> = ["messageId", "channelId", "from", "runId"]
 
 function getActivityLogScalarFields(): string[] {
   const schemaPath = join(process.cwd(), "prisma/schema.prisma")
@@ -107,11 +117,12 @@ describe("SSE /api/activity/[workspaceId]/stream — formatLog", () => {
     expect(out.detail).toBeNull()
   })
 
-  it("(d) STRUCTURAL: formatLog output keys equal (ActivityLog scalar fields − SSE_EXCLUDED_FIELDS)", () => {
+  it("(d) STRUCTURAL: formatLog output keys equal (ActivityLog scalar fields − SSE_EXCLUDED_FIELDS) + SSE_DERIVED_FIELDS", () => {
     const schemaFields = getActivityLogScalarFields()
-    const expectedOutputFields = schemaFields
-      .filter((f) => !SSE_EXCLUDED_FIELDS.includes(f))
-      .sort()
+    const expectedOutputFields = [
+      ...schemaFields.filter((f) => !SSE_EXCLUDED_FIELDS.includes(f)),
+      ...SSE_DERIVED_FIELDS,
+    ].sort()
     const actualOutputFields = Object.keys(formatLog(baseRow)).sort()
     expect(actualOutputFields).toEqual(expectedOutputFields)
   })
@@ -119,22 +130,73 @@ describe("SSE /api/activity/[workspaceId]/stream — formatLog", () => {
   it("(d-meta) deliberate-failure: if a column lands in schema but neither the formatter nor the exclusion list mentions it, the structural assertion diverges", () => {
     const realSchemaFields = getActivityLogScalarFields()
     const augmentedSchemaFields = [...realSchemaFields, "__hypothetical_new_column__"]
-    const expectedOutputFields = augmentedSchemaFields
-      .filter((f) => !SSE_EXCLUDED_FIELDS.includes(f))
-      .sort()
+    const expectedOutputFields = [
+      ...augmentedSchemaFields.filter((f) => !SSE_EXCLUDED_FIELDS.includes(f)),
+      ...SSE_DERIVED_FIELDS,
+    ].sort()
     const actualOutputFields = Object.keys(formatLog(baseRow)).sort()
     expect(actualOutputFields).not.toEqual(expectedOutputFields)
   })
 
   it("(d-meta) deliberate-failure: if formatLog drops a serialized field, the structural assertion diverges", () => {
     const schemaFields = getActivityLogScalarFields()
-    const expectedOutputFields = schemaFields
-      .filter((f) => !SSE_EXCLUDED_FIELDS.includes(f))
-      .sort()
+    const expectedOutputFields = [
+      ...schemaFields.filter((f) => !SSE_EXCLUDED_FIELDS.includes(f)),
+      ...SSE_DERIVED_FIELDS,
+    ].sort()
     const regressedOutput = Object.keys(formatLog(baseRow))
       .filter((k) => k !== "detail")
       .sort()
     expect(regressedOutput).not.toEqual(expectedOutputFields)
+  })
+
+  // PR-9/B: the reconciliation key + webchat filter must reach the wire.
+  // A user send is persisted as MESSAGE_RECEIVED: the key is in metadata.messageId
+  // (runId is null until the orchestrator starts the turn — protocol §A.3).
+  it("(PR-9/B) projects messageId/channelId/from out of metadata for the chat panel", () => {
+    const out = formatLog({
+      ...baseRow,
+      actionType: "MESSAGE_RECEIVED",
+      metadata: JSON.stringify({
+        from: "",
+        messageId: "7ba631e0-033a-46f9-ade7-839345efe8ce",
+        channelId: "webchat",
+        senderId: "gateway-client",
+        runId: null,
+      }),
+    })
+    expect(out.messageId).toBe("7ba631e0-033a-46f9-ade7-839345efe8ce")
+    expect(out.channelId).toBe("webchat")
+    expect(out.from).toBe("")
+    expect(out.runId).toBeNull()
+  })
+
+  // WORKING-INDICATOR FIX: the agent reply (MESSAGE_SENT) carries the turn key in
+  // metadata.runId === the original send's runId. Projecting it lets the panel
+  // pair a reply to its send per-turn. MUTATION: drop `runId` from formatLog's
+  // output → out.runId is undefined → this fails (and so does the structural (d)).
+  it("(working-indicator) projects runId out of metadata for the agent reply (MESSAGE_SENT)", () => {
+    const out = formatLog({
+      ...baseRow,
+      actionType: "MESSAGE_SENT",
+      metadata: JSON.stringify({
+        to: "webchat",
+        channelId: "webchat",
+        runId: "093bd07b-fae0-4c11-9a2a-7b6f0c0d1e2f",
+      }),
+    })
+    expect(out.runId).toBe("093bd07b-fae0-4c11-9a2a-7b6f0c0d1e2f")
+    expect(out.channelId).toBe("webchat")
+  })
+
+  it("(PR-9/B) derived chat fields are null when metadata is absent or malformed (never throws)", () => {
+    expect(formatLog({ ...baseRow, metadata: null }).messageId).toBeNull()
+    expect(formatLog({ ...baseRow, metadata: null }).runId).toBeNull()
+    const malformed = formatLog({ ...baseRow, metadata: "}{ not json" })
+    expect(malformed.messageId).toBeNull()
+    expect(malformed.channelId).toBeNull()
+    expect(malformed.from).toBeNull()
+    expect(malformed.runId).toBeNull()
   })
 })
 

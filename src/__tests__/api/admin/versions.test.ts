@@ -221,13 +221,13 @@ describe('Version Management API', () => {
   });
 
   describe('POST /api/workspaces/[id]/update-version', () => {
-    it('updates workspace deployment to stable version', async () => {
+    it('queues an update when the stable version is newer than the deployed image', async () => {
       mockGetSessionUser.mockResolvedValue(REGULAR_USER);
       (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ userId: 'user-1' });
-      (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_VERSION_STABLE);
+      (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_VERSION_STABLE); // 0.1.0
       (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 'dep-1',
-        containerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:old',
+        containerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:0.0.9', // older than stable 0.1.0
       });
       (prismaMock.deployment.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
@@ -236,7 +236,10 @@ describe('Version Management API', () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.data.updated).toBe(true);
+      // PR (version-ui-honesty): the action re-points containerImage for the
+      // NEXT redeploy and reports `queued` (it no longer claims an applied
+      // `updated`, because nothing restarts here).
+      expect(json.data.queued).toBe(true);
     });
 
     it('returns 403 for non-owner', async () => {
@@ -248,7 +251,7 @@ describe('Version Management API', () => {
       expect(res.status).toBe(403);
     });
 
-    it('returns updated=false if already on latest', async () => {
+    it('returns queued=false if already on the latest version', async () => {
       mockGetSessionUser.mockResolvedValue(REGULAR_USER);
       (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ userId: 'user-1' });
       (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_VERSION_STABLE);
@@ -262,7 +265,8 @@ describe('Version Management API', () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.data.updated).toBe(false);
+      expect(json.data.queued).toBe(false);
+      expect(prismaMock.deployment.update).not.toHaveBeenCalled();
     });
   });
 });

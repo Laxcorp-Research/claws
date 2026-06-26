@@ -218,10 +218,10 @@ To force a rebuild between Mondays (typically: an overlay change that
 needs to ship before next cron):
 
 ```bash
-gh workflow run build-openclaw-image.yml --ref main \
+gh workflow run build-openclaw-image.yml --ref staging \
   -f force_version=<upstream-version>           # clean rebuild for a never-built upstream release
 # OR
-gh workflow run build-openclaw-image.yml --ref main \
+gh workflow run build-openclaw-image.yml --ref staging \
   -f force_version=<upstream-version>-N         # overlay-only rebuild on top of an existing upstream release
 ```
 
@@ -230,9 +230,55 @@ Two cases:
 - **First build of a particular upstream release** (`force_version=2026.5.23`): identical to the cron path. Pushes `:base-2026.5.23`, `:2026.5.23`, `:candidate`.
 - **Overlay-only rebuild on top of an upstream release that's already been built** (`force_version=2026.5.22-1`): reuses `:base-2026.5.22`, builds a new extended image, pushes the new immutable `:2026.5.22-1`, moves `:candidate`. The `-N` suffix is **required** in this case — bare `force_version=2026.5.22` against an existing `:2026.5.22` tag is rejected to preserve immutability. The PR-4c workflow refactor introduced four distinct outputs (`output_version`, `upstream_version`, `upstream_tag`, deprecated alias `source_version`) so the overlay-suffixed value and the upstream-source value never get conflated in clone/label/tag operations.
 
-`force_version` runs use whatever `main`-branch SHA is current at trigger
-time to COPY `container/*.mjs` into the final image. Your code changes
-must be merged to `main` **before** you run `gh workflow run`.
+`force_version` runs use whatever SHA the **dispatched ref** points at to
+COPY `container/*.mjs` into the final image. Overlay changes land on
+`staging` first in our flow, so **always pass `--ref staging`** — a
+default-branch (`main`) dispatch silently builds the overlay from main and
+omits anything merged to staging but not yet promoted to main. This was
+caught live during the PR-9/A-container release (2026-06-10): the first
+dispatch defaulted to `main` and had to be cancelled before push.
+
+### Image release runbook (overlay changes)
+
+The verified end-to-end sequence for shipping a `container/` overlay change
+(first executed for PR-9/A-container, 2026-06-10/11):
+
+1. **Merge the overlay PR to `staging`.** The image build copies
+   `container/*.mjs` from the dispatched ref — staging is where the change
+   lives.
+2. **Dispatch the build with `--ref staging`** (see the warning above —
+   default-branch dispatch silently builds a stale overlay):
+
+   ```bash
+   gh workflow run build-openclaw-image.yml --ref staging -f force_version=<upstream>-N
+   ```
+
+   The `-N` suffix is **required** when the upstream `:<version>` tag already
+   exists (immutable-tag policy). The build registers an `isCandidate` row on
+   **staging** by default.
+3. **Flip the staging stable row via the admin promote route**
+   (`POST /api/admin/versions/<row-id>/promote`, admin session) — **not** the
+   promote workflow at this stage. The workflow also retags GHCR `:latest`,
+   which should stay parked until prod promotion; the admin route flips
+   `isStable` transactionally on the staging DB and touches nothing in GHCR.
+4. **Validate on staging**: deploy/redeploy a staging workspace; confirm
+   `Deployment.containerImage` AND Railway `serviceInstance.source.image`
+   show the new tag; exercise the changed behavior end-to-end. Note: use a
+   full **container redeploy** for any restart needed during validation —
+   the in-process `gateway.restart.request` path silently kills the
+   activity wire (see
+   [#122](https://github.com/Laxcorp-Research/claws/issues/122)).
+5. **Prod promotion (separate, operator-gated step)**:
+   `promote-openclaw-image.yml` with `target_env=production` — moves
+   `:latest` and writes prod's stable row.
+
+**Pre-first-customer-deploy verification item:** as of 2026-06-11 the
+**prod `OpenClawVersion` table is EMPTY** ("No versions registered" in the
+prod admin). A first prod deploy would fall through image resolution to the
+`OPENCLAW_DOCKER_IMAGE` env var or the hardcoded `:latest` fallback
+(`resolveDeployImage`, `src/lib/openclaw/deployer.ts`) — unpinned and
+unaudited. The first prod promotion fixes this; verify a stable row exists
+on prod **before** any first customer deploy. (Master-tracker item.)
 
 ### Tag mutability summary
 
@@ -257,10 +303,19 @@ the stable slot:
 ```bash
 gh workflow run promote-openclaw-image.yml --ref main \
   -f version=<version-to-promote> \
-  -f register_endpoint=https://app.buildclaws.ai/api/internal/versions/register
-# Default register_endpoint is prod. Pass the staging URL to soak a candidate
-# on staging without affecting prod's stable pointer (prod's deployer reads
-# its own DB's isStable row, which the staging endpoint never touches).
+  -f target_env=production
+# target_env is REQUIRED — no default (the old free-text register_endpoint
+# defaulted to PROD, so a staging-intended dispatch silently flipped prod's
+# stable row). Choose `production` or `staging`. The workflow maps the enum to
+# the register endpoint and FAIL-CLOSED verifies the resolved host before
+# POSTing (mirrors src/lib/openclaw/env-guards.ts assertEndpointHostMatchesApp).
+# Use `-f target_env=staging` to soak a candidate's stable row on staging
+# without affecting prod's pointer (prod's deployer reads its own DB's isStable
+# row, which the staging endpoint never touches). Auth: the single
+# secrets.VERSION_PIPELINE_SECRET authenticates against BOTH envs (the build
+# workflow already registers staging candidates with it). If a staging register
+# ever 401s, flip the staging stable row via the admin promote route instead
+# (POST /api/admin/versions/<id>/promote, session auth).
 ```
 
 The workflow:
@@ -277,7 +332,7 @@ The workflow:
    `prisma.$transaction`), so the DB never holds two stable rows.
 
 Note that `:latest` is moved unconditionally by the promote workflow even
-when `register_endpoint` is staging. This is safe because nothing in the
+when `target_env` is staging. This is safe because nothing in the
 prod runtime path reads `:latest` — the prod deployer pulls
 `OpenClawVersion.dockerImage` from its own DB's stable row, which is an
 immutable `:<version>` reference. The `:latest` tag is operational
@@ -292,9 +347,8 @@ The full sequence to move a prod workspace onto a new runtime version:
 2. Soak the candidate on staging: redeploy a staging workspace; the staging
    deployer reads the (post-promote) staging stable row and pulls the new
    image. Validate Railway logs, plugin load, dashboard behavior.
-3. `promote-openclaw-image.yml` runs with the **prod** register endpoint
-   (the default) — flips prod's `OpenClawVersion` stable row and retags
-   GHCR `:latest`.
+3. `promote-openclaw-image.yml` runs with `target_env=production` — flips
+   prod's `OpenClawVersion` stable row and retags GHCR `:latest`.
 4. Prod workspaces continue running on their old image until they are
    redeployed (env change, builder save, `/api/deploy/.../redeploy`, or a
    user-triggered redeploy from the dashboard). The change is opt-in per

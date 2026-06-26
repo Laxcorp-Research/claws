@@ -71,7 +71,7 @@ export function UsageDashboard() {
           </p>
           <Link
             href="/my-claws"
-            className="text-[12px] text-[var(--ac)] hover:underline inline-flex items-center gap-[4px]"
+            className="text-[12px] text-[var(--ac-text)] hover:underline inline-flex items-center gap-[4px]"
           >
             Go to My Claws
             <ArrowRight className="w-3 h-3" />

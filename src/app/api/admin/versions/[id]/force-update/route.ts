@@ -59,7 +59,12 @@ export async function POST(
       data: { containerImage: targetVersion.dockerImage },
     })
 
-    // TODO: When container infrastructure is live (Tier 3):
+    // TODO (PR-1b restart): When the live image-swap restart is built, the
+    // STOP step MUST go through syncThenDestroy(workspaceId) (PR-2), NOT bare
+    // destroyContainer — otherwise a forced security update silently discards
+    // the latest session/MEMORY state. Per the PR-2 plan, PR-1b should add a
+    // stopForReplace(workspaceId) wrapper around syncThenDestroy so bare
+    // destroy is structurally unreachable on the restart path.
     // For each affected deployment: stop container, pull new image, restart, health check
 
     const uniqueUsers = new Map<string, { email: string; name: string | null; workspaceNames: string[] }>()
@@ -84,18 +89,23 @@ export async function POST(
         await resend.emails.send({
           from: 'Claws <noreply@buildclaws.ai>',
           to: user.email,
-          subject: `Security update applied to your Claw${user.workspaceNames.length > 1 ? 's' : ''}`,
+          subject: `Security update scheduled for your Claw${user.workspaceNames.length > 1 ? 's' : ''}`,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto;">
-              <h2 style="font-size: 18px; font-weight: 600;">Security Update Applied</h2>
+              <h2 style="font-size: 18px; font-weight: 600;">Security Update Scheduled</h2>
               <p style="font-size: 14px; color: #555; line-height: 1.6;">
                 Hi ${user.name || 'there'},
               </p>
               <p style="font-size: 14px; color: #555; line-height: 1.6;">
-                We've updated your Claw${user.workspaceNames.length > 1 ? 's' : ''} to OpenClaw v${targetVersion.version} to patch a security vulnerability. No action is needed on your end.
+                A security patch (OpenClaw v${targetVersion.version}) has been scheduled for your Claw${user.workspaceNames.length > 1 ? 's' : ''}.
               </p>
+              <div style="background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 14px; margin: 16px 0;">
+                <p style="font-size: 13px; font-weight: 600; color: #854d0e; margin: 0;">
+                  Your Claw${user.workspaceNames.length > 1 ? 's have' : ' has'} NOT been updated yet &mdash; the patch applies on the next redeploy. To apply it now, redeploy your Claw${user.workspaceNames.length > 1 ? 's' : ''} from the dashboard.
+                </p>
+              </div>
               <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
-                <p style="font-size: 13px; font-weight: 600; margin: 0 0 6px 0;">Updated Claws:</p>
+                <p style="font-size: 13px; font-weight: 600; margin: 0 0 6px 0;">Claws scheduled to update:</p>
                 <ul style="font-size: 13px; color: #166534; margin: 0; padding-left: 18px;">
                   ${user.workspaceNames.map(n => `<li>${n}</li>`).join('')}
                 </ul>
@@ -121,7 +131,7 @@ export async function POST(
     logAdminAction({ action: 'version.force-update', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'version', details: { affectedCount: affectedDeployments.length, targetVersion: targetVersion.version }, ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
 
     return apiSuccess({
-      message: `Force update initiated for ${affectedDeployments.length} deployment(s)`,
+      message: `Queued v${targetVersion.version} for ${affectedDeployments.length} deployment(s) — applies on each Claw's next redeploy`,
       affectedCount: affectedDeployments.length,
       targetVersion: targetVersion.version,
     })

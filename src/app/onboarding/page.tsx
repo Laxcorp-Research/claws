@@ -60,7 +60,7 @@ export default function OnboardingPage() {
           />
         </div>
 
-        <button onClick={handleSkip} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] hover:underline cursor-pointer transition-colors">
+        <button onClick={handleSkip} className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline cursor-pointer transition-colors">
           Skip onboarding →
         </button>
       </div>

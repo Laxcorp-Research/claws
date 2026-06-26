@@ -1,8 +1,14 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
-import { deployToCloud, destroyContainer } from "@/lib/openclaw/deployer"
+import { deployToCloud, syncThenDestroy, type SyncThenDestroyOptions } from "@/lib/openclaw/deployer"
 
-export async function hibernateWorkspace(workspaceId: string): Promise<void> {
+export async function hibernateWorkspace(
+  workspaceId: string,
+  // PR-2: forwarded to syncThenDestroy. The hibernation cron passes a tighter
+  // syncTimeoutMs (10s, matching the container SIGTERM window) and sets
+  // skipSync when it's low on its 55s ceiling (budget guard).
+  syncOpts: SyncThenDestroyOptions = {},
+): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     include: { containerState: true },
@@ -30,7 +36,11 @@ export async function hibernateWorkspace(workspaceId: string): Promise<void> {
   }
 
   try {
-    await destroyContainer(workspaceId)
+    // PR-2: confirmed pre-destroy sync (10s budget on the cron path; skipSync
+    // when the cron is low on its 55s ceiling). syncThenDestroy never throws on
+    // a sync failure — it records an incomplete-sync marker and destroys anyway,
+    // so hibernation is never blocked by a slow/unreachable container.
+    await syncThenDestroy(workspaceId, syncOpts)
 
     await prisma.$transaction([
       prisma.containerState.update({

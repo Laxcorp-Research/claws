@@ -256,7 +256,7 @@ export function CreatorDashboard() {
           <Button size="sm" onClick={handleSaveProfile} loading={isSavingProfile}>Save Profile</Button>
           {profileSaved && <span className="text-[11px] text-[var(--ok)]">Saved</span>}
           {profile && (
-            <Link href={`/creator/${profile.id}`} className="text-[11px] text-[var(--ac)] hover:text-[var(--tx)] ml-auto flex items-center gap-1">
+            <Link href={`/creator/${profile.id}`} className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] ml-auto flex items-center gap-1">
               <ExternalLink size={10} aria-hidden="true" /> View public profile
             </Link>
           )}

@@ -18,7 +18,7 @@
 // ============================================================================
 
 import { prisma } from '@/lib/db';
-import { encrypt, decrypt } from '@/lib/encryption';
+import { encrypt, decrypt, decryptAndMaybeReencrypt } from '@/lib/encryption';
 import {
   requireActivityEndpoint,
   requireMeteringEndpoint,
@@ -50,6 +50,13 @@ const CONTAINER_PREFIX = 'claw';
 
 const DEPLOY_POLL_INTERVAL_MS = 3_000;
 const DEPLOY_TIMEOUT_MS = 180_000;
+
+// PR-2 (syncThenDestroy): default upper bound for the pre-destroy
+// /internal/sync-now call. Tuned for the single-workspace Stop path
+// (route maxDuration=60). The hibernation cron passes a tighter value
+// (HIBERNATE_SYNC_TIMEOUT_MS) because it loops under a 55s ceiling — see
+// src/app/api/cron/hibernation/route.ts.
+const DEFAULT_SYNC_TIMEOUT_MS = 18_000;
 
 // ---------------------------------------------------------------------------
 // Deployment Status
@@ -214,6 +221,10 @@ export async function deployToCloud(workspaceId: string): Promise<{
         hasActiveChannels: channelsActive,
         nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
         heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+        // PR-2: a fresh container makes any prior teardown's incomplete-sync
+        // marker moot — clear it so a stale flag never lingers across deploys.
+        lastSyncIncompleteAt: null,
+        lastSyncIncompleteReason: null,
       },
       create: {
         workspaceId,
@@ -345,6 +356,20 @@ export async function deployToCloud(workspaceId: string): Promise<{
 // Container Operations
 // ---------------------------------------------------------------------------
 
+/**
+ * FAST, NON-THROWING teardown: deletes the Railway service (best-effort,
+ * swallows errors) and converges the Workspace + ContainerState rows to a
+ * STOPPED state. It does NOT flush the container's runtime state first — the
+ * only pre-destroy persistence on this path is the container's own best-effort
+ * SIGTERM sync (process-manager.mjs), which Railway may cut short with SIGKILL.
+ *
+ * Use this directly ONLY where speed / not-throwing matters more than a
+ * guaranteed-fresh snapshot: the Dodo webhook (must stay fast to avoid retry
+ * storms) and credit exhaustion. For any user-/admin-initiated stop of a
+ * RUNNING container whose history must be preserved (Stop button, hibernate,
+ * and the future force-update restart step), call syncThenDestroy instead — it
+ * confirms the snapshot before calling this.
+ */
 export async function destroyContainer(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
@@ -388,6 +413,151 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
       data: { containerPhase: 'STOPPED' },
     }),
   ]);
+}
+
+export interface SyncThenDestroyOptions {
+  /** Upper bound for the /internal/sync-now call. Default DEFAULT_SYNC_TIMEOUT_MS (~18s). */
+  syncTimeoutMs?: number;
+  /**
+   * Budget-guard / explicit bare path: skip the sync entirely and go straight
+   * to destroyContainer. The hibernation cron sets this when it is low on its
+   * 55s ceiling so an in-flight sync can't be killed mid-write.
+   */
+  skipSync?: boolean;
+}
+
+type SyncNowOutcome = { synced: true } | { synced: false; reason: string };
+
+/**
+ * POSTs the pre-destroy confirmed-sync request to the container's
+ * /internal/sync-now route (the claws-activity-reporter overlay plugin).
+ *
+ * Returns synced:true ONLY on an HTTP 200 whose body confirms a persist
+ * (persisted:true) or a genuinely empty data dir (empty:true) — the exact
+ * contract enforced by container/claws-activity-reporter/index.mjs and locked
+ * by src/__tests__/claws-sync-now-route.test.ts. Any non-200, unparseable
+ * body, timeout, or network error → synced:false with a short reason for the
+ * incomplete-sync marker. NEVER throws.
+ */
+async function trySyncNow(containerHost: string, timeoutMs: number): Promise<SyncNowOutcome> {
+  // The backend sends the value of METERING_MASTER_SECRET (the same value it
+  // injects into the container as CLAWS_METERING_SECRET — see
+  // buildRailwayEnvVars). Do NOT read CLAWS_METERING_SECRET here: that name
+  // exists only inside the container, never on the backend.
+  const secret = process.env.METERING_MASTER_SECRET;
+  if (!secret) {
+    return { synced: false, reason: 'unconfigured' };
+  }
+
+  const url = `https://${containerHost}/internal/sync-now`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'X-Metering-Secret': secret },
+    });
+  } catch (err) {
+    const isTimeout = controller.signal.aborted || (err instanceof Error && err.name === 'AbortError');
+    return { synced: false, reason: isTimeout ? 'timeout' : 'unreachable' };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res.status !== 200) {
+    // 502 carries {status:'rejected'}; 503 carries {status:'error'|
+    // 'accepted-unconfirmed'|'unconfigured'}. Prefer the server's own
+    // discriminant for the marker; fall back to the bare HTTP code (e.g. 401).
+    let serverStatus: string | undefined;
+    try {
+      const body = (await res.json()) as { status?: unknown };
+      if (typeof body?.status === 'string') serverStatus = body.status;
+    } catch {
+      /* non-JSON or empty body */
+    }
+    return { synced: false, reason: serverStatus ?? `http-${res.status}` };
+  }
+
+  let body: { persisted?: unknown; empty?: unknown };
+  try {
+    body = (await res.json()) as { persisted?: unknown; empty?: unknown };
+  } catch {
+    return { synced: false, reason: 'unparseable' };
+  }
+
+  if (body.persisted === true || body.empty === true) {
+    return { synced: true };
+  }
+  return { synced: false, reason: 'unconfirmed' };
+}
+
+/**
+ * Confirmed-sync teardown: flushes + persists the container's runtime state via
+ * POST /internal/sync-now BEFORE destroying it, so "your history is saved" is a
+ * guarantee rather than best-effort. ALWAYS destroys — on any sync failure
+ * (non-200, timeout, unreachable container, or the SYNC_BEFORE_DESTROY
+ * kill-switch being off) it records an incomplete-sync marker on ContainerState
+ * and proceeds to destroyContainer anyway. It NEVER traps the container.
+ *
+ * Gated by SYNC_BEFORE_DESTROY (default ON; set to "false" for an instant
+ * rollback to bare destroyContainer behaviour), following the
+ * HIBERNATION_ENABLED convention.
+ *
+ * Callers: the Stop route (default ~18s budget) and hibernate (10s + a
+ * cron-loop budget guard via skipSync). Bare destroyContainer stays on the
+ * fast/non-throwing paths (Dodo webhook, credit exhaustion).
+ */
+export async function syncThenDestroy(
+  workspaceId: string,
+  opts: SyncThenDestroyOptions = {},
+): Promise<void> {
+  const { syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS, skipSync = false } = opts;
+
+  // Kill-switch (default ON). Off → behave exactly like bare destroyContainer.
+  const enabled = process.env.SYNC_BEFORE_DESTROY !== 'false';
+  if (!enabled || skipSync) {
+    await destroyContainer(workspaceId);
+    return;
+  }
+
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
+    include: { containerState: { select: { runtimeStateUpdatedAt: true } } },
+  });
+
+  // Nothing to sync to: already torn down, never deployed, or simulation mode
+  // (no containerHost). Skip the network call and just destroy — idempotent.
+  if (!workspace.containerId || !workspace.containerHost) {
+    await destroyContainer(workspaceId);
+    return;
+  }
+
+  const outcome = await trySyncNow(workspace.containerHost, syncTimeoutMs);
+
+  if (outcome.synced) {
+    // Confirmed persist (or vacuously empty): clear any prior incomplete marker.
+    // updateMany (not update) so a missing ContainerState row is a no-op, never a throw.
+    await prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: { lastSyncIncompleteAt: null, lastSyncIncompleteReason: null },
+    });
+    log.info('syncThenDestroy: pre-destroy sync confirmed', { workspaceId });
+  } else {
+    // Destroy anyway, but record that this teardown's snapshot may be stale.
+    await prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: { lastSyncIncompleteAt: new Date(), lastSyncIncompleteReason: outcome.reason },
+    });
+    log.warn('syncThenDestroy: pre-destroy sync NOT confirmed — destroying anyway', {
+      workspaceId,
+      reason: outcome.reason,
+      lastRuntimeStateUpdatedAt: workspace.containerState?.runtimeStateUpdatedAt ?? null,
+    });
+  }
+
+  await destroyContainer(workspaceId);
 }
 
 export async function restartContainer(workspaceId: string): Promise<void> {
@@ -463,9 +633,25 @@ export async function getGatewayConnectionInfo(
 
   if (!workspace.containerHost || !workspace.gatewayToken) return null;
 
+  // Re-encrypt-on-read: if the token only decrypts under the PREVIOUS master key
+  // (mid key-rotation), transparently migrate it to the current key. The write
+  // is best-effort — a failure must NOT break the read, so we always return the
+  // decrypted token regardless.
+  const token = await decryptAndMaybeReencrypt(workspace.gatewayToken, async (newBlob) => {
+    try {
+      await prisma.workspace.update({ where: { id: workspaceId }, data: { gatewayToken: newBlob } });
+      log.info('gatewayToken migrated to current encryption key', { workspaceId });
+    } catch (e) {
+      log.warn('gatewayToken re-encrypt write failed (continuing with decrypted token)', {
+        workspaceId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
   return {
     wsUrl: `wss://${workspace.containerHost}`,
-    token: decrypt(workspace.gatewayToken),
+    token,
   };
 }
 

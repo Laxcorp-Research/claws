@@ -529,3 +529,242 @@ describe("claws-activity-reporter — UsageReporter buffer", () => {
     expect(r.pending.length).toBe(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// PR-9/A-container — webchat reply-row emission (contract C1–C6)
+//
+// agent_end for a webchat turn must emit exactly ONE additional MESSAGE_SENT
+// row carrying the assistant reply + turn health, AFTER the unchanged
+// TASK_COMPLETE/TASK_FAILED record. Non-webchat turns (cron, heartbeat,
+// worker spawns, channel-less) emit ZERO reply rows. Mutation-verified:
+//   - detection trigger legs dropped  → C5 cron/heartbeat negatives fail
+//   - detection subagent leg dropped  → C5 subagent negative fails
+//   - truncation removed              → C3 boundary test fails
+//   - turnHealth from event.success   → C2 divergence test fails
+// ════════════════════════════════════════════════════════════════════════════
+describe("claws-activity-reporter — PR-9/A webchat reply rows", () => {
+  // Cast once: isWebchatReplyTurn/extractAssistantReply/clipWithFlag are new
+  // __test__ exports not in the PluginTestSurface interface above (kept
+  // narrow deliberately — the older blocks don't need them).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ext = () => plugin as any;
+
+  const WEBCHAT_CTX = {
+    agentId: "dev-commander",
+    runId: "idem-key-1",
+    sessionKey: "agent:dev-commander:main",
+    channelId: "webchat",
+  };
+
+  function assistantMessages(text: string, extra: Record<string, unknown> = {}) {
+    return [
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      {
+        role: "assistant",
+        content: [{ type: "text", text }],
+        stopReason: "stop",
+        usage: { input: 10, output: 478, totalTokens: 19319, cost: { total: 0.0259 } },
+        ...extra,
+      },
+    ];
+  }
+
+  it("C1+C6: webchat agent_end emits exactly [TASK_COMPLETE, MESSAGE_SENT] in order, TASK_COMPLETE byte-identical", () => {
+    // Pre-extension TASK_COMPLETE capture (from the pre-PR-9/A handler):
+    // the first emitted record must still match this shape EXACTLY.
+    plugin.handleAgentEnd(
+      { success: true, durationMs: 6047, messages: assistantMessages("Here are three checks…") },
+      WEBCHAT_CTX,
+    );
+    expect(plugin.reporter.pending).toHaveLength(2);
+
+    const [task, reply] = plugin.reporter.pending;
+    expect(task.type).toBe("TASK_COMPLETE");
+    expect(task.agentId).toBe("dev-commander");
+    expect(task.runId).toBe("idem-key-1");
+    expect(task.action).toBe("Task completed in 6s");
+    expect(task.detail).toBeUndefined();
+    expect(task.metadata).toEqual({ success: true, durationMs: 6047, error: undefined });
+
+    expect(reply.type).toBe("MESSAGE_SENT");
+    expect(reply.runId).toBe("idem-key-1");
+    expect(reply.action).toBe("Replied: Here are three checks…");
+    expect(reply.detail).toBe("Here are three checks…");
+  });
+
+  it("C2: reply metadata carries to/stopReason/turnHealth/truncated/usage (usage trimmed to 4 keys)", () => {
+    plugin.handleAgentEnd(
+      { success: true, messages: assistantMessages("Short reply") },
+      WEBCHAT_CTX,
+    );
+    const reply = plugin.reporter.pending[1];
+    expect(reply.metadata.to).toBe("webchat");
+    expect(reply.metadata.stopReason).toBe("stop");
+    expect(reply.metadata.turnHealth).toBe("ok");
+    expect(reply.metadata.truncated).toBe(false);
+    expect(reply.metadata.usage).toEqual({
+      input: 10,
+      output: 478,
+      totalTokens: 19319,
+      costTotal: 0.0259,
+    });
+    // channelId/sessionKey live as TOP-LEVEL record fields (the ingest route
+    // merges them into stored metadata server-side — contract v0.2).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((reply as any).channelId).toBe("webchat");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((reply as any).sessionKey).toBe("agent:dev-commander:main");
+  });
+
+  it("C2 divergence: event.success=true with stopReason 'error' → turnHealth 'error' (NEVER from success)", () => {
+    // Captured live in the PR-9/0 spike: an errored LLM turn still produced
+    // agent_end success:true. turnHealth must come from the transcript.
+    plugin.handleAgentEnd(
+      {
+        success: true, // the lie
+        messages: assistantMessages("[assistant turn failed before producing content]", {
+          stopReason: "error",
+          errorMessage: '{"type":"error","error":{"type":"authentication_error"}}',
+        }),
+      },
+      WEBCHAT_CTX,
+    );
+    const reply = plugin.reporter.pending[1];
+    expect(reply.type).toBe("MESSAGE_SENT");
+    expect(reply.metadata.turnHealth).toBe("error");
+    expect(reply.action).toMatch(/^Reply failed/);
+  });
+
+  it("C3 boundary: 4001-char reply → 4000 chars + truncated:true; 4000-char → untruncated, truncated:false", () => {
+    plugin.handleAgentEnd(
+      { success: true, messages: assistantMessages("y".repeat(4001)) },
+      WEBCHAT_CTX,
+    );
+    const long = plugin.reporter.pending[1];
+    expect((long.detail as string).length).toBe(4000); // 3999 chars + "…"
+    expect((long.detail as string).endsWith("…")).toBe(true);
+    expect(long.metadata.truncated).toBe(true);
+
+    plugin.reporter.pending.length = 0;
+    plugin.handleAgentEnd(
+      { success: true, messages: assistantMessages("y".repeat(4000)) },
+      WEBCHAT_CTX,
+    );
+    const exact = plugin.reporter.pending[1];
+    expect((exact.detail as string).length).toBe(4000);
+    expect((exact.detail as string).endsWith("…")).toBe(false);
+    expect(exact.metadata.truncated).toBe(false);
+  });
+
+  it("C4: errored turn still emits the reply row — turnHealth 'error', error text in detail", () => {
+    plugin.handleAgentEnd(
+      {
+        success: false,
+        error: "LLM error authentication_error: invalid x-api-key",
+        messages: assistantMessages("[assistant turn failed before producing content]", {
+          stopReason: "error",
+          errorMessage: "authentication_error: invalid x-api-key",
+        }),
+      },
+      WEBCHAT_CTX,
+    );
+    // TASK_FAILED first (existing behavior), then the reply row.
+    expect(plugin.reporter.pending[0].type).toBe("TASK_FAILED");
+    const reply = plugin.reporter.pending[1];
+    expect(reply.type).toBe("MESSAGE_SENT");
+    expect(reply.metadata.turnHealth).toBe("error");
+    expect(reply.detail).toContain("failed before producing content");
+  });
+
+  it("C5 negatives: cron / heartbeat / subagent / channel-less turns emit ZERO reply rows", () => {
+    const event = { success: true, messages: assistantMessages("should not be emitted") };
+    const cases = [
+      { ...WEBCHAT_CTX, trigger: "cron" },
+      { ...WEBCHAT_CTX, trigger: "heartbeat" },
+      { ...WEBCHAT_CTX, sessionKey: "agent:dev-commander:subagent:pr-reviewer:abc123" },
+      { ...WEBCHAT_CTX, channelId: undefined },
+    ];
+    for (const ctx of cases) {
+      plugin.reporter.pending.length = 0;
+      plugin.handleAgentEnd(event, ctx);
+      const types = plugin.reporter.pending.map((p) => p.type);
+      expect(types, `ctx=${JSON.stringify(ctx)}`).toEqual(["TASK_COMPLETE"]);
+    }
+  });
+
+  it("no-assistant-item fallback: emits with event.error (or placeholder) and turnHealth 'error'", () => {
+    plugin.handleAgentEnd(
+      { success: false, error: "crashed before any message persisted", messages: [] },
+      WEBCHAT_CTX,
+    );
+    const reply = plugin.reporter.pending[1];
+    expect(reply.type).toBe("MESSAGE_SENT");
+    expect(reply.metadata.turnHealth).toBe("error");
+    expect(reply.detail).toBe("crashed before any message persisted");
+
+    plugin.reporter.pending.length = 0;
+    plugin.handleAgentEnd({ success: true, messages: [] }, WEBCHAT_CTX);
+    const placeholder = plugin.reporter.pending[1];
+    expect(placeholder.metadata.turnHealth).toBe("error");
+    expect(placeholder.detail).toBe("(no reply produced)");
+  });
+
+  it("multi-block content: concatenates only type==='text' blocks in array order", () => {
+    plugin.handleAgentEnd(
+      {
+        success: true,
+        messages: [
+          { role: "user", content: [{ type: "text", text: "q" }] },
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "Part one." },
+              { type: "tool_use", name: "search", input: {} },
+              { type: "text", text: "Part two." },
+            ],
+            stopReason: "stop",
+          },
+        ],
+      },
+      WEBCHAT_CTX,
+    );
+    expect(plugin.reporter.pending[1].detail).toBe("Part one.\nPart two.");
+  });
+
+  it("extraction picks the LAST assistant item (tool-use turns interleave items)", () => {
+    plugin.handleAgentEnd(
+      {
+        success: true,
+        messages: [
+          { role: "user", content: [{ type: "text", text: "q" }] },
+          { role: "assistant", content: [{ type: "text", text: "thinking…" }], stopReason: "tool_use" },
+          { role: "tool", content: [{ type: "text", text: "result" }] },
+          { role: "assistant", content: [{ type: "text", text: "Final answer." }], stopReason: "stop" },
+        ],
+      },
+      WEBCHAT_CTX,
+    );
+    expect(plugin.reporter.pending[1].detail).toBe("Final answer.");
+    expect(plugin.reporter.pending[1].metadata.stopReason).toBe("stop");
+  });
+
+  it("handleAgentEnd still returns synchronously with the reply-row path active", () => {
+    expectSyncReturn(
+      "handleAgentEnd",
+      plugin.handleAgentEnd,
+      { success: true, messages: assistantMessages("x") },
+      WEBCHAT_CTX,
+    );
+  });
+
+  it("clipWithFlag matches clip() semantics and clip() itself is untouched", () => {
+    expect(ext().clipWithFlag("  hello  ")).toEqual({ text: "hello", truncated: false });
+    expect(ext().clipWithFlag("")).toEqual({ text: undefined, truncated: false });
+    expect(ext().clipWithFlag(undefined)).toEqual({ text: undefined, truncated: false });
+    const cut = ext().clipWithFlag("z".repeat(5000));
+    expect(cut.text.length).toBe(4000);
+    expect(cut.truncated).toBe(true);
+    // clip() unchanged: same output text for the same input.
+    expect(plugin.clip("z".repeat(5000))).toBe(cut.text);
+  });
+});

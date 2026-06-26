@@ -13,11 +13,11 @@ const config: Record<StatusBadgeProps["status"], { bg: string; text: string; ico
   paused:     { bg: "bg-[var(--warnbg)]", text: "text-[var(--warn)]", icon: <Pause className={ICON_CLASS} />, label: "Paused" },
   error:      { bg: "bg-[#fee2e2]", text: "text-[#ef4444]", icon: <AlertTriangle className={ICON_CLASS} />, label: "Error" },
   draft:      { bg: "bg-[var(--bg3)]", text: "text-[var(--tx3)]", icon: <Circle className={ICON_CLASS} />, label: "Draft" },
-  setup:      { bg: "bg-[var(--acbg)]", text: "text-[var(--ac)]", icon: <Settings className={ICON_CLASS} />, label: "Setup" },
-  deploying:  { bg: "bg-[var(--acbg)]", text: "text-[var(--ac)]", icon: "spinner" as unknown as ReactNode, label: "Deploying" },
+  setup:      { bg: "bg-[var(--acbg)]", text: "text-[var(--ac-text)]", icon: <Settings className={ICON_CLASS} />, label: "Setup" },
+  deploying:  { bg: "bg-[var(--acbg)]", text: "text-[var(--ac-text)]", icon: "spinner" as unknown as ReactNode, label: "Deploying" },
   stopped:    { bg: "bg-[#fee2e2]", text: "text-[#ef4444]", icon: <Square className={ICON_CLASS} />, label: "Stopped" },
   hibernated: { bg: "bg-[var(--bg3)]", text: "text-[var(--tx3)]", icon: <Moon className={ICON_CLASS} />, label: "Sleeping" },
-  waking:     { bg: "bg-[var(--acbg)]", text: "text-[var(--ac)]", icon: "spinner" as unknown as ReactNode, label: "Waking..." },
+  waking:     { bg: "bg-[var(--acbg)]", text: "text-[var(--ac-text)]", icon: "spinner" as unknown as ReactNode, label: "Waking..." },
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {

@@ -25,11 +25,13 @@ on:
         description: 'Stable version to promote (e.g., 2026.5.20 or 2026.5.20-1). Must already exist as :<version> in GHCR.'
         required: true
         type: string
-      register_endpoint:
-        description: 'Register endpoint URL (default: production).'
-        required: false
-        type: string
-        default: 'https://app.buildclaws.ai/api/internal/versions/register'
+      target_env:
+        description: 'Which control plane to register the stable OpenClawVersion row in. REQUIRED, no default — you must consciously pick the env every dispatch (the old silent prod default flipped prod''s deploy target on a staging-intended run). Note: GHCR :latest is moved globally regardless; this only selects which DB the isStable row is written to and cleared in.'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
       skip_candidate_check:
         description: 'Emergency override: promote without verifying :candidate digest matches :<version> digest. Only use if a hotfix needs to jump candidates.'
         required: false
@@ -175,23 +177,104 @@ jobs:
           GHCR_READ_PAT:  ${{ secrets.GHCR_READ_PAT }}
         run: |
           set -euo pipefail
+          # ─── Why this is NOT a strict digest equality (incident #128) ──────
+          # `docker buildx imagetools create -t :latest :<version>` does NOT
+          # always preserve the digest. When :<version> is a BARE single
+          # manifest (`manifest.v2`) — which is what the build workflow
+          # produces, since it sets provenance:false/sbom:false — imagetools
+          # WRAPS it into a NEW manifest-list/index with a DIFFERENT digest.
+          # So :latest (an index) != :<version> (the wrapped bare manifest),
+          # even though :latest correctly resolves to the version's content.
+          #
+          # The old strict `:latest == :<version>` check therefore failed for
+          # every clean single-manifest promotion (it passed for 2026.5.22-1
+          # ONLY because that image incidentally carried an attestation entry,
+          # making it already an index whose digest imagetools preserved —
+          # luck, not correctness; see #128 for the full root cause).
+          #
+          # Correct invariant: :latest must REFERENCE the promoted version —
+          # either it equals the version digest (source was already an index,
+          # digest preserved) OR :latest is an index whose `.manifests[].digest`
+          # includes the version digest (bare source got wrapped). This also
+          # tolerates future multi-arch / attestation shapes. A genuinely wrong
+          # promotion (different content) matches NEITHER branch and still fails.
+          # DO NOT "simplify" this back to strict equality.
           EXPECTED="${{ steps.digests.outputs.version_digest }}"
+          ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
 
           TOKEN=$(curl -sS -u "${GHCR_READ_USER}:${GHCR_READ_PAT}" \
             "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
             | jq -r .token)
 
+          # Top-level digest of :latest.
           LATEST_DIGEST=$(curl -sS -D - -o /dev/null \
             -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+            -H "Accept: $ACCEPT" \
             "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/latest" \
             | tr -d '\r' | awk '/^docker-content-digest:/{print $2}')
 
-          if [ "$LATEST_DIGEST" != "$EXPECTED" ]; then
-            echo "::error::Post-promote verification failed: :latest=$LATEST_DIGEST expected=$EXPECTED"
+          if [ "$LATEST_DIGEST" = "$EXPECTED" ]; then
+            echo ":latest digest == :${{ steps.validate.outputs.output_version }} ($LATEST_DIGEST) — version was already an index, digest preserved."
+            exit 0
+          fi
+
+          # Not equal at top level — :latest may be an index wrapping the
+          # version's bare manifest. Fetch the body and check its sub-manifests.
+          LATEST_BODY=$(curl -sS \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: $ACCEPT" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/latest")
+          MEDIA_TYPE=$(printf '%s' "$LATEST_BODY" | jq -r '.mediaType // ""')
+          # jq: is EXPECTED among the index's referenced manifest digests?
+          REFERENCED=$(printf '%s' "$LATEST_BODY" \
+            | jq -r --arg d "$EXPECTED" '((.manifests // []) | map(.digest) | index($d)) != null')
+
+          case "$MEDIA_TYPE" in
+            *image.index*|*manifest.list*)
+              if [ "$REFERENCED" = "true" ]; then
+                echo ":latest is an index ($LATEST_DIGEST, $MEDIA_TYPE) that references :${{ steps.validate.outputs.output_version }} ($EXPECTED) — correct (bare manifest was wrapped by imagetools)."
+                exit 0
+              fi
+              ;;
+          esac
+
+          echo "::error::Post-promote verification failed: :latest=$LATEST_DIGEST ($MEDIA_TYPE) neither equals nor references the promoted digest $EXPECTED. Aborting before the stable register."
+          exit 1
+
+      # Map the REQUIRED target_env enum to its register endpoint, then verify
+      # the resolved host before any POST. Each env's URL and its expected host
+      # are defined INDEPENDENTLY so this fail-closed guard catches a future edit
+      # that typos a URL or points an env at the wrong control plane — mirrors
+      # assertEndpointHostMatchesApp in src/lib/openclaw/env-guards.ts. Auth note:
+      # the single secrets.VERSION_PIPELINE_SECRET authenticates against BOTH envs
+      # (build-openclaw-image.yml already registers candidate rows on staging with
+      # it on every Monday auto-build), so the staging target does not 401.
+      - name: Resolve + verify register endpoint from target_env
+        id: endpoint
+        run: |
+          set -euo pipefail
+          case "${{ inputs.target_env }}" in
+            production)
+              URL="https://app.buildclaws.ai/api/internal/versions/register"
+              EXPECTED_HOST="app.buildclaws.ai"
+              ;;
+            staging)
+              URL="https://staging.app.buildclaws.ai/api/internal/versions/register"
+              EXPECTED_HOST="staging.app.buildclaws.ai"
+              ;;
+            *)
+              echo "::error::Unknown target_env '${{ inputs.target_env }}' (expected 'staging' or 'production')."
+              exit 1
+              ;;
+          esac
+          RESOLVED_HOST="$(printf '%s' "$URL" | sed -E 's#^https?://([^/]+).*#\1#')"
+          if [ "$RESOLVED_HOST" != "$EXPECTED_HOST" ]; then
+            echo "::error::Host guard tripped: target_env='${{ inputs.target_env }}' resolved host '$RESOLVED_HOST' != expected '$EXPECTED_HOST'. Aborting BEFORE the register POST — refusing to write the stable row to the wrong control plane."
             exit 1
           fi
-          echo ":latest now points at $LATEST_DIGEST (matches :${{ steps.validate.outputs.output_version }})"
+          echo "target_env='${{ inputs.target_env }}' -> $URL (host '$RESOLVED_HOST' verified against expected '$EXPECTED_HOST')"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "host=$RESOLVED_HOST" >> "$GITHUB_OUTPUT"
 
       - name: Register OpenClawVersion (stable)
         env:
@@ -236,7 +319,10 @@ jobs:
             -H "Content-Type: application/json" \
             -H "X-Pipeline-Secret: $VERSION_PIPELINE_SECRET" \
             -d "$PAYLOAD" \
-            "${{ inputs.register_endpoint }}")
+            "${{ steps.endpoint.outputs.url }}") || {
+              echo "::error::Register POST to ${{ steps.endpoint.outputs.url }} (target_env='${{ inputs.target_env }}') failed. If HTTP 401, that deployment's VERSION_PIPELINE_SECRET does not match secrets.VERSION_PIPELINE_SECRET. NOTE: :latest was ALREADY moved by the retag step — re-run after fixing auth. For a staging stable flip, the admin promote route (POST /api/admin/versions/<id>/promote, session auth) is the supported alternative — see docs/CONTAINER_INFRASTRUCTURE.md."
+              exit 1
+            }
 
           echo "Register response:"
           echo "$HTTP_RESPONSE" | jq .
@@ -260,6 +346,7 @@ jobs:
           else
             echo "- **Candidate check:** verified :candidate digest matches :${{ steps.validate.outputs.output_version }}" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "- **OpenClawVersion row:** registered with isStable=true at ${{ inputs.register_endpoint }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Target env:** \`${{ inputs.target_env }}\` (host \`${{ steps.endpoint.outputs.host }}\` — verified by the host guard)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **OpenClawVersion row:** registered with isStable=true at ${{ steps.endpoint.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Next workspace deploy will pull this image. Existing running containers are NOT affected — they keep their pinned digest until they redeploy. To force a fleet-wide update, see admin → Versions → Force Update All (PR-1b will implement the actual redeploy)." >> "$GITHUB_STEP_SUMMARY"

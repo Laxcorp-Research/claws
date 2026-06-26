@@ -151,7 +151,14 @@ export function ClawNarrativeRow({
                     <div className="flex items-start gap-2 min-w-0">
                       <span className={cn("w-2 h-2 rounded-full flex-shrink-0 mt-1", rosterDot[agent.status])} aria-hidden="true" />
                       <div className="min-w-0">
-                        <div className="text-[12px] font-semibold text-[var(--tx)]" style={{ color: agent.color }}>{agent.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          {/* Role/identity color as a decorative dot — the name itself
+                              stays --tx so it's WCAG AA readable in both themes (the
+                              pale worker hues were ~1.2:1 as text on white). Role is
+                              also conveyed by the label below. */}
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: agent.color }} aria-hidden="true" />
+                          <div className="text-[12px] font-semibold text-[var(--tx)] truncate">{agent.name}</div>
+                        </div>
                         <div className="text-[10px] text-[var(--tx2)] truncate">
                           {roleLabel[agent.role]}
                           {activity ? ` · ${activity}` : agent.lastActive ? ` · Last active ${agent.lastActive}` : ""}

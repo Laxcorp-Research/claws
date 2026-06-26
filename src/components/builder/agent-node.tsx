@@ -38,7 +38,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
         <div
           className={cn(
             "text-[9px] font-semibold uppercase tracking-[0.5px] mb-0.5",
-            isOrchestrator && "text-[var(--ac)]",
+            isOrchestrator && "text-[var(--ac-text)]",
             isCritic && "text-[#5b21b6]"
           )}
           aria-hidden="true"

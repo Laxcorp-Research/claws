@@ -196,7 +196,7 @@ export function CredentialsModal({
                   href={field.helpUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--ac)] hover:text-[var(--tx)] hover:underline transition-colors"
+                  className="text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline transition-colors"
                 >
                   Where do I find this? →
                 </a>
@@ -222,7 +222,7 @@ export function CredentialsModal({
               href={helpUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[var(--ac)] hover:text-[var(--tx)] hover:underline transition-colors"
+              className="text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline transition-colors"
             >
               Where do I find these? →
             </a>

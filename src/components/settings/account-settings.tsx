@@ -65,7 +65,7 @@ export function AccountSettings({ user }: AccountSettingsProps) {
           {user.image ? (
             <img src={user.image} alt="" className="w-[48px] h-[48px] rounded-full" />
           ) : (
-            <div className="w-[48px] h-[48px] rounded-full bg-[var(--ac)] text-white flex items-center justify-center text-[16px] font-semibold flex-shrink-0">
+            <div className="w-[48px] h-[48px] rounded-full bg-[var(--ac)] text-[var(--tx)] flex items-center justify-center text-[16px] font-semibold flex-shrink-0">
               {initials}
             </div>
           )}

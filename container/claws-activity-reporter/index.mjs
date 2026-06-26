@@ -45,6 +45,11 @@
 // subset (rejects SYSTEM / HUMAN_* / TRADE_* / REVIEW_* / etc. — those
 // belong to other code paths). See src/app/api/internal/activity/[workspaceId]/route.ts.
 
+// PR-1 (sync-now): on-demand runtime-state sync. Shared bundle/upload logic
+// lives in ../state-sync.mjs (image: /opt/state-sync.mjs — see Dockerfile),
+// the SAME module process-manager uses for its interval/SIGTERM syncs.
+import { runStateSync } from "../state-sync.mjs";
+
 const ENDPOINT_BASE = process.env.CLAWS_ACTIVITY_ENDPOINT;
 const ACTIVITY_SECRET = process.env.CLAWS_ACTIVITY_SECRET;
 const WORKSPACE_ID = process.env.CLAWS_WORKSPACE_ID;
@@ -235,6 +240,18 @@ function clip(s, max = DETAIL_MAX) {
   return t.length <= max ? t : t.substring(0, max - 1) + "…";
 }
 
+// PR-9/A: clip() variant that REPORTS whether it truncated, for the reply
+// row's metadata.truncated flag (contract C3: never silently cut). Same
+// semantics as clip() otherwise; clip() itself and its call sites are
+// deliberately untouched.
+function clipWithFlag(s, max = DETAIL_MAX) {
+  if (typeof s !== "string") return { text: undefined, truncated: false };
+  const t = s.trim();
+  if (t.length === 0) return { text: undefined, truncated: false };
+  if (t.length <= max) return { text: t, truncated: false };
+  return { text: t.substring(0, max - 1) + "…", truncated: true };
+}
+
 // PR-4: the cron-JOB-ID prefix Claws' generator uses for the orchestrator
 // heartbeat — `heartbeat-${slug}-${frequency}` (and `...-test_5min`). Distinct
 // from HEARTBEAT_CRON_NAME_PREFIX above (the job NAME prefix). The
@@ -291,6 +308,70 @@ function handleBeforeAgentRun(event, ctx) {
   reporter.add(record);
 }
 
+// ─── PR-9/A: webchat reply-row emission (contract C1–C5) ──────────────────
+//
+// Dashboard chat replies never reach the activity wire by themselves:
+// `message_sent` only fires for EXTERNAL outbound delivery (upstream
+// deliver.ts), while webchat replies go out as gateway WS `chat` events. The
+// reply text IS present in agent_end's `messages` snapshot, so we emit a
+// MESSAGE_SENT row from here for webchat turns. Full protocol evidence:
+// docs/OPENCLAW_GATEWAY_PROTOCOL.md §5/§7.
+
+// C1 detection. Each leg is evidence-backed (PR-9/A-container Phase A audit):
+//   - channelId === "webchat": agent_end ctx carries the run's originating
+//     channel via upstream buildAgentHookContextChannelFields (derived from
+//     the run's own message params, NOT the session's lastChannel) — verified
+//     live: spike TASK_COMPLETE rows carried metadata.channelId "webchat".
+//   - trigger gates: cron-executor runs carry trigger "cron", interval
+//     heartbeats trigger "heartbeat" (upstream run-executor.ts:194,
+//     attempt.prompt-helpers.ts:134). A heartbeat on the SAME main session
+//     must not look like a chat reply (C5).
+//   - subagent gate: sessions_spawn worker runs carry ":subagent:" in their
+//     session key (upstream subagent-registry.ts) and may inherit message
+//     context — only the top-level turn answers the user (C5).
+function isWebchatReplyTurn(ctx) {
+  return (
+    ctx?.channelId === "webchat" &&
+    ctx?.trigger !== "cron" &&
+    ctx?.trigger !== "heartbeat" &&
+    !String(ctx?.sessionKey ?? "").includes(":subagent:")
+  );
+}
+
+// C2/C4 extraction rule (mirrors upstream's own lastAssistant selection in
+// attempt.ts): last role==="assistant" item; text = type==="text" content
+// blocks concatenated in array order; stopReason/errorMessage/usage from that
+// same item. Errored turns persist a synthetic assistant item with
+// stopReason "error" (captured live in the PR-9/0 spike), so they still
+// yield a row. If NO assistant item exists (crash before any message
+// persisted), fall back to the event's error so C4 still holds.
+function extractAssistantReply(messages, event) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m && typeof m === "object" && m.role === "assistant") {
+      const blocks = Array.isArray(m.content) ? m.content : [];
+      const text = blocks
+        .filter((b) => b && typeof b === "object" && b.type === "text" && typeof b.text === "string")
+        .map((b) => b.text)
+        .join("\n");
+      return {
+        text,
+        stopReason: typeof m.stopReason === "string" ? m.stopReason : undefined,
+        errorMessage: typeof m.errorMessage === "string" ? m.errorMessage : undefined,
+        usage: m.usage && typeof m.usage === "object" ? m.usage : undefined,
+      };
+    }
+  }
+  const eventError = typeof event?.error === "string" && event.error.length > 0 ? event.error : "";
+  return {
+    text: eventError || "(no reply produced)",
+    stopReason: undefined,
+    errorMessage: eventError || "(no assistant message in snapshot)",
+    usage: undefined,
+  };
+}
+
 function handleAgentEnd(event, ctx) {
   const success = event?.success === true;
   const actionType = success ? "TASK_COMPLETE" : "TASK_FAILED";
@@ -312,6 +393,51 @@ function handleAgentEnd(event, ctx) {
     record.detail = clip(fullError);
   }
   reporter.add(record);
+
+  // PR-9/A: ONE additional MESSAGE_SENT reply row for webchat turns —
+  // emitted AFTER the (unchanged) TASK_COMPLETE/TASK_FAILED record. agent_end
+  // fires once per run, so C1's "exactly one" holds by construction.
+  if (!isWebchatReplyTurn(ctx)) return;
+
+  const reply = extractAssistantReply(event?.messages, event);
+  // C2 HARD REQUIREMENT: turn health from the transcript's error state —
+  // NEVER from event.success (which is true even for errored turns; captured
+  // live in the PR-9/0 spike, doc §8 risk 4).
+  const turnHealth =
+    reply.stopReason === "error" || reply.errorMessage || fullError ? "error" : "ok";
+  const { text: detail, truncated } = clipWithFlag(
+    turnHealth === "error" && !reply.text ? reply.errorMessage ?? "" : reply.text,
+  );
+  // C2: usage trimmed to exactly these four keys (metadata only — the ingest
+  // route owns apiCost and hard-codes it null; PR-2b scope).
+  const usage = reply.usage
+    ? {
+        input: typeof reply.usage.input === "number" ? reply.usage.input : undefined,
+        output: typeof reply.usage.output === "number" ? reply.usage.output : undefined,
+        totalTokens: typeof reply.usage.totalTokens === "number" ? reply.usage.totalTokens : undefined,
+        costTotal:
+          reply.usage.cost && typeof reply.usage.cost.total === "number"
+            ? reply.usage.cost.total
+            : undefined,
+      }
+    : undefined;
+
+  const replyRecord = buildBaseRecord("MESSAGE_SENT", ctx, {
+    to: "webchat",
+    stopReason: reply.stopReason,
+    turnHealth,
+    truncated,
+    usage,
+  });
+  const preview = truncate(reply.text || reply.errorMessage || "", ACTION_PREVIEW_MAX);
+  replyRecord.action =
+    turnHealth === "error"
+      ? `Reply failed${preview ? `: ${preview}` : ""}`
+      : preview
+        ? `Replied: ${preview}`
+        : "Replied";
+  replyRecord.detail = detail;
+  reporter.add(replyRecord);
 }
 
 function handleMessageReceived(event, ctx) {
@@ -397,6 +523,82 @@ function handleCronChanged(event, ctx) {
   reporter.add(record);
 }
 
+// ─── PR-1: POST /internal/sync-now — backend-triggered confirmed sync ─────
+//
+// The Claws backend's syncThenDestroy (Stop + hibernate, PR-2) calls this
+// BEFORE deleting the container, so "your history is saved" is a guarantee, not
+// best-effort. Mechanism = a plugin HTTP route (registerHttpRoute, auth:"plugin")
+// on the gateway port — the only externally-reachable surface. auth:"plugin"
+// means the gateway does NOT require its own token; we authenticate the request
+// ourselves with the shared CLAWS_METERING_SECRET (== backend METERING_MASTER_
+// SECRET, deployer.ts:525) — same secret family as /api/internal/state/upload.
+//
+// Returns 200 ONLY when the snapshot is CONFIRMED persisted (server count>=1),
+// or when there is genuinely nothing to sync (empty data dir — vacuously safe).
+// Anything else is non-2xx so the backend knows the snapshot is NOT guaranteed
+// current and can surface "recent activity may not be saved" (it still completes
+// the Stop — see PR-2; we never trap the container).
+//
+// ACCEPTED BENIGN RACE: runStateSync()'s in-flight guard is PER-PROCESS, so a
+// route-triggered sync here (gateway process) is not coordinated with
+// process-manager's 5-min interval (parent process). That's fine — uploads are
+// atomic single-column writes (no torn row; equal-or-fresher only), and on the
+// Stop path the container is deleted right after this 200, stopping the
+// interval. See the full invariant note in state-sync.mjs.
+function readMeteringSecret() {
+  return process.env.CLAWS_METERING_SECRET;
+}
+
+async function handleSyncNow(req, res) {
+  if (req.method !== "POST") {
+    res.statusCode = 405;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+    return true;
+  }
+
+  const expected = readMeteringSecret();
+  const provided = req.headers["x-metering-secret"];
+  // Fail-closed: an unconfigured secret must never accept any caller.
+  if (!expected || provided !== expected) {
+    res.statusCode = 401;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: false, error: "unauthorized" }));
+    return true;
+  }
+
+  let result;
+  try {
+    result = await runStateSync();
+  } catch (err) {
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: false, status: "error", error: err?.message ?? String(err) }));
+    return true;
+  }
+
+  // 200 ONLY on a confirmed persist (count>=1) or a genuinely empty data dir
+  // (nothing to persist → vacuously saved). Everything else is non-2xx.
+  if (result.status === "persisted") {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true, persisted: true, count: result.count, fileCount: result.fileCount }));
+    return true;
+  }
+  if (result.status === "empty") {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true, persisted: false, empty: true }));
+    return true;
+  }
+
+  // rejected / accepted-unconfirmed / error / unconfigured → not guaranteed.
+  res.statusCode = result.status === "rejected" ? 502 : 503;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ ok: false, status: result.status }));
+  return true;
+}
+
 // ─── definePluginEntry-equivalent default export ─────────────────────────
 //
 // We deliberately do NOT import `definePluginEntry` from upstream because
@@ -449,15 +651,27 @@ const pluginEntry = {
       // actually drain.
       { timeoutMs: 5_000 },
     );
+
+    // PR-1: backend-triggered confirmed pre-destroy sync. auth:"plugin" → the
+    // gateway passes the raw request to our handler (no gateway token); we
+    // validate CLAWS_METERING_SECRET ourselves. Exact match on a non-reserved
+    // path (only "/api/channels" is gateway-protected). Route handlers MAY
+    // await (unlike the void-hooks above).
+    api.registerHttpRoute({
+      path: "/internal/sync-now",
+      auth: "plugin",
+      match: "exact",
+      handler: handleSyncNow,
+    });
   },
 };
 
 export default pluginEntry;
 
 // ─── Exposed for unit tests only ─────────────────────────────────────────
-// The tests in __tests__/event-mapping.test.js import these to assert the
-// marshalling logic + the sync-handler invariant. NOT part of the runtime
-// surface used by OpenClaw.
+// The tests in src/__tests__/claws-activity-reporter.test.ts (vitest, repo
+// root) import these to assert the marshalling logic + the sync-handler
+// invariant. NOT part of the runtime surface used by OpenClaw.
 export const __test__ = {
   ActivityReporter,
   reporter,
@@ -475,5 +689,9 @@ export const __test__ = {
   handleCronChanged,
   truncate,
   clip,
+  clipWithFlag,
   classifyTrigger,
+  isWebchatReplyTurn,
+  extractAssistantReply,
+  handleSyncNow,
 };

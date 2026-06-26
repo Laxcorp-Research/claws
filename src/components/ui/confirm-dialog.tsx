@@ -12,6 +12,7 @@ interface ConfirmDialogProps {
   description: string;
   warningText?: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   variant?: "danger" | "warning";
   loading?: boolean;
 }
@@ -24,6 +25,7 @@ export function ConfirmDialog({
   description,
   warningText,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   variant = "danger",
   loading,
 }: ConfirmDialogProps) {
@@ -36,11 +38,11 @@ export function ConfirmDialog({
       size="sm"
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{cancelLabel}</Button>
           {variant === "danger" ? (
             <Button variant="danger" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
           ) : (
-            <Button variant="primary" className="bg-[var(--warn)]" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
+            <Button variant="primary" className="bg-[var(--caution)]" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
           )}
         </>
       }

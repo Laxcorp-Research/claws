@@ -235,6 +235,6 @@ jobs:
       - name: audit-ci (npm audit with curated allowlist)
         # Replaces bare `npm audit --audit-level=high --omit=dev`. Reads
         # `audit-ci.json` at repo root for the allowlist of GHSAs whose
-        # upstream has no patch released. Re-audit deadline: 2026-06-15.
+        # upstream has no patch released. Re-audit deadline: 2026-07-15.
         # See docs/LAUNCH_BLOCKERS.md + GH#72 for the per-GHSA rationale.
         run: npx audit-ci --config audit-ci.json
