@@ -12,6 +12,9 @@ import {
   computeTurnStatuses,
   hasPendingTurn,
   isNearBottom,
+  chatUnavailableCopy,
+  statusToReason,
+  errorCodeToReason,
   PENDING_TURN_TIMEOUT_MS,
   type ChatRow,
   type ChatMessageView,
@@ -110,49 +113,10 @@ describe("reconcileChatMessages — optimistic dedupe by messageId === runId", (
 })
 
 describe("ChatPanel — composer", () => {
-  it("disables the composer and shows a note when the workspace is not sendable", () => {
-    render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[]} orchestratorName="Dev Commander" />)
-    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement
-    expect(textarea.disabled).toBe(true)
-    expect(screen.getByText(/unavailable/i)).toBeTruthy()
-  })
-
   it("enables the composer when RUNNING", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
     const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement
     expect(textarea.disabled).toBe(false)
-  })
-
-  // The composer must tolerate EVERY non-202 send response — the full 409
-  // family (HIBERNATED / STOPPED / TRANSITIONING), 502 (gateway unreachable),
-  // and 429 (rate limit) — by marking the bubble failed and NEVER throwing.
-  // The component treats all non-202 identically; this matrix locks that the
-  // whole set is handled (rich per-code copy is deferred to 9/C).
-  it.each<[number, string]>([
-    [409, "WORKSPACE_HIBERNATED"],
-    [409, "WORKSPACE_STOPPED"],
-    [409, "WORKSPACE_TRANSITIONING"],
-    [502, "GATEWAY_UNREACHABLE"],
-    [429, "RATE_LIMITED"],
-  ])("marks the bubble failed (no throw) when the send returns %i %s", async (status, code) => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      status,
-      json: async () => ({ success: false, error: { code } }),
-    })
-    vi.stubGlobal("fetch", fetchMock)
-
-    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
-    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello" } })
-    fireEvent.click(screen.getByRole("button", { name: "Send" }))
-
-    // Optimistic bubble appears immediately, then flips to failed — and the
-    // message body is preserved (never blanked).
-    expect(await screen.findByText("hello")).toBeTruthy()
-    expect(await screen.findByText(/Failed to send/i)).toBeTruthy()
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/workspaces/ws-1/chat",
-      expect.objectContaining({ method: "POST" }),
-    )
   })
 
   it("marks the bubble failed via the catch path when fetch rejects (network error) — NO unhandled rejection", async () => {
@@ -206,6 +170,187 @@ describe("ChatPanel — composer", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" />)
     expect(screen.getByText("On it — pulling the latest now.")).toBeTruthy()
     expect(screen.getByText("Dev Commander")).toBeTruthy()
+  })
+})
+
+describe("ChatPanel — per-state disabled copy + inline Wake (9/C)", () => {
+  // Each non-sendable rendered status shows its OWN tailored copy (not the
+  // generic 9/B line), composer disabled. Only HIBERNATED offers the inline
+  // Wake CTA; WAKING/DEPLOYING self-resolve and PAUSED is unreachable.
+  // MUTATION: revert to the single generic line → the specific-copy asserts fail.
+  it.each<[string, RegExp, boolean]>([
+    ["HIBERNATED", /asleep/i, true],
+    ["WAKING", /unlocks automatically/i, false],
+    ["DEPLOYING", /when it's live/i, false],
+    ["PAUSED", /chat is paused/i, false],
+  ])("status %s → its own copy, composer disabled, Wake button = %s", (status, copyRe, expectWake) => {
+    render(
+      <ChatPanel workspaceId="ws-1" status={status} rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
+    )
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(true)
+    expect(screen.getByText(copyRe)).toBeTruthy()
+    // The generic 9/B fallback must NOT appear for a mapped state.
+    expect(screen.queryByText(/Chat is unavailable while your Claw is/i)).toBeNull()
+    const wake = screen.queryByRole("button", { name: "Wake" })
+    if (expectWake) expect(wake).toBeTruthy()
+    else expect(wake).toBeNull()
+  })
+
+  it("HIBERNATED inline Wake button calls onWake when clicked", () => {
+    const onWake = vi.fn()
+    render(
+      <ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[]} orchestratorName="Dev Commander" onWake={onWake} />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Wake" }))
+    // MUTATION: wire the button to anything but onWake (or drop the call) → fails.
+    expect(onWake).toHaveBeenCalledTimes(1)
+  })
+
+  it("omits the Wake button when no onWake is provided (graceful), still shows the copy", () => {
+    render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[]} orchestratorName="Dev Commander" />)
+    expect(screen.queryByRole("button", { name: "Wake" })).toBeNull()
+    expect(screen.getByText(/asleep/i)).toBeTruthy()
+  })
+
+  it("falls back to the generic line for an unmapped non-sendable status", () => {
+    render(<ChatPanel workspaceId="ws-1" status="SOME_FUTURE_STATE" rows={[]} orchestratorName="Dev Commander" />)
+    expect(screen.getByText(/Chat is unavailable while your Claw is some_future_state/i)).toBeTruthy()
+  })
+})
+
+describe("ChatPanel — send-time per-code copy + Retry (9/C)", () => {
+  // A non-202 send renders the SAME tailored copy as the disabled composer,
+  // keyed off the response error.code — NOT a flat "Failed to send". This is the
+  // mid-compose race (a RUNNING Claw that changed state between compose & send).
+  // MUTATION: ignore error.code in performSend → reverts to the generic line →
+  // every per-code assertion below fails.
+  it.each<[number, string, RegExp]>([
+    [409, "WORKSPACE_HIBERNATED", /asleep/i],
+    [409, "WORKSPACE_STOPPED", /stopped/i],
+    [409, "WORKSPACE_TRANSITIONING", /starting up/i],
+    [502, "GATEWAY_UNREACHABLE", /can't reach your claw/i],
+    [429, "RATE_LIMITED", /too many messages/i],
+  ])("send %i %s → failed bubble shows the tailored copy (not 'Failed to send')", async (status, code, copyRe) => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status,
+      json: async () => ({ success: false, error: { code } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText("hello")).toBeTruthy() // body preserved
+    expect(await screen.findByText(copyRe)).toBeTruthy() // tailored, per-code copy
+    expect(screen.queryByText("Failed to send")).toBeNull() // not the generic line
+  })
+
+  it("a 502 failed bubble shows Retry; clicking it re-POSTs the SAME text and clears the failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 502,
+        json: async () => ({ success: false, error: { code: "GATEWAY_UNREACHABLE" } }),
+      })
+      .mockResolvedValueOnce({
+        status: 202,
+        json: async () => ({ success: true, data: { runId: "run-1" } }),
+      })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "ping the claw" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    const retryBtn = await screen.findByRole("button", { name: "Retry" })
+    expect(await screen.findByText(/can't reach your claw/i)).toBeTruthy()
+    fireEvent.click(retryBtn)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    // MUTATION: retry sends empty/wrong text (not the failed bubble's text) → fails.
+    const secondBody = JSON.parse((fetchMock.mock.calls[1][1] as { body: string }).body)
+    expect(secondBody.message).toBe("ping the claw")
+    // The retried send succeeded → the failure copy clears.
+    await waitFor(() => expect(screen.queryByText(/can't reach your claw/i)).toBeNull())
+  })
+
+  it("send 409 WORKSPACE_HIBERNATED → failed bubble shows the asleep copy AND a Wake button; clicking calls onWake", async () => {
+    const onWake = vi.fn()
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 409,
+      json: async () => ({ success: false, error: { code: "WORKSPACE_HIBERNATED" } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" onWake={onWake} />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText(/asleep/i)).toBeTruthy()
+    const wakeBtn = await screen.findByRole("button", { name: "Wake" })
+    // Hibernated mid-compose is a Wake, NOT a Retry (a resend would 409 again) —
+    // symmetric to the pre-send disabled state, reusing the SAME onWake.
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+    fireEvent.click(wakeBtn)
+    // MUTATION: don't render the Wake button when failure.cta === "wake" →
+    // findByRole("Wake") throws; drop the onWake wiring → this expectation fails.
+    expect(onWake).toHaveBeenCalledTimes(1)
+  })
+
+  it("a send-time hibernated bubble omits Wake when no onWake is provided (graceful), still shows the copy", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 409,
+      json: async () => ({ success: false, error: { code: "WORKSPACE_HIBERNATED" } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText(/asleep/i)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Wake" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+  })
+})
+
+describe("9/C reason mappers — one copy, two surfaces", () => {
+  it("maps each workspace status to its reason (pre-send)", () => {
+    expect(statusToReason("HIBERNATED")).toBe("asleep")
+    expect(statusToReason("WAKING")).toBe("waking")
+    expect(statusToReason("DEPLOYING")).toBe("deploying")
+    expect(statusToReason("PAUSED")).toBe("paused")
+    expect(statusToReason("STOPPED")).toBe("stopped")
+    expect(statusToReason("RUNNING")).toBe("unknown") // sendable — never rendered
+  })
+
+  it("maps each send error.code to the SAME reason set (send-time)", () => {
+    expect(errorCodeToReason("WORKSPACE_HIBERNATED")).toBe("asleep")
+    expect(errorCodeToReason("WORKSPACE_STOPPED")).toBe("stopped")
+    expect(errorCodeToReason("WORKSPACE_TRANSITIONING")).toBe("transitioning")
+    expect(errorCodeToReason("GATEWAY_UNREACHABLE")).toBe("unreachable")
+    expect(errorCodeToReason("RATE_LIMITED")).toBe("rate_limited")
+    expect(errorCodeToReason(undefined)).toBe("unknown") // network error
+    expect(errorCodeToReason("SOMETHING_NEW")).toBe("unknown")
+  })
+
+  it("HIBERNATED (status) and WORKSPACE_HIBERNATED (code) resolve to identical copy", () => {
+    const pre = chatUnavailableCopy(statusToReason("HIBERNATED"))
+    const send = chatUnavailableCopy(errorCodeToReason("WORKSPACE_HIBERNATED"))
+    expect(pre.message).toBe(send.message)
+    expect(pre.message).toMatch(/asleep/i)
+    expect(pre.cta).toBe("wake")
+  })
+
+  it("only asleep carries a wake CTA; transient reasons carry retry; quiet states none", () => {
+    expect(chatUnavailableCopy("asleep").cta).toBe("wake")
+    expect(chatUnavailableCopy("unreachable").cta).toBe("retry")
+    expect(chatUnavailableCopy("transitioning").cta).toBe("retry")
+    expect(chatUnavailableCopy("rate_limited").cta).toBe("retry")
+    expect(chatUnavailableCopy("waking").cta).toBeUndefined()
+    expect(chatUnavailableCopy("deploying").cta).toBeUndefined()
+    expect(chatUnavailableCopy("paused").cta).toBeUndefined()
   })
 })
 

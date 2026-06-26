@@ -81,9 +81,21 @@ interface ChatMessageProps {
   // DISTINCT from the red "Failed to send": the message DID send; the agent just
   // never replied. Same styling for both would be wrong information.
   noResponse?: boolean
+  // PR-9/C: on a failed send, the panel passes the tailored per-state copy here
+  // (e.g. "Your Claw is asleep — wake it to chat.") to REPLACE the flat "Failed
+  // to send". Absent/empty → the legacy "Failed to send" (network errors, direct
+  // callers).
+  failureMessage?: string | null
+  // PR-9/C: present on a transient failure (502 unreachable, 429, network) — a
+  // Retry that re-POSTs the SAME text (the user never retypes).
+  onRetry?: () => void
+  // PR-9/C: present when the failure reason is "wake" (a send-time HIBERNATED —
+  // the mid-compose race). Renders a Wake button symmetric to Retry, reusing the
+  // page's wake action so the failed bubble matches the pre-send disabled state.
+  onWake?: () => void
 }
 
-export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse }: ChatMessageProps) {
+export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
   // NEVER `detail` alone — see the guard note above. Empty-string detail also
   // falls through to action.
@@ -111,7 +123,34 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
         {isUser ? <span className="whitespace-pre-wrap">{body}</span> : <MarkdownBody content={body} />}
       </div>
       {status === "sending" && <span className="text-[10px] text-[var(--tx3)]">Sending…</span>}
-      {status === "failed" && <span className="text-[10px] text-[var(--err)]">Failed to send</span>}
+      {/* PR-9/C: tailored per-state copy (e.g. "Your Claw is asleep — wake it to
+          chat.") replaces the flat "Failed to send" when the panel supplies it.
+          A "wake" reason (send-time HIBERNATED) offers a Wake button; a transient
+          reason offers a Retry that re-sends the same text. The two are mutually
+          exclusive (a reason has one cta), but each is guarded independently. */}
+      {status === "failed" && (
+        <span className="inline-flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--err)]">{failureMessage || "Failed to send"}</span>
+          {onWake && (
+            <button
+              type="button"
+              onClick={onWake}
+              className="font-medium text-[var(--ac-text)] underline cursor-pointer"
+            >
+              Wake
+            </button>
+          )}
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="font-medium text-[var(--ac-text)] underline cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
+        </span>
+      )}
       {/* Muted (--tx3), NOT red (--err): the send succeeded; only the reply is
           missing. `status === "failed"` and `noResponse` are mutually exclusive
           by construction (a failed send never starts a tracked turn). */}
