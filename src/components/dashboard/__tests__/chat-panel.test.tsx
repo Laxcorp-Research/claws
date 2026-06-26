@@ -275,7 +275,30 @@ describe("ChatPanel — send-time per-code copy + Retry (9/C)", () => {
     await waitFor(() => expect(screen.queryByText(/can't reach your claw/i)).toBeNull())
   })
 
-  it("does NOT offer Retry on a non-retryable failure (hibernated mid-compose is copy-only)", async () => {
+  it("send 409 WORKSPACE_HIBERNATED → failed bubble shows the asleep copy AND a Wake button; clicking calls onWake", async () => {
+    const onWake = vi.fn()
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 409,
+      json: async () => ({ success: false, error: { code: "WORKSPACE_HIBERNATED" } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" onWake={onWake} />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText(/asleep/i)).toBeTruthy()
+    const wakeBtn = await screen.findByRole("button", { name: "Wake" })
+    // Hibernated mid-compose is a Wake, NOT a Retry (a resend would 409 again) —
+    // symmetric to the pre-send disabled state, reusing the SAME onWake.
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+    fireEvent.click(wakeBtn)
+    // MUTATION: don't render the Wake button when failure.cta === "wake" →
+    // findByRole("Wake") throws; drop the onWake wiring → this expectation fails.
+    expect(onWake).toHaveBeenCalledTimes(1)
+  })
+
+  it("a send-time hibernated bubble omits Wake when no onWake is provided (graceful), still shows the copy", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       status: 409,
       json: async () => ({ success: false, error: { code: "WORKSPACE_HIBERNATED" } }),
@@ -287,6 +310,7 @@ describe("ChatPanel — send-time per-code copy + Retry (9/C)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
 
     expect(await screen.findByText(/asleep/i)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Wake" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
   })
 })

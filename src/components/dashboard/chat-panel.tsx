@@ -517,7 +517,10 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake 
               turnStatuses.get(m.runId) === "no_response"
             // PR-9/C: a failed send shows the SAME tailored per-state copy as the
             // disabled composer (keyed off the captured error.code) instead of a
-            // flat "Failed to send", plus a Retry on the transient reasons.
+            // flat "Failed to send". The reason's `cta` drives the affordance —
+            // "wake" (send-time HIBERNATED, the mid-compose race) reuses the page's
+            // onWake; "retry" (transient) re-POSTs the same text. Symmetric to the
+            // pre-send composer so the two surfaces behave identically.
             const failure =
               m.status === "failed" ? chatUnavailableCopy(errorCodeToReason(m.failureCode)) : null
             return (
@@ -532,6 +535,7 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake 
                 noResponse={noResponse}
                 failureMessage={failure?.message ?? null}
                 onRetry={failure?.cta === "retry" ? () => retry(m.key) : undefined}
+                onWake={failure?.cta === "wake" ? onWake : undefined}
               />
             )
           })

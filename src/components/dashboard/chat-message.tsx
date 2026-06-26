@@ -89,9 +89,13 @@ interface ChatMessageProps {
   // PR-9/C: present on a transient failure (502 unreachable, 429, network) — a
   // Retry that re-POSTs the SAME text (the user never retypes).
   onRetry?: () => void
+  // PR-9/C: present when the failure reason is "wake" (a send-time HIBERNATED —
+  // the mid-compose race). Renders a Wake button symmetric to Retry, reusing the
+  // page's wake action so the failed bubble matches the pre-send disabled state.
+  onWake?: () => void
 }
 
-export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse, failureMessage, onRetry }: ChatMessageProps) {
+export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
   // NEVER `detail` alone — see the guard note above. Empty-string detail also
   // falls through to action.
@@ -120,11 +124,22 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
       </div>
       {status === "sending" && <span className="text-[10px] text-[var(--tx3)]">Sending…</span>}
       {/* PR-9/C: tailored per-state copy (e.g. "Your Claw is asleep — wake it to
-          chat.") replaces the flat "Failed to send" when the panel supplies it;
-          a transient failure also offers a Retry that re-sends the same text. */}
+          chat.") replaces the flat "Failed to send" when the panel supplies it.
+          A "wake" reason (send-time HIBERNATED) offers a Wake button; a transient
+          reason offers a Retry that re-sends the same text. The two are mutually
+          exclusive (a reason has one cta), but each is guarded independently. */}
       {status === "failed" && (
         <span className="inline-flex items-center gap-2 text-[10px]">
           <span className="text-[var(--err)]">{failureMessage || "Failed to send"}</span>
+          {onWake && (
+            <button
+              type="button"
+              onClick={onWake}
+              className="font-medium text-[var(--ac-text)] underline cursor-pointer"
+            >
+              Wake
+            </button>
+          )}
           {onRetry && (
             <button
               type="button"
