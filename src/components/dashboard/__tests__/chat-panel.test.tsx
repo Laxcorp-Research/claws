@@ -9,9 +9,11 @@ import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-libra
 import {
   ChatPanel,
   reconcileChatMessages,
+  mergePersistedChatRows,
   computeTurnStatuses,
   hasPendingTurn,
   isNearBottom,
+  preservePrependedScrollPosition,
   chatUnavailableCopy,
   statusToReason,
   errorCodeToReason,
@@ -110,6 +112,49 @@ describe("reconcileChatMessages — optimistic dedupe by messageId === runId", (
     expect(views[1].senderName).toBe("Dev Commander")
     expect(views[1].detail).toBe("hey there")
   })
+
+  it("multi-tab lock: a tab with NO optimistic state renders streamed MESSAGE_RECEIVED exactly once as You", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "tab-b-row",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-06-22T08:00:00.000Z",
+        agentName: "System",
+        action: "Received from : hello from tab A",
+        detail: "hello from tab A",
+        messageId: "run-tab-a",
+      },
+    ]
+    const views = reconcileChatMessages([], rows, "Dev Commander")
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({
+      key: "tab-b-row",
+      sender: "user",
+      senderName: "You",
+      detail: "hello from tab A",
+    })
+  })
+
+  it("three-source dedupe: history row + SSE row + optimistic bubble render one user message", () => {
+    const persisted: ChatRow = {
+      id: "same-db-row",
+      actionType: "MESSAGE_RECEIVED",
+      timestamp: "2026-06-22T08:00:00.000Z",
+      agentName: "System",
+      action: "Received from : already acked",
+      detail: "already acked",
+      messageId: "run-3source",
+    }
+    const merged = mergePersistedChatRows([persisted], [{ ...persisted }])
+    const optimistic: OptimisticMessage[] = [
+      { tempId: "tmp_3source", text: "already acked", createdAt: 999, status: "sent", runId: "run-3source" },
+    ]
+
+    expect(merged).toHaveLength(1)
+    const views = reconcileChatMessages(optimistic, merged, "Dev Commander")
+    expect(views.filter((v) => v.sender === "user")).toHaveLength(1)
+    expect(views[0].key).toBe("same-db-row")
+  })
 })
 
 describe("ChatPanel — composer", () => {
@@ -171,6 +216,112 @@ describe("ChatPanel — composer", () => {
     expect(screen.getByText("On it — pulling the latest now.")).toBeTruthy()
     expect(screen.getByText("Dev Commander")).toBeTruthy()
   })
+
+  it("false-empty regression: endpoint-backed history shows chat even when SSE init has no webchat rows", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => ({
+        success: true,
+        data: {
+          rows: [
+            {
+              id: "history-user-1",
+              actionType: "MESSAGE_RECEIVED",
+              timestamp: "2026-06-22T08:00:00.000Z",
+              agentName: "System",
+              action: "Received from : old hello",
+              detail: "old hello",
+              messageId: "run-history-1",
+              channelId: "webchat",
+              runId: null,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="RUNNING"
+        rows={[]}
+        orchestratorName="Dev Commander"
+        historyEnabled
+      />,
+    )
+
+    expect(await screen.findByText("old hello")).toBeTruthy()
+    expect(screen.queryByText(/No messages yet/i)).toBeNull()
+    expect(fetchMock).toHaveBeenCalledWith("/api/workspaces/ws-1/chat/history?limit=30")
+  })
+
+  it("Load earlier messages fetches before=nextCursor and prepends older history", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () => ({
+          success: true,
+          data: {
+            rows: [
+              {
+                id: "history-new",
+                actionType: "MESSAGE_RECEIVED",
+                timestamp: "2026-06-22T08:02:00.000Z",
+                agentName: "System",
+                action: "Received from : newer",
+                detail: "newer",
+                messageId: "run-new",
+                channelId: "webchat",
+                runId: null,
+              },
+            ],
+            nextCursor: "cursor-older",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          success: true,
+          data: {
+            rows: [
+              {
+                id: "history-old",
+                actionType: "MESSAGE_RECEIVED",
+                timestamp: "2026-06-22T08:01:00.000Z",
+                agentName: "System",
+                action: "Received from : older",
+                detail: "older",
+                messageId: "run-old",
+                channelId: "webchat",
+                runId: null,
+              },
+            ],
+            nextCursor: null,
+          },
+        }),
+      })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="RUNNING"
+        rows={[]}
+        orchestratorName="Dev Commander"
+        historyEnabled
+      />,
+    )
+
+    expect(await screen.findByText("newer")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }))
+
+    expect(await screen.findByText("older")).toBeTruthy()
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/workspaces/ws-1/chat/history?limit=30&before=cursor-older",
+    )
+    expect(screen.queryByRole("button", { name: "Load earlier messages" })).toBeNull()
+  })
 })
 
 describe("ChatPanel — per-state disabled copy + inline Wake (9/C)", () => {
@@ -204,6 +355,18 @@ describe("ChatPanel — per-state disabled copy + inline Wake (9/C)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Wake" }))
     // MUTATION: wire the button to anything but onWake (or drop the call) → fails.
     expect(onWake).toHaveBeenCalledTimes(1)
+  })
+
+  it("wake transition lock: composer enables when status rerenders from WAKING to RUNNING", () => {
+    const { rerender } = render(
+      <ChatPanel workspaceId="ws-1" status="WAKING" rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
+    )
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(true)
+
+    rerender(
+      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
+    )
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(false)
   })
 
   it("omits the Wake button when no onWake is provided (graceful), still shows the copy", () => {
@@ -658,5 +821,21 @@ describe("ChatPanel — scroll (GAP #3: container only, near-bottom guard)", () 
       <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow, replyRow]} orchestratorName="Dev Commander" />,
     )
     expect(writes).not.toContain(1000) // left where the user put it
+  })
+
+  it("load-older prepend preserves viewport by adding the scrollHeight delta to scrollTop", () => {
+    let top = 120
+    const el = {
+      scrollHeight: 1300,
+      get scrollTop() {
+        return top
+      },
+      set scrollTop(v: number) {
+        top = v
+      },
+    }
+
+    preservePrependedScrollPosition(el, { scrollHeight: 1000, scrollTop: 120 })
+    expect(top).toBe(420)
   })
 })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage, type ChatBubbleStatus } from "./chat-message"
@@ -105,10 +105,14 @@ export interface ChatRow {
   actionType: string
   timestamp: string
   agentName: string
+  agentSlug?: string | null
   action: string
   detail?: string | null
+  apiCost?: number | null
   // MESSAGE_RECEIVED carries the turn key here (=== the 202 runId).
   messageId?: string | null
+  channelId?: string | null
+  from?: string | null
   // MESSAGE_SENT (the agent reply) carries the turn key here (=== the same
   // 202 runId). Projected by formatLog so the working indicator can pair a
   // reply to its send per-turn.
@@ -220,6 +224,19 @@ export function reconcileChatMessages(
   return views
 }
 
+// History endpoint rows and SSE rows are the SAME persisted ActivityLog rows.
+// Dedupe persisted sources by DB id before optimistic reconciliation; otherwise
+// a recently loaded history page and an SSE event for the same row double-render.
+export function mergePersistedChatRows(historyRows: ChatRow[], liveRows: ChatRow[]): ChatRow[] {
+  const byId = new Map<string, ChatRow>()
+  for (const row of historyRows) byId.set(row.id, row)
+  for (const row of liveRows) byId.set(row.id, row)
+  return Array.from(byId.values()).sort((a, b) => {
+    const byTime = Date.parse(a.timestamp) - Date.parse(b.timestamp)
+    return byTime !== 0 ? byTime : a.id.localeCompare(b.id)
+  })
+}
+
 // A turn that gets no reply must NOT spin "working…" forever. Turns finish in
 // ~10s; 2 min is a very generous ceiling after which an unreplied turn is
 // declared "no response" (stale container, hung turn, dropped reply). Named so
@@ -298,6 +315,13 @@ export function isNearBottom(
   return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
 }
 
+export function preservePrependedScrollPosition(
+  el: { scrollHeight: number; scrollTop: number },
+  previous: { scrollHeight: number; scrollTop: number },
+): void {
+  el.scrollTop = previous.scrollTop + (el.scrollHeight - previous.scrollHeight)
+}
+
 function WorkingIndicator({ orchestratorName }: { orchestratorName: string }) {
   const name = orchestratorName || "Orchestrator"
   return (
@@ -347,9 +371,28 @@ interface ChatPanelProps {
   // existing wake action (POST /api/dashboard/[id]/wake). Optional so the panel
   // degrades to copy-only if a caller doesn't provide it.
   onWake?: () => void
+  historyEnabled?: boolean
+  historyPageSize?: number
 }
 
-export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake }: ChatPanelProps) {
+interface ChatHistoryResponse {
+  rows: ChatRow[]
+  nextCursor: string | null
+}
+
+export function ChatPanel({
+  workspaceId,
+  status,
+  rows,
+  orchestratorName,
+  onWake,
+  historyEnabled = false,
+  historyPageSize = 30,
+}: ChatPanelProps) {
+  const [historyRows, setHistoryRows] = useState<ChatRow[]>([])
+  const [nextHistoryCursor, setNextHistoryCursor] = useState<string | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [olderLoading, setOlderLoading] = useState(false)
   const [optimistic, setOptimistic] = useState<OptimisticMessage[]>([])
   const [draft, setDraft] = useState("")
   // GAP #3: ref to the SCROLL CONTAINER (not a sentinel) so we move only this
@@ -373,9 +416,14 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake 
       : unavailableCopy.message
   const showWake = unavailableCopy.cta === "wake" && !!onWake
 
+  const persistedRows = useMemo(
+    () => mergePersistedChatRows(historyRows, rows),
+    [historyRows, rows],
+  )
+
   const messages = useMemo(
-    () => reconcileChatMessages(optimistic, rows, orchestratorName),
-    [optimistic, rows, orchestratorName],
+    () => reconcileChatMessages(optimistic, persistedRows, orchestratorName),
+    [optimistic, persistedRows, orchestratorName],
   )
 
   // Re-eval clock for time-bounded pending. Advanced ONLY by the tick effect
@@ -392,6 +440,36 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake 
   // "No response" instead of sticking the indicator on forever.
   const pending = hasPendingTurn(turnStatuses)
   const working = sendable && pending
+  const prependScrollRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
+
+  useEffect(() => {
+    if (!historyEnabled) {
+      setHistoryRows([])
+      setNextHistoryCursor(null)
+      setHistoryLoading(false)
+      return
+    }
+    let cancelled = false
+    setHistoryRows([])
+    setNextHistoryCursor(null)
+    setHistoryLoading(true)
+    fetch(`/api/workspaces/${workspaceId}/chat/history?limit=${historyPageSize}`)
+      .then((res) => res.json())
+      .then((json: { success?: boolean; data?: ChatHistoryResponse }) => {
+        if (cancelled || !json.success || !json.data) return
+        setHistoryRows(json.data.rows)
+        setNextHistoryCursor(json.data.nextCursor)
+      })
+      .catch(() => {
+        // If history fails, live SSE rows still keep chat usable.
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [historyEnabled, historyPageSize, workspaceId])
 
   const handleScroll = useCallback(() => {
     const el = listRef.current
@@ -405,6 +483,14 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake 
     const el = listRef.current
     if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages.length, working])
+
+  useLayoutEffect(() => {
+    const previous = prependScrollRef.current
+    const el = listRef.current
+    if (!previous || !el) return
+    preservePrependedScrollPosition(el, previous)
+    prependScrollRef.current = null
+  }, [messages.length])
 
   // GAP #2 timeout tick: advance the clock WITHOUT a new message so a turn that
   // never replies flips from "working…" to "No response" once it crosses
@@ -479,6 +565,30 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake 
     [optimistic, performSend],
   )
 
+  const loadOlder = useCallback(async () => {
+    if (!nextHistoryCursor || olderLoading) return
+    const el = listRef.current
+    if (el) {
+      prependScrollRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
+      nearBottomRef.current = false
+    }
+    setOlderLoading(true)
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/chat/history?limit=${historyPageSize}&before=${encodeURIComponent(nextHistoryCursor)}`,
+      )
+      const json = (await res.json()) as { success?: boolean; data?: ChatHistoryResponse }
+      if (json.success && json.data) {
+        setHistoryRows((prev) => mergePersistedChatRows(json.data!.rows, prev))
+        setNextHistoryCursor(json.data.nextCursor)
+      }
+    } catch {
+      prependScrollRef.current = null
+    } finally {
+      setOlderLoading(false)
+    }
+  }, [historyPageSize, nextHistoryCursor, olderLoading, workspaceId])
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends; Shift+Enter inserts a newline.
     if (e.key === "Enter" && !e.shiftKey) {
@@ -503,9 +613,16 @@ export function ChatPanel({ workspaceId, status, rows, orchestratorName, onWake 
         role="log"
         aria-label="Chat messages"
       >
+        {historyEnabled && nextHistoryCursor && (
+          <div className="flex justify-center pb-1">
+            <Button variant="outline" size="xs" onClick={() => void loadOlder()} loading={olderLoading}>
+              Load earlier messages
+            </Button>
+          </div>
+        )}
         {messages.length === 0 && !working ? (
           <p className="text-[11px] text-[var(--tx3)] py-6 text-center">
-            No messages yet. Say hello to get started.
+            {historyLoading ? "Loading messages..." : "No messages yet. Say hello to get started."}
           </p>
         ) : (
           messages.map((m) => {
