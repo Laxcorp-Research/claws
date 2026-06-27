@@ -218,6 +218,10 @@ describe("ChatPanel — composer", () => {
   })
 
   it("false-empty regression: endpoint-backed history shows chat even when SSE init has no webchat rows", async () => {
+    // This models the real WIRE-TEST bug: the dashboard page's SSE init can pass
+    // rows=[] to ChatPanel because the last-50 all-activity window contains only
+    // non-chat activity. The chat-specific history endpoint still returns older
+    // webchat rows, so a returning user does not see a false "No messages yet".
     const fetchMock = vi.fn().mockResolvedValue({
       json: async () => ({
         success: true,
@@ -254,6 +258,57 @@ describe("ChatPanel — composer", () => {
     expect(await screen.findByText("old hello")).toBeTruthy()
     expect(screen.queryByText(/No messages yet/i)).toBeNull()
     expect(fetchMock).toHaveBeenCalledWith("/api/workspaces/ws-1/chat/history?limit=30")
+  })
+
+  it("rendered three-source dedupe: history row + SSE row + optimistic bubble render exactly one bubble", async () => {
+    const sameMessage: ChatRow = {
+      id: "same-db-row-rendered",
+      actionType: "MESSAGE_RECEIVED",
+      timestamp: "2026-06-22T08:00:00.000Z",
+      agentName: "System",
+      action: "Received from : already acked",
+      detail: "already acked",
+      messageId: "run-3source-rendered",
+      channelId: "webchat",
+      runId: null,
+    }
+    const fetchMock = vi
+      .fn()
+      // Source 1: initial history fetch returns the persisted row.
+      .mockResolvedValueOnce({
+        json: async () => ({
+          success: true,
+          data: { rows: [sameMessage], nextCursor: null },
+        }),
+      })
+      // Source 3: sending creates an optimistic bubble, then the 202 assigns
+      // the same runId used by the persisted MESSAGE_RECEIVED.messageId.
+      .mockResolvedValueOnce({
+        status: 202,
+        json: async () => ({ success: true, data: { runId: "run-3source-rendered" } }),
+      })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="RUNNING"
+        // Source 2: SSE stream delivers the exact same ActivityLog row.
+        rows={[sameMessage]}
+        orchestratorName="Dev Commander"
+        historyEnabled
+      />,
+    )
+
+    expect(await screen.findByText("already acked")).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "already acked" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    // Mutation: drop persisted id-dedupe in mergePersistedChatRows (or dedupe by
+    // timestamp instead of ActivityLog.id) -> history + SSE render as two
+    // persisted bubbles, and the optimistic bubble may add a third until acked.
+    expect(screen.getAllByText("already acked")).toHaveLength(1)
   })
 
   it("Load earlier messages fetches before=nextCursor and prepends older history", async () => {

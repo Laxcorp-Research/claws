@@ -62,8 +62,39 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
     expect((await get()).status).toBe(403)
   })
 
-  it("queries only webchat MESSAGE_* rows for this workspace, not the last-50 all-activity window", async () => {
-    await get("?limit=25")
+  it("false-empty regression: returns webchat rows even when 50 newer non-chat rows would crowd out SSE init", async () => {
+    const crowdedOutBySseInit = Array.from({ length: 50 }, (_, i) =>
+      row({
+        id: `task-${i}`,
+        timestamp: new Date(`2026-06-22T09:${String(i).padStart(2, "0")}:00.000Z`),
+        actionType: i % 2 === 0 ? "TASK_START" : "TASK_COMPLETE",
+        action: "Non-chat activity",
+        detail: "Non-chat activity",
+        metadata: JSON.stringify({ source: "heartbeat" }),
+      }),
+    )
+    const olderWebchat = row({
+      id: "webchat-old",
+      timestamp: new Date("2026-06-22T08:00:00.000Z"),
+      detail: "old chat still visible",
+      metadata: JSON.stringify({
+        from: "",
+        messageId: "run-old-chat",
+        channelId: "webchat",
+        runId: null,
+      }),
+    })
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { where?: { metadata?: { contains?: string } } }) => {
+      // If this route regresses to the SSE init query shape (last 50 all-activity
+      // rows, no webchat metadata filter), the 50 non-chat rows win and the old
+      // webchat row is crowded out.
+      if (args.where?.metadata?.contains === '"channelId":"webchat"') {
+        return Promise.resolve([olderWebchat] as never)
+      }
+      return Promise.resolve(crowdedOutBySseInit as never)
+    })
+
+    const { status, data } = await parseResponse(await get("?limit=25"))
 
     expect(prismaMock.activityLog.findMany).toHaveBeenCalledWith({
       where: {
@@ -74,6 +105,8 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
       take: 26,
     })
+    expect(status).toBe(200)
+    expect(data.data.rows).toEqual([formatActivityLog(olderWebchat)])
   })
 
   it("returns oldest-to-newest rows in the same shape as the shared ActivityLog formatter", async () => {
