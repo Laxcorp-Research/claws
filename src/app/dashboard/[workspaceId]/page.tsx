@@ -1012,6 +1012,7 @@ export default function DashboardPage() {
             rows={chatRows}
             orchestratorName={orchestratorName}
             onWake={handleWakeNow}
+            historyEnabled
           />
 
           <ClawNarrativeRow
