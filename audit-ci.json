@@ -6,19 +6,5 @@
   "critical": true,
   "skip-dev": true,
   "report-type": "full",
-  "allowlist": [
-    "GHSA-8h8q-6873-q5fj",
-    "GHSA-26hh-7cqf-hhc6",
-    "GHSA-3g8h-86w9-wvmq",
-    "GHSA-ffhc-5mcf-pf4q",
-    "GHSA-vfv6-92ff-j949",
-    "GHSA-gx5p-jg67-6x7h",
-    "GHSA-mg66-mrh9-m8jx",
-    "GHSA-h64f-5h5j-jqjh",
-    "GHSA-c4j6-fc7j-m34r",
-    "GHSA-492v-c6pp-mqqv",
-    "GHSA-wfc6-r584-vfw7",
-    "GHSA-267c-6grr-h53f",
-    "GHSA-36qx-fr4f-26g5"
-  ]
+  "allowlist": []
 }
