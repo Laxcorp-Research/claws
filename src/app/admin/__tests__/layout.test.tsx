@@ -12,7 +12,7 @@
 
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest"
 import { render, screen, cleanup } from "@testing-library/react"
-import AdminLayout from "@/app/admin/layout"
+import AdminClientLayout from "@/app/admin/AdminClientLayout"
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/reviews",
@@ -30,9 +30,9 @@ const DENIED = "You don't have admin access"
 
 function renderLayout() {
   return render(
-    <AdminLayout>
+    <AdminClientLayout>
       <div>{CHILD}</div>
-    </AdminLayout>,
+    </AdminClientLayout>,
   )
 }
 
