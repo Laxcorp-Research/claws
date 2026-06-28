@@ -1,6 +1,21 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signInAsTestUser } from './helpers/auth';
 
+const stepOneHeading = 'Choose AI models for your agents';
+
+async function expectStepOneLoaded(page: Page, timeout: number) {
+  // Step 1 is post-load gated. Next dev cold-compiles this route on the first
+  // CI hit, then the page hydrates and waits for three mount-time fetches.
+  // These per-assertion timeouts cover that cold loaded-state path without
+  // changing global retries or hiding real failures.
+  await expect(page.getByRole('status', { name: 'Loading content' })).toHaveCount(0, {
+    timeout,
+  });
+  await expect(page.getByRole('heading', { name: stepOneHeading })).toBeVisible({
+    timeout,
+  });
+}
+
 async function getOrCreateWorkspaceId(page: Page): Promise<string> {
   const response = await page.request.get('/api/workspaces');
   expect(response.status()).toBe(200);
@@ -30,9 +45,7 @@ test.describe('Setup Wizard', () => {
     const workspaceId = await getOrCreateWorkspaceId(page);
 
     await page.goto(`/setup/${workspaceId}/step/1`);
-    await expect(
-      page.getByRole('heading', { name: 'Choose AI models for your agents' })
-    ).toBeVisible();
+    await expectStepOneLoaded(page, 20_000);
   });
 
   test('wizard renders without errors', async ({ page }) => {
@@ -40,9 +53,7 @@ test.describe('Setup Wizard', () => {
     const workspaceId = await getOrCreateWorkspaceId(page);
 
     await page.goto(`/setup/${workspaceId}/step/1`);
-    await expect(
-      page.getByRole('heading', { name: 'Choose AI models for your agents' })
-    ).toBeVisible();
+    await expectStepOneLoaded(page, 15_000);
 
     await expect(page.locator('body')).not.toContainText('Error');
     await expect(page.locator('body')).not.toContainText('500');
