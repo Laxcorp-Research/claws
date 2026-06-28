@@ -308,7 +308,9 @@ describe("ChatPanel — composer", () => {
     // Mutation: drop persisted id-dedupe in mergePersistedChatRows (or dedupe by
     // timestamp instead of ActivityLog.id) -> history + SSE render as two
     // persisted bubbles, and the optimistic bubble may add a third until acked.
-    expect(screen.getAllByText("already acked")).toHaveLength(1)
+    await waitFor(() => {
+      expect(screen.getAllByText("already acked")).toHaveLength(1)
+    })
   })
 
   it("Load earlier messages fetches before=nextCursor and prepends older history", async () => {
