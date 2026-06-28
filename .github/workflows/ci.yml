@@ -195,11 +195,25 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
 
-      - name: Apply database schema
-        run: npx prisma db push --accept-data-loss
+      - name: Verify E2E reset target (fail-closed)
+        run: |
+          HOST=$(printf '%s' "$TEST_DIRECT_URL" | sed -E 's#^[^@]+@([^/?]+).*#\1#')
+          printf '%s' "$HOST" | grep -q 'ep-broad-smoke-andow2sv' || { echo "FATAL: not the E2E branch"; exit 1; }
+          printf '%s' "$HOST" | grep -q 'pooler' && { echo "FATAL: pooled endpoint; reset needs direct"; exit 1; }
+          printf '%s' "$HOST" | grep -Eq 'ep-polished-night|ep-delicate-water' && { echo "FATAL: staging/prod target — refusing reset"; exit 1; }
+          echo "✓ E2E reset target verified (E2E branch, direct, non-staging/prod)"
         env:
-          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+
+      - name: Reset E2E schema from baseline and apply committed migrations
+        # Replaces `prisma db push --accept-data-loss` (closes GH #50 for E2E). reset = drop+recreate
+        # schema, clear history, replay ALL committed migrations from zero via the same engine prod uses
+        # (build:deploy → migrate deploy). DIRECT endpoint: migrate needs DDL + advisory locks the
+        # pooler won't serve.
+        run: npx prisma migrate reset --force
+        env:
+          DATABASE_URL: ${{ secrets.TEST_DIRECT_URL }}
+          DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
