@@ -219,7 +219,6 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
-        continue-on-error: true
         run: npx playwright test --retries=2
         env:
           E2E_TEST_MODE: "true"
