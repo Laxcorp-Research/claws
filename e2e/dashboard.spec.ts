@@ -1,51 +1,35 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { signInAsTestUser } from './helpers/auth';
+import { getOrCreateWorkspaceId } from './helpers/workspace';
+
+async function expectDashboardLoaded(page: Page) {
+  await expect(page.getByRole('status', { name: 'Loading briefing' })).toHaveCount(0, {
+    timeout: 20_000,
+  });
+  await expect(page.getByText(/is ready, but/i)).toBeVisible({
+    timeout: 20_000,
+  });
+}
 
 test.describe('Dashboard', () => {
   test('dashboard page loads for an existing workspace', async ({ page }) => {
     await signInAsTestUser(page);
-
-    const response = await page.request.get('/api/workspaces');
-    const workspaces = await response.json();
-
-    if (!workspaces.success || !workspaces.data?.length) {
-      test.skip(true, 'No workspaces available for dashboard test');
-      return;
-    }
-
-    const workspaceId = workspaces.data[0].id;
+    const workspaceId = await getOrCreateWorkspaceId(page);
     await page.goto(`/dashboard/${workspaceId}`);
 
-    const pageContent = await page.textContent('body');
-    const hasDashboardContent =
-      pageContent?.includes('Dashboard') ||
-      pageContent?.includes('Activity') ||
-      pageContent?.includes('Agent') ||
-      pageContent?.includes('Status') ||
-      pageContent?.includes('Cost');
-
-    expect(hasDashboardContent).toBe(true);
+    await expectDashboardLoaded(page);
+    await expect(page.getByRole('button', { name: 'Finish setup' })).toBeVisible();
   });
 
   test('dashboard renders without server errors', async ({ page }) => {
     await signInAsTestUser(page);
-
-    const response = await page.request.get('/api/workspaces');
-    const workspaces = await response.json();
-
-    if (!workspaces.success || !workspaces.data?.length) {
-      test.skip(true, 'No workspaces available');
-      return;
-    }
-
-    const workspaceId = workspaces.data[0].id;
+    const workspaceId = await getOrCreateWorkspaceId(page);
     await page.goto(`/dashboard/${workspaceId}`);
 
-    // Don't use networkidle — dashboard has an SSE activity stream that never settles
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    await expectDashboardLoaded(page);
 
     const bodyText = await page.textContent('body');
     expect(bodyText).not.toContain('Internal Server Error');
+    expect(bodyText).not.toContain('500');
   });
 });
