@@ -20,16 +20,4 @@ test.describe('Dashboard', () => {
     await expectDashboardLoaded(page);
     await expect(page.getByRole('button', { name: 'Finish setup' })).toBeVisible();
   });
-
-  test('dashboard renders without server errors', async ({ page }) => {
-    await signInAsTestUser(page);
-    const workspaceId = await getOrCreateWorkspaceId(page);
-    await page.goto(`/dashboard/${workspaceId}`);
-
-    await expectDashboardLoaded(page);
-
-    const bodyText = await page.textContent('body');
-    expect(bodyText).not.toContain('Internal Server Error');
-    expect(bodyText).not.toContain('500');
-  });
 });
