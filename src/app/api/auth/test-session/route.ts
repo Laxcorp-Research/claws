@@ -13,13 +13,17 @@ export async function GET(req: NextRequest) {
   }
 
   const redirect = req.nextUrl.searchParams.get('redirect') || '/my-claws';
+  const role = req.nextUrl.searchParams.get('role');
+  const isAdmin = role === 'admin';
+  const email = isAdmin ? 'e2e-admin@buildclaws.ai' : 'e2e-test@buildclaws.ai';
+  const name = isAdmin ? 'E2E Admin User' : 'E2E Test User';
 
   const testUser = await prisma.user.upsert({
-    where: { email: 'e2e-test@buildclaws.ai' },
+    where: { email },
     update: {},
     create: {
-      email: 'e2e-test@buildclaws.ai',
-      name: 'E2E Test User',
+      email,
+      name,
       hasActiveSubscription: true,
     },
   });

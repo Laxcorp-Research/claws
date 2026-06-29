@@ -222,6 +222,7 @@ jobs:
         run: npx playwright test --retries=2
         env:
           E2E_TEST_MODE: "true"
+          ADMIN_EMAILS: "e2e-admin@buildclaws.ai"
           ENCRYPTION_MASTER_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           ENCRYPTION_KEY_VERSION: "v1"
           NEXTAUTH_SECRET: "ci-test-secret-ci-test-secret-ci-test-secret"
