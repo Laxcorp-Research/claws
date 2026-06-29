@@ -104,7 +104,7 @@ function rateLimitResponse(
   });
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   /** CI E2E uses fake Upstash URLs; avoid calling Ratelimit (can hang or slow on runners). */
   const skipRateLimitForE2e = process.env.E2E_TEST_MODE === "true";
