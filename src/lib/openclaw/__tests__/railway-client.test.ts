@@ -33,6 +33,9 @@ async function loadClient() {
   return import('@/lib/openclaw/railway-client');
 }
 
+const PROD_RAILWAY_PROJECT_ID = '00000000-0000-4000-8000-000000000003';
+const STAGING_RAILWAY_PROJECT_ID = '00000000-0000-4000-8000-000000000004';
+
 beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
@@ -56,6 +59,69 @@ afterEach(() => {
 // @ts-expect-error plain Record is not assignable to the branded RawContainerEnv
 const _brandGuard: import('@/lib/openclaw/container-env-actual').RawContainerEnv = { A: '1' };
 void _brandGuard;
+
+describe('Railway environment isolation guard', () => {
+  it('staging + production project id → throws before any Railway mutation request', async () => {
+    vi.stubEnv('CLAWS_ENV', 'staging');
+    vi.stubEnv('RAILWAY_PROJECT_ID', PROD_RAILWAY_PROJECT_ID);
+    vi.stubEnv('RAILWAY_ENVIRONMENT_ID', 'env-staging');
+    vi.stubEnv('PROD_RAILWAY_PROJECT_ID', PROD_RAILWAY_PROJECT_ID);
+    vi.stubEnv('STAGING_RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { createService } = await loadClient();
+
+    await expect(
+      createService({ name: 'claw-test', envVars: {}, image: 'ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-4' }),
+    ).rejects.toThrow('Refusing staging deploy into production Railway project');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('production + non-production project id → throws', async () => {
+    vi.stubEnv('CLAWS_ENV', 'production');
+    vi.stubEnv('RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+    vi.stubEnv('PROD_RAILWAY_PROJECT_ID', PROD_RAILWAY_PROJECT_ID);
+    vi.stubEnv('STAGING_RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+
+    const { assertRailwayTargetAllowed } = await loadClient();
+
+    expect(() => assertRailwayTargetAllowed()).toThrow('Refusing production deploy outside production Railway project');
+  });
+
+  it('staging + staging project id → passes', async () => {
+    vi.stubEnv('CLAWS_ENV', 'staging');
+    vi.stubEnv('RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+    vi.stubEnv('PROD_RAILWAY_PROJECT_ID', PROD_RAILWAY_PROJECT_ID);
+    vi.stubEnv('STAGING_RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+
+    const { assertRailwayTargetAllowed } = await loadClient();
+
+    expect(() => assertRailwayTargetAllowed()).not.toThrow();
+  });
+
+  it('production + production project id → passes', async () => {
+    vi.stubEnv('CLAWS_ENV', 'production');
+    vi.stubEnv('RAILWAY_PROJECT_ID', PROD_RAILWAY_PROJECT_ID);
+    vi.stubEnv('PROD_RAILWAY_PROJECT_ID', PROD_RAILWAY_PROJECT_ID);
+    vi.stubEnv('STAGING_RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+
+    const { assertRailwayTargetAllowed } = await loadClient();
+
+    expect(() => assertRailwayTargetAllowed()).not.toThrow();
+  });
+
+  it('CLAWS_ENV unset → isRailwayConfigured returns false without throwing at import', async () => {
+    vi.stubEnv('RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+    vi.stubEnv('RAILWAY_ENVIRONMENT_ID', 'env-staging');
+    vi.stubEnv('PROD_RAILWAY_PROJECT_ID', PROD_RAILWAY_PROJECT_ID);
+    vi.stubEnv('STAGING_RAILWAY_PROJECT_ID', STAGING_RAILWAY_PROJECT_ID);
+
+    const { isRailwayConfigured } = await loadClient();
+
+    expect(isRailwayConfigured()).toBe(false);
+  });
+});
 
 describe('getServiceVariables (PR-8a/B/A)', () => {
   it('success → returns the flat variables map and sends projectId/environmentId/serviceId', async () => {

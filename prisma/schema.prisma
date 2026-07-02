@@ -701,6 +701,8 @@ model Deployment {
   containerId    String?
   containerImage String  @default("ghcr.io/openclaw/openclaw:latest")
   containerHost  String?
+  railwayProjectId     String?
+  railwayEnvironmentId String?
 
   status         DeploymentStatus @default(PENDING)
   errorMessage   String?
