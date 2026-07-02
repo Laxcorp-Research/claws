@@ -34,6 +34,7 @@ import {
   updateAndRedeployService,
   findServiceByName,
   getServiceStatus,
+  getRailwayTargetProvenance,
   BOOT_SCRIPT_B64,
 } from './railway-client';
 import { log } from '@/lib/logger';
@@ -163,6 +164,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
   // regardless of the real image used, which broke the admin
   // versions deployment-count query and the force-update WHERE clause.
   const image = await resolveDeployImage();
+  const railwayTarget = getRailwayTargetProvenance();
 
   const deployment = await prisma.deployment.create({
     data: {
@@ -170,6 +172,8 @@ export async function deployToCloud(workspaceId: string): Promise<{
       status: 'PENDING',
       version: await getNextDeploymentVersion(workspaceId),
       containerImage: image,
+      railwayProjectId: railwayTarget.railwayProjectId,
+      railwayEnvironmentId: railwayTarget.railwayEnvironmentId,
       configSnapshot: JSON.stringify({
         workspaceId,
         image,

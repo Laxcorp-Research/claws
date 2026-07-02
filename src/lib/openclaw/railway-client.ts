@@ -6,6 +6,12 @@ const RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 const RAILWAY_TOKEN = process.env.RAILWAY_API_TOKEN;
 const RAILWAY_PROJECT_ID = process.env.RAILWAY_PROJECT_ID;
 const RAILWAY_ENVIRONMENT_ID = process.env.RAILWAY_ENVIRONMENT_ID;
+const CLAWS_ENV = process.env.CLAWS_ENV;
+const PROD_RAILWAY_PROJECT_ID_ENV = process.env.PROD_RAILWAY_PROJECT_ID;
+const STAGING_RAILWAY_PROJECT_ID_ENV = process.env.STAGING_RAILWAY_PROJECT_ID;
+
+export const PROD_RAILWAY_PROJECT_ID = '00000000-0000-4000-8000-000000000003';
+export const STAGING_RAILWAY_PROJECT_ID = '00000000-0000-4000-8000-000000000004';
 
 const OPENCLAW_IMAGE =
   process.env.OPENCLAW_DOCKER_IMAGE ?? 'ghcr.io/laxcorp-research/openclaw-runtime:latest';
@@ -69,8 +75,68 @@ const START_COMMAND =
 // Configuration check
 // ---------------------------------------------------------------------------
 
+type ClawsDeployEnvironment = 'staging' | 'production';
+
+function normalizeClawsEnv(value: string | undefined): ClawsDeployEnvironment | null {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'staging' || normalized === 'production') return normalized;
+  return null;
+}
+
+function warnOnProjectReferenceDrift(): void {
+  if (PROD_RAILWAY_PROJECT_ID_ENV?.trim() && PROD_RAILWAY_PROJECT_ID_ENV.trim() !== PROD_RAILWAY_PROJECT_ID) {
+    log.warn('PROD_RAILWAY_PROJECT_ID env does not match baked production Railway project id', {
+      envProjectId: PROD_RAILWAY_PROJECT_ID_ENV.trim(),
+      bakedProjectId: PROD_RAILWAY_PROJECT_ID,
+    });
+  }
+
+  if (STAGING_RAILWAY_PROJECT_ID_ENV?.trim() && STAGING_RAILWAY_PROJECT_ID_ENV.trim() !== STAGING_RAILWAY_PROJECT_ID) {
+    log.warn('STAGING_RAILWAY_PROJECT_ID env does not match baked staging Railway project id', {
+      envProjectId: STAGING_RAILWAY_PROJECT_ID_ENV.trim(),
+      bakedProjectId: STAGING_RAILWAY_PROJECT_ID,
+    });
+  }
+}
+
 export function isRailwayConfigured(): boolean {
-  return !!(RAILWAY_TOKEN && RAILWAY_PROJECT_ID && RAILWAY_ENVIRONMENT_ID);
+  warnOnProjectReferenceDrift();
+  return !!(normalizeClawsEnv(CLAWS_ENV) && RAILWAY_TOKEN && RAILWAY_PROJECT_ID && RAILWAY_ENVIRONMENT_ID);
+}
+
+export function getRailwayTargetProvenance(): {
+  railwayProjectId: string | null;
+  railwayEnvironmentId: string | null;
+} {
+  if (!isRailwayConfigured()) {
+    return { railwayProjectId: null, railwayEnvironmentId: null };
+  }
+
+  return {
+    railwayProjectId: RAILWAY_PROJECT_ID ?? null,
+    railwayEnvironmentId: RAILWAY_ENVIRONMENT_ID ?? null,
+  };
+}
+
+export function assertRailwayTargetAllowed(): void {
+  warnOnProjectReferenceDrift();
+
+  const clawsEnv = normalizeClawsEnv(CLAWS_ENV);
+  if (!clawsEnv) {
+    throw new Error('Railway is not configured for this app environment. Set CLAWS_ENV to "staging" or "production".');
+  }
+
+  if (clawsEnv === 'staging' && RAILWAY_PROJECT_ID === PROD_RAILWAY_PROJECT_ID) {
+    throw new Error('Refusing staging deploy into production Railway project');
+  }
+
+  if (clawsEnv === 'production' && RAILWAY_PROJECT_ID !== PROD_RAILWAY_PROJECT_ID) {
+    throw new Error('Refusing production deploy outside production Railway project');
+  }
+
+  if (clawsEnv === 'staging' && RAILWAY_PROJECT_ID !== STAGING_RAILWAY_PROJECT_ID) {
+    throw new Error('Staging RAILWAY_PROJECT_ID does not match STAGING_RAILWAY_PROJECT_ID');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +312,7 @@ export async function createService(config: {
   // default) so callers that haven't migrated keep working.
   image?: string;
 }): Promise<RailwayServiceResult> {
+  assertRailwayTargetAllowed();
   const imageToUse = config.image ?? OPENCLAW_IMAGE;
 
   const createData = await railwayGql<{ serviceCreate: { id: string } }>(
@@ -369,6 +436,7 @@ export async function updateAndRedeployService(
   // Falls back to the module-level OPENCLAW_IMAGE when omitted.
   image?: string,
 ): Promise<{ serviceId: string; domain: string }> {
+  assertRailwayTargetAllowed();
   const imageToUse = image ?? OPENCLAW_IMAGE;
 
   await railwayGql(
@@ -433,6 +501,7 @@ export async function updateAndRedeployService(
 }
 
 export async function deleteService(serviceId: string): Promise<void> {
+  assertRailwayTargetAllowed();
   await railwayGql(
     `mutation($id: String!) {
       serviceDelete(id: $id)
@@ -444,6 +513,7 @@ export async function deleteService(serviceId: string): Promise<void> {
 }
 
 export async function redeployService(serviceId: string): Promise<void> {
+  assertRailwayTargetAllowed();
   await railwayGql(
     `mutation($serviceId: String!, $environmentId: String!) {
       serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId)
@@ -458,6 +528,7 @@ export async function updateServiceVariables(
   serviceId: string,
   variables: Record<string, string>,
 ): Promise<void> {
+  assertRailwayTargetAllowed();
   await railwayGql(
     `mutation($input: VariableCollectionUpsertInput!) {
       variableCollectionUpsert(input: $input)
