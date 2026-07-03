@@ -212,6 +212,14 @@ model Workspace {
   containerState           ContainerState?
   apiKeySourceOverride     ApiKeySource?
 
+  // C-engine B1: Composio Tool Router session id (trs_...) for the MCP
+  // long-tail path. Written by the generator's reuse-or-create step when
+  // CLAWS_MCP_LONGTAIL_ENABLED=true and the workspace has uncurated
+  // connected tools. Workspace-lifetime (survives redeploys — the session
+  // is reused when its toolkit set matches; recreated on drift). Null for
+  // curated-only workspaces and while the flag is off.
+  composioToolRouterSessionId String?
+
   // ─── PR1: per-workspace subscription state ──────────────────
   // Part of the billing-model overhaul (PR1-9 sequence). This PR only
   // adds the columns; PR3 will start populating them via the Dodo webhook
