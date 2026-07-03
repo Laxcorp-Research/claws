@@ -21,12 +21,28 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
     select: { containerId: true, status: true },
   })
 
-  if (!workspace.containerId) {
-    return apiError("NO_SERVICE", "No deployed service found for this workspace. Deploy first.", 400)
+  if (workspace.status === "DRAFT" || workspace.status === "SETUP_INCOMPLETE") {
+    return apiError(
+      "SETUP_REQUIRED",
+      `Cannot redeploy a workspace in ${workspace.status} state. Finish setup before deploying.`,
+      400,
+    )
   }
 
-  if (workspace.status !== "RUNNING" && workspace.status !== "ERROR") {
-    return apiError("INVALID_STATUS", `Cannot redeploy a workspace in ${workspace.status} state.`, 400)
+  if (workspace.status === "DEPLOYING" || workspace.status === "WAKING") {
+    return apiError(
+      "WORKSPACE_BUSY",
+      `Cannot redeploy while the workspace is ${workspace.status}. Wait for the current operation to finish.`,
+      409,
+    )
+  }
+
+  if (!workspace.containerId && workspace.status !== "ERROR" && workspace.status !== "STOPPED") {
+    return apiError(
+      "NO_SERVICE",
+      `Workspace has no deployed service in ${workspace.status} state. Use the deploy flow for this state.`,
+      400,
+    )
   }
 
   const owner = await prisma.user.findUniqueOrThrow({

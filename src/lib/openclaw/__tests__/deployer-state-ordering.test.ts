@@ -129,6 +129,8 @@ beforeEach(() => {
   ;(prismaMock.deployment.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "dep-1" })
   ;(prismaMock.deployment.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
   ;(prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ version: 0 })
+  ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 })
+  ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (ops: unknown[]) => ops)
 })
 
 describe("deployToCloud initial-sync race closure (PR2.5)", () => {
@@ -192,5 +194,84 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
       .invocationCallOrder[0]
     const redeployOrder = mockUpdateAndRedeployService.mock.invocationCallOrder[0]
     expect(upsertOrder).toBeLessThan(redeployOrder)
+  })
+})
+
+describe("deployToCloud failure recovery — preserves live container pointers", () => {
+  it("does not delete or null the existing service when updateAndRedeployService fails before replacement", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({
+        containerId: "svc-existing",
+        containerName: "claw-ws-1",
+        containerHost: "svc-existing.up.railway.app",
+      }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-1",
+      trialUsed: false,
+      apiKeys: [],
+    })
+    mockGetServiceStatus.mockResolvedValue({
+      status: "SUCCESS",
+      deploymentId: "dep-rw-prev",
+      healthy: true,
+    })
+    mockUpdateAndRedeployService.mockRejectedValue(
+      new Error("Railway GraphQL error: Variable 'CLAWS_FILES_B64' value exceeds maximum length of 32768"),
+    )
+
+    await expect(deployToCloud("ws-1")).rejects.toThrow(/CLAWS_FILES_B64/)
+
+    expect(mockDeleteService).not.toHaveBeenCalled()
+    expect(mockCreateService).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          containerId: null,
+        }),
+      }),
+    )
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
+      where: { id: "ws-1" },
+      data: { status: "ERROR" },
+    })
+  })
+
+  it("clears a stale missing-service pointer only when replacing it with a fresh service", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({
+        containerId: "svc-missing",
+        containerName: "claw-ws-1",
+        containerHost: "missing.up.railway.app",
+      }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-1",
+      trialUsed: false,
+      apiKeys: [],
+    })
+    mockGetServiceStatus.mockResolvedValue({ status: "NO_DEPLOYMENT", deploymentId: null, healthy: false })
+    mockUpdateAndRedeployService.mockRejectedValue(new Error("Railway GraphQL error: Service not found"))
+    mockFindServiceByName.mockResolvedValue(null)
+    mockCreateService.mockResolvedValue({ serviceId: "svc-new", domain: "svc-new.up.railway.app" })
+    mockGetServiceStatus.mockResolvedValueOnce({ status: "NO_DEPLOYMENT", deploymentId: null, healthy: false })
+    mockGetServiceStatus.mockResolvedValueOnce({ status: "SUCCESS", deploymentId: "dep-rw-new", healthy: true })
+
+    await deployToCloud("ws-1")
+
+    expect(mockDeleteService).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
+      where: { id: "ws-1" },
+      data: { containerId: null, containerName: null, containerHost: null },
+    })
+    expect(mockCreateService).toHaveBeenCalledTimes(1)
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          containerId: "svc-new",
+          containerHost: "svc-new.up.railway.app",
+        }),
+      }),
+    )
   })
 })
