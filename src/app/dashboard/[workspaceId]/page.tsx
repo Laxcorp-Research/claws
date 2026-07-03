@@ -120,6 +120,11 @@ interface DashboardAlert {
   actions?: ReactNode
 }
 
+interface ConfigDriftInfo {
+  isStale: boolean
+  changedAreas: string[]
+}
+
 const AGENT_COLORS: Record<string, string> = {
   ORCHESTRATOR: "#5BA1F5",
   WORKER: "#8BFCAE",
@@ -130,6 +135,19 @@ const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC:
 
 const MAX_LOG_ENTRIES = 200
 const STATS_POLL_MS = 30_000
+
+function formatChangedAreas(areas: string[]): string {
+  if (areas.length === 0) return "workspace configuration"
+  const labels: Record<string, string> = {
+    tools: "tools",
+    agents: "agents",
+    connections: "agent connections",
+    channels: "channels",
+    keys: "API keys",
+    workspace: "workspace settings",
+  }
+  return areas.map((area) => labels[area] ?? area).join(", ")
+}
 
 const REDEPLOY_STAGES = [
   { label: "Generating workspace files", key: "GENERATING" },
@@ -231,6 +249,7 @@ export default function DashboardPage() {
   const [redeployLastStage, setRedeployLastStage] = useState<string | null>(null)
   const [redeployError, setRedeployError] = useState<string | null>(null)
   const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
+  const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
 
   const redeployEsRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
@@ -294,12 +313,18 @@ export default function DashboardPage() {
     }
   }, [workspaceId, router])
 
-  const fetchDeploymentImage = useCallback(() => {
-    fetch(`/api/deploy/${workspaceId}/status`)
+  const fetchDeploymentStatus = useCallback(() => {
+    fetch(`/api/deploy/${workspaceId}/status?drift=1`)
       .then((r) => r.json())
       .then((json) => {
         if (json.success && json.data?.deployment?.containerImage) {
           setDeploymentImage(json.data.deployment.containerImage)
+        }
+        if (json.success && json.data?.drift) {
+          setConfigDrift({
+            isStale: Boolean(json.data.drift.isStale),
+            changedAreas: Array.isArray(json.data.drift.changedAreas) ? json.data.drift.changedAreas : [],
+          })
         }
       })
       .catch(() => {})
@@ -307,7 +332,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStats()
-    fetchDeploymentImage()
+    fetchDeploymentStatus()
     fetch("/api/user/billing")
       .then((r) => r.json())
       .then((json) => {
@@ -322,7 +347,7 @@ export default function DashboardPage() {
       .catch(() => {})
     const interval = setInterval(fetchStats, STATS_POLL_MS)
     return () => clearInterval(interval)
-  }, [fetchStats, fetchDeploymentImage])
+  }, [fetchStats, fetchDeploymentStatus])
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
@@ -453,12 +478,12 @@ export default function DashboardPage() {
     if (redeployStatus === "COMPLETED") {
       setRedeployBanner({ variant: "info", message: "Redeployment successful" })
       fetchStats()
-      fetchDeploymentImage()
+      fetchDeploymentStatus()
     }
     setRedeployStatus(null)
     setRedeployLastStage(null)
     setRedeployError(null)
-  }, [redeployStatus, closeRedeployStream, fetchStats, fetchDeploymentImage])
+  }, [redeployStatus, closeRedeployStream, fetchStats, fetchDeploymentStatus])
 
   const handleApprove = async (activityLogId: string) => {
     const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
@@ -506,6 +531,7 @@ export default function DashboardPage() {
   const isStopped = workspace?.status === "STOPPED"
   const isError = workspace?.healthStatus === "UNHEALTHY" || workspace?.status === "ERROR"
   const showRedeploy = workspace?.status === "RUNNING" || workspace?.status === "ERROR"
+  const showConfigDrift = configDrift?.isStale === true && (workspace?.status === "RUNNING" || workspace?.status === "PAUSED")
   const redeploying = redeployModalOpen && redeployStatus !== "COMPLETED" && redeployStatus !== "FAILED"
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
@@ -564,6 +590,25 @@ export default function DashboardPage() {
         actions: isConfigDrift ? (
           <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Redeploy</Button>
         ) : undefined,
+      })
+    }
+
+    if (showConfigDrift && configDrift) {
+      list.push({
+        key: "config-drift",
+        priority: 2,
+        variant: "warning",
+        content: (
+          <>
+            <p className="font-medium">Configuration changed since last deploy — redeploy to apply</p>
+            <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
+          </>
+        ),
+        actions: (
+          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+            Redeploy
+          </Button>
+        ),
       })
     }
 
@@ -787,7 +832,7 @@ export default function DashboardPage() {
     list.sort((a, b) => a.priority - b.priority)
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {
@@ -959,7 +1004,7 @@ export default function DashboardPage() {
         <VersionUpdateBanner
           workspaceId={workspaceId}
           currentImage={deploymentImage}
-          onUpdated={() => { fetchStats(); fetchDeploymentImage() }}
+          onUpdated={() => { fetchStats(); fetchDeploymentStatus() }}
         />
       )}
 

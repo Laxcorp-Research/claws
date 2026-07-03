@@ -704,6 +704,8 @@ model Deployment {
   workspaceId String
 
   configSnapshot String @db.Text
+  configHash     String? @db.VarChar(64)
+  configSnapshotGzip Bytes?
   version        Int
 
   containerId    String?

@@ -49,6 +49,11 @@ vi.mock("@/lib/openclaw/generator", async () => {
   }
 })
 
+const mockBuildWorkspaceConfigFingerprint = vi.fn()
+vi.mock("@/lib/openclaw/config-fingerprint", () => ({
+  buildWorkspaceConfigFingerprint: (...args: unknown[]) => mockBuildWorkspaceConfigFingerprint(...args),
+}))
+
 vi.mock("@/lib/encryption", () => ({
   encrypt: (v: string) => `enc:${v}`,
   decrypt: (v: string) => v.replace(/^enc:/, ""),
@@ -110,9 +115,21 @@ beforeEach(() => {
   mockDeleteService.mockReset()
   mockFindServiceByName.mockReset()
   mockGenerateWorkspace.mockReset()
+  mockBuildWorkspaceConfigFingerprint.mockReset()
 
   mockIsRailwayConfigured.mockReturnValue(true)
   mockGenerateWorkspace.mockResolvedValue(generatedStub())
+  mockBuildWorkspaceConfigFingerprint.mockResolvedValue({
+    hash: "hash-current",
+    areas: {
+      tools: "tools-hash",
+      agents: "agents-hash",
+      connections: "connections-hash",
+      channels: "channels-hash",
+      keys: "keys-hash",
+      workspace: "workspace-hash",
+    },
+  })
 
   // PR-2b: buildRailwayEnvVars now throws if ACTIVITY_ENDPOINT /
   // METERING_ENDPOINT are unset or host-mismatched with NEXT_PUBLIC_APP_URL.
@@ -164,6 +181,30 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
       .invocationCallOrder[0]
     const createOrder = mockCreateService.mock.invocationCallOrder[0]
     expect(upsertOrder).toBeLessThan(createOrder)
+  })
+
+  it("writes configHash and gzipped config snapshot when deployment completes", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ containerId: null }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-1",
+      trialUsed: false,
+      apiKeys: [],
+    })
+    mockCreateService.mockResolvedValue({ serviceId: "svc-new", domain: "svc-new.up.railway.app" })
+    mockGetServiceStatus.mockResolvedValue({ status: "SUCCESS", deploymentId: "dep-rw-1", healthy: true })
+
+    await deployToCloud("ws-1")
+
+    const completedUpdate = (prismaMock.deployment.update as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[0])
+      .find((call) => call.data.status === "COMPLETED")
+    expect(completedUpdate).toBeTruthy()
+    expect(completedUpdate.data.configHash).toBe("hash-current")
+    expect(completedUpdate.data.configSnapshot).toContain('"hash":"hash-current"')
+    expect(completedUpdate.data.configSnapshotGzip).toBeInstanceOf(Uint8Array)
+    expect(completedUpdate.data.configSnapshotGzip.length).toBeGreaterThan(0)
   })
 
   it("upserts ContainerState BEFORE Railway updateAndRedeployService on redeploy of existing service", async () => {

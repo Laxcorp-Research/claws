@@ -72,6 +72,24 @@ interface ProviderStatus {
   effectiveSource: "override" | "global" | "none"
 }
 
+interface ConfigDriftInfo {
+  isStale: boolean
+  changedAreas: string[]
+}
+
+function formatChangedAreas(areas: string[]): string {
+  if (areas.length === 0) return "workspace configuration"
+  const labels: Record<string, string> = {
+    tools: "tools",
+    agents: "agents",
+    connections: "agent connections",
+    channels: "channels",
+    keys: "API keys",
+    workspace: "workspace settings",
+  }
+  return areas.map((area) => labels[area] ?? area).join(", ")
+}
+
 const PROVIDER_NAMES: Record<string, string> = {
   ANTHROPIC: "Anthropic (Claude)",
   OPENAI: "OpenAI (GPT)",
@@ -397,6 +415,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
   const [customApiModal, setCustomApiModal] = useState(false)
+  const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
+  const [driftAfterTools, setDriftAfterTools] = useState<ConfigDriftInfo | null>(null)
+  const [applyChangesOpen, setApplyChangesOpen] = useState(false)
+  const [isRedeploying, setIsRedeploying] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -404,6 +426,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       try {
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
         const wsData = await wsRes.json()
+        if (wsData.success) setWorkspaceStatus(wsData.data?.status ?? null)
 
         // PR2.8a Task 7: switched from name-based (`getToolByName(t.name)`)
         // to slug-based (`getToolBySlug(t.slug)`) template-tool resolution.
@@ -628,6 +651,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     // Before this PR the merge was insert-only and disconnect/revoke left
     // stale `status: "connected"` on rows until a manual page reload.
     setTools((prev) => mergeRefreshedTools(prev, existing))
+    try {
+      const statusRes = await fetch(`/api/deploy/${workspaceId}/status?drift=1`)
+      const statusData = await statusRes.json()
+      if (statusData.success && statusData.data?.drift) {
+        setWorkspaceStatus(statusData.data.workspaceStatus ?? null)
+        setDriftAfterTools({
+          isStale: Boolean(statusData.data.drift.isStale),
+          changedAreas: Array.isArray(statusData.data.drift.changedAreas) ? statusData.data.drift.changedAreas : [],
+        })
+      }
+    } catch { /* drift prompt is advisory; dashboard banner remains the backstop */ }
   }, [workspaceId])
 
   // PR #4 Commit 7: Revoke flow state. When a user clicks the Revoke button
@@ -1051,6 +1085,27 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     }
   }, [workspaceId, refreshTools])
 
+  const handleManageDone = useCallback(() => {
+    if (workspaceStatus === "RUNNING" && driftAfterTools?.isStale) {
+      setApplyChangesOpen(true)
+      return
+    }
+    router.push(`/builder/${workspaceId}`)
+  }, [workspaceStatus, driftAfterTools, router, workspaceId])
+
+  const handleApplyChangesNow = useCallback(async () => {
+    setIsRedeploying(true)
+    try {
+      const res = await fetch(`/api/deploy/${workspaceId}/redeploy`, { method: "POST" })
+      if (res.ok) {
+        setApplyChangesOpen(false)
+        router.push(`/dashboard/${workspaceId}`)
+      }
+    } finally {
+      setIsRedeploying(false)
+    }
+  }, [workspaceId, router])
+
   if (isLoading) {
     return <div className="space-y-3"><LoadingSkeleton variant="line" /><LoadingSkeleton variant="card" /><LoadingSkeleton variant="card" /></div>
   }
@@ -1201,7 +1256,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       {isManageMode ? (
         <div className="flex justify-between">
           <Button variant="outline" onClick={() => router.push(`/builder/${workspaceId}`)}>← Back to Builder</Button>
-          <Button variant="primary" onClick={() => router.push(`/builder/${workspaceId}`)}>Done</Button>
+          <Button variant="primary" onClick={handleManageDone}>Done</Button>
         </div>
       ) : (
         <div className="flex justify-between">
@@ -1299,6 +1354,20 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         variant="danger"
         loading={revokeState.loading}
       />
+      <ConfirmDialog
+        open={applyChangesOpen}
+        onClose={() => {
+          setApplyChangesOpen(false)
+          router.push(`/builder/${workspaceId}`)
+        }}
+        onConfirm={handleApplyChangesNow}
+        title="Apply changes now?"
+        description={`Your Claw is running an older configuration. Redeploy to apply changes to ${formatChangedAreas(driftAfterTools?.changedAreas ?? [])}.`}
+        confirmLabel="Redeploy"
+        cancelLabel="Not now"
+        variant="warning"
+        loading={isRedeploying}
+      />
     </>
   )
 }
@@ -1378,6 +1447,8 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   const [subscribing, setSubscribing] = useState(false)
   const [waitingForActivation, setWaitingForActivation] = useState(false)
   const [apiKeySource, setApiKeySource] = useState<ApiKeySource | null>(null)
+  const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
+  const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
   const creditUser = isCreditUser(apiKeySource)
 
   const checkBillingAndUpdateEligibility = useCallback(async (): Promise<boolean> => {
@@ -1409,13 +1480,20 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       try {
         const [, statusRes] = await Promise.all([
           checkBillingAndUpdateEligibility(),
-          fetch(`/api/deploy/${workspaceId}/status`),
+          fetch(`/api/deploy/${workspaceId}/status?drift=1`),
         ])
 
         const statusJson = await statusRes.json()
         if (statusJson.success) {
+          setWorkspaceStatus(statusJson.data.workspaceStatus ?? null)
           if (statusJson.data.apiKeySource) {
             setApiKeySource(statusJson.data.apiKeySource as ApiKeySource)
+          }
+          if (statusJson.data.drift) {
+            setConfigDrift({
+              isStale: Boolean(statusJson.data.drift.isStale),
+              changedAreas: Array.isArray(statusJson.data.drift.changedAreas) ? statusJson.data.drift.changedAreas : [],
+            })
           }
           if (statusJson.data.deployment) {
             const dep = statusJson.data.deployment
@@ -1530,6 +1608,38 @@ function Step3({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId])
 
+  const handleRedeploy = useCallback(async () => {
+    setIsDeploying(true)
+    setDeploymentStatus("PENDING")
+    setDeploymentError(null)
+
+    try {
+      const res = await fetch(`/api/deploy/${workspaceId}/redeploy`, { method: "POST" })
+      const json = await res.json()
+
+      if (!json.success) {
+        setDeploymentError(json.error?.message || "Failed to start redeployment")
+        setDeploymentStatus("FAILED")
+        setIsDeploying(false)
+        return
+      }
+
+      const stages = ["GENERATING", "CONFIGURING", "STARTING", "COMPLETED"]
+      for (let i = 0; i < stages.length; i++) {
+        setDeploymentStatus(stages[i])
+        if (stages[i] !== "COMPLETED") {
+          await new Promise(r => setTimeout(r, 900 + Math.random() * 500))
+        }
+      }
+      setConfigDrift((prev) => prev ? { ...prev, isStale: false, changedAreas: [] } : prev)
+      setIsDeploying(false)
+    } catch {
+      setDeploymentError("Network error")
+      setDeploymentStatus("FAILED")
+      setIsDeploying(false)
+    }
+  }, [workspaceId])
+
   const handleSubscribe = useCallback(async () => {
     setSubscribing(true)
     try {
@@ -1550,8 +1660,9 @@ function Step3({ workspaceId }: { workspaceId: string }) {
     setSubscribing(false)
   }, [workspaceId])
 
-  const canProceed = deploymentStatus === "COMPLETED"
+  const canProceed = deploymentStatus === "COMPLETED" && !(workspaceStatus === "RUNNING" && configDrift?.isStale === true)
   const needsSub = eligibility?.needsSubscription === true
+  const showStaleRunningConfig = workspaceStatus === "RUNNING" && configDrift?.isStale === true && deploymentStatus === "COMPLETED"
 
   if (isLoading) {
     return <div className="space-y-3"><LoadingSkeleton variant="line" /><LoadingSkeleton variant="card" /></div>
@@ -1599,7 +1710,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         )
       )}
 
-      {deploymentStatus && (
+      {deploymentStatus && !showStaleRunningConfig && (
         <div className="mb-4">
           <DeployProgress
             steps={mapDeployStatus(deploymentStatus)}
@@ -1620,9 +1731,23 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         </AlertBanner>
       )}
 
-      {deploymentStatus === "COMPLETED" && (
+      {deploymentStatus === "COMPLETED" && !showStaleRunningConfig && (
         <AlertBanner variant="info" icon={<CheckCircle className="w-4 h-4" />}>
           <p><strong>Deployment successful.</strong> Your Claw is running in the cloud.</p>
+        </AlertBanner>
+      )}
+
+      {showStaleRunningConfig && (
+        <AlertBanner
+          variant="warning"
+          actions={
+            <Button variant="primary" size="sm" onClick={handleRedeploy} loading={isDeploying}>
+              Redeploy
+            </Button>
+          }
+        >
+          <p className="font-medium">Configuration changed since last deploy — redeploy to apply</p>
+          <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
         </AlertBanner>
       )}
 
@@ -1831,7 +1956,7 @@ export default function SetupStepPage() {
     // After mount, augment with sessionStorage. Safe because this
     // useEffect runs after hydration completes.
     const stored = sessionStorage.getItem(`wizard-context-${workspaceId}`) === "builder"
-    setIsFromBuilder(fromQuery || stored)
+    queueMicrotask(() => setIsFromBuilder(fromQuery || stored))
   }, [workspaceId, fromQuery, searchParams])
 
   const exitWizard = useCallback(() => {

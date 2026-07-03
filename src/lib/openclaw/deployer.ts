@@ -26,6 +26,7 @@ import {
   assertEndpointHostMatchesApp,
 } from './env-guards';
 import { generateWorkspace, type GeneratedWorkspace } from './generator';
+import { buildWorkspaceConfigFingerprint, type WorkspaceConfigFingerprint } from './config-fingerprint';
 import {
   isRailwayConfigured,
   createService,
@@ -82,11 +83,18 @@ type DeploymentStatus =
   | 'COMPLETED'
   | 'FAILED';
 
+type DeploymentCompletionData = {
+  configHash: string;
+  configSnapshot: string;
+  configSnapshotGzip: Uint8Array<ArrayBuffer>;
+};
+
 async function updateDeploymentStatus(
   deploymentId: string,
   workspaceId: string,
   status: DeploymentStatus,
   error?: string,
+  completionData?: DeploymentCompletionData,
 ): Promise<void> {
   await prisma.deployment.update({
     where: { id: deploymentId },
@@ -94,9 +102,39 @@ async function updateDeploymentStatus(
       status,
       ...(error && { errorMessage: error }),
       ...(status === 'COMPLETED' && { completedAt: new Date() }),
+      ...(status === 'COMPLETED' && completionData ? completionData : {}),
     },
   });
   publishDeployEvent(workspaceId, deploymentId, status, error).catch(() => {});
+}
+
+function buildDeploymentCompletionData(
+  fingerprint: WorkspaceConfigFingerprint,
+  generated: GeneratedWorkspace,
+): DeploymentCompletionData {
+  const snapshotPayload = {
+    version: 1,
+    hash: fingerprint.hash,
+    areas: fingerprint.areas,
+    'openclaw.json': JSON.parse(generated['openclaw.json']),
+    'cron/jobs.json': JSON.parse(generated['cron/jobs.json']),
+    workspaces: generated.workspaces,
+  };
+
+  const compressed = gzipSync(JSON.stringify(snapshotPayload));
+  const configSnapshotGzip = new Uint8Array(compressed.byteLength);
+  configSnapshotGzip.set(compressed);
+
+  return {
+    configHash: fingerprint.hash,
+    configSnapshot: JSON.stringify({
+      version: 1,
+      hash: fingerprint.hash,
+      generatedAt: new Date().toISOString(),
+      areas: fingerprint.areas,
+    }),
+    configSnapshotGzip,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -192,14 +230,18 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
   await clearDeployEvents(workspaceId).catch(() => {});
 
-  if (!isRailwayConfigured()) {
-    log.warn('Railway not configured — running in simulation mode', { workspaceId });
-    return simulateDeploy(workspaceId, deployment.id, workspace);
-  }
-
   try {
     await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
-    const generated = await generateWorkspace(workspaceId);
+    const [fingerprint, generated] = await Promise.all([
+      buildWorkspaceConfigFingerprint(workspaceId),
+      generateWorkspace(workspaceId),
+    ]);
+    const completionData = buildDeploymentCompletionData(fingerprint, generated);
+
+    if (!isRailwayConfigured()) {
+      log.warn('Railway not configured — running in simulation mode', { workspaceId });
+      return simulateDeploy(workspaceId, deployment.id, workspace, completionData);
+    }
 
     // Pre-populate ContainerState BEFORE any Railway call. The container's
     // first state sync (~30s after boot, per PR2) uses updateMany on this
@@ -343,7 +385,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
     // NEVER fails or delays the deploy.
     await surfaceMcpBootFailure(workspaceId, generated).catch(() => {});
 
-    await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED');
+    await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED', undefined, completionData);
 
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -623,24 +665,66 @@ export async function restartContainer(workspaceId: string): Promise<void> {
   });
 }
 
-export async function redeployWorkspace(workspaceId: string): Promise<void> {
+export async function redeployWorkspace(workspaceId: string): Promise<{ deploymentId: string; containerId: string | null }> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
 
   if (isRailwayConfigured() && workspace.containerId && workspace.status === 'RUNNING') {
+    const image = await resolveDeployImage();
+    const railwayTarget = getRailwayTargetProvenance();
+    const deployment = await prisma.deployment.create({
+      data: {
+        workspaceId,
+        status: 'PENDING',
+        version: await getNextDeploymentVersion(workspaceId),
+        containerImage: image,
+        railwayProjectId: railwayTarget.railwayProjectId,
+        railwayEnvironmentId: railwayTarget.railwayEnvironmentId,
+        configSnapshot: JSON.stringify({
+          workspaceId,
+          image,
+          createdAt: new Date().toISOString(),
+        }),
+      },
+    });
+    await clearDeployEvents(workspaceId).catch(() => {});
+
     const redeployUser = await prisma.user.findUniqueOrThrow({
       where: { id: workspace.userId },
       include: { apiKeys: true },
     });
-    const generated = await generateWorkspace(workspaceId);
-    const envVars = buildRailwayEnvVars(generated, workspace, redeployUser);
-    await updateServiceVariables(workspace.containerId, envVars);
-    await redeployService(workspace.containerId);
-    return;
+    try {
+      await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
+      const [fingerprint, generated] = await Promise.all([
+        buildWorkspaceConfigFingerprint(workspaceId),
+        generateWorkspace(workspaceId),
+      ]);
+      const completionData = buildDeploymentCompletionData(fingerprint, generated);
+      const envVars = buildRailwayEnvVars(generated, workspace, redeployUser);
+      await updateDeploymentStatus(deployment.id, workspaceId, 'CONFIGURING');
+      await updateServiceVariables(workspace.containerId, envVars);
+      await updateDeploymentStatus(deployment.id, workspaceId, 'STARTING');
+      await redeployService(workspace.containerId);
+      await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED', undefined, completionData);
+      await prisma.workspace.update({
+        where: { id: workspaceId },
+        data: {
+          status: 'RUNNING',
+          healthStatus: 'HEALTHY',
+          lastHealthCheck: new Date(),
+        },
+      });
+      return { deploymentId: deployment.id, containerId: workspace.containerId };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown redeployment error';
+      await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
+      throw error;
+    }
   }
 
-  await deployToCloud(workspaceId);
+  const result = await deployToCloud(workspaceId);
+  return { deploymentId: result.deploymentId, containerId: result.containerId };
 }
 
 // ---------------------------------------------------------------------------
@@ -916,6 +1000,7 @@ async function simulateDeploy(
   workspaceId: string,
   deploymentId: string,
   workspace: { channelConfigEncrypted?: string | null; timezone?: string | null },
+  completionData: DeploymentCompletionData,
 ): Promise<{ deploymentId: string; containerId: string; gatewayToken: string }> {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Deploy simulation is disabled in production. Configure RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_ENVIRONMENT_ID.');
@@ -937,7 +1022,7 @@ async function simulateDeploy(
     await sleep(200);
   }
 
-  await updateDeploymentStatus(deploymentId, workspaceId, 'COMPLETED');
+  await updateDeploymentStatus(deploymentId, workspaceId, 'COMPLETED', undefined, completionData);
 
   await prisma.workspace.update({
     where: { id: workspaceId },

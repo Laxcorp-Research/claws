@@ -324,6 +324,10 @@ describe('(e) TOOLS.md anti-fabrication section iff MCP-enabled', () => {
       expect(toolsMd).toContain('## Long-Tail Tools (composio__*)');
       expect(toolsMd).toContain('NEVER fabricate');
       expect(toolsMd).toContain('report the failure verbatim');
+      expect(toolsMd).toContain('Claws platform');
+      expect(toolsMd).toContain('Manage Tools');
+      expect(toolsMd).not.toContain('OpenClaw');
+      expect(toolsMd).not.toContain('localhost');
     }
   });
 
