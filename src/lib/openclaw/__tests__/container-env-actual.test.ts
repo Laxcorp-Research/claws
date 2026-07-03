@@ -2,11 +2,18 @@
 // (the CLAWS_ENV_B64 → flat-map decoder for the "actual" side of reconciliation).
 //
 // parseClawsEnvB64 is pure + total (never throws), so no mocks/timers needed.
+import { gzipSync } from "node:zlib"
 import { describe, it, expect } from "vitest"
-import { parseClawsEnvB64, type RawContainerEnv } from "@/lib/openclaw/container-env-actual"
+import {
+  parseClawsEnvB64,
+  parseClawsEnvGzB64,
+  parseClawsEnvPayload,
+  type RawContainerEnv,
+} from "@/lib/openclaw/container-env-actual"
 
 // Build a CLAWS_ENV_B64 the same way deployer.ts does: base64 of the .env text.
 const b64 = (envText: string) => Buffer.from(envText, "utf8").toString("base64")
+const gzB64 = (envText: string) => gzipSync(Buffer.from(envText, "utf8")).toString("base64")
 
 describe("parseClawsEnvB64 (PR-8a/B/B)", () => {
   it("empty string input → {}", () => {
@@ -96,6 +103,32 @@ describe("parseClawsEnvB64 (PR-8a/B/B)", () => {
       ANTHROPIC_API_KEY: "sk-ant-api03-realistic-Key_Value-09",
       OPENAI_API_KEY: "sk-openai-realistic",
     })
+  })
+})
+
+describe("parseClawsEnvPayload (gzipped current format + legacy fallback)", () => {
+  it("prefers CLAWS_ENV_GZ_B64 and decodes the gzipped .env payload", () => {
+    const env = "ANTHROPIC_API_KEY=sk-ant-gz\nOPENCLAW_GATEWAY_TOKEN=tok\n"
+    const r = parseClawsEnvPayload({
+      CLAWS_ENV_GZ_B64: gzB64(env),
+      CLAWS_ENV_B64: b64("ANTHROPIC_API_KEY=legacy-should-not-win\n"),
+    } as unknown as RawContainerEnv)
+
+    expect(r.ANTHROPIC_API_KEY).toBe("sk-ant-gz")
+    expect(r.OPENCLAW_GATEWAY_TOKEN).toBe("tok")
+  })
+
+  it("falls back to legacy CLAWS_ENV_B64 for old running containers", () => {
+    const r = parseClawsEnvPayload({
+      CLAWS_ENV_B64: b64("ANTHROPIC_API_KEY=sk-ant-legacy\n"),
+    } as unknown as RawContainerEnv)
+
+    expect(r.ANTHROPIC_API_KEY).toBe("sk-ant-legacy")
+  })
+
+  it("malformed CLAWS_ENV_GZ_B64 yields {} and never throws", () => {
+    expect(() => parseClawsEnvGzB64("@@@@####$$$$")).not.toThrow()
+    expect(parseClawsEnvGzB64("@@@@####$$$$")).toEqual({})
   })
 })
 

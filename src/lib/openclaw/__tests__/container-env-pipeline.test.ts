@@ -2,7 +2,7 @@
 // helpers the reconciliation cron will chain to detect credential drift:
 //
 //   getServiceVariables(serviceId)            // ACTUAL env off the live service
-//     → (credit mode? top-level var : parseClawsEnvB64(CLAWS_ENV_B64))
+//     → (credit mode? top-level var : parseClawsEnvPayload(CLAWS_ENV_GZ_B64/CLAWS_ENV_B64))
 //     → fingerprintKey(actualKey)             // ACTUAL fingerprint
 //   vs deriveContainerEnv(workspace, user).keyFingerprint   // EXPECTED fingerprint
 //
@@ -12,7 +12,7 @@
 // mocked. See the railway-client.test.ts header for the module-load env gotcha
 // (RAILWAY_* captured at import → stub before the dynamic import).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { parseClawsEnvB64, type RawContainerEnv } from "@/lib/openclaw/container-env-actual"
+import { parseClawsEnvPayload, type RawContainerEnv } from "@/lib/openclaw/container-env-actual"
 import { fingerprintKey, deriveContainerEnv } from "@/lib/openclaw/derive-container-env"
 
 vi.mock("@/lib/logger", () => ({
@@ -27,10 +27,11 @@ const b64 = (envText: string) => Buffer.from(envText, "utf8").toString("base64")
 
 // Mirror of the reconciliation cron's "actual key" extraction (formalized in
 // PR-8a/C): credit mode keeps the master key as a top-level Railway var; BYOK
-// bakes the user key into CLAWS_ENV_B64 (.env). Returns null when no key.
+// bakes the user key into CLAWS_ENV_GZ_B64 / legacy CLAWS_ENV_B64 (.env).
+// Returns null when no key.
 function actualKeyFromEnv(env: RawContainerEnv): string | null {
   if (env.CLAWS_CREDIT_MODE === "true") return env.ANTHROPIC_API_KEY ?? null
-  const baked = parseClawsEnvB64(env.CLAWS_ENV_B64 ?? "")
+  const baked = parseClawsEnvPayload(env)
   return baked.ANTHROPIC_API_KEY ?? null
 }
 function actualFingerprint(env: RawContainerEnv): string | null {
