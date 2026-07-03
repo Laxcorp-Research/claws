@@ -11,12 +11,13 @@
 //   - Health monitored via Railway deployment status + direct /healthz
 //
 // Config delivery:
-//   - openclaw.json → base64 → CLAWS_CONFIG_B64 env var
-//   - .env content → base64 → CLAWS_ENV_B64 env var
-//   - Workspace files (SOUL.md etc.) → JSON → base64 → CLAWS_FILES_B64
+//   - openclaw.json → gzip → base64 → CLAWS_CONFIG_GZ_B64 env var
+//   - .env content → gzip → base64 → CLAWS_ENV_GZ_B64 env var
+//   - Workspace files (SOUL.md etc.) → JSON → gzip → base64 → CLAWS_FILES_GZ_B64
 //   - Railway start command decodes these to /home/node/.openclaw/ on boot
 // ============================================================================
 
+import { gzipSync } from 'node:zlib';
 import { prisma } from '@/lib/db';
 import { encrypt, decrypt, decryptAndMaybeReencrypt } from '@/lib/encryption';
 import {
@@ -52,6 +53,7 @@ const CONTAINER_PREFIX = 'claw';
 
 const DEPLOY_POLL_INTERVAL_MS = 3_000;
 const DEPLOY_TIMEOUT_MS = 180_000;
+const CONTAINER_PAYLOAD_SAFETY_CEILING = 30_000;
 
 // PR-2 (syncThenDestroy): default upper bound for the pre-destroy
 // /internal/sync-now call. Tuned for the single-workspace Stop path
@@ -716,6 +718,20 @@ export async function surfaceMcpBootFailure(
 // Railway Env Var Builder
 // ---------------------------------------------------------------------------
 
+function gzipBase64(content: string): string {
+  return gzipSync(Buffer.from(content, 'utf8')).toString('base64');
+}
+
+function assertContainerPayloadEnvVarSizes(vars: Record<string, string>): void {
+  for (const [name, value] of Object.entries(vars)) {
+    if (value.length > CONTAINER_PAYLOAD_SAFETY_CEILING) {
+      throw new Error(
+        `Container payload ${name} is ${value.length} chars — exceeds the 30,000 safety ceiling (Railway hard limit 32,768). Workspace too large to deploy.`,
+      );
+    }
+  }
+}
+
 export function buildRailwayEnvVars(
   generated: GeneratedWorkspace,
   // PR-8a: workspace + user are passed explicitly so credit mode AND the
@@ -737,9 +753,9 @@ export function buildRailwayEnvVars(
 
   const vars: Record<string, string> = {
     CLAWS_BOOT_B64: BOOT_SCRIPT_B64,
-    CLAWS_CONFIG_B64: Buffer.from(configJson).toString('base64'),
-    CLAWS_ENV_B64: Buffer.from(envFileContent).toString('base64'),
-    CLAWS_FILES_B64: Buffer.from(JSON.stringify(workspaceFiles)).toString('base64'),
+    CLAWS_CONFIG_GZ_B64: gzipBase64(configJson),
+    CLAWS_ENV_GZ_B64: gzipBase64(envFileContent),
+    CLAWS_FILES_GZ_B64: gzipBase64(JSON.stringify(workspaceFiles)),
     OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
     TZ: workspace.timezone ?? 'UTC',
     NODE_ENV: 'production',
@@ -782,7 +798,7 @@ export function buildRailwayEnvVars(
   // PR-8a: credit mode + the credential vars come from deriveContainerEnv —
   // the single source of truth shared with the reconciliation cron and the
   // container-secrets path. Non-credit deploys still emit NO ANTHROPIC_API_KEY
-  // here: the user's BYOK key is baked into CLAWS_ENV_B64 by the generator,
+  // here: the user's BYOK key is baked into CLAWS_ENV_GZ_B64 by the generator,
   // not a Railway var (behavior preserved). CLAWS_USER_ID is pinned to
   // workspace.userId in credit mode (was creditConfig.userId).
   const credential = deriveContainerEnv(workspace, user);
@@ -839,6 +855,8 @@ export function buildRailwayEnvVars(
     vars.COMPOSIO_API_KEY = composioApiKey;
     vars.COMPOSIO_USER_ID = getComposioUserId(workspace.userId);
   }
+
+  assertContainerPayloadEnvVarSizes(vars);
 
   return vars;
 }
