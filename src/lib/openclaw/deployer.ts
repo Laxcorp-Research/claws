@@ -62,6 +62,11 @@ const CONTAINER_PAYLOAD_SAFETY_CEILING = 30_000;
 // src/app/api/cron/hibernation/route.ts.
 const DEFAULT_SYNC_TIMEOUT_MS = 18_000;
 
+function isMissingRailwayServiceError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /(?:service|deployment).*not\s+found|not\s+found.*(?:service|deployment)|404/i.test(message);
+}
+
 // ---------------------------------------------------------------------------
 // Deployment Status
 // ---------------------------------------------------------------------------
@@ -269,12 +274,27 @@ export async function deployToCloud(workspaceId: string): Promise<{
           oldServiceId: workspace.containerId,
           error: redeployErr instanceof Error ? redeployErr.message : String(redeployErr),
         });
-        try { await deleteService(workspace.containerId); } catch { /* already gone */ }
-        await prisma.workspace.update({
-          where: { id: workspaceId },
-          data: { containerId: null, containerName: null, containerHost: null },
-        });
-        result = await createService({ name: serviceName, envVars, image });
+        if (!isMissingRailwayServiceError(redeployErr)) {
+          throw redeployErr;
+        }
+
+        const existingId = await findServiceByName(serviceName);
+        if (existingId) {
+          log.warn('Stored Railway service id is stale; adopting service found by name', {
+            workspaceId,
+            staleServiceId: workspace.containerId,
+            foundServiceId: existingId,
+          });
+          const beforeStatus = await getServiceStatus(existingId);
+          previousDeploymentId = beforeStatus.deploymentId;
+          result = await updateAndRedeployService(existingId, envVars, image);
+        } else {
+          await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { containerId: null, containerName: null, containerHost: null },
+          });
+          result = await createService({ name: serviceName, envVars, image });
+        }
       }
     } else {
       try {

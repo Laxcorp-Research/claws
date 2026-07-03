@@ -16,6 +16,7 @@ import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
+import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-error"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
@@ -435,7 +436,7 @@ export default function DashboardPage() {
       closeRedeployStream()
       if (!res.ok) {
         setRedeployStatus("FAILED")
-        setRedeployError(json.error?.message ?? "Redeploy failed")
+        setRedeployError(getRedeployApiErrorMessage(json))
       } else {
         setRedeployStatus((prev) => prev === "COMPLETED" ? prev : "COMPLETED")
       }
@@ -1097,6 +1098,12 @@ export default function DashboardPage() {
           ) : undefined
         }
       >
+        {redeployStatus === "FAILED" && redeployError && (
+          <AlertBanner variant="error">
+            <p className="font-medium">Redeploy failed</p>
+            <p className="mt-0.5 opacity-80">{redeployError}</p>
+          </AlertBanner>
+        )}
         <DeployProgress
           steps={mapRedeployStatus(redeployStatus, redeployLastStage)}
           failureDetail={redeployStatus === "FAILED" ? redeployError ?? "Deployment failed" : undefined}
