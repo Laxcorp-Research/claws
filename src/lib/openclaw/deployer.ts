@@ -41,6 +41,7 @@ import { log } from '@/lib/logger';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
 import { deriveContainerEnv, type DeriveWorkspaceInput, type DeriveUserInput } from './derive-container-env';
 import { getComposioUserId } from '@/lib/composio';
+import { probeMcpEndpoint } from './mcp-longtail';
 import { CronExpressionParser } from 'cron-parser';
 
 // ---------------------------------------------------------------------------
@@ -311,6 +312,14 @@ export async function deployToCloud(workspaceId: string): Promise<{
         log.warn('Readiness check timed out — channels may need configuration', { workspaceId });
       }
     }
+
+    // C-engine B1: cold-boot MCP surfacing. The container's own MCP-connect
+    // failure is SILENT (one gateway log line, and only on first agent run
+    // — the runtime connects lazily), so for MCP-enabled deploys we probe
+    // the Tool Router endpoint directly from here and surface a failure as
+    // an ActivityLog ERROR row. Best-effort and non-blocking by contract:
+    // NEVER fails or delays the deploy.
+    await surfaceMcpBootFailure(workspaceId, generated).catch(() => {});
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED');
 
@@ -657,6 +666,50 @@ export async function getGatewayConnectionInfo(
     wsUrl: `wss://${workspace.containerHost}`,
     token,
   };
+}
+
+// ---------------------------------------------------------------------------
+// C-engine B1: cold-boot MCP surfacing (minimal detection; PR-R owns full
+// handling). Extracts the emitted mcp.servers.composio block from the
+// generated openclaw.json — its presence IS the "MCP-enabled deploy"
+// signal — and probes the Tool Router endpoint (initialize + tools/list).
+// On failure, writes one ActivityLog ERROR row so the outage is visible in
+// the activity feed instead of only in a container log line nobody reads.
+// ---------------------------------------------------------------------------
+
+export async function surfaceMcpBootFailure(
+  workspaceId: string,
+  generated: Pick<GeneratedWorkspace, 'openclaw.json'>,
+  probeImpl: typeof probeMcpEndpoint = probeMcpEndpoint,
+): Promise<void> {
+  let composioServer: { url?: unknown; headers?: unknown } | undefined;
+  try {
+    const config = JSON.parse(generated['openclaw.json']) as {
+      mcp?: { servers?: { composio?: { url?: unknown; headers?: unknown } } };
+    };
+    composioServer = config.mcp?.servers?.composio;
+  } catch {
+    return;
+  }
+  if (!composioServer || typeof composioServer.url !== 'string') return;
+
+  const headers =
+    composioServer.headers && typeof composioServer.headers === 'object'
+      ? (composioServer.headers as Record<string, string>)
+      : {};
+
+  const result = await probeImpl({ url: composioServer.url, headers });
+  if (result.ok) return;
+
+  log.warn('MCP long-tail boot probe failed', { workspaceId, detail: result.detail });
+  await prisma.activityLog.create({
+    data: {
+      workspaceId,
+      action: 'Long-tail tool connection failed at boot',
+      actionType: 'ERROR',
+      detail: result.detail,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

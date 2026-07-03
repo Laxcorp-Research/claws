@@ -22,6 +22,11 @@ import { decrypt } from '@/lib/encryption';
 import { generateSecureToken } from '@/lib/crypto';
 import { getToolBySlug } from '@/data/tool-catalog';
 import { getComposioUserId } from '@/lib/composio';
+import {
+  isMcpLongtailEnabled,
+  resolveToolRouterSession,
+  mergeMcpDenyIntoAgentTools,
+} from '@/lib/openclaw/mcp-longtail';
 import yaml from 'yaml';
 
 // ---------------------------------------------------------------------------
@@ -158,25 +163,36 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     }
   }
 
-  // 2b. Pre-load skills compatible with any CONNECTED OAUTH_COMPOSIO tool in
-  // this workspace. Kept separate from the main include because Skill is not
-  // a direct Workspace relation — the tool→skill map lives on Skill.compatibleTools.
-  // Loading here (once, before any sync config generator runs) keeps
-  // generateSkillsEntriesConfig pure-sync and testable without async plumbing.
-  // When no OAuth tools are connected, we skip the query entirely.
-  const connectedOauthToolSlugs = workspace.toolConnections
-    .filter((tc) => tc.connectionType === 'OAUTH_COMPOSIO' && tc.status === 'CONNECTED')
+  // 2b. Pre-load skills compatible with any connected tool in this
+  // workspace. Kept separate from the main include because Skill is not a
+  // direct Workspace relation — the tool→skill map lives on
+  // Skill.compatibleTools. Loading here (once, before any sync config
+  // generator runs) keeps generateSkillsEntriesConfig pure-sync and testable
+  // without async plumbing. When no tools are connected, we skip the query.
+  //
+  // C-engine B1: widened from OAuth-only to ALL emission-eligible connected
+  // tool slugs so the OAuth branch (curated skills.entries emission) and the
+  // API_KEY branch (uncurated long-tail detection) share ONE lookup. The
+  // eligibility filters mirror each branch's own emission guards.
+  const connectedToolSlugs = workspace.toolConnections
+    .filter(
+      (tc) =>
+        (tc.connectionType === 'OAUTH_COMPOSIO' && tc.status === 'CONNECTED') ||
+        (tc.connectionType === 'API_KEY' &&
+          tc.status !== 'NEEDS_CREDENTIALS' &&
+          !!tc.encryptedCredentials),
+    )
     .map((tc) => tc.toolSlug);
 
-  const compatibleOauthSkills: SkillForOauthEmit[] =
-    connectedOauthToolSlugs.length > 0
+  const compatibleToolSkills: SkillForToolEmit[] =
+    connectedToolSlugs.length > 0
       ? await prisma.skill.findMany({
-          where: { compatibleTools: { hasSome: connectedOauthToolSlugs } },
+          where: { compatibleTools: { hasSome: connectedToolSlugs } },
           select: { slug: true, compatibleTools: true },
         })
       : [];
 
-  const workspaceWithChannels = { ...workspace, channelConnections, compatibleOauthSkills };
+  const workspaceWithChannels = { ...workspace, channelConnections, compatibleToolSkills };
 
   // 3. Identify agent roles
   const orchestrator = workspaceWithChannels.agents.find(a => a.role === 'ORCHESTRATOR');
@@ -214,15 +230,84 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     orchestratorAgentSlug,
   );
 
-  // 5. Build all outputs.
+  // 5. Skills entries + uncurated long-tail detection (C-engine B1).
+  // Hoisted out of generateOpenClawConfig because the uncurated set drives
+  // an async step (Tool Router session reuse-or-create) that must run
+  // before the sync config assembly.
+  const skillsEmission = generateSkillsEntriesConfig(workspaceWithChannels);
+
+  // 5b. Tool Router session for the uncurated long-tail (flag-gated).
+  // Quiet no-op when the flag is off, nothing is uncurated, or
+  // COMPOSIO_API_KEY is unset — mirrors the OAuth branch's unconfigured
+  // behavior. Runs INSIDE generateWorkspace so deploy AND redeploy both
+  // flow through the same reuse-or-create (deployer.ts deployToCloud and
+  // redeployWorkspace both call generateWorkspace).
+  //
+  // Session-resolution failure (Composio down at deploy time) is
+  // non-fatal: warn and deploy without the mcp block. The runtime side is
+  // graceful either way (Probe 3 step 7); a later redeploy re-attempts.
+  let mcpEmission: McpEmission | null = null;
+  const composioApiKeyForMcp = process.env.COMPOSIO_API_KEY?.trim();
+  if (
+    isMcpLongtailEnabled() &&
+    skillsEmission.uncuratedToolSlugs.length > 0 &&
+    composioApiKeyForMcp
+  ) {
+    // Map uncurated tool slugs → Composio toolkit ids with the same
+    // passthrough the oauth/initiate route uses (def?.composioToolkitId ??
+    // slug): uncurated tools may not be in the static catalog at all.
+    const toolkitIds = [
+      ...new Set(
+        skillsEmission.uncuratedToolSlugs.map(
+          (slug) => getToolBySlug(slug)?.composioToolkitId ?? slug,
+        ),
+      ),
+    ];
+    try {
+      const session = await resolveToolRouterSession({
+        userId: workspace.user.id,
+        storedSessionId: workspace.composioToolRouterSessionId ?? null,
+        toolkitIds,
+      });
+      if (session) {
+        if (session.sessionId !== workspace.composioToolRouterSessionId) {
+          await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { composioToolRouterSessionId: session.sessionId },
+          });
+        }
+        mcpEmission = { url: session.mcpUrl, apiKey: composioApiKeyForMcp };
+      }
+    } catch (err) {
+      console.warn(
+        `[generator] Tool Router session resolution failed for workspace ${workspaceId}; deploying without mcp block (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+  }
+
+  // 6. Build all outputs.
   // PR-2b #10: orchestrator agent slug also threaded into generateCronJobs
   // so the scheduledTasks emit path (currently dormant — no Prisma column —
   // but kept fixed to avoid landing the same latent bug for a future
   // feature) uses the correct cron job shape too.
-  const openclawConfig = generateOpenClawConfig(workspaceWithChannels, orchestrator, workers, critic, heartbeat);
+  const openclawConfig = generateOpenClawConfig(
+    workspaceWithChannels,
+    orchestrator,
+    workers,
+    critic,
+    heartbeat,
+    skillsEmission.entries,
+    mcpEmission,
+  );
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
   const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug);
-  const workspaces = generateAllWorkspaceFiles(workspaceWithChannels, orchestrator, workers, critic);
+  const workspaces = generateAllWorkspaceFiles(
+    workspaceWithChannels,
+    orchestrator,
+    workers,
+    critic,
+    mcpEmission !== null,
+  );
 
   return {
     'openclaw.json': JSON.stringify(openclawConfig, null, 2),
@@ -243,12 +328,24 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 //   - Empty {} is valid (but useless)
 // ---------------------------------------------------------------------------
 
+/**
+ * C-engine B1: coordinates for the emitted `mcp.servers.composio` block.
+ * Non-null only when the workspace has uncurated connected tools, the
+ * CLAWS_MCP_LONGTAIL_ENABLED flag is on, and a Tool Router session resolved.
+ */
+interface McpEmission {
+  url: string;
+  apiKey: string;
+}
+
 function generateOpenClawConfig(
   workspace: WorkspaceWithRelations,
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   heartbeat: HeartbeatScheduleResult | null,
+  skillsEntries: Record<string, unknown>,
+  mcpEmission: McpEmission | null,
 ) {
   const allAgents = [orchestrator, ...workers, critic];
   const workerIds = workers.map(w => toAgentId(w.name));
@@ -288,6 +385,17 @@ function generateOpenClawConfig(
       entry.skills = agentSkillSlugs;
     }
 
+    // C-engine B1 token-tax scoping: in an MCP-enabled workspace, only the
+    // Orchestrator carries the Router's tool definitions. Every other agent
+    // denies `composio__*` — the runtime's allowlist gate then skips the
+    // bundle-MCP runtime entirely for those agents' runs (verified against
+    // upstream v2026.5.22 dist: shouldCreateBundleMcpRuntimeForAttempt +
+    // makeToolPolicyMatcher glob deny). Merge, never clobber, any existing
+    // tools policy on the entry.
+    if (mcpEmission && !isOrchestrator) {
+      entry.tools = mergeMcpDenyIntoAgentTools(entry.tools as Record<string, unknown> | undefined);
+    }
+
     return entry;
   });
 
@@ -300,9 +408,6 @@ function generateOpenClawConfig(
 
   // Channel config - from setup wizard step 4
   const channelsConfig = generateChannelsConfig(workspace);
-
-  // Skills entries - API keys and env vars for connected tools
-  const skillsEntries = generateSkillsEntriesConfig(workspace);
 
   // Build allowed origins for the Control UI
   const allowedOrigins = [
@@ -354,6 +459,35 @@ function generateOpenClawConfig(
   // Add skill entries if any tools have credentials
   if (Object.keys(skillsEntries).length > 0) {
     config.skills = { entries: skillsEntries };
+  }
+
+  // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
+  // non-null when CLAWS_MCP_LONGTAIL_ENABLED=true AND the workspace has
+  // uncurated connected tools AND a Tool Router session resolved).
+  //
+  // SECRET-HANDLING NOTE: the x-api-key header is the SAME platform
+  // COMPOSIO_API_KEY already emitted into this very file at
+  // skills.entries[slug].env.COMPOSIO_API_KEY (above) and into the
+  // container env by deployer.ts buildRailwayEnvVars — same
+  // COMPOSIO_USER_ID scoping doctrine (see deployer.ts's Composio
+  // coordinates block and docs/COMPOSIO_RUNTIME_CONTRACT.md). No new
+  // secret material, no new delivery path. openclaw.json never leaves the
+  // container: state-sync excludes it from every snapshot
+  // (container/state-sync.mjs CONFIG_FILES). The upstream MCP runtime has
+  // NO env interpolation in headers (verified against v2026.5.22 dist), so
+  // a static value is the only option; the trs_ session URL is itself
+  // pinned server-side to this workspace's user, which scopes execution
+  // more tightly than the raw execute endpoint.
+  if (mcpEmission) {
+    config.mcp = {
+      servers: {
+        composio: {
+          url: mcpEmission.url,
+          transport: 'streamable-http',
+          headers: { 'x-api-key': mcpEmission.apiKey },
+        },
+      },
+    };
   }
 
   // PR-2: Claws Activity Reporter plugin (overlay baked into the Docker
@@ -496,7 +630,7 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): Record<strin
  *   2. **OAUTH_COMPOSIO** (keyed by `skillSlug`):
  *      For each CONNECTED OAUTH_COMPOSIO ToolConnection, look up every
  *      `Skill` whose `compatibleTools` array contains the tool slug (from
- *      `workspace.compatibleOauthSkills`, pre-loaded in `generateWorkspace`)
+ *      `workspace.compatibleToolSkills`, pre-loaded in `generateWorkspace`)
  *      and emit one `skills.entries[skill.slug]` per compatible skill. Each
  *      entry carries the three Composio coordinates in `env`
  *      (`COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO_CONNECTED_ACCOUNT_ID`)
@@ -513,11 +647,30 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): Record<strin
  *   - `connectionType === 'CHANNEL_NATIVE'` (tokens live in .env, not here).
  *   - Decrypt/parse failures on API_KEY rows (logged, row skipped; a
  *     partial workspace is less harmful than a crashed generator).
+ *
+ * C-engine B1 return-contract change: alongside `entries`, this now
+ * reports the UNCURATED connections — connected tools with no matching
+ * Skill row (the long-tail):
+ *   - `uncuratedToolSlugs`: OAUTH_COMPOSIO rows (Composio holds the
+ *     credential → Tool Router CAN execute them). These drive the mcp
+ *     block emission.
+ *   - `uncuratedLocalKeySlugs`: API_KEY rows whose credential lives in OUR
+ *     DB. The Router cannot execute with keys it doesn't hold, so these
+ *     are detected + warned but NOT mcp-emitted until B3 (API_KEY→BYOK
+ *     routing) moves the keys to Composio.
  */
+interface SkillsEmissionResult {
+  entries: Record<string, unknown>;
+  uncuratedToolSlugs: string[];
+  uncuratedLocalKeySlugs: string[];
+}
+
 function generateSkillsEntriesConfig(
   workspace: WorkspaceWithRelations,
-): Record<string, any> {
+): SkillsEmissionResult {
   const entries: Record<string, any> = {};
+  const uncuratedToolSlugs: string[] = [];
+  const uncuratedLocalKeySlugs: string[] = [];
 
   // --- API_KEY branch -----------------------------------------------------
   for (const toolConn of workspace.toolConnections) {
@@ -553,6 +706,23 @@ function generateSkillsEntriesConfig(
     if (Object.keys(env).length === 0) continue;
 
     entries[toolConn.toolSlug] = { enabled: true, env };
+
+    // C-engine B1: API_KEY row with no matching curated Skill row — the
+    // env entry above is dead weight (no SKILL.md consumes it) and the
+    // tool is unusable by agents. Detected here, but NOT routable through
+    // the Tool Router in B1: the key lives in OUR DB, and the Router only
+    // executes with Composio-held credentials. B3 (API_KEY→BYOK routing
+    // through createBYOKConnectedAccount) is the unblock.
+    const hasCuratedSkill = workspace.compatibleToolSkills.some((s) =>
+      s.compatibleTools.includes(toolConn.toolSlug),
+    );
+    if (!hasCuratedSkill) {
+      uncuratedLocalKeySlugs.push(toolConn.toolSlug);
+      console.warn(
+        `[generator] API_KEY tool ${toolConn.toolSlug} has no compatible Skill rows (uncurated). ` +
+          `Not MCP-emitted in B1 — the credential is DB-held, not Composio-held; B3 (BYOK routing) unblocks it.`,
+      );
+    }
   }
 
   // --- OAUTH_COMPOSIO branch ---------------------------------------------
@@ -563,7 +733,7 @@ function generateSkillsEntriesConfig(
   if (!composioApiKey) {
     // Quiet no-op. Local builder / dev flows stay unblocked; production
     // deploys must set COMPOSIO_API_KEY on the server.
-    return entries;
+    return { entries, uncuratedToolSlugs, uncuratedLocalKeySlugs };
   }
 
   const composioUserId = getComposioUserId(workspace.user.id);
@@ -573,29 +743,38 @@ function generateSkillsEntriesConfig(
     if (toolConn.status !== 'CONNECTED') continue;
     if (!toolConn.composioConnectionId) continue;
 
-    const tool = getToolBySlug(toolConn.toolSlug);
-    const toolkitId = tool?.composioToolkitId;
-    if (!toolkitId) {
-      // Tool was removed from catalog (e.g., Composio dropped the toolkit)
-      // but the ToolConnection row lingered. Don't emit garbage; let the
-      // tool-management UI surface the orphan on its own.
-      console.warn(
-        `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} has no catalog composioToolkitId; skipping`,
-      );
-      continue;
-    }
-
-    const matchingSkills = workspace.compatibleOauthSkills.filter((s) =>
+    const matchingSkills = workspace.compatibleToolSkills.filter((s) =>
       s.compatibleTools.includes(toolConn.toolSlug),
     );
 
     if (matchingSkills.length === 0) {
       // User connected the tool before a compatible Skill row was seeded,
-      // OR the seed rewrite for this tool's skills is still pending (PR #4
-      // Commit 6). Not fatal — the tool connection persists; future seed
-      // runs pick it up.
+      // OR the tool is deliberately uncurated (long-tail). Not fatal — the
+      // tool connection persists; future seed runs pick it up.
+      //
+      // C-engine B1: this dead-end IS the uncurated-detection point. The
+      // slug feeds the Tool Router session's toolkit allowlist (Composio
+      // holds the OAuth credential, so the Router CAN execute these).
+      // Checked BEFORE the catalog-toolkitId guard below on purpose:
+      // uncurated tools may not be in the static catalog at all, and the
+      // slug→toolkit mapping for them is the same passthrough the
+      // oauth/initiate route uses (composioToolkitId ?? slug).
+      uncuratedToolSlugs.push(toolConn.toolSlug);
       console.warn(
         `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} has no compatible Skill rows; no skills.entries emitted`,
+      );
+      continue;
+    }
+
+    const tool = getToolBySlug(toolConn.toolSlug);
+    const toolkitId = tool?.composioToolkitId;
+    if (!toolkitId) {
+      // Tool was removed from catalog (e.g., Composio dropped the toolkit)
+      // but the ToolConnection row lingered — yet a curated Skill row still
+      // matches it. Don't emit garbage; let the tool-management UI surface
+      // the orphan on its own.
+      console.warn(
+        `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} has no catalog composioToolkitId; skipping`,
       );
       continue;
     }
@@ -618,7 +797,7 @@ function generateSkillsEntriesConfig(
     }
   }
 
-  return entries;
+  return { entries, uncuratedToolSlugs, uncuratedLocalKeySlugs };
 }
 
 // ---------------------------------------------------------------------------
@@ -818,6 +997,7 @@ function generateAllWorkspaceFiles(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
+  mcpEnabled: boolean,
 ): Record<string, AgentWorkspaceFiles> {
   const allAgents = [orchestrator, ...workers, critic];
   const workspaces: Record<string, AgentWorkspaceFiles> = {};
@@ -830,6 +1010,7 @@ function generateAllWorkspaceFiles(
       orchestrator,
       workers,
       critic,
+      mcpEnabled,
     );
   }
 
@@ -842,6 +1023,7 @@ function generateAgentWorkspaceFiles(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
+  mcpEnabled: boolean,
 ): AgentWorkspaceFiles {
   const isOrchestrator = agent.role === 'ORCHESTRATOR';
   const isCritic = agent.role === 'CRITIC';
@@ -852,7 +1034,7 @@ function generateAgentWorkspaceFiles(
     'AGENTS.md': generateAgentsMd(agent, orchestrator, workers, critic, clawName),
     'USER.md': generateUserMd(workspace),
     'IDENTITY.md': generateIdentityMd(agent),
-    'TOOLS.md': generateToolsMd(workspace, agent),
+    'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled),
     'HEARTBEAT.md': isOrchestrator
       ? generateHeartbeatMd(orchestrator, workspace)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
@@ -1247,10 +1429,35 @@ function generateIdentityMd(agent: AgentWithRelations): string {
  * non-existent `toolName` and `notes` columns here; the Prisma model has
  * neither.
  */
+/**
+ * C-engine B1: anti-fabrication guidance for MCP-enabled workspaces.
+ * Appended to EVERY agent's TOOLS.md (TOOLS.md is injected into the system
+ * prompt on every run — failure-honesty guidance must be always-present,
+ * unlike on-demand SKILL.md bodies). Probe 3 observed a small model
+ * fabricating a plausible answer after two consecutive composio__* tool
+ * failures; this section is the mitigation.
+ */
+const MCP_LONGTAIL_TOOLS_MD_SECTION = `
+## Long-Tail Tools (composio__*)
+
+Some tools in this workspace are served through an external tool router.
+Their names start with \`composio__\`. Rules for using them:
+
+- These tools call an external service and CAN fail.
+- If a \`composio__*\` tool returns \`{"status": "error"}\` or any failure,
+  report the failure verbatim to your delegator (or the human, if you are
+  the Orchestrator). Include the error text.
+- NEVER fabricate, guess, or approximate a result for a failed or
+  unavailable tool call. A confident-sounding wrong answer is worse than
+  an honest failure report.
+`;
+
 function generateToolsMd(
   workspace: WorkspaceWithRelations,
   _agent: AgentWithRelations,
+  mcpEnabled: boolean,
 ): string {
+  const mcpSection = mcpEnabled ? MCP_LONGTAIL_TOOLS_MD_SECTION : '';
   const toolSections: string[] = [];
 
   for (const toolConn of workspace.toolConnections) {
@@ -1280,7 +1487,7 @@ function generateToolsMd(
     return `# TOOLS.md - Environment Notes
 
 No external tools are connected yet. The human can connect tools in the Claws setup wizard.
-`;
+${mcpSection}`;
   }
 
   return `# TOOLS.md - Environment Notes
@@ -1293,7 +1500,7 @@ ${toolSections.join('\n\n')}
 
 - Tool credentials are configured automatically via openclaw.json skills.entries. Use the corresponding skills to interact with these tools.
 - If a tool connection fails, advise the human to reconnect in the Claws Settings page.
-`;
+${mcpSection}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1502,11 +1709,16 @@ type WorkspaceWithRelations = {
   };
   /**
    * Skills whose `compatibleTools` array intersects this workspace's
-   * CONNECTED OAUTH_COMPOSIO tool slugs. Pre-loaded in `generateWorkspace`
-   * (single `prisma.skill.findMany`) so config generators stay sync.
-   * Empty when no OAuth tools are connected.
+   * emission-eligible connected tool slugs (OAUTH_COMPOSIO CONNECTED rows
+   * plus credentialed API_KEY rows — C-engine B1 widened this from
+   * OAuth-only so curated emission and uncurated long-tail detection share
+   * one lookup). Pre-loaded in `generateWorkspace` (single
+   * `prisma.skill.findMany`) so config generators stay sync. Empty when no
+   * tools are connected.
    */
-  compatibleOauthSkills: SkillForOauthEmit[];
+  compatibleToolSkills: SkillForToolEmit[];
+  /** C-engine B1: stored Tool Router session id (trs_...), null until first resolve. */
+  composioToolRouterSessionId?: string | null;
 };
 
 type AgentWithRelations = {
@@ -1774,12 +1986,13 @@ type ToolConnectionRecord = {
 };
 
 /**
- * Minimal Skill projection used by the OAUTH_COMPOSIO emission branch.
+ * Minimal Skill projection used by both `generateSkillsEntriesConfig`
+ * branches (curated emission + uncurated long-tail detection).
  * `generateWorkspace` selects exactly these two columns from `prisma.skill`
  * so we don't haul the entire `skillMd` body + metadata through memory for
- * a lookup-only purpose. See `generateSkillsEntriesConfig`.
+ * a lookup-only purpose.
  */
-type SkillForOauthEmit = {
+type SkillForToolEmit = {
   slug: string;
   compatibleTools: string[];
 };

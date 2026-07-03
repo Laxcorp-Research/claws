@@ -174,6 +174,11 @@ describe('generateWorkspace', () => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       buildMockWorkspace()
     );
+    // C-engine B1: the compatible-skills lookup widened from OAuth-only to
+    // all emission-eligible connected tools, so the default fixture (one
+    // API_KEY row) now triggers skill.findMany. Default to "no curated
+    // skills" — tests that need curated rows override per-case.
+    (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
 
   it('returns a GeneratedWorkspace with all required keys', async () => {
@@ -677,21 +682,24 @@ describe('generateWorkspace', () => {
       });
     });
 
-    it('does not query prisma.skill.findMany when no OAuth tools are connected (saves the round-trip)', async () => {
+    it('does not query prisma.skill.findMany when no emission-eligible tools are connected (saves the round-trip)', async () => {
       await withComposioEnv(async () => {
         const ws = buildMockWorkspace();
-        // Default fixture has one API_KEY row (tavily) only. No OAuth rows.
+        // C-engine B1: the lookup widened from OAuth-only to ALL
+        // emission-eligible connected tools (curated emission + uncurated
+        // detection share it), so the canary condition is now "no eligible
+        // connections at all" rather than "no OAuth connections".
+        ws.toolConnections = [];
         (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
-        // If the generator does call findMany despite no OAuth connections,
-        // this rejection would surface as a failure — the guard-rail canary.
+        // If the generator does call findMany despite no eligible
+        // connections, this rejection surfaces as a failure — the canary.
         (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockRejectedValue(
-          new Error('prisma.skill.findMany should not be called when no OAUTH_COMPOSIO rows are CONNECTED'),
+          new Error('prisma.skill.findMany should not be called when no emission-eligible tools are connected'),
         );
 
         const result = await generateWorkspace('ws-test-1');
         const config = JSON.parse(result['openclaw.json']);
-        // API_KEY emission still works; OAuth branch was short-circuited.
-        expect(config.skills.entries.tavily).toBeDefined();
+        expect(config.skills).toBeUndefined();
       });
     });
 
