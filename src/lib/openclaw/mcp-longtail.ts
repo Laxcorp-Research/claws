@@ -17,7 +17,7 @@
 //
 // This module owns:
 //   - the kill-switch (isMcpLongtailEnabled)
-//   - Tool Router session reuse-or-create with toolkit-set drift detection
+//   - Tool Router session reuse-or-create with toolkit/account drift detection
 //     (resolveToolRouterSession)
 //   - the per-agent deny merge helper (mergeMcpDenyIntoAgentTools)
 //   - the post-boot MCP endpoint probe used by the deployer's best-effort
@@ -74,9 +74,10 @@ export interface ResolvedToolRouterSession {
  * is a plain public property at runtime; the public `toolRouter.use()`
  * wrapper drops the session's toolkit config (returns only sessionId+mcp),
  * so the raw `session.retrieve` — whose response carries
- * `config.toolkits.{enabled,disabled}` — is the only way to compare the
- * stored session's toolkit set against the current uncurated set without a
- * paginated round-trip per toolkit.
+ * `config.toolkits.{enabled,disabled}` and `config.connected_accounts` —
+ * is the only way to compare the stored session's toolkit/account binding
+ * against the current uncurated set without a paginated round-trip per
+ * toolkit.
  */
 interface ToolRouterSessionRetrieveClient {
   client: {
@@ -85,7 +86,10 @@ interface ToolRouterSessionRetrieveClient {
         retrieve(sessionId: string): Promise<{
           session_id: string;
           mcp: { url: string };
-          config?: { toolkits?: { enabled?: string[]; disabled?: string[] } };
+          config?: {
+            toolkits?: { enabled?: string[]; disabled?: string[] };
+            connected_accounts?: Record<string, string>;
+          };
         }>;
       };
     };
@@ -96,13 +100,20 @@ interface ToolRouterSessionRetrieveClient {
  * Reuse-or-create a Tool Router session for a user, drift-aware.
  *
  * Reuse path: when a stored session id exists, retrieve it and compare its
- * enabled-toolkit set against the CURRENT uncurated toolkit set. Set-equal →
- * reuse (keeps Router-side memory/plan-cache continuity across redeploys).
- * Any mismatch, a disabled-list-shaped config, or a retrieve failure (dead /
- * 404'd session) → create a fresh session scoped to the current toolkits.
+ * enabled-toolkit set AND connected-account bindings against the CURRENT
+ * uncurated map. Set-equal → reuse (keeps Router-side memory/plan-cache
+ * continuity across redeploys). Any mismatch, a disabled-list-shaped config,
+ * account swap (disconnect/reconnect → new ca_), or a retrieve failure (dead
+ * / 404'd session) → create a fresh session scoped to the current map.
  *
  * Session shape decisions (Phase A §2/§8, approved):
- *   - toolkits.enable: allowlist of exactly the uncurated toolkits.
+ *   - toolkits.enable: allowlist of exactly the uncurated toolkits with a
+ *     bindable connected account.
+ *   - connectedAccounts: explicit toolkitSlug → connectedAccountId map.
+ *     B1.1: Probe A (implicit default lookup) returned
+ *     ToolRouterV2_NoActiveConnection for googledocs; Probe B with this map
+ *     created a real Google Doc. The default Tool Router auth-config lookup
+ *     does not resolve accounts provisioned by our OAuth flow reliably.
  *   - workbench.enable: false — COMPOSIO_REMOTE_WORKBENCH +
  *     COMPOSIO_REMOTE_BASH_TOOL are ~10.8KB of the 26.7KB advertised
  *     payload (Probe 3); disabling them roughly halves the token tax.
@@ -116,15 +127,16 @@ export async function resolveToolRouterSession(params: {
   /** Claws User.id (NOT the composio external id — mapped internally). */
   userId: string;
   storedSessionId: string | null;
-  /** Composio toolkit slugs for the uncurated connected tools. */
-  toolkitIds: string[];
+  /** Composio toolkit slug → connected account id for uncurated tools. */
+  connectedAccounts: Record<string, string>;
   /** Injectable for tests. Defaults to the platform singleton. */
   composio?: Composio;
 }): Promise<ResolvedToolRouterSession | null> {
   const composio = params.composio ?? getComposio();
   if (!composio) return null;
 
-  const desired = new Set(params.toolkitIds.map((t) => t.toLowerCase()));
+  const desiredAccounts = normalizeConnectedAccountMap(params.connectedAccounts);
+  const desired = new Set(Object.keys(desiredAccounts));
 
   if (params.storedSessionId) {
     try {
@@ -133,9 +145,13 @@ export async function resolveToolRouterSession(params: {
       const enabled = existing.config?.toolkits?.enabled;
       if (Array.isArray(enabled)) {
         const current = new Set(enabled.map((t) => t.toLowerCase()));
-        const setEqual =
+        const toolkitSetEqual =
           current.size === desired.size && [...desired].every((t) => current.has(t));
-        if (setEqual) {
+        const accountMapEqual = connectedAccountMapsEqual(
+          desiredAccounts,
+          normalizeConnectedAccountMap(existing.config?.connected_accounts ?? {}),
+        );
+        if (toolkitSetEqual && accountMapEqual) {
           return {
             sessionId: existing.session_id,
             mcpUrl: existing.mcp.url,
@@ -152,12 +168,33 @@ export async function resolveToolRouterSession(params: {
   }
 
   const session = await composio.toolRouter.create(getComposioUserId(params.userId), {
-    toolkits: { enable: params.toolkitIds },
+    toolkits: { enable: Object.keys(desiredAccounts) },
+    connectedAccounts: desiredAccounts,
     workbench: { enable: false },
     manageConnections: false,
   });
 
   return { sessionId: session.sessionId, mcpUrl: session.mcp.url, reused: false };
+}
+
+function normalizeConnectedAccountMap(input: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(input)
+      .filter((entry): entry is [string, string] => entry[0].trim().length > 0 && entry[1].trim().length > 0)
+      .map(([toolkit, accountId]) => [toolkit.toLowerCase(), accountId]),
+  );
+}
+
+function connectedAccountMapsEqual(
+  expected: Record<string, string>,
+  actual: Record<string, string>,
+): boolean {
+  const expectedKeys = Object.keys(expected);
+  const actualKeys = Object.keys(actual);
+  return (
+    expectedKeys.length === actualKeys.length &&
+    expectedKeys.every((key) => actual[key] === expected[key])
+  );
 }
 
 export interface McpProbeResult {

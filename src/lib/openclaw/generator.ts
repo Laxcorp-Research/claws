@@ -253,21 +253,11 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     skillsEmission.uncuratedToolSlugs.length > 0 &&
     composioApiKeyForMcp
   ) {
-    // Map uncurated tool slugs → Composio toolkit ids with the same
-    // passthrough the oauth/initiate route uses (def?.composioToolkitId ??
-    // slug): uncurated tools may not be in the static catalog at all.
-    const toolkitIds = [
-      ...new Set(
-        skillsEmission.uncuratedToolSlugs.map(
-          (slug) => getToolBySlug(slug)?.composioToolkitId ?? slug,
-        ),
-      ),
-    ];
     try {
       const session = await resolveToolRouterSession({
         userId: workspace.user.id,
         storedSessionId: workspace.composioToolRouterSessionId ?? null,
-        toolkitIds,
+        connectedAccounts: skillsEmission.uncuratedToolConnectedAccounts,
       });
       if (session) {
         if (session.sessionId !== workspace.composioToolRouterSessionId) {
@@ -654,6 +644,10 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): Record<strin
  *   - `uncuratedToolSlugs`: OAUTH_COMPOSIO rows (Composio holds the
  *     credential → Tool Router CAN execute them). These drive the mcp
  *     block emission.
+ *   - `uncuratedToolConnectedAccounts`: Composio toolkit slug → connected
+ *     account id for those same rows. B1.1: Tool Router sessions MUST bind
+ *     the accounts explicitly; the default auth-config lookup does not
+ *     reliably resolve accounts provisioned through our OAuth flow.
  *   - `uncuratedLocalKeySlugs`: API_KEY rows whose credential lives in OUR
  *     DB. The Router cannot execute with keys it doesn't hold, so these
  *     are detected + warned but NOT mcp-emitted until B3 (API_KEY→BYOK
@@ -662,14 +656,16 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): Record<strin
 interface SkillsEmissionResult {
   entries: Record<string, unknown>;
   uncuratedToolSlugs: string[];
+  uncuratedToolConnectedAccounts: Record<string, string>;
   uncuratedLocalKeySlugs: string[];
 }
 
 function generateSkillsEntriesConfig(
   workspace: WorkspaceWithRelations,
 ): SkillsEmissionResult {
-  const entries: Record<string, any> = {};
+  const entries: Record<string, unknown> = {};
   const uncuratedToolSlugs: string[] = [];
+  const uncuratedToolConnectedAccounts: Record<string, string> = {};
   const uncuratedLocalKeySlugs: string[] = [];
 
   // --- API_KEY branch -----------------------------------------------------
@@ -733,7 +729,7 @@ function generateSkillsEntriesConfig(
   if (!composioApiKey) {
     // Quiet no-op. Local builder / dev flows stay unblocked; production
     // deploys must set COMPOSIO_API_KEY on the server.
-    return { entries, uncuratedToolSlugs, uncuratedLocalKeySlugs };
+    return { entries, uncuratedToolSlugs, uncuratedToolConnectedAccounts, uncuratedLocalKeySlugs };
   }
 
   const composioUserId = getComposioUserId(workspace.user.id);
@@ -741,7 +737,6 @@ function generateSkillsEntriesConfig(
   for (const toolConn of workspace.toolConnections) {
     if (toolConn.connectionType !== 'OAUTH_COMPOSIO') continue;
     if (toolConn.status !== 'CONNECTED') continue;
-    if (!toolConn.composioConnectionId) continue;
 
     const matchingSkills = workspace.compatibleToolSkills.filter((s) =>
       s.compatibleTools.includes(toolConn.toolSlug),
@@ -759,12 +754,23 @@ function generateSkillsEntriesConfig(
       // uncurated tools may not be in the static catalog at all, and the
       // slug→toolkit mapping for them is the same passthrough the
       // oauth/initiate route uses (composioToolkitId ?? slug).
-      uncuratedToolSlugs.push(toolConn.toolSlug);
       console.warn(
         `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} has no compatible Skill rows; no skills.entries emitted`,
       );
+      if (!toolConn.composioConnectionId) {
+        console.warn(
+          `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} is uncurated but has no composioConnectionId; ` +
+            `omitting it from Tool Router session enable/map to avoid an unbound toolkit that fails at runtime.`,
+        );
+        continue;
+      }
+      const toolkitId = getToolBySlug(toolConn.toolSlug)?.composioToolkitId ?? toolConn.toolSlug;
+      uncuratedToolSlugs.push(toolConn.toolSlug);
+      uncuratedToolConnectedAccounts[toolkitId] = toolConn.composioConnectionId;
       continue;
     }
+
+    if (!toolConn.composioConnectionId) continue;
 
     const tool = getToolBySlug(toolConn.toolSlug);
     const toolkitId = tool?.composioToolkitId;
@@ -797,7 +803,7 @@ function generateSkillsEntriesConfig(
     }
   }
 
-  return { entries, uncuratedToolSlugs, uncuratedLocalKeySlugs };
+  return { entries, uncuratedToolSlugs, uncuratedToolConnectedAccounts, uncuratedLocalKeySlugs };
 }
 
 // ---------------------------------------------------------------------------
