@@ -4,14 +4,15 @@ import { redis } from "@/lib/redis"
 import { log } from "@/lib/logger"
 import { deriveContainerEnv, fingerprintKey } from "@/lib/openclaw/derive-container-env"
 import { getServiceVariables, RailwayApiError } from "@/lib/openclaw/railway-client"
-import { parseClawsEnvB64, type RawContainerEnv } from "@/lib/openclaw/container-env-actual"
+import { parseClawsEnvPayload, type RawContainerEnv } from "@/lib/openclaw/container-env-actual"
 import { resolveMode } from "@/lib/openclaw/reconcile-mode"
 import { healWorkspace } from "@/lib/openclaw/heal-workspace"
 
 // PR-8a/C — Container env reconciliation cron (DETECT-ONLY).
 //
 // The PR-8 safety net: per RUNNING workspace, compare the container's ACTUAL
-// credential env (read off Railway, decoded from CLAWS_ENV_B64) against the
+// credential env (read off Railway, decoded from CLAWS_ENV_GZ_B64 / legacy
+// CLAWS_ENV_B64) against the
 // EXPECTED env derived from current DB state (deriveContainerEnv). When they
 // drift, log it — DETECT-ONLY does NOT auto-heal (PR-8b adds AUTO-HEAL behind
 // ENV_RECONCILE_MODE=auto_heal). See docs/CONTAINER_ENV_RECONCILIATION_CONTRACT.md.
@@ -92,13 +93,13 @@ function classifyRailwayError(err: unknown): RailwayErrorKind {
 
 // The container's ACTUAL Anthropic key fingerprint. Credit mode keeps the
 // master key as a top-level Railway var; BYOK bakes the user key into
-// CLAWS_ENV_B64 (.env). Returns null when no key is present. Mirrors the
+// CLAWS_ENV_GZ_B64 / legacy CLAWS_ENV_B64 (.env). Returns null when no key is present. Mirrors the
 // pipeline validated in container-env-pipeline.test.ts. Never logs the key.
 function extractActualKeyFingerprint(actual: RawContainerEnv): string | null {
   const key =
     actual.CLAWS_CREDIT_MODE === "true"
       ? actual.ANTHROPIC_API_KEY ?? null
-      : parseClawsEnvB64(actual.CLAWS_ENV_B64 ?? "").ANTHROPIC_API_KEY ?? null
+      : parseClawsEnvPayload(actual).ANTHROPIC_API_KEY ?? null
   return key ? fingerprintKey(key) : null
 }
 

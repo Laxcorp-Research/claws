@@ -19,15 +19,16 @@ const OPENCLAW_IMAGE =
 const GHCR_USERNAME = process.env.GHCR_USERNAME;
 const GHCR_PAT = process.env.GHCR_PAT;
 
-const UNPACK_NODE_SCRIPT = [
-  'const fs=require("fs"),path=require("path");',
+export const UNPACK_NODE_SCRIPT = [
+  'const fs=require("fs"),path=require("path"),z=require("zlib");',
   'const b=s=>Buffer.from(s,"base64").toString();',
+  'const g=s=>z.gunzipSync(Buffer.from(s,"base64")).toString();',
   'const w=(p,c)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,c)};',
-  'const d="/home/node/.openclaw/";',
+  'const d=process.env.CLAWS_UNPACK_DIR||"/home/node/.openclaw/";',
   'fs.mkdirSync(d,{recursive:true});',
-  'if(process.env.CLAWS_CONFIG_B64)w(d+"openclaw.json",b(process.env.CLAWS_CONFIG_B64));',
-  'if(process.env.CLAWS_ENV_B64)w(d+".env",b(process.env.CLAWS_ENV_B64));',
-  'if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(d+p,String(c))};',
+  'if(process.env.CLAWS_CONFIG_GZ_B64)w(path.join(d,"openclaw.json"),g(process.env.CLAWS_CONFIG_GZ_B64));else if(process.env.CLAWS_CONFIG_B64)w(path.join(d,"openclaw.json"),b(process.env.CLAWS_CONFIG_B64));',
+  'if(process.env.CLAWS_ENV_GZ_B64)w(path.join(d,".env"),g(process.env.CLAWS_ENV_GZ_B64));else if(process.env.CLAWS_ENV_B64)w(path.join(d,".env"),b(process.env.CLAWS_ENV_B64));',
+  'if(process.env.CLAWS_FILES_GZ_B64){const f=JSON.parse(g(process.env.CLAWS_FILES_GZ_B64));for(const[p,c]of Object.entries(f))w(path.join(d,p),String(c))}else if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(path.join(d,p),String(c))};',
   'console.log("Unpack complete. Files:",fs.readdirSync(d).join(", "))',
 ].join('');
 
@@ -547,7 +548,8 @@ export async function updateServiceVariables(
 
 /**
  * SECURITY — RAW SECRET MATERIAL. Returns the service's FULL rendered env: real
- * ANTHROPIC keys, gateway/Composio tokens, channel tokens, CLAWS_ENV_B64, etc.
+ * ANTHROPIC keys, gateway/Composio tokens, channel tokens, CLAWS_ENV_GZ_B64 /
+ * legacy CLAWS_ENV_B64, etc.
  * The result is branded `RawContainerEnv` and must flow ONLY into the
  * credential-comparison reducer (fingerprints/booleans) — NEVER logged,
  * returned in a response, or persisted. See container-env-actual.ts banner +
