@@ -11,7 +11,7 @@
 //       generator-built entries never carry a pre-existing tools policy.)
 //   (e) TOOLS.md carries the anti-fabrication section iff MCP-enabled.
 //   (f) session lifecycle at the generator level: reuse (no persist write),
-//       drift → create + new id persisted, use() rejection → create fallback.
+//       toolkit/account drift → create + new id persisted, use() rejection → create fallback.
 //       (Set-equality semantics are unit-locked in mcp-longtail.test.ts.)
 //   (g) API_KEY uncurated rows → warned (naming B3) + excluded from the
 //       Tool Router toolkit list.
@@ -258,6 +258,10 @@ describe('(b) uncurated OAuth workspace + flag ON emits the exact block shape', 
       // Catalog slug maps through composioToolkitId; non-catalog slug
       // passes through unchanged (same doctrine as oauth/initiate).
       toolkits: { enable: ['googlecalendar', 'zzz-longtail-crm'] },
+      connectedAccounts: {
+        googlecalendar: 'ca_gcal_1',
+        'zzz-longtail-crm': 'ca_longtail_1',
+      },
       workbench: { enable: false },
       manageConnections: false,
     });
@@ -351,7 +355,10 @@ describe('(f) session lifecycle through the generator', () => {
     mockSessionRetrieve.mockResolvedValue({
       session_id: 'trs_stored',
       mcp: { url: 'https://backend.composio.dev/tool_router/trs_stored/mcp' },
-      config: { toolkits: { enabled: ['zzz-longtail-crm'] } },
+      config: {
+        toolkits: { enabled: ['zzz-longtail-crm'] },
+        connected_accounts: { 'zzz-longtail-crm': 'ca_longtail_1' },
+      },
     });
 
     const result = await generateWorkspace('ws-mcp-1');
@@ -374,13 +381,43 @@ describe('(f) session lifecycle through the generator', () => {
     mockSessionRetrieve.mockResolvedValue({
       session_id: 'trs_stored',
       mcp: { url: 'https://x/trs_stored/mcp' },
-      config: { toolkits: { enabled: ['some-other-toolkit'] } },
+      config: {
+        toolkits: { enabled: ['some-other-toolkit'] },
+        connected_accounts: { 'some-other-toolkit': 'ca_other' },
+      },
     });
 
     const result = await generateWorkspace('ws-mcp-1');
     const config = JSON.parse(result['openclaw.json']);
 
     expect(mockSessionCreate).toHaveBeenCalledOnce();
+    expect(config.mcp.servers.composio.url).toBe(MCP_URL);
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
+      where: { id: 'ws-mcp-1' },
+      data: { composioToolRouterSessionId: 'trs_test123' },
+    });
+  });
+
+  it('account-id drift with same toolkit set → create called and the NEW id persisted', async () => {
+    primeMocks({ toolConnections: [UNCURATED_OAUTH_CONN], storedSessionId: 'trs_stored' });
+    mockSessionRetrieve.mockResolvedValue({
+      session_id: 'trs_stored',
+      mcp: { url: 'https://x/trs_stored/mcp' },
+      config: {
+        toolkits: { enabled: ['zzz-longtail-crm'] },
+        connected_accounts: { 'zzz-longtail-crm': 'ca_old_connection' },
+      },
+    });
+
+    const result = await generateWorkspace('ws-mcp-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
+      toolkits: { enable: ['zzz-longtail-crm'] },
+      connectedAccounts: { 'zzz-longtail-crm': 'ca_longtail_1' },
+      workbench: { enable: false },
+      manageConnections: false,
+    });
     expect(config.mcp.servers.composio.url).toBe(MCP_URL);
     expect(prismaMock.workspace.update).toHaveBeenCalledWith({
       where: { id: 'ws-mcp-1' },
@@ -444,6 +481,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
 
       expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
         toolkits: { enable: ['zzz-longtail-crm'] }, // API_KEY slug excluded
+        connectedAccounts: { 'zzz-longtail-crm': 'ca_longtail_1' },
         workbench: { enable: false },
         manageConnections: false,
       });
@@ -462,5 +500,31 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
     expect(mockSessionCreate).not.toHaveBeenCalled();
     // The env entry itself still emits (existing API_KEY behavior).
     expect(config.skills.entries['zzz-local-key-tool']).toBeDefined();
+  });
+
+  it('uncurated OAuth row missing composioConnectionId is warned + omitted from enable and map', async () => {
+    const missingAccount: TestToolConn = {
+      ...UNCURATED_OAUTH_CONN,
+      toolSlug: 'zzz-missing-account',
+      composioConnectionId: null,
+    };
+    primeMocks({ toolConnections: [missingAccount, UNCURATED_OAUTH_CONN] });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await generateWorkspace('ws-mcp-1');
+
+      const warnText = warnSpy.mock.calls.flat().join('\n');
+      expect(warnText).toContain('zzz-missing-account');
+      expect(warnText).toContain('no composioConnectionId');
+      expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
+        toolkits: { enable: ['zzz-longtail-crm'] },
+        connectedAccounts: { 'zzz-longtail-crm': 'ca_longtail_1' },
+        workbench: { enable: false },
+        manageConnections: false,
+      });
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
