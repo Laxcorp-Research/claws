@@ -2,9 +2,10 @@
 //
 // Covers (B1 test plan items d-merge + f):
 //   - mergeMcpDenyIntoAgentTools: merge-not-clobber semantics.
-//   - resolveToolRouterSession: set-equal → reuse (create NOT called);
-//     toolkit-set drift → create; retrieve rejection → create fallback;
-//     disabled-shaped config → create; unconfigured composio → null.
+//   - resolveToolRouterSession: same toolkit/account map → reuse (create NOT
+//     called); toolkit drift or account-id drift → create; retrieve rejection
+//     → create fallback; disabled-shaped config → create; unconfigured
+//     composio → null.
 //   - probeMcpEndpoint: ok on 2xx initialize + tools/list; failure detail on
 //     non-2xx / thrown fetch; mcp-session-id propagation between calls.
 //
@@ -84,10 +85,13 @@ describe('resolveToolRouterSession', () => {
   const RETRIEVED = {
     session_id: 'trs_stored',
     mcp: { url: 'https://backend.composio.dev/tool_router/trs_stored/mcp' },
-    config: { toolkits: { enabled: ['linear', 'zoom'] } },
+    config: {
+      toolkits: { enabled: ['linear', 'zoom'] },
+      connected_accounts: { linear: 'ca_linear_1', zoom: 'ca_zoom_1' },
+    },
   };
 
-  it('reuses the stored session when the toolkit set is set-equal (create NOT called)', async () => {
+  it('reuses the stored session when toolkit and account maps are equal (create NOT called)', async () => {
     const { composio, retrieve, create } = buildMockComposio({
       retrieve: vi.fn().mockResolvedValue(RETRIEVED),
     });
@@ -96,7 +100,7 @@ describe('resolveToolRouterSession', () => {
       userId: 'user-1',
       storedSessionId: 'trs_stored',
       // Different order + case: set comparison, not array equality.
-      toolkitIds: ['Zoom', 'linear'],
+      connectedAccounts: { Zoom: 'ca_zoom_1', linear: 'ca_linear_1' },
       composio,
     });
 
@@ -121,12 +125,21 @@ describe('resolveToolRouterSession', () => {
     const result = await resolveToolRouterSession({
       userId: 'user-1',
       storedSessionId: 'trs_stored',
-      toolkitIds: ['linear', 'zoom', 'notion'], // drift: notion added
+      connectedAccounts: {
+        linear: 'ca_linear_1',
+        zoom: 'ca_zoom_1',
+        notion: 'ca_notion_1', // drift: notion added
+      },
       composio,
     });
 
     expect(create).toHaveBeenCalledWith('claws_user-1', {
       toolkits: { enable: ['linear', 'zoom', 'notion'] },
+      connectedAccounts: {
+        linear: 'ca_linear_1',
+        zoom: 'ca_zoom_1',
+        notion: 'ca_notion_1',
+      },
       workbench: { enable: false },
       manageConnections: false,
     });
@@ -135,6 +148,35 @@ describe('resolveToolRouterSession', () => {
       mcpUrl: 'https://backend.composio.dev/tool_router/trs_new/mcp',
       reused: false,
     });
+  });
+
+  it('creates a new session on account-id drift even when the toolkit set is unchanged', async () => {
+    const { composio, create } = buildMockComposio({
+      retrieve: vi.fn().mockResolvedValue(RETRIEVED),
+      create: vi.fn().mockResolvedValue({
+        sessionId: 'trs_account_swapped',
+        mcp: { url: 'https://backend.composio.dev/tool_router/trs_account_swapped/mcp' },
+      }),
+    });
+
+    const result = await resolveToolRouterSession({
+      userId: 'user-1',
+      storedSessionId: 'trs_stored',
+      connectedAccounts: {
+        linear: 'ca_linear_2', // account swap: disconnect/reconnect
+        zoom: 'ca_zoom_1',
+      },
+      composio,
+    });
+
+    expect(create).toHaveBeenCalledWith('claws_user-1', {
+      toolkits: { enable: ['linear', 'zoom'] },
+      connectedAccounts: { linear: 'ca_linear_2', zoom: 'ca_zoom_1' },
+      workbench: { enable: false },
+      manageConnections: false,
+    });
+    expect(result?.sessionId).toBe('trs_account_swapped');
+    expect(result?.reused).toBe(false);
   });
 
   it('creates a new session when retrieve rejects (dead/404 session)', async () => {
@@ -149,7 +191,7 @@ describe('resolveToolRouterSession', () => {
     const result = await resolveToolRouterSession({
       userId: 'user-1',
       storedSessionId: 'trs_dead',
-      toolkitIds: ['linear'],
+      connectedAccounts: { linear: 'ca_linear_1' },
       composio,
     });
 
@@ -170,7 +212,7 @@ describe('resolveToolRouterSession', () => {
     const result = await resolveToolRouterSession({
       userId: 'user-1',
       storedSessionId: 'trs_stored',
-      toolkitIds: ['linear', 'zoom'],
+      connectedAccounts: { linear: 'ca_linear_1', zoom: 'ca_zoom_1' },
       composio,
     });
 
@@ -186,7 +228,7 @@ describe('resolveToolRouterSession', () => {
     const result = await resolveToolRouterSession({
       userId: 'user-1',
       storedSessionId: null,
-      toolkitIds: ['linear'],
+      connectedAccounts: { linear: 'ca_linear_1' },
       composio,
     });
 
@@ -199,7 +241,7 @@ describe('resolveToolRouterSession', () => {
     const result = await resolveToolRouterSession({
       userId: 'user-1',
       storedSessionId: null,
-      toolkitIds: ['linear'],
+      connectedAccounts: { linear: 'ca_linear_1' },
       // no composio injected; mocked getComposio returns null
     });
     expect(result).toBeNull();
