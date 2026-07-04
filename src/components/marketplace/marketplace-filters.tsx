@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { FilterPills } from "@/components/ui/filter-pills"
 import type { SortOption } from "@/types/marketplace"
 
 const TEMPLATE_CATEGORIES = [
@@ -114,18 +115,12 @@ export function MarketplaceFilters({
   return (
     <div className="mt-2 mb-3" role="toolbar" aria-label="Filter options">
       {/* Row 1: Category pills - allowed to wrap */}
-      <div className="flex flex-wrap items-center gap-[6px] mb-2">
-        {categories.map((cat) => (
-          <button
-            key={cat.value}
-            onClick={() => onCategoryChange(cat.value)}
-            className={pillClass(activeCategory === cat.value)}
-            aria-pressed={activeCategory === cat.value}
-          >
-            {cat.label}
-          </button>
-        ))}
-      </div>
+      <FilterPills
+        options={categories}
+        value={activeCategory}
+        onChange={onCategoryChange}
+        className="mb-2"
+      />
 
       {/* Row 2: Price toggles + Sort dropdown */}
       <div className="flex items-center justify-between">

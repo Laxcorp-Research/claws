@@ -1,13 +1,8 @@
-// PR2.8a-fix1 Task 7 — integration test for GET /api/tools/[ws]/browse.
-//
-// Lock: comingSoon entries from the static catalog must be filtered out of
-// the browse-endpoint payload. Belt-and-suspenders with the client-side
-// filter in BrowseToolsModal — server filter is the primary defense
-// against users hitting the OAuth flow on a RED-state toolkit, client
-// filter is the fallback when the modal falls back to the static
-// `ALL_TOOLS` import on fetch failure.
+// B2 — integration test for GET /api/tools/[ws]/browse.
+// Locks full catalog exposure: custom-OAuth blocked rows remain visible with
+// honest metadata, and live Composio catalog rows are merged without paging loss.
 
-import { describe, it, expect, vi } from "vitest"
+import { beforeEach, describe, it, expect, vi } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 import { createMockRequest, parseResponse } from "@/test/helpers/mock-request"
 
@@ -21,59 +16,75 @@ vi.mock("@/lib/api/auth", () => ({
 vi.mock("@/lib/api/ownership", () => ({
   verifyWorkspaceOwnership: vi.fn().mockResolvedValue({ error: null }),
 }))
-// Live Composio catalog returns empty so we test only the static-catalog
-// filter behavior (live entries never set comingSoon — see
-// composio-catalog.ts:toolkitItemToToolDefinition).
+const mockGetComposioCatalogTools = vi.fn()
 vi.mock("@/lib/composio-catalog", () => ({
-  getComposioCatalogTools: vi.fn().mockResolvedValue([]),
+  getComposioCatalogTools: (...args: unknown[]) => mockGetComposioCatalogTools(...args),
 }))
 
-import { GET } from "@/app/api/tools/[workspaceId]/browse/route"
+import { GET, __resetBrowseToolsCacheForTests } from "@/app/api/tools/[workspaceId]/browse/route"
 
-describe("GET /api/tools/[workspaceId]/browse — comingSoon filter (PR2.8a-fix1 Task 7)", () => {
-  it("response payload excludes every static-catalog entry flagged comingSoon: true", async () => {
+describe("GET /api/tools/[workspaceId]/browse — full catalog exposure (B2)", () => {
+  beforeEach(() => {
+    __resetBrowseToolsCacheForTests()
+    mockGetComposioCatalogTools.mockReset()
+  })
+
+  it("keeps custom-OAuth comingSoon rows visible while formerly hidden non-custom rows are connectable", async () => {
+    mockGetComposioCatalogTools.mockResolvedValue([])
     const req = createMockRequest("http://localhost:3000/api/tools/ws-1/browse")
     const res = await GET(req, { params: Promise.resolve({ workspaceId: "ws-1" }) })
     const { status, data } = await parseResponse(res)
 
     expect(status).toBe(200)
     expect(data.success).toBe(true)
-    const tools: Array<{ slug: string; comingSoon?: boolean }> = data.data.tools
-
-    // Every entry in the response is a non-comingSoon entry.
-    for (const t of tools) {
-      expect(t.comingSoon, `slug "${t.slug}" leaked through despite comingSoon=true`).not.toBe(true)
-    }
+    const tools: Array<{ slug: string; comingSoon?: boolean; authMode?: string }> = data.data.tools
 
     const slugs = new Set(tools.map((t) => t.slug))
 
-    // PR2.9 update: the comingSoon set shrunk from 11 to 2. Of the
-    // original 11 PR2.8a-fix1 comingSoon slugs, 9 became BYOK-shippable
-    // (drop comingSoon) and 2 stayed OAuth-only (keep comingSoon).
-    //
-    // Spot-check: the 2 still-blocked slugs are absent.
+    // The 2 still-blocked custom-OAuth slugs are visible but marked blocked.
     for (const blocked of ["twitter", "docusign"]) {
-      expect(slugs.has(blocked), `expected slug "${blocked}" filtered (OAuth-only, comingSoon)`).toBe(false)
+      const row = tools.find((t) => t.slug === blocked)
+      expect(row, `expected blocked slug "${blocked}" to remain visible`).toBeDefined()
+      expect(row?.comingSoon).toBe(true)
+      expect(row?.authMode).toBe("custom-oauth-required")
     }
 
-    // Spot-check: the 9 BYOK-shippable slugs DO surface now (PR2.9).
+    // Former placeholder rows now surface as connectable via the Composio broker path.
     for (const shipping of [
-      "typefully",
-      "jotform",
-      "toggl",
-      "shopify",
-      "lever",
-      "metaads",
-      "pipedrive",
-      "webflow",
-      "follow_up_boss",
+      "buffer",
+      "wordpress",
+      "greenhouse",
+      "smartlead",
     ]) {
-      expect(slugs.has(shipping), `expected BYOK slug "${shipping}" to surface (PR2.9)`).toBe(true)
+      const row = tools.find((t) => t.slug === shipping)
+      expect(row, `expected slug "${shipping}" to surface`).toBeDefined()
+      expect(row?.comingSoon).not.toBe(true)
     }
 
-    // Sanity: GREEN/YELLOW slugs that have always been deployable still surface.
     expect(slugs.has("gmail")).toBe(true)
     expect(slugs.has("outlook")).toBe(true)
     expect(slugs.has("hubspot")).toBe(true)
+  })
+
+  it("exposes merged live catalog counts above 1000 with mocked Composio pages", async () => {
+    mockGetComposioCatalogTools.mockResolvedValue(
+      Array.from({ length: 1100 }, (_, i) => ({
+        slug: `live-tool-${i}`,
+        name: `Live Tool ${i}`,
+        connectionType: "OAUTH_COMPOSIO",
+        authMode: "managed-oauth",
+        category: "LIVE",
+        composioToolkitId: `live-tool-${i}`,
+        credentialFields: [],
+      })),
+    )
+
+    const req = createMockRequest("http://localhost:3000/api/tools/ws-1/browse")
+    const res = await GET(req, { params: Promise.resolve({ workspaceId: "ws-1" }) })
+    const { status, data } = await parseResponse(res)
+
+    expect(status).toBe(200)
+    expect(data.data.total).toBeGreaterThan(1000)
+    expect(data.data.tools.some((t: { slug: string }) => t.slug === "live-tool-1099")).toBe(true)
   })
 })
