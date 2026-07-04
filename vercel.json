@@ -28,6 +28,10 @@
     {
       "path": "/api/cron/health-monitor",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/connection-health",
+      "schedule": "0 * * * *"
     }
   ]
 }
