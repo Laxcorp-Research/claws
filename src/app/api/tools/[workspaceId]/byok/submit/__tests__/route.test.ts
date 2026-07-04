@@ -212,6 +212,53 @@ describe("POST /api/tools/[workspaceId]/byok/submit", () => {
     )
   })
 
+  it("BASIC live toolkit creates a BASIC connected account and stores OAUTH_COMPOSIO row", async () => {
+    mockToolkitsGet.mockResolvedValue({
+      slug: "basic-tool",
+      name: "Basic Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BASIC" }],
+    })
+    mockAuthConfigsList.mockResolvedValue({
+      items: [{ id: "ac_byok_basic", isComposioManaged: false, authScheme: "BASIC" }],
+    })
+    mockConnectedAccountsInitiate.mockResolvedValue({
+      id: "ca_user_byok_basic",
+      status: "ACTIVE",
+      redirectUrl: null,
+    })
+
+    const { status } = await callRoute({
+      toolSlug: "basic-tool",
+      credentials: {
+        BASIC_TOOL_BASIC_USERNAME: "basic-user",
+        BASIC_TOOL_BASIC_PASSWORD: "basic-pass",
+      },
+    })
+    expect(status).toBe(200)
+    expect(mockConnectedAccountsInitiate).toHaveBeenCalledWith(
+      "claws_user-test-1",
+      "ac_byok_basic",
+      {
+        config: {
+          __scheme: "BASIC",
+          username: "basic-user",
+          password: "basic-pass",
+        },
+      },
+    )
+    expect(prismaMock.toolConnection.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          toolSlug: "basic-tool",
+          connectionType: "OAUTH_COMPOSIO",
+          composioConnectionId: "ca_user_byok_basic",
+          status: "CONNECTED",
+        }),
+      }),
+    )
+  })
+
   it("user-supplied API key is NEVER logged (route-level security tripwire)", async () => {
     mockToolkitsGet.mockResolvedValue({
       slug: "typefully",
