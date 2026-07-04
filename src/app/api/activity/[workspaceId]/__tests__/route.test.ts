@@ -42,6 +42,7 @@ type WsOverrides = {
   isPaused?: boolean;
   lastHealthReason?: string | null;
   lastHealthCheck?: Date | null;
+  expiredTools?: Array<{ displayName: string; status: string; connectionType: string }>;
 };
 
 async function callRoute(opts: WsOverrides) {
@@ -86,7 +87,7 @@ async function callRoute(opts: WsOverrides) {
   (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mockResolvedValue(0 as never);
   (prismaMock.activityLog.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { apiCost: 0 } } as never);
   (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
-  (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
+  (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue((opts.expiredTools ?? []) as never);
   // The route also runs $queryRawUnsafe twice. Mock that.
   (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
 
@@ -202,6 +203,24 @@ describe("PR-4: workspace health fields surfaced for the banner", () => {
     const data = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY" });
     expect(data.workspace.lastHealthCheck).toBeNull();
     expect(data.workspace.lastHealthReason).toBeNull();
+  });
+});
+
+describe("tool connection banner data", () => {
+  it("surfaces swept EXPIRED ToolConnection rows through expiredTools for the existing dashboard banner", async () => {
+    const data = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      expiredTools: [
+        { displayName: "HubSpot", status: "EXPIRED", connectionType: "OAUTH_COMPOSIO" },
+      ],
+    });
+
+    expect(data.expiredTools).toEqual([
+      { name: "HubSpot", status: "EXPIRED", connectionType: "OAUTH_COMPOSIO" },
+    ]);
+    const query = (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(query.where.status.in).toEqual(["ERROR", "EXPIRED", "REVOKED"]);
   });
 });
 

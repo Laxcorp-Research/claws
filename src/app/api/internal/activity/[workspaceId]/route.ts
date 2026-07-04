@@ -19,6 +19,7 @@ import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { log } from "@/lib/logger";
 import type { ActivityType } from "@/generated/prisma/client";
+import { getToolBySlug } from "@/data/tool-catalog";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -146,6 +147,65 @@ function validateEvent(raw: IncomingEvent, index: number):
       metadata,
     },
   };
+}
+
+const NO_ACTIVE_CONNECTION_RE = /\bNo Active connection for toolkit=([A-Za-z0-9_-]+)/;
+
+function extractNoActiveConnectionToolkit(detail: string | null): string | null {
+  const match = detail?.match(NO_ACTIVE_CONNECTION_RE);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function toolConnectionToolkitSlug(toolSlug: string): string {
+  return (getToolBySlug(toolSlug)?.composioToolkitId ?? toolSlug).toLowerCase();
+}
+
+async function markNoActiveComposioConnection(
+  workspaceId: string,
+  event: ValidatedEvent,
+): Promise<void> {
+  if (event.type !== "ERROR" && event.type !== "TASK_FAILED") return;
+
+  const toolkitSlug = extractNoActiveConnectionToolkit(event.detail);
+  if (!toolkitSlug) return;
+
+  const candidates = await prisma.toolConnection.findMany({
+    where: {
+      workspaceId,
+      connectionType: "OAUTH_COMPOSIO",
+      status: "CONNECTED",
+      composioConnectionId: { not: null },
+    },
+    select: {
+      id: true,
+      toolSlug: true,
+    },
+  });
+
+  const match = candidates.find((connection) => toolConnectionToolkitSlug(connection.toolSlug) === toolkitSlug);
+  if (!match) {
+    log.warn("activity: no ToolConnection matched Composio no-active-connection error", {
+      workspaceId,
+      toolkitSlug,
+    });
+    return;
+  }
+
+  await prisma.toolConnection.update({
+    where: { id: match.id },
+    data: {
+      status: "EXPIRED",
+      lastConnectionCheckAt: new Date(),
+      lastConnectionCheckResult: "EXPIRED",
+      lastError: `Composio Tool Router reported no active connection for toolkit=${toolkitSlug}`,
+    },
+  });
+
+  log.warn("activity: marked ToolConnection expired from Composio no-active-connection error", {
+    workspaceId,
+    toolSlug: match.toolSlug,
+    toolkitSlug,
+  });
 }
 
 export async function POST(
@@ -276,6 +336,14 @@ export async function POST(
           apiCost: null,
         },
       });
+      try {
+        await markNoActiveComposioConnection(workspaceId, ev);
+      } catch (markErr) {
+        log.error("activity: failed to mark Composio no-active-connection error", {
+          workspaceId,
+          error: markErr instanceof Error ? markErr.message : String(markErr),
+        });
+      }
       processed++;
     } catch (err) {
       errors.push({
@@ -302,3 +370,8 @@ export async function POST(
     rowFailures: errors.length,
   });
 }
+
+export const __internal = {
+  extractNoActiveConnectionToolkit,
+  toolConnectionToolkitSlug,
+};

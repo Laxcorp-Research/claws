@@ -24,7 +24,7 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { POST } from "@/app/api/internal/activity/[workspaceId]/route";
+import { POST, __internal } from "@/app/api/internal/activity/[workspaceId]/route";
 
 const SECRET = "test_activity_secret_pr2";
 const WORKSPACE_ID = "ws-fixture-1";
@@ -413,6 +413,90 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
         { secret: SECRET },
       );
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("reactive Composio no-active-connection marking", () => {
+    it("extracts only the high-signal Tool Router no-active-connection format", () => {
+      expect(
+        __internal.extractNoActiveConnectionToolkit(
+          "ToolRouterV2_NoActiveConnection: No Active connection for toolkit=googlecalendar",
+        ),
+      ).toBe("googlecalendar");
+      expect(__internal.extractNoActiveConnectionToolkit("401 unauthorized from provider")).toBeNull();
+    });
+
+    it("marks the matching ToolConnection EXPIRED using catalog toolkit passthrough", async () => {
+      defaultMocks();
+      (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: "tc-calendar", toolSlug: "google_calendar" },
+      ]);
+
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "TASK_FAILED",
+              detail:
+                "ToolRouterV2_NoActiveConnection: No Active connection for toolkit=googlecalendar",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      expect(res.status).toBe(200);
+      const update = (prismaMock.toolConnection.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(update.where).toEqual({ id: "tc-calendar" });
+      expect(update.data.status).toBe("EXPIRED");
+      expect(update.data.lastConnectionCheckResult).toBe("EXPIRED");
+      expect(update.data.lastError).toContain("toolkit=googlecalendar");
+    });
+
+    it("keeps activity ingestion successful if the reactive marker update fails", async () => {
+      defaultMocks();
+      (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: "tc-calendar", toolSlug: "google_calendar" },
+      ]);
+      (prismaMock.toolConnection.update as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("db down"));
+
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "ERROR",
+              detail:
+                "ToolRouterV2_NoActiveConnection: No Active connection for toolkit=googlecalendar",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.data.processed).toBe(1);
+      expect(body.data.rowFailures).toBe(0);
+    });
+
+    it("ignores non-matching ERROR/TASK_FAILED text without querying connections", async () => {
+      defaultMocks();
+
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "ERROR",
+              detail: "Random provider timeout with no Composio no-active-connection marker",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.toolConnection.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.toolConnection.update).not.toHaveBeenCalled();
     });
   });
 });
