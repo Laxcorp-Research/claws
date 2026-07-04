@@ -93,6 +93,29 @@ export interface ToolkitMetadata {
   authConfigDetails?: ReadonlyArray<{ mode: string }>
 }
 
+export type BYOKAuthScheme = "API_KEY" | "BEARER_TOKEN" | "BASIC"
+
+export type BYOKCredentialInput =
+  | { authScheme: "API_KEY"; apiKey: string }
+  | { authScheme: "BEARER_TOKEN"; token: string }
+  | { authScheme: "BASIC"; username: string; password: string }
+
+export function normalizeBYOKAuthScheme(mode: string): BYOKAuthScheme | null {
+  const normalized = mode.toUpperCase()
+  if (normalized === "API_KEY") return "API_KEY"
+  if (normalized === "BEARER" || normalized === "BEARER_TOKEN") return "BEARER_TOKEN"
+  if (normalized === "BASIC" || normalized === "BASIC_AUTH") return "BASIC"
+  return null
+}
+
+export function resolveToolkitBYOKAuthScheme(toolkit: ToolkitMetadata): BYOKAuthScheme | null {
+  const modes = toolkit.authConfigDetails?.map((d) => normalizeBYOKAuthScheme(d.mode)).filter((m): m is BYOKAuthScheme => Boolean(m)) ?? []
+  if (modes.includes("API_KEY")) return "API_KEY"
+  if (modes.includes("BEARER_TOKEN")) return "BEARER_TOKEN"
+  if (modes.includes("BASIC")) return "BASIC"
+  return null
+}
+
 /**
  * Three-way classification of a toolkit's auth posture based on the
  * `composio.toolkits.get()` response. Routing decision driver:
@@ -118,8 +141,7 @@ export type ToolkitAuthMode =
 
 export function classifyToolkitAuthMode(toolkit: ToolkitMetadata): ToolkitAuthMode {
   if (toolkit.composioManagedAuthSchemes?.length) return "managed-oauth"
-  const modes = toolkit.authConfigDetails?.map((d) => d.mode) ?? []
-  if (modes.includes("API_KEY")) return "byok-api-key"
+  if (resolveToolkitBYOKAuthScheme(toolkit)) return "byok-api-key"
   return "requires-custom-oauth"
 }
 
@@ -375,7 +397,8 @@ export async function ensureAuthConfigForToolkit(
  */
 export async function ensureBYOKAuthConfig(
   composio: Composio,
-  toolkitSlug: string
+  toolkitSlug: string,
+  authScheme: BYOKAuthScheme = "API_KEY"
 ): Promise<string> {
   const startedAt = Date.now()
 
@@ -403,7 +426,10 @@ export async function ensureBYOKAuthConfig(
     toolkit: toolkitSlug,
     limit: 25,
   })
-  const initial = initialList.items.find((c) => c.isComposioManaged === false)?.id
+  const initial = initialList.items.find((c) => {
+    const itemScheme = (c as { authScheme?: string }).authScheme
+    return c.isComposioManaged === false && (!itemScheme || itemScheme === authScheme)
+  })?.id
   if (initial) {
     logEnsure({
       toolkitSlug,
@@ -435,7 +461,10 @@ export async function ensureBYOKAuthConfig(
           toolkit: toolkitSlug,
           limit: 25,
         })
-        const contention = contentionList.items.find((c) => c.isComposioManaged === false)?.id
+        const contention = contentionList.items.find((c) => {
+          const itemScheme = (c as { authScheme?: string }).authScheme
+          return c.isComposioManaged === false && (!itemScheme || itemScheme === authScheme)
+        })?.id
         if (contention) {
           logEnsure({
             toolkitSlug,
@@ -461,7 +490,10 @@ export async function ensureBYOKAuthConfig(
         toolkit: toolkitSlug,
         limit: 25,
       })
-      const inLock = inLockList.items.find((c) => c.isComposioManaged === false)?.id
+      const inLock = inLockList.items.find((c) => {
+        const itemScheme = (c as { authScheme?: string }).authScheme
+        return c.isComposioManaged === false && (!itemScheme || itemScheme === authScheme)
+      })?.id
       if (inLock) {
         logEnsure({
           toolkitSlug,
@@ -477,9 +509,9 @@ export async function ensureBYOKAuthConfig(
       try {
         const created = await composio.authConfigs.create(toolkitSlug, {
           type: "use_custom_auth",
-          authScheme: "API_KEY",
+          authScheme,
           name: `${toolkit.name} (Claws BYOK)`,
-          credentials: { apiKey: BYOK_PLACEHOLDER_CREDENTIAL },
+          credentials: placeholderCredentialsForScheme(authScheme),
         })
         logEnsure({
           toolkitSlug,
@@ -518,9 +550,66 @@ export async function ensureBYOKAuthConfig(
   })
 }
 
+function placeholderCredentialsForScheme(authScheme: BYOKAuthScheme): Record<string, string> {
+  switch (authScheme) {
+    case "BEARER_TOKEN":
+      return { token: BYOK_PLACEHOLDER_CREDENTIAL }
+    case "BASIC":
+      return {
+        username: BYOK_PLACEHOLDER_CREDENTIAL,
+        password: BYOK_PLACEHOLDER_CREDENTIAL,
+      }
+    case "API_KEY":
+    default:
+      return { apiKey: BYOK_PLACEHOLDER_CREDENTIAL }
+  }
+}
+
+function normalizeBYOKCredentialInput(
+  authScheme: BYOKAuthScheme,
+  credentialInput: string | BYOKCredentialInput
+): BYOKCredentialInput {
+  if (typeof credentialInput !== "string") return credentialInput
+  if (authScheme === "BEARER_TOKEN") {
+    return { authScheme, token: credentialInput }
+  }
+  if (authScheme === "BASIC") {
+    throw new Error("Basic auth requires both username and password.")
+  }
+  return { authScheme: "API_KEY", apiKey: credentialInput }
+}
+
+function assertBYOKCredentialInput(input: BYOKCredentialInput): void {
+  switch (input.authScheme) {
+    case "API_KEY":
+      if (!input.apiKey.trim()) throw new Error("API key is required to connect this tool.")
+      return
+    case "BEARER_TOKEN":
+      if (!input.token.trim()) throw new Error("Bearer token is required to connect this tool.")
+      return
+    case "BASIC":
+      if (!input.username.trim() || !input.password.trim()) {
+        throw new Error("Basic auth username and password are required to connect this tool.")
+      }
+      return
+  }
+}
+
+function authSchemeConfig(input: BYOKCredentialInput): ReturnType<typeof AuthScheme.APIKey> {
+  switch (input.authScheme) {
+    case "BEARER_TOKEN":
+      return AuthScheme.BearerToken({ token: input.token })
+    case "BASIC":
+      return AuthScheme.Basic({ username: input.username, password: input.password })
+    case "API_KEY":
+    default:
+      return AuthScheme.APIKey({ api_key: input.apiKey })
+  }
+}
+
 /**
  * Create a Composio connected account for `(composioUserId, toolkitSlug)`
- * using the user's supplied API key.
+ * using the user's supplied BYOK credential.
  *
  * Idempotency caveat: Composio allows multiple connected accounts per
  * (user, auth-config) pair. If the user already has a BYOK connection
@@ -542,18 +631,22 @@ export async function createBYOKConnectedAccount(
   composio: Composio,
   composioUserId: string,
   toolkitSlug: string,
-  userApiKey: string
+  credentialInput: string | BYOKCredentialInput,
+  authScheme: BYOKAuthScheme = "API_KEY"
 ): Promise<string> {
   const startedAt = Date.now()
+  const credentials = normalizeBYOKCredentialInput(authScheme, credentialInput)
 
-  if (!userApiKey || !userApiKey.trim()) {
+  try {
+    assertBYOKCredentialInput(credentials)
+  } catch (err) {
     // Bail before reaching Composio — empty keys would create a connection
     // that always 401s at execute time, leaving an unusable row.
     log.warn("composio.byok.connect rejected empty key", { toolkitSlug, composioUserId })
-    throw new Error("API key is required to connect this tool.")
+    throw err
   }
 
-  const authConfigId = await ensureBYOKAuthConfig(composio, toolkitSlug)
+  const authConfigId = await ensureBYOKAuthConfig(composio, toolkitSlug, credentials.authScheme)
 
   let connectionRequest
   try {
@@ -561,7 +654,7 @@ export async function createBYOKConnectedAccount(
       composioUserId,
       authConfigId,
       {
-        config: AuthScheme.APIKey({ api_key: userApiKey }),
+        config: authSchemeConfig(credentials),
       }
     )
   } catch (err) {

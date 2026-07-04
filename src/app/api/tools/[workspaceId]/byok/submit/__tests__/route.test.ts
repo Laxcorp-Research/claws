@@ -47,6 +47,15 @@ vi.mock("@composio/core", () => ({
       __scheme: "API_KEY" as const,
       api_key: params.api_key,
     }),
+    BearerToken: (params: { token: string }) => ({
+      __scheme: "BEARER_TOKEN" as const,
+      token: params.token,
+    }),
+    Basic: (params: { username: string; password: string }) => ({
+      __scheme: "BASIC" as const,
+      username: params.username,
+      password: params.password,
+    }),
   },
 }))
 
@@ -159,6 +168,91 @@ describe("POST /api/tools/[workspaceId]/byok/submit", () => {
           connectionType: "OAUTH_COMPOSIO",
           composioConnectionId: "ca_user_byok_typefully",
           composioEntityId: "claws_user-test-1",
+          status: "CONNECTED",
+        }),
+      }),
+    )
+  })
+
+  it("BEARER live toolkit creates a BEARER_TOKEN connected account and stores OAUTH_COMPOSIO row", async () => {
+    mockToolkitsGet.mockResolvedValue({
+      slug: "bearer-tool",
+      name: "Bearer Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BEARER_TOKEN" }],
+    })
+    mockAuthConfigsList.mockResolvedValue({
+      items: [{ id: "ac_byok_bearer", isComposioManaged: false, authScheme: "BEARER_TOKEN" }],
+    })
+    mockConnectedAccountsInitiate.mockResolvedValue({
+      id: "ca_user_byok_bearer",
+      status: "ACTIVE",
+      redirectUrl: null,
+    })
+
+    const { status } = await callRoute({
+      toolSlug: "bearer-tool",
+      credentials: { BEARER_TOOL_BEARER_TOKEN: "bearer-real-token" },
+    })
+    expect(status).toBe(200)
+    expect(mockConnectedAccountsInitiate).toHaveBeenCalledWith(
+      "claws_user-test-1",
+      "ac_byok_bearer",
+      { config: { __scheme: "BEARER_TOKEN", token: "bearer-real-token" } },
+    )
+    expect(prismaMock.toolConnection.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          toolSlug: "bearer-tool",
+          connectionType: "OAUTH_COMPOSIO",
+          composioConnectionId: "ca_user_byok_bearer",
+          status: "CONNECTED",
+        }),
+      }),
+    )
+  })
+
+  it("BASIC live toolkit creates a BASIC connected account and stores OAUTH_COMPOSIO row", async () => {
+    mockToolkitsGet.mockResolvedValue({
+      slug: "basic-tool",
+      name: "Basic Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BASIC" }],
+    })
+    mockAuthConfigsList.mockResolvedValue({
+      items: [{ id: "ac_byok_basic", isComposioManaged: false, authScheme: "BASIC" }],
+    })
+    mockConnectedAccountsInitiate.mockResolvedValue({
+      id: "ca_user_byok_basic",
+      status: "ACTIVE",
+      redirectUrl: null,
+    })
+
+    const { status } = await callRoute({
+      toolSlug: "basic-tool",
+      credentials: {
+        BASIC_TOOL_BASIC_USERNAME: "basic-user",
+        BASIC_TOOL_BASIC_PASSWORD: "basic-pass",
+      },
+    })
+    expect(status).toBe(200)
+    expect(mockConnectedAccountsInitiate).toHaveBeenCalledWith(
+      "claws_user-test-1",
+      "ac_byok_basic",
+      {
+        config: {
+          __scheme: "BASIC",
+          username: "basic-user",
+          password: "basic-pass",
+        },
+      },
+    )
+    expect(prismaMock.toolConnection.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          toolSlug: "basic-tool",
+          connectionType: "OAUTH_COMPOSIO",
+          composioConnectionId: "ca_user_byok_basic",
           status: "CONNECTED",
         }),
       }),

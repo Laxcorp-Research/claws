@@ -21,7 +21,14 @@ import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { generateSecureToken } from '@/lib/crypto';
 import { getToolBySlug } from '@/data/tool-catalog';
-import { getComposioUserId } from '@/lib/composio';
+import { getComposio, getComposioUserId } from '@/lib/composio';
+import {
+  classifyToolkitAuthMode,
+  createBYOKConnectedAccount,
+  fetchToolkitWithAuthMode,
+  resolveToolkitBYOKAuthScheme,
+  type BYOKCredentialInput,
+} from '@/lib/composio-auth-config';
 import {
   isMcpLongtailEnabled,
   resolveToolRouterSession,
@@ -246,6 +253,11 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     orchestratorAgentSlug,
   );
 
+  const composioApiKeyForMcp = process.env.COMPOSIO_API_KEY?.trim();
+  if (isMcpLongtailEnabled() && composioApiKeyForMcp) {
+    await lazyBackfillUncuratedLocalKeyConnections(workspaceWithChannels, workspaceId);
+  }
+
   // 5. Skills entries + uncurated long-tail detection (C-engine B1).
   // Hoisted out of generateOpenClawConfig because the uncurated set drives
   // an async step (Tool Router session reuse-or-create) that must run
@@ -263,7 +275,6 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // non-fatal: warn and deploy without the mcp block. The runtime side is
   // graceful either way (Probe 3 step 7); a later redeploy re-attempts.
   let mcpEmission: McpEmission | null = null;
-  const composioApiKeyForMcp = process.env.COMPOSIO_API_KEY?.trim();
   if (
     isMcpLongtailEnabled() &&
     skillsEmission.uncuratedToolSlugs.length > 0 &&
@@ -677,6 +688,113 @@ interface SkillsEmissionResult {
   uncuratedLocalKeySlugs: string[];
 }
 
+function hasCompatibleSkill(workspace: WorkspaceWithRelations, toolSlug: string): boolean {
+  return workspace.compatibleToolSkills.some((s) => s.compatibleTools.includes(toolSlug));
+}
+
+function parseLocalCredentialMap(toolConn: ToolConnectionRecord): Record<string, string> | null {
+  if (!toolConn.encryptedCredentials) return null;
+  try {
+    const plaintext = decrypt(toolConn.encryptedCredentials);
+    const parsed = JSON.parse(plaintext);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      console.warn(
+        `[generator] skipping tool ${toolConn.toolSlug}: encryptedCredentials plaintext is not a JSON object`,
+      );
+      return null;
+    }
+
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.length > 0) env[k] = v;
+    }
+    return Object.keys(env).length > 0 ? env : null;
+  } catch (err) {
+    console.warn(
+      `[generator] skipping tool ${toolConn.toolSlug}: decrypt/parse failed (${err instanceof Error ? err.message : String(err)})`,
+    );
+    return null;
+  }
+}
+
+async function lazyBackfillUncuratedLocalKeyConnections(
+  workspace: WorkspaceWithRelations,
+  workspaceId: string,
+): Promise<void> {
+  const composio = getComposio();
+  if (!composio) return;
+
+  const composioUserId = getComposioUserId(workspace.user.id);
+
+  for (const toolConn of workspace.toolConnections) {
+    if (toolConn.connectionType !== 'API_KEY') continue;
+    if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
+    if (hasCompatibleSkill(workspace, toolConn.toolSlug)) continue;
+
+    const env = parseLocalCredentialMap(toolConn);
+    if (!env) continue;
+
+    const credentialEntries = Object.entries(env);
+    if (credentialEntries.length !== 1) {
+      console.warn(
+        `[generator] API_KEY tool ${toolConn.toolSlug} is uncurated but has ${credentialEntries.length} credential fields; ` +
+          `lazy BYOK backfill supports single-key rows only, so it is excluded from MCP.`,
+      );
+      continue;
+    }
+
+    const toolkitSlug = getToolBySlug(toolConn.toolSlug)?.composioToolkitId ?? toolConn.toolSlug;
+    try {
+      const { toolkit } = await fetchToolkitWithAuthMode(composio, toolkitSlug);
+      const mode = classifyToolkitAuthMode(toolkit);
+      const authScheme = resolveToolkitBYOKAuthScheme(toolkit);
+      if (mode !== 'byok-api-key' || !authScheme || authScheme === 'BASIC') {
+        console.warn(
+          `[generator] API_KEY tool ${toolConn.toolSlug} is uncurated but toolkit ${toolkitSlug} ` +
+            `does not expose a single-key BYOK scheme; excluded from MCP.`,
+        );
+        continue;
+      }
+
+      const [, value] = credentialEntries[0];
+      const credentialInput: BYOKCredentialInput =
+        authScheme === 'BEARER_TOKEN'
+          ? { authScheme, token: value }
+          : { authScheme: 'API_KEY', apiKey: value };
+      const composioConnectionId = await createBYOKConnectedAccount(
+        composio,
+        composioUserId,
+        toolkitSlug,
+        credentialInput,
+        authScheme,
+      );
+
+      await prisma.toolConnection.update({
+        where: { workspaceId_toolSlug: { workspaceId, toolSlug: toolConn.toolSlug } },
+        data: {
+          connectionType: 'OAUTH_COMPOSIO',
+          encryptedCredentials: null,
+          composioConnectionId,
+          composioEntityId: composioUserId,
+          status: 'CONNECTED',
+          lastError: null,
+        },
+      });
+
+      toolConn.connectionType = 'OAUTH_COMPOSIO';
+      toolConn.encryptedCredentials = null;
+      toolConn.composioConnectionId = composioConnectionId;
+      toolConn.composioEntityId = composioUserId;
+      toolConn.status = 'CONNECTED';
+    } catch (err) {
+      console.warn(
+        `[generator] API_KEY tool ${toolConn.toolSlug} lazy BYOK backfill failed; excluded from MCP ` +
+          `(${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+  }
+}
+
 function generateSkillsEntriesConfig(
   workspace: WorkspaceWithRelations,
 ): SkillsEmissionResult {
@@ -691,32 +809,8 @@ function generateSkillsEntriesConfig(
     if (!toolConn.encryptedCredentials) continue;
     if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
 
-    let decrypted: Record<string, string>;
-    try {
-      const plaintext = decrypt(toolConn.encryptedCredentials);
-      const parsed = JSON.parse(plaintext);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        console.warn(
-          `[generator] skipping tool ${toolConn.toolSlug}: encryptedCredentials plaintext is not a JSON object`,
-        );
-        continue;
-      }
-      decrypted = parsed as Record<string, string>;
-    } catch (err) {
-      console.warn(
-        `[generator] skipping tool ${toolConn.toolSlug}: decrypt/parse failed (${err instanceof Error ? err.message : String(err)})`,
-      );
-      continue;
-    }
-
-    // Keep only string values; the schema guarantees this at write time
-    // (src/app/api/tools/[workspaceId]/route.ts) but defensively filter in
-    // case a row was produced before tighter validation landed.
-    const env: Record<string, string> = {};
-    for (const [k, v] of Object.entries(decrypted)) {
-      if (typeof v === 'string' && v.length > 0) env[k] = v;
-    }
-    if (Object.keys(env).length === 0) continue;
+    const env = parseLocalCredentialMap(toolConn);
+    if (!env) continue;
 
     entries[toolConn.toolSlug] = { enabled: true, env };
 
@@ -726,14 +820,11 @@ function generateSkillsEntriesConfig(
     // the Tool Router in B1: the key lives in OUR DB, and the Router only
     // executes with Composio-held credentials. B3 (API_KEY→BYOK routing
     // through createBYOKConnectedAccount) is the unblock.
-    const hasCuratedSkill = workspace.compatibleToolSkills.some((s) =>
-      s.compatibleTools.includes(toolConn.toolSlug),
-    );
-    if (!hasCuratedSkill) {
+    if (!hasCompatibleSkill(workspace, toolConn.toolSlug)) {
       uncuratedLocalKeySlugs.push(toolConn.toolSlug);
       console.warn(
         `[generator] API_KEY tool ${toolConn.toolSlug} has no compatible Skill rows (uncurated). ` +
-          `Not MCP-emitted in B1 — the credential is DB-held, not Composio-held; B3 (BYOK routing) unblocks it.`,
+          `Not MCP-emitted because the credential is DB-held, not Composio-held; lazy BYOK backfill did not produce a connected account.`,
       );
     }
   }

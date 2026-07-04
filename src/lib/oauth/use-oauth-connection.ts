@@ -47,6 +47,7 @@ export type OAuthPollStatus = "PENDING" | "ACTIVE" | "FAILED"
  */
 export interface ApiKeyFormPayload {
   toolSlug: string
+  authScheme?: "API_KEY" | "BEARER_TOKEN" | "BASIC"
   /**
    * Optional — the route currently always sets it (sourced from
    * `getToolBySlug(slug)?.name ?? slug`), but the wizard's

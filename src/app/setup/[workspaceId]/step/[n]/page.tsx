@@ -924,7 +924,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       const res = await fetch(`/api/tools/${workspaceId}/byok/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toolSlug, apiKey }),
+          body: JSON.stringify({ toolSlug, apiKey, credentials }),
       })
       const data = await res.json()
       if (data.success) {
