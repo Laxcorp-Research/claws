@@ -57,8 +57,12 @@ function makeCallbacks(): Callbacks & { calls: Record<keyof Callbacks, unknown[]
     onTimeout: [] as unknown[],
     onInitiateError: [] as unknown[],
     onApiKeyFormRequired: [] as unknown[],
+    onStart: [] as unknown[],
+    onPopupOpened: [] as unknown[],
   }
   return {
+    onStart: (slug) => void calls.onStart.push([slug]),
+    onPopupOpened: (slug) => void calls.onPopupOpened.push([slug]),
     onInitiated: (slug, id) => void calls.onInitiated.push([slug, id]),
     onSuccess: (slug) => void calls.onSuccess.push([slug]),
     onFailure: (slug, err) => void calls.onFailure.push([slug, err]),

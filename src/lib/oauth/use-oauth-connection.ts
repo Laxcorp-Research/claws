@@ -68,6 +68,16 @@ export interface ApiKeyFormPayload {
 
 export interface OAuthConnectionCallbacks {
   /**
+   * Fires synchronously when connect() starts. Use this for immediate loading
+   * state before the initiate request returns.
+   */
+  onStart?: (toolSlug: string) => void
+  /**
+   * Fires after the OAuth popup has successfully opened. Callers with button-
+   * local initiate spinners can stop that spinner here while polling continues.
+   */
+  onPopupOpened?: (toolSlug: string) => void
+  /**
    * Fires after the initiate POST succeeds, before the popup opens. Useful
    * for flipping the caller's row state to "connecting" or similar.
    */
@@ -149,6 +159,7 @@ export function useOAuthConnection({
   // Track the active cleanup so repeat calls cancel the previous flow
   // and unmounting cancels any in-flight polling.
   const cleanupRef = useRef<Cleanup | null>(null)
+  const initiatingSlugRef = useRef<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -173,11 +184,14 @@ export function useOAuthConnection({
   const connect = useCallback(
     (toolSlug: string) => {
       void (async () => {
+        if (initiatingSlugRef.current === toolSlug) return
+        initiatingSlugRef.current = toolSlug
         // Cancel any in-flight connection before starting a new one.
         cleanupRef.current?.()
         cleanupRef.current = null
 
         const cb = callbacksRef.current
+        cb.onStart?.(toolSlug)
 
         // 1. Initiate. On any failure here, bail via onInitiateError — no
         //    popup, no polling, no DB write side effects from the client.
@@ -189,6 +203,7 @@ export function useOAuthConnection({
             body: JSON.stringify({ toolSlug }),
           })
         } catch (err) {
+          initiatingSlugRef.current = null
           cb.onInitiateError(toolSlug, {
             message: err instanceof Error ? err.message : "Network error during OAuth initiate",
           })
@@ -208,6 +223,7 @@ export function useOAuthConnection({
         try {
           initiateData = await initiateRes.json()
         } catch {
+          initiatingSlugRef.current = null
           cb.onInitiateError(toolSlug, {
             message: `Unexpected response from OAuth initiate (HTTP ${initiateRes.status})`,
           })
@@ -238,10 +254,12 @@ export function useOAuthConnection({
               code: "BYOK_HANDLER_MISSING",
             })
           }
+          initiatingSlugRef.current = null
           return
         }
 
         if (!initiateData.success || !initiateData.data?.redirectUrl || !initiateData.data?.connectionId) {
+          initiatingSlugRef.current = null
           cb.onInitiateError(toolSlug, {
             message: initiateData.error?.message || "Failed to start OAuth",
             code: initiateData.error?.code,
@@ -261,11 +279,14 @@ export function useOAuthConnection({
           `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`,
         )
         if (!popup) {
+          initiatingSlugRef.current = null
           cb.onInitiateError(toolSlug, {
             message: "Popup blocked. Allow popups for this site and try again.",
           })
           return
         }
+        initiatingSlugRef.current = null
+        cb.onPopupOpened?.(toolSlug)
 
         // 3. Set up polling + cleanup. Cleanup closes popup, clears timers,
         //    removes listener, and nulls out cleanupRef so repeat calls

@@ -1,22 +1,21 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { OctagonX, Pause, Square, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Modal } from "@/components/ui/modal"
-import { DeployProgress } from "@/components/setup/deploy-progress"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
-import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-error"
+import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
+import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
@@ -149,42 +148,6 @@ function formatChangedAreas(areas: string[]): string {
   return areas.map((area) => labels[area] ?? area).join(", ")
 }
 
-const REDEPLOY_STAGES = [
-  { label: "Generating workspace files", key: "GENERATING" },
-  { label: "Provisioning container", key: "PROVISIONING" },
-  { label: "Configuring workspace", key: "CONFIGURING" },
-  { label: "Starting gateway", key: "STARTING" },
-  { label: "Health check", key: "HEALTH_CHECK" },
-  { label: "Connecting channels", key: "WAITING_CHANNELS" },
-  { label: "Complete", key: "COMPLETED" },
-]
-
-const REDEPLOY_ORDER = REDEPLOY_STAGES.map((s) => s.key)
-
-function mapRedeployStatus(status: string | null, failedAtStage?: string | null): { label: string; status: "complete" | "running" | "pending" | "failed" }[] {
-  if (!status || status === "PENDING") return REDEPLOY_STAGES.map((s, i) => ({ label: s.label, status: i === 0 ? "running" as const : "pending" as const }))
-
-  if (status === "FAILED") {
-    const failIdx = failedAtStage ? REDEPLOY_ORDER.indexOf(failedAtStage) : -1
-    return REDEPLOY_STAGES.map((s) => {
-      const si = REDEPLOY_ORDER.indexOf(s.key)
-      if (failIdx >= 0) {
-        if (si < failIdx) return { label: s.label, status: "complete" as const }
-        if (si === failIdx) return { label: s.label, status: "failed" as const }
-      }
-      return { label: s.label, status: "pending" as const }
-    })
-  }
-
-  const idx = REDEPLOY_ORDER.indexOf(status)
-  return REDEPLOY_STAGES.map((s) => {
-    const si = REDEPLOY_ORDER.indexOf(s.key)
-    if (si < idx) return { label: s.label, status: "complete" as const }
-    if (si === idx) return { label: s.label, status: status === "COMPLETED" ? "complete" as const : "running" as const }
-    return { label: s.label, status: "pending" as const }
-  })
-}
-
 function formatTime(isoStr: string) {
   // PR-4d: render in UTC with an explicit " UTC" suffix. The activity log is a
   // log surface that gets cross-correlated with Railway logs, OpenClawVersion
@@ -224,6 +187,7 @@ interface AgentCostRow {
 export default function DashboardPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: session } = useSession()
 
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null)
@@ -244,14 +208,9 @@ export default function DashboardPage() {
   const [redeployFromStoppedConfirmOpen, setRedeployFromStoppedConfirmOpen] = useState(false)
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
   const [stopping, setStopping] = useState(false)
-  const [redeployModalOpen, setRedeployModalOpen] = useState(false)
-  const [redeployStatus, setRedeployStatus] = useState<string | null>(null)
-  const [redeployLastStage, setRedeployLastStage] = useState<string | null>(null)
-  const [redeployError, setRedeployError] = useState<string | null>(null)
   const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
   const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
 
-  const redeployEsRef = useRef<EventSource | null>(null)
   const agentColorMapRef = useRef<Record<string, string>>({})
 
   const credit = useCreditBalance(30_000)
@@ -350,6 +309,12 @@ export default function DashboardPage() {
   }, [fetchStats, fetchDeploymentStatus])
 
   useEffect(() => {
+    if (searchParams.get("redeployed") !== "changes-applied") return
+    setRedeployBanner({ variant: "info", message: "Redeployment successful — changes applied" })
+    router.replace(`/dashboard/${workspaceId}`)
+  }, [searchParams, router, workspaceId])
+
+  useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return
       if (e.data?.type === "dodo-checkout-complete") {
@@ -421,69 +386,20 @@ export default function DashboardPage() {
     fetchStats()
   }
 
-  const closeRedeployStream = useCallback(() => {
-    redeployEsRef.current?.close()
-    redeployEsRef.current = null
-  }, [])
-
-  const handleRedeploy = useCallback(async () => {
-    setRedeployConfirmOpen(false)
-    setRedeployModalOpen(true)
-    setRedeployStatus("PENDING")
-    setRedeployLastStage(null)
-    setRedeployError(null)
-    setRedeployBanner(null)
-
-    const es = new EventSource(`/api/deploy/${workspaceId}/stream`)
-    redeployEsRef.current = es
-
-    es.addEventListener("status", (e) => {
-      const data = JSON.parse(e.data) as { status: string; error?: string }
-      if (data.status !== "FAILED" && data.status !== "COMPLETED") {
-        setRedeployLastStage(data.status)
-      }
-      setRedeployStatus(data.status)
-      if (data.error) setRedeployError(data.error)
-      if (data.status === "COMPLETED" || data.status === "FAILED") {
-        es.close()
-        redeployEsRef.current = null
-      }
-    })
-
-    es.onerror = () => {
-      es.close()
-      redeployEsRef.current = null
-    }
-
-    try {
-      const res = await fetch(`/api/deploy/${workspaceId}/redeploy`, { method: "POST" })
-      const json = await res.json()
-      closeRedeployStream()
-      if (!res.ok) {
-        setRedeployStatus("FAILED")
-        setRedeployError(getRedeployApiErrorMessage(json))
-      } else {
-        setRedeployStatus((prev) => prev === "COMPLETED" ? prev : "COMPLETED")
-      }
-    } catch {
-      closeRedeployStream()
-      setRedeployStatus("FAILED")
-      setRedeployError("Network error — could not reach the server")
-    }
-  }, [workspaceId, closeRedeployStream])
-
-  const handleRedeployDone = useCallback(() => {
-    setRedeployModalOpen(false)
-    closeRedeployStream()
-    if (redeployStatus === "COMPLETED") {
+  const redeployFlow = useWorkspaceRedeploy({
+    workspaceId,
+    onCompleted: () => {
       setRedeployBanner({ variant: "info", message: "Redeployment successful" })
       fetchStats()
       fetchDeploymentStatus()
-    }
-    setRedeployStatus(null)
-    setRedeployLastStage(null)
-    setRedeployError(null)
-  }, [redeployStatus, closeRedeployStream, fetchStats, fetchDeploymentStatus])
+    },
+  })
+
+  const handleRedeploy = useCallback(() => {
+    setRedeployConfirmOpen(false)
+    setRedeployBanner(null)
+    void redeployFlow.startRedeploy()
+  }, [redeployFlow])
 
   const handleApprove = async (activityLogId: string) => {
     const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
@@ -532,7 +448,7 @@ export default function DashboardPage() {
   const isError = workspace?.healthStatus === "UNHEALTHY" || workspace?.status === "ERROR"
   const showRedeploy = workspace?.status === "RUNNING" || workspace?.status === "ERROR"
   const showConfigDrift = configDrift?.isStale === true && (workspace?.status === "RUNNING" || workspace?.status === "PAUSED")
-  const redeploying = redeployModalOpen && redeployStatus !== "COMPLETED" && redeployStatus !== "FAILED"
+  const redeploying = redeployFlow.redeploying
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
   const spendWarning = spendPercent >= 80 && spendPercent < 100
@@ -1118,42 +1034,15 @@ export default function DashboardPage() {
         loading={stopping}
       />
 
-      <Modal
-        open={redeployModalOpen}
-        onClose={redeploying ? () => {} : handleRedeployDone}
-        title="Redeploying Claw"
-        description={
-          redeployStatus === "COMPLETED"
-            ? "Your Claw has been redeployed with the latest configuration."
-            : redeployStatus === "FAILED"
-              ? "Redeployment encountered an error."
-              : "Updating configuration and redeploying your Claw…"
-        }
-        size="sm"
-        footer={
-          (redeployStatus === "COMPLETED" || redeployStatus === "FAILED") ? (
-            <>
-              {redeployStatus === "FAILED" && (
-                <Button variant="outline" onClick={() => { handleRedeployDone(); setRedeployConfirmOpen(true) }}>Retry</Button>
-              )}
-              <Button variant="primary" onClick={handleRedeployDone}>
-                {redeployStatus === "COMPLETED" ? "Done" : "Close"}
-              </Button>
-            </>
-          ) : undefined
-        }
-      >
-        {redeployStatus === "FAILED" && redeployError && (
-          <AlertBanner variant="error">
-            <p className="font-medium">Redeploy failed</p>
-            <p className="mt-0.5 opacity-80">{redeployError}</p>
-          </AlertBanner>
-        )}
-        <DeployProgress
-          steps={mapRedeployStatus(redeployStatus, redeployLastStage)}
-          failureDetail={redeployStatus === "FAILED" ? redeployError ?? "Deployment failed" : undefined}
-        />
-      </Modal>
+      <RedeployProgressModal
+        open={redeployFlow.modalOpen}
+        redeploying={redeployFlow.redeploying}
+        status={redeployFlow.status}
+        lastStage={redeployFlow.lastStage}
+        error={redeployFlow.error}
+        onClose={redeployFlow.closeModal}
+        onRetry={redeployFlow.retry}
+      />
     </div>
   )
 }
