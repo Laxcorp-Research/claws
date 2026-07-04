@@ -471,7 +471,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           slug: string
           name: string
           category: string
-          connectionType: "API_KEY" | "OAUTH_COMPOSIO"
+          connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
           required: boolean
           alternatives?: string[]
         }
@@ -585,7 +585,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             return {
               slug: swapMatch.toolSlug,
               name: swapDef?.name || swapMatch.displayName || def.name,
-              connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO",
+              connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH",
               category: def.category,
               status: ui.status,
               errorMessage: ui.errorMessage,

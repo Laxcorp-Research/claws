@@ -81,6 +81,17 @@ const liveApiKeyCatalogTool = {
   credentialFields: [],
 }
 
+const noAuthCatalogTool = {
+  slug: "hackernews",
+  name: "Hacker News",
+  connectionType: "OAUTH_COMPOSIO" as const,
+  category: "NEWS",
+  composioToolkitId: "hackernews",
+  authMode: "none" as const,
+  description: "Hacker News stories",
+  credentialFields: [],
+}
+
 // The modal fetches /api/tools/{workspaceId}/browse on mount. We stub
 // fetch globally with a response that matches our browse route's shape.
 function stubBrowseFetch(tools: object[], categories: string[] = ["All", "EMAIL", "SEARCH"]) {
@@ -240,6 +251,58 @@ describe("BrowseToolsModal — connected-state reflection", () => {
     await waitFor(() => expect(screen.getByText("Live API Key Tool")).toBeDefined())
     expect(screen.getByRole("button", { name: "Enter API key" })).toBeDefined()
     expect(screen.queryByRole("button", { name: "Connect with OAuth" })).toBeNull()
+  })
+
+  it("B2.1: renders no-auth live tools with Add and creates a connected row instantly", async () => {
+    stubBrowseFetch([noAuthCatalogTool])
+    const onConnect = vi.fn()
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const href = String(url)
+      if (href.includes("/api/tools/cmo0cr0z5000004l24n0z8j1w/browse")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { tools: [noAuthCatalogTool], categories: ["All", "NEWS"] },
+          }),
+        } as Response
+      }
+      if (href.includes("/api/tools/cmo0cr0z5000004l24n0z8j1w") && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({ success: true, data: { status: "CONNECTED" } }),
+        } as Response
+      }
+      return { ok: true, json: async () => ({ success: true }) } as Response
+    })
+    render(
+      <BrowseToolsModal
+        open={true}
+        onClose={() => {}}
+        connectedSlugs={[]}
+        onConnect={onConnect}
+        composioOAuthAvailable={true}
+        onOAuthConnect={() => {}}
+        workspaceId="cmo0cr0z5000004l24n0z8j1w"
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText("Hacker News")).toBeDefined())
+    fireEvent.click(screen.getByRole("button", { name: "Add" }))
+
+    await waitFor(() => expect(onConnect).toHaveBeenCalledWith(expect.objectContaining({ slug: "hackernews" })))
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tools/cmo0cr0z5000004l24n0z8j1w",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          toolSlug: "hackernews",
+          displayName: "Hacker News",
+          connectionType: "NO_AUTH",
+        }),
+      }),
+    )
   })
 
   it("transition: same render, switching connectedSlugs flips the badge", async () => {

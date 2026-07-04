@@ -129,6 +129,26 @@ describe('buildWorkspaceConfigFingerprint', () => {
     expect(after.areas.tools).not.toBe(before.areas.tools);
   });
 
+  it('adding a no_auth tool connection changes the hash', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const after = await fingerprintFor(baseWorkspace({
+      toolConnections: [
+        ...baseWorkspace().toolConnections,
+        {
+          toolSlug: 'hackernews',
+          displayName: 'Hacker News',
+          connectionType: 'OAUTH_COMPOSIO',
+          status: 'CONNECTED',
+          encryptedCredentials: null,
+          composioConnectionId: null,
+        },
+      ],
+    }));
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.tools).not.toBe(before.areas.tools);
+  });
+
   it('credential update changes the hash without decrypting credentials', async () => {
     const before = await fingerprintFor(baseWorkspace());
     const next = baseWorkspace();

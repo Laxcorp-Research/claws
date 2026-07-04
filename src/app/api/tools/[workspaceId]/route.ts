@@ -127,6 +127,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     data.composioEntityId = composioEntityId || null
     if (composioConnectionId) data.status = "CONNECTED"
   }
+  if (connectionType === "NO_AUTH") {
+    data.composioConnectionId = null
+    data.composioEntityId = null
+    data.encryptedCredentials = null
+    data.status = "CONNECTED"
+    data.lastError = null
+  }
 
   const connection = await prisma.toolConnection.upsert({
     where: { workspaceId_toolSlug: { workspaceId, toolSlug } },

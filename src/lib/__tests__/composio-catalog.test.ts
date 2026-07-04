@@ -15,4 +15,8 @@ describe("deriveComposioAuthModeFromSchemes", () => {
   it("labels toolkits with no known auth scheme as custom OAuth required", () => {
     expect(deriveComposioAuthModeFromSchemes([])).toBe("custom-oauth-required")
   })
+
+  it("labels no-auth live tools as none", () => {
+    expect(deriveComposioAuthModeFromSchemes(["NO_AUTH"])).toBe("none")
+  })
 })
