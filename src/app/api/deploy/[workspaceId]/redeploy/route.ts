@@ -59,8 +59,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   }
 
   try {
-    const { deployToCloud } = await import("@/lib/openclaw/deployer")
-    const result = await deployToCloud(workspaceId)
+    const { redeployWorkspace } = await import("@/lib/openclaw/deployer")
+    const result = await redeployWorkspace(workspaceId)
     return apiSuccess({ deploymentId: result.deploymentId, containerId: result.containerId })
   } catch (err: unknown) {
     return apiError("REDEPLOY_FAILED", err instanceof Error ? err.message : "Redeploy failed", 500)

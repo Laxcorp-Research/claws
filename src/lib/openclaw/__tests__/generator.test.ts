@@ -438,6 +438,19 @@ describe('generateWorkspace', () => {
     expect(toolsMd).toContain('### SendGrid');
   });
 
+  it('TOOLS.md directs tool failures to Claws Manage Tools without internal runtime instructions', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const orchKey = Object.keys(result.workspaces).find((k) =>
+      k.includes('test-commander'),
+    );
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+
+    expect(toolsMd).toContain('Claws platform');
+    expect(toolsMd).toContain('Manage Tools');
+    expect(toolsMd).not.toContain('OpenClaw');
+    expect(toolsMd).not.toContain('localhost');
+  });
+
   it('sets orchestrator as default agent with subagents config', async () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
