@@ -340,48 +340,35 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   { slug: "youtube", name: "YouTube", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "youtube", authMode: "managed-oauth", description: "YouTube channel management (replaces youtube-data-api API_KEY path)", credentialFields: [] },
 ]
 
-// PR2.8a Task 3: placeholder catalog entries for direct integrations
-// arriving in PR2.8c + three pending partner-program entries. Every row has
-// `comingSoon: true` — the wizard resolver filters these from render. Slugs
-// are reserved here so seed data and `alternatives` arrays can reference
-// them now; each entry graduates out of this array into API_KEY_TOOLS or
-// OAUTH_TOOLS as its integration ships.
-//
-// `connectionType: "API_KEY"` is a placeholder. Several of these will land
-// as OAuth when PR2.8c builds them (Clio, ServiceTitan, etc.), which
-// will either require adding a third connectionType member or implementing
-// the OAuth-direct flow through the API_KEY token-based path. That's a
-// PR2.8c decision; keeping connectionType uniform here prevents the
-// wizard from accidentally routing placeholders to the OAuth path.
-//
-// `credentialFields: []` is intentional — no fields are wired yet.
-// `comingSoonReason` surfaces in the PR2.8b "Coming Soon" badge UI.
+// B2: formerly hidden placeholder catalog entries now route through the
+// Composio broker/B1 path and are visible/connectable in Browse Tools.
+// Only true `custom-oauth-required` toolkits (currently twitter/docusign
+// above) remain disabled with a Coming Soon badge.
 export const COMING_SOON_TOOLS: ToolDefinition[] = [
-  // Direct integrations shipping in PR2.8c (16)
-  { slug: "buffer", name: "Buffer", connectionType: "API_KEY", category: "SOCIAL", description: "Social media scheduling across platforms", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "wordpress", name: "WordPress", connectionType: "API_KEY", category: "CMS", description: "Self-hosted WordPress via URL + application password", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "amazon_sp_api", name: "Amazon SP-API", connectionType: "API_KEY", category: "ECOMMERCE", description: "Amazon Selling Partner API (Login with Amazon OAuth)", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "greenhouse", name: "Greenhouse", connectionType: "API_KEY", category: "CRM", description: "Recruiting ATS", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "clio", name: "Clio", connectionType: "API_KEY", category: "CRM", description: "Legal practice management", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "mycase", name: "MyCase", connectionType: "API_KEY", category: "CRM", description: "Legal practice management", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "servicetitan", name: "ServiceTitan", connectionType: "API_KEY", category: "CRM", description: "Field service dispatch and invoicing", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "housecall_pro", name: "Housecall Pro", connectionType: "API_KEY", category: "CRM", description: "Home-services dispatch", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "drchrono", name: "DrChrono", connectionType: "API_KEY", category: "CRM", description: "Medical practice management and EHR", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "google_business_profile", name: "Google Business Profile", connectionType: "API_KEY", category: "ANALYTICS", description: "Local business listings + reviews", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "bullhorn", name: "Bullhorn", connectionType: "API_KEY", category: "CRM", description: "Staffing and recruiting ATS", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "snyk", name: "Snyk", connectionType: "API_KEY", category: "DEVELOPMENT", description: "Developer-first security scanning", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "keepa", name: "Keepa", connectionType: "API_KEY", category: "ECOMMERCE", description: "Amazon price and sales-rank history", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "sparkloop", name: "SparkLoop", connectionType: "API_KEY", category: "NEWSLETTER", description: "Newsletter cross-promotion and paid referrals", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "kraken", name: "Kraken", connectionType: "API_KEY", category: "TRADING", description: "Cryptocurrency exchange (API key + secret)", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  { slug: "apple_calendar", name: "Apple Calendar (CalDAV)", connectionType: "API_KEY", category: "CALENDAR", description: "Apple Calendar via CalDAV (URL + username + app password)", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
-  // Pending partner-program approvals (3)
-  { slug: "athena_health", name: "Athenahealth", connectionType: "API_KEY", category: "CRM", description: "Medical practice management and EHR", comingSoon: true, comingSoonReason: "Pending API access approval", credentialFields: [] },
-  { slug: "upwork", name: "Upwork", connectionType: "API_KEY", category: "LEAD_DATABASE", description: "Freelance marketplace", comingSoon: true, comingSoonReason: "Pending partner program approval", credentialFields: [] },
-  { slug: "zillow", name: "Zillow", connectionType: "API_KEY", category: "CRM", description: "Real estate listings and leads", comingSoon: true, comingSoonReason: "Pending partner program approval", credentialFields: [] },
-  // Orphan resolution (2) — previously referenced in seed alternatives without
-  // a catalog backing; upgraded to placeholders here per PR2.8a decision.
-  { slug: "kalshi", name: "Kalshi", connectionType: "API_KEY", category: "TRADING", description: "US-regulated event prediction market", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c (US-regulated prediction market alongside Polymarket)", credentialFields: [] },
-  { slug: "smartlead", name: "Smartlead", connectionType: "API_KEY", category: "EMAIL", description: "Cold email outreach", comingSoon: true, comingSoonReason: "Direct integration arriving in PR2.8c", credentialFields: [] },
+  // Former placeholders now route through the Composio broker/B1 path.
+  // Static rows reserve friendly names/categories; live catalog rows fill in
+  // auth detail when the slug is not already present here.
+  { slug: "buffer", name: "Buffer", connectionType: "API_KEY", category: "SOCIAL", description: "Social media scheduling across platforms", credentialFields: [] },
+  { slug: "wordpress", name: "WordPress", connectionType: "API_KEY", category: "CMS", description: "Self-hosted WordPress via URL + application password", credentialFields: [] },
+  { slug: "amazon_sp_api", name: "Amazon SP-API", connectionType: "API_KEY", category: "ECOMMERCE", description: "Amazon Selling Partner API (Login with Amazon OAuth)", credentialFields: [] },
+  { slug: "greenhouse", name: "Greenhouse", connectionType: "API_KEY", category: "CRM", description: "Recruiting ATS", credentialFields: [] },
+  { slug: "clio", name: "Clio", connectionType: "API_KEY", category: "CRM", description: "Legal practice management", credentialFields: [] },
+  { slug: "mycase", name: "MyCase", connectionType: "API_KEY", category: "CRM", description: "Legal practice management", credentialFields: [] },
+  { slug: "servicetitan", name: "ServiceTitan", connectionType: "API_KEY", category: "CRM", description: "Field service dispatch and invoicing", credentialFields: [] },
+  { slug: "housecall_pro", name: "Housecall Pro", connectionType: "API_KEY", category: "CRM", description: "Home-services dispatch", credentialFields: [] },
+  { slug: "drchrono", name: "DrChrono", connectionType: "API_KEY", category: "CRM", description: "Medical practice management and EHR", credentialFields: [] },
+  { slug: "google_business_profile", name: "Google Business Profile", connectionType: "API_KEY", category: "ANALYTICS", description: "Local business listings + reviews", credentialFields: [] },
+  { slug: "bullhorn", name: "Bullhorn", connectionType: "API_KEY", category: "CRM", description: "Staffing and recruiting ATS", credentialFields: [] },
+  { slug: "snyk", name: "Snyk", connectionType: "API_KEY", category: "DEVELOPMENT", description: "Developer-first security scanning", credentialFields: [] },
+  { slug: "keepa", name: "Keepa", connectionType: "API_KEY", category: "ECOMMERCE", description: "Amazon price and sales-rank history", credentialFields: [] },
+  { slug: "sparkloop", name: "SparkLoop", connectionType: "API_KEY", category: "NEWSLETTER", description: "Newsletter cross-promotion and paid referrals", credentialFields: [] },
+  { slug: "kraken", name: "Kraken", connectionType: "API_KEY", category: "TRADING", description: "Cryptocurrency exchange (API key + secret)", credentialFields: [] },
+  { slug: "apple_calendar", name: "Apple Calendar (CalDAV)", connectionType: "API_KEY", category: "CALENDAR", description: "Apple Calendar via CalDAV (URL + username + app password)", credentialFields: [] },
+  { slug: "athena_health", name: "Athenahealth", connectionType: "API_KEY", category: "CRM", description: "Medical practice management and EHR", credentialFields: [] },
+  { slug: "upwork", name: "Upwork", connectionType: "API_KEY", category: "LEAD_DATABASE", description: "Freelance marketplace", credentialFields: [] },
+  { slug: "zillow", name: "Zillow", connectionType: "API_KEY", category: "CRM", description: "Real estate listings and leads", credentialFields: [] },
+  { slug: "kalshi", name: "Kalshi", connectionType: "API_KEY", category: "TRADING", description: "US-regulated event prediction market", credentialFields: [] },
+  { slug: "smartlead", name: "Smartlead", connectionType: "API_KEY", category: "EMAIL", description: "Cold email outreach", credentialFields: [] },
 ]
 
 export const ALL_TOOLS: ToolDefinition[] = [...API_KEY_TOOLS, ...OAUTH_TOOLS, ...COMING_SOON_TOOLS]

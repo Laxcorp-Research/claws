@@ -1,8 +1,10 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { FilterPills } from "@/components/ui/filter-pills"
 import { Input } from "@/components/ui/input"
 import { StatusDot } from "@/components/ui/status-dot"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
@@ -57,6 +59,12 @@ export function BrowseToolsModal({
   const [remoteTools, setRemoteTools] = useState<ToolDefinition[] | null>(null)
   const [remoteCategories, setRemoteCategories] = useState<string[] | null>(null)
   const [browseLoading, setBrowseLoading] = useState(false)
+  const [scrollTop, setScrollTop] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const ROW_HEIGHT = 64
+  const LIST_HEIGHT = 300
+  const OVERSCAN = 6
 
   useEffect(() => {
     if (!open || !workspaceId) return
@@ -92,15 +100,8 @@ export function BrowseToolsModal({
   const tools = remoteTools ?? ALL_TOOLS
   const categoryList = useMemo(() => remoteCategories ?? [...TOOL_CATEGORIES], [remoteCategories])
 
-  // PR2.8a-fix1 Task 7: belt-and-suspenders comingSoon filter. The browse
-  // server endpoint already filters comingSoon entries from its payload, but
-  // when the fetch fails we fall back to the static `ALL_TOOLS` import which
-  // includes them — surfacing them here would let users click Connect on
-  // toolkits that 422 at the route. Filter again client-side to close that
-  // gap. Hidden until each toolkit's catalog entry ships with comingSoon=false.
   const filtered = useMemo(() => {
     return tools.filter((tool) => {
-      if (tool.comingSoon) return false
       const matchesSearch =
         !search ||
         tool.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -114,16 +115,16 @@ export function BrowseToolsModal({
 
   function handleToolClick(tool: ToolDefinition) {
     if (tool.slug === pendingOAuthSlug) return
-    if (tool.connectionType === "API_KEY") {
+    if (tool.connectionType === "API_KEY" && tool.credentialFields.length > 0) {
       setApiKeyTool(tool)
-    } else if (tool.connectionType === "OAUTH_COMPOSIO" && composioOAuthAvailable) {
+    } else if ((tool.connectionType === "OAUTH_COMPOSIO" || tool.credentialFields.length === 0) && composioOAuthAvailable) {
       onOAuthConnect(tool)
     }
   }
 
   const categoryPills = useMemo(() => {
     const withAll = categoryList.includes("All") ? categoryList : ["All", ...categoryList]
-    return withAll.slice(0, 24)
+    return withAll.map((cat) => ({ value: cat, label: formatCategory(cat) }))
   }, [categoryList])
 
   function formatCategory(raw: string): string {
@@ -133,6 +134,19 @@ export function BrowseToolsModal({
       .map((w) => (w.length <= 3 ? w : w.charAt(0) + w.slice(1).toLowerCase()))
       .join(" ")
   }
+
+  const totalHeight = filtered.length * ROW_HEIGHT
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+  const visibleCount = Math.ceil(LIST_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2
+  const endIndex = Math.min(filtered.length, startIndex + visibleCount)
+  const visibleTools = filtered.slice(startIndex, endIndex)
+  const topSpacer = startIndex * ROW_HEIGHT
+  const bottomSpacer = Math.max(0, totalHeight - topSpacer - visibleTools.length * ROW_HEIGHT)
+
+  useEffect(() => {
+    setScrollTop(0)
+    if (listRef.current) listRef.current.scrollTop = 0
+  }, [search, activeCategory, tools])
 
   return (
     <>
@@ -163,23 +177,18 @@ export function BrowseToolsModal({
             className="mb-2.5"
             disabled={browseLoading}
           />
-          <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1 scrollbar-hide">
-            {categoryPills.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setActiveCategory(cat)}
-                className={`text-[11px] font-medium px-[10px] py-[3px] rounded-[8px] border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                  activeCategory === cat
-                    ? "bg-[var(--tx)] text-[var(--bg)] border-[var(--tx)]"
-                    : "bg-transparent text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]"
-                }`}
-              >
-                {formatCategory(cat)}
-              </button>
-            ))}
-          </div>
-          <div className="border border-[var(--bd)] rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
+          <FilterPills
+            options={categoryPills}
+            value={activeCategory}
+            onChange={setActiveCategory}
+            className="mb-2.5"
+          />
+          <div
+            ref={listRef}
+            className="border border-[var(--bd)] rounded-xl overflow-hidden overflow-y-auto"
+            style={{ maxHeight: LIST_HEIGHT }}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          >
             {browseLoading && (
               // PR2.9 Task 7c: shimmer skeleton (Design System §LoadingSkeleton)
               // replaces the bare "Loading tools…" line. 4 card rows roughly
@@ -192,14 +201,20 @@ export function BrowseToolsModal({
               <div className="px-3.5 py-6 text-center text-xs text-[var(--tx3)]">No tools found.</div>
             )}
             {!browseLoading &&
-              filtered.map((tool) => {
+              <>
+                {topSpacer > 0 && <div style={{ height: topSpacer }} aria-hidden="true" />}
+                {visibleTools.map((tool) => {
                 const isConnected = allConnected.has(tool.slug)
                 const isPendingOAuth = pendingOAuthSlug === tool.slug
                 const oauthError = oauthErrors[tool.slug]
+                const brokeredByComposio = tool.connectionType === "OAUTH_COMPOSIO" || tool.credentialFields.length === 0
+                const customOauthBlocked = tool.authMode === "custom-oauth-required"
+                const comingSoonReason = tool.comingSoonReason ?? "Requires a Claws-owned OAuth app before connection is available."
                 return (
                   <div
                     key={tool.slug}
                     className="flex items-center gap-3 px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0"
+                    style={{ minHeight: ROW_HEIGHT }}
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <StatusDot status={isConnected ? "connected" : "disconnected"} />
@@ -215,7 +230,11 @@ export function BrowseToolsModal({
                     </div>
                     {isConnected ? (
                       <span className="text-[10px] text-[var(--ok)] font-medium shrink-0">Connected</span>
-                    ) : tool.connectionType === "OAUTH_COMPOSIO" ? (
+                    ) : customOauthBlocked ? (
+                      <Badge variant="warning" title={comingSoonReason} className="shrink-0">
+                        Coming Soon
+                      </Badge>
+                    ) : brokeredByComposio ? (
                       composioOAuthAvailable ? (
                         <Button
                           type="button"
@@ -258,6 +277,8 @@ export function BrowseToolsModal({
                   </div>
                 )
               })}
+              {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} aria-hidden="true" />}
+            </>}
           </div>
         </div>
       </Modal>

@@ -57,6 +57,30 @@ const typefullyCatalogTool = {
   credentialFields: [],
 }
 
+const twitterCatalogTool = {
+  slug: "twitter",
+  name: "Twitter/X",
+  connectionType: "OAUTH_COMPOSIO" as const,
+  category: "SOCIAL",
+  composioToolkitId: "twitter",
+  authMode: "custom-oauth-required" as const,
+  comingSoon: true,
+  comingSoonReason: "OAuth-only on Composio; operator registering with Twitter Developer this week",
+  description: "Social media",
+  credentialFields: [],
+}
+
+const liveApiKeyCatalogTool = {
+  slug: "live-api-key-tool",
+  name: "Live API Key Tool",
+  connectionType: "OAUTH_COMPOSIO" as const,
+  category: "LIVE",
+  composioToolkitId: "live-api-key-tool",
+  authMode: "byok-api-key" as const,
+  description: "Live catalog API-key-only toolkit",
+  credentialFields: [],
+}
+
 // The modal fetches /api/tools/{workspaceId}/browse on mount. We stub
 // fetch globally with a response that matches our browse route's shape.
 function stubBrowseFetch(tools: object[], categories: string[] = ["All", "EMAIL", "SEARCH"]) {
@@ -174,6 +198,46 @@ describe("BrowseToolsModal — connected-state reflection", () => {
     })
     // The row's button should read "Enter API key", NOT "Connect with
     // OAuth". This is what catches Bug 1A regressions.
+    expect(screen.getByRole("button", { name: "Enter API key" })).toBeDefined()
+    expect(screen.queryByRole("button", { name: "Connect with OAuth" })).toBeNull()
+  })
+
+  it("B2: renders custom-OAuth comingSoon tools visible with disabled Coming Soon badge", async () => {
+    stubBrowseFetch([twitterCatalogTool])
+    render(
+      <BrowseToolsModal
+        open={true}
+        onClose={() => {}}
+        connectedSlugs={[]}
+        onConnect={() => {}}
+        composioOAuthAvailable={true}
+        onOAuthConnect={() => {}}
+        workspaceId="cmo0cr0z5000004l24n0z8j1w"
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText("Twitter/X")).toBeDefined())
+    const badge = screen.getByText("Coming Soon")
+    expect(badge).toBeDefined()
+    expect(badge.getAttribute("title")).toContain("OAuth-only on Composio")
+    expect(screen.queryByRole("button", { name: "Connect with OAuth" })).toBeNull()
+  })
+
+  it("B2: renders live API-key-only Composio tools as Enter API key", async () => {
+    stubBrowseFetch([liveApiKeyCatalogTool])
+    render(
+      <BrowseToolsModal
+        open={true}
+        onClose={() => {}}
+        connectedSlugs={[]}
+        onConnect={() => {}}
+        composioOAuthAvailable={true}
+        onOAuthConnect={() => {}}
+        workspaceId="cmo0cr0z5000004l24n0z8j1w"
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText("Live API Key Tool")).toBeDefined())
     expect(screen.getByRole("button", { name: "Enter API key" })).toBeDefined()
     expect(screen.queryByRole("button", { name: "Connect with OAuth" })).toBeNull()
   })
