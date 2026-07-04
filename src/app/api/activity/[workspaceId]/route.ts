@@ -199,6 +199,9 @@ export async function GET(
       // config drift (alive-but-misconfigured) from a dead container.
       lastHealthCheck: workspace!.lastHealthCheck ? workspace!.lastHealthCheck.toISOString() : null,
       lastHealthReason: workspace!.lastHealthReason,
+      mcpSessionHealthStatus: workspace!.mcpSessionHealthStatus,
+      mcpSessionCheckedAt: workspace!.mcpSessionCheckedAt ? workspace!.mcpSessionCheckedAt.toISOString() : null,
+      mcpSessionLastError: workspace!.mcpSessionLastError,
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,
       costAlertThreshold: workspace!.costAlertThreshold,

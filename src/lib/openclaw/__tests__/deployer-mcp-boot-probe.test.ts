@@ -35,6 +35,7 @@ const MCP_CONFIG = JSON.stringify({
 
 beforeEach(() => {
   (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'log-1' });
+  (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 });
 
 describe('surfaceMcpBootFailure', () => {
@@ -57,9 +58,16 @@ describe('surfaceMcpBootFailure', () => {
         detail: 'initialize returned HTTP 502',
       },
     });
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
+      where: { id: 'ws-1' },
+      data: expect.objectContaining({
+        mcpSessionHealthStatus: 'DEAD',
+        mcpSessionLastError: 'initialize returned HTTP 502',
+      }),
+    });
   });
 
-  it('writes nothing when the probe succeeds', async () => {
+  it('writes HEALTHY session metadata when the probe succeeds', async () => {
     const probe = vi
       .fn()
       .mockResolvedValue({ ok: true, detail: 'initialize + tools/list ok' }) as unknown as typeof probeMcpEndpoint;
@@ -67,6 +75,13 @@ describe('surfaceMcpBootFailure', () => {
     await surfaceMcpBootFailure('ws-1', { 'openclaw.json': MCP_CONFIG }, probe);
 
     expect(prismaMock.activityLog.create).not.toHaveBeenCalled();
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
+      where: { id: 'ws-1' },
+      data: expect.objectContaining({
+        mcpSessionHealthStatus: 'HEALTHY',
+        mcpSessionLastError: null,
+      }),
+    });
   });
 
   it('does not probe at all for non-MCP deploys (no mcp block in openclaw.json)', async () => {
@@ -80,6 +95,7 @@ describe('surfaceMcpBootFailure', () => {
 
     expect(probe).not.toHaveBeenCalled();
     expect(prismaMock.activityLog.create).not.toHaveBeenCalled();
+    expect(prismaMock.workspace.update).not.toHaveBeenCalled();
   });
 
   it('swallows unparseable config instead of throwing (never blocks a deploy)', async () => {
