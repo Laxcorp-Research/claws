@@ -50,7 +50,7 @@ const MCP_URL = 'https://backend.composio.dev/tool_router/trs_test123/mcp';
 type TestToolConn = {
   toolSlug: string;
   displayName: string;
-  connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE';
+  connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE' | 'NO_AUTH';
   status: string;
   encryptedCredentials: string | null;
   composioConnectionId: string | null;
@@ -530,5 +530,32 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+describe('(h) no_auth accountless rows: enabled without connected account', () => {
+  const NO_AUTH_CONN: TestToolConn = {
+    toolSlug: 'hackernews',
+    displayName: 'Hacker News',
+    connectionType: 'NO_AUTH',
+    status: 'CONNECTED',
+    encryptedCredentials: null,
+    composioConnectionId: null,
+    composioEntityId: null,
+  };
+
+  it('includes no_auth toolkit in enable and omits it from connectedAccounts', async () => {
+    primeMocks({ toolConnections: [NO_AUTH_CONN] });
+
+    const result = await generateWorkspace('ws-mcp-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
+      toolkits: { enable: ['hackernews'] },
+      connectedAccounts: {},
+      workbench: { enable: false },
+      manageConnections: false,
+    });
+    expect(config.mcp).toBeDefined();
   });
 });

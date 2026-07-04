@@ -19,7 +19,7 @@ import type { ApiKeyFormPayload } from "@/lib/oauth/use-oauth-connection"
 export interface ToolState {
   slug: string
   name: string
-  connectionType: "API_KEY" | "OAUTH_COMPOSIO"
+  connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
   category: string
   status: ToolRowStatus
   errorMessage?: string
@@ -116,7 +116,8 @@ export function buildExtraToolState(conn: ServerConnectionSummary): ToolState {
     name: def?.name ?? conn.displayName ?? conn.toolSlug,
     connectionType: (def?.connectionType ?? conn.connectionType ?? "API_KEY") as
       | "API_KEY"
-      | "OAUTH_COMPOSIO",
+      | "OAUTH_COMPOSIO"
+      | "NO_AUTH",
     category: def?.category ?? "OTHER",
     status: ui.status,
     errorMessage: ui.errorMessage,

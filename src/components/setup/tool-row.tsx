@@ -30,7 +30,7 @@ interface ToolRowProps {
   name: string
   description?: string
   connectionStatus: ToolRowStatus
-  connectionType: "API_KEY" | "OAUTH_COMPOSIO"
+  connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
   /**
    * PR2.9-fix1 (Bug 1A): drives the connect-button label for OAUTH_COMPOSIO
    * tools. Catalog-sourced; required on OAUTH_COMPOSIO entries (drift test

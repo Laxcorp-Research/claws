@@ -3,7 +3,7 @@ import { getComposio } from "@/lib/composio"
 import type { ToolDefinition } from "@/data/tool-catalog"
 import { redis } from "@/lib/redis"
 
-const REDIS_KEY = "composio:toolkit-catalog:v2"
+const REDIS_KEY = "composio:toolkit-catalog:v3"
 const CACHE_TTL_SEC = 60 * 60
 
 export interface ComposioCatalogFetchResult {
@@ -13,6 +13,7 @@ export interface ComposioCatalogFetchResult {
 
 export function deriveComposioAuthModeFromSchemes(schemes: string[] | undefined): NonNullable<ToolDefinition["authMode"]> {
   const normalized = (schemes ?? []).map((x) => x.toUpperCase())
+  if (normalized.includes("NO_AUTH")) return "none"
   const hasOAuth = normalized.some((x) => x === "OAUTH2" || x === "OAUTH1")
   const hasKey = normalized.some((x) => x === "API_KEY" || x === "BEARER" || x === "BEARER_TOKEN" || x === "BASIC" || x === "BASIC_AUTH")
   if (hasOAuth) return "managed-oauth"
@@ -30,11 +31,8 @@ function toolkitItemToToolDefinition(item: ToolkitListResponse.Item): ToolDefini
     name: item.name,
     description: item.meta?.description,
     category,
-    // Live Composio rows always route through oauth/initiate; authMode is a
-    // display hint only. The initiate route re-classifies from toolkit metadata
-    // and remains the connect-time authority.
-    connectionType: "OAUTH_COMPOSIO",
     authMode: deriveComposioAuthModeFromSchemes(item.auth_schemes),
+    connectionType: deriveComposioAuthModeFromSchemes(item.auth_schemes) === "none" ? "NO_AUTH" : "OAUTH_COMPOSIO",
     composioToolkitId: item.slug,
     isAIProvider: false,
     // Dynamic Composio catalog entries are always OAUTH-managed; their
@@ -58,11 +56,7 @@ async function fetchAllToolkitItems(composio: NonNullable<ReturnType<typeof getC
       limit: 100,
       ...(cursor ? { cursor } : {}),
     })
-    for (const it of res.items) {
-      if (!it.no_auth) {
-        items.push(it)
-      }
-    }
+    items.push(...res.items)
     cursor = res.next_cursor ?? undefined
     if (!cursor) break
   }
