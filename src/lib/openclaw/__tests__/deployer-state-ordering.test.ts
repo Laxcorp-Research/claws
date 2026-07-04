@@ -207,6 +207,25 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
     expect(completedUpdate.data.configSnapshotGzip.length).toBeGreaterThan(0)
   })
 
+  it("computes config fingerprint AFTER generateWorkspace so deploy-time backfills are hash inputs", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ containerId: null }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-1",
+      trialUsed: false,
+      apiKeys: [],
+    })
+    mockCreateService.mockResolvedValue({ serviceId: "svc-new", domain: "svc-new.up.railway.app" })
+    mockGetServiceStatus.mockResolvedValue({ status: "SUCCESS", deploymentId: "dep-rw-1", healthy: true })
+
+    await deployToCloud("ws-1")
+
+    const generateOrder = mockGenerateWorkspace.mock.invocationCallOrder[0]
+    const fingerprintOrder = mockBuildWorkspaceConfigFingerprint.mock.invocationCallOrder[0]
+    expect(generateOrder).toBeLessThan(fingerprintOrder)
+  })
+
   it("upserts ContainerState BEFORE Railway updateAndRedeployService on redeploy of existing service", async () => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       workspaceStub({ containerId: "svc-existing", containerHost: "svc-existing.up.railway.app" }),

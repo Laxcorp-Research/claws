@@ -41,6 +41,15 @@ vi.mock("@composio/core", () => ({
       __scheme: "API_KEY" as const,
       api_key: params.api_key,
     }),
+    BearerToken: (params: { token: string }) => ({
+      __scheme: "BEARER_TOKEN" as const,
+      token: params.token,
+    }),
+    Basic: (params: { username: string; password: string }) => ({
+      __scheme: "BASIC" as const,
+      username: params.username,
+      password: params.password,
+    }),
   },
 }))
 
@@ -330,6 +339,23 @@ describe("classifyToolkitAuthMode (PR2.9)", () => {
     ).toBe("byok-api-key")
   })
 
+  it("returns byok-api-key for BEARER_TOKEN and BASIC schemes exposed by Composio", () => {
+    expect(
+      classifyToolkitAuthMode({
+        name: "Bearer Tool",
+        composioManagedAuthSchemes: [],
+        authConfigDetails: [{ mode: "BEARER" }],
+      }),
+    ).toBe("byok-api-key")
+    expect(
+      classifyToolkitAuthMode({
+        name: "Basic Tool",
+        composioManagedAuthSchemes: [],
+        authConfigDetails: [{ mode: "BASIC" }],
+      }),
+    ).toBe("byok-api-key")
+  })
+
   it("returns byok-api-key for dual-mode toolkits (OAUTH2 + API_KEY) when no managed", () => {
     // Mirrors the PR2.9 RED-2 cases: shopify, lever, metaads, pipedrive,
     // webflow, follow_up_boss. No managed scheme → BYOK path takes
@@ -414,6 +440,57 @@ describe("ensureBYOKAuthConfig (PR2.9)", () => {
     })
     const createArgs = (composio.authConfigs.create as ReturnType<typeof vi.fn>).mock.calls[0][1]
     expect(createArgs.credentials.apiKey).toMatch(/placeholder/i)
+  })
+
+  it("creates custom-auth BEARER_TOKEN and BASIC configs with scheme-specific placeholders", async () => {
+    const bearer = makeComposio()
+    bearer.toolkits.get.mockResolvedValue({
+      slug: "bearer-tool",
+      name: "Bearer Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BEARER_TOKEN" }],
+    })
+    bearer.authConfigs.list
+      .mockResolvedValueOnce({ items: [] })
+      .mockResolvedValueOnce({ items: [] })
+    bearer.authConfigs.create.mockResolvedValue({ id: "ac_bearer" })
+    ;(prismaMock.$queryRaw as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
+      .mockResolvedValueOnce([{ pg_advisory_unlock: true }])
+
+    await ensureBYOKAuthConfig(bearer as unknown as Composio, "bearer-tool", "BEARER_TOKEN")
+    expect(bearer.authConfigs.create).toHaveBeenCalledWith("bearer-tool", {
+      type: "use_custom_auth",
+      authScheme: "BEARER_TOKEN",
+      name: "Bearer Tool (Claws BYOK)",
+      credentials: { token: expect.any(String) },
+    })
+
+    const basic = makeComposio()
+    basic.toolkits.get.mockResolvedValue({
+      slug: "basic-tool",
+      name: "Basic Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BASIC" }],
+    })
+    basic.authConfigs.list
+      .mockResolvedValueOnce({ items: [] })
+      .mockResolvedValueOnce({ items: [] })
+    basic.authConfigs.create.mockResolvedValue({ id: "ac_basic" })
+    ;(prismaMock.$queryRaw as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
+      .mockResolvedValueOnce([{ pg_advisory_unlock: true }])
+
+    await ensureBYOKAuthConfig(basic as unknown as Composio, "basic-tool", "BASIC")
+    expect(basic.authConfigs.create).toHaveBeenCalledWith("basic-tool", {
+      type: "use_custom_auth",
+      authScheme: "BASIC",
+      name: "Basic Tool (Claws BYOK)",
+      credentials: {
+        username: expect.any(String),
+        password: expect.any(String),
+      },
+    })
   })
 
   it("BYOK lock key is namespaced — won't collide with managed-OAuth lock on same slug", async () => {
@@ -518,6 +595,62 @@ describe("createBYOKConnectedAccount (PR2.9)", () => {
           api_key: "user-supplied-real-key",
         },
       },
+    )
+  })
+
+  it("calls connectedAccounts.initiate with BEARER_TOKEN and BASIC AuthScheme payloads", async () => {
+    const bearer = makeComposio()
+    bearer.toolkits.get.mockResolvedValue({
+      slug: "bearer-tool",
+      name: "Bearer Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BEARER_TOKEN" }],
+    })
+    bearer.authConfigs.list.mockResolvedValue({
+      items: [{ id: "ac_bearer", isComposioManaged: false, authScheme: "BEARER_TOKEN" }],
+    })
+    bearer.connectedAccounts.initiate.mockResolvedValue({ id: "ca_bearer", status: "ACTIVE" })
+
+    await expect(
+      createBYOKConnectedAccount(
+        bearer as unknown as Composio,
+        "claws_user-1",
+        "bearer-tool",
+        { authScheme: "BEARER_TOKEN", token: "bearer-real-token" },
+        "BEARER_TOKEN",
+      ),
+    ).resolves.toBe("ca_bearer")
+    expect(bearer.connectedAccounts.initiate).toHaveBeenCalledWith(
+      "claws_user-1",
+      "ac_bearer",
+      { config: { __scheme: "BEARER_TOKEN", token: "bearer-real-token" } },
+    )
+
+    const basic = makeComposio()
+    basic.toolkits.get.mockResolvedValue({
+      slug: "basic-tool",
+      name: "Basic Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BASIC" }],
+    })
+    basic.authConfigs.list.mockResolvedValue({
+      items: [{ id: "ac_basic", isComposioManaged: false, authScheme: "BASIC" }],
+    })
+    basic.connectedAccounts.initiate.mockResolvedValue({ id: "ca_basic", status: "ACTIVE" })
+
+    await expect(
+      createBYOKConnectedAccount(
+        basic as unknown as Composio,
+        "claws_user-1",
+        "basic-tool",
+        { authScheme: "BASIC", username: "user", password: "pass" },
+        "BASIC",
+      ),
+    ).resolves.toBe("ca_basic")
+    expect(basic.connectedAccounts.initiate).toHaveBeenCalledWith(
+      "claws_user-1",
+      "ac_basic",
+      { config: { __scheme: "BASIC", username: "user", password: "pass" } },
     )
   })
 

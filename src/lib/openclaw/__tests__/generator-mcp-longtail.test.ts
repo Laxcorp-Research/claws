@@ -34,10 +34,27 @@ vi.mock('@/lib/crypto', () => ({
 
 const mockSessionRetrieve = vi.fn();
 const mockSessionCreate = vi.fn();
+const mockToolkitsGet = vi.fn();
+const mockAuthConfigsList = vi.fn();
+const mockConnectedAccountsInitiate = vi.fn();
+vi.mock('@composio/core', () => ({
+  AuthScheme: {
+    APIKey: (params: { api_key?: string }) => ({ __scheme: 'API_KEY' as const, api_key: params.api_key }),
+    BearerToken: (params: { token: string }) => ({ __scheme: 'BEARER_TOKEN' as const, token: params.token }),
+    Basic: (params: { username: string; password: string }) => ({
+      __scheme: 'BASIC' as const,
+      username: params.username,
+      password: params.password,
+    }),
+  },
+}));
 vi.mock('@/lib/composio', () => ({
   getComposio: vi.fn(() => ({
     client: { toolRouter: { session: { retrieve: mockSessionRetrieve } } },
     toolRouter: { create: mockSessionCreate },
+    toolkits: { get: mockToolkitsGet },
+    authConfigs: { list: mockAuthConfigsList, create: vi.fn() },
+    connectedAccounts: { initiate: mockConnectedAccountsInitiate },
   })),
   getComposioUserId: (id: string) => `claws_${id}`,
 }));
@@ -162,7 +179,7 @@ function primeMocks(params: {
   storedSessionId?: string | null;
 }) {
   const ws = buildMockWorkspace({
-    toolConnections: params.toolConnections,
+    toolConnections: params.toolConnections.map((tc) => ({ ...tc })),
     composioToolRouterSessionId: params.storedSessionId ?? null,
   });
   (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
@@ -179,7 +196,11 @@ beforeEach(() => {
   process.env.COMPOSIO_API_KEY = PLATFORM_KEY;
   mockSessionRetrieve.mockReset();
   mockSessionCreate.mockReset();
+  mockToolkitsGet.mockReset();
+  mockAuthConfigsList.mockReset();
+  mockConnectedAccountsInitiate.mockReset();
   mockSessionCreate.mockResolvedValue({ sessionId: 'trs_test123', mcp: { url: MCP_URL } });
+  mockToolkitsGet.mockRejectedValue(new Error('toolkit not found'));
 });
 
 afterEach(() => {
@@ -472,7 +493,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
     composioEntityId: null,
   };
 
-  it('warns naming B3 and does NOT include the API_KEY slug in the Tool Router toolkits', async () => {
+  it('warns and does NOT include an unbackfilled API_KEY slug in the Tool Router toolkits', async () => {
     primeMocks({ toolConnections: [UNCURATED_API_KEY_CONN, UNCURATED_OAUTH_CONN] });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -481,7 +502,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
 
       const warnText = warnSpy.mock.calls.flat().join('\n');
       expect(warnText).toContain('zzz-local-key-tool');
-      expect(warnText).toContain('B3');
+      expect(warnText).toContain('lazy BYOK backfill failed');
 
       expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
         toolkits: { enable: ['zzz-longtail-crm'] }, // API_KEY slug excluded
@@ -489,6 +510,61 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
         workbench: { enable: false },
         manageConnections: false,
       });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('lazy-backfills a single-key uncurated API_KEY row, persists composioConnectionId, and includes it in enable+map', async () => {
+    primeMocks({ toolConnections: [UNCURATED_API_KEY_CONN] });
+    mockToolkitsGet.mockResolvedValue({
+      slug: 'zzz-local-key-tool',
+      name: 'Local Key Tool',
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: 'API_KEY' }],
+    });
+    mockAuthConfigsList.mockResolvedValue({
+      items: [{ id: 'ac_local_key', isComposioManaged: false, authScheme: 'API_KEY' }],
+    });
+    mockConnectedAccountsInitiate.mockResolvedValue({ id: 'ca_backfilled_local', status: 'ACTIVE' });
+
+    const result = await generateWorkspace('ws-mcp-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    expect(prismaMock.toolConnection.update).toHaveBeenCalledWith({
+      where: { workspaceId_toolSlug: { workspaceId: 'ws-mcp-1', toolSlug: 'zzz-local-key-tool' } },
+      data: expect.objectContaining({
+        connectionType: 'OAUTH_COMPOSIO',
+        encryptedCredentials: null,
+        composioConnectionId: 'ca_backfilled_local',
+        composioEntityId: 'claws_user-1',
+        status: 'CONNECTED',
+      }),
+    });
+    expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
+      toolkits: { enable: ['zzz-local-key-tool'] },
+      connectedAccounts: { 'zzz-local-key-tool': 'ca_backfilled_local' },
+      workbench: { enable: false },
+      manageConnections: false,
+    });
+    expect(config.mcp).toBeDefined();
+  });
+
+  it('lazy-backfill failure for multi-field local rows warns + excludes while deploy generation completes', async () => {
+    const multiField: TestToolConn = {
+      ...UNCURATED_API_KEY_CONN,
+      encryptedCredentials: JSON.stringify({ A_KEY: 'one', A_SECRET: 'two' }),
+    };
+    primeMocks({ toolConnections: [multiField] });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const result = await generateWorkspace('ws-mcp-1');
+      const config = JSON.parse(result['openclaw.json']);
+
+      expect(config.mcp).toBeUndefined();
+      expect(mockSessionCreate).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls.flat().join('\n')).toContain('single-key rows only');
     } finally {
       warnSpy.mockRestore();
     }

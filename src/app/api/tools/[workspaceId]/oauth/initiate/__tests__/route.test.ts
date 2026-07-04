@@ -190,6 +190,29 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(prismaMock.toolConnection.upsert).not.toHaveBeenCalled()
   })
 
+  it("BEARER live toolkit returns mode:byok with a bearer-token field", async () => {
+    mockToolkitsGet.mockResolvedValue({
+      slug: "bearer-tool",
+      name: "Bearer Tool",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "BEARER_TOKEN" }],
+    })
+
+    const { status, data } = await callRoute("bearer-tool")
+    expect(status).toBe(200)
+    expect(data.data.mode).toBe("byok")
+    expect(data.data.apiKeyForm.authScheme).toBe("BEARER_TOKEN")
+    expect(data.data.apiKeyForm.fields).toEqual([
+      expect.objectContaining({
+        envVar: "BEARER_TOOL_BEARER_TOKEN",
+        label: "Bearer Token",
+        required: true,
+        primary: true,
+      }),
+    ])
+    expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
+  })
+
   it("dual-mode BYOK toolkit (shopify — OAUTH2 + API_KEY, no managed): BYOK takes precedence", async () => {
     // PR2.9 design decision (Option 1, data-grounded): for the 6 dual-mode
     // RED-2 toolkits (shopify, lever, metaads, pipedrive, webflow,

@@ -232,10 +232,8 @@ export async function deployToCloud(workspaceId: string): Promise<{
 
   try {
     await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
-    const [fingerprint, generated] = await Promise.all([
-      buildWorkspaceConfigFingerprint(workspaceId),
-      generateWorkspace(workspaceId),
-    ]);
+    const generated = await generateWorkspace(workspaceId);
+    const fingerprint = await buildWorkspaceConfigFingerprint(workspaceId);
     const completionData = buildDeploymentCompletionData(fingerprint, generated);
 
     if (!isRailwayConfigured()) {
@@ -696,10 +694,8 @@ export async function redeployWorkspace(workspaceId: string): Promise<{ deployme
     });
     try {
       await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
-      const [fingerprint, generated] = await Promise.all([
-        buildWorkspaceConfigFingerprint(workspaceId),
-        generateWorkspace(workspaceId),
-      ]);
+      const generated = await generateWorkspace(workspaceId);
+      const fingerprint = await buildWorkspaceConfigFingerprint(workspaceId);
       const completionData = buildDeploymentCompletionData(fingerprint, generated);
       const envVars = buildRailwayEnvVars(generated, workspace, redeployUser);
       await updateDeploymentStatus(deployment.id, workspaceId, 'CONFIGURING');

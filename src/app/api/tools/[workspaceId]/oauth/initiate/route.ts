@@ -8,11 +8,67 @@ import {
   ensureAuthConfigForToolkit,
   fetchToolkitWithAuthMode,
   ComposioToolkitRequiresCustomOAuthError,
+  resolveToolkitBYOKAuthScheme,
+  type BYOKAuthScheme,
 } from "@/lib/composio-auth-config"
 import { getToolBySlug } from "@/data/tool-catalog"
+import type { ToolCredentialField, ToolDefinition } from "@/data/tool-catalog"
 import { log } from "@/lib/logger"
 
 export const maxDuration = 30
+
+function defaultEnvPrefix(toolSlug: string): string {
+  return toolSlug.toUpperCase().replace(/[^A-Z0-9]/g, "_")
+}
+
+function byokCredentialFields(
+  toolSlug: string,
+  def: ToolDefinition | undefined,
+  authScheme: BYOKAuthScheme
+): ToolCredentialField[] {
+  if (authScheme === "API_KEY") {
+    return def?.credentialFields && def.credentialFields.length > 0
+      ? def.credentialFields
+      : [
+          {
+            envVar: `${defaultEnvPrefix(toolSlug)}_API_KEY`,
+            label: "API Key",
+            required: true,
+            primary: true,
+            ...(def?.helpUrl ? { helpUrl: def.helpUrl } : {}),
+          },
+        ]
+  }
+
+  if (authScheme === "BEARER_TOKEN") {
+    return [
+      {
+        envVar: `${defaultEnvPrefix(toolSlug)}_BEARER_TOKEN`,
+        label: "Bearer Token",
+        required: true,
+        primary: true,
+        ...(def?.helpUrl ? { helpUrl: def.helpUrl } : {}),
+      },
+    ]
+  }
+
+  return [
+    {
+      envVar: `${defaultEnvPrefix(toolSlug)}_BASIC_USERNAME`,
+      label: "Username",
+      required: true,
+      primary: true,
+      ...(def?.helpUrl ? { helpUrl: def.helpUrl } : {}),
+    },
+    {
+      envVar: `${defaultEnvPrefix(toolSlug)}_BASIC_PASSWORD`,
+      label: "Password",
+      required: true,
+      primary: false,
+      ...(def?.helpUrl ? { helpUrl: def.helpUrl } : {}),
+    },
+  ]
+}
 
 export async function POST(
   req: NextRequest,
@@ -57,13 +113,17 @@ export async function POST(
     // Single `toolkits.get` call shared by both detection and the
     // managed-OAuth path's downstream helper — saves one round-trip when
     // managed is the chosen path.
-    const { mode } = await fetchToolkitWithAuthMode(composio, toolkitSlug)
+    const { toolkit, mode } = await fetchToolkitWithAuthMode(composio, toolkitSlug)
 
     if (mode === "requires-custom-oauth") {
       throw new ComposioToolkitRequiresCustomOAuthError(toolkitSlug)
     }
 
     if (mode === "byok-api-key") {
+      const authScheme = resolveToolkitBYOKAuthScheme(toolkit)
+      if (!authScheme) {
+        throw new ComposioToolkitRequiresCustomOAuthError(toolkitSlug)
+      }
       // The user supplies their own API key for this toolkit. No popup,
       // no poll — the wizard renders an inline credentials form and POSTs
       // the key to /api/tools/[wsId]/byok/submit, which synchronously
@@ -74,18 +134,7 @@ export async function POST(
       // present (so we can name the env var deterministically — e.g.
       // TYPEFULLY_API_KEY for runtime env injection); else synthesize a
       // single-field default (UPPER_SNAKE_<SLUG>_API_KEY).
-      const fields =
-        def?.credentialFields && def.credentialFields.length > 0
-          ? def.credentialFields
-          : [
-              {
-                envVar: `${toolSlug.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`,
-                label: "API Key",
-                required: true,
-                primary: true,
-                ...(def?.helpUrl ? { helpUrl: def.helpUrl } : {}),
-              },
-            ]
+      const fields = byokCredentialFields(toolSlug, def, authScheme)
 
       return apiSuccess({
         mode: "byok",
@@ -94,6 +143,7 @@ export async function POST(
           displayName,
           fields,
           helpUrl: def?.helpUrl,
+          authScheme,
         },
       })
     }
