@@ -16,6 +16,10 @@ describe("deriveComposioAuthModeFromSchemes", () => {
     expect(deriveComposioAuthModeFromSchemes([])).toBe("custom-oauth-required")
   })
 
+  it("keeps S2S_OAUTH2-only toolkits badged as custom setup", () => {
+    expect(deriveComposioAuthModeFromSchemes(["S2S_OAUTH2"])).toBe("custom-oauth-required")
+  })
+
   it("labels no-auth live tools as none", () => {
     expect(deriveComposioAuthModeFromSchemes(["NO_AUTH"])).toBe("none")
   })

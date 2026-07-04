@@ -345,30 +345,20 @@ describe("resolveByokModalProps (PR2.9-fix1 Bug 1B regression guard)", () => {
     }
     const props = resolveByokModalProps(state({ open: true, tool: null, apiKeyForm: form }))
     expect(props).not.toBeNull()
-    // The "" empty-string falsy-coalesce via ?? actually returns "" (not
-    // undefined), so the chain proceeds to catalog only when displayName
-    // is undefined/null. Document the realistic chain behavior:
-    // Empty-string displayName surfaces AS the empty string — the route
-    // should never send it, but if it does we'd see an empty modal title.
-    // This test pins that behavior so a regression to "skip-falsy" doesn't
-    // silently change semantics. If we ever want to skip empty strings,
-    // the fallback chain in resolveByokModalProps needs to be updated
-    // (use `|| undefined` after each step).
-    expect(props!.toolName).toBe("")
+    expect(props!.toolName).toBe("Gmail")
   })
 
-  it("#6 fallback chain: tool null, no displayName, slug not in catalog → falls back to raw slug", () => {
+  it("#6 fallback chain: tool null, no displayName, slug not in catalog → title-cases the slug", () => {
     // Last-resort: tool unknown to client catalog and server didn't
-    // provide displayName. User sees the raw slug as the modal title.
-    // Better than rendering nothing.
+    // provide displayName. User sees a humanized title, never the raw slug.
     const form: ApiKeyFormPayload = {
-      toolSlug: "unknown_future_toolkit_2026",
+      toolSlug: "unknown_future-toolkit",
       // displayName omitted entirely (undefined, not "")
       fields: baseApiKeyForm.fields,
     }
     const props = resolveByokModalProps(state({ open: true, tool: null, apiKeyForm: form }))
     expect(props).not.toBeNull()
-    expect(props!.toolName).toBe("unknown_future_toolkit_2026")
+    expect(props!.toolName).toBe("Unknown Future Toolkit")
   })
 })
 

@@ -379,6 +379,16 @@ describe("classifyToolkitAuthMode (PR2.9)", () => {
       }),
     ).toBe("requires-custom-oauth")
   })
+
+  it("returns requires-custom-oauth for S2S_OAUTH2-only toolkits like Bitwarden", () => {
+    expect(
+      classifyToolkitAuthMode({
+        name: "Bitwarden",
+        composioManagedAuthSchemes: [],
+        authConfigDetails: [{ mode: "S2S_OAUTH2" }],
+      }),
+    ).toBe("requires-custom-oauth")
+  })
 })
 
 describe("ensureBYOKAuthConfig (PR2.9)", () => {

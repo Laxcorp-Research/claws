@@ -67,6 +67,9 @@ export function CredentialsModal({
     for (const f of credentialFields) {
       initial[f.envVar] = prefilledCredentials?.[f.envVar] ?? ""
     }
+    // Intentional modal-open reset/prefill; mirrors the existing modal portal
+    // one-shot pattern and avoids stale credentials between tool switches.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setValues(initial)
     setStatus("idle")
     setErrorMsg("")
@@ -133,7 +136,11 @@ export function CredentialsModal({
     <Modal
       open={open}
       onClose={handleClose}
-      title={`Connect ${toolName}`}
+      title={
+        <span className="text-[16px] font-semibold">
+          Connect <span className="text-[var(--ac)]">{toolName}</span>
+        </span>
+      }
       description={effectiveDescription}
       size="md"
       footer={

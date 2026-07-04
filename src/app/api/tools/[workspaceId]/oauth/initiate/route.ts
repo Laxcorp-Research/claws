@@ -21,6 +21,22 @@ function defaultEnvPrefix(toolSlug: string): string {
   return toolSlug.toUpperCase().replace(/[^A-Z0-9]/g, "_")
 }
 
+function titleCaseSlug(slug: string): string {
+  return slug
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ") || slug
+}
+
+function firstNonEmpty(...values: Array<string | undefined | null>): string | undefined {
+  for (const value of values) {
+    const trimmed = value?.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
 function byokCredentialFields(
   toolSlug: string,
   def: ToolDefinition | undefined,
@@ -96,7 +112,6 @@ export async function POST(
   if (!toolSlug) return ERRORS.VALIDATION("toolSlug is required")
 
   const def = getToolBySlug(toolSlug)
-  const displayName = def?.name ?? toolSlug
   const toolkitSlug = def?.composioToolkitId ?? toolSlug
 
   try {
@@ -114,6 +129,7 @@ export async function POST(
     // managed-OAuth path's downstream helper — saves one round-trip when
     // managed is the chosen path.
     const { toolkit, mode } = await fetchToolkitWithAuthMode(composio, toolkitSlug)
+    const displayName = firstNonEmpty(def?.name, toolkit.name) ?? titleCaseSlug(toolSlug)
 
     if (mode === "requires-custom-oauth") {
       throw new ComposioToolkitRequiresCustomOAuthError(toolkitSlug)
