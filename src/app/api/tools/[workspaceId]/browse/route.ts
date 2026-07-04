@@ -5,6 +5,13 @@ import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { ALL_TOOLS, TOOL_CATEGORIES, type ToolDefinition } from "@/data/tool-catalog"
 import { getComposioCatalogTools } from "@/lib/composio-catalog"
 
+const BROWSE_CACHE_TTL_MS = 5 * 60 * 1000
+let browseCache: { payload: { tools: ToolDefinition[]; categories: string[]; total: number }; expiresAt: number } | null = null
+
+export function __resetBrowseToolsCacheForTests() {
+  if (process.env.NODE_ENV === "test") browseCache = null
+}
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
   if (!user) return ERRORS.UNAUTHORIZED()
@@ -15,6 +22,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   const composioOAuthAvailable = Boolean(process.env.COMPOSIO_API_KEY?.trim())
+  if (browseCache && browseCache.expiresAt > Date.now()) {
+    return apiSuccess({
+      ...browseCache.payload,
+      composioOAuthAvailable,
+    })
+  }
 
   let composioTools: ToolDefinition[] = []
   try {
@@ -24,15 +37,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   }
 
   const staticSlugs = new Set(ALL_TOOLS.map((t) => t.slug))
-  // PR2.8a-fix1 Task 7: comingSoon entries are reserved catalog slugs whose
-  // integration isn't deployable today. Hiding them from Browse keeps users
-  // from clicking Connect on a row that would 422 (RED toolkits) or have no
-  // runtime path (PR2.8c placeholders). Static catalog already flags these;
-  // live Composio toolkits never set comingSoon (filter is a no-op on them).
   const merged: ToolDefinition[] = [
     ...ALL_TOOLS,
     ...composioTools.filter((t) => !staticSlugs.has(t.slug)),
-  ].filter((t) => !t.comingSoon)
+  ]
 
   const categorySet = new Set<string>([...TOOL_CATEGORIES])
   for (const t of merged) {
@@ -44,10 +52,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     return a.localeCompare(b)
   })
 
-  return apiSuccess({
+  const payload = {
     tools: merged,
     categories,
     total: merged.length,
+  }
+  browseCache = { payload, expiresAt: Date.now() + BROWSE_CACHE_TTL_MS }
+
+  return apiSuccess({
+    ...payload,
     composioOAuthAvailable,
   })
 }

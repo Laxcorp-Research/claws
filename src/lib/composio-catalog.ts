@@ -3,7 +3,7 @@ import { getComposio } from "@/lib/composio"
 import type { ToolDefinition } from "@/data/tool-catalog"
 import { redis } from "@/lib/redis"
 
-const REDIS_KEY = "composio:toolkit-catalog:v1"
+const REDIS_KEY = "composio:toolkit-catalog:v2"
 const CACHE_TTL_SEC = 60 * 60
 
 export interface ComposioCatalogFetchResult {
@@ -11,13 +11,13 @@ export interface ComposioCatalogFetchResult {
   fetchedAt: number
 }
 
-function mapAuthToConnectionType(schemes: string[] | undefined): ToolDefinition["connectionType"] {
-  if (!schemes?.length) return "OAUTH_COMPOSIO"
-  const s = schemes.map((x) => x.toUpperCase())
-  if (s.some((x) => x === "API_KEY" || x === "BEARER_TOKEN")) {
-    return "API_KEY"
-  }
-  return "OAUTH_COMPOSIO"
+export function deriveComposioAuthModeFromSchemes(schemes: string[] | undefined): NonNullable<ToolDefinition["authMode"]> {
+  const normalized = (schemes ?? []).map((x) => x.toUpperCase())
+  const hasOAuth = normalized.some((x) => x === "OAUTH2" || x === "OAUTH1")
+  const hasKey = normalized.some((x) => x === "API_KEY" || x === "BEARER" || x === "BEARER_TOKEN" || x === "BASIC" || x === "BASIC_AUTH")
+  if (hasOAuth) return "managed-oauth"
+  if (hasKey) return "byok-api-key"
+  return "custom-oauth-required"
 }
 
 function toolkitItemToToolDefinition(item: ToolkitListResponse.Item): ToolDefinition {
@@ -30,7 +30,11 @@ function toolkitItemToToolDefinition(item: ToolkitListResponse.Item): ToolDefini
     name: item.name,
     description: item.meta?.description,
     category,
-    connectionType: mapAuthToConnectionType(item.auth_schemes),
+    // Live Composio rows always route through oauth/initiate; authMode is a
+    // display hint only. The initiate route re-classifies from toolkit metadata
+    // and remains the connect-time authority.
+    connectionType: "OAUTH_COMPOSIO",
+    authMode: deriveComposioAuthModeFromSchemes(item.auth_schemes),
     composioToolkitId: item.slug,
     isAIProvider: false,
     // Dynamic Composio catalog entries are always OAUTH-managed; their
