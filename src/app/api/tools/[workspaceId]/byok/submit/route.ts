@@ -8,11 +8,59 @@ import {
   createBYOKConnectedAccount,
   classifyToolkitAuthMode,
   fetchToolkitWithAuthMode,
+  resolveToolkitBYOKAuthScheme,
+  type BYOKAuthScheme,
+  type BYOKCredentialInput,
 } from "@/lib/composio-auth-config"
 import { getToolBySlug } from "@/data/tool-catalog"
 import { log } from "@/lib/logger"
 
 export const maxDuration = 30
+
+type BYOKSubmitBody = {
+  toolSlug?: string
+  apiKey?: string
+  credentials?: Record<string, unknown>
+}
+
+function defaultEnvPrefix(toolSlug: string): string {
+  return toolSlug.toUpperCase().replace(/[^A-Z0-9]/g, "_")
+}
+
+function stringCredential(credentials: Record<string, unknown> | undefined, envVar: string): string | null {
+  const value = credentials?.[envVar]
+  return typeof value === "string" && value.trim() ? value : null
+}
+
+function extractCredentialInput(
+  toolSlug: string,
+  authScheme: BYOKAuthScheme,
+  body: BYOKSubmitBody
+): BYOKCredentialInput | null {
+  const def = getToolBySlug(toolSlug)
+  const prefix = defaultEnvPrefix(toolSlug)
+
+  if (authScheme === "API_KEY") {
+    const primaryField = def?.credentialFields?.find((f) => f.primary) ?? def?.credentialFields?.[0]
+    const value =
+      body.apiKey ??
+      (primaryField ? stringCredential(body.credentials, primaryField.envVar) : null) ??
+      stringCredential(body.credentials, `${prefix}_API_KEY`)
+    return value ? { authScheme, apiKey: value } : null
+  }
+
+  if (authScheme === "BEARER_TOKEN") {
+    const value =
+      body.apiKey ??
+      stringCredential(body.credentials, `${prefix}_BEARER_TOKEN`) ??
+      stringCredential(body.credentials, `${prefix}_API_KEY`)
+    return value ? { authScheme, token: value } : null
+  }
+
+  const username = stringCredential(body.credentials, `${prefix}_BASIC_USERNAME`)
+  const password = stringCredential(body.credentials, `${prefix}_BASIC_PASSWORD`)
+  return username && password ? { authScheme, username, password } : null
+}
 
 // PR2.9 — BYOK submit. The wizard / browse-modal POSTs here with the
 // user's API key after the `oauth/initiate` route returned `mode: "byok"`
@@ -53,15 +101,18 @@ export async function POST(
     )
   }
 
-  const body = (await req.json().catch(() => null)) as { toolSlug?: string; apiKey?: string } | null
+  const body = (await req.json().catch(() => null)) as BYOKSubmitBody | null
   if (!body) return ERRORS.VALIDATION("Request body must be JSON")
-  const { toolSlug, apiKey } = body
+  const { toolSlug } = body
 
   if (!toolSlug || typeof toolSlug !== "string") {
     return ERRORS.VALIDATION("toolSlug is required")
   }
-  if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
-    return ERRORS.VALIDATION("apiKey is required")
+  if (
+    (!body.apiKey || typeof body.apiKey !== "string" || !body.apiKey.trim()) &&
+    (!body.credentials || typeof body.credentials !== "object" || Array.isArray(body.credentials))
+  ) {
+    return ERRORS.VALIDATION("apiKey or credentials are required")
   }
 
   const def = getToolBySlug(toolSlug)
@@ -86,13 +137,30 @@ export async function POST(
         400
       )
     }
+    const authScheme = resolveToolkitBYOKAuthScheme(toolkit)
+    if (!authScheme) {
+      return apiError(
+        "BYOK_NOT_SUPPORTED_FOR_TOOLKIT",
+        `Toolkit "${toolkitSlug}" doesn't accept a supported user-supplied credential scheme.`,
+        400
+      )
+    }
+    const credentialInput = extractCredentialInput(toolSlug, authScheme, body)
+    if (!credentialInput) {
+      return ERRORS.VALIDATION(
+        authScheme === "BASIC"
+          ? "Basic auth requires username and password"
+          : "API key is required"
+      )
+    }
 
     const composioUserId = getComposioUserId(user.id)
     const composioConnectionId = await createBYOKConnectedAccount(
       composio,
       composioUserId,
       toolkitSlug,
-      apiKey
+      credentialInput,
+      authScheme
     )
 
     const connection = await prisma.toolConnection.upsert({
