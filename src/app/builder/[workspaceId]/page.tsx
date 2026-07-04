@@ -14,6 +14,26 @@ import { VersionHistoryPanel } from "@/components/builder/version-history-panel"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useBuilderStore } from "@/stores/builder-store"
 import { Loader2, Send, Save, Check, AlertTriangle } from "lucide-react"
+import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
+import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
+
+interface ConfigDriftInfo {
+  isStale: boolean
+  changedAreas: string[]
+}
+
+function formatChangedAreas(areas: string[]): string {
+  if (areas.length === 0) return "workspace configuration"
+  const labels: Record<string, string> = {
+    tools: "tools",
+    agents: "agents",
+    connections: "agent connections",
+    channels: "channels",
+    keys: "API keys",
+    workspace: "workspace settings",
+  }
+  return areas.map((area) => labels[area] ?? area).join(", ")
+}
 
 export default function BuilderPage() {
   const params = useParams()
@@ -25,10 +45,37 @@ export default function BuilderPage() {
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)
+  const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
+  const [driftWorkspaceStatus, setDriftWorkspaceStatus] = useState<string | null>(null)
+
+  const fetchConfigDrift = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/deploy/${workspaceId}/status?drift=1`)
+      const json = await res.json()
+      if (!json.success) return
+      setDriftWorkspaceStatus(json.data?.workspaceStatus ?? null)
+      if (json.data?.drift) {
+        setConfigDrift({
+          isStale: Boolean(json.data.drift.isStale),
+          changedAreas: Array.isArray(json.data.drift.changedAreas) ? json.data.drift.changedAreas : [],
+        })
+      }
+    } catch {
+      // Advisory only; dashboard/setup surfaces remain the backstop.
+    }
+  }, [workspaceId])
+
+  const redeployFlow = useWorkspaceRedeploy({
+    workspaceId,
+    onCompleted: () => {
+      void fetchConfigDrift()
+    },
+  })
 
   useEffect(() => {
     loadWorkspace(workspaceId)
-  }, [workspaceId, loadWorkspace])
+    void fetchConfigDrift()
+  }, [workspaceId, loadWorkspace, fetchConfigDrift])
 
   useEffect(() => {
     if (loadError === 401) router.push("/auth/signin")
@@ -67,7 +114,8 @@ export default function BuilderPage() {
   const handleSave = useCallback(async () => {
     await saveWorkspace()
     setHistoryRefreshKey(prev => prev + 1)
-  }, [saveWorkspace])
+    void fetchConfigDrift()
+  }, [saveWorkspace, fetchConfigDrift])
 
   function handleNavigate(path: string) {
     if (useBuilderStore.getState().isDirty) {
@@ -81,6 +129,8 @@ export default function BuilderPage() {
   function handleBack() {
     handleNavigate("/my-claws")
   }
+
+  const showConfigDrift = configDrift?.isStale === true && (driftWorkspaceStatus === "RUNNING" || driftWorkspaceStatus === "PAUSED" || workspaceStatus === "RUNNING" || workspaceStatus === "PAUSED")
 
   return (
     <div className="flex flex-col h-screen bg-[var(--bg)]">
@@ -138,11 +188,18 @@ export default function BuilderPage() {
         </div>
       </div>
 
-      {workspaceStatus === "RUNNING" && lastSavedAt && !isDirty && (
+      {showConfigDrift && configDrift && (
         <div className="px-3 pt-2">
-          <AlertBanner variant="warning">
-            <p className="font-medium">Saved — not yet deployed</p>
-            <p className="mt-0.5 opacity-80">Redeploy this Claw to apply the latest configuration to the running agents.</p>
+          <AlertBanner
+            variant="warning"
+            actions={
+              <Button variant="outline" size="sm" onClick={() => void redeployFlow.startRedeploy()}>
+                Redeploy
+              </Button>
+            }
+          >
+            <p className="font-medium">Configuration changed since last deploy — redeploy to apply</p>
+            <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
           </AlertBanner>
         </div>
       )}
@@ -246,6 +303,15 @@ export default function BuilderPage() {
           You have unsaved changes. Do you want to save before leaving?
         </p>
       </Modal>
+      <RedeployProgressModal
+        open={redeployFlow.modalOpen}
+        redeploying={redeployFlow.redeploying}
+        status={redeployFlow.status}
+        lastStage={redeployFlow.lastStage}
+        error={redeployFlow.error}
+        onClose={redeployFlow.closeModal}
+        onRetry={redeployFlow.retry}
+      />
     </div>
   )
 }

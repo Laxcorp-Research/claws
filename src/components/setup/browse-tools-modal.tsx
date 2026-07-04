@@ -33,6 +33,8 @@ interface BrowseToolsModalProps {
   onOAuthConnect: (tool: ToolDefinition) => void
   onByokConnect?: (tool: ToolDefinition) => void
   workspaceId?: string
+  pendingOAuthSlug?: string | null
+  oauthErrors?: Record<string, string | undefined>
 }
 
 export function BrowseToolsModal({
@@ -44,6 +46,8 @@ export function BrowseToolsModal({
   onOAuthConnect,
   onByokConnect,
   workspaceId,
+  pendingOAuthSlug = null,
+  oauthErrors = {},
 }: BrowseToolsModalProps) {
   void onByokConnect // reserved for future browse-time BYOK detection; see prop docstring
   const [search, setSearch] = useState("")
@@ -86,7 +90,7 @@ export function BrowseToolsModal({
   }, [open, workspaceId])
 
   const tools = remoteTools ?? ALL_TOOLS
-  const categoryList = remoteCategories ?? [...TOOL_CATEGORIES]
+  const categoryList = useMemo(() => remoteCategories ?? [...TOOL_CATEGORIES], [remoteCategories])
 
   // PR2.8a-fix1 Task 7: belt-and-suspenders comingSoon filter. The browse
   // server endpoint already filters comingSoon entries from its payload, but
@@ -109,6 +113,7 @@ export function BrowseToolsModal({
   const allConnected = useMemo(() => new Set([...connectedSlugs, ...localConnected]), [connectedSlugs, localConnected])
 
   function handleToolClick(tool: ToolDefinition) {
+    if (tool.slug === pendingOAuthSlug) return
     if (tool.connectionType === "API_KEY") {
       setApiKeyTool(tool)
     } else if (tool.connectionType === "OAUTH_COMPOSIO" && composioOAuthAvailable) {
@@ -189,6 +194,8 @@ export function BrowseToolsModal({
             {!browseLoading &&
               filtered.map((tool) => {
                 const isConnected = allConnected.has(tool.slug)
+                const isPendingOAuth = pendingOAuthSlug === tool.slug
+                const oauthError = oauthErrors[tool.slug]
                 return (
                   <div
                     key={tool.slug}
@@ -201,16 +208,22 @@ export function BrowseToolsModal({
                         <div className="text-[10px] text-[var(--tx2)] truncate">
                           {tool.description || tool.category}
                         </div>
+                        {oauthError && (
+                          <div className="text-[10px] text-[var(--err)] mt-0.5">{oauthError}</div>
+                        )}
                       </div>
                     </div>
                     {isConnected ? (
                       <span className="text-[10px] text-[var(--ok)] font-medium shrink-0">Connected</span>
                     ) : tool.connectionType === "OAUTH_COMPOSIO" ? (
                       composioOAuthAvailable ? (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleToolClick(tool)}
-                          className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none shrink-0"
+                          size="sm"
+                          loading={isPendingOAuth}
+                          disabled={isPendingOAuth}
+                          className="shrink-0"
                         >
                           {/* PR2.9-fix1 (Bug 1A): label is auth-mode-correct
                               at first paint, no server round-trip. The hook
@@ -223,7 +236,7 @@ export function BrowseToolsModal({
                               managed-oauth. Safe because the server
                               classifier is canonical anyway. */}
                           {tool.authMode === "byok-api-key" ? "Enter API key" : "Connect with OAuth"}
-                        </button>
+                        </Button>
                       ) : (
                         <span className="text-[10px] text-[var(--tx3)] px-[8px] py-[3px] border border-[var(--bd)] rounded-[4px] shrink-0">
                           OAuth not configured

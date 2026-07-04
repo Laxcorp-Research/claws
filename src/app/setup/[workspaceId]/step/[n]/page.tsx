@@ -18,6 +18,8 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
+import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
@@ -418,7 +420,28 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
   const [driftAfterTools, setDriftAfterTools] = useState<ConfigDriftInfo | null>(null)
   const [applyChangesOpen, setApplyChangesOpen] = useState(false)
-  const [isRedeploying, setIsRedeploying] = useState(false)
+  const [pendingOAuthSlug, setPendingOAuthSlug] = useState<string | null>(null)
+  const [oauthErrors, setOauthErrors] = useState<Record<string, string | undefined>>({})
+  const redeployFlow = useWorkspaceRedeploy({
+    workspaceId,
+    onCompleted: () => {
+      router.push(`/dashboard/${workspaceId}?redeployed=changes-applied`)
+    },
+  })
+
+  const refreshDriftState = useCallback(async () => {
+    try {
+      const statusRes = await fetch(`/api/deploy/${workspaceId}/status?drift=1`)
+      const statusData = await statusRes.json()
+      if (statusData.success && statusData.data?.drift) {
+        setWorkspaceStatus(statusData.data.workspaceStatus ?? null)
+        setDriftAfterTools({
+          isStale: Boolean(statusData.data.drift.isStale),
+          changedAreas: Array.isArray(statusData.data.drift.changedAreas) ? statusData.data.drift.changedAreas : [],
+        })
+      }
+    } catch { /* drift prompt is advisory; dashboard banner remains the backstop */ }
+  }, [workspaceId])
 
   useEffect(() => {
     async function load() {
@@ -472,6 +495,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         if (toolsData.success) {
           setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
         }
+        await refreshDriftState()
         const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null; createdAt?: string | null }> = toolsData.success ? toolsData.data.connections : []
 
         // Given a `{ slug, alternatives? }` pair, pick the slug the wizard
@@ -614,7 +638,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       }
     }
     load()
-  }, [workspaceId])
+  }, [workspaceId, refreshDriftState])
 
   // PR #4 Commit 9: split the `tools` state into three disjoint buckets.
   // `extra` rows come from non-template ToolConnection rows (added via
@@ -651,18 +675,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     // Before this PR the merge was insert-only and disconnect/revoke left
     // stale `status: "connected"` on rows until a manual page reload.
     setTools((prev) => mergeRefreshedTools(prev, existing))
-    try {
-      const statusRes = await fetch(`/api/deploy/${workspaceId}/status?drift=1`)
-      const statusData = await statusRes.json()
-      if (statusData.success && statusData.data?.drift) {
-        setWorkspaceStatus(statusData.data.workspaceStatus ?? null)
-        setDriftAfterTools({
-          isStale: Boolean(statusData.data.drift.isStale),
-          changedAreas: Array.isArray(statusData.data.drift.changedAreas) ? statusData.data.drift.changedAreas : [],
-        })
-      }
-    } catch { /* drift prompt is advisory; dashboard banner remains the backstop */ }
-  }, [workspaceId])
+    await refreshDriftState()
+  }, [workspaceId, refreshDriftState])
 
   // PR #4 Commit 7: Revoke flow state. When a user clicks the Revoke button
   // on an OAUTH_COMPOSIO CONNECTED row, we open a ConfirmDialog (danger
@@ -717,6 +731,18 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const oauth = useOAuthConnection({
     workspaceId,
     callbacks: {
+      onStart: (toolSlug) => {
+        setPendingOAuthSlug(toolSlug)
+        setOauthErrors((prev) => ({ ...prev, [toolSlug]: undefined }))
+        setTools((prev) =>
+          prev.map((t) =>
+            t.slug === toolSlug ? { ...t, status: "connecting" as const, errorMessage: undefined } : t,
+          ),
+        )
+      },
+      onPopupOpened: (toolSlug) => {
+        setPendingOAuthSlug((current) => current === toolSlug ? null : current)
+      },
       onInitiated: (toolSlug) => {
         setTools((prev) =>
           prev.map((t) =>
@@ -725,6 +751,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
       },
       onSuccess: async (toolSlug) => {
+        setPendingOAuthSlug((current) => current === toolSlug ? null : current)
         // Refetch first so connectedAt/status come from the server (not a
         // stale client-side guess). Then also apply an optimistic
         // transition for the rare race where refetch response is in flight.
@@ -736,6 +763,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
       },
       onFailure: (toolSlug, errorMsg) => {
+        setPendingOAuthSlug((current) => current === toolSlug ? null : current)
         setTools((prev) =>
           prev.map((t) =>
             t.slug === toolSlug ? { ...t, status: "error" as const, errorMessage: errorMsg } : t,
@@ -743,6 +771,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
       },
       onTimeout: (toolSlug) => {
+        setPendingOAuthSlug((current) => current === toolSlug ? null : current)
         setTools((prev) =>
           prev.map((t) => {
             if (t.slug !== toolSlug) return t
@@ -754,6 +783,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
       },
       onInitiateError: (toolSlug, error) => {
+        setPendingOAuthSlug((current) => current === toolSlug ? null : current)
+        setOauthErrors((prev) => ({ ...prev, [toolSlug]: error.message }))
         // PR2.8a-fix1 Task 4: COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH is the
         // 422 the route returns when a toolkit has no Composio-managed auth
         // scheme (RED-state — operator must register a custom OAuth/API_KEY
@@ -788,6 +819,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
       },
       onApiKeyFormRequired: (toolSlug, apiKeyForm) => {
+        setPendingOAuthSlug((current) => current === toolSlug ? null : current)
         // PR2.9: initiate route returned BYOK mode. Open the credentials
         // modal pre-populated with the apiKeyForm fields. The hook has
         // bowed out; submission goes through handleByokSubmit below.
@@ -1094,17 +1126,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   }, [workspaceStatus, driftAfterTools, router, workspaceId])
 
   const handleApplyChangesNow = useCallback(async () => {
-    setIsRedeploying(true)
-    try {
-      const res = await fetch(`/api/deploy/${workspaceId}/redeploy`, { method: "POST" })
-      if (res.ok) {
-        setApplyChangesOpen(false)
-        router.push(`/dashboard/${workspaceId}`)
-      }
-    } finally {
-      setIsRedeploying(false)
-    }
-  }, [workspaceId, router])
+    setApplyChangesOpen(false)
+    await redeployFlow.startRedeploy()
+  }, [redeployFlow])
 
   if (isLoading) {
     return <div className="space-y-3"><LoadingSkeleton variant="line" /><LoadingSkeleton variant="card" /><LoadingSkeleton variant="card" /></div>
@@ -1331,6 +1355,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           })
         }
         workspaceId={workspaceId}
+        pendingOAuthSlug={pendingOAuthSlug}
+        oauthErrors={oauthErrors}
       />
       <CustomApiModal open={customApiModal} onClose={() => setCustomApiModal(false)} onSave={handleCustomSave} />
       {/*
@@ -1366,7 +1392,16 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         confirmLabel="Redeploy"
         cancelLabel="Not now"
         variant="warning"
-        loading={isRedeploying}
+        loading={redeployFlow.redeploying}
+      />
+      <RedeployProgressModal
+        open={redeployFlow.modalOpen}
+        redeploying={redeployFlow.redeploying}
+        status={redeployFlow.status}
+        lastStage={redeployFlow.lastStage}
+        error={redeployFlow.error}
+        onClose={redeployFlow.closeModal}
+        onRetry={redeployFlow.retry}
       />
     </>
   )
