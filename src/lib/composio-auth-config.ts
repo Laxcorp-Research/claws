@@ -142,6 +142,9 @@ export type ToolkitAuthMode =
 export function classifyToolkitAuthMode(toolkit: ToolkitMetadata): ToolkitAuthMode {
   if (toolkit.composioManagedAuthSchemes?.length) return "managed-oauth"
   if (resolveToolkitBYOKAuthScheme(toolkit)) return "byok-api-key"
+  // S2S_OAUTH2 is verified unservable for this flow: bitwarden exposes
+  // S2S_OAUTH2 only, with no Composio-managed scheme and no BYOK scheme.
+  // Keep it in the custom setup / coming-soon lane.
   return "requires-custom-oauth"
 }
 

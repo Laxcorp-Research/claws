@@ -14,6 +14,9 @@ export interface ComposioCatalogFetchResult {
 export function deriveComposioAuthModeFromSchemes(schemes: string[] | undefined): NonNullable<ToolDefinition["authMode"]> {
   const normalized = (schemes ?? []).map((x) => x.toUpperCase())
   if (normalized.includes("NO_AUTH")) return "none"
+  // S2S_OAUTH2 is verified unservable through the current connect flow:
+  // bitwarden exposes only S2S_OAUTH2 with no Composio-managed scheme, so it
+  // must stay custom-oauth-required instead of showing a dead connect button.
   const hasOAuth = normalized.some((x) => x === "OAUTH2" || x === "OAUTH1")
   const hasKey = normalized.some((x) => x === "API_KEY" || x === "BEARER" || x === "BEARER_TOKEN" || x === "BASIC" || x === "BASIC_AUTH")
   if (hasOAuth) return "managed-oauth"

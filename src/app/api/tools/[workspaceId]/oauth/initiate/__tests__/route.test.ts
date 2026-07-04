@@ -213,6 +213,33 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
   })
 
+  it("live-catalog BYOK toolkit returns toolkit display name for the connect modal, not raw slug", async () => {
+    mockToolkitsGet.mockResolvedValue({
+      slug: "builtwith",
+      name: "BuiltWith",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+
+    const { status, data } = await callRoute("builtwith")
+    expect(status).toBe(200)
+    expect(data.data.apiKeyForm.displayName).toBe("BuiltWith")
+    expect(data.data.apiKeyForm.displayName).not.toBe("builtwith")
+  })
+
+  it("live-catalog BYOK toolkit title-cases slug when Composio returns no name", async () => {
+    mockToolkitsGet.mockResolvedValue({
+      slug: "twelve_data",
+      name: "",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "API_KEY" }],
+    })
+
+    const { status, data } = await callRoute("twelve_data")
+    expect(status).toBe(200)
+    expect(data.data.apiKeyForm.displayName).toBe("Twelve Data")
+  })
+
   it("BASIC live toolkit returns mode:byok with username + password fields for the modal", async () => {
     mockToolkitsGet.mockResolvedValue({
       slug: "basic-tool",
@@ -239,6 +266,20 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
         primary: false,
       }),
     ])
+    expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
+  })
+
+  it("S2S_OAUTH2-only toolkit (bitwarden) remains custom setup / coming-soon", async () => {
+    mockToolkitsGet.mockResolvedValue({
+      slug: "bitwarden",
+      name: "Bitwarden",
+      composioManagedAuthSchemes: [],
+      authConfigDetails: [{ mode: "S2S_OAUTH2", name: "bitwarden_service_account" }],
+    })
+
+    const { status, data } = await callRoute("bitwarden")
+    expect(status).toBe(422)
+    expect(data.error.code).toBe("COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH")
     expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
   })
 
