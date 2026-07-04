@@ -134,7 +134,7 @@ describe('resolveToolRouterSession', () => {
     });
 
     expect(create).toHaveBeenCalledWith('claws_user-1', {
-      toolkits: { enable: ['linear', 'zoom', 'notion'] },
+      toolkits: { enable: ['linear', 'notion', 'zoom'] },
       connectedAccounts: {
         linear: 'ca_linear_1',
         zoom: 'ca_zoom_1',
@@ -148,6 +148,55 @@ describe('resolveToolRouterSession', () => {
       mcpUrl: 'https://backend.composio.dev/tool_router/trs_new/mcp',
       reused: false,
     });
+  });
+
+  it('enables no_auth toolkits without requiring connectedAccounts entries', async () => {
+    const { composio, create } = buildMockComposio({
+      create: vi.fn().mockResolvedValue({
+        sessionId: 'trs_no_auth',
+        mcp: { url: 'https://backend.composio.dev/tool_router/trs_no_auth/mcp' },
+      }),
+    });
+
+    const result = await resolveToolRouterSession({
+      userId: 'user-1',
+      storedSessionId: null,
+      toolkits: ['hackernews', 'linear'],
+      connectedAccounts: { linear: 'ca_linear_1' },
+      composio,
+    });
+
+    expect(create).toHaveBeenCalledWith('claws_user-1', {
+      toolkits: { enable: ['hackernews', 'linear'] },
+      connectedAccounts: { linear: 'ca_linear_1' },
+      workbench: { enable: false },
+      manageConnections: false,
+    });
+    expect(result?.sessionId).toBe('trs_no_auth');
+  });
+
+  it('reuses stored sessions when no_auth toolkits are enabled but absent from account map', async () => {
+    const { composio, create } = buildMockComposio({
+      retrieve: vi.fn().mockResolvedValue({
+        session_id: 'trs_stored',
+        mcp: { url: 'https://backend.composio.dev/tool_router/trs_stored/mcp' },
+        config: {
+          toolkits: { enabled: ['hackernews', 'linear'] },
+          connected_accounts: { linear: 'ca_linear_1' },
+        },
+      }),
+    });
+
+    const result = await resolveToolRouterSession({
+      userId: 'user-1',
+      storedSessionId: 'trs_stored',
+      toolkits: ['linear', 'hackernews'],
+      connectedAccounts: { linear: 'ca_linear_1' },
+      composio,
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(result?.reused).toBe(true);
   });
 
   it('creates a new session on account-id drift even when the toolkit set is unchanged', async () => {

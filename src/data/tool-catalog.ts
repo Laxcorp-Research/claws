@@ -1,4 +1,4 @@
-export type ToolConnectionType = "API_KEY" | "OAUTH_COMPOSIO"
+export type ToolConnectionType = "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
 
 /**
  * PR2.9-fix1: how an OAUTH_COMPOSIO tool actually authenticates with
@@ -24,7 +24,7 @@ export type ToolConnectionType = "API_KEY" | "OAUTH_COMPOSIO"
  * sync via `scripts/pr2.8a-composio-authconfig-probe.mjs --byok-eligibility`
  * and the `tool-catalog-slug-drift.test.ts` invariants.
  */
-export type ToolAuthMode = "managed-oauth" | "byok-api-key" | "custom-oauth-required"
+export type ToolAuthMode = "managed-oauth" | "byok-api-key" | "custom-oauth-required" | "none"
 
 /**
  * One credential input for a tool. `envVar` is the env-var name OpenClaw's

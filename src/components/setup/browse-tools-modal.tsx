@@ -60,6 +60,8 @@ export function BrowseToolsModal({
   const [remoteCategories, setRemoteCategories] = useState<string[] | null>(null)
   const [browseLoading, setBrowseLoading] = useState(false)
   const [scrollTop, setScrollTop] = useState(0)
+  const [pendingNoAuthSlug, setPendingNoAuthSlug] = useState<string | null>(null)
+  const [noAuthErrors, setNoAuthErrors] = useState<Record<string, string | undefined>>({})
   const listRef = useRef<HTMLDivElement>(null)
 
   const ROW_HEIGHT = 64
@@ -115,10 +117,42 @@ export function BrowseToolsModal({
 
   function handleToolClick(tool: ToolDefinition) {
     if (tool.slug === pendingOAuthSlug) return
+    if (tool.authMode === "none") {
+      void handleNoAuthAdd(tool)
+      return
+    }
     if (tool.connectionType === "API_KEY" && tool.credentialFields.length > 0) {
       setApiKeyTool(tool)
-    } else if ((tool.connectionType === "OAUTH_COMPOSIO" || tool.credentialFields.length === 0) && composioOAuthAvailable) {
+    } else if ((tool.connectionType === "OAUTH_COMPOSIO" || tool.connectionType === "NO_AUTH" || tool.credentialFields.length === 0) && composioOAuthAvailable) {
       onOAuthConnect(tool)
+    }
+  }
+
+  async function handleNoAuthAdd(tool: ToolDefinition) {
+    if (!workspaceId || pendingNoAuthSlug === tool.slug) return
+    setPendingNoAuthSlug(tool.slug)
+    setNoAuthErrors((prev) => ({ ...prev, [tool.slug]: undefined }))
+    try {
+      const res = await fetch(`/api/tools/${workspaceId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolSlug: tool.slug,
+          displayName: tool.name,
+          connectionType: "NO_AUTH",
+        }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        setNoAuthErrors((prev) => ({ ...prev, [tool.slug]: data.error?.message || "Failed to add tool" }))
+        return
+      }
+      setLocalConnected((prev) => new Set([...prev, tool.slug]))
+      onConnect(tool)
+    } catch {
+      setNoAuthErrors((prev) => ({ ...prev, [tool.slug]: "Network error" }))
+    } finally {
+      setPendingNoAuthSlug((current) => current === tool.slug ? null : current)
     }
   }
 
@@ -206,8 +240,10 @@ export function BrowseToolsModal({
                 {visibleTools.map((tool) => {
                 const isConnected = allConnected.has(tool.slug)
                 const isPendingOAuth = pendingOAuthSlug === tool.slug
+                const isPendingNoAuth = pendingNoAuthSlug === tool.slug
                 const oauthError = oauthErrors[tool.slug]
-                const brokeredByComposio = tool.connectionType === "OAUTH_COMPOSIO" || tool.credentialFields.length === 0
+                const noAuthError = noAuthErrors[tool.slug]
+                const brokeredByComposio = tool.connectionType === "OAUTH_COMPOSIO" || tool.connectionType === "NO_AUTH" || tool.credentialFields.length === 0
                 const customOauthBlocked = tool.authMode === "custom-oauth-required"
                 const comingSoonReason = tool.comingSoonReason ?? "Requires a Claws-owned OAuth app before connection is available."
                 return (
@@ -226,6 +262,9 @@ export function BrowseToolsModal({
                         {oauthError && (
                           <div className="text-[10px] text-[var(--err)] mt-0.5">{oauthError}</div>
                         )}
+                        {noAuthError && (
+                          <div className="text-[10px] text-[var(--err)] mt-0.5">{noAuthError}</div>
+                        )}
                       </div>
                     </div>
                     {isConnected ? (
@@ -234,6 +273,17 @@ export function BrowseToolsModal({
                       <Badge variant="warning" title={comingSoonReason} className="shrink-0">
                         Coming Soon
                       </Badge>
+                    ) : tool.authMode === "none" ? (
+                      <Button
+                        type="button"
+                        onClick={() => handleToolClick(tool)}
+                        size="sm"
+                        loading={isPendingNoAuth}
+                        disabled={isPendingNoAuth}
+                        className="shrink-0"
+                      >
+                        Add
+                      </Button>
                     ) : brokeredByComposio ? (
                       composioOAuthAvailable ? (
                         <Button

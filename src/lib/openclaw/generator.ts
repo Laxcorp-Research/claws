@@ -193,6 +193,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     .filter(
       (tc) =>
         (tc.connectionType === 'OAUTH_COMPOSIO' && tc.status === 'CONNECTED') ||
+        (tc.connectionType === 'NO_AUTH' && tc.status === 'CONNECTED') ||
         (tc.connectionType === 'API_KEY' &&
           tc.status !== 'NEEDS_CREDENTIALS' &&
           !!tc.encryptedCredentials),
@@ -272,6 +273,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
       const session = await resolveToolRouterSession({
         userId: workspace.user.id,
         storedSessionId: workspace.composioToolRouterSessionId ?? null,
+        toolkits: skillsEmission.uncuratedToolSlugs.map((slug) => getToolBySlug(slug)?.composioToolkitId ?? slug),
         connectedAccounts: skillsEmission.uncuratedToolConnectedAccounts,
       });
       if (session) {
@@ -775,7 +777,7 @@ function generateSkillsEntriesConfig(
       if (!toolConn.composioConnectionId) {
         console.warn(
           `[generator] OAUTH_COMPOSIO tool ${toolConn.toolSlug} is uncurated but has no composioConnectionId; ` +
-            `omitting it from Tool Router session enable/map to avoid an unbound toolkit that fails at runtime.`,
+            `omitting it from Tool Router session enable/map to avoid an unbound OAuth toolkit.`,
         );
         continue;
       }
@@ -815,6 +817,21 @@ function generateSkillsEntriesConfig(
           },
         },
       };
+    }
+  }
+
+  // --- NO_AUTH branch -----------------------------------------------------
+  // B2.1: accountless Tool Router toolkits. These are valid with no
+  // connectedAccounts binding; include them in toolkits.enable only.
+  for (const toolConn of workspace.toolConnections) {
+    if (toolConn.connectionType !== 'NO_AUTH') continue;
+    if (toolConn.status !== 'CONNECTED') continue;
+
+    const matchingSkills = workspace.compatibleToolSkills.filter((s) =>
+      s.compatibleTools.includes(toolConn.toolSlug),
+    );
+    if (matchingSkills.length === 0) {
+      uncuratedToolSlugs.push(toolConn.toolSlug);
     }
   }
 
@@ -2006,7 +2023,7 @@ type SkillRecord = {
 type ToolConnectionRecord = {
   toolSlug: string;
   displayName: string | null;
-  connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE' | string;
+  connectionType: 'API_KEY' | 'OAUTH_COMPOSIO' | 'CHANNEL_NATIVE' | 'NO_AUTH' | string;
   status: string;
   encryptedCredentials: string | null;
   /** Composio's opaque connected-account id (ca_...). Populated for

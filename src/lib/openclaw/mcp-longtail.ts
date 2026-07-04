@@ -129,6 +129,8 @@ export async function resolveToolRouterSession(params: {
   storedSessionId: string | null;
   /** Composio toolkit slug → connected account id for uncurated tools. */
   connectedAccounts: Record<string, string>;
+  /** Full toolkit allowlist, including no_auth toolkits without accounts. */
+  toolkits?: string[];
   /** Injectable for tests. Defaults to the platform singleton. */
   composio?: Composio;
 }): Promise<ResolvedToolRouterSession | null> {
@@ -136,7 +138,8 @@ export async function resolveToolRouterSession(params: {
   if (!composio) return null;
 
   const desiredAccounts = normalizeConnectedAccountMap(params.connectedAccounts);
-  const desired = new Set(Object.keys(desiredAccounts));
+  const desiredToolkitList = normalizeToolkitList(params.toolkits ?? Object.keys(desiredAccounts));
+  const desired = new Set(desiredToolkitList);
 
   if (params.storedSessionId) {
     try {
@@ -168,13 +171,17 @@ export async function resolveToolRouterSession(params: {
   }
 
   const session = await composio.toolRouter.create(getComposioUserId(params.userId), {
-    toolkits: { enable: Object.keys(desiredAccounts) },
+    toolkits: { enable: desiredToolkitList },
     connectedAccounts: desiredAccounts,
     workbench: { enable: false },
     manageConnections: false,
   });
 
   return { sessionId: session.sessionId, mcpUrl: session.mcp.url, reused: false };
+}
+
+function normalizeToolkitList(input: string[]): string[] {
+  return [...new Set(input.map((toolkit) => toolkit.trim().toLowerCase()).filter(Boolean))].sort();
 }
 
 function normalizeConnectedAccountMap(input: Record<string, string>): Record<string, string> {
