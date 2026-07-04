@@ -16,6 +16,19 @@ import type { ToolRowStatus } from "@/components/setup/tool-row"
 import { getToolBySlug } from "@/data/tool-catalog"
 import type { ApiKeyFormPayload } from "@/lib/oauth/use-oauth-connection"
 
+export function titleCaseToolSlug(slug: string): string {
+  return slug
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ") || slug
+}
+
+function nonEmpty(value: string | undefined | null): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
 export interface ToolState {
   slug: string
   name: string
@@ -162,7 +175,7 @@ export interface BYOKModalState {
  *   1. state.tool.name              — wizard template-row click
  *   2. state.apiKeyForm.displayName — server-provided (initiate response)
  *   3. getToolBySlug(slug)?.name    — client catalog lookup
- *   4. state.apiKeyForm.toolSlug    — raw slug, last-ditch
+ *   4. title-cased state.apiKeyForm.toolSlug — last-ditch display fallback
  *
  * The route's initiate response always sets displayName, so #2 is the
  * common case for Browse-clicked tools. #3 + #4 are belt-and-suspenders.
@@ -174,10 +187,10 @@ export function resolveByokModalProps(state: BYOKModalState): {
 } | null {
   if (!state.open || !state.apiKeyForm) return null
   const toolName =
-    state.tool?.name
-    ?? state.apiKeyForm.displayName
-    ?? getToolBySlug(state.apiKeyForm.toolSlug)?.name
-    ?? state.apiKeyForm.toolSlug
+    nonEmpty(state.tool?.name)
+    ?? nonEmpty(state.apiKeyForm.displayName)
+    ?? nonEmpty(getToolBySlug(state.apiKeyForm.toolSlug)?.name)
+    ?? titleCaseToolSlug(state.apiKeyForm.toolSlug)
   return {
     toolName,
     helpUrl: state.apiKeyForm.helpUrl,

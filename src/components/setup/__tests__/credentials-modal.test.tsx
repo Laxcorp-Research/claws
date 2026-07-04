@@ -19,6 +19,22 @@ afterEach(() => {
 })
 
 describe("CredentialsModal", () => {
+  it("renders connect title with the display name, not the raw live-catalog slug", () => {
+    render(
+      <CredentialsModal
+        open={true}
+        onClose={() => {}}
+        toolName="BuiltWith"
+        credentialFields={singleField}
+        onSave={async () => ({ success: true })}
+      />,
+    )
+
+    expect(screen.getByRole("heading", { name: "Connect BuiltWith" })).toBeDefined()
+    expect(screen.queryByRole("heading", { name: "Connect builtwith" })).toBeNull()
+    expect(screen.getByText("BuiltWith").className).toContain("text-[var(--ac)]")
+  })
+
   it("renders one input for a single-credential tool", () => {
     render(
       <CredentialsModal
