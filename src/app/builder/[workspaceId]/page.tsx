@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { AlertBanner } from "@/components/ui/alert-banner"
 import { Modal } from "@/components/ui/modal"
 import { AgentCanvas } from "@/components/builder/agent-canvas"
 import { AgentSidebar } from "@/components/builder/agent-sidebar"
@@ -136,6 +137,15 @@ export default function BuilderPage() {
           </Button>
         </div>
       </div>
+
+      {workspaceStatus === "RUNNING" && lastSavedAt && !isDirty && (
+        <div className="px-3 pt-2">
+          <AlertBanner variant="warning">
+            <p className="font-medium">Saved — not yet deployed</p>
+            <p className="mt-0.5 opacity-80">Redeploy this Claw to apply the latest configuration to the running agents.</p>
+          </AlertBanner>
+        </div>
+      )}
 
       {hasDraftRecovery && (
         <div className="bg-[var(--warnbg)] border-b border-[var(--warn)] px-[14px] py-[8px] flex items-center justify-between">

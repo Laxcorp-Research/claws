@@ -42,6 +42,21 @@ import yaml from 'yaml';
 // payload shape. See docs/COMPOSIO_RUNTIME_CONTRACT.md §"Endpoint path drift".
 const COMPOSIO_EXECUTE_ENDPOINT = 'https://backend.composio.dev/api/v3/tools/execute';
 
+type JsonObject = Record<string, unknown>;
+
+type ScheduledTaskConfig = {
+  name?: string;
+  schedule: string;
+  timezone?: string;
+  isolated?: boolean;
+  urgent?: boolean;
+  prompt: string;
+  fullContext?: boolean;
+  channelDelivery?: {
+    channel: string;
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -346,7 +361,7 @@ function generateOpenClawConfig(
     const agentId = toAgentId(agent.name);
     const isOrchestrator = agent.role === 'ORCHESTRATOR';
 
-    const entry: Record<string, any> = {
+    const entry: JsonObject = {
       id: agentId,
       name: agent.name,
       // Each agent gets its own workspace directory
@@ -409,7 +424,7 @@ function generateOpenClawConfig(
   }
 
   // Build the final config - ONLY use fields that exist in OpenClaw's Zod schema
-  const config: Record<string, any> = {
+  const config: JsonObject = {
     gateway: {
       mode: 'local',
       bind: 'lan',  // Required for Docker (0.0.0.0)
@@ -544,8 +559,8 @@ function generateOpenClawConfig(
 // OpenClaw auto-discovers tokens from TELEGRAM_BOT_TOKEN, DISCORD_BOT_TOKEN, etc.
 // ---------------------------------------------------------------------------
 
-function generateChannelsConfig(workspace: WorkspaceWithRelations): Record<string, any> {
-  const channels: Record<string, any> = {};
+function generateChannelsConfig(workspace: WorkspaceWithRelations): JsonObject {
+  const channels: JsonObject = {};
 
   for (const channel of workspace.channelConnections) {
     switch (channel.channelType) {
@@ -894,8 +909,8 @@ function generateCronJobs(
   // scheduledTasks crons and to build their sessionTarget for the
   // non-isolated path.
   orchestratorAgentSlug: string,
-): any[] {
-  const jobs: any[] = [];
+): JsonObject[] {
+  const jobs: JsonObject[] = [];
 
   // Time-of-day heartbeat (daily/weekday) is emitted here as a cron job.
   // Pure interval heartbeats live in agents.defaults.heartbeat and are
@@ -1032,19 +1047,18 @@ function generateAgentWorkspaceFiles(
   mcpEnabled: boolean,
 ): AgentWorkspaceFiles {
   const isOrchestrator = agent.role === 'ORCHESTRATOR';
-  const isCritic = agent.role === 'CRITIC';
   const clawName = workspace.clawTemplate?.name ?? workspace.name;
 
   return {
     'SOUL.md': generateSoulMd(agent, clawName),
-    'AGENTS.md': generateAgentsMd(agent, orchestrator, workers, critic, clawName),
+    'AGENTS.md': generateAgentsMd(agent, orchestrator, workers, critic),
     'USER.md': generateUserMd(workspace),
     'IDENTITY.md': generateIdentityMd(agent),
     'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled),
     'HEARTBEAT.md': isOrchestrator
-      ? generateHeartbeatMd(orchestrator, workspace)
+      ? generateHeartbeatMd(orchestrator)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
-    'BOOT.md': generateBootMd(agent, clawName),
+    'BOOT.md': generateBootMd(agent),
     skills: generateSkillFiles(agent),
   };
 }
@@ -1203,7 +1217,6 @@ function generateAgentsMd(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
-  clawName: string,
 ): string {
   // If the agent has custom agentsMd from the Builder, use it
   if (agent.agentsMd?.trim()) {
@@ -1216,12 +1229,12 @@ function generateAgentsMd(
 
   switch (agent.role) {
     case 'ORCHESTRATOR':
-      return generateOrchestratorAgentsMd(orchestrator, workers, critic, clawName);
+      return generateOrchestratorAgentsMd(orchestrator, workers, critic);
     case 'CRITIC':
-      return generateCriticAgentsMd(critic, clawName);
+      return generateCriticAgentsMd(critic);
     case 'WORKER':
     default:
-      return generateWorkerAgentsMd(agent, clawName);
+      return generateWorkerAgentsMd();
   }
 }
 
@@ -1229,7 +1242,6 @@ function generateOrchestratorAgentsMd(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
-  clawName: string,
 ): string {
   const workerList = workers
     .map(w => `- **${w.name}** (agent ID: \`${toAgentId(w.name)}\`): ${w.description || 'Specialized worker'}`)
@@ -1302,7 +1314,7 @@ When triggered by heartbeat:
 `;
 }
 
-function generateCriticAgentsMd(critic: AgentWithRelations, clawName: string): string {
+function generateCriticAgentsMd(critic: AgentWithRelations): string {
   return `# Session Start Protocol
 
 Every session, before doing anything else:
@@ -1327,7 +1339,7 @@ Minimum passing score: ${critic.qualityThreshold ?? 8}/10
 `;
 }
 
-function generateWorkerAgentsMd(agent: AgentWithRelations, clawName: string): string {
+function generateWorkerAgentsMd(): string {
   return `# Session Start Protocol
 
 Every session, before doing anything else:
@@ -1456,6 +1468,13 @@ Their names start with \`composio__\`. Rules for using them:
 - NEVER fabricate, guess, or approximate a result for a failed or
   unavailable tool call. A confident-sounding wrong answer is worse than
   an honest failure report.
+
+## Tool Connection Errors
+If a tool call fails because a connection is missing, expired, revoked, unauthorized, or needs credentials:
+- Tell the human to open this Claw in the Claws platform and use Manage Tools to reconnect or update that tool.
+- Report the failed tool name and the exact error text.
+- Never tell the human to open internal runtime settings, local-only URLs, ports, local dashboards, environment variables, or internal container settings.
+- Never fabricate or guess a result for a failed tool call.
 `;
 
 function generateToolsMd(
@@ -1493,6 +1512,13 @@ function generateToolsMd(
     return `# TOOLS.md - Environment Notes
 
 No external tools are connected yet. The human can connect tools in the Claws setup wizard.
+
+## Tool Connection Errors
+If a tool call fails because a connection is missing, expired, revoked, unauthorized, or needs credentials:
+- Tell the human to open this Claw in the Claws platform and use Manage Tools to reconnect or update that tool.
+- Report the failed tool name and the exact error text.
+- Never tell the human to open internal runtime settings, local-only URLs, ports, local dashboards, environment variables, or internal container settings.
+- Never fabricate or guess a result for a failed tool call.
 ${mcpSection}`;
   }
 
@@ -1505,7 +1531,14 @@ ${toolSections.join('\n\n')}
 ## Notes
 
 - Tool credentials are configured automatically via openclaw.json skills.entries. Use the corresponding skills to interact with these tools.
-- If a tool connection fails, advise the human to reconnect in the Claws Settings page.
+- If a tool connection fails, advise the human to reconnect in the Claws platform Manage Tools page for this Claw.
+
+## Tool Connection Errors
+If a tool call fails because a connection is missing, expired, revoked, unauthorized, or needs credentials:
+- Tell the human to open this Claw in the Claws platform and use Manage Tools to reconnect or update that tool.
+- Report the failed tool name and the exact error text.
+- Never tell the human to open internal runtime settings, local-only URLs, ports, local dashboards, environment variables, or internal container settings.
+- Never fabricate or guess a result for a failed tool call.
 ${mcpSection}`;
 }
 
@@ -1517,10 +1550,7 @@ ${mcpSection}`;
 // with "Read HEARTBEAT.md if it exists. Follow it strictly."
 // ---------------------------------------------------------------------------
 
-function generateHeartbeatMd(
-  orchestrator: AgentWithRelations,
-  workspace: WorkspaceWithRelations,
-): string {
+function generateHeartbeatMd(orchestrator: AgentWithRelations): string {
   if (!orchestrator.heartbeatMd?.trim()) {
     return `# HEARTBEAT.md
 
@@ -1541,7 +1571,7 @@ function generateHeartbeatMd(
 // We use it for startup verification.
 // ---------------------------------------------------------------------------
 
-function generateBootMd(agent: AgentWithRelations, clawName: string): string {
+function generateBootMd(agent: AgentWithRelations): string {
   if (agent.role !== 'ORCHESTRATOR') {
     return `# BOOT.md
 
@@ -1700,7 +1730,7 @@ type WorkspaceWithRelations = {
   name: string;
   timezone?: string | null;
   userContext?: string | null;
-  scheduledTasks?: any;
+  scheduledTasks?: ScheduledTaskConfig[] | null;
   containerHost?: string | null;
   agents: AgentWithRelations[];
   toolConnections: ToolConnectionRecord[];
