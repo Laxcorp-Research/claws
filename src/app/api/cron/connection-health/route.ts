@@ -6,6 +6,7 @@ import { log } from "@/lib/logger"
 export const maxDuration = 55
 
 const CONNECTION_HEALTH_BATCH_LIMIT = 50
+const MCP_SESSION_HEALTH_BATCH_LIMIT = 25
 
 // @composio/core v0.6.8 connected-account statuses in the local type defs:
 // INITIATED | ACTIVE | FAILED | EXPIRED | INACTIVE. REVOKED is not in those
@@ -27,6 +28,21 @@ type ConnectionHealthDecision =
   | { kind: "dead"; result: DeadComposioStatus; status: DeadDbStatus }
   | { kind: "unreachable"; result: "UNREACHABLE"; reason: string }
 
+type McpSessionHealthDecision =
+  | { kind: "healthy"; status: "HEALTHY" }
+  | { kind: "dead"; status: "DEAD"; error: string }
+  | { kind: "unreachable"; status: "UNREACHABLE"; error: string }
+
+interface ToolRouterSessionRetrieveClient {
+  client?: {
+    toolRouter?: {
+      session?: {
+        retrieve(sessionId: string): Promise<unknown>
+      }
+    }
+  }
+}
+
 export function mapConnectedAccountStatus(rawStatus: unknown): ConnectionHealthDecision {
   const status = typeof rawStatus === "string" ? rawStatus.trim().toUpperCase() : ""
 
@@ -43,6 +59,47 @@ export function mapConnectedAccountStatus(rawStatus: unknown): ConnectionHealthD
     kind: "unreachable",
     result: "UNREACHABLE",
     reason: status ? `unknown-status:${status}` : "missing-status",
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function errorStatus(err: unknown): number | null {
+  if (!err || typeof err !== "object") return null
+  const record = err as Record<string, unknown>
+  for (const key of ["status", "statusCode", "code"]) {
+    const value = record[key]
+    if (typeof value === "number") return value
+    if (typeof value === "string" && /^\d+$/.test(value)) return Number(value)
+  }
+  return null
+}
+
+function isDeadSessionError(err: unknown): boolean {
+  const status = errorStatus(err)
+  if (status === 404) return true
+  return /404|not\s*found|unknown\s*session|dead\s*session|invalid\s*session/i.test(errorMessage(err))
+}
+
+async function retrieveToolRouterSession(composio: unknown, sessionId: string): Promise<McpSessionHealthDecision> {
+  try {
+    const rawClient = (composio as ToolRouterSessionRetrieveClient).client
+    const session = await rawClient?.toolRouter?.session?.retrieve(sessionId)
+    if (!session || typeof session !== "object") {
+      return { kind: "dead", status: "DEAD", error: "Tool Router session retrieve returned no session" }
+    }
+    const retrievedId = (session as { session_id?: unknown }).session_id
+    if (typeof retrievedId !== "string" || !retrievedId.trim()) {
+      return { kind: "dead", status: "DEAD", error: "Tool Router session retrieve returned no session_id" }
+    }
+    return { kind: "healthy", status: "HEALTHY" }
+  } catch (err) {
+    if (isDeadSessionError(err)) {
+      return { kind: "dead", status: "DEAD", error: errorMessage(err) }
+    }
+    return { kind: "unreachable", status: "UNREACHABLE", error: errorMessage(err) }
   }
 }
 
@@ -68,6 +125,13 @@ export async function GET(req: NextRequest) {
     markedDead: 0,
     unreachable: 0,
     errors: 0,
+    mcpSessions: {
+      checked: 0,
+      healthy: 0,
+      dead: 0,
+      unreachable: 0,
+      errors: 0,
+    },
   }
 
   const connections = await prisma.toolConnection.findMany({
@@ -179,6 +243,89 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const sessionWorkspaces = await prisma.workspace.findMany({
+    where: {
+      status: { in: ["RUNNING", "PAUSED"] },
+      composioToolRouterSessionId: { not: null },
+    },
+    orderBy: [
+      { mcpSessionCheckedAt: { sort: "asc", nulls: "first" } },
+      { updatedAt: "asc" },
+    ],
+    take: MCP_SESSION_HEALTH_BATCH_LIMIT,
+    select: {
+      id: true,
+      composioToolRouterSessionId: true,
+    },
+  })
+
+  for (const workspace of sessionWorkspaces) {
+    const sessionId = workspace.composioToolRouterSessionId
+    if (!sessionId) continue
+    summary.mcpSessions.checked++
+
+    // Retrieve-only by design: it is a cheap subsecond server-side session
+    // check. An endpoint-dead-with-healthy-retrieve gap is still caught by the
+    // deploy boot probe or by runtime/tool-call failures; direct MCP probes stay
+    // out of this hourly sweep so RUNNING workspaces cannot exhaust maxDuration.
+    const decision = await retrieveToolRouterSession(composio, sessionId)
+    try {
+      if (decision.kind === "healthy") {
+        summary.mcpSessions.healthy++
+        await prisma.workspace.update({
+          where: { id: workspace.id },
+          data: {
+            mcpSessionHealthStatus: "HEALTHY",
+            mcpSessionCheckedAt: checkedAt,
+            mcpSessionLastError: null,
+          },
+        })
+      } else if (decision.kind === "dead") {
+        summary.mcpSessions.dead++
+        await prisma.workspace.update({
+          where: { id: workspace.id },
+          data: {
+            mcpSessionHealthStatus: "DEAD",
+            mcpSessionCheckedAt: checkedAt,
+            mcpSessionLastError: decision.error,
+          },
+        })
+        log.warn("connection-health: marked dead Tool Router session", {
+          category: "connection_health",
+          event: "mcp_session_dead",
+          workspaceId: workspace.id,
+          sessionIdTail: sessionId.slice(-8),
+          error: decision.error,
+        })
+      } else {
+        summary.mcpSessions.unreachable++
+        await prisma.workspace.update({
+          where: { id: workspace.id },
+          data: {
+            mcpSessionHealthStatus: "UNREACHABLE",
+            mcpSessionCheckedAt: checkedAt,
+            mcpSessionLastError: decision.error,
+          },
+        })
+        log.warn("connection-health: Tool Router session check unreachable", {
+          category: "connection_health",
+          event: "mcp_session_unreachable",
+          workspaceId: workspace.id,
+          sessionIdTail: sessionId.slice(-8),
+          error: decision.error,
+        })
+      }
+    } catch (err) {
+      summary.mcpSessions.errors++
+      log.error("connection-health: failed to persist Tool Router session check", {
+        category: "connection_health",
+        event: "mcp_session_persist_failed",
+        workspaceId: workspace.id,
+        error: errorMessage(err),
+      })
+    }
+  }
+
   const durationMs = Date.now() - startedAt
   log.info("connection-health: sweep complete", {
     category: "connection_health",
@@ -192,6 +339,8 @@ export async function GET(req: NextRequest) {
 
 export const __internal = {
   CONNECTION_HEALTH_BATCH_LIMIT,
+  MCP_SESSION_HEALTH_BATCH_LIMIT,
   DEAD_CONNECTION_STATUS,
   mapConnectedAccountStatus,
+  retrieveToolRouterSession,
 }

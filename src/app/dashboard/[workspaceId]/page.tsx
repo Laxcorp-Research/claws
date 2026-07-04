@@ -47,6 +47,9 @@ interface WorkspaceInfo {
   lastHealthCheck?: string | null
   // PR-4: health monitor's last probe classification — drives the 3-state banner.
   lastHealthReason?: string | null
+  mcpSessionHealthStatus?: "HEALTHY" | "DEAD" | "UNREACHABLE" | null
+  mcpSessionCheckedAt?: string | null
+  mcpSessionLastError?: string | null
   apiKeySource?: ApiKeySource
 }
 
@@ -448,6 +451,9 @@ export default function DashboardPage() {
   const isError = workspace?.healthStatus === "UNHEALTHY" || workspace?.status === "ERROR"
   const showRedeploy = workspace?.status === "RUNNING" || workspace?.status === "ERROR"
   const showConfigDrift = configDrift?.isStale === true && (workspace?.status === "RUNNING" || workspace?.status === "PAUSED")
+  const showMcpSessionDead =
+    workspace?.mcpSessionHealthStatus === "DEAD" &&
+    (workspace.status === "RUNNING" || workspace.status === "PAUSED")
   const redeploying = redeployFlow.redeploying
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
@@ -518,6 +524,28 @@ export default function DashboardPage() {
           <>
             <p className="font-medium">Configuration changed since last deploy — redeploy to apply</p>
             <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
+          </>
+        ),
+        actions: (
+          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+            Redeploy
+          </Button>
+        ),
+      })
+    }
+
+    if (showMcpSessionDead) {
+      list.push({
+        key: "mcp-session-dead",
+        priority: 3,
+        variant: "warning",
+        icon: <RefreshCw className="w-4 h-4" />,
+        content: (
+          <>
+            <p className="font-medium">Long-tail tools disconnected — redeploy to restore</p>
+            <p className="mt-0.5 opacity-80">
+              The Tool Router session for long-tail tools is no longer available. Redeploy to bind a fresh session.
+            </p>
           </>
         ),
         actions: (
@@ -748,7 +776,7 @@ export default function DashboardPage() {
     list.sort((a, b) => a.priority - b.priority)
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift, showMcpSessionDead])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {

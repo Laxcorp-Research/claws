@@ -15,6 +15,9 @@ function baseWorkspace(overrides: Record<string, unknown> = {}) {
     channelConfigEncrypted: 'enc-channel-v1',
     gatewayToken: 'enc-gateway-token',
     composioToolRouterSessionId: 'trs-original',
+    mcpSessionHealthStatus: null,
+    mcpSessionCheckedAt: null,
+    mcpSessionLastError: null,
     lastHealthCheck: new Date('2026-01-01T00:00:00Z'),
     lastEnvReconcileAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -211,6 +214,17 @@ describe('buildWorkspaceConfigFingerprint', () => {
   it('changing only composioToolRouterSessionId does not change the hash', async () => {
     const before = await fingerprintFor(baseWorkspace());
     const after = await fingerprintFor(baseWorkspace({ composioToolRouterSessionId: 'trs-recreated' }));
+
+    expect(after.hash).toBe(before.hash);
+  });
+
+  it('changing only MCP session health metadata does not change the hash', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const after = await fingerprintFor(baseWorkspace({
+      mcpSessionHealthStatus: 'DEAD',
+      mcpSessionCheckedAt: new Date('2026-07-04T21:20:00Z'),
+      mcpSessionLastError: 'retrieve returned 404',
+    }));
 
     expect(after.hash).toBe(before.hash);
   });
