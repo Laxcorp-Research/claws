@@ -21,7 +21,8 @@
 // pure helpers in tools-state.test.ts.
 
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest"
-import { render, screen, cleanup, waitFor } from "@testing-library/react"
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react"
+import { useState } from "react"
 import { BrowseToolsModal } from "@/components/setup/browse-tools-modal"
 
 const gmailCatalogTool = {
@@ -207,5 +208,39 @@ describe("BrowseToolsModal — connected-state reflection", () => {
     )
     expect(screen.getByText("Connected")).toBeDefined()
     expect(screen.queryByRole("button", { name: "Connect with OAuth" })).toBeNull()
+  })
+
+  it("shows OAuth loading immediately and blocks double-click while initiate is pending", async () => {
+    const onOAuthConnect = vi.fn()
+    function Harness() {
+      const [pending, setPending] = useState<string | null>(null)
+      return (
+        <BrowseToolsModal
+          open={true}
+          onClose={() => {}}
+          connectedSlugs={[]}
+          onConnect={() => {}}
+          composioOAuthAvailable={true}
+          onOAuthConnect={(tool) => {
+            onOAuthConnect(tool)
+            setPending(tool.slug)
+          }}
+          workspaceId="cmo0cr0z5000004l24n0z8j1w"
+          pendingOAuthSlug={pending}
+        />
+      )
+    }
+
+    render(<Harness />)
+    await waitFor(() => expect(screen.getByText("Gmail")).toBeDefined())
+
+    const connect = screen.getByRole("button", { name: "Connect with OAuth" })
+    fireEvent.click(connect)
+
+    const loading = screen.getByRole("button", { name: "Connect with OAuth" })
+    expect((loading as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(loading)
+
+    expect(onOAuthConnect).toHaveBeenCalledTimes(1)
   })
 })
