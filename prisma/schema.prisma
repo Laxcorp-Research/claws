@@ -501,6 +501,8 @@ model ToolConnection {
   status       ToolConnectionStatus @default(PENDING)
   lastTestedAt DateTime?
   lastError    String?
+  lastConnectionCheckAt     DateTime?
+  lastConnectionCheckResult String?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

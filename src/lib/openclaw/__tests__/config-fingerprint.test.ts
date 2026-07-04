@@ -93,6 +93,8 @@ function baseWorkspace(overrides: Record<string, unknown> = {}) {
         status: 'CONNECTED',
         encryptedCredentials: null,
         composioConnectionId: 'ca_gmail_v1',
+        lastConnectionCheckAt: null,
+        lastConnectionCheckResult: null,
       },
     ],
     ...overrides,
@@ -211,6 +213,40 @@ describe('buildWorkspaceConfigFingerprint', () => {
     const after = await fingerprintFor(baseWorkspace({ composioToolRouterSessionId: 'trs-recreated' }));
 
     expect(after.hash).toBe(before.hash);
+  });
+
+  it('changing only connection health metadata does not change the hash', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const next = baseWorkspace();
+    const connection = next.toolConnections[0] as {
+      lastConnectionCheckAt: Date | null;
+      lastConnectionCheckResult: string | null;
+    };
+    connection.lastConnectionCheckAt = new Date('2026-07-04T19:00:00Z');
+    connection.lastConnectionCheckResult = 'HEALTHY';
+    const after = await fingerprintFor(next);
+
+    expect(after.hash).toBe(before.hash);
+  });
+
+  it('sweep status flip CONNECTED to EXPIRED changes the tools hash', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const next = baseWorkspace();
+    // Intended: a dead connection changes the generated runtime surface on the
+    // next deploy, so drift detection should accompany the expired-tool banner
+    // until the user reconnects and redeploys.
+    const connection = next.toolConnections[0] as {
+      status: string;
+      lastConnectionCheckAt: Date | null;
+      lastConnectionCheckResult: string | null;
+    };
+    connection.status = 'EXPIRED';
+    connection.lastConnectionCheckAt = new Date('2026-07-04T19:00:00Z');
+    connection.lastConnectionCheckResult = 'EXPIRED';
+    const after = await fingerprintFor(next);
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.tools).not.toBe(before.areas.tools);
   });
 
   it('template-backed workspace name changes do not drift, fallback workspace name changes do', async () => {
