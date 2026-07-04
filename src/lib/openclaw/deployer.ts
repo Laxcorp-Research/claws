@@ -801,9 +801,32 @@ export async function surfaceMcpBootFailure(
       : {};
 
   const result = await probeImpl({ url: composioServer.url, headers });
-  if (result.ok) return;
+  if (result.ok) {
+    // B1's resolveToolRouterSession runs during generateWorkspace and already
+    // recreates dead stored sessions before this probe. A successful deploy is
+    // therefore the recovery path: the regenerated openclaw.json is baked into
+    // Railway env, and this metadata tells the dashboard the MCP session is
+    // healthy again.
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        mcpSessionHealthStatus: 'HEALTHY',
+        mcpSessionCheckedAt: new Date(),
+        mcpSessionLastError: null,
+      },
+    });
+    return;
+  }
 
   log.warn('MCP long-tail boot probe failed', { workspaceId, detail: result.detail });
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: {
+      mcpSessionHealthStatus: 'DEAD',
+      mcpSessionCheckedAt: new Date(),
+      mcpSessionLastError: result.detail,
+    },
+  });
   await prisma.activityLog.create({
     data: {
       workspaceId,

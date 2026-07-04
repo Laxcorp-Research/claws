@@ -8,12 +8,16 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 const mockConnectedAccountsGet = vi.fn()
+const mockSessionRetrieve = vi.fn()
 let composioEnabled = true
 
 vi.mock("@/lib/composio", () => ({
   getComposio: () => (
     composioEnabled
-      ? { connectedAccounts: { get: mockConnectedAccountsGet } }
+      ? {
+          connectedAccounts: { get: mockConnectedAccountsGet },
+          client: { toolRouter: { session: { retrieve: mockSessionRetrieve } } },
+        }
       : null
   ),
 }))
@@ -42,10 +46,20 @@ function connectedRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function workspaceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ws-mcp-1",
+    composioToolRouterSessionId: "trs_live_1",
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET
   composioEnabled = true
   mockConnectedAccountsGet.mockReset()
+  mockSessionRetrieve.mockReset()
+  ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
 })
 
 describe("connection-health status mapping", () => {
@@ -133,5 +147,57 @@ describe("GET /api/cron/connection-health", () => {
     // Deliberately guards the R1 false-positive case: Composio outage must not
     // make users reconnect healthy provider grants.
     expect(update.data.status).toBeUndefined()
+  })
+
+  it("retrieve-dead marks the Tool Router session DEAD", async () => {
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([workspaceRow()])
+    const notFound = new Error("session not found")
+    ;(notFound as Error & { status?: number }).status = 404
+    mockSessionRetrieve.mockRejectedValue(notFound)
+
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(update.where).toEqual({ id: "ws-mcp-1" })
+    expect(update.data.mcpSessionHealthStatus).toBe("DEAD")
+    expect(update.data.mcpSessionLastError).toContain("session not found")
+  })
+
+  it("MUTATION-anchored session outage guard: retrieve throw writes UNREACHABLE, not DEAD", async () => {
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([workspaceRow()])
+    const outage = new Error("Composio 500")
+    ;(outage as Error & { status?: number }).status = 500
+    mockSessionRetrieve.mockRejectedValue(outage)
+
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(update.data.mcpSessionHealthStatus).toBe("UNREACHABLE")
+    expect(update.data.mcpSessionHealthStatus).not.toBe("DEAD")
+  })
+
+  it("caps Tool Router session checks at 25 and requests oldest-checked first", async () => {
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    const eligible = Array.from({ length: 26 }, (_, i) => workspaceRow({
+      id: `ws-mcp-${i + 1}`,
+      composioToolRouterSessionId: `trs_${i + 1}`,
+    }))
+    ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { take?: number }) => {
+      return Promise.resolve(eligible.slice(0, args.take ?? eligible.length))
+    })
+    mockSessionRetrieve.mockResolvedValue({ session_id: "trs_ok" })
+
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+
+    const findCall = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(findCall.take).toBe(__internal.MCP_SESSION_HEALTH_BATCH_LIMIT)
+    expect(findCall.orderBy).toEqual([
+      { mcpSessionCheckedAt: { sort: "asc", nulls: "first" } },
+      { updatedAt: "asc" },
+    ])
+    expect(mockSessionRetrieve).toHaveBeenCalledTimes(25)
+    expect(prismaMock.workspace.update).toHaveBeenCalledTimes(25)
   })
 })

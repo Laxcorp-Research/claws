@@ -219,6 +219,9 @@ model Workspace {
   // is reused when its toolkit set matches; recreated on drift). Null for
   // curated-only workspaces and while the flag is off.
   composioToolRouterSessionId String?
+  mcpSessionHealthStatus      String?
+  mcpSessionCheckedAt         DateTime?
+  mcpSessionLastError         String?
 
   // ─── PR1: per-workspace subscription state ──────────────────
   // Part of the billing-model overhaul (PR1-9 sequence). This PR only
