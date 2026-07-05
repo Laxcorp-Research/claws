@@ -225,8 +225,16 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   if (!orchestrator) throw new Error(`Workspace ${workspaceId} has no Orchestrator agent`);
   if (!critic) throw new Error(`Workspace ${workspaceId} has no Critic agent`);
 
-  // 3. Generate gateway token for platform↔container communication
-  const gatewayToken = generateSecureToken();
+  // 3. Gateway token for platform↔container communication.
+  //
+  // Reuse when present: rotating on every redeploy adds no practical security
+  // benefit, but it creates a split-brain window (container env vs DB) and
+  // breaks paired dashboard-chat devices. Explicit token rotation can be a
+  // future operator action. A workspace that already drifted self-heals on its
+  // next redeploy because the DB token is baked back into the container env.
+  const gatewayToken = workspace.gatewayToken
+    ? decrypt(workspace.gatewayToken)
+    : generateSecureToken();
 
   // 4. Resolve heartbeat once. Interval frequencies feed the openclaw.json
   //    `agents.defaults.heartbeat` field; time-of-day frequencies feed
