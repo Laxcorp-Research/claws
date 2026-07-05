@@ -223,6 +223,7 @@ model Workspace {
   mcpSessionCheckedAt         DateTime?
   mcpSessionLastError         String?
   activitySilenceDetectedAt   DateTime?
+  stateSyncStaleDetectedAt    DateTime?
 
   // ─── PR1: per-workspace subscription state ──────────────────
   // Part of the billing-model overhaul (PR1-9 sequence). This PR only

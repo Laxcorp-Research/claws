@@ -74,7 +74,10 @@ type WorkspaceRow = {
   containerHost: string | null
   gatewayToken: string | null
   activitySilenceDetectedAt: Date | null
+  stateSyncStaleDetectedAt: Date | null
   agents?: Array<{ heartbeatFrequency: string | null }>
+  containerState?: { runtimeStateUpdatedAt: Date | null } | null
+  deployments?: Array<{ completedAt: Date | null }>
 }
 
 type HealthPayload = {
@@ -241,6 +244,7 @@ function probeReason(result: ProbeResult): HealthReason | null {
 }
 
 const ACTIVITY_SILENCE_MIN_THRESHOLD_MS = 30 * 60 * 1000
+const STATE_SYNC_STALE_THRESHOLD_MS = 15 * 60 * 1000
 
 function heartbeatIntervalMs(frequency: string | null | undefined): number | null {
   switch (frequency) {
@@ -285,6 +289,30 @@ export function decideActivitySilence(args: {
   const latestMs = args.latestActivityAt?.getTime() ?? null
   const isSilent = latestMs === null || args.nowMs - latestMs > thresholdMs
   if (!isSilent) return clearIfSet
+
+  return args.currentFlag ?? new Date(args.nowMs)
+}
+
+export function decideStateSyncStale(args: {
+  status: WorkspaceStatus
+  healthStatus: HealthStatus
+  runtimeStateUpdatedAt: Date | null
+  latestDeploymentCompletedAt: Date | null
+  currentFlag: Date | null
+  nowMs: number
+}): Date | null | undefined {
+  const clearIfSet = args.currentFlag ? null : undefined
+  if (args.status !== "RUNNING") return clearIfSet
+  if (args.healthStatus !== "HEALTHY") return clearIfSet
+
+  const deployedMs = args.latestDeploymentCompletedAt?.getTime() ?? null
+  if (deployedMs !== null && args.nowMs - deployedMs < STATE_SYNC_STALE_THRESHOLD_MS) {
+    return clearIfSet
+  }
+
+  const snapshotMs = args.runtimeStateUpdatedAt?.getTime() ?? null
+  const isStale = snapshotMs === null || args.nowMs - snapshotMs > STATE_SYNC_STALE_THRESHOLD_MS
+  if (!isStale) return clearIfSet
 
   return args.currentFlag ?? new Date(args.nowMs)
 }
@@ -384,6 +412,16 @@ export async function GET(req: NextRequest) {
       containerHost: true,
       gatewayToken: true,
       activitySilenceDetectedAt: true,
+      stateSyncStaleDetectedAt: true,
+      containerState: {
+        select: { runtimeStateUpdatedAt: true },
+      },
+      deployments: {
+        where: { completedAt: { not: null } },
+        orderBy: { completedAt: "desc" },
+        select: { completedAt: true },
+        take: 1,
+      },
       agents: {
         where: { role: "ORCHESTRATOR" },
         select: { heartbeatFrequency: true },
@@ -432,6 +470,14 @@ export async function GET(req: NextRequest) {
       currentFlag: ws.activitySilenceDetectedAt,
       nowMs: startedAt,
     })
+    const stateSyncStaleDetectedAt = decideStateSyncStale({
+      status: update.status,
+      healthStatus: update.healthStatus,
+      runtimeStateUpdatedAt: ws.containerState?.runtimeStateUpdatedAt ?? null,
+      latestDeploymentCompletedAt: ws.deployments?.[0]?.completedAt ?? null,
+      currentFlag: ws.stateSyncStaleDetectedAt,
+      nowMs: startedAt,
+    })
 
     if (probe.result.kind === "healthy") healthy++
     else if (probe.result.kind === "degraded") degraded++
@@ -453,6 +499,7 @@ export async function GET(req: NextRequest) {
           lastHealthReason: update.lastHealthReason,
           ...(update.lastHealthCheck ? { lastHealthCheck: update.lastHealthCheck } : {}),
           ...(activitySilenceDetectedAt !== undefined ? { activitySilenceDetectedAt } : {}),
+          ...(stateSyncStaleDetectedAt !== undefined ? { stateSyncStaleDetectedAt } : {}),
         },
       })
     } catch (err) {
@@ -509,8 +556,10 @@ export const __internal = {
   probeWorkspace,
   decideUpdate,
   decideActivitySilence,
+  decideStateSyncStale,
   heartbeatIntervalMs,
   UNHEALTHY_THRESHOLD,
   ERROR_THRESHOLD,
   ACTIVITY_SILENCE_MIN_THRESHOLD_MS,
+  STATE_SYNC_STALE_THRESHOLD_MS,
 }
