@@ -13,6 +13,7 @@
 // fail loudly.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
+import { gunzipSync } from "node:zlib"
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 
@@ -81,7 +82,7 @@ import { deployToCloud } from "@/lib/openclaw/deployer"
 function generatedStub() {
   return {
     "openclaw.json": "{}",
-    ".env": "",
+    ".env": "OPENCLAW_GATEWAY_TOKEN=gw-token\nANTHROPIC_API_KEY=sk-ant-test\n",
     "cron/jobs.json": "[]",
     workspaces: {},
     gatewayToken: "gw-token",
@@ -205,6 +206,11 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
     expect(completedUpdate.data.configSnapshot).toContain('"hash":"hash-current"')
     expect(completedUpdate.data.configSnapshotGzip).toBeInstanceOf(Uint8Array)
     expect(completedUpdate.data.configSnapshotGzip.length).toBeGreaterThan(0)
+    const inflated = JSON.parse(gunzipSync(Buffer.from(completedUpdate.data.configSnapshotGzip)).toString("utf8"))
+    expect(inflated.envManifest.OPENCLAW_GATEWAY_TOKEN).toMatch(/^[a-f0-9]{64}$/)
+    expect(inflated.envManifest.ANTHROPIC_API_KEY).toMatch(/^[a-f0-9]{64}$/)
+    expect(JSON.stringify(inflated)).not.toContain("gw-token")
+    expect(JSON.stringify(inflated)).not.toContain("sk-ant-test")
   })
 
   it("computes config fingerprint AFTER generateWorkspace so deploy-time backfills are hash inputs", async () => {
