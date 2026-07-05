@@ -51,6 +51,7 @@ interface WorkspaceInfo {
   mcpSessionCheckedAt?: string | null
   mcpSessionLastError?: string | null
   activitySilenceDetectedAt?: string | null
+  stateSyncStaleDetectedAt?: string | null
   apiKeySource?: ApiKeySource
 }
 
@@ -458,6 +459,9 @@ export default function DashboardPage() {
   const showActivitySilence =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.activitySilenceDetectedAt)
+  const showStateSyncStale =
+    workspace?.status === "RUNNING" &&
+    Boolean(workspace.stateSyncStaleDetectedAt)
   const redeploying = redeployFlow.redeploying
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
@@ -570,6 +574,22 @@ export default function DashboardPage() {
             <p className="font-medium">Activity feed appears silent — agents may be running but not reporting.</p>
             <p className="mt-0.5 opacity-80">Restart to restore activity reporting.</p>
           </>
+        ),
+        actions: (
+          <Button variant="danger" size="xs" onClick={handleResumeAll}>
+            Force restart
+          </Button>
+        ),
+      })
+    }
+
+    if (showStateSyncStale) {
+      list.push({
+        key: "state-sync-stale",
+        priority: 3,
+        variant: "warning",
+        content: (
+          <p className="font-medium">Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.</p>
         ),
         actions: (
           <Button variant="danger" size="xs" onClick={handleResumeAll}>
@@ -798,7 +818,7 @@ export default function DashboardPage() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift, showMcpSessionDead, showActivitySilence, handleResumeAll])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift, showMcpSessionDead, showActivitySilence, showStateSyncStale, handleResumeAll])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {
@@ -1059,6 +1079,7 @@ export default function DashboardPage() {
         onConfirm={handleRedeploy}
         title="Redeploy Claw"
         description="This will update your Claw with the latest configuration and redeploy. Continue?"
+        warningText={showStateSyncStale ? "Memory backup is stale — recent agent memory may be lost." : undefined}
         confirmLabel="Redeploy"
         variant="warning"
       />
