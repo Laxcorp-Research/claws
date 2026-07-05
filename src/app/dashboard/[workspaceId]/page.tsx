@@ -968,9 +968,9 @@ export default function DashboardPage() {
 
       {deploymentImage && (
         <VersionUpdateBanner
-          workspaceId={workspaceId}
           currentImage={deploymentImage}
-          onUpdated={() => { fetchStats(); fetchDeploymentStatus() }}
+          onRedeploy={() => setRedeployConfirmOpen(true)}
+          showRedeployAction={!showConfigDrift}
         />
       )}
 
