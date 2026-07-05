@@ -6,7 +6,7 @@
 // immediately" (BUG-2).
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, screen, cleanup, act } from "@testing-library/react"
+import { render, screen, cleanup, act, fireEvent } from "@testing-library/react"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 
 const IMG = (v: string) => `ghcr.io/laxcorp-research/openclaw-runtime:${v}`
@@ -38,20 +38,23 @@ afterEach(() => {
 })
 
 describe("VersionUpdateBanner — prompts only when stable is genuinely newer", () => {
-  it("SHOWS when stable (-3) is newer than deployed (-2), with truthful pending copy", async () => {
+  it("renders when stable is newer and uses the redeploy CTA", async () => {
     stubStable("2026.5.22-3")
+    const onRedeploy = vi.fn()
     const { container } = render(
-      <VersionUpdateBanner workspaceId="ws-1" currentImage={IMG("2026.5.22-2")} onUpdated={vi.fn()} />,
+      <VersionUpdateBanner currentImage={IMG("2026.5.22-2")} onRedeploy={onRedeploy} />,
     )
-    expect(await screen.findByText("Update available")).toBeTruthy()
-    expect(screen.getByText("Queue update")).toBeTruthy()
-    expect(container.textContent ?? "").toMatch(/applies on the next redeploy/i)
+    expect(await screen.findByText("A runtime update is available — redeploy to apply")).toBeTruthy()
+    expect(screen.queryByText(/queue/i)).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Redeploy" }))
+    expect(onRedeploy).toHaveBeenCalledTimes(1)
+    expect(container.textContent ?? "").toMatch(/current stable runtime is v2026\.5\.22-3/i)
   })
 
   it("HIDDEN when stable (-2) is OLDER than deployed (-3) — BUG-1 regression", async () => {
     stubStable("2026.5.22-2")
     const { container } = render(
-      <VersionUpdateBanner workspaceId="ws-1" currentImage={IMG("2026.5.22-3")} onUpdated={vi.fn()} />,
+      <VersionUpdateBanner currentImage={IMG("2026.5.22-3")} onRedeploy={vi.fn()} />,
     )
     await flush()
     expect(screen.queryByText("Update available")).toBeNull()
@@ -61,21 +64,43 @@ describe("VersionUpdateBanner — prompts only when stable is genuinely newer", 
   it("HIDDEN when deployed equals stable", async () => {
     stubStable("2026.5.22-3")
     const { container } = render(
-      <VersionUpdateBanner workspaceId="ws-1" currentImage={IMG("2026.5.22-3")} onUpdated={vi.fn()} />,
+      <VersionUpdateBanner currentImage={IMG("2026.5.22-3")} onRedeploy={vi.fn()} />,
     )
     await flush()
     expect(container.textContent ?? "").toBe("")
   })
 
-  it("BUG-2 copy lock: no 'auto-updated in 48h' / 'apply immediately' claims on the security banner", async () => {
+  it("clears after redeploy when current image equals stable", async () => {
+    stubStable("2026.5.22-3")
+    const { container, rerender } = render(
+      <VersionUpdateBanner currentImage={IMG("2026.5.22-2")} onRedeploy={vi.fn()} />,
+    )
+    expect(await screen.findByText("A runtime update is available — redeploy to apply")).toBeTruthy()
+
+    rerender(<VersionUpdateBanner currentImage={IMG("2026.5.22-3")} onRedeploy={vi.fn()} />)
+    await flush()
+    expect(container.textContent ?? "").toBe("")
+  })
+
+  it("BUG-2 copy lock: no queue, auto-update, or immediate claims on the security banner", async () => {
     stubStable("2026.5.22-3", true)
     const { container } = render(
-      <VersionUpdateBanner workspaceId="ws-1" currentImage={IMG("2026.5.22-2")} onUpdated={vi.fn()} />,
+      <VersionUpdateBanner currentImage={IMG("2026.5.22-2")} onRedeploy={vi.fn()} />,
     )
-    expect(await screen.findByText("Security update available")).toBeTruthy()
+    expect(await screen.findByText("A runtime update is available — redeploy to apply")).toBeTruthy()
     const text = container.textContent ?? ""
+    expect(text).not.toMatch(/queue/i)
     expect(text).not.toMatch(/automatically updated within 48 hours/i)
     expect(text).not.toMatch(/apply immediately/i)
-    expect(text).toMatch(/has not been updated yet/i)
+  })
+
+  it("dedupe: can render update copy without a second Redeploy button when drift banner already has one", async () => {
+    stubStable("2026.5.22-3")
+    render(
+      <VersionUpdateBanner currentImage={IMG("2026.5.22-2")} onRedeploy={vi.fn()} showRedeployAction={false} />,
+    )
+
+    expect(await screen.findByText("A runtime update is available — redeploy to apply")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Redeploy" })).toBeNull()
   })
 })

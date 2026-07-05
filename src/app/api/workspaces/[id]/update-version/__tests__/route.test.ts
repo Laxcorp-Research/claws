@@ -1,8 +1,8 @@
 // PR (version-ui-honesty): the per-workspace update action must NEVER write an
 // OLDER containerImage (the silent-downgrade path is the real correctness bug).
-// It only re-points Deployment.containerImage when the stable row is genuinely
-// newer than the deployed image, and reports a truthful "queued — applies on
-// next redeploy" (nothing restarts here).
+// The dashboard no longer queues runtime updates by rewriting
+// Deployment.containerImage. A newer stable is reported as "redeploy to apply"
+// and the existing shared redeploy flow owns applying it.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
@@ -75,18 +75,15 @@ describe("POST /api/workspaces/[id]/update-version — no-downgrade guard", () =
     expect(prismaMock.deployment.update).not.toHaveBeenCalled()
   })
 
-  it("queues (re-points containerImage) when stable (-3) is genuinely newer than deployed (-2)", async () => {
+  it("does not queue or write when stable is newer; redeploy applies the update", async () => {
     setup({ stable: "2026.5.22-3", deployed: "2026.5.22-2" })
 
     const res = await callRoute()
     const json = await res.json()
 
-    expect(prismaMock.deployment.update).toHaveBeenCalledWith({
-      where: { id: "dep-1" },
-      data: { containerImage: IMG("2026.5.22-3") },
-    })
-    expect(json.data.queued).toBe(true)
-    expect(json.data.message).toMatch(/queued .*next redeploy/i)
+    expect(prismaMock.deployment.update).not.toHaveBeenCalled()
+    expect(json.data.queued).toBe(false)
+    expect(json.data.message).toMatch(/redeploy to apply/i)
     expect(json.data.newVersion).toBe("2026.5.22-3")
   })
 })

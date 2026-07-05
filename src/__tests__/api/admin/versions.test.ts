@@ -221,7 +221,7 @@ describe('Version Management API', () => {
   });
 
   describe('POST /api/workspaces/[id]/update-version', () => {
-    it('queues an update when the stable version is newer than the deployed image', async () => {
+    it('does not queue an update when the stable version is newer; redeploy applies it', async () => {
       mockGetSessionUser.mockResolvedValue(REGULAR_USER);
       (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ userId: 'user-1' });
       (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_VERSION_STABLE); // 0.1.0
@@ -236,10 +236,9 @@ describe('Version Management API', () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      // PR (version-ui-honesty): the action re-points containerImage for the
-      // NEXT redeploy and reports `queued` (it no longer claims an applied
-      // `updated`, because nothing restarts here).
-      expect(json.data.queued).toBe(true);
+      expect(json.data.queued).toBe(false);
+      expect(json.data.message).toMatch(/redeploy to apply/i);
+      expect(prismaMock.deployment.update).not.toHaveBeenCalled();
     });
 
     it('returns 403 for non-owner', async () => {

@@ -50,24 +50,9 @@ export async function POST(
       return apiSuccess({ message: 'Already on the latest version', queued: false })
     }
 
-    await prisma.deployment.update({
-      where: { id: latestDeployment.id },
-      data: { containerImage: stableVersion.dockerImage },
-    })
-
-    // TODO (PR-1b restart): This only re-points Deployment.containerImage — the
-    // change applies on the workspace's NEXT redeploy; no container restarts
-    // here (hence the truthful "queued / applies on next redeploy" copy). When
-    // the live image-swap restart is built, step 1 (stop) MUST go through
-    // syncThenDestroy(workspaceId) (PR-2), NOT bare destroyContainer — otherwise
-    // it silently discards the latest session/MEMORY state. Per the PR-2 plan,
-    // PR-1b should add a stopForReplace(workspaceId) wrapper around
-    // syncThenDestroy so bare destroy is structurally unreachable here.
-    // 1. Stop current container  2. Pull new image  3. Restart  4. Health check
-
     return apiSuccess({
-      message: `Queued v${stableVersion.version} — applies on your Claw's next redeploy`,
-      queued: true,
+      message: `Runtime v${stableVersion.version} is available — redeploy to apply it`,
+      queued: false,
       newVersion: stableVersion.version,
     })
   } catch (error) {
