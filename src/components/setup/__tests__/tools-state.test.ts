@@ -79,6 +79,21 @@ describe("connectionUiState", () => {
     })
   })
 
+  it("keeps the no-validator native-key label visible for Manage Tools", () => {
+    const result = connectionUiState(
+      conn({
+        status: "PENDING",
+        connectionType: "API_KEY",
+        lastError: "Connected but not verified — will be tested on first use.",
+      }),
+    )
+
+    expect(result).toEqual({
+      status: "connected",
+      warningMessage: "Connected but not verified — will be tested on first use.",
+    })
+  })
+
   it("treats OAuth PENDING as disconnected regardless of lastError", () => {
     // PR #4 Commit 6 note: OAuth PENDING means "Composio hasn't completed
     // the handshake yet" — do not leak it as connected.
