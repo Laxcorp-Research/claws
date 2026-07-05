@@ -73,6 +73,8 @@ type WorkspaceRow = {
   containerId: string | null
   containerHost: string | null
   gatewayToken: string | null
+  activitySilenceDetectedAt: Date | null
+  agents?: Array<{ heartbeatFrequency: string | null }>
 }
 
 type HealthPayload = {
@@ -238,6 +240,55 @@ function probeReason(result: ProbeResult): HealthReason | null {
   return result.kind === "healthy" ? null : result.reason
 }
 
+const ACTIVITY_SILENCE_MIN_THRESHOLD_MS = 30 * 60 * 1000
+
+function heartbeatIntervalMs(frequency: string | null | undefined): number | null {
+  switch (frequency) {
+    case "test_5min":
+      return 5 * 60 * 1000
+    case "hourly":
+      return 60 * 60 * 1000
+    case "every_6h":
+      return 6 * 60 * 60 * 1000
+    case "every_12h":
+      return 12 * 60 * 60 * 1000
+    case "daily":
+    case "weekday":
+      return 24 * 60 * 60 * 1000
+    default:
+      return null
+  }
+}
+
+function workspaceHeartbeatIntervalMs(ws: Pick<WorkspaceRow, "agents">): number | null {
+  const frequency = ws.agents?.find((agent) => {
+    const f = agent.heartbeatFrequency
+    return typeof f === "string" && f.trim() && f !== "off"
+  })?.heartbeatFrequency
+  return heartbeatIntervalMs(frequency)
+}
+
+export function decideActivitySilence(args: {
+  status: WorkspaceStatus
+  healthStatus: HealthStatus
+  heartbeatIntervalMs: number | null
+  latestActivityAt: Date | null
+  currentFlag: Date | null
+  nowMs: number
+}): Date | null | undefined {
+  const clearIfSet = args.currentFlag ? null : undefined
+  if (args.status !== "RUNNING") return clearIfSet
+  if (args.healthStatus !== "HEALTHY") return clearIfSet
+  if (args.heartbeatIntervalMs === null) return clearIfSet
+
+  const thresholdMs = Math.max(args.heartbeatIntervalMs * 2, ACTIVITY_SILENCE_MIN_THRESHOLD_MS)
+  const latestMs = args.latestActivityAt?.getTime() ?? null
+  const isSilent = latestMs === null || args.nowMs - latestMs > thresholdMs
+  if (!isSilent) return clearIfSet
+
+  return args.currentFlag ?? new Date(args.nowMs)
+}
+
 // Pure function: takes the workspace as it is + a probe result, returns
 // the DB write payload. Extracted so unit tests can assert the mapping
 // table without faking the network. Mutation tests live alongside.
@@ -332,6 +383,12 @@ export async function GET(req: NextRequest) {
       containerId: true,
       containerHost: true,
       gatewayToken: true,
+      activitySilenceDetectedAt: true,
+      agents: {
+        where: { role: "ORCHESTRATOR" },
+        select: { heartbeatFrequency: true },
+        take: 1,
+      },
     },
   })
 
@@ -359,6 +416,22 @@ export async function GET(req: NextRequest) {
     }
 
     const update = decideUpdate(before, probe.result, startedAt)
+    const heartbeatMs = workspaceHeartbeatIntervalMs(ws)
+    const latestActivity = heartbeatMs === null
+      ? null
+      : await prisma.activityLog.findFirst({
+          where: { workspaceId: ws.id },
+          orderBy: { timestamp: "desc" },
+          select: { timestamp: true },
+        })
+    const activitySilenceDetectedAt = decideActivitySilence({
+      status: update.status,
+      healthStatus: update.healthStatus,
+      heartbeatIntervalMs: heartbeatMs,
+      latestActivityAt: latestActivity?.timestamp ?? null,
+      currentFlag: ws.activitySilenceDetectedAt,
+      nowMs: startedAt,
+    })
 
     if (probe.result.kind === "healthy") healthy++
     else if (probe.result.kind === "degraded") degraded++
@@ -379,6 +452,7 @@ export async function GET(req: NextRequest) {
           consecutiveHealthFailures: update.consecutiveHealthFailures,
           lastHealthReason: update.lastHealthReason,
           ...(update.lastHealthCheck ? { lastHealthCheck: update.lastHealthCheck } : {}),
+          ...(activitySilenceDetectedAt !== undefined ? { activitySilenceDetectedAt } : {}),
         },
       })
     } catch (err) {
@@ -434,6 +508,9 @@ export async function GET(req: NextRequest) {
 export const __internal = {
   probeWorkspace,
   decideUpdate,
+  decideActivitySilence,
+  heartbeatIntervalMs,
   UNHEALTHY_THRESHOLD,
   ERROR_THRESHOLD,
+  ACTIVITY_SILENCE_MIN_THRESHOLD_MS,
 }

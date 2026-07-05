@@ -70,7 +70,11 @@ vi.mock("@/components/ui/confirm-dialog", () => ({
 
 import DashboardPage from "@/app/dashboard/[workspaceId]/page"
 
-function activityPayload(mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHABLE" | null) {
+function activityPayload(opts: {
+  mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHABLE" | null;
+  activitySilenceDetectedAt?: string | null;
+}) {
+  const { mcpSessionHealthStatus, activitySilenceDetectedAt = null } = opts
   return {
     success: true,
     data: {
@@ -84,6 +88,7 @@ function activityPayload(mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHAB
         mcpSessionHealthStatus,
         mcpSessionCheckedAt: mcpSessionHealthStatus ? "2026-07-04T21:20:00.000Z" : null,
         mcpSessionLastError: mcpSessionHealthStatus === "DEAD" ? "session not found" : null,
+        activitySilenceDetectedAt,
         currentMonthApiCost: 0,
         apiSpendLimit: 50,
         costAlertThreshold: 0.8,
@@ -122,11 +127,18 @@ function activityPayload(mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHAB
   }
 }
 
-function mockFetch(mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHABLE" | null) {
+function mockFetch(opts: {
+  mcpSessionHealthStatus?: "HEALTHY" | "DEAD" | "UNREACHABLE" | null;
+  activitySilenceDetectedAt?: string | null;
+} = {}) {
+  const payloadOptions = {
+    mcpSessionHealthStatus: opts.mcpSessionHealthStatus ?? null,
+    activitySilenceDetectedAt: opts.activitySilenceDetectedAt ?? null,
+  }
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url.includes("/api/activity/ws-1")) {
-      return { ok: true, json: async () => activityPayload(mcpSessionHealthStatus) } as Response
+      return { ok: true, json: async () => activityPayload(payloadOptions) } as Response
     }
     if (url.includes("/api/deploy/ws-1/status?drift=1")) {
       return { ok: true, json: async () => ({ success: true, data: { drift: { isStale: false, changedAreas: [] } } }) } as Response
@@ -141,7 +153,7 @@ function mockFetch(mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHABLE" | 
 describe("DashboardPage MCP session banner", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFetch("DEAD")
+    mockFetch({ mcpSessionHealthStatus: "DEAD" })
   })
 
   afterEach(() => {
@@ -160,11 +172,24 @@ describe("DashboardPage MCP session banner", () => {
   })
 
   it("does not render the long-tail banner when the session is healthy", async () => {
-    mockFetch("HEALTHY")
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
 
     render(<DashboardPage />)
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled())
     expect(screen.queryByText("Long-tail tools disconnected — redeploy to restore")).toBeNull()
+  })
+
+  it("renders the activity silence warning and reuses the Force-restart action", async () => {
+    mockFetch({ activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z" })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Force restart" }))
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/restart", { method: "POST" })
+    })
   })
 })
