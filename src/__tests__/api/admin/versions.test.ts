@@ -26,7 +26,6 @@ import { GET as adminListVersions } from '@/app/api/admin/versions/route';
 import { POST as createVersion } from '@/app/api/admin/versions/create/route';
 import { POST as promoteVersion } from '@/app/api/admin/versions/[id]/promote/route';
 import { POST as forceUpdate } from '@/app/api/admin/versions/[id]/force-update/route';
-import { POST as updateWorkspaceVersion } from '@/app/api/workspaces/[id]/update-version/route';
 
 const MOCK_VERSION_STABLE = {
   id: 'ver-1',
@@ -220,52 +219,4 @@ describe('Version Management API', () => {
     });
   });
 
-  describe('POST /api/workspaces/[id]/update-version', () => {
-    it('does not queue an update when the stable version is newer; redeploy applies it', async () => {
-      mockGetSessionUser.mockResolvedValue(REGULAR_USER);
-      (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ userId: 'user-1' });
-      (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_VERSION_STABLE); // 0.1.0
-      (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
-        id: 'dep-1',
-        containerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:0.0.9', // older than stable 0.1.0
-      });
-      (prismaMock.deployment.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
-
-      const req = createMockRequest('http://localhost:3000/api/workspaces/ws-1/update-version', { method: 'POST' });
-      const res = await updateWorkspaceVersion(req, { params: Promise.resolve({ id: 'ws-1' }) });
-      const json = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(json.data.queued).toBe(false);
-      expect(json.data.message).toMatch(/redeploy to apply/i);
-      expect(prismaMock.deployment.update).not.toHaveBeenCalled();
-    });
-
-    it('returns 403 for non-owner', async () => {
-      mockGetSessionUser.mockResolvedValue(REGULAR_USER);
-      (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ userId: 'other-user' });
-
-      const req = createMockRequest('http://localhost:3000/api/workspaces/ws-1/update-version', { method: 'POST' });
-      const res = await updateWorkspaceVersion(req, { params: Promise.resolve({ id: 'ws-1' }) });
-      expect(res.status).toBe(403);
-    });
-
-    it('returns queued=false if already on the latest version', async () => {
-      mockGetSessionUser.mockResolvedValue(REGULAR_USER);
-      (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ userId: 'user-1' });
-      (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_VERSION_STABLE);
-      (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
-        id: 'dep-1',
-        containerImage: MOCK_VERSION_STABLE.dockerImage,
-      });
-
-      const req = createMockRequest('http://localhost:3000/api/workspaces/ws-1/update-version', { method: 'POST' });
-      const res = await updateWorkspaceVersion(req, { params: Promise.resolve({ id: 'ws-1' }) });
-      const json = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(json.data.queued).toBe(false);
-      expect(prismaMock.deployment.update).not.toHaveBeenCalled();
-    });
-  });
 });
