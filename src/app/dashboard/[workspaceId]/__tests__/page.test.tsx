@@ -61,11 +61,18 @@ vi.mock("@/components/ui/confirm-dialog", () => ({
     open,
     onConfirm,
     confirmLabel,
+    warningText,
   }: {
     open: boolean;
     onConfirm: () => void;
     confirmLabel: string;
-  }) => open ? <button onClick={onConfirm}>Confirm {confirmLabel}</button> : null,
+    warningText?: string;
+  }) => open ? (
+    <div>
+      {warningText && <p>{warningText}</p>}
+      <button onClick={onConfirm}>Confirm {confirmLabel}</button>
+    </div>
+  ) : null,
 }))
 
 import DashboardPage from "@/app/dashboard/[workspaceId]/page"
@@ -73,8 +80,9 @@ import DashboardPage from "@/app/dashboard/[workspaceId]/page"
 function activityPayload(opts: {
   mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHABLE" | null;
   activitySilenceDetectedAt?: string | null;
+  stateSyncStaleDetectedAt?: string | null;
 }) {
-  const { mcpSessionHealthStatus, activitySilenceDetectedAt = null } = opts
+  const { mcpSessionHealthStatus, activitySilenceDetectedAt = null, stateSyncStaleDetectedAt = null } = opts
   return {
     success: true,
     data: {
@@ -89,6 +97,7 @@ function activityPayload(opts: {
         mcpSessionCheckedAt: mcpSessionHealthStatus ? "2026-07-04T21:20:00.000Z" : null,
         mcpSessionLastError: mcpSessionHealthStatus === "DEAD" ? "session not found" : null,
         activitySilenceDetectedAt,
+        stateSyncStaleDetectedAt,
         currentMonthApiCost: 0,
         apiSpendLimit: 50,
         costAlertThreshold: 0.8,
@@ -130,10 +139,12 @@ function activityPayload(opts: {
 function mockFetch(opts: {
   mcpSessionHealthStatus?: "HEALTHY" | "DEAD" | "UNREACHABLE" | null;
   activitySilenceDetectedAt?: string | null;
+  stateSyncStaleDetectedAt?: string | null;
 } = {}) {
   const payloadOptions = {
     mcpSessionHealthStatus: opts.mcpSessionHealthStatus ?? null,
     activitySilenceDetectedAt: opts.activitySilenceDetectedAt ?? null,
+    stateSyncStaleDetectedAt: opts.stateSyncStaleDetectedAt ?? null,
   }
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -191,5 +202,29 @@ describe("DashboardPage MCP session banner", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/restart", { method: "POST" })
     })
+  })
+
+  it("renders the stale memory backup warning and reuses the Force-restart action", async () => {
+    mockFetch({ stateSyncStaleDetectedAt: "2026-07-05T08:30:00.000Z" })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Force restart" }))
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/restart", { method: "POST" })
+    })
+  })
+
+  it("warns about stale memory when the redeploy confirmation opens", async () => {
+    mockFetch({ stateSyncStaleDetectedAt: "2026-07-05T08:30:00.000Z" })
+
+    render(<DashboardPage />)
+
+    await screen.findByText("Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.")
+    fireEvent.click(screen.getAllByRole("button", { name: "Redeploy" })[0])
+
+    expect(await screen.findByText("Memory backup is stale — recent agent memory may be lost.")).toBeDefined()
   })
 })

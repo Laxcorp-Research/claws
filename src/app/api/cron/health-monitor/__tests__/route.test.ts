@@ -38,6 +38,10 @@ function makeWs(overrides: Partial<Record<string, unknown>> = {}) {
     containerId: "rwy-svc-1",
     containerHost: "claw-ws-1.up.railway.app",
     gatewayToken: "enc:tok",
+    activitySilenceDetectedAt: null,
+    stateSyncStaleDetectedAt: null,
+    containerState: { runtimeStateUpdatedAt: new Date() },
+    deployments: [{ completedAt: new Date(Date.now() - 20 * 60 * 1000) }],
     ...overrides,
   };
 }
@@ -524,6 +528,105 @@ describe("decideActivitySilence", () => {
   });
 });
 
+describe("decideStateSyncStale", () => {
+  const now = new Date("2026-07-05T08:00:00.000Z").getTime();
+  const oldDeploy = new Date(now - 30 * 60 * 1000);
+
+  it("MUTATION-anchored: flags when runtime snapshot is older than 15 minutes", () => {
+    const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: new Date(now - (15 * 60 * 1000) - 1),
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toEqual(new Date(now));
+  });
+
+  it("MUTATION-anchored: flags when ContainerState row is missing", () => {
+    const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: null,
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toEqual(new Date(now));
+  });
+
+  it("sets first detection only when already flagged", () => {
+    const existing = new Date(now - 60_000);
+    const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: new Date(now - 20 * 60 * 1000),
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: existing,
+      nowMs: now,
+    });
+
+    expect(result).toBe(existing);
+  });
+
+  it("clears when runtime snapshot is fresh", () => {
+    const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: new Date(now - 5 * 60 * 1000),
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: new Date(now - 60_000),
+      nowMs: now,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("PAUSED and STOPPED never flag", () => {
+    for (const status of ["PAUSED", "STOPPED"] as const) {
+      const result = __internal.decideStateSyncStale({
+        status,
+        healthStatus: "HEALTHY",
+        runtimeStateUpdatedAt: null,
+        latestDeploymentCompletedAt: oldDeploy,
+        currentFlag: null,
+        nowMs: now,
+      });
+
+      expect(result).toBeUndefined();
+    }
+  });
+
+  it("container unhealthy never flags", () => {
+    const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "UNHEALTHY",
+      runtimeStateUpdatedAt: null,
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("workspaces deployed less than 15 minutes ago never flag", () => {
+    const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: null,
+      latestDeploymentCompletedAt: new Date(now - 14 * 60 * 1000),
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toBeUndefined();
+  });
+});
+
 describe("decideUpdate: degraded paths (gateway answered)", () => {
   it("plugin-errors: counter unchanged (0), healthStatus=DEGRADED, lastHealthCheck=now", () => {
     const u = __internal.decideUpdate(
@@ -817,6 +920,64 @@ describe("GET end-to-end", () => {
     const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(update.data.healthStatus).toBe("HEALTHY");
     expect(update.data.activitySilenceDetectedAt).toBeInstanceOf(Date);
+  });
+
+  it("sets stateSyncStaleDetectedAt for healthy workspace with stale runtime snapshot", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({
+        id: "ws-stale-sync",
+        containerState: { runtimeStateUpdatedAt: new Date(Date.now() - 20 * 60 * 1000) },
+        deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
+        stateSyncStaleDetectedAt: null,
+      }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.healthStatus).toBe("HEALTHY");
+    expect(update.data.stateSyncStaleDetectedAt).toBeInstanceOf(Date);
+  });
+
+  it("sets stateSyncStaleDetectedAt for healthy workspace missing ContainerState row", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({
+        id: "ws-missing-state",
+        containerState: null,
+        deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
+        stateSyncStaleDetectedAt: null,
+      }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.stateSyncStaleDetectedAt).toBeInstanceOf(Date);
+  });
+
+  it("clears stateSyncStaleDetectedAt when runtime snapshot is fresh", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({
+        id: "ws-sync-recovered",
+        containerState: { runtimeStateUpdatedAt: new Date() },
+        deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
+        stateSyncStaleDetectedAt: new Date(Date.now() - 60 * 60 * 1000),
+      }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.stateSyncStaleDetectedAt).toBeNull();
   });
 
   it("clears activitySilenceDetectedAt when newer activity appears", async () => {
