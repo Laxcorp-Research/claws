@@ -30,6 +30,7 @@ vi.mock('@/lib/crypto', () => ({
 }));
 
 import { generateWorkspace } from '@/lib/openclaw/generator';
+import { generateSecureToken } from '@/lib/crypto';
 
 /**
  * Test-only shape matching the subset of ToolConnection fields the generator
@@ -171,6 +172,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
 
 describe('generateWorkspace', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       buildMockWorkspace()
     );
@@ -255,6 +257,25 @@ describe('generateWorkspace', () => {
     const result = await generateWorkspace('ws-test-1');
 
     expect(result.gatewayToken).toBe('mock-gateway-token-abc123');
+  });
+
+  it('reuses an existing gateway token instead of rotating on redeploy', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({ gatewayToken: 'enc-existing-gateway-token' }),
+    );
+
+    const result = await generateWorkspace('ws-test-1');
+
+    expect(result.gatewayToken).toBe('decrypted-enc-existing-gateway-token');
+    expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=decrypted-enc-existing-gateway-token');
+    expect(generateSecureToken).not.toHaveBeenCalled();
+  });
+
+  it('mints a gateway token only when the workspace has none', async () => {
+    const result = await generateWorkspace('ws-test-1');
+
+    expect(result.gatewayToken).toBe('mock-gateway-token-abc123');
+    expect(generateSecureToken).toHaveBeenCalledTimes(1);
   });
 
   it('includes skill files for agents with assigned skills', async () => {

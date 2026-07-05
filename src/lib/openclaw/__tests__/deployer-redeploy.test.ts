@@ -1,14 +1,10 @@
-// deployer-redeploy.test.ts — harness + locking tests for redeployWorkspace.
+// deployer-redeploy.test.ts — redeployWorkspace uses the honest deploy path.
 //
-// PR-8a unified credential derivation (buildRailwayEnvVars now derives from
-// deriveContainerEnv). redeployWorkspace is the SECOND caller of
-// buildRailwayEnvVars and received the same `include: { apiKeys: true }` fix,
-// but it had ZERO test coverage. This file closes that gap and locks its
-// contract:
-//   A — the apiKeys relation is loaded (mutation lock for the include).
-//   B — the fast-path guard (isRailwayConfigured && containerId && RUNNING).
-//   C — env vars are derived per apiKeySource, identical to deployToCloud.
-//   D — updateServiceVariables runs BEFORE redeployService (invariant I6).
+// Regression locked here: the old private fast path did
+// updateServiceVariables → redeployService → COMPLETED without waiting for a
+// new Railway deployment. redeployWorkspace now delegates to deployToCloud so
+// existing-service redeploys use updateAndRedeployService +
+// waitForDeploymentSuccess(previousDeploymentId).
 //
 // Mock conventions mirror deployer-image-resolution / deployer-state-ordering,
 // with TWO deliberate differences:
@@ -179,92 +175,53 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   for (const [k, v] of Object.entries(prevEnv)) {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
   }
 })
 
-// Test A — the apiKeys relation is loaded on the redeploy path.
-describe("redeployWorkspace — loads user.apiKeys (PR-8a include lock)", () => {
-  it("calls prisma.user.findUniqueOrThrow with include:{apiKeys:true} so deriveContainerEnv sees BYOK keys", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceStub())
+describe("redeployWorkspace — honest deploy path", () => {
+  it("loads user.apiKeys through deployToCloud and uses updateAndRedeployService for existing services", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
+    )
     ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
 
     await redeployWorkspace("ws-redeploy")
 
-    // Direct parallel to deployer-image-resolution's deploy-path include lock.
-    // Mutation: drop the include from redeployWorkspace's user query -> fails.
     expect(prismaMock.user.findUniqueOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({ include: { apiKeys: true } }),
     )
-  })
-})
-
-// Test B — the fast-path guard at deployer.ts:426
-//   (isRailwayConfigured && workspace.containerId && status === 'RUNNING').
-describe("redeployWorkspace — fast-path guard (RUNNING + containerId)", () => {
-  it("RUNNING + containerId=null → no redeploy fast-path (falls through to deployToCloud)", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
-      workspaceStub({ containerId: null }),
-    )
-    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
-
-    await redeployWorkspace("ws-redeploy")
-
     expect(mockUpdateServiceVariables).not.toHaveBeenCalled()
     expect(mockRedeployService).not.toHaveBeenCalled()
-  })
-
-  it("DRAFT + containerId set → no redeploy fast-path (falls through to deployToCloud)", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
-      workspaceStub({ status: "DRAFT" }),
-    )
-    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
-
-    await redeployWorkspace("ws-redeploy")
-
-    expect(mockUpdateServiceVariables).not.toHaveBeenCalled()
-    expect(mockRedeployService).not.toHaveBeenCalled()
-  })
-
-  it("RUNNING + containerId set → redeploy fast-path fires; no full-deploy createService path", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceStub())
-    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
-
-    await redeployWorkspace("ws-redeploy")
-
-    expect(mockUpdateServiceVariables).toHaveBeenCalledTimes(1)
-    expect(mockRedeployService).toHaveBeenCalledTimes(1)
-    // Fast-path is updateVars + redeploy, NOT a full deployToCloud.
     expect(mockCreateService).not.toHaveBeenCalled()
-    expect(mockUpdateAndRedeployService).not.toHaveBeenCalled()
-    // Fast-path targets the existing service id.
-    expect(mockUpdateServiceVariables.mock.calls[0][0]).toBe("svc-existing")
-    expect(mockRedeployService.mock.calls[0][0]).toBe("svc-existing")
+    expect(mockUpdateAndRedeployService).toHaveBeenCalledTimes(1)
+    expect(mockUpdateAndRedeployService.mock.calls[0][0]).toBe("svc-existing")
   })
-})
 
-// Test C — env vars derived per apiKeySource, identical to deployToCloud.
-// These run the REAL deriveContainerEnv (api-key-source is not mocked).
-describe("redeployWorkspace — env derivation per apiKeySource (parity with deployToCloud)", () => {
-  it("PLATFORM_CREDIT user → credit mode + master key + proxy base URL in the Railway env", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceStub())
+  it("derives env through the deploy path for PLATFORM_CREDIT users", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
+    )
     ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       userStub({ apiKeySource: "PLATFORM_CREDIT" }),
     )
 
     await redeployWorkspace("ws-redeploy")
 
-    const [, env] = mockUpdateServiceVariables.mock.calls[0]
+    const [, env] = mockUpdateAndRedeployService.mock.calls[0]
     expect(env.CLAWS_CREDIT_MODE).toBe("true")
     expect(env.ANTHROPIC_API_KEY).toBe("sk-ant-master-test")
     expect(env.ANTHROPIC_BASE_URL).toBe("http://localhost:3789")
     expect(env.CLAWS_USER_ID).toBe("user-redeploy")
   })
 
-  it("USER_OWN_KEY user WITH an Anthropic key → non-credit; BYOK key is NOT a Railway var (security)", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceStub())
+  it("does not surface BYOK Anthropic keys as Railway vars", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
+    )
     ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       userStub({
         apiKeySource: "USER_OWN_KEY",
@@ -274,43 +231,104 @@ describe("redeployWorkspace — env derivation per apiKeySource (parity with dep
 
     await redeployWorkspace("ws-redeploy")
 
-    const [, env] = mockUpdateServiceVariables.mock.calls[0]
+    const [, env] = mockUpdateAndRedeployService.mock.calls[0]
     expect(env.CLAWS_CREDIT_MODE).toBe("false")
-    // Security: a BYOK key is baked into CLAWS_ENV_B64 by the generator, NOT
-    // surfaced as a Railway variable. updateServiceVariables must never carry
-    // the decrypted secret. This is the meaningful "with key" case.
     expect(env.ANTHROPIC_API_KEY).toBeUndefined()
     expect(env.ANTHROPIC_BASE_URL).toBeUndefined()
     expect(env.CLAWS_USER_ID).toBeUndefined()
     expect(JSON.stringify(env)).not.toContain("sk-ant-byok-secret")
   })
 
-  it("USER_OWN_KEY user WITHOUT a key → non-credit, no Anthropic vars", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceStub())
-    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
-      userStub({ apiKeySource: "USER_OWN_KEY", apiKeys: [] }),
+  it("MUTATION-anchored: waits for a new Railway deployment id before completing", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
     )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
+    mockGetServiceStatus
+      .mockResolvedValueOnce({ status: "SUCCESS", deploymentId: "dep-old", healthy: true })
+      .mockResolvedValueOnce({ status: "BUILDING", deploymentId: "dep-new", healthy: false })
+      .mockResolvedValueOnce({ status: "SUCCESS", deploymentId: "dep-new", healthy: true })
 
     await redeployWorkspace("ws-redeploy")
 
-    const [, env] = mockUpdateServiceVariables.mock.calls[0]
-    expect(env.CLAWS_CREDIT_MODE).toBe("false")
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
-    expect(env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(mockGetServiceStatus).toHaveBeenCalledTimes(3)
+    const completedCall = (prismaMock.deployment.update as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[0])
+      .find((call) => call.data.status === "COMPLETED")
+    expect(completedCall?.data.configSnapshot).toContain('"railwayDeploymentId":"dep-new"')
   })
-})
 
-// Test D — atomicity invariant I6: the full var set is written before the
-// single restart, so a container never restarts against a partial env.
-describe("redeployWorkspace — write-before-restart ordering (invariant I6)", () => {
-  it("calls updateServiceVariables BEFORE redeployService", async () => {
-    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceStub())
+  it("Railway FAILED marks Deployment FAILED and preserves Workspace pointers", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
+    mockGetServiceStatus
+      .mockResolvedValueOnce({ status: "SUCCESS", deploymentId: "dep-old", healthy: true })
+      .mockResolvedValueOnce({ status: "FAILED", deploymentId: "dep-new", healthy: false })
+
+    await expect(redeployWorkspace("ws-redeploy")).rejects.toThrow("Railway deployment FAILED")
+
+    expect(prismaMock.deployment.update).toHaveBeenCalledWith({
+      where: { id: "dep-1" },
+      data: expect.objectContaining({
+        status: "FAILED",
+        errorMessage: "Railway deployment FAILED",
+      }),
+    })
+    expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          containerId: null,
+          containerHost: null,
+        }),
+      }),
+    )
+  })
+
+  it("Railway update timeout marks Deployment FAILED and preserves Workspace pointers", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-05T00:00:00.000Z"))
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
+    mockGetServiceStatus
+      .mockResolvedValueOnce({ status: "SUCCESS", deploymentId: "dep-old", healthy: true })
+      .mockResolvedValue({ status: "BUILDING", deploymentId: "dep-new", healthy: false })
+
+    const promise = redeployWorkspace("ws-redeploy")
+    const rejection = expect(promise).rejects.toThrow("Railway deployment did not succeed within 120s")
+    await vi.advanceTimersByTimeAsync(123_000)
+
+    await rejection
+    expect(prismaMock.deployment.update).toHaveBeenCalledWith({
+      where: { id: "dep-1" },
+      data: expect.objectContaining({
+        status: "FAILED",
+        errorMessage: "Railway deployment did not succeed within 120s",
+      }),
+    })
+    expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          containerId: null,
+          containerHost: null,
+        }),
+      }),
+    )
+  })
+
+  it("does not write Workspace.gatewayToken on existing-token redeploys", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
+    )
     ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
 
     await redeployWorkspace("ws-redeploy")
 
-    const varsOrder = mockUpdateServiceVariables.mock.invocationCallOrder[0]
-    const redeployOrder = mockRedeployService.mock.invocationCallOrder[0]
-    expect(varsOrder).toBeLessThan(redeployOrder)
+    const workspaceUpdates = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[0])
+    expect(workspaceUpdates.some((call) => Object.prototype.hasOwnProperty.call(call.data, "gatewayToken"))).toBe(false)
   })
 })

@@ -17,6 +17,7 @@
 //   - Railway start command decodes these to /home/node/.openclaw/ on boot
 // ============================================================================
 
+import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { prisma } from '@/lib/db';
 import { encrypt, decrypt, decryptAndMaybeReencrypt } from '@/lib/encryption';
@@ -32,7 +33,6 @@ import {
   createService,
   deleteService,
   redeployService,
-  updateServiceVariables,
   updateAndRedeployService,
   findServiceByName,
   getServiceStatus,
@@ -54,6 +54,7 @@ const CONTAINER_PREFIX = 'claw';
 
 const DEPLOY_POLL_INTERVAL_MS = 3_000;
 const DEPLOY_TIMEOUT_MS = 180_000;
+const UPDATE_REDEPLOY_TIMEOUT_MS = 120_000;
 const CONTAINER_PAYLOAD_SAFETY_CEILING = 30_000;
 
 // PR-2 (syncThenDestroy): default upper bound for the pre-destroy
@@ -89,6 +90,24 @@ type DeploymentCompletionData = {
   configSnapshotGzip: Uint8Array<ArrayBuffer>;
 };
 
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function buildEnvManifest(envFile: string): Record<string, string> {
+  const manifest: Record<string, string> = {};
+  for (const rawLine of envFile.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq);
+    const value = line.slice(eq + 1);
+    manifest[key] = sha256(value);
+  }
+  return manifest;
+}
+
 async function updateDeploymentStatus(
   deploymentId: string,
   workspaceId: string,
@@ -112,10 +131,12 @@ function buildDeploymentCompletionData(
   fingerprint: WorkspaceConfigFingerprint,
   generated: GeneratedWorkspace,
 ): DeploymentCompletionData {
+  const envManifest = buildEnvManifest(generated['.env']);
   const snapshotPayload = {
     version: 1,
     hash: fingerprint.hash,
     areas: fingerprint.areas,
+    envManifest,
     'openclaw.json': JSON.parse(generated['openclaw.json']),
     'cron/jobs.json': JSON.parse(generated['cron/jobs.json']),
     workspaces: generated.workspaces,
@@ -132,9 +153,19 @@ function buildDeploymentCompletionData(
       hash: fingerprint.hash,
       generatedAt: new Date().toISOString(),
       areas: fingerprint.areas,
+      envManifest,
     }),
     configSnapshotGzip,
   };
+}
+
+function withRailwayDeploymentId(
+  completionData: DeploymentCompletionData,
+  railwayDeploymentId: string | null,
+): DeploymentCompletionData {
+  const metadata = JSON.parse(completionData.configSnapshot) as Record<string, unknown>;
+  metadata.railwayDeploymentId = railwayDeploymentId;
+  return { ...completionData, configSnapshot: JSON.stringify(metadata) };
 }
 
 // ---------------------------------------------------------------------------
@@ -364,7 +395,12 @@ export async function deployToCloud(workspaceId: string): Promise<{
     });
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'HEALTH_CHECK');
-    await waitForDeploymentSuccess(result.serviceId, previousDeploymentId);
+    const railwayDeploymentId = await waitForDeploymentSuccess(
+      result.serviceId,
+      previousDeploymentId,
+      previousDeploymentId ? UPDATE_REDEPLOY_TIMEOUT_MS : DEPLOY_TIMEOUT_MS,
+    );
+    const completedData = withRailwayDeploymentId(completionData, railwayDeploymentId);
 
     if (workspace.channelConfigEncrypted) {
       await updateDeploymentStatus(deployment.id, workspaceId, 'WAITING_CHANNELS');
@@ -383,7 +419,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
     // NEVER fails or delays the deploy.
     await surfaceMcpBootFailure(workspaceId, generated).catch(() => {});
 
-    await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED', undefined, completionData);
+    await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED', undefined, completedData);
 
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -393,7 +429,7 @@ export async function deployToCloud(workspaceId: string): Promise<{
         containerName: serviceName,
         containerHost: result.domain,
         hostPort: null,
-        gatewayToken: encrypt(generated.gatewayToken),
+        ...(workspace.gatewayToken ? {} : { gatewayToken: encrypt(generated.gatewayToken) }),
         healthStatus: 'HEALTHY',
         lastHealthCheck: new Date(),
       },
@@ -664,61 +700,6 @@ export async function restartContainer(workspaceId: string): Promise<void> {
 }
 
 export async function redeployWorkspace(workspaceId: string): Promise<{ deploymentId: string; containerId: string | null }> {
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { id: workspaceId },
-  });
-
-  if (isRailwayConfigured() && workspace.containerId && workspace.status === 'RUNNING') {
-    const image = await resolveDeployImage();
-    const railwayTarget = getRailwayTargetProvenance();
-    const deployment = await prisma.deployment.create({
-      data: {
-        workspaceId,
-        status: 'PENDING',
-        version: await getNextDeploymentVersion(workspaceId),
-        containerImage: image,
-        railwayProjectId: railwayTarget.railwayProjectId,
-        railwayEnvironmentId: railwayTarget.railwayEnvironmentId,
-        configSnapshot: JSON.stringify({
-          workspaceId,
-          image,
-          createdAt: new Date().toISOString(),
-        }),
-      },
-    });
-    await clearDeployEvents(workspaceId).catch(() => {});
-
-    const redeployUser = await prisma.user.findUniqueOrThrow({
-      where: { id: workspace.userId },
-      include: { apiKeys: true },
-    });
-    try {
-      await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
-      const generated = await generateWorkspace(workspaceId);
-      const fingerprint = await buildWorkspaceConfigFingerprint(workspaceId);
-      const completionData = buildDeploymentCompletionData(fingerprint, generated);
-      const envVars = buildRailwayEnvVars(generated, workspace, redeployUser);
-      await updateDeploymentStatus(deployment.id, workspaceId, 'CONFIGURING');
-      await updateServiceVariables(workspace.containerId, envVars);
-      await updateDeploymentStatus(deployment.id, workspaceId, 'STARTING');
-      await redeployService(workspace.containerId);
-      await updateDeploymentStatus(deployment.id, workspaceId, 'COMPLETED', undefined, completionData);
-      await prisma.workspace.update({
-        where: { id: workspaceId },
-        data: {
-          status: 'RUNNING',
-          healthStatus: 'HEALTHY',
-          lastHealthCheck: new Date(),
-        },
-      });
-      return { deploymentId: deployment.id, containerId: workspace.containerId };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown redeployment error';
-      await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
-      throw error;
-    }
-  }
-
   const result = await deployToCloud(workspaceId);
   return { deploymentId: result.deploymentId, containerId: result.containerId };
 }
@@ -1141,10 +1122,11 @@ function extractCronTimezone(job: unknown): string | null {
 async function waitForDeploymentSuccess(
   serviceId: string,
   previousDeploymentId: string | null,
-): Promise<void> {
+  timeoutMs = DEPLOY_TIMEOUT_MS,
+): Promise<string | null> {
   const start = Date.now();
 
-  while (Date.now() - start < DEPLOY_TIMEOUT_MS) {
+  while (Date.now() - start < timeoutMs) {
     const status = await getServiceStatus(serviceId);
 
     // If we know the previous deployment ID, ignore it entirely.
@@ -1154,13 +1136,13 @@ async function waitForDeploymentSuccess(
       continue;
     }
 
-    if (status.status === 'SUCCESS') return;
+    if (status.status === 'SUCCESS') return status.deploymentId;
     if (status.status === 'FAILED' || status.status === 'CRASHED') {
       throw new Error(`Railway deployment ${status.status}`);
     }
     await sleep(DEPLOY_POLL_INTERVAL_MS);
   }
-  throw new Error(`Railway deployment did not succeed within ${DEPLOY_TIMEOUT_MS / 1000}s`);
+  throw new Error(`Railway deployment did not succeed within ${timeoutMs / 1000}s`);
 }
 
 async function waitForEndpoint(url: string, timeoutMs: number): Promise<void> {
