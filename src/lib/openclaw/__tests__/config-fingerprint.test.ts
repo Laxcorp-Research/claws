@@ -18,6 +18,7 @@ function baseWorkspace(overrides: Record<string, unknown> = {}) {
     mcpSessionHealthStatus: null,
     mcpSessionCheckedAt: null,
     mcpSessionLastError: null,
+    activitySilenceDetectedAt: null,
     lastHealthCheck: new Date('2026-01-01T00:00:00Z'),
     lastEnvReconcileAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -224,6 +225,15 @@ describe('buildWorkspaceConfigFingerprint', () => {
       mcpSessionHealthStatus: 'DEAD',
       mcpSessionCheckedAt: new Date('2026-07-04T21:20:00Z'),
       mcpSessionLastError: 'retrieve returned 404',
+    }));
+
+    expect(after.hash).toBe(before.hash);
+  });
+
+  it('changing only activity silence metadata does not change the hash', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const after = await fingerprintFor(baseWorkspace({
+      activitySilenceDetectedAt: new Date('2026-07-05T08:30:00Z'),
     }));
 
     expect(after.hash).toBe(before.hash);

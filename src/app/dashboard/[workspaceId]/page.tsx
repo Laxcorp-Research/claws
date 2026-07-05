@@ -50,6 +50,7 @@ interface WorkspaceInfo {
   mcpSessionHealthStatus?: "HEALTHY" | "DEAD" | "UNREACHABLE" | null
   mcpSessionCheckedAt?: string | null
   mcpSessionLastError?: string | null
+  activitySilenceDetectedAt?: string | null
   apiKeySource?: ApiKeySource
 }
 
@@ -372,7 +373,7 @@ export default function DashboardPage() {
     }
   }
 
-  const handleResumeAll = async () => {
+  const handleResumeAll = useCallback(async () => {
     // STOPPED workspaces have no container — /restart would 400. Route them
     // through the confirm dialog below, which hits /cloud (full redeploy, ~2m).
     if (workspace?.status === "STOPPED") {
@@ -381,7 +382,7 @@ export default function DashboardPage() {
     }
     await fetch(`/api/deploy/${workspaceId}/restart`, { method: "POST" })
     fetchStats()
-  }
+  }, [workspace?.status, workspaceId, fetchStats])
 
   const handleRedeployFromStopped = async () => {
     setRedeployFromStoppedConfirmOpen(false)
@@ -454,6 +455,9 @@ export default function DashboardPage() {
   const showMcpSessionDead =
     workspace?.mcpSessionHealthStatus === "DEAD" &&
     (workspace.status === "RUNNING" || workspace.status === "PAUSED")
+  const showActivitySilence =
+    workspace?.status === "RUNNING" &&
+    Boolean(workspace.activitySilenceDetectedAt)
   const redeploying = redeployFlow.redeploying
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
@@ -551,6 +555,25 @@ export default function DashboardPage() {
         actions: (
           <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
             Redeploy
+          </Button>
+        ),
+      })
+    }
+
+    if (showActivitySilence) {
+      list.push({
+        key: "activity-silence",
+        priority: 3,
+        variant: "warning",
+        content: (
+          <>
+            <p className="font-medium">Activity feed appears silent — agents may be running but not reporting.</p>
+            <p className="mt-0.5 opacity-80">Restart to restore activity reporting.</p>
+          </>
+        ),
+        actions: (
+          <Button variant="danger" size="xs" onClick={handleResumeAll}>
+            Force restart
           </Button>
         ),
       })
@@ -775,8 +798,7 @@ export default function DashboardPage() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift, showMcpSessionDead])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift, showMcpSessionDead, showActivitySilence, handleResumeAll])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {

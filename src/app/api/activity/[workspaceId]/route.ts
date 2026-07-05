@@ -202,6 +202,7 @@ export async function GET(
       mcpSessionHealthStatus: workspace!.mcpSessionHealthStatus,
       mcpSessionCheckedAt: workspace!.mcpSessionCheckedAt ? workspace!.mcpSessionCheckedAt.toISOString() : null,
       mcpSessionLastError: workspace!.mcpSessionLastError,
+      activitySilenceDetectedAt: workspace!.activitySilenceDetectedAt ? workspace!.activitySilenceDetectedAt.toISOString() : null,
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,
       costAlertThreshold: workspace!.costAlertThreshold,
