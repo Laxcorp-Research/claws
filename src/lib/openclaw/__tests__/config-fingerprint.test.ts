@@ -263,6 +263,40 @@ describe('buildWorkspaceConfigFingerprint', () => {
     expect(after.hash).toBe(before.hash);
   });
 
+  it('changing only native API-key connection check metadata does not change the hash', async () => {
+    const workspace = baseWorkspace({
+      toolConnections: [
+        {
+          toolSlug: 'tavily',
+          displayName: 'Tavily',
+          connectionType: 'API_KEY',
+          status: 'CONNECTED',
+          encryptedCredentials: 'enc-tavily-key-v1',
+          composioConnectionId: null,
+          lastConnectionCheckAt: null,
+          lastConnectionCheckResult: null,
+        },
+      ],
+    });
+    const before = await fingerprintFor(workspace);
+    const after = await fingerprintFor(baseWorkspace({
+      toolConnections: [
+        {
+          toolSlug: 'tavily',
+          displayName: 'Tavily',
+          connectionType: 'API_KEY',
+          status: 'CONNECTED',
+          encryptedCredentials: 'enc-tavily-key-v1',
+          composioConnectionId: null,
+          lastConnectionCheckAt: new Date('2026-07-05T12:00:00Z'),
+          lastConnectionCheckResult: 'HEALTHY',
+        },
+      ],
+    }));
+
+    expect(after.hash).toBe(before.hash);
+  });
+
   it('sweep status flip CONNECTED to EXPIRED changes the tools hash', async () => {
     const before = await fingerprintFor(baseWorkspace());
     const next = baseWorkspace();

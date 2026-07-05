@@ -9,6 +9,8 @@ vi.mock("@/lib/logger", () => ({
 
 const mockConnectedAccountsGet = vi.fn()
 const mockSessionRetrieve = vi.fn()
+const mockValidateToolKey = vi.fn()
+const mockDecrypt = vi.fn((value: string) => value)
 let composioEnabled = true
 
 vi.mock("@/lib/composio", () => ({
@@ -21,6 +23,17 @@ vi.mock("@/lib/composio", () => ({
       : null
   ),
 }))
+vi.mock("@/lib/encryption", () => ({
+  decrypt: (value: string) => mockDecrypt(value),
+}))
+vi.mock("@/lib/tools/validators", () => {
+  const implemented = ["tavily", "binance", "twilio"] as const
+  return {
+    IMPLEMENTED_SLUGS: implemented,
+    hasValidator: (toolSlug: string) => implemented.includes(toolSlug as never),
+    validateToolKey: (...args: unknown[]) => mockValidateToolKey(...args),
+  }
+})
 
 import { GET, __internal } from "@/app/api/cron/connection-health/route"
 
@@ -46,6 +59,17 @@ function connectedRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function nativeRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "tc-native-1",
+    workspaceId: "ws-native-1",
+    toolSlug: "tavily",
+    connectionType: "API_KEY",
+    encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: "tvly-test" }),
+    ...overrides,
+  }
+}
+
 function workspaceRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "ws-mcp-1",
@@ -59,6 +83,9 @@ beforeEach(() => {
   composioEnabled = true
   mockConnectedAccountsGet.mockReset()
   mockSessionRetrieve.mockReset()
+  mockValidateToolKey.mockReset()
+  mockDecrypt.mockClear()
+  mockDecrypt.mockImplementation((value: string) => value)
   ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
 })
 
@@ -91,11 +118,14 @@ describe("GET /api/cron/connection-health", () => {
     expect(res.status).toBe(401)
   })
 
-  it("cleanly no-ops when COMPOSIO_API_KEY is unavailable", async () => {
+  it("skips Composio-backed sweeps when COMPOSIO_API_KEY is unavailable but still runs native API-key sweep", async () => {
     composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
+
     const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
     expect(res.status).toBe(200)
-    expect(prismaMock.toolConnection.findMany).not.toHaveBeenCalled()
+    expect(prismaMock.toolConnection.findMany).toHaveBeenCalledOnce()
+    expect(prismaMock.workspace.findMany).not.toHaveBeenCalled()
   })
 
   it("scopes to CONNECTED Composio rows on RUNNING or PAUSED workspaces", async () => {
@@ -110,6 +140,29 @@ describe("GET /api/cron/connection-health", () => {
       workspace: { status: { in: ["RUNNING", "PAUSED"] } },
     })
     expect(call.take).toBe(__internal.CONNECTION_HEALTH_BATCH_LIMIT)
+  })
+
+  it("MUTATION-anchored: native API-key query applies 20h recheck gate, cap 10, and oldest-checked ordering", async () => {
+    composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
+
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+
+    const call = (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(call.where).toMatchObject({
+      connectionType: "API_KEY",
+      status: "CONNECTED",
+      encryptedCredentials: { not: null },
+      toolSlug: { in: ["tavily", "binance", "twilio"] },
+      workspace: { status: { in: ["RUNNING", "PAUSED"] } },
+    })
+    expect(call.where.OR[0]).toEqual({ lastConnectionCheckAt: null })
+    expect(call.where.OR[1].lastConnectionCheckAt.lt).toBeInstanceOf(Date)
+    expect(call.take).toBe(__internal.NATIVE_API_KEY_BATCH_LIMIT)
+    expect(call.orderBy).toEqual([
+      { lastConnectionCheckAt: { sort: "asc", nulls: "first" } },
+      { updatedAt: "asc" },
+    ])
   })
 
   it("ACTIVE writes HEALTHY check metadata and leaves status untouched", async () => {
@@ -147,6 +200,76 @@ describe("GET /api/cron/connection-health", () => {
     // Deliberately guards the R1 false-positive case: Composio outage must not
     // make users reconnect healthy provider grants.
     expect(update.data.status).toBeUndefined()
+  })
+
+  it("native API-key healthy validator writes HEALTHY metadata and leaves status untouched", async () => {
+    composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([nativeRow()])
+    mockValidateToolKey.mockResolvedValue({ valid: true })
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+    expect(res.status).toBe(200)
+
+    expect(mockValidateToolKey).toHaveBeenCalledWith("tavily", { TAVILY_API_KEY: "tvly-test" })
+    const update = (prismaMock.toolConnection.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(update.where).toEqual({ id: "tc-native-1" })
+    expect(update.data.lastConnectionCheckResult).toBe("HEALTHY")
+    expect(update.data.lastError).toBeNull()
+    expect(update.data.status).toBeUndefined()
+  })
+
+  it("native API-key explicit invalid result flips status to EXPIRED and writes R1 check metadata", async () => {
+    composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([nativeRow()])
+    mockValidateToolKey.mockResolvedValue({ valid: false, error: "Invalid Tavily API key" })
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+    expect(res.status).toBe(200)
+
+    const update = (prismaMock.toolConnection.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(update.data.status).toBe("EXPIRED")
+    expect(update.data.lastConnectionCheckResult).toBe("EXPIRED")
+    expect(update.data.lastError).toBe("Invalid Tavily API key")
+  })
+
+  it("native API-key validator warning writes UNREACHABLE metadata only", async () => {
+    composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([nativeRow()])
+    mockValidateToolKey.mockResolvedValue({ valid: true, warning: "Provider rate-limited the check" })
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+    expect(res.status).toBe(200)
+
+    const update = (prismaMock.toolConnection.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(update.data.lastConnectionCheckResult).toBe("UNREACHABLE")
+    expect(update.data.status).toBeUndefined()
+  })
+
+  it("MUTATION-anchored native outage guard: validator throw writes UNREACHABLE only and does not flip status", async () => {
+    composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([nativeRow()])
+    mockValidateToolKey.mockRejectedValue(new Error("fetch failed"))
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+    expect(res.status).toBe(200)
+
+    const update = (prismaMock.toolConnection.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(update.data.lastConnectionCheckResult).toBe("UNREACHABLE")
+    expect(update.data.status).toBeUndefined()
+  })
+
+  it("defensively skips native API-key rows when no validator exists", async () => {
+    composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      nativeRow({ toolSlug: "mailgun" }),
+    ])
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+    const body = await res.json()
+
+    expect(body.data.nativeApiKeys.skippedNoValidator).toBe(1)
+    expect(mockValidateToolKey).not.toHaveBeenCalled()
+    expect(prismaMock.toolConnection.update).not.toHaveBeenCalled()
   })
 
   it("retrieve-dead marks the Tool Router session DEAD", async () => {

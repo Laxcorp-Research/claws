@@ -62,24 +62,24 @@ describe("validateToolKey dispatch", () => {
     expect(result.message).toMatch(/not verified/i)
   })
 
-  it("returns a connection error when fetch throws for a known tool", async () => {
+  it("returns a warning when fetch throws for a known tool", async () => {
     mockFetchThrows(new TypeError("fetch failed"))
     const result = await validateToolKey("anthropic_api", {
       ANTHROPIC_API_KEY: "sk-ant-fake",
     })
-    expect(result.valid).toBe(false)
-    expect(result.error).toMatch(/unable to validate|connection/i)
+    expect(result.valid).toBe(true)
+    expect(result.warning).toMatch(/unable to validate|connection/i)
   })
 
-  it("returns a timeout-specific error when fetch aborts", async () => {
+  it("returns a timeout-specific warning when fetch aborts", async () => {
     const err = new Error("operation was aborted")
     err.name = "TimeoutError"
     mockFetchThrows(err)
     const result = await validateToolKey("anthropic_api", {
       ANTHROPIC_API_KEY: "sk-ant-fake",
     })
-    expect(result.valid).toBe(false)
-    expect(result.error).toMatch(/didn't respond/i)
+    expect(result.valid).toBe(true)
+    expect(result.warning).toMatch(/didn't respond/i)
   })
 })
 
@@ -130,10 +130,11 @@ describe("anthropic_api validator", () => {
     expect(result.error).toMatch(/Anthropic/)
   })
 
-  it("treats 429 as valid (rate limited = key works)", async () => {
+  it("treats 429 as a warning (rate limited = no fresh auth answer)", async () => {
     mockFetchOnce({ status: 429 })
     const result = await validateToolKey("anthropic_api", creds)
     expect(result.valid).toBe(true)
+    expect(result.warning).toMatch(/rate-limited/i)
   })
 
   it("returns warning on 5xx (provider down)", async () => {
