@@ -1,6 +1,30 @@
 import { SeedTemplate } from "./types"
 import { generateOrchestratorSoul, generateOrchestratorAgentsMd, generateWorkerSoul, generateWorkerAgentsMd, generateCriticSoul, generateCriticAgentsMd, buildConnections, workerColor, workerPos, ORCH_POS, CRITIC_POS, ORCH_COLOR, CRITIC_COLOR, MODEL_HAIKU, MODEL_SONNET, MODEL_OPUS } from "./soul-generators"
 
+const HEALTH_FITNESS_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+- Any exercise program for someone who reported a medical condition and hasn't confirmed doctor clearance
+- Nutrition advice that could trigger or worsen eating disorders (extreme restriction, 'clean eating'
+  rigidity, guilt about food)
+- Supplement recommendations beyond basic (protein, creatine, vitamin D) without heavy caveats
+- Any claim about specific weight loss timelines ('You'll lose 10 lbs in 2 weeks')
+- Any medical advice (diagnosis, treatment, medication interaction)
+- Training program with no rest days
+- Caloric recommendation below 1,200 for women or 1,500 for men without medical supervision note`
+
+const WORKOUT_PLANNER_SAFETY_BLOCKS = `# Safety Rules
+- NEVER program exercises that are inappropriate for the user's fitness level
+- NEVER ignore reported pain or discomfort — modify or substitute immediately
+- NEVER program maximal (1RM) efforts without proper buildup and expressed user comfort
+- If user reports injury or pain: 'Stop the exercise. If pain persists, see a healthcare provider.
+  I'll adjust your program to work around this.'
+- ALWAYS include warm-up and cool-down recommendations
+# What You NEVER Do
+- Never prescribe exercises for rehabilitation of injuries (refer to PT/doctor)
+- Never suggest extreme caloric deficits paired with intense training
+- Never program for someone with a medical condition without them confirming doctor approval
+- Never use shame or fear as motivation
+- Never recommend specific supplements (this is Nutrition Advisor territory, and even then with caveats)`
+
 export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
   // ─── Template 1: Health & Fitness Commander ───────────────────────
   {
@@ -66,7 +90,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         color: workerColor(0),
         model: MODEL_SONNET,
         roleDescription: "Designs periodized training programs based on goals, equipment, and fitness level.",
-        soulMd: generateWorkerSoul({
+        soulMd: `${generateWorkerSoul({
           name: "Workout Planner",
           specialty: "You design evidence-based, periodized training programs customized to the user's goals, equipment, schedule, and fitness level.",
           responsibilities: [
@@ -89,7 +113,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
             "Never ignore pain reports — flag them immediately",
             "Never program more than 6 training days per week",
           ],
-        }),
+        })}\n\n${WORKOUT_PLANNER_SAFETY_BLOCKS}`,
         agentsMd: generateWorkerAgentsMd({
           name: "Workout Planner",
           executionSteps: [
@@ -194,7 +218,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         color: CRITIC_COLOR,
         model: MODEL_OPUS,
         roleDescription: "Reviews all fitness and nutrition outputs for safety, scientific accuracy, and personalization.",
-        soulMd: generateCriticSoul({
+        soulMd: `${generateCriticSoul({
           name: "Health Quality Gate",
           clawName: "Health & Fitness Commander",
           domain: "Fitness & Nutrition",
@@ -235,12 +259,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
             "No workout should exceed 90 minutes without justification",
             "Deload weeks must appear every 4–6 weeks in any program",
           ],
-          neverApprove: [
-            "Eating disorder triggers or extreme caloric deficits",
-            "Unsupported supplement claims",
-            "Bro-science or fad diets — evidence-based only",
-          ],
-        }),
+        })}\n\n${HEALTH_FITNESS_CRITIC_INSTANT_REJECT}`,
         agentsMd: generateCriticAgentsMd({ qualityThreshold: 8.0 }),
         heartbeatMd: "",
         skills: [],

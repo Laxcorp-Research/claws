@@ -18,6 +18,78 @@ import {
   MODEL_OPUS,
 } from "./soul-generators"
 
+const MEDICAL_HIPAA_COMPLIANCE_RULES = `# HIPAA Compliance Rules (CRITICAL — applies to ALL agents)
+- NEVER include specific diagnoses, treatments, or health conditions in any communication
+- NEVER mention medications, test results, or clinical notes
+- Appointment reminders may include: date, time, provider name, practice name, phone number
+- Appointment reminders may NOT include: reason for visit, procedure type, or any clinical detail
+- All patient data must be handled through HIPAA-compliant channels only
+- When in doubt about whether something is PHI (Protected Health Information): DON'T include it`
+
+const MEDICAL_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+- ANY message containing PHI beyond appointment basics
+- ANY message providing medical advice or diagnosis
+- ANY message guaranteeing treatment outcomes
+- ANY message sharing patient information with unauthorized parties
+- Review response that confirms a patient visited the practice (HIPAA violation — even acknowledging
+  someone is a patient is PHI in certain contexts)
+- For negative review responses: acknowledge the concern generally, invite them to call the office,
+  NEVER reference their specific visit or treatment`
+
+const LAW_FIRST_CONTACT_COMPLIANCE = `# Legal Compliance (CRITICAL)
+## What You Can Do:
+- Gather factual information about their situation
+- Explain the firm's practice areas and general process
+- Schedule consultations
+- Send general information about the intake process
+## What You CANNOT Do:
+- Give legal advice ("You should file for..." / "You have a strong case" / "The law says...")
+- Predict case outcomes ("You'll probably win" / "This should be easy")
+- Interpret the law or apply it to their facts
+- Recommend specific legal strategies
+- Make promises about attorney availability or case acceptance
+- Guarantee confidentiality before attorney-client relationship is established
+  (Note: intake conversations may have limited privilege — varies by jurisdiction)
+## Standard Disclaimer (include at start of every intake):
+'I want to help connect you with the right attorney. I'll ask a few questions about your situation —
+this is for intake purposes only and doesn't constitute legal advice. An attorney will review your
+information and follow up.'`
+
+const LAW_EMERGENCY_TRIAGE_LINE =
+  "IMMEDIATE: Currently in custody, ICE detention, domestic violence situation, emergency custody → Flag to Orchestrator with EMERGENCY tag. Human must be notified within 15 minutes."
+
+const LAW_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+- ANY communication that constitutes legal advice
+- ANY prediction of case outcomes
+- ANY guarantee about the firm accepting a case
+- ANY discussion of specific case strategy
+- ANY mention of other clients (even anonymized)
+- Negative review response that acknowledges attorney-client relationship
+- ANY communication during an active case that could waive privilege`
+
+const REAL_ESTATE_FAIR_HOUSING_CRITICAL = `## CRITICAL — Fair Housing Compliance:
+INSTANTLY REJECT any communication that:
+- Mentions race, religion, national origin, sex, familial status, or disability in property descriptions
+- Steers clients toward or away from neighborhoods based on demographics
+- Makes assumptions about client preferences based on protected characteristics
+- Uses phrases like 'family neighborhood' (familial status), 'executive area' (could imply
+  racial/economic steering)`
+
+const RECRUITER_ANTI_DISCRIMINATION_CRITICAL = `## CRITICAL — Anti-Discrimination:
+INSTANTLY REJECT any assessment that:
+- Uses age as a factor (even indirectly — 'overqualified' is often age proxy)
+- Evaluates based on school prestige alone
+- Makes assumptions based on candidate's name or photo
+- Uses 'culture fit' as a rejection reason without specific behavioral evidence
+- Penalizes employment gaps without context`
+
+const HOME_SERVICES_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+- Any message that doesn't direct a safety emergency to 911 first
+- Any price quote not authorized by the company
+- Any DIY repair suggestion (liability risk)
+- Any diagnosis of the problem without a tech visit
+- Post-service follow-up that contradicts what the tech documented`
+
 export const VERTICAL_TEMPLATES: SeedTemplate[] = [
   // ─── 1. Real Estate Agent OS ───────────────────────────────────────
   {
@@ -265,7 +337,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
         color: CRITIC_COLOR,
         model: MODEL_OPUS,
         roleDescription: "Reviews all outputs for Fair Housing compliance, accuracy, and professional standards",
-        soulMd: generateCriticSoul({
+        soulMd: `${generateCriticSoul({
           name: "Real Estate Quality Gate",
           clawName: "Real Estate Agent OS",
           domain: "Real Estate",
@@ -306,7 +378,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
             "No pricing guarantees",
             "No property condition claims without inspection",
           ],
-        }),
+        })}\n\n${REAL_ESTATE_FAIR_HOUSING_CRITICAL}`,
         agentsMd: generateCriticAgentsMd({ qualityThreshold: 8.0 }),
         heartbeatMd: "",
         skills: [],
@@ -576,7 +648,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
         color: CRITIC_COLOR,
         model: MODEL_OPUS,
         roleDescription: "Reviews all recruiting outputs for anti-bias compliance and quality standards",
-        soulMd: generateCriticSoul({
+        soulMd: `${generateCriticSoul({
           name: "Recruiting Quality Gate",
           clawName: "Recruiter OS",
           domain: "Recruiting",
@@ -612,12 +684,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
               ],
             },
           ],
-          neverApprove: [
-            "Screening that uses age proxies",
-            "School-name bias in evaluations",
-            "'Culture fit' rejection without behavioral evidence",
-          ],
-        }),
+        })}\n\n${RECRUITER_ANTI_DISCRIMINATION_CRITICAL}`,
         agentsMd: generateCriticAgentsMd({ qualityThreshold: 8.0 }),
         heartbeatMd: "",
         skills: [],
@@ -663,7 +730,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
         model: MODEL_HAIKU,
         roleDescription:
           "Orchestrates HIPAA-compliant practice management across intake, scheduling, recall, and reputation",
-        soulMd: generateOrchestratorSoul({
+        soulMd: `${generateOrchestratorSoul({
           name: "Practice Commander",
           clawName: "Medical Practice Manager",
           domain: "Healthcare Practice Operations",
@@ -685,7 +752,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
 - Same-day cancellation — trigger backfill protocol
 - Negative review (≤2 stars) — immediate response queue
 - New patient intake incomplete — follow-up within 24 hours`,
-        }),
+        })}\n\n${MEDICAL_HIPAA_COMPLIANCE_RULES}`,
         agentsMd: generateOrchestratorAgentsMd({
           workers: [
             { slug: "patient-intake-agent", name: "Patient Intake Agent", description: "Handles new patient registration workflows and form processing" },
@@ -883,7 +950,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
         color: CRITIC_COLOR,
         model: MODEL_OPUS,
         roleDescription: "Reviews all outputs for HIPAA compliance, PHI protection, and healthcare communication standards",
-        soulMd: generateCriticSoul({
+        soulMd: `${generateCriticSoul({
           name: "Healthcare Communication Gate",
           clawName: "Medical Practice Manager",
           domain: "Healthcare",
@@ -919,12 +986,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
               ],
             },
           ],
-          neverApprove: [
-            "Any message containing PHI (Protected Health Information)",
-            "Medical advice or diagnosis",
-            "Treatment recommendations",
-          ],
-        }),
+        })}\n\n${MEDICAL_CRITIC_INSTANT_REJECT}`,
         agentsMd: generateCriticAgentsMd({ qualityThreshold: 8.0 }),
         heartbeatMd: "",
         skills: [],
@@ -1020,7 +1082,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
         color: workerColor(0),
         model: MODEL_SONNET,
         roleDescription: "Handles initial client inquiries with professional, empathetic responses and urgency triage",
-        soulMd: generateWorkerSoul({
+        soulMd: `${generateWorkerSoul({
           name: "First Contact Agent",
           specialty:
             "You are a law firm first contact specialist. You handle initial inquiries with empathy and professionalism, classify urgency, and gather preliminary information for case evaluation.",
@@ -1034,6 +1096,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           methodology: [
             "Lead with empathy — acknowledge the person's situation before gathering information",
             "Use the emergency triage checklist: arrest → immediate; ICE detention → immediate; DV → immediate + safety resources",
+            LAW_EMERGENCY_TRIAGE_LINE,
             "Gather only non-privileged preliminary information at this stage",
             "Include proper disclaimers: no attorney-client relationship formed, not legal advice",
           ],
@@ -1045,7 +1108,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
             "Never discuss fees or retainer amounts (attorney-only discussion)",
             "Never delay emergency escalation for any reason",
           ],
-        }),
+        })}\n\n${LAW_FIRST_CONTACT_COMPLIANCE}`,
         agentsMd: generateWorkerAgentsMd({
           name: "First Contact Agent",
           executionSteps: [
@@ -1189,7 +1252,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
         color: CRITIC_COLOR,
         model: MODEL_OPUS,
         roleDescription: "Reviews all outputs to prevent unauthorized legal advice and ensure proper disclaimers",
-        soulMd: generateCriticSoul({
+        soulMd: `${generateCriticSoul({
           name: "Legal Communication Gate",
           clawName: "Law Firm Intake OS",
           domain: "Legal",
@@ -1225,12 +1288,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
               ],
             },
           ],
-          neverApprove: [
-            "Any statement constituting legal advice",
-            "Guarantees of case outcome",
-            "Communication without proper disclaimers",
-          ],
-        }),
+        })}\n\n${LAW_CRITIC_INSTANT_REJECT}`,
         agentsMd: generateCriticAgentsMd({ qualityThreshold: 8.0 }),
         heartbeatMd: "",
         skills: [],
@@ -1460,7 +1518,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
         color: CRITIC_COLOR,
         model: MODEL_OPUS,
         roleDescription: "Reviews all customer communications for safety compliance, accuracy, and professionalism",
-        soulMd: generateCriticSoul({
+        soulMd: `${generateCriticSoul({
           name: "Service Communication Gate",
           clawName: "Home Services Dispatcher",
           domain: "Home Services",
@@ -1496,7 +1554,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
               ],
             },
           ],
-        }),
+        })}\n\n${HOME_SERVICES_CRITIC_INSTANT_REJECT}`,
         agentsMd: generateCriticAgentsMd({ qualityThreshold: 8.0 }),
         heartbeatMd: "",
         skills: [],
