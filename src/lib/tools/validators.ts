@@ -11,8 +11,8 @@
  *   - { valid: true, unverified: true, message }     no validator exists
  *                                                    for this tool yet
  *
- * Rate-limit responses (429) are treated as valid — the key works, the
- * account is just throttled right now.
+ * Rate-limit responses (429) are treated as transient verification failures:
+ * the key may work, but the provider did not give us a fresh auth answer.
  *
  * IMPLEMENTED (13 of 29 API_KEY tools after PR #3a):
  *   anthropic_api, tavily, stripe_api, sendgrid, elevenlabs, brave_search,
@@ -81,6 +81,9 @@ const TIMEOUT_MS = 10_000
 const TRANSIENT_WARNING =
   "Couldn't verify right now — the provider returned a server error. Your key is saved but hasn't been tested."
 
+const RATE_LIMIT_WARNING =
+  "Couldn't verify right now — the provider rate-limited the check. Your key is saved but hasn't been tested."
+
 const UNVERIFIED_MESSAGE =
   "Connected but not verified — will be tested on first use."
 
@@ -93,7 +96,7 @@ function classifyByStatus(
     return { valid: false, error: `Invalid ${providerLabel} API key` }
   }
   if (status === 429) {
-    return { valid: true }
+    return { valid: true, warning: RATE_LIMIT_WARNING }
   }
   if (status >= 500 && status <= 599) {
     return { valid: true, warning: TRANSIENT_WARNING }
@@ -566,8 +569,8 @@ export async function validateToolKey(
       timedOut: isAbort,
     })
     return {
-      valid: false,
-      error: isAbort
+      valid: true,
+      warning: isAbort
         ? "Provider didn't respond within 10 seconds"
         : "Unable to validate key. Check your connection and try again.",
     }
