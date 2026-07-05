@@ -431,6 +431,99 @@ describe("decideUpdate: healthy paths", () => {
   });
 });
 
+describe("decideActivitySilence", () => {
+  const now = new Date("2026-07-05T08:00:00.000Z").getTime();
+
+  it("MUTATION-anchored: flags when latest activity is older than 2x heartbeat interval", () => {
+    const result = __internal.decideActivitySilence({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      heartbeatIntervalMs: 60 * 60 * 1000,
+      latestActivityAt: new Date(now - (2 * 60 * 60 * 1000) - 1),
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toEqual(new Date(now));
+  });
+
+  it("clears when newer activity arrives", () => {
+    const existing = new Date(now - 60_000);
+    const result = __internal.decideActivitySilence({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      heartbeatIntervalMs: 60 * 60 * 1000,
+      latestActivityAt: new Date(now - 10 * 60 * 1000),
+      currentFlag: existing,
+      nowMs: now,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("MUTATION-anchored: heartbeat off/absent never flags", () => {
+    const result = __internal.decideActivitySilence({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      heartbeatIntervalMs: null,
+      latestActivityAt: null,
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("PAUSED never flags", () => {
+    const result = __internal.decideActivitySilence({
+      status: "PAUSED",
+      healthStatus: "HEALTHY",
+      heartbeatIntervalMs: 60 * 60 * 1000,
+      latestActivityAt: null,
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("container unhealthy never flags", () => {
+    const result = __internal.decideActivitySilence({
+      status: "RUNNING",
+      healthStatus: "UNHEALTHY",
+      heartbeatIntervalMs: 60 * 60 * 1000,
+      latestActivityAt: null,
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("uses a 30 minute minimum threshold", () => {
+    const result = __internal.decideActivitySilence({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      heartbeatIntervalMs: 5 * 60 * 1000,
+      latestActivityAt: new Date(now - 29 * 60 * 1000),
+      currentFlag: null,
+      nowMs: now,
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("maps known heartbeat frequencies to intervals", () => {
+    expect(__internal.heartbeatIntervalMs("test_5min")).toBe(5 * 60 * 1000);
+    expect(__internal.heartbeatIntervalMs("hourly")).toBe(60 * 60 * 1000);
+    expect(__internal.heartbeatIntervalMs("every_6h")).toBe(6 * 60 * 60 * 1000);
+    expect(__internal.heartbeatIntervalMs("every_12h")).toBe(12 * 60 * 60 * 1000);
+    expect(__internal.heartbeatIntervalMs("daily")).toBe(24 * 60 * 60 * 1000);
+    expect(__internal.heartbeatIntervalMs("weekday")).toBe(24 * 60 * 60 * 1000);
+    expect(__internal.heartbeatIntervalMs("off")).toBeNull();
+  });
+});
+
 describe("decideUpdate: degraded paths (gateway answered)", () => {
   it("plugin-errors: counter unchanged (0), healthStatus=DEGRADED, lastHealthCheck=now", () => {
     const u = __internal.decideUpdate(
@@ -702,6 +795,49 @@ describe("GET end-to-end", () => {
     expect(update.data.healthStatus).toBe("HEALTHY");
     // PR-4: every write now records the probe reason.
     expect(update.data.lastHealthReason).toBe("no-container");
+  });
+
+  it("sets activitySilenceDetectedAt for healthy heartbeat-enabled workspace with stale activity", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({
+        id: "ws-silent",
+        agents: [{ heartbeatFrequency: "hourly" }],
+        activitySilenceDetectedAt: null,
+      }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000),
+    } as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.healthStatus).toBe("HEALTHY");
+    expect(update.data.activitySilenceDetectedAt).toBeInstanceOf(Date);
+  });
+
+  it("clears activitySilenceDetectedAt when newer activity appears", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({
+        id: "ws-speaking",
+        agents: [{ heartbeatFrequency: "hourly" }],
+        activitySilenceDetectedAt: new Date(Date.now() - 60 * 60 * 1000),
+      }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      timestamp: new Date(),
+    } as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.activitySilenceDetectedAt).toBeNull();
   });
 
   it("PR-4: a stuck ERROR workspace returning 404 self-heals to RUNNING + reports reclassified", async () => {
