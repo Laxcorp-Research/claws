@@ -22,6 +22,7 @@ import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
+import { getComplianceNotice } from "@/lib/compliance-notices"
 import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { STARTER_CREDIT_CENTS, formatCreditDollars } from "@/lib/credits/constants"
 import {
@@ -418,6 +419,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [browseModal, setBrowseModal] = useState(false)
   const [customApiModal, setCustomApiModal] = useState(false)
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
+  const [workspaceTemplateSlug, setWorkspaceTemplateSlug] = useState<string | null>(null)
   const [driftAfterTools, setDriftAfterTools] = useState<ConfigDriftInfo | null>(null)
   const [applyChangesOpen, setApplyChangesOpen] = useState(false)
   const [pendingOAuthSlug, setPendingOAuthSlug] = useState<string | null>(null)
@@ -449,7 +451,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       try {
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
         const wsData = await wsRes.json()
-        if (wsData.success) setWorkspaceStatus(wsData.data?.status ?? null)
+        if (wsData.success) {
+          setWorkspaceStatus(wsData.data?.status ?? null)
+          setWorkspaceTemplateSlug(wsData.data?.clawTemplate?.slug ?? null)
+        }
 
         // PR2.8a Task 7: switched from name-based (`getToolByName(t.name)`)
         // to slug-based (`getToolBySlug(t.slug)`) template-tool resolution.
@@ -651,6 +656,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const extraTools = useMemo(() => tools.filter((t) => t.extra), [tools])
   const connectedSlugs = useMemo(() => tools.filter((t) => t.status === "connected").map((t) => t.slug), [tools])
   const allRequiredConnected = requiredTools.every((t) => t.status === "connected")
+  const setupComplianceNotice = workspaceTemplateSlug === "medical-practice-manager"
+    ? getComplianceNotice(workspaceTemplateSlug)
+    : null
 
   // PR #5: OAuth Test button support is toolkit-specific. For toolkits in
   // UNSUPPORTED_TOOLKITS (Asana — GH #41), ToolRow renders Test disabled
@@ -1142,6 +1150,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           ? "Connect the services your agents need. API keys are encrypted with AES-256-GCM."
           : "Connect the services your agents need to do their job."}
       </p>
+
+      {setupComplianceNotice && (
+        <AlertBanner variant="warning">
+          {setupComplianceNotice}
+        </AlertBanner>
+      )}
 
       {(requiredTools.length > 0 || recommendedTools.length > 0) && (
         <div className="bg-[var(--bg2)] rounded-[8px] p-[10px] mb-[10px]">
