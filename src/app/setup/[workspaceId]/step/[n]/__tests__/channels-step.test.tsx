@@ -397,7 +397,7 @@ describe("Setup Step 4 channel persistence UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Manage" }))
 
     expect(await screen.findByRole("heading", { name: "Manage Telegram access" })).toBeDefined()
-    expect(screen.getByText("111")).toBeDefined()
+    expect(await screen.findByText("111")).toBeDefined()
     expect(screen.queryByText("telegram-secret-token")).toBeNull()
     expect(screen.getByText(/If someone messages your bot and gets an 'access not configured' reply/)).toBeDefined()
 
