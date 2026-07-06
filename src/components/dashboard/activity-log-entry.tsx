@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
-import { CHANNEL_IDS, type ChannelId } from "@/lib/openclaw/channel-config"
+import { ProviderChannelBadge } from "./provider-channel-badge"
 
 interface ActivityLogEntryProps {
   timestamp: string
@@ -16,29 +15,13 @@ interface ActivityLogEntryProps {
   channelId?: string | null
 }
 
-const PROVIDER_LABELS: Record<ChannelId, string> = {
-  telegram: "Telegram",
-  discord: "Discord",
-  slack: "Slack",
-  whatsapp: "WhatsApp",
-  msteams: "Microsoft Teams",
-}
-
-const KNOWN_PROVIDER_IDS = new Set<string>(CHANNEL_IDS)
-
-function providerLabel(channelId: string | null | undefined): string | null {
-  if (!channelId || !KNOWN_PROVIDER_IDS.has(channelId)) return null
-  return PROVIDER_LABELS[channelId as ChannelId]
-}
-
 export function ActivityLogEntry({ timestamp, agentName, agentColor, message, detail, channelId }: ActivityLogEntryProps) {
   const [expanded, setExpanded] = useState(false)
   // Only offer expand when there's genuinely MORE than the message already
   // shows — a detail equal to the message is just noise.
   const trimmedDetail = typeof detail === "string" ? detail.trim() : ""
   const hasDetail = trimmedDetail.length > 0 && trimmedDetail !== message.trim()
-  const viaLabel = providerLabel(channelId)
-  const viaBadge = viaLabel ? <Badge className="ml-1.5 align-middle">via {viaLabel}</Badge> : null
+  const viaBadge = <ProviderChannelBadge channelId={channelId} className="ml-1.5 align-middle" />
 
   return (
     <div className="flex gap-2 py-[5px] border-b border-[var(--bd)] last:border-b-0 text-[11px] items-start">

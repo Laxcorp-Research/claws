@@ -15,6 +15,7 @@ import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
+import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
@@ -1116,6 +1117,8 @@ export default function DashboardPage() {
             onWake={handleWakeNow}
             historyEnabled
           />
+
+          <ConversationsSection workspaceId={workspaceId} status={workspace!.status} />
 
           <ClawNarrativeRow
             clawName={workspace!.name}
