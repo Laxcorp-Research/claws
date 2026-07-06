@@ -146,7 +146,7 @@ function buildWorkspaceWith(skills: Array<{ slug: string; compatibleTools: strin
       },
     ],
     toolConnections: [],
-    channelConnections: [],
+    channelConfig: {},
     clawTemplate: { name: "Test", slug: "test" },
     user: { name: "Test", apiKeys: [] },
   }

@@ -42,6 +42,10 @@ import {
 import { log } from '@/lib/logger';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
 import { deriveContainerEnv, type DeriveWorkspaceInput, type DeriveUserInput } from './derive-container-env';
+import {
+  hasConfiguredChannels,
+  parseChannelConfigBlob,
+} from './channel-config';
 import { getComposioUserId } from '@/lib/composio';
 import { probeMcpEndpoint } from './mcp-longtail';
 import { CronExpressionParser } from 'cron-parser';
@@ -1048,14 +1052,7 @@ async function simulateDeploy(
 function hasChannels(workspace: { channelConfigEncrypted?: string | null }): boolean {
   if (!workspace.channelConfigEncrypted) return false;
   try {
-    const config = JSON.parse(decrypt(workspace.channelConfigEncrypted));
-    return !!(
-      config.telegram?.botToken ||
-      config.discord?.botToken ||
-      config.slack?.botToken ||
-      config.whatsapp?.phoneNumberId ||
-      config.msteams?.webhookUrl
-    );
+    return hasConfiguredChannels(parseChannelConfigBlob(workspace.channelConfigEncrypted, decrypt));
   } catch {
     return false;
   }
