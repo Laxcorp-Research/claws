@@ -84,6 +84,11 @@ describe("Setup Step 4 channel persistence UI", () => {
   let statusData: TestChannelStatusData
   let templateSlug: string | null
   let deployStatusData: TestDeployStatusData
+  let accessData: {
+    channels: Partial<Record<ChannelId, { configured: boolean; fields: Record<string, string>; allowedIds: string[] }>>
+    configuredChannelIds: ChannelId[]
+    hasConfiguredChannels: boolean
+  }
 
   beforeEach(() => {
     push.mockReset()
@@ -93,6 +98,7 @@ describe("Setup Step 4 channel persistence UI", () => {
     statusData = emptyStatusData()
     templateSlug = null
     deployStatusData = { workspaceStatus: "DRAFT", drift: { isStale: false, changedAreas: [] } }
+    accessData = { channels: {}, configuredChannelIds: [], hasConfiguredChannels: false }
     vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) => {
       const href = String(url)
       if (href.includes("/api/channels/ws-1/status")) {
@@ -107,14 +113,32 @@ describe("Setup Step 4 channel persistence UI", () => {
       if (href.includes("/api/deploy/ws-1/status?drift=1")) {
         return jsonResponse({ success: true, data: deployStatusData })
       }
+      if (href.includes("/api/channels/ws-1") && (!init?.method || init.method === "GET")) {
+        return jsonResponse({ success: true, data: accessData })
+      }
       if (href.includes("/api/channels/ws-1") && init?.method === "POST") {
+        const body = init.body ? JSON.parse(String(init.body)) as { channel: ChannelId; config: { allowFrom?: string[] } } : null
+        if (body?.config.allowFrom) {
+          accessData = {
+            channels: {
+              ...accessData.channels,
+              [body.channel]: {
+                configured: true,
+                fields: accessData.channels[body.channel]?.fields ?? {},
+                allowedIds: body.config.allowFrom,
+              },
+            },
+            configuredChannelIds: Array.from(new Set([...accessData.configuredChannelIds, body.channel])),
+            hasConfiguredChannels: true,
+          }
+        }
         statusData = {
           ...statusData,
           channels: {
             ...statusData.channels,
-            telegram: { configured: true, live: "unknown" },
+            [body?.channel ?? "telegram"]: { configured: true, live: "unknown" },
           },
-          configuredChannelIds: ["telegram"],
+          configuredChannelIds: Array.from(new Set([...statusData.configuredChannelIds, body?.channel ?? "telegram"])),
           hasConfiguredChannels: true,
         }
         deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
@@ -163,6 +187,62 @@ describe("Setup Step 4 channel persistence UI", () => {
     })
     expect(await screen.findByText("Configured — deploys with next redeploy")).toBeDefined()
     expect(await screen.findByText("Channel changes saved — redeploy to apply")).toBeDefined()
+  })
+
+  it("saves optional Telegram allowFrom from the connect modal", async () => {
+    render(<Step4 workspaceId="ws-1" />)
+
+    fireEvent.click((await enabledConnectButtons())[0])
+    await screen.findByRole("heading", { name: "Connect Telegram" })
+    expect(screen.getByText(/Message @userinfobot on Telegram to get your ID/)).toBeDefined()
+    fireEvent.change(screen.getByPlaceholderText("123456789:AA..."), {
+      target: { value: "123456789:telegram-secret-token" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("123456789"), {
+      target: { value: "424242" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save channel" }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/channels/ws-1",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            channel: "telegram",
+            config: { botToken: "123456789:telegram-secret-token", allowFrom: ["424242"] },
+          }),
+        }),
+      )
+    })
+  })
+
+  it("saves optional Discord allowFrom from the connect modal", async () => {
+    render(<Step4 workspaceId="ws-1" />)
+
+    fireEvent.click((await enabledConnectButtons())[1])
+    await screen.findByRole("heading", { name: "Connect Discord" })
+    expect(screen.getByText(/Copy your Discord user ID from Developer Mode/)).toBeDefined()
+    fireEvent.change(screen.getByPlaceholderText("Paste your Discord bot token"), {
+      target: { value: "discord-secret-token" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("123456789012345678"), {
+      target: { value: "987654321" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save channel" }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/channels/ws-1",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            channel: "discord",
+            config: { token: "discord-secret-token", allowFrom: ["987654321"] },
+          }),
+        }),
+      )
+    })
   })
 
   it("opens the apply prompt on Next when channel drift is stale", async () => {
@@ -287,6 +367,55 @@ describe("Setup Step 4 channel persistence UI", () => {
     expect(screen.getByText("Check token and redeploy.")).toBeDefined()
     expect(screen.getByText("Configured — deploys with next redeploy")).toBeDefined()
     expect(screen.getAllByRole("button", { name: "Disconnect" })).toHaveLength(3)
+  })
+
+  it("manages access IDs without exposing secrets and saves allowFrom through the merge route", async () => {
+    statusData = {
+      ...emptyStatusData(),
+      channels: {
+        ...emptyStatusData().channels,
+        telegram: { configured: true, live: "unknown" },
+      },
+      configuredChannelIds: ["telegram"],
+      hasConfiguredChannels: true,
+    }
+    accessData = {
+      channels: {
+        telegram: {
+          configured: true,
+          fields: { botToken: "1234...oken" },
+          allowedIds: ["111"],
+        },
+      },
+      configuredChannelIds: ["telegram"],
+      hasConfiguredChannels: true,
+    }
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    await screen.findByText("Configured — deploys with next redeploy")
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }))
+
+    expect(await screen.findByRole("heading", { name: "Manage Telegram access" })).toBeDefined()
+    expect(screen.getByText("111")).toBeDefined()
+    expect(screen.queryByText("telegram-secret-token")).toBeNull()
+    expect(screen.getByText(/If someone messages your bot and gets an 'access not configured' reply/)).toBeDefined()
+
+    fireEvent.change(screen.getByPlaceholderText("Paste sender ID"), { target: { value: "222" } })
+    fireEvent.click(screen.getByRole("button", { name: "Add" }))
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0])
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/channels/ws-1",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ channel: "telegram", config: { allowFrom: ["222"] } }),
+        }),
+      )
+    })
+    expect(await screen.findByText("Channel changes saved — redeploy to apply")).toBeDefined()
   })
 
   it.each(["law-firm-intake-os", "home-services-dispatcher", "medical-practice-manager"])(
