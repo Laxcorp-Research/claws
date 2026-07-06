@@ -90,11 +90,19 @@ interface ChannelSummary {
   hasConfiguredChannels: boolean
 }
 
+interface WizardDriftInfo extends ConfigDriftInfo {
+  workspaceStatus: string | null
+}
+
 const EMERGENCY_CHANNEL_TEMPLATE_SLUGS = new Set([
   "law-firm-intake-os",
   "home-services-dispatcher",
   "medical-practice-manager",
 ])
+
+function needsRedeployToApply(drift: WizardDriftInfo | null): boolean {
+  return (drift?.workspaceStatus === "RUNNING" || drift?.workspaceStatus === "PAUSED") && drift.isStale
+}
 
 function formatChangedAreas(areas: string[]): string {
   if (areas.length === 0) return "workspace configuration"
@@ -1947,6 +1955,30 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
   const [savingChannel, setSavingChannel] = useState<ChannelId | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [workspaceTemplateSlug, setWorkspaceTemplateSlug] = useState<string | null>(null)
+  const [channelDrift, setChannelDrift] = useState<WizardDriftInfo | null>(null)
+  const [applyChannelsOpen, setApplyChannelsOpen] = useState(false)
+
+  const redeployFlow = useWorkspaceRedeploy({
+    workspaceId,
+    onCompleted: () => router.push(`/setup/${workspaceId}/step/5`),
+  })
+
+  const refreshDrift = useCallback(async (): Promise<WizardDriftInfo | null> => {
+    try {
+      const res = await fetch(`/api/deploy/${workspaceId}/status?drift=1`)
+      const json = await res.json()
+      if (!json.success) return null
+      const next: WizardDriftInfo = {
+        isStale: Boolean(json.data?.drift?.isStale),
+        changedAreas: Array.isArray(json.data?.drift?.changedAreas) ? json.data.drift.changedAreas : [],
+        workspaceStatus: typeof json.data?.workspaceStatus === "string" ? json.data.workspaceStatus : null,
+      }
+      setChannelDrift(next)
+      return next
+    } catch {
+      return null
+    }
+  }, [workspaceId])
 
   const loadChannels = useCallback(async () => {
     try {
@@ -1969,7 +2001,8 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
 
   useEffect(() => {
     loadChannels()
-  }, [loadChannels])
+    void refreshDrift()
+  }, [loadChannels, refreshDrift])
 
   function openConnectModal(channel: ChannelDefinition) {
     setActiveChannel(channel)
@@ -1993,6 +2026,7 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
         return
       }
       await loadChannels()
+      await refreshDrift()
       setActiveChannel(null)
       setFormValues({})
     } catch {
@@ -2017,6 +2051,7 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
         return
       }
       await loadChannels()
+      await refreshDrift()
     } catch {
       setError("Network error while disconnecting channel.")
     } finally {
@@ -2030,6 +2065,21 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
     workspaceTemplateSlug !== null &&
     EMERGENCY_CHANNEL_TEMPLATE_SLUGS.has(workspaceTemplateSlug) &&
     summary?.hasConfiguredChannels === false
+  const showChannelDriftWarning = needsRedeployToApply(channelDrift)
+
+  async function handleNextFromChannels() {
+    const latest = await refreshDrift()
+    if (needsRedeployToApply(latest ?? channelDrift)) {
+      setApplyChannelsOpen(true)
+      return
+    }
+    router.push(`/setup/${workspaceId}/step/5`)
+  }
+
+  function handleApplyChannelsNow() {
+    setApplyChannelsOpen(false)
+    void redeployFlow.startRedeploy()
+  }
 
   return (
     <>
@@ -2048,6 +2098,22 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
           <AlertBanner variant="warning">
             <p className="font-medium">This Claw&apos;s emergency alerts require a connected channel</p>
             <p className="mt-0.5 opacity-80">Without one, urgent alerts appear only on this dashboard.</p>
+          </AlertBanner>
+        </div>
+      )}
+
+      {showChannelDriftWarning && (
+        <div className="mb-3.5">
+          <AlertBanner
+            variant="warning"
+            actions={
+              <Button variant="outline" size="xs" onClick={() => setApplyChannelsOpen(true)}>
+                Redeploy
+              </Button>
+            }
+          >
+            <p className="font-medium">Channel changes saved — redeploy to apply</p>
+            <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(channelDrift?.changedAreas ?? ["channels"])}</p>
           </AlertBanner>
         </div>
       )}
@@ -2194,17 +2260,62 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
 
       <div className="flex justify-between mt-3.5">
         <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>← Back</Button>
-        <Button variant="primary" onClick={() => router.push(`/setup/${workspaceId}/step/5`)}>Next: Go live →</Button>
+        <Button variant="primary" onClick={handleNextFromChannels}>Next: Go live →</Button>
       </div>
+
+      <ConfirmDialog
+        open={applyChannelsOpen}
+        onClose={() => {
+          setApplyChannelsOpen(false)
+          router.push(`/setup/${workspaceId}/step/5`)
+        }}
+        onConfirm={handleApplyChannelsNow}
+        title="Apply changes now?"
+        description="Your channel changes take effect after a redeploy."
+        confirmLabel="Redeploy"
+        cancelLabel="Not now"
+        variant="warning"
+        loading={redeployFlow.redeploying}
+      />
+      <RedeployProgressModal
+        open={redeployFlow.modalOpen}
+        redeploying={redeployFlow.redeploying}
+        status={redeployFlow.status}
+        lastStage={redeployFlow.lastStage}
+        error={redeployFlow.error}
+        onClose={redeployFlow.closeModal}
+        onRetry={redeployFlow.retry}
+      />
     </>
   )
 }
 
 // ─── Step 5: Go Live ────────────────────────────────────────
 
-function Step5({ workspaceId }: { workspaceId: string }) {
+export function Step5({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
   const [wsName, setWsName] = useState("Your Claw")
+  const [goLiveDrift, setGoLiveDrift] = useState<WizardDriftInfo | null>(null)
+
+  const refreshGoLiveDrift = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/deploy/${workspaceId}/status?drift=1`)
+      const json = await res.json()
+      if (!json.success) return
+      setGoLiveDrift({
+        isStale: Boolean(json.data?.drift?.isStale),
+        changedAreas: Array.isArray(json.data?.drift?.changedAreas) ? json.data.drift.changedAreas : [],
+        workspaceStatus: typeof json.data?.workspaceStatus === "string" ? json.data.workspaceStatus : null,
+      })
+    } catch {
+      // Step 5 remains usable if drift status cannot be fetched.
+    }
+  }, [workspaceId])
+
+  const redeployFlow = useWorkspaceRedeploy({
+    workspaceId,
+    onCompleted: () => { void refreshGoLiveDrift() },
+  })
 
   // PR-2b #3: this useEffect previously also fired a PATCH to set
   // workspace.status='RUNNING' unconditionally. That was wrong on two
@@ -2228,7 +2339,12 @@ function Step5({ workspaceId }: { workspaceId: string }) {
       }
     }
     loadName()
-  }, [workspaceId])
+    // Intentional mount-time server sync; mirrors the setup data loaders above.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshGoLiveDrift()
+  }, [workspaceId, refreshGoLiveDrift])
+
+  const showGoLiveDrift = needsRedeployToApply(goLiveDrift)
 
   return (
     <div className="text-center py-[30px] px-5">
@@ -2238,20 +2354,44 @@ function Step5({ workspaceId }: { workspaceId: string }) {
       <h2 className="text-xl font-semibold mb-1.5">Your {wsName} is live!</h2>
       <p className="text-sm text-[var(--tx2)] mb-1">Your agents are starting up now.</p>
 
-      <div className="text-left max-w-lg mx-auto bg-[var(--bg2)] rounded-lg p-3.5 mt-4 text-xs text-[var(--tx2)] leading-[1.8]">
-        <p className="font-semibold text-[var(--tx)] mb-1">What happens next:</p>
-        <p className="flex items-start gap-1.5"><Bot className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span><strong>Next few minutes:</strong> Your Orchestrator introduces itself and confirms all agents are operational.</span></p>
-        <p className="flex items-start gap-1.5"><ClipboardList className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span><strong>Tomorrow morning:</strong> Your first daily briefing arrives with status updates and action items.</span></p>
-        <p className="mt-2 font-semibold text-[var(--tx)] mb-1">Quick tips:</p>
-        <p className="flex items-start gap-1.5"><MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Message your Orchestrator anytime through the connected channels.</span></p>
-        <p className="flex items-start gap-1.5"><BarChart3 className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Check the Dashboard for real-time agent activity and approvals.</span></p>
-        <p className="flex items-start gap-1.5"><Wrench className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Open the Builder to customize agent behavior, skills, and workflows.</span></p>
-      </div>
+      {showGoLiveDrift ? (
+        <div className="text-left max-w-lg mx-auto mt-4">
+          <AlertBanner
+            variant="warning"
+            actions={
+              <Button variant="outline" size="xs" onClick={() => void redeployFlow.startRedeploy()} loading={redeployFlow.redeploying}>
+                Redeploy
+              </Button>
+            }
+          >
+            <p className="font-medium">Your latest changes ({formatChangedAreas(goLiveDrift?.changedAreas ?? ["channels"])}) aren&apos;t live yet — redeploy to apply</p>
+          </AlertBanner>
+        </div>
+      ) : (
+        <div className="text-left max-w-lg mx-auto bg-[var(--bg2)] rounded-lg p-3.5 mt-4 text-xs text-[var(--tx2)] leading-[1.8]">
+          <p className="font-semibold text-[var(--tx)] mb-1">What happens next:</p>
+          <p className="flex items-start gap-1.5"><Bot className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span><strong>Next few minutes:</strong> Your Orchestrator introduces itself and confirms all agents are operational.</span></p>
+          <p className="flex items-start gap-1.5"><ClipboardList className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span><strong>Tomorrow morning:</strong> Your first daily briefing arrives with status updates and action items.</span></p>
+          <p className="mt-2 font-semibold text-[var(--tx)] mb-1">Quick tips:</p>
+          <p className="flex items-start gap-1.5"><MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Message your Orchestrator anytime through the connected channels.</span></p>
+          <p className="flex items-start gap-1.5"><BarChart3 className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Check the Dashboard for real-time agent activity and approvals.</span></p>
+          <p className="flex items-start gap-1.5"><Wrench className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--tx3)]" /> <span>Open the Builder to customize agent behavior, skills, and workflows.</span></p>
+        </div>
+      )}
 
       <div className="flex gap-2 justify-center mt-4">
         <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${workspaceId}`)}>Open Dashboard</Button>
         <Button variant="outline" size="lg" onClick={() => router.push(`/builder/${workspaceId}`)}>Customize in Builder</Button>
       </div>
+      <RedeployProgressModal
+        open={redeployFlow.modalOpen}
+        redeploying={redeployFlow.redeploying}
+        status={redeployFlow.status}
+        lastStage={redeployFlow.lastStage}
+        error={redeployFlow.error}
+        onClose={redeployFlow.closeModal}
+        onRetry={redeployFlow.retry}
+      />
     </div>
   )
 }
