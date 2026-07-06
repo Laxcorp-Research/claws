@@ -152,6 +152,14 @@ export interface ChatMessageView {
   failureCode?: string
 }
 
+function chatRowBody(row: ChatRow): string {
+  return row.detail && row.detail.length > 0 ? row.detail : row.action
+}
+
+function isNoReplyText(value: string | null | undefined): boolean {
+  return value?.trim() === "NO_REPLY"
+}
+
 /**
  * PR-9/B reconciliation (pure; unit-tested in chat-panel.test.tsx).
  *
@@ -202,6 +210,7 @@ export function reconcileChatMessages(
 
   for (const r of rows) {
     const isUser = r.actionType === "MESSAGE_RECEIVED"
+    if (!isUser && isNoReplyText(chatRowBody(r))) continue
     const parsed = Date.parse(r.timestamp)
     views.push({
       key: r.id,

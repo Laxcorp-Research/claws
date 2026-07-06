@@ -111,7 +111,13 @@ describe("GET /api/workspaces/[id]/conversations", () => {
           metadata: { rawSecret: "must-not-leak" },
         },
         {
-          key: "agent:unknown:main",
+          sessionKey: "agent:dev-commander:subagent:critic:7f2b",
+          deliveryContext: { channel: "telegram" },
+          lastActivityAt: "2026-07-06T10:03:00.000Z",
+          messageCount: 1,
+        },
+        {
+          key: "telegram:1227037949",
           channelId: "1227037949",
           updatedAt: "2026-07-06T10:05:00.000Z",
         },
@@ -132,12 +138,13 @@ describe("GET /api/workspaces/[id]/conversations", () => {
           messageCount: 4,
         },
         {
-          sessionKey: "agent:unknown:main",
-          channelHint: "unknown",
+          sessionKey: "telegram:1227037949",
+          channelHint: "telegram",
           lastActivityAt: "2026-07-06T10:05:00.000Z",
         },
       ],
     })
     expect(JSON.stringify(data.data)).not.toContain("rawSecret")
+    expect(JSON.stringify(data.data)).not.toContain(":subagent:")
   })
 })
