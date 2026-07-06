@@ -13,30 +13,64 @@ vi.mock("next/navigation", () => ({
 }))
 
 import { Step4, mapDeployStatus } from "@/app/setup/[workspaceId]/step/[n]/page"
+import type { ChannelId, ChannelLiveState } from "@/lib/openclaw/channel-config"
 
 function jsonResponse(data: unknown) {
   return Promise.resolve(new Response(JSON.stringify(data), { status: 200 }))
 }
 
+type TestChannelStatusData = {
+  channels: Record<ChannelId, { configured: boolean; live: ChannelLiveState; detail?: string }>
+  configuredChannelIds: ChannelId[]
+  hasConfiguredChannels: boolean
+}
+
+function emptyStatusData(): TestChannelStatusData {
+  return {
+    channels: {
+      telegram: { configured: false, live: "unknown" },
+      discord: { configured: false, live: "unknown" },
+      slack: { configured: false, live: "unknown" },
+      whatsapp: { configured: false, live: "unknown" },
+      msteams: { configured: false, live: "unknown" },
+    },
+    configuredChannelIds: [],
+    hasConfiguredChannels: false,
+  }
+}
+
 describe("Setup Step 4 channel persistence UI", () => {
+  let statusData: TestChannelStatusData
+  let templateSlug: string | null
+
   beforeEach(() => {
     push.mockReset()
+    statusData = emptyStatusData()
+    templateSlug = null
     vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) => {
       const href = String(url)
-      if (href.includes("/api/channels/ws-1") && (!init?.method || init.method === "GET")) {
+      if (href.includes("/api/channels/ws-1/status")) {
         return jsonResponse({
           success: true,
-          data: { channels: {}, configuredChannelIds: [], hasConfiguredChannels: false },
+          data: statusData,
         })
       }
+      if (href.includes("/api/workspaces/ws-1")) {
+        return jsonResponse({ success: true, data: { clawTemplate: templateSlug ? { slug: templateSlug } : null } })
+      }
       if (href.includes("/api/channels/ws-1") && init?.method === "POST") {
+        statusData = {
+          ...statusData,
+          channels: {
+            ...statusData.channels,
+            telegram: { configured: true, live: "unknown" },
+          },
+          configuredChannelIds: ["telegram"],
+          hasConfiguredChannels: true,
+        }
         return jsonResponse({
           success: true,
-          data: {
-            channels: { telegram: { configured: true, fields: { botToken: "1234...oken" } } },
-            configuredChannelIds: ["telegram"],
-            hasConfiguredChannels: true,
-          },
+          data: statusData,
         })
       }
       return jsonResponse({ success: true, data: {} })
@@ -77,7 +111,7 @@ describe("Setup Step 4 channel persistence UI", () => {
         }),
       )
     })
-    expect(await screen.findByText(/1234\.\.\.oken/)).toBeDefined()
+    expect(await screen.findByText("Configured — deploys with next redeploy")).toBeDefined()
   })
 
   it("renders Telegram setup steps and guide link", async () => {
@@ -120,20 +154,66 @@ describe("Setup Step 4 channel persistence UI", () => {
     expect(screen.getByRole("link", { name: "Setup guide →" }).getAttribute("href")).toBe("https://api.slack.com/apis/socket-mode")
   })
 
-  it("renders persisted configured channels as connected truth from GET", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => jsonResponse({
-      success: true,
-      data: {
-        channels: { discord: { configured: true, fields: { token: "disc...oken" } } },
-        configuredChannelIds: ["discord"],
-        hasConfiguredChannels: true,
+  it("renders configured rows from gateway-truth states", async () => {
+    statusData = {
+      channels: {
+        telegram: { configured: true, live: "connected" },
+        discord: { configured: true, live: "error", detail: "invalid token" },
+        slack: { configured: true, live: "unknown" },
+        whatsapp: { configured: false, live: "unknown" },
+        msteams: { configured: false, live: "unknown" },
       },
-    })))
+      configuredChannelIds: ["telegram", "discord", "slack"],
+      hasConfiguredChannels: true,
+    }
 
     render(<Step4 workspaceId="ws-1" />)
 
-    expect(await screen.findByText(/disc\.\.\.oken/)).toBeDefined()
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined()
+    expect(await screen.findByText("Verified by gateway")).toBeDefined()
+    expect(screen.getByText("Connected")).toBeDefined()
+    expect(screen.getByText("invalid token. Check token and redeploy.")).toBeDefined()
+    expect(screen.getByText("Check token and redeploy.")).toBeDefined()
+    expect(screen.getByText("Configured — deploys with next redeploy")).toBeDefined()
+    expect(screen.getAllByRole("button", { name: "Disconnect" })).toHaveLength(3)
+  })
+
+  it.each(["law-firm-intake-os", "home-services-dispatcher", "medical-practice-manager"])(
+    "shows the emergency-channel warning for %s when zero channels are configured",
+    async (slug) => {
+      templateSlug = slug
+
+      render(<Step4 workspaceId="ws-1" />)
+
+      expect(await screen.findByText("This Claw's emergency alerts require a connected channel")).toBeDefined()
+      expect(screen.getByText("Without one, urgent alerts appear only on this dashboard.")).toBeDefined()
+    },
+  )
+
+  it("does not show the emergency-channel warning for non-emergency templates", async () => {
+    templateSlug = "sales-outreach-os"
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    await screen.findByText(/No channel\?/)
+    expect(screen.queryByText("This Claw's emergency alerts require a connected channel")).toBeNull()
+  })
+
+  it("clears the emergency-channel warning when any channel is configured", async () => {
+    templateSlug = "medical-practice-manager"
+    statusData = {
+      ...emptyStatusData(),
+      channels: {
+        ...emptyStatusData().channels,
+        telegram: { configured: true, live: "unknown" },
+      },
+      configuredChannelIds: ["telegram"],
+      hasConfiguredChannels: true,
+    }
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    await screen.findByText("Configured — deploys with next redeploy")
+    expect(screen.queryByText("This Claw's emergency alerts require a connected channel")).toBeNull()
   })
 
   it("hides Applying channel config deploy step when no channel is configured", () => {
