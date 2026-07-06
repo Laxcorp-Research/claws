@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const push = vi.fn()
+const mockStartRedeploy = vi.fn()
+let redeployCompleted: (() => void) | undefined
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
@@ -12,7 +14,23 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
-import { Step4, mapDeployStatus } from "@/app/setup/[workspaceId]/step/[n]/page"
+vi.mock("@/components/dashboard/use-workspace-redeploy", () => ({
+  useWorkspaceRedeploy: (opts: { onCompleted?: () => void }) => {
+    redeployCompleted = opts.onCompleted
+    return {
+      modalOpen: false,
+      status: null,
+      lastStage: null,
+      error: null,
+      redeploying: false,
+      startRedeploy: mockStartRedeploy,
+      closeModal: vi.fn(),
+      retry: vi.fn(),
+    }
+  },
+}))
+
+import { Step4, Step5, mapDeployStatus } from "@/app/setup/[workspaceId]/step/[n]/page"
 import type { ChannelId, ChannelLiveState } from "@/lib/openclaw/channel-config"
 
 function jsonResponse(data: unknown) {
@@ -32,6 +50,11 @@ type TestChannelStatusData = {
   channels: Record<ChannelId, { configured: boolean; live: ChannelLiveState; detail?: string }>
   configuredChannelIds: ChannelId[]
   hasConfiguredChannels: boolean
+}
+
+type TestDeployStatusData = {
+  workspaceStatus: string
+  drift: { isStale: boolean; changedAreas: string[] }
 }
 
 function emptyStatusData(): TestChannelStatusData {
@@ -60,11 +83,16 @@ async function enabledConnectButtons(): Promise<HTMLButtonElement[]> {
 describe("Setup Step 4 channel persistence UI", () => {
   let statusData: TestChannelStatusData
   let templateSlug: string | null
+  let deployStatusData: TestDeployStatusData
 
   beforeEach(() => {
     push.mockReset()
+    mockStartRedeploy.mockReset()
+    mockStartRedeploy.mockImplementation(async () => { redeployCompleted?.() })
+    redeployCompleted = undefined
     statusData = emptyStatusData()
     templateSlug = null
+    deployStatusData = { workspaceStatus: "DRAFT", drift: { isStale: false, changedAreas: [] } }
     vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) => {
       const href = String(url)
       if (href.includes("/api/channels/ws-1/status")) {
@@ -74,7 +102,10 @@ describe("Setup Step 4 channel persistence UI", () => {
         })
       }
       if (href.includes("/api/workspaces/ws-1")) {
-        return jsonResponse({ success: true, data: { clawTemplate: templateSlug ? { slug: templateSlug } : null } })
+        return jsonResponse({ success: true, data: { name: "Your Claw", clawTemplate: templateSlug ? { slug: templateSlug } : null } })
+      }
+      if (href.includes("/api/deploy/ws-1/status?drift=1")) {
+        return jsonResponse({ success: true, data: deployStatusData })
       }
       if (href.includes("/api/channels/ws-1") && init?.method === "POST") {
         statusData = {
@@ -86,6 +117,7 @@ describe("Setup Step 4 channel persistence UI", () => {
           configuredChannelIds: ["telegram"],
           hasConfiguredChannels: true,
         }
+        deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
         return jsonResponse({
           success: true,
           data: statusData,
@@ -130,6 +162,47 @@ describe("Setup Step 4 channel persistence UI", () => {
       )
     })
     expect(await screen.findByText("Configured — deploys with next redeploy")).toBeDefined()
+    expect(await screen.findByText("Channel changes saved — redeploy to apply")).toBeDefined()
+  })
+
+  it("opens the apply prompt on Next when channel drift is stale", async () => {
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    await enabledConnectButtons()
+    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
+
+    expect(await screen.findByRole("heading", { name: "Apply changes now?" })).toBeDefined()
+    expect(screen.getByText("Your channel changes take effect after a redeploy.")).toBeDefined()
+  })
+
+  it("confirming the apply prompt invokes the shared redeploy flow then navigates to step 5", async () => {
+    deployStatusData = { workspaceStatus: "PAUSED", drift: { isStale: true, changedAreas: ["channels"] } }
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    await enabledConnectButtons()
+    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
+    expect(await screen.findByRole("heading", { name: "Apply changes now?" })).toBeDefined()
+    const redeployButtons = screen.getAllByRole("button", { name: "Redeploy" })
+    fireEvent.click(redeployButtons[redeployButtons.length - 1])
+
+    await waitFor(() => expect(mockStartRedeploy).toHaveBeenCalledTimes(1))
+    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/5")
+  })
+
+  it("cancelling the apply prompt navigates to step 5 without redeploying", async () => {
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    await enabledConnectButtons()
+    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Not now" }))
+
+    expect(mockStartRedeploy).not.toHaveBeenCalled()
+    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/5")
   })
 
   it("renders loading rows and no Connect buttons until channel state is known", async () => {
@@ -268,5 +341,61 @@ describe("Setup Step 4 channel persistence UI", () => {
 
     expect(source).not.toContain("setChannelStatuses")
     expect(source).not.toContain("setTimeout(resolve")
+  })
+})
+
+describe("Setup Step 5 drift-aware go live", () => {
+  let deployStatusData: TestDeployStatusData
+
+  beforeEach(() => {
+    push.mockReset()
+    mockStartRedeploy.mockReset()
+    redeployCompleted = undefined
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: false, changedAreas: [] } }
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
+      const href = String(url)
+      if (href.includes("/api/workspaces/ws-1")) {
+        return jsonResponse({ success: true, data: { name: "Live Claw" } })
+      }
+      if (href.includes("/api/deploy/ws-1/status?drift=1")) {
+        return jsonResponse({ success: true, data: deployStatusData })
+      }
+      return jsonResponse({ success: true, data: {} })
+    }))
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it("shows stale channel changes on step 5 and hides the connected-channel tip", async () => {
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
+
+    render(<Step5 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("Your latest changes (channels) aren't live yet — redeploy to apply")).toBeDefined()
+    expect(screen.queryByText("Message your Orchestrator anytime through the connected channels.")).toBeNull()
+    expect(screen.getByRole("button", { name: "Redeploy" })).toBeDefined()
+  })
+
+  it("keeps the celebration unchanged when drift is fresh", async () => {
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: false, changedAreas: [] } }
+
+    render(<Step5 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("Your Live Claw is live!")).toBeDefined()
+    expect(screen.getByText("Message your Orchestrator anytime through the connected channels.")).toBeDefined()
+    expect(screen.queryByText(/aren't live yet/)).toBeNull()
+  })
+
+  it("does not warn for draft or never-deployed workspaces", async () => {
+    deployStatusData = { workspaceStatus: "DRAFT", drift: { isStale: true, changedAreas: ["channels"] } }
+
+    render(<Step5 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("Your Live Claw is live!")).toBeDefined()
+    expect(screen.getByText("Message your Orchestrator anytime through the connected channels.")).toBeDefined()
+    expect(screen.queryByText(/aren't live yet/)).toBeNull()
   })
 })
