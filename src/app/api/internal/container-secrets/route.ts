@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { decrypt } from "@/lib/encryption"
+import { buildChannelEnvVars, parseChannelConfigBlob } from "@/lib/openclaw/channel-config"
 import { deriveContainerEnv } from "@/lib/openclaw/derive-container-env"
 import {
   requireActivityEndpoint,
@@ -93,11 +94,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (workspace.channelConfigEncrypted) {
-    const ch = JSON.parse(decrypt(workspace.channelConfigEncrypted))
-    if (ch.telegram?.botToken) envVars.push(`TELEGRAM_BOT_TOKEN=${ch.telegram.botToken}`)
-    if (ch.discord?.botToken) envVars.push(`DISCORD_BOT_TOKEN=${ch.discord.botToken}`)
-    if (ch.slack?.botToken) envVars.push(`SLACK_BOT_TOKEN=${ch.slack.botToken}`)
-    if (ch.slack?.appToken) envVars.push(`SLACK_APP_TOKEN=${ch.slack.appToken}`)
+    const channelConfig = parseChannelConfigBlob(workspace.channelConfigEncrypted, decrypt)
+    for (const [key, value] of Object.entries(buildChannelEnvVars(channelConfig))) {
+      envVars.push(`${key}=${value}`)
+    }
   }
 
   const transportKey = process.env.AGENT_TRANSPORT_KEY

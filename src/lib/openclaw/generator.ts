@@ -34,6 +34,12 @@ import {
   resolveToolRouterSession,
   mergeMcpDenyIntoAgentTools,
 } from '@/lib/openclaw/mcp-longtail';
+import {
+  buildChannelEnvVars,
+  buildOpenClawChannelsConfig,
+  parseChannelConfigBlob,
+  type ChannelConfigMap,
+} from '@/lib/openclaw/channel-config';
 import yaml from 'yaml';
 
 // ---------------------------------------------------------------------------
@@ -175,13 +181,16 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     },
   });
 
-  // 2. Parse channel config from encrypted JSON blob
-  let channelConnections: ChannelConnectionRecord[] = [];
+  // 2. Parse channel config from encrypted JSON blob. The plaintext contract
+  // is a runtime-shaped map keyed by OpenClaw channel id; see
+  // src/lib/openclaw/channel-config.ts. Invalid blobs are treated as no
+  // channels so one bad optional integration cannot prevent a deploy.
+  let channelConfig: ChannelConfigMap = {};
   if (workspace.channelConfigEncrypted) {
     try {
-      channelConnections = JSON.parse(decrypt(workspace.channelConfigEncrypted)) as ChannelConnectionRecord[];
+      channelConfig = parseChannelConfigBlob(workspace.channelConfigEncrypted, decrypt);
     } catch {
-      channelConnections = [];
+      channelConfig = {};
     }
   }
 
@@ -215,7 +224,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
         })
       : [];
 
-  const workspaceWithChannels = { ...workspace, channelConnections, compatibleToolSkills };
+  const workspaceWithChannels = { ...workspace, channelConfig, compatibleToolSkills };
 
   // 3. Identify agent roles
   const orchestrator = workspaceWithChannels.agents.find(a => a.role === 'ORCHESTRATOR');
@@ -581,54 +590,7 @@ function generateOpenClawConfig(
 // ---------------------------------------------------------------------------
 
 function generateChannelsConfig(workspace: WorkspaceWithRelations): JsonObject {
-  const channels: JsonObject = {};
-
-  for (const channel of workspace.channelConnections) {
-    switch (channel.channelType) {
-      case 'TELEGRAM':
-        channels.telegram = {
-          // Token auto-discovered from TELEGRAM_BOT_TOKEN env var
-          ...(channel.allowedUsers?.length && {
-            allowFrom: channel.allowedUsers,
-          }),
-          groups: { '*': { requireMention: true } },
-        };
-        break;
-
-      case 'DISCORD':
-        channels.discord = {
-          // Token auto-discovered from DISCORD_BOT_TOKEN env var
-          ...(channel.allowedUsers?.length && {
-            allowFrom: channel.allowedUsers.map((u: string) => `user:${u}`),
-          }),
-          guilds: { '*': { requireMention: true } },
-        };
-        break;
-
-      case 'SLACK':
-        channels.slack = {
-          // Tokens auto-discovered from SLACK_BOT_TOKEN + SLACK_APP_TOKEN env vars
-        };
-        break;
-
-      case 'WHATSAPP':
-        channels.whatsapp = {
-          dmPolicy: 'pairing',
-          ...(channel.allowedUsers?.length && {
-            allowFrom: channel.allowedUsers,
-          }),
-        };
-        break;
-
-      case 'MSTEAMS':
-        channels.msteams = {
-          enabled: true,
-        };
-        break;
-    }
-  }
-
-  return channels;
+  return buildOpenClawChannelsConfig(workspace.channelConfig);
 }
 
 // ---------------------------------------------------------------------------
@@ -978,25 +940,11 @@ function generateEnvFile(
   }
   lines.push('');
 
-  // Channel tokens (decrypted)
-  for (const channel of workspace.channelConnections) {
-    if (channel.encryptedToken) {
-      const token = decrypt(channel.encryptedToken);
-      switch (channel.channelType) {
-        case 'TELEGRAM':
-          lines.push(`TELEGRAM_BOT_TOKEN=${token}`);
-          break;
-        case 'DISCORD':
-          lines.push(`DISCORD_BOT_TOKEN=${token}`);
-          break;
-        case 'SLACK':
-          lines.push(`SLACK_BOT_TOKEN=${token}`);
-          if (channel.encryptedAppToken) {
-            lines.push(`SLACK_APP_TOKEN=${decrypt(channel.encryptedAppToken)}`);
-          }
-          break;
-      }
-    }
+  // Channel env fallbacks (same canonical encrypted map as openclaw.json).
+  // The runtime consumes the config secrets directly; env vars stay as a
+  // compatibility fallback for token resolvers that also check process.env.
+  for (const [key, value] of Object.entries(buildChannelEnvVars(workspace.channelConfig))) {
+    lines.push(`${key}=${value}`);
   }
   lines.push('');
 
@@ -1850,7 +1798,7 @@ type WorkspaceWithRelations = {
   containerHost?: string | null;
   agents: AgentWithRelations[];
   toolConnections: ToolConnectionRecord[];
-  channelConnections: ChannelConnectionRecord[];
+  channelConfig: ChannelConfigMap;
   clawTemplate: { name: string; slug: string } | null;
   user: {
     /** Needed for Composio user id (`claws_${user.id}`). Populated by the
@@ -2149,9 +2097,3 @@ type SkillForToolEmit = {
   compatibleTools: string[];
 };
 
-type ChannelConnectionRecord = {
-  channelType: string;
-  encryptedToken?: string | null;
-  encryptedAppToken?: string | null;
-  allowedUsers?: string[] | null;
-};

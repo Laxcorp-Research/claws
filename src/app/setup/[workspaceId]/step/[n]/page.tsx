@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
@@ -15,9 +15,12 @@ import { DeployProgress } from "@/components/setup/deploy-progress"
 import { ChannelList } from "@/components/setup/channel-list"
 import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { Modal } from "@/components/ui/modal"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
@@ -42,6 +45,7 @@ import { DEFAULT_MODEL } from "@/lib/models"
 import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
+import type { ChannelId, LaunchChannelId, MaskedChannelConfigMap } from "@/lib/openclaw/channel-config"
 
 interface AgentRow {
   id: string
@@ -78,6 +82,12 @@ interface ProviderStatus {
 interface ConfigDriftInfo {
   isStale: boolean
   changedAreas: string[]
+}
+
+interface ChannelSummary {
+  channels: MaskedChannelConfigMap
+  configuredChannelIds: ChannelId[]
+  hasConfiguredChannels: boolean
 }
 
 function formatChangedAreas(areas: string[]): string {
@@ -1427,17 +1437,22 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
 interface DeployStepItem { label: string; status: "complete" | "running" | "pending" | "failed" }
 
-const DEPLOY_STAGES = [
+const BASE_DEPLOY_STAGES = [
   { label: "Generating workspace files", key: "GENERATING" },
   { label: "Provisioning container", key: "PROVISIONING" },
   { label: "Configuring workspace", key: "CONFIGURING" },
   { label: "Starting gateway", key: "STARTING" },
   { label: "Health check", key: "HEALTH_CHECK" },
-  { label: "Connecting channels", key: "WAITING_CHANNELS" },
   { label: "Complete", key: "COMPLETED" },
 ]
 
-const DEPLOY_ORDER = DEPLOY_STAGES.map((s) => s.key)
+const CHANNEL_DEPLOY_STAGE = { label: "Applying channel config", key: "WAITING_CHANNELS" }
+
+function getDeployStages(hasConfiguredChannels: boolean) {
+  return hasConfiguredChannels
+    ? [...BASE_DEPLOY_STAGES.slice(0, -1), CHANNEL_DEPLOY_STAGE, BASE_DEPLOY_STAGES[BASE_DEPLOY_STAGES.length - 1]]
+    : BASE_DEPLOY_STAGES
+}
 
 const FAILURE_REASONS: Record<string, string> = {
   GENERATING: "Failed to generate workspace configuration. This is unusual - please try again.",
@@ -1445,16 +1460,18 @@ const FAILURE_REASONS: Record<string, string> = {
   CONFIGURING: "Failed to configure agents and tools in the container. Check that all required tools are connected.",
   STARTING: "Container failed to start. Check your API keys are valid.",
   HEALTH_CHECK: "Agents are not responding after startup. An API key may be invalid or a tool connection expired.",
-  WAITING_CHANNELS: "Failed to connect communication channels. You can retry or skip and connect them later.",
+  WAITING_CHANNELS: "Failed to apply channel configuration. You can retry or skip and connect channels later.",
 }
 
-function mapDeployStatus(status: string | null, failedStage?: string | null): DeployStepItem[] {
-  if (!status || status === "PENDING") return DEPLOY_STAGES.map((s, i) => ({ label: s.label, status: i === 0 ? "running" as const : "pending" as const }))
+export function mapDeployStatus(status: string | null, failedStage?: string | null, hasConfiguredChannels = false): DeployStepItem[] {
+  const stages = getDeployStages(hasConfiguredChannels)
+  const order = stages.map((s) => s.key)
+  if (!status || status === "PENDING") return stages.map((s, i) => ({ label: s.label, status: i === 0 ? "running" as const : "pending" as const }))
 
   if (status === "FAILED") {
-    const failIdx = failedStage ? DEPLOY_ORDER.indexOf(failedStage) : -1
-    return DEPLOY_STAGES.map((s) => {
-      const si = DEPLOY_ORDER.indexOf(s.key)
+    const failIdx = failedStage ? order.indexOf(failedStage) : -1
+    return stages.map((s) => {
+      const si = order.indexOf(s.key)
       if (failIdx >= 0) {
         if (si < failIdx) return { label: s.label, status: "complete" as const }
         if (si === failIdx) return { label: s.label, status: "failed" as const }
@@ -1463,11 +1480,12 @@ function mapDeployStatus(status: string | null, failedStage?: string | null): De
     })
   }
 
-  const idx = DEPLOY_ORDER.indexOf(status)
-  return DEPLOY_STAGES.map((s) => {
-    const si = DEPLOY_ORDER.indexOf(s.key)
+  const effectiveStatus = status === "WAITING_CHANNELS" && !hasConfiguredChannels ? "HEALTH_CHECK" : status
+  const idx = order.indexOf(effectiveStatus)
+  return stages.map((s) => {
+    const si = order.indexOf(s.key)
     if (si < idx) return { label: s.label, status: "complete" as const }
-    if (si === idx) return { label: s.label, status: status === "COMPLETED" ? "complete" as const : "running" as const }
+    if (si === idx) return { label: s.label, status: effectiveStatus === "COMPLETED" ? "complete" as const : "running" as const }
     return { label: s.label, status: "pending" as const }
   })
 }
@@ -1498,6 +1516,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   const [apiKeySource, setApiKeySource] = useState<ApiKeySource | null>(null)
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
   const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
+  const [hasConfiguredChannels, setHasConfiguredChannels] = useState(false)
   const creditUser = isCreditUser(apiKeySource)
 
   const checkBillingAndUpdateEligibility = useCallback(async (): Promise<boolean> => {
@@ -1527,9 +1546,10 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     async function init() {
       try {
-        const [, statusRes] = await Promise.all([
+        const [, statusRes, channelsRes] = await Promise.all([
           checkBillingAndUpdateEligibility(),
           fetch(`/api/deploy/${workspaceId}/status?drift=1`),
+          fetch(`/api/channels/${workspaceId}`),
         ])
 
         const statusJson = await statusRes.json()
@@ -1552,6 +1572,10 @@ function Step3({ workspaceId }: { workspaceId: string }) {
               setIsDeploying(true)
             }
           }
+        }
+        const channelsJson = await channelsRes.json()
+        if (channelsJson.success) {
+          setHasConfiguredChannels(Boolean(channelsJson.data?.hasConfiguredChannels))
         }
       } catch (err) {
         console.error("Failed to load setup data:", err)
@@ -1633,7 +1657,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
 
       const deploymentId = json.data?.deployment?.id
 
-      const stages = ["GENERATING", "PROVISIONING", "CONFIGURING", "STARTING", "HEALTH_CHECK", "WAITING_CHANNELS", "COMPLETED"]
+      const stages = getDeployStages(hasConfiguredChannels).map((stage) => stage.key)
       for (let i = 0; i < stages.length; i++) {
         setDeploymentStatus(stages[i])
         if (stages[i] !== "COMPLETED") {
@@ -1655,7 +1679,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       setDeploymentStatus("FAILED")
       setIsDeploying(false)
     }
-  }, [workspaceId])
+  }, [workspaceId, hasConfiguredChannels])
 
   const handleRedeploy = useCallback(async () => {
     setIsDeploying(true)
@@ -1762,7 +1786,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       {deploymentStatus && !showStaleRunningConfig && (
         <div className="mb-4">
           <DeployProgress
-            steps={mapDeployStatus(deploymentStatus)}
+            steps={mapDeployStatus(deploymentStatus, null, hasConfiguredChannels)}
             failureDetail={deploymentStatus === "FAILED" ? getFailureMessage(null, deploymentError) : undefined}
           />
         </div>
@@ -1812,64 +1836,281 @@ function Step3({ workspaceId }: { workspaceId: string }) {
 
 const ICON_CLASS = "w-4 h-4"
 
-const CHANNELS = [
+type ChannelField = {
+  key: string
+  label: string
+  placeholder: string
+}
+
+type ChannelDefinition = {
+  id: "web-chat" | ChannelId
+  channelId?: ChannelId
+  name: string
+  description: string
+  icon: ReactNode
+  alwaysConnected?: boolean
+  launch?: boolean
+  staged?: boolean
+  fields?: ChannelField[]
+  helpUrl?: string
+}
+
+const CHANNELS: ChannelDefinition[] = [
   { id: "web-chat", name: "Web chat", description: "Built-in - always available", icon: <Globe className={ICON_CLASS} />, alwaysConnected: true },
-  { id: "whatsapp", name: "WhatsApp", description: "Scan QR code to connect", icon: <Smartphone className={ICON_CLASS} />, alwaysConnected: false },
-  { id: "slack", name: "Slack", description: "Connect via OAuth", icon: <Hash className={ICON_CLASS} />, alwaysConnected: false },
-  { id: "telegram", name: "Telegram", description: "Enter bot token from @BotFather", icon: <Send className={ICON_CLASS} />, alwaysConnected: false },
-  { id: "microsoft-teams", name: "Microsoft Teams", description: "Azure Bot Service setup required", icon: <Building2 className={ICON_CLASS} />, alwaysConnected: false },
-  { id: "discord", name: "Discord", description: "Enter bot token from Developer Portal", icon: <Gamepad2 className={ICON_CLASS} />, alwaysConnected: false },
+  {
+    id: "telegram",
+    channelId: "telegram",
+    name: "Telegram",
+    description: "Enter bot token from @BotFather",
+    icon: <Send className={ICON_CLASS} />,
+    launch: true,
+    fields: [{ key: "botToken", label: "Bot token", placeholder: "123456789:AA..." }],
+    helpUrl: "https://core.telegram.org/bots/features#botfather",
+  },
+  {
+    id: "discord",
+    channelId: "discord",
+    name: "Discord",
+    description: "Enter bot token from Developer Portal",
+    icon: <Gamepad2 className={ICON_CLASS} />,
+    launch: true,
+    fields: [{ key: "token", label: "Bot token", placeholder: "Paste your Discord bot token" }],
+    helpUrl: "https://discord.com/developers/applications",
+  },
+  {
+    id: "slack",
+    channelId: "slack",
+    name: "Slack",
+    description: "Socket Mode with bot and app tokens",
+    icon: <Hash className={ICON_CLASS} />,
+    launch: true,
+    fields: [
+      { key: "botToken", label: "Bot token", placeholder: "xoxb-..." },
+      { key: "appToken", label: "App-level token", placeholder: "xapp-..." },
+    ],
+    helpUrl: "https://api.slack.com/apis/socket-mode",
+  },
+  { id: "whatsapp", channelId: "whatsapp", name: "WhatsApp", description: "QR pairing will use the runtime web.login flow", icon: <Smartphone className={ICON_CLASS} />, staged: true },
+  { id: "msteams", channelId: "msteams", name: "Microsoft Teams", description: "Azure Bot Service setup required", icon: <Building2 className={ICON_CLASS} />, staged: true },
 ]
 
-function Step4({ workspaceId }: { workspaceId: string }) {
+function isLaunchChannel(channelId: ChannelId): channelId is LaunchChannelId {
+  return channelId === "telegram" || channelId === "discord" || channelId === "slack"
+}
+
+function buildChannelPayload(channel: LaunchChannelId, values: Record<string, string>) {
+  if (channel === "telegram") return { channel, config: { botToken: values.botToken } }
+  if (channel === "discord") return { channel, config: { token: values.token } }
+  return { channel, config: { mode: "socket" as const, botToken: values.botToken, appToken: values.appToken } }
+}
+
+function channelDescription(channel: ChannelDefinition, summary: ChannelSummary | null): string {
+  if (!channel.channelId) return channel.description
+  const fields = summary?.channels[channel.channelId]?.fields
+  if (!fields || Object.keys(fields).length === 0) return channel.description
+  const hint = Object.values(fields).join(", ")
+  return `${channel.description} (${hint})`
+}
+
+export function Step4({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
-  const [channelStatuses, setChannelStatuses] = useState<Record<string, "connected" | "disconnected" | "connecting" | "error">>({
-    "web-chat": "connected",
-    "whatsapp": "disconnected",
-    "slack": "disconnected",
-    "telegram": "disconnected",
-    "microsoft-teams": "disconnected",
-    "discord": "disconnected",
-  })
-  const [channelErrors, setChannelErrors] = useState<Record<string, string>>({})
+  const [summary, setSummary] = useState<ChannelSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [activeChannel, setActiveChannel] = useState<ChannelDefinition | null>(null)
+  const [formValues, setFormValues] = useState<Record<string, string>>({})
+  const [savingChannel, setSavingChannel] = useState<ChannelId | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleConnect = useCallback(async (channelId: string) => {
-    setChannelStatuses((prev) => ({ ...prev, [channelId]: "connecting" }))
-    setChannelErrors((prev) => { const next = { ...prev }; delete next[channelId]; return next })
+  const loadChannels = useCallback(async () => {
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      setChannelStatuses((prev) => ({ ...prev, [channelId]: "connected" }))
+      const res = await fetch(`/api/channels/${workspaceId}`)
+      const json = await res.json()
+      if (json.success) setSummary(json.data as ChannelSummary)
     } catch {
-      setChannelStatuses((prev) => ({ ...prev, [channelId]: "error" }))
-      setChannelErrors((prev) => ({ ...prev, [channelId]: "Connection failed. Please try again." }))
+      setError("Failed to load channel settings.")
+    } finally {
+      setLoading(false)
     }
-  }, [])
+  }, [workspaceId])
 
-  const handleDisconnect = useCallback((channelId: string) => {
-    setChannelStatuses((prev) => ({ ...prev, [channelId]: "disconnected" }))
-    setChannelErrors((prev) => { const next = { ...prev }; delete next[channelId]; return next })
-  }, [])
+  useEffect(() => {
+    loadChannels()
+  }, [loadChannels])
+
+  function openConnectModal(channel: ChannelDefinition) {
+    setActiveChannel(channel)
+    setFormValues({})
+    setError(null)
+  }
+
+  async function saveChannel() {
+    if (!activeChannel?.channelId || !isLaunchChannel(activeChannel.channelId)) return
+    setSavingChannel(activeChannel.channelId)
+    setError(null)
+    try {
+      const res = await fetch(`/api/channels/${workspaceId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildChannelPayload(activeChannel.channelId, formValues)),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setError(json.error?.message || "Could not save channel.")
+        return
+      }
+      setSummary(json.data as ChannelSummary)
+      setActiveChannel(null)
+      setFormValues({})
+    } catch {
+      setError("Network error while saving channel.")
+    } finally {
+      setSavingChannel(null)
+    }
+  }
+
+  async function disconnectChannel(channelId: ChannelId) {
+    setSavingChannel(channelId)
+    setError(null)
+    try {
+      const res = await fetch(`/api/channels/${workspaceId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: channelId }),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setError(json.error?.message || "Could not disconnect channel.")
+        return
+      }
+      setSummary(json.data as ChannelSummary)
+    } catch {
+      setError("Network error while disconnecting channel.")
+    } finally {
+      setSavingChannel(null)
+    }
+  }
+
+  const activeFields = activeChannel?.fields ?? []
+  const allRequiredFilled = activeFields.every((field) => (formValues[field.key] ?? "").trim().length > 0)
 
   return (
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">How should your Claw talk to you?</h2>
-      <p className="text-[11px] text-[var(--tx2)] mb-3.5">Web chat is always available. Connect additional channels for real-time communication.</p>
+      <p className="text-[11px] text-[var(--tx2)] mb-1.5">Web chat is always available. Connect additional channels for real-time communication.</p>
+      <p className="text-[11px] text-[var(--tx2)] mb-3.5">No channel? Your Claw is fully usable from the dashboard.</p>
+
+      {error && (
+        <div className="mb-3.5">
+          <AlertBanner variant="error">{error}</AlertBanner>
+        </div>
+      )}
 
       <ChannelList>
         {CHANNELS.map((channel) => (
           <ChannelRow
             key={channel.id}
             name={channel.name}
-            description={channel.description}
+            description={channelDescription(channel, summary)}
             icon={channel.icon}
-            status={channelStatuses[channel.id] || "disconnected"}
-            errorMessage={channelErrors[channel.id]}
+            status={
+              channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.configured)
+                ? "connected"
+                : "disconnected"
+            }
             alwaysConnected={channel.alwaysConnected}
-            onConnect={() => handleConnect(channel.id)}
-            onDisconnect={() => handleDisconnect(channel.id)}
+            onConnect={() => channel.launch && openConnectModal(channel)}
+            onDisconnect={() => channel.channelId && disconnectChannel(channel.channelId)}
+            action={
+              channel.staged ? (
+                <Badge variant="neutral">Coming soon</Badge>
+              ) : channel.channelId && summary?.channels[channel.channelId]?.configured ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => disconnectChannel(channel.channelId!)}
+                  disabled={savingChannel === channel.channelId}
+                >
+                  {savingChannel === channel.channelId ? "Disconnecting..." : "Disconnect"}
+                </Button>
+              ) : channel.launch ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => openConnectModal(channel)}
+                  disabled={loading || (channel.channelId ? savingChannel === channel.channelId : false)}
+                >
+                  Connect
+                </Button>
+              ) : undefined
+            }
           />
         ))}
       </ChannelList>
+
+      <Modal
+        open={activeChannel !== null}
+        onClose={() => {
+          setActiveChannel(null)
+          setFormValues({})
+          setError(null)
+        }}
+        title={
+          <span className="text-[16px] font-semibold">
+            Connect <span className="text-[var(--ac)]">{activeChannel?.name}</span>
+          </span>
+        }
+        description="Credentials are encrypted with AES-256-GCM and applied on the next redeploy."
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActiveChannel(null)
+                setFormValues({})
+                setError(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={saveChannel}
+              disabled={!allRequiredFilled || (activeChannel?.channelId ? savingChannel === activeChannel.channelId : false)}
+            >
+              {activeChannel?.channelId && savingChannel === activeChannel.channelId ? "Saving..." : "Save channel"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {activeFields.map((field, index) => (
+            <div key={field.key}>
+              <label className="block text-[11px] font-medium mb-[3px]">{field.label}</label>
+              <Input
+                type="password"
+                value={formValues[field.key] ?? ""}
+                onChange={(event) => setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))}
+                placeholder={field.placeholder}
+                className="font-mono"
+                autoFocus={index === 0}
+              />
+            </div>
+          ))}
+          {activeChannel?.helpUrl && (
+            <p className="text-[11px] text-[var(--tx3)]">
+              <a
+                href={activeChannel.helpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline transition-colors"
+              >
+                Setup guide →
+              </a>
+            </p>
+          )}
+        </div>
+      </Modal>
 
       <div className="flex justify-between mt-3.5">
         <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>← Back</Button>

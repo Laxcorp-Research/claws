@@ -166,7 +166,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
       },
     ],
     toolConnections: [] as TestToolConn[],
-    channelConnections: [],
+    channelConfig: {},
     clawTemplate: { name: 'MCP Template', slug: 'mcp-template' },
     user: { id: 'user-1', name: 'Test User', apiKeys: [] },
     ...overrides,
