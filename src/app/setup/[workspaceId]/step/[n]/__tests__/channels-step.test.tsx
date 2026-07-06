@@ -7,10 +7,11 @@ import { join } from "node:path"
 const push = vi.fn()
 const mockStartRedeploy = vi.fn()
 let redeployCompleted: (() => void) | undefined
+let routeStep = "4"
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
-  useParams: () => ({ workspaceId: "ws-1", n: "4" }),
+  useParams: () => ({ workspaceId: "ws-1", n: routeStep }),
   useSearchParams: () => new URLSearchParams(),
 }))
 
@@ -30,7 +31,7 @@ vi.mock("@/components/dashboard/use-workspace-redeploy", () => ({
   },
 }))
 
-import { Step4, Step5, mapDeployStatus } from "@/app/setup/[workspaceId]/step/[n]/page"
+import SetupStepPage, { Step3, Step4, Step5, mapDeployStatus } from "@/app/setup/[workspaceId]/step/[n]/page"
 import type { ChannelId, ChannelLiveState } from "@/lib/openclaw/channel-config"
 
 function jsonResponse(data: unknown) {
@@ -95,6 +96,7 @@ describe("Setup Step 4 channel persistence UI", () => {
     mockStartRedeploy.mockReset()
     mockStartRedeploy.mockImplementation(async () => { redeployCompleted?.() })
     redeployCompleted = undefined
+    routeStep = "4"
     statusData = emptyStatusData()
     templateSlug = null
     deployStatusData = { workspaceStatus: "DRAFT", drift: { isStale: false, changedAreas: [] } }
@@ -245,44 +247,16 @@ describe("Setup Step 4 channel persistence UI", () => {
     })
   })
 
-  it("opens the apply prompt on Next when channel drift is stale", async () => {
+  it("navigates to Deploy on Next without opening the apply prompt", async () => {
     deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
 
     render(<Step4 workspaceId="ws-1" />)
 
     await enabledConnectButtons()
-    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
+    fireEvent.click(screen.getByRole("button", { name: "Next: Deploy →" }))
 
-    expect(await screen.findByRole("heading", { name: "Apply changes now?" })).toBeDefined()
-    expect(screen.getByText("Your channel changes take effect after a redeploy.")).toBeDefined()
-  })
-
-  it("confirming the apply prompt invokes the shared redeploy flow then navigates to step 5", async () => {
-    deployStatusData = { workspaceStatus: "PAUSED", drift: { isStale: true, changedAreas: ["channels"] } }
-
-    render(<Step4 workspaceId="ws-1" />)
-
-    await enabledConnectButtons()
-    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
-    expect(await screen.findByRole("heading", { name: "Apply changes now?" })).toBeDefined()
-    const redeployButtons = screen.getAllByRole("button", { name: "Redeploy" })
-    fireEvent.click(redeployButtons[redeployButtons.length - 1])
-
-    await waitFor(() => expect(mockStartRedeploy).toHaveBeenCalledTimes(1))
-    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/5")
-  })
-
-  it("cancelling the apply prompt navigates to step 5 without redeploying", async () => {
-    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
-
-    render(<Step4 workspaceId="ws-1" />)
-
-    await enabledConnectButtons()
-    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
-    fireEvent.click(await screen.findByRole("button", { name: "Not now" }))
-
-    expect(mockStartRedeploy).not.toHaveBeenCalled()
-    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/5")
+    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/4")
+    expect(screen.queryByRole("heading", { name: "Apply changes now?" })).toBeNull()
   })
 
   it("renders loading rows and no Connect buttons until channel state is known", async () => {
@@ -365,7 +339,7 @@ describe("Setup Step 4 channel persistence UI", () => {
     expect(screen.getByText("Connected")).toBeDefined()
     expect(screen.getByText("invalid token. Check token and redeploy.")).toBeDefined()
     expect(screen.getByText("Check token and redeploy.")).toBeDefined()
-    expect(screen.getByText("Configured — deploys with next redeploy")).toBeDefined()
+    expect(screen.getByText("Will connect when you deploy")).toBeDefined()
     expect(screen.getAllByRole("button", { name: "Disconnect" })).toHaveLength(3)
   })
 
@@ -393,7 +367,7 @@ describe("Setup Step 4 channel persistence UI", () => {
 
     render(<Step4 workspaceId="ws-1" />)
 
-    await screen.findByText("Configured — deploys with next redeploy")
+    await screen.findByText("Will connect when you deploy")
     fireEvent.click(screen.getByRole("button", { name: "Manage" }))
 
     expect(await screen.findByRole("heading", { name: "Manage Telegram access" })).toBeDefined()
@@ -453,13 +427,26 @@ describe("Setup Step 4 channel persistence UI", () => {
 
     render(<Step4 workspaceId="ws-1" />)
 
-    await screen.findByText("Configured — deploys with next redeploy")
+    await screen.findByText("Will connect when you deploy")
     expect(screen.queryByText("This Claw's emergency alerts require a connected channel")).toBeNull()
   })
 
   it("hides Applying channel config deploy step when no channel is configured", () => {
     expect(mapDeployStatus("HEALTH_CHECK", null, false).map((step) => step.label)).not.toContain("Applying channel config")
     expect(mapDeployStatus("HEALTH_CHECK", null, true).map((step) => step.label)).toContain("Applying channel config")
+  })
+
+  it("routes setup step 3 to Channels and step 4 to Deploy", async () => {
+    routeStep = "3"
+    const { unmount } = render(<SetupStepPage />)
+    expect(await screen.findByText("How should your Claw talk to you?")).toBeDefined()
+    expect(screen.getByText("Channels")).toBeDefined()
+    unmount()
+
+    routeStep = "4"
+    render(<SetupStepPage />)
+    expect(await screen.findByText("Deploy your Claw")).toBeDefined()
+    expect(screen.getByText("Deploy")).toBeDefined()
   })
 
   it("deletes timeout-based fake channel connection mutation", () => {
@@ -526,5 +513,83 @@ describe("Setup Step 5 drift-aware go live", () => {
     expect(await screen.findByText("Your Live Claw is live!")).toBeDefined()
     expect(screen.getByText("Message your Orchestrator anytime through the connected channels.")).toBeDefined()
     expect(screen.queryByText(/aren't live yet/)).toBeNull()
+  })
+})
+
+describe("Setup Step 4 Deploy exit drift prompt", () => {
+  let deployStatusData: TestDeployStatusData
+
+  beforeEach(() => {
+    push.mockReset()
+    mockStartRedeploy.mockReset()
+    mockStartRedeploy.mockImplementation(async () => { redeployCompleted?.() })
+    redeployCompleted = undefined
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
+      const href = String(url)
+      if (href.includes("/api/user/billing")) {
+        return jsonResponse({ success: true, data: { trialUsed: false, trialEndsAt: null, hasActiveSubscription: false } })
+      }
+      if (href.includes("/api/deploy/ws-1/status?drift=1")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            workspaceStatus: deployStatusData.workspaceStatus,
+            apiKeySource: "USER_OWN_KEY",
+            deployment: { status: "COMPLETED", errorMessage: null },
+            drift: deployStatusData.drift,
+          },
+        })
+      }
+      if (href.includes("/api/channels/ws-1")) {
+        return jsonResponse({ success: true, data: { hasConfiguredChannels: true } })
+      }
+      if (href.includes("/api/workspaces/ws-1")) {
+        return jsonResponse({ success: true, data: { clawTemplate: null } })
+      }
+      if (href.includes("/api/tools/ws-1")) {
+        return jsonResponse({ success: true, data: { connections: [] } })
+      }
+      return jsonResponse({ success: true, data: {} })
+    }))
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it("opens the apply prompt on Deploy Next when channel drift is stale", async () => {
+    render(<Step3 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("Deploy your Claw")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
+
+    expect(await screen.findByRole("heading", { name: "Apply changes now?" })).toBeDefined()
+    expect(screen.getByText("Your channel changes take effect after a redeploy.")).toBeDefined()
+  })
+
+  it("confirming the Deploy apply prompt invokes shared redeploy then navigates to step 5", async () => {
+    render(<Step3 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("Deploy your Claw")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
+    expect(await screen.findByRole("heading", { name: "Apply changes now?" })).toBeDefined()
+    const redeployButtons = screen.getAllByRole("button", { name: "Redeploy" })
+    fireEvent.click(redeployButtons[redeployButtons.length - 1])
+
+    await waitFor(() => expect(mockStartRedeploy).toHaveBeenCalledTimes(1))
+    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/5")
+  })
+
+  it("cancelling the Deploy apply prompt navigates to step 5", async () => {
+    render(<Step3 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("Deploy your Claw")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Not now" }))
+
+    expect(mockStartRedeploy).not.toHaveBeenCalled()
+    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/5")
   })
 })

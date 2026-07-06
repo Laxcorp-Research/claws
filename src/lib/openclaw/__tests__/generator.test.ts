@@ -262,6 +262,28 @@ describe('generateWorkspace', () => {
     expect(result['.env']).toContain('SLACK_APP_TOKEN=xapp-slack-app');
   });
 
+  it('includes configured channels in the first deploy config for a never-deployed workspace', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({
+        status: 'DRAFT',
+        containerId: null,
+        containerHost: null,
+        channelConfigEncrypted: JSON.stringify({
+          telegram: { botToken: '123456789:telegram-token', allowFrom: ['424242'] },
+        }),
+      }),
+    );
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    expect(config.channels.telegram).toEqual({
+      botToken: '123456789:telegram-token',
+      allowFrom: ['424242'],
+      groups: { '*': { requireMention: true } },
+    });
+  });
+
   it('maps model enums to provider/model format', async () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
