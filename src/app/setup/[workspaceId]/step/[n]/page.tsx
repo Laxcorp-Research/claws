@@ -2052,65 +2052,73 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      <ChannelList>
-        {CHANNELS.map((channel) => (
-          <ChannelRow
-            key={channel.id}
-            name={channel.name}
-            description={channelDescription(channel, summary)}
-            icon={channel.icon}
-            status={
-              channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.live === "connected")
-                ? "connected"
-                : channel.channelId && summary?.channels[channel.channelId]?.live === "error"
-                  ? "error"
-                  : channel.channelId && summary?.channels[channel.channelId]?.live === "connecting"
-                    ? "connecting"
-                : "disconnected"
-            }
-            errorMessage={channel.channelId && summary?.channels[channel.channelId]?.live === "error"
-              ? "Check token and redeploy."
-              : undefined}
-            alwaysConnected={channel.alwaysConnected}
-            onConnect={() => channel.launch && openConnectModal(channel)}
-            onDisconnect={() => channel.channelId && disconnectChannel(channel.channelId)}
-            action={
-              channel.staged ? (
-                <Badge variant="neutral">Coming soon</Badge>
-              ) : channel.channelId && summary?.channels[channel.channelId]?.configured ? (
-                <div className="flex items-center gap-1.5">
-                  {summary.channels[channel.channelId].live === "connected" && (
-                    <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>
-                  )}
-                  {summary.channels[channel.channelId].live === "unknown" && (
-                    <Badge variant="info">Configured</Badge>
-                  )}
-                  {summary.channels[channel.channelId].live === "connecting" && (
-                    <Badge variant="info">Checking</Badge>
-                  )}
+      {loading ? (
+        <div className="space-y-2" aria-label="Loading channel status">
+          <LoadingSkeleton variant="card" />
+          <LoadingSkeleton variant="card" />
+          <LoadingSkeleton variant="card" />
+        </div>
+      ) : (
+        <ChannelList>
+          {CHANNELS.map((channel) => (
+            <ChannelRow
+              key={channel.id}
+              name={channel.name}
+              description={channelDescription(channel, summary)}
+              icon={channel.icon}
+              status={
+                channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.live === "connected")
+                  ? "connected"
+                  : channel.channelId && summary?.channels[channel.channelId]?.live === "error"
+                    ? "error"
+                    : channel.channelId && summary?.channels[channel.channelId]?.live === "connecting"
+                      ? "connecting"
+                  : "disconnected"
+              }
+              errorMessage={channel.channelId && summary?.channels[channel.channelId]?.live === "error"
+                ? "Check token and redeploy."
+                : undefined}
+              alwaysConnected={channel.alwaysConnected}
+              onConnect={() => channel.launch && openConnectModal(channel)}
+              onDisconnect={() => channel.channelId && disconnectChannel(channel.channelId)}
+              action={
+                channel.staged ? (
+                  <Badge variant="neutral">Coming soon</Badge>
+                ) : channel.channelId && summary?.channels[channel.channelId]?.configured ? (
+                  <div className="flex items-center gap-1.5">
+                    {summary.channels[channel.channelId].live === "connected" && (
+                      <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>
+                    )}
+                    {summary.channels[channel.channelId].live === "unknown" && (
+                      <Badge variant="info">Configured</Badge>
+                    )}
+                    {summary.channels[channel.channelId].live === "connecting" && (
+                      <Badge variant="info">Checking</Badge>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => disconnectChannel(channel.channelId!)}
+                      disabled={savingChannel === channel.channelId}
+                    >
+                      {savingChannel === channel.channelId ? "Disconnecting..." : "Disconnect"}
+                    </Button>
+                  </div>
+                ) : channel.launch ? (
                   <Button
-                    variant="outline"
+                    variant="primary"
                     size="sm"
-                    onClick={() => disconnectChannel(channel.channelId!)}
-                    disabled={savingChannel === channel.channelId}
+                    onClick={() => openConnectModal(channel)}
+                    disabled={channel.channelId ? savingChannel === channel.channelId : false}
                   >
-                    {savingChannel === channel.channelId ? "Disconnecting..." : "Disconnect"}
+                    Connect
                   </Button>
-                </div>
-              ) : channel.launch ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => openConnectModal(channel)}
-                  disabled={loading || (channel.channelId ? savingChannel === channel.channelId : false)}
-                >
-                  Connect
-                </Button>
-              ) : undefined
-            }
-          />
-        ))}
-      </ChannelList>
+                ) : undefined
+              }
+            />
+          ))}
+        </ChannelList>
+      )}
 
       <Modal
         open={activeChannel !== null}

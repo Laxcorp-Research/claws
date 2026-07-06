@@ -19,6 +19,15 @@ function jsonResponse(data: unknown) {
   return Promise.resolve(new Response(JSON.stringify(data), { status: 200 }))
 }
 
+function deferredResponse(data: unknown) {
+  let resolve!: () => void
+  const gate = new Promise<void>((r) => { resolve = r })
+  return {
+    resolve,
+    promise: gate.then(() => new Response(JSON.stringify(data), { status: 200 })),
+  }
+}
+
 type TestChannelStatusData = {
   channels: Record<ChannelId, { configured: boolean; live: ChannelLiveState; detail?: string }>
   configuredChannelIds: ChannelId[]
@@ -37,6 +46,15 @@ function emptyStatusData(): TestChannelStatusData {
     configuredChannelIds: [],
     hasConfiguredChannels: false,
   }
+}
+
+async function enabledConnectButtons(): Promise<HTMLButtonElement[]> {
+  await waitFor(() => {
+    const buttons = screen.getAllByRole("button", { name: "Connect" }) as HTMLButtonElement[]
+    expect(buttons).toHaveLength(3)
+    expect(buttons.every((button) => !button.disabled)).toBe(true)
+  })
+  return screen.getAllByRole("button", { name: "Connect" }) as HTMLButtonElement[]
 }
 
 describe("Setup Step 4 channel persistence UI", () => {
@@ -92,7 +110,7 @@ describe("Setup Step 4 channel persistence UI", () => {
     expect(screen.getByText("Microsoft Teams")).toBeDefined()
     expect(screen.getByText("Requires Azure Bot Service setup — coming soon")).toBeDefined()
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[0])
+    fireEvent.click((await enabledConnectButtons())[0])
     expect(await screen.findByRole("heading", { name: "Connect Telegram" })).toBeDefined()
     fireEvent.change(screen.getByPlaceholderText("123456789:AA..."), {
       target: { value: "123456789:telegram-secret-token" },
@@ -114,11 +132,32 @@ describe("Setup Step 4 channel persistence UI", () => {
     expect(await screen.findByText("Configured — deploys with next redeploy")).toBeDefined()
   })
 
+  it("renders loading rows and no Connect buttons until channel state is known", async () => {
+    const status = deferredResponse({ success: true, data: emptyStatusData() })
+    const workspace = deferredResponse({ success: true, data: { clawTemplate: null } })
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
+      const href = String(url)
+      if (href.includes("/api/channels/ws-1/status")) return status.promise
+      if (href.includes("/api/workspaces/ws-1")) return workspace.promise
+      return jsonResponse({ success: true, data: {} })
+    }))
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    expect(screen.getByLabelText("Loading channel status")).toBeDefined()
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull()
+
+    status.resolve()
+    workspace.resolve()
+
+    expect((await enabledConnectButtons()).length).toBe(3)
+  })
+
   it("renders Telegram setup steps and guide link", async () => {
     render(<Step4 workspaceId="ws-1" />)
 
     await screen.findByText(/No channel\?/)
-    fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[0])
+    fireEvent.click((await enabledConnectButtons())[0])
 
     expect(await screen.findByText("Open Telegram and message @BotFather")).toBeDefined()
     expect(screen.getByText("Send /newbot and follow the prompts")).toBeDefined()
@@ -130,7 +169,7 @@ describe("Setup Step 4 channel persistence UI", () => {
     render(<Step4 workspaceId="ws-1" />)
 
     await screen.findByText(/No channel\?/)
-    fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[1])
+    fireEvent.click((await enabledConnectButtons())[1])
 
     expect(await screen.findByText("Discord Developer Portal → New Application")).toBeDefined()
     expect(screen.getByText("Bot tab → Reset Token → copy")).toBeDefined()
@@ -143,7 +182,7 @@ describe("Setup Step 4 channel persistence UI", () => {
     render(<Step4 workspaceId="ws-1" />)
 
     await screen.findByText(/No channel\?/)
-    fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[2])
+    fireEvent.click((await enabledConnectButtons())[2])
 
     expect(await screen.findByText("Create an app at api.slack.com/apps")).toBeDefined()
     expect(screen.getByText("Enable Socket Mode → copy the App token (xapp-…)")).toBeDefined()
