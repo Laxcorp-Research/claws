@@ -101,9 +101,23 @@ export type ChannelPostPayload =
   | { channel: "whatsapp"; config: WhatsAppChannelConfig }
   | { channel: "msteams"; config: MSTeamsChannelConfig }
 
+type TelegramChannelPatch = Partial<TelegramChannelConfig> & { allowFrom?: Array<string | number> }
+type DiscordChannelPatch = Partial<DiscordChannelConfig> & { allowFrom?: string[] }
+type SlackChannelPatch = Partial<SlackChannelConfig> & { allowFrom?: string[] }
+type WhatsAppChannelPatch = Partial<WhatsAppChannelConfig> & { allowFrom?: string[] }
+type MSTeamsChannelPatch = Partial<MSTeamsChannelConfig> & { allowFrom?: string[] }
+
+export type ChannelPatchPayload =
+  | { channel: "telegram"; config: TelegramChannelPatch }
+  | { channel: "discord"; config: DiscordChannelPatch }
+  | { channel: "slack"; config: SlackChannelPatch }
+  | { channel: "whatsapp"; config: WhatsAppChannelPatch }
+  | { channel: "msteams"; config: MSTeamsChannelPatch }
+
 export type MaskedChannelSummary = {
   configured: boolean
   fields: Record<string, string>
+  allowedIds?: string[]
 }
 
 export type MaskedChannelConfigMap = Partial<Record<ChannelId, MaskedChannelSummary>>
@@ -126,6 +140,32 @@ const postPayloadSchema = z.discriminatedUnion("channel", [
   z.object({ channel: z.literal("msteams"), config: msteamsChannelConfigSchema }).strict(),
 ])
 
+const allowFromStringPatchSchema = z.array(z.string().trim().min(1))
+const allowFromTelegramPatchSchema = z.array(z.union([z.string().trim().min(1), z.number()]))
+
+const patchPayloadSchema = z.discriminatedUnion("channel", [
+  z.object({
+    channel: z.literal("telegram"),
+    config: telegramChannelConfigSchema.partial().extend({ allowFrom: allowFromTelegramPatchSchema.optional() }).strict(),
+  }).strict(),
+  z.object({
+    channel: z.literal("discord"),
+    config: discordChannelConfigSchema.partial().extend({ allowFrom: allowFromStringPatchSchema.optional() }).strict(),
+  }).strict(),
+  z.object({
+    channel: z.literal("slack"),
+    config: slackChannelConfigSchema.partial().extend({ allowFrom: allowFromStringPatchSchema.optional() }).strict(),
+  }).strict(),
+  z.object({
+    channel: z.literal("whatsapp"),
+    config: whatsappChannelConfigSchema.partial().extend({ allowFrom: allowFromStringPatchSchema.optional() }).strict(),
+  }).strict(),
+  z.object({
+    channel: z.literal("msteams"),
+    config: msteamsChannelConfigSchema.partial().extend({ allowFrom: allowFromStringPatchSchema.optional() }).strict(),
+  }).strict(),
+])
+
 const deletePayloadSchema = z.object({
   channel: z.enum(CHANNEL_IDS),
 }).strict()
@@ -144,6 +184,14 @@ export function parseChannelConfigMap(value: unknown): ChannelConfigMap {
 
 export function parseChannelPostPayload(value: unknown): ChannelPostPayload {
   const parsed = postPayloadSchema.safeParse(value)
+  if (!parsed.success) {
+    throw new Error(formatZodError(parsed.error))
+  }
+  return parsed.data
+}
+
+export function parseChannelPatchPayload(value: unknown): ChannelPatchPayload {
+  const parsed = patchPayloadSchema.safeParse(value)
   if (!parsed.success) {
     throw new Error(formatZodError(parsed.error))
   }
@@ -181,6 +229,28 @@ export function upsertChannelConfig(
   }
 }
 
+function normalizeAllowFrom<T extends { allowFrom?: unknown[] }>(config: T): T {
+  if (!Array.isArray(config.allowFrom) || config.allowFrom.length > 0) return config
+  const next = { ...config }
+  delete next.allowFrom
+  return next
+}
+
+export function mergeChannelConfigPatch(
+  current: ChannelConfigMap,
+  payload: ChannelPatchPayload,
+): ChannelConfigMap {
+  const existing = current[payload.channel]
+  const merged = normalizeAllowFrom({
+    ...(existing ?? {}),
+    ...payload.config,
+  })
+  return parseChannelConfigMap({
+    ...current,
+    [payload.channel]: merged,
+  })
+}
+
 export function deleteChannelConfig(current: ChannelConfigMap, channel: ChannelId): ChannelConfigMap {
   const next = { ...current }
   delete next[channel]
@@ -215,8 +285,20 @@ function maskSecret(value: string): string {
 
 export function maskChannelConfig(config: ChannelConfigMap): MaskedChannelConfigMap {
   const masked: MaskedChannelConfigMap = {}
-  if (config.telegram) masked.telegram = { configured: true, fields: { botToken: maskSecret(config.telegram.botToken) } }
-  if (config.discord) masked.discord = { configured: true, fields: { token: maskSecret(config.discord.token) } }
+  if (config.telegram) {
+    masked.telegram = {
+      configured: true,
+      fields: { botToken: maskSecret(config.telegram.botToken) },
+      allowedIds: config.telegram.allowFrom?.map(String) ?? [],
+    }
+  }
+  if (config.discord) {
+    masked.discord = {
+      configured: true,
+      fields: { token: maskSecret(config.discord.token) },
+      allowedIds: config.discord.allowFrom ?? [],
+    }
+  }
   if (config.slack) {
     masked.slack = {
       configured: true,
@@ -224,9 +306,10 @@ export function maskChannelConfig(config: ChannelConfigMap): MaskedChannelConfig
         botToken: maskSecret(config.slack.botToken),
         appToken: maskSecret(config.slack.appToken),
       },
+      allowedIds: config.slack.allowFrom ?? [],
     }
   }
-  if (config.whatsapp) masked.whatsapp = { configured: true, fields: {} }
+  if (config.whatsapp) masked.whatsapp = { configured: true, fields: {}, allowedIds: config.whatsapp.allowFrom ?? [] }
   if (config.msteams) {
     masked.msteams = {
       configured: true,
@@ -234,6 +317,7 @@ export function maskChannelConfig(config: ChannelConfigMap): MaskedChannelConfig
         appId: maskSecret(config.msteams.appId),
         tenantId: config.msteams.tenantId ? maskSecret(config.msteams.tenantId) : "not set",
       },
+      allowedIds: config.msteams.allowFrom ?? [],
     }
   }
   return masked

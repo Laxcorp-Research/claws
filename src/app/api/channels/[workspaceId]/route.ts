@@ -9,11 +9,11 @@ import {
   deleteChannelConfig,
   hasConfiguredChannels,
   maskChannelConfig,
+  mergeChannelConfigPatch,
   parseChannelConfigBlob,
   parseChannelDeletePayload,
-  parseChannelPostPayload,
+  parseChannelPatchPayload,
   serializeChannelConfigMap,
-  upsertChannelConfig,
   type ChannelConfigMap,
 } from "@/lib/openclaw/channel-config"
 
@@ -58,13 +58,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
 
   let payload
   try {
-    payload = parseChannelPostPayload(await req.json())
+    payload = parseChannelPatchPayload(await req.json())
   } catch (err) {
     return ERRORS.VALIDATION(err instanceof Error ? err.message : "Invalid channel payload")
   }
 
   const current = readConfig(workspace!.channelConfigEncrypted)
-  const next = upsertChannelConfig(current, payload)
+  let next
+  try {
+    next = mergeChannelConfigPatch(current, payload)
+  } catch (err) {
+    return ERRORS.VALIDATION(err instanceof Error ? err.message : "Invalid channel payload")
+  }
   const updated = await prisma.workspace.update({
     where: { id: workspaceId },
     data: { channelConfigEncrypted: encryptedOrNull(next) },

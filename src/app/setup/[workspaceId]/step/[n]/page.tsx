@@ -45,7 +45,7 @@ import { DEFAULT_MODEL } from "@/lib/models"
 import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
-import type { ChannelId, ChannelStatusMap, LaunchChannelId } from "@/lib/openclaw/channel-config"
+import type { ChannelId, ChannelStatusMap, LaunchChannelId, MaskedChannelConfigMap } from "@/lib/openclaw/channel-config"
 
 interface AgentRow {
   id: string
@@ -1854,6 +1854,8 @@ type ChannelField = {
   key: string
   label: string
   placeholder: string
+  required?: boolean
+  helper?: string
 }
 
 type ChannelDefinition = {
@@ -1879,7 +1881,15 @@ const CHANNELS: ChannelDefinition[] = [
     description: "Enter bot token from @BotFather",
     icon: <Send className={ICON_CLASS} />,
     launch: true,
-    fields: [{ key: "botToken", label: "Bot token", placeholder: "123456789:AA..." }],
+    fields: [
+      { key: "botToken", label: "Bot token", placeholder: "123456789:AA...", required: true },
+      {
+        key: "allowFrom",
+        label: "Your Telegram user ID",
+        placeholder: "123456789",
+        helper: "Message @userinfobot on Telegram to get your ID. Only listed IDs can talk to your Claw; leave empty to add senders later.",
+      },
+    ],
     helpUrl: "https://core.telegram.org/bots#botfather",
     setupSteps: [
       "Open Telegram and message @BotFather",
@@ -1894,7 +1904,15 @@ const CHANNELS: ChannelDefinition[] = [
     description: "Enter bot token from Developer Portal",
     icon: <Gamepad2 className={ICON_CLASS} />,
     launch: true,
-    fields: [{ key: "token", label: "Bot token", placeholder: "Paste your Discord bot token" }],
+    fields: [
+      { key: "token", label: "Bot token", placeholder: "Paste your Discord bot token", required: true },
+      {
+        key: "allowFrom",
+        label: "Your Discord user ID",
+        placeholder: "123456789012345678",
+        helper: "Copy your Discord user ID from Developer Mode. Only listed IDs can talk to your Claw; leave empty to add senders later.",
+      },
+    ],
     helpUrl: "https://discord.com/developers/applications",
     setupSteps: [
       "Discord Developer Portal → New Application",
@@ -1911,8 +1929,8 @@ const CHANNELS: ChannelDefinition[] = [
     icon: <Hash className={ICON_CLASS} />,
     launch: true,
     fields: [
-      { key: "appToken", label: "App token (xapp-…)", placeholder: "xapp-…" },
-      { key: "botToken", label: "Bot token (xoxb-…)", placeholder: "xoxb-…" },
+      { key: "appToken", label: "App token (xapp-…)", placeholder: "xapp-…", required: true },
+      { key: "botToken", label: "Bot token (xoxb-…)", placeholder: "xoxb-…", required: true },
     ],
     helpUrl: "https://api.slack.com/apis/socket-mode",
     setupSteps: [
@@ -1931,8 +1949,9 @@ function isLaunchChannel(channelId: ChannelId): channelId is LaunchChannelId {
 }
 
 function buildChannelPayload(channel: LaunchChannelId, values: Record<string, string>) {
-  if (channel === "telegram") return { channel, config: { botToken: values.botToken } }
-  if (channel === "discord") return { channel, config: { token: values.token } }
+  const allowFrom = values.allowFrom?.trim() ? [values.allowFrom.trim()] : undefined
+  if (channel === "telegram") return { channel, config: { botToken: values.botToken, ...(allowFrom && { allowFrom }) } }
+  if (channel === "discord") return { channel, config: { token: values.token, ...(allowFrom && { allowFrom }) } }
   return { channel, config: { mode: "socket" as const, botToken: values.botToken, appToken: values.appToken } }
 }
 
@@ -1957,6 +1976,11 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
   const [workspaceTemplateSlug, setWorkspaceTemplateSlug] = useState<string | null>(null)
   const [channelDrift, setChannelDrift] = useState<WizardDriftInfo | null>(null)
   const [applyChannelsOpen, setApplyChannelsOpen] = useState(false)
+  const [accessChannel, setAccessChannel] = useState<ChannelDefinition | null>(null)
+  const [accessIds, setAccessIds] = useState<string[]>([])
+  const [accessInput, setAccessInput] = useState("")
+  const [accessError, setAccessError] = useState<string | null>(null)
+  const [accessSaving, setAccessSaving] = useState(false)
 
   const redeployFlow = useWorkspaceRedeploy({
     workspaceId,
@@ -2010,6 +2034,26 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
     setError(null)
   }
 
+  async function openManageAccess(channel: ChannelDefinition) {
+    if (!channel.channelId) return
+    setAccessChannel(channel)
+    setAccessIds([])
+    setAccessInput("")
+    setAccessError(null)
+    try {
+      const res = await fetch(`/api/channels/${workspaceId}`)
+      const json = await res.json()
+      if (!json.success) {
+        setAccessError(json.error?.message || "Could not load access list.")
+        return
+      }
+      const channels = json.data?.channels as MaskedChannelConfigMap | undefined
+      setAccessIds(channels?.[channel.channelId]?.allowedIds ?? [])
+    } catch {
+      setAccessError("Network error while loading access list.")
+    }
+  }
+
   async function saveChannel() {
     if (!activeChannel?.channelId || !isLaunchChannel(activeChannel.channelId)) return
     setSavingChannel(activeChannel.channelId)
@@ -2060,7 +2104,7 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
   }
 
   const activeFields = activeChannel?.fields ?? []
-  const allRequiredFilled = activeFields.every((field) => (formValues[field.key] ?? "").trim().length > 0)
+  const allRequiredFilled = activeFields.every((field) => !field.required || (formValues[field.key] ?? "").trim().length > 0)
   const showEmergencyChannelWarning =
     workspaceTemplateSlug !== null &&
     EMERGENCY_CHANNEL_TEMPLATE_SLUGS.has(workspaceTemplateSlug) &&
@@ -2079,6 +2123,40 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
   function handleApplyChannelsNow() {
     setApplyChannelsOpen(false)
     void redeployFlow.startRedeploy()
+  }
+
+  function addAccessId() {
+    const value = accessInput.trim()
+    if (!value || accessIds.includes(value)) return
+    setAccessIds((prev) => [...prev, value])
+    setAccessInput("")
+  }
+
+  async function saveAccessIds() {
+    if (!accessChannel?.channelId) return
+    setAccessSaving(true)
+    setAccessError(null)
+    try {
+      const res = await fetch(`/api/channels/${workspaceId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: accessChannel.channelId, config: { allowFrom: accessIds } }),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setAccessError(json.error?.message || "Could not save access list.")
+        return
+      }
+      await loadChannels()
+      await refreshDrift()
+      setAccessChannel(null)
+      setAccessIds([])
+      setAccessInput("")
+    } catch {
+      setAccessError("Network error while saving access list.")
+    } finally {
+      setAccessSaving(false)
+    }
   }
 
   return (
@@ -2161,6 +2239,14 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
                     {summary.channels[channel.channelId].live === "connecting" && (
                       <Badge variant="info">Checking</Badge>
                     )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openManageAccess(channel)}
+                    disabled={savingChannel === channel.channelId}
+                  >
+                    Manage
+                  </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -2234,13 +2320,14 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
             <div key={field.key}>
               <label className="block text-[11px] font-medium mb-[3px]">{field.label}</label>
               <Input
-                type="password"
+                type={field.key === "allowFrom" ? "text" : "password"}
                 value={formValues[field.key] ?? ""}
                 onChange={(event) => setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))}
                 placeholder={field.placeholder}
                 className="font-mono"
                 autoFocus={index === 0}
               />
+              {field.helper && <p className="text-[11px] text-[var(--tx3)] mt-0.5">{field.helper}</p>}
             </div>
           ))}
           {activeChannel?.helpUrl && (
@@ -2254,6 +2341,84 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
                 Setup guide →
               </a>
             </p>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={accessChannel !== null}
+        onClose={() => {
+          setAccessChannel(null)
+          setAccessIds([])
+          setAccessInput("")
+          setAccessError(null)
+        }}
+        title={
+          <span className="text-[16px] font-semibold">
+            Manage <span className="text-[var(--ac)]">{accessChannel?.name}</span> access
+          </span>
+        }
+        description="If someone messages your bot and gets an 'access not configured' reply, add the user ID from that reply here, then redeploy."
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAccessChannel(null)
+                setAccessIds([])
+                setAccessInput("")
+                setAccessError(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={saveAccessIds} loading={accessSaving}>
+              Save access
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[11px] font-medium mb-[3px]">Allowed sender ID</label>
+            <div className="flex gap-1.5">
+              <Input
+                value={accessInput}
+                onChange={(event) => setAccessInput(event.target.value)}
+                placeholder="Paste sender ID"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    addAccessId()
+                  }
+                }}
+              />
+              <Button variant="outline" size="sm" onClick={addAccessId} disabled={!accessInput.trim()}>
+                Add
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--bd)] p-2.5">
+            {accessIds.length === 0 ? (
+              <p className="text-[11px] text-[var(--tx3)]">No sender IDs added yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {accessIds.map((id) => (
+                  <div key={id} className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] text-[var(--tx)]">{id}</span>
+                    <Button variant="outline" size="xs" onClick={() => setAccessIds((prev) => prev.filter((value) => value !== id))}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {accessError && (
+            <AlertBanner variant="error">
+              {accessError}
+            </AlertBanner>
           )}
         </div>
       </Modal>
