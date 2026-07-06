@@ -48,13 +48,13 @@ export function CustomApiModal({ open, onClose, onSave }: CustomApiModalProps) {
       open={open}
       onClose={handleClose}
       title="Connect a custom API"
-      description="Add any API your agents should be able to call. Credentials are encrypted."
+      description="Add any API your agents should be able to call. Credentials are encrypted. Will be tested on first use."
       size="md"
       footer={
         <>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
           <Button variant="primary" onClick={handleSave} disabled={!name.trim() || !baseUrl.trim() || !credential.trim() || status === "saving"}>
-            {status === "saving" ? "Saving..." : "Test & save"}
+            {status === "saving" ? "Saving..." : "Save"}
           </Button>
         </>
       }
