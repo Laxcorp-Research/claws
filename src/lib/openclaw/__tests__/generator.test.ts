@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { z } from 'zod';
 import { prismaMock } from '@/test/helpers/mock-prisma';
 
 vi.mock('@/lib/db', () => ({
@@ -31,6 +32,24 @@ vi.mock('@/lib/crypto', () => ({
 
 import { generateWorkspace } from '@/lib/openclaw/generator';
 import { generateSecureToken } from '@/lib/crypto';
+
+const runtimeChannelsSchema2026052206 = z.object({
+  telegram: z.object({
+    botToken: z.string().min(1),
+    allowFrom: z.array(z.union([z.string(), z.number()])).optional(),
+    groups: z.record(z.string(), z.object({ requireMention: z.boolean().optional() }).strict().optional()).optional(),
+  }).passthrough().optional(),
+  discord: z.object({
+    token: z.string().min(1),
+    allowFrom: z.array(z.string()).optional(),
+    guilds: z.record(z.string(), z.object({ requireMention: z.boolean().optional() }).strict().optional()).optional(),
+  }).passthrough().optional(),
+  slack: z.object({
+    mode: z.enum(["socket", "http"]).optional(),
+    botToken: z.string().min(1),
+    appToken: z.string().min(1),
+  }).passthrough().optional(),
+}).passthrough()
 
 /**
  * Test-only shape matching the subset of ToolConnection fields the generator
@@ -158,7 +177,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         composioEntityId: null,
       },
     ] as TestToolConn[],
-    channelConnections: [],
+    channelConfig: {},
     clawTemplate: { name: 'Test Template', slug: 'test-template' },
     user: {
       id: 'user-1',
@@ -204,6 +223,41 @@ describe('generateWorkspace', () => {
 
     expect(config.agents).toBeDefined();
     expect(config.agents.list).toHaveLength(3);
+  });
+
+  it('round-trips route-written channel config into the 2026.5.22-6 runtime channel schema', async () => {
+    const routeWrittenPlaintext = JSON.stringify({
+      telegram: { botToken: '123456789:telegram-token' },
+      discord: { token: 'discord-token' },
+      slack: { mode: 'socket', botToken: 'xoxb-slack-bot', appToken: 'xapp-slack-app' },
+    });
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({ channelConfigEncrypted: routeWrittenPlaintext }),
+    );
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+
+    expect(() => runtimeChannelsSchema2026052206.parse(config.channels)).not.toThrow();
+    expect(config.channels).toEqual({
+      telegram: {
+        botToken: '123456789:telegram-token',
+        groups: { '*': { requireMention: true } },
+      },
+      discord: {
+        token: 'discord-token',
+        guilds: { '*': { requireMention: true } },
+      },
+      slack: {
+        mode: 'socket',
+        botToken: 'xoxb-slack-bot',
+        appToken: 'xapp-slack-app',
+      },
+    });
+    expect(result['.env']).toContain('TELEGRAM_BOT_TOKEN=123456789:telegram-token');
+    expect(result['.env']).toContain('DISCORD_BOT_TOKEN=discord-token');
+    expect(result['.env']).toContain('SLACK_BOT_TOKEN=xoxb-slack-bot');
+    expect(result['.env']).toContain('SLACK_APP_TOKEN=xapp-slack-app');
   });
 
   it('maps model enums to provider/model format', async () => {

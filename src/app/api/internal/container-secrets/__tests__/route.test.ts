@@ -180,6 +180,31 @@ describe("POST /api/internal/container-secrets", () => {
     expect(env.CLAWS_ACTIVITY_SECRET).toBe("test_activity_secret_pr2b")
   })
 
+  it("emits channel env fallbacks from the canonical channelConfigEncrypted map", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "ws-channels",
+      userId: "user-channels",
+      gatewayToken: null,
+      channelConfigEncrypted: JSON.stringify({
+        telegram: { botToken: "telegram-token" },
+        discord: { token: "discord-token" },
+        slack: { botToken: "slack-bot-token", appToken: "slack-app-token" },
+      }),
+      apiKeySourceOverride: null,
+      user: { id: "user-channels", apiKeySource: "USER_OWN_KEY", apiKeys: [], creditAccount: null },
+    })
+
+    const res = await callRoute({ workspaceId: "ws-channels" }, `Bearer ${AGENT_SECRET}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const env = parseEnvVars(body.data)
+
+    expect(env.TELEGRAM_BOT_TOKEN).toBe("telegram-token")
+    expect(env.DISCORD_BOT_TOKEN).toBe("discord-token")
+    expect(env.SLACK_BOT_TOKEN).toBe("slack-bot-token")
+    expect(env.SLACK_APP_TOKEN).toBe("slack-app-token")
+  })
+
   // ─────────────────────────────────────────────────────────────────────
   // PR-2b #1 + #2: same guards as deployer.ts:buildRailwayEnvVars. The
   // container-secrets path is the SECOND emission point for these env
