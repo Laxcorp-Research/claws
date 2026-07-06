@@ -227,8 +227,8 @@ describe('generateWorkspace', () => {
 
   it('round-trips route-written channel config into the 2026.5.22-6 runtime channel schema', async () => {
     const routeWrittenPlaintext = JSON.stringify({
-      telegram: { botToken: '123456789:telegram-token' },
-      discord: { token: 'discord-token' },
+      telegram: { botToken: '123456789:telegram-token', allowFrom: ['424242'] },
+      discord: { token: 'discord-token', allowFrom: ['987654321'] },
       slack: { mode: 'socket', botToken: 'xoxb-slack-bot', appToken: 'xapp-slack-app' },
     });
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -242,10 +242,12 @@ describe('generateWorkspace', () => {
     expect(config.channels).toEqual({
       telegram: {
         botToken: '123456789:telegram-token',
+        allowFrom: ['424242'],
         groups: { '*': { requireMention: true } },
       },
       discord: {
         token: 'discord-token',
+        allowFrom: ['987654321'],
         guilds: { '*': { requireMention: true } },
       },
       slack: {

@@ -94,6 +94,43 @@ describe("/api/channels/[workspaceId]", () => {
     expect(JSON.stringify(get.data)).not.toContain("telegram-secret-token")
   })
 
+  it("merges allowFrom without overwriting stored channel secrets", async () => {
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: ownedWorkspace(`enc:${JSON.stringify(telegramConfig)}`),
+    })
+    ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      channelConfigEncrypted: `enc:${JSON.stringify({
+        telegram: {
+          botToken: "123456789:telegram-secret-token",
+          allowFrom: ["424242"],
+        },
+      })}`,
+    })
+
+    const res = await POST(
+      req("POST", { channel: "telegram", config: { allowFrom: ["424242"] } }),
+      { params: Promise.resolve({ workspaceId: "ws-1" }) },
+    )
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
+      where: { id: "ws-1" },
+      data: {
+        channelConfigEncrypted: `enc:${JSON.stringify({
+          telegram: {
+            botToken: "123456789:telegram-secret-token",
+            allowFrom: ["424242"],
+          },
+        })}`,
+      },
+      select: { channelConfigEncrypted: true },
+    })
+    expect(json.data.channels.telegram.allowedIds).toEqual(["424242"])
+    expect(JSON.stringify(json.data)).not.toContain("telegram-secret-token")
+  })
+
   it("DELETE removes one channel and clears the blob when no channels remain", async () => {
     mockVerifyOwnership.mockResolvedValue({
       error: null,

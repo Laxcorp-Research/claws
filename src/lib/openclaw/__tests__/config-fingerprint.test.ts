@@ -177,6 +177,19 @@ describe('buildWorkspaceConfigFingerprint', () => {
     expect(after.areas.tools).toBe(before.areas.tools);
   });
 
+  it('channel allowFrom updates change only the channels hash', async () => {
+    const before = await fingerprintFor(baseWorkspace({
+      channelConfigEncrypted: 'enc:{"telegram":{"botToken":"123456789:secret"}}',
+    }));
+    const after = await fingerprintFor(baseWorkspace({
+      channelConfigEncrypted: 'enc:{"telegram":{"botToken":"123456789:secret","allowFrom":["424242"]}}',
+    }));
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.channels).not.toBe(before.areas.channels);
+    expect(after.areas.tools).toBe(before.areas.tools);
+  });
+
   it('agent model, SOUL.md, and skill changes change the agents area hash', async () => {
     const before = await fingerprintFor(baseWorkspace());
     const next = baseWorkspace();
