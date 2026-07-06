@@ -58,7 +58,7 @@ function defaultModel(role: string): string {
   return DEFAULT_MODEL[role] || DEFAULT_MODEL.WORKER
 }
 
-const STEP_LABELS = ["AI model", "Tools", "Deploy", "Channels", "Go live"]
+const STEP_LABELS = ["AI model", "Tools", "Channels", "Deploy", "Go live"]
 
 function getProgressSteps(current: number) {
   return STEP_LABELS.map((label, i) => ({
@@ -679,7 +679,6 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const recommendedTools = useMemo(() => tools.filter((t) => !t.required && !t.extra), [tools])
   const extraTools = useMemo(() => tools.filter((t) => t.extra), [tools])
   const connectedSlugs = useMemo(() => tools.filter((t) => t.status === "connected").map((t) => t.slug), [tools])
-  const allRequiredConnected = requiredTools.every((t) => t.status === "connected")
   const setupComplianceNotice = workspaceTemplateSlug === "medical-practice-manager"
     ? getComplianceNotice(workspaceTemplateSlug)
     : null
@@ -1323,7 +1322,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       ) : (
         <div className="flex justify-between">
           <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/1`)}>← Back</Button>
-          <Button variant="primary" disabled={!allRequiredConnected} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Next: Deploy →</Button>
+          <Button variant="primary" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>Next: Channels →</Button>
         </div>
       )}
 
@@ -1517,7 +1516,36 @@ interface DeployEligibility {
   isFirstDeploy: boolean
 }
 
-function Step3({ workspaceId }: { workspaceId: string }) {
+async function loadDeployToolPrerequisites(workspaceId: string): Promise<boolean> {
+  try {
+    const [workspaceRes, toolsRes] = await Promise.all([
+      fetch(`/api/workspaces/${workspaceId}`),
+      fetch(`/api/tools/${workspaceId}`),
+    ])
+    const [workspaceJson, toolsJson] = await Promise.all([workspaceRes.json(), toolsRes.json()])
+    const templateSlug = workspaceJson.success ? workspaceJson.data?.clawTemplate?.slug : null
+    if (!templateSlug) return true
+
+    const tplRes = await fetch(`/api/templates/${templateSlug}`)
+    const tplJson = await tplRes.json()
+    if (!tplJson.success) return false
+
+    const requiredEntries = (tplJson.data.tools?.required ?? []) as Array<{ slug: string; alternatives?: string[] }>
+    if (requiredEntries.length === 0) return true
+
+    const connections = toolsJson.success
+      ? (toolsJson.data.connections ?? []) as Array<{ toolSlug: string; status: string }>
+      : []
+    return requiredEntries.every((entry) => {
+      const candidates = [entry.slug, ...(entry.alternatives ?? [])]
+      return connections.some((connection) => candidates.includes(connection.toolSlug) && connection.status === "CONNECTED")
+    })
+  } catch {
+    return false
+  }
+}
+
+export function Step3({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(true)
@@ -1531,7 +1559,13 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
   const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
   const [hasConfiguredChannels, setHasConfiguredChannels] = useState(false)
+  const [applyDeployOpen, setApplyDeployOpen] = useState(false)
+  const [toolPrereqsReady, setToolPrereqsReady] = useState(false)
   const creditUser = isCreditUser(apiKeySource)
+  const redeployFlow = useWorkspaceRedeploy({
+    workspaceId,
+    onCompleted: () => router.push(`/setup/${workspaceId}/step/5`),
+  })
 
   const checkBillingAndUpdateEligibility = useCallback(async (): Promise<boolean> => {
     try {
@@ -1560,10 +1594,11 @@ function Step3({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     async function init() {
       try {
-        const [, statusRes, channelsRes] = await Promise.all([
+        const [, statusRes, channelsRes, toolsReady] = await Promise.all([
           checkBillingAndUpdateEligibility(),
           fetch(`/api/deploy/${workspaceId}/status?drift=1`),
           fetch(`/api/channels/${workspaceId}`),
+          loadDeployToolPrerequisites(workspaceId),
         ])
 
         const statusJson = await statusRes.json()
@@ -1591,6 +1626,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         if (channelsJson.success) {
           setHasConfiguredChannels(Boolean(channelsJson.data?.hasConfiguredChannels))
         }
+        setToolPrereqsReady(toolsReady)
       } catch (err) {
         console.error("Failed to load setup data:", err)
       } finally {
@@ -1695,38 +1731,6 @@ function Step3({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId, hasConfiguredChannels])
 
-  const handleRedeploy = useCallback(async () => {
-    setIsDeploying(true)
-    setDeploymentStatus("PENDING")
-    setDeploymentError(null)
-
-    try {
-      const res = await fetch(`/api/deploy/${workspaceId}/redeploy`, { method: "POST" })
-      const json = await res.json()
-
-      if (!json.success) {
-        setDeploymentError(json.error?.message || "Failed to start redeployment")
-        setDeploymentStatus("FAILED")
-        setIsDeploying(false)
-        return
-      }
-
-      const stages = ["GENERATING", "CONFIGURING", "STARTING", "COMPLETED"]
-      for (let i = 0; i < stages.length; i++) {
-        setDeploymentStatus(stages[i])
-        if (stages[i] !== "COMPLETED") {
-          await new Promise(r => setTimeout(r, 900 + Math.random() * 500))
-        }
-      }
-      setConfigDrift((prev) => prev ? { ...prev, isStale: false, changedAreas: [] } : prev)
-      setIsDeploying(false)
-    } catch {
-      setDeploymentError("Network error")
-      setDeploymentStatus("FAILED")
-      setIsDeploying(false)
-    }
-  }, [workspaceId])
-
   const handleSubscribe = useCallback(async () => {
     setSubscribing(true)
     try {
@@ -1747,9 +1751,25 @@ function Step3({ workspaceId }: { workspaceId: string }) {
     setSubscribing(false)
   }, [workspaceId])
 
-  const canProceed = deploymentStatus === "COMPLETED" && !(workspaceStatus === "RUNNING" && configDrift?.isStale === true)
+  const canProceed = deploymentStatus === "COMPLETED"
   const needsSub = eligibility?.needsSubscription === true
-  const showStaleRunningConfig = workspaceStatus === "RUNNING" && configDrift?.isStale === true && deploymentStatus === "COMPLETED"
+  const showStaleRunningConfig =
+    (workspaceStatus === "RUNNING" || workspaceStatus === "PAUSED") &&
+    configDrift?.isStale === true &&
+    deploymentStatus === "COMPLETED"
+
+  function handleNextFromDeploy() {
+    if (showStaleRunningConfig) {
+      setApplyDeployOpen(true)
+      return
+    }
+    router.push(`/setup/${workspaceId}/step/5`)
+  }
+
+  function handleApplyDeployNow() {
+    setApplyDeployOpen(false)
+    void redeployFlow.startRedeploy()
+  }
 
   if (isLoading) {
     return <div className="space-y-3"><LoadingSkeleton variant="line" /><LoadingSkeleton variant="card" /></div>
@@ -1783,7 +1803,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
 
       {!deploymentStatus && !waitingForActivation && (
         creditUser ? (
-          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying}>
+          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !toolPrereqsReady}>
             Deploy Claw
           </Button>
         ) : needsSub ? (
@@ -1791,10 +1811,19 @@ function Step3({ workspaceId }: { workspaceId: string }) {
             Subscribe to Deploy - $79/mo
           </Button>
         ) : (
-          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !eligibility}>
+          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !eligibility || !toolPrereqsReady}>
             {eligibility?.isFirstDeploy ? "Deploy - 3-day free trial" : "Deploy"}
           </Button>
         )
+      )}
+
+      {!toolPrereqsReady && !deploymentStatus && (
+        <div className="mt-3.5">
+          <AlertBanner variant="warning">
+            <p className="font-medium">Required tools must be connected before deployment</p>
+            <p className="mt-0.5 opacity-80">Go back to Tools and connect the required services for this Claw.</p>
+          </AlertBanner>
+        </div>
       )}
 
       {deploymentStatus && !showStaleRunningConfig && (
@@ -1828,7 +1857,7 @@ function Step3({ workspaceId }: { workspaceId: string }) {
         <AlertBanner
           variant="warning"
           actions={
-            <Button variant="primary" size="sm" onClick={handleRedeploy} loading={isDeploying}>
+            <Button variant="primary" size="sm" onClick={() => setApplyDeployOpen(true)} loading={redeployFlow.redeploying}>
               Redeploy
             </Button>
           }
@@ -1839,9 +1868,32 @@ function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       <div className="flex justify-between mt-4">
-        <Button variant="outline" disabled={isDeploying} className={isDeploying ? "opacity-50" : ""} onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>← Back</Button>
-        <Button variant="primary" disabled={!canProceed} onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>Next: Channels →</Button>
+        <Button variant="outline" disabled={isDeploying} className={isDeploying ? "opacity-50" : ""} onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>← Back</Button>
+        <Button variant="primary" disabled={!canProceed} onClick={handleNextFromDeploy}>Next: Go live →</Button>
       </div>
+      <ConfirmDialog
+        open={applyDeployOpen}
+        onClose={() => {
+          setApplyDeployOpen(false)
+          router.push(`/setup/${workspaceId}/step/5`)
+        }}
+        onConfirm={handleApplyDeployNow}
+        title="Apply changes now?"
+        description="Your channel changes take effect after a redeploy."
+        confirmLabel="Redeploy"
+        cancelLabel="Not now"
+        variant="warning"
+        loading={redeployFlow.redeploying}
+      />
+      <RedeployProgressModal
+        open={redeployFlow.modalOpen}
+        redeploying={redeployFlow.redeploying}
+        status={redeployFlow.status}
+        lastStage={redeployFlow.lastStage}
+        error={redeployFlow.error}
+        onClose={redeployFlow.closeModal}
+        onRetry={redeployFlow.retry}
+      />
     </>
   )
 }
@@ -1955,13 +2007,14 @@ function buildChannelPayload(channel: LaunchChannelId, values: Record<string, st
   return { channel, config: { mode: "socket" as const, botToken: values.botToken, appToken: values.appToken } }
 }
 
-function channelDescription(channel: ChannelDefinition, summary: ChannelSummary | null): string {
+function channelDescription(channel: ChannelDefinition, summary: ChannelSummary | null, drift: WizardDriftInfo | null): string {
   if (!channel.channelId) return channel.description
   const state = summary?.channels[channel.channelId]
   if (!state?.configured) return channel.description
   if (state.live === "connected") return "Verified by gateway"
   if (state.live === "error") return state.detail ? `${state.detail}. Check token and redeploy.` : "Gateway reported an error. Check token and redeploy."
   if (state.live === "connecting") return "Gateway is checking this channel"
+  if (drift?.workspaceStatus !== "RUNNING" && drift?.workspaceStatus !== "PAUSED") return "Will connect when you deploy"
   return "Configured — deploys with next redeploy"
 }
 
@@ -1975,17 +2028,11 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [workspaceTemplateSlug, setWorkspaceTemplateSlug] = useState<string | null>(null)
   const [channelDrift, setChannelDrift] = useState<WizardDriftInfo | null>(null)
-  const [applyChannelsOpen, setApplyChannelsOpen] = useState(false)
   const [accessChannel, setAccessChannel] = useState<ChannelDefinition | null>(null)
   const [accessIds, setAccessIds] = useState<string[]>([])
   const [accessInput, setAccessInput] = useState("")
   const [accessError, setAccessError] = useState<string | null>(null)
   const [accessSaving, setAccessSaving] = useState(false)
-
-  const redeployFlow = useWorkspaceRedeploy({
-    workspaceId,
-    onCompleted: () => router.push(`/setup/${workspaceId}/step/5`),
-  })
 
   const refreshDrift = useCallback(async (): Promise<WizardDriftInfo | null> => {
     try {
@@ -2111,20 +2158,6 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
     summary?.hasConfiguredChannels === false
   const showChannelDriftWarning = needsRedeployToApply(channelDrift)
 
-  async function handleNextFromChannels() {
-    const latest = await refreshDrift()
-    if (needsRedeployToApply(latest ?? channelDrift)) {
-      setApplyChannelsOpen(true)
-      return
-    }
-    router.push(`/setup/${workspaceId}/step/5`)
-  }
-
-  function handleApplyChannelsNow() {
-    setApplyChannelsOpen(false)
-    void redeployFlow.startRedeploy()
-  }
-
   function addAccessId() {
     const value = accessInput.trim()
     if (!value || accessIds.includes(value)) return
@@ -2185,8 +2218,8 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
           <AlertBanner
             variant="warning"
             actions={
-              <Button variant="outline" size="xs" onClick={() => setApplyChannelsOpen(true)}>
-                Redeploy
+              <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>
+                Go to deploy
               </Button>
             }
           >
@@ -2208,7 +2241,7 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
             <ChannelRow
               key={channel.id}
               name={channel.name}
-              description={channelDescription(channel, summary)}
+              description={channelDescription(channel, summary, channelDrift)}
               icon={channel.icon}
               status={
                 channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.live === "connected")
@@ -2424,33 +2457,9 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
       </Modal>
 
       <div className="flex justify-between mt-3.5">
-        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/3`)}>← Back</Button>
-        <Button variant="primary" onClick={handleNextFromChannels}>Next: Go live →</Button>
+        <Button variant="outline" onClick={() => router.push(`/setup/${workspaceId}/step/2`)}>← Back</Button>
+        <Button variant="primary" onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>Next: Deploy →</Button>
       </div>
-
-      <ConfirmDialog
-        open={applyChannelsOpen}
-        onClose={() => {
-          setApplyChannelsOpen(false)
-          router.push(`/setup/${workspaceId}/step/5`)
-        }}
-        onConfirm={handleApplyChannelsNow}
-        title="Apply changes now?"
-        description="Your channel changes take effect after a redeploy."
-        confirmLabel="Redeploy"
-        cancelLabel="Not now"
-        variant="warning"
-        loading={redeployFlow.redeploying}
-      />
-      <RedeployProgressModal
-        open={redeployFlow.modalOpen}
-        redeploying={redeployFlow.redeploying}
-        status={redeployFlow.status}
-        lastStage={redeployFlow.lastStage}
-        error={redeployFlow.error}
-        onClose={redeployFlow.closeModal}
-        onRetry={redeployFlow.retry}
-      />
     </>
   )
 }
@@ -2565,7 +2574,7 @@ export function Step5({ workspaceId }: { workspaceId: string }) {
 
 function StepPlaceholder({ step, workspaceId }: { step: number; workspaceId: string }) {
   const router = useRouter()
-  const labels = ["", "AI model", "Connect tools", "Deploy", "Connect channels", "Go live"]
+  const labels = ["", "AI model", "Connect tools", "Connect channels", "Deploy", "Go live"]
   return (
     <>
       <h2 className="text-[15px] font-semibold mb-2">{labels[step]}</h2>
@@ -2651,8 +2660,8 @@ export default function SetupStepPage() {
     ? [
         { label: "AI model", status: "complete" as const },
         { label: "Tools", status: "complete" as const },
-        { label: "Deploy", status: "complete" as const },
         { label: "Channels", status: "complete" as const },
+        { label: "Deploy", status: "complete" as const },
         { label: "Live!", status: "complete" as const },
       ]
     : getProgressSteps(stepNum)
@@ -2682,8 +2691,8 @@ export default function SetupStepPage() {
       <div className="max-w-2xl mx-auto px-4 pb-4">
         {stepNum === 1 ? <Step1 workspaceId={workspaceId} isFromBuilder={isFromBuilder} />
           : stepNum === 2 ? <Step2 workspaceId={workspaceId} isManageMode={isManageMode} />
-          : stepNum === 3 ? <Step3 workspaceId={workspaceId} />
-          : stepNum === 4 ? <Step4 workspaceId={workspaceId} />
+          : stepNum === 3 ? <Step4 workspaceId={workspaceId} />
+          : stepNum === 4 ? <Step3 workspaceId={workspaceId} />
           : stepNum === 5 ? <Step5 workspaceId={workspaceId} />
           : <StepPlaceholder step={stepNum} workspaceId={workspaceId} />}
       </div>
