@@ -29,6 +29,17 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe("ChatPanel header", () => {
+  it("labels the panel as web chat and points channel conversations to the activity feed", () => {
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
+
+    expect(screen.getByRole("heading", { name: "Web chat" })).toBeTruthy()
+    expect(
+      screen.getByText("Direct line to Dev Commander. Conversations on connected channels appear in the activity feed."),
+    ).toBeTruthy()
+  })
+})
+
 describe("reconcileChatMessages — optimistic dedupe by messageId === runId", () => {
   it("drops the optimistic user bubble once the streamed MESSAGE_RECEIVED with the same messageId arrives (no double-render)", () => {
     const optimistic: OptimisticMessage[] = [

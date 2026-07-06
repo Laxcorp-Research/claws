@@ -598,11 +598,11 @@ export function ChatPanel({
   }
 
   return (
-    <section aria-label="Chat" className="border border-[var(--bd)] rounded-lg mb-6">
+    <section aria-label="Web chat" className="border border-[var(--bd)] rounded-lg mb-6">
       <div className="px-3.5 py-2.5 border-b border-[var(--bd)]">
-        <h2 className="text-[12px] font-semibold text-[var(--tx)]">Chat</h2>
+        <h2 className="text-[12px] font-semibold text-[var(--tx)]">Web chat</h2>
         <p className="text-[11px] text-[var(--tx3)] mt-0.5">
-          Message {orchestratorName || "your orchestrator"} directly.
+          Direct line to {orchestratorName || "your orchestrator"}. Conversations on connected channels appear in the activity feed.
         </p>
       </div>
 
