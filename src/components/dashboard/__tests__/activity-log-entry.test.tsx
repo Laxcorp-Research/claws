@@ -86,4 +86,46 @@ describe("ActivityLogEntry expand affordance", () => {
     // The whole entry shouldn't contain either chevron glyph.
     expect(screen.queryByText(/[▸▾]/)).toBeNull()
   })
+
+  it('renders a provider tag for channelId "telegram"', () => {
+    render(
+      <ActivityLogEntry
+        timestamp="08:00"
+        agentName="Orch"
+        agentColor="#fff"
+        message="Received Telegram message"
+        channelId="telegram"
+      />,
+    )
+
+    expect(screen.getByText("via Telegram")).toBeTruthy()
+  })
+
+  it('does not render a provider tag for channelId "webchat"', () => {
+    render(
+      <ActivityLogEntry
+        timestamp="08:00"
+        agentName="Orch"
+        agentColor="#fff"
+        message="Received dashboard message"
+        channelId="webchat"
+      />,
+    )
+
+    expect(screen.queryByText(/^via /)).toBeNull()
+  })
+
+  it('does not render a provider tag for numeric sender-like channelId "1227037949"', () => {
+    render(
+      <ActivityLogEntry
+        timestamp="08:00"
+        agentName="Orch"
+        agentColor="#fff"
+        message="Started task from sender id"
+        channelId="1227037949"
+      />,
+    )
+
+    expect(screen.queryByText(/^via /)).toBeNull()
+  })
 })

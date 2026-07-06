@@ -959,6 +959,7 @@ export default function DashboardPage() {
     agentColor: agentColorMapRef.current[l.agentName] ?? AGENT_COLORS["WORKER"],
     message: l.action,
     detail: l.detail ?? null,
+    channelId: l.channelId ?? null,
   }))
 
   const rosterAgents = sortedAgents.map((a) => ({

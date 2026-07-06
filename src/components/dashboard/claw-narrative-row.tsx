@@ -23,6 +23,7 @@ export interface DrillLog {
   agentColor: string
   message: string
   detail?: string | null
+  channelId?: string | null
 }
 
 export interface AgentCostRow {
@@ -206,6 +207,7 @@ export function ClawNarrativeRow({
                     agentColor={log.agentColor}
                     message={log.message}
                     detail={log.detail}
+                    channelId={log.channelId}
                   />
                 ))}
               </div>
