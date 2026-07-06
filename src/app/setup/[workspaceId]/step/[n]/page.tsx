@@ -1853,6 +1853,7 @@ type ChannelDefinition = {
   staged?: boolean
   fields?: ChannelField[]
   helpUrl?: string
+  setupSteps?: string[]
 }
 
 const CHANNELS: ChannelDefinition[] = [
@@ -1865,7 +1866,12 @@ const CHANNELS: ChannelDefinition[] = [
     icon: <Send className={ICON_CLASS} />,
     launch: true,
     fields: [{ key: "botToken", label: "Bot token", placeholder: "123456789:AA..." }],
-    helpUrl: "https://core.telegram.org/bots/features#botfather",
+    helpUrl: "https://core.telegram.org/bots#botfather",
+    setupSteps: [
+      "Open Telegram and message @BotFather",
+      "Send /newbot and follow the prompts",
+      "Copy the token it gives you and paste it below.",
+    ],
   },
   {
     id: "discord",
@@ -1876,6 +1882,12 @@ const CHANNELS: ChannelDefinition[] = [
     launch: true,
     fields: [{ key: "token", label: "Bot token", placeholder: "Paste your Discord bot token" }],
     helpUrl: "https://discord.com/developers/applications",
+    setupSteps: [
+      "Discord Developer Portal → New Application",
+      "Bot tab → Reset Token → copy",
+      "Enable 'Message Content Intent' under Privileged Gateway Intents",
+      "Invite the bot to your server (OAuth2 URL Generator, bot scope).",
+    ],
   },
   {
     id: "slack",
@@ -1885,13 +1897,19 @@ const CHANNELS: ChannelDefinition[] = [
     icon: <Hash className={ICON_CLASS} />,
     launch: true,
     fields: [
-      { key: "botToken", label: "Bot token", placeholder: "xoxb-..." },
-      { key: "appToken", label: "App-level token", placeholder: "xapp-..." },
+      { key: "appToken", label: "App token (xapp-…)", placeholder: "xapp-…" },
+      { key: "botToken", label: "Bot token (xoxb-…)", placeholder: "xoxb-…" },
     ],
     helpUrl: "https://api.slack.com/apis/socket-mode",
+    setupSteps: [
+      "Create an app at api.slack.com/apps",
+      "Enable Socket Mode → copy the App token (xapp-…)",
+      "OAuth & Permissions → install → copy the Bot token (xoxb-…)",
+      "Paste both.",
+    ],
   },
-  { id: "whatsapp", channelId: "whatsapp", name: "WhatsApp", description: "QR pairing will use the runtime web.login flow", icon: <Smartphone className={ICON_CLASS} />, staged: true },
-  { id: "msteams", channelId: "msteams", name: "Microsoft Teams", description: "Azure Bot Service setup required", icon: <Building2 className={ICON_CLASS} />, staged: true },
+  { id: "whatsapp", channelId: "whatsapp", name: "WhatsApp", description: "QR pairing — coming soon", icon: <Smartphone className={ICON_CLASS} />, staged: true },
+  { id: "msteams", channelId: "msteams", name: "Microsoft Teams", description: "Requires Azure Bot Service setup — coming soon", icon: <Building2 className={ICON_CLASS} />, staged: true },
 ]
 
 function isLaunchChannel(channelId: ChannelId): channelId is LaunchChannelId {
@@ -2084,6 +2102,13 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
         }
       >
         <div className="space-y-3">
+          {activeChannel?.setupSteps && (
+            <ol className="list-decimal list-inside space-y-1 text-[11px] text-[var(--tx2)] leading-[1.5]">
+              {activeChannel.setupSteps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          )}
           {activeFields.map((field, index) => (
             <div key={field.key}>
               <label className="block text-[11px] font-medium mb-[3px]">{field.label}</label>
