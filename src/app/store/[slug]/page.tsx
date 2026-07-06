@@ -9,11 +9,13 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { Card } from "@/components/ui/card"
 import { AgentPill } from "@/components/ui/agent-pill"
 import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge"
 import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
+import { getComplianceNotice } from "@/lib/compliance-notices"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 
 interface TemplateAgent {
@@ -84,6 +86,10 @@ interface PageData {
   installCount: number
   similar: SimilarTemplate[]
   hasPurchased: boolean
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return <h2 className="text-[13px] font-semibold text-[var(--tx)] mb-2">{title}</h2>
 }
 
 export default function TemplateDetailPage() {
@@ -266,6 +272,7 @@ export default function TemplateDetailPage() {
   const { template, reviewCount, installCount, similar, hasPurchased } = data
   const isOfficial = template.trustTier === "OFFICIAL"
   const allTools = [...template.tools.required, ...template.tools.recommended]
+  const complianceNotice = getComplianceNotice(template.slug)
 
   return (
     <PageShell background="secondary">
@@ -407,6 +414,15 @@ export default function TemplateDetailPage() {
         {template.legalDisclaimer && (
           <div className="text-[10px] text-[#92400e] bg-[var(--warnbg)] py-1.5 px-3 rounded-[8px] mb-3.5 border-l-[3px] border-[var(--warn)]">
             {template.legalDisclaimer}
+          </div>
+        )}
+
+        {complianceNotice && (
+          <div className="mb-3.5">
+            <SectionHeader title="Compliance & Responsibility" />
+            <Card>
+              <p className="text-[12px] text-[var(--tx2)] leading-relaxed">{complianceNotice}</p>
+            </Card>
           </div>
         )}
 
