@@ -8,6 +8,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { OctagonX, Pause, Square, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
@@ -21,6 +22,7 @@ import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
+import type { ChannelId, ChannelLiveState, ChannelStatusMap } from "@/lib/openclaw/channel-config"
 
 interface DashboardStats {
   agentsRunning: number
@@ -129,6 +131,12 @@ interface ConfigDriftInfo {
   changedAreas: string[]
 }
 
+interface ChannelStatusSummary {
+  channels: ChannelStatusMap
+  configuredChannelIds: ChannelId[]
+  hasConfiguredChannels: boolean
+}
+
 const AGENT_COLORS: Record<string, string> = {
   ORCHESTRATOR: "#5BA1F5",
   WORKER: "#8BFCAE",
@@ -139,6 +147,47 @@ const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC:
 
 const MAX_LOG_ENTRIES = 200
 const STATS_POLL_MS = 30_000
+
+const CHANNEL_LABELS: Record<ChannelId, string> = {
+  telegram: "Telegram",
+  discord: "Discord",
+  slack: "Slack",
+  whatsapp: "WhatsApp",
+  msteams: "Microsoft Teams",
+}
+
+function channelStatusBadge(live: ChannelLiveState): "running" | "deploying" | "error" | "setup" {
+  if (live === "connected") return "running"
+  if (live === "connecting") return "deploying"
+  if (live === "error") return "error"
+  return "setup"
+}
+
+export function ChannelStatusSection({ channelStatus }: { channelStatus: ChannelStatusSummary | null }) {
+  const configuredChannelIds = channelStatus?.configuredChannelIds ?? []
+  if (configuredChannelIds.length === 0 || !channelStatus) return null
+
+  return (
+    <div className="mb-3 rounded-xl border border-[var(--bd)] bg-[var(--bg)] p-3">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <p className="text-[12px] font-semibold text-[var(--tx)]">Channel status</p>
+        <p className="text-[10px] text-[var(--tx3)]">Verified from gateway when reachable</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {configuredChannelIds.map((channelId) => {
+          const state = channelStatus.channels[channelId]
+          return (
+            <div key={channelId} className="flex items-center gap-1.5 rounded-lg border border-[var(--bd)] px-2 py-1.5">
+              <span className="text-[11px] font-medium text-[var(--tx)]">{CHANNEL_LABELS[channelId]}</span>
+              <StatusBadge status={channelStatusBadge(state.live)} />
+              {state.detail && <span className="text-[10px] text-[var(--err)]">{state.detail}</span>}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function formatChangedAreas(areas: string[]): string {
   if (areas.length === 0) return "workspace configuration"
@@ -215,6 +264,7 @@ export default function DashboardPage() {
   const [stopping, setStopping] = useState(false)
   const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
   const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
+  const [channelStatus, setChannelStatus] = useState<ChannelStatusSummary | null>(null)
 
   const agentColorMapRef = useRef<Record<string, string>>({})
 
@@ -294,9 +344,19 @@ export default function DashboardPage() {
       .catch(() => {})
   }, [workspaceId])
 
+  const fetchChannelStatus = useCallback(() => {
+    fetch(`/api/channels/${workspaceId}/status`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setChannelStatus(json.data as ChannelStatusSummary)
+      })
+      .catch(() => {})
+  }, [workspaceId])
+
   useEffect(() => {
     fetchStats()
     fetchDeploymentStatus()
+    fetchChannelStatus()
     fetch("/api/user/billing")
       .then((r) => r.json())
       .then((json) => {
@@ -309,9 +369,12 @@ export default function DashboardPage() {
         }
       })
       .catch(() => {})
-    const interval = setInterval(fetchStats, STATS_POLL_MS)
+    const interval = setInterval(() => {
+      fetchStats()
+      fetchChannelStatus()
+    }, STATS_POLL_MS)
     return () => clearInterval(interval)
-  }, [fetchStats, fetchDeploymentStatus])
+  }, [fetchStats, fetchDeploymentStatus, fetchChannelStatus])
 
   useEffect(() => {
     if (searchParams.get("redeployed") !== "changes-applied") return
@@ -324,6 +387,7 @@ export default function DashboardPage() {
       if (e.origin !== window.location.origin) return
       if (e.data?.type === "dodo-checkout-complete") {
         fetchStats()
+        fetchChannelStatus()
         fetch("/api/user/billing").then((r) => r.json()).then((json) => {
           if (json.success) setTrialInfo({ trialUsed: json.data.trialUsed, trialEndsAt: json.data.trialEndsAt, hasActiveSubscription: json.data.hasActiveSubscription })
         }).catch(() => {})
@@ -331,7 +395,7 @@ export default function DashboardPage() {
     }
     window.addEventListener("message", onMessage)
     return () => window.removeEventListener("message", onMessage)
-  }, [fetchStats])
+  }, [fetchStats, fetchChannelStatus])
 
   // PR-9/pre: connection + listener lifecycle lives in useActivityStream —
   // the old inline effect's reconnect path created a bare EventSource with
@@ -351,12 +415,13 @@ export default function DashboardPage() {
             clearInterval(interval)
             router.refresh()
             fetchStats()
+            fetchChannelStatus()
           }
         } catch { /* ignore */ }
       }, 3000)
       return () => clearInterval(interval)
     }
-  }, [workspace?.status, workspaceId, router, fetchStats])
+  }, [workspace?.status, workspaceId, router, fetchStats, fetchChannelStatus])
 
   const handleWakeNow = useCallback(async () => {
     await fetch(`/api/dashboard/${workspaceId}/wake`, { method: "POST" })
@@ -383,12 +448,14 @@ export default function DashboardPage() {
     }
     await fetch(`/api/deploy/${workspaceId}/restart`, { method: "POST" })
     fetchStats()
-  }, [workspace?.status, workspaceId, fetchStats])
+    fetchChannelStatus()
+  }, [workspace?.status, workspaceId, fetchStats, fetchChannelStatus])
 
   const handleRedeployFromStopped = async () => {
     setRedeployFromStoppedConfirmOpen(false)
     await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
     fetchStats()
+    fetchChannelStatus()
   }
 
   const redeployFlow = useWorkspaceRedeploy({
@@ -397,6 +464,7 @@ export default function DashboardPage() {
       setRedeployBanner({ variant: "info", message: "Redeployment successful" })
       fetchStats()
       fetchDeploymentStatus()
+      fetchChannelStatus()
     },
   })
 
@@ -922,7 +990,6 @@ export default function DashboardPage() {
       messageId: l.messageId ?? null,
       runId: l.runId ?? null,
     }))
-
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
       <PageHeader
@@ -985,6 +1052,8 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      <ChannelStatusSection channelStatus={channelStatus} />
 
       {deploymentImage && (
         <VersionUpdateBanner

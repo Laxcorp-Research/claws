@@ -108,6 +108,16 @@ export type MaskedChannelSummary = {
 
 export type MaskedChannelConfigMap = Partial<Record<ChannelId, MaskedChannelSummary>>
 
+export type ChannelLiveState = "connected" | "connecting" | "error" | "unknown"
+
+export type ChannelStatusSummary = {
+  configured: boolean
+  live: ChannelLiveState
+  detail?: string
+}
+
+export type ChannelStatusMap = Record<ChannelId, ChannelStatusSummary>
+
 const postPayloadSchema = z.discriminatedUnion("channel", [
   z.object({ channel: z.literal("telegram"), config: telegramChannelConfigSchema }).strict(),
   z.object({ channel: z.literal("discord"), config: discordChannelConfigSchema }).strict(),
@@ -183,6 +193,18 @@ export function hasConfiguredChannels(config: ChannelConfigMap): boolean {
 
 export function configuredChannelIds(config: ChannelConfigMap): ChannelId[] {
   return CHANNEL_IDS.filter((channel) => config[channel] !== undefined)
+}
+
+export function emptyChannelStatusMap(config: ChannelConfigMap): ChannelStatusMap {
+  return Object.fromEntries(
+    CHANNEL_IDS.map((channel) => [
+      channel,
+      {
+        configured: config[channel] !== undefined,
+        live: "unknown" as const,
+      },
+    ]),
+  ) as ChannelStatusMap
 }
 
 function maskSecret(value: string): string {
