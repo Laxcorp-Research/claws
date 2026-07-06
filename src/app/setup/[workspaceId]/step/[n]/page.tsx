@@ -45,7 +45,7 @@ import { DEFAULT_MODEL } from "@/lib/models"
 import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
-import type { ChannelId, LaunchChannelId, MaskedChannelConfigMap } from "@/lib/openclaw/channel-config"
+import type { ChannelId, ChannelStatusMap, LaunchChannelId } from "@/lib/openclaw/channel-config"
 
 interface AgentRow {
   id: string
@@ -85,10 +85,16 @@ interface ConfigDriftInfo {
 }
 
 interface ChannelSummary {
-  channels: MaskedChannelConfigMap
+  channels: ChannelStatusMap
   configuredChannelIds: ChannelId[]
   hasConfiguredChannels: boolean
 }
+
+const EMERGENCY_CHANNEL_TEMPLATE_SLUGS = new Set([
+  "law-firm-intake-os",
+  "home-services-dispatcher",
+  "medical-practice-manager",
+])
 
 function formatChangedAreas(areas: string[]): string {
   if (areas.length === 0) return "workspace configuration"
@@ -1924,10 +1930,12 @@ function buildChannelPayload(channel: LaunchChannelId, values: Record<string, st
 
 function channelDescription(channel: ChannelDefinition, summary: ChannelSummary | null): string {
   if (!channel.channelId) return channel.description
-  const fields = summary?.channels[channel.channelId]?.fields
-  if (!fields || Object.keys(fields).length === 0) return channel.description
-  const hint = Object.values(fields).join(", ")
-  return `${channel.description} (${hint})`
+  const state = summary?.channels[channel.channelId]
+  if (!state?.configured) return channel.description
+  if (state.live === "connected") return "Verified by gateway"
+  if (state.live === "error") return state.detail ? `${state.detail}. Check token and redeploy.` : "Gateway reported an error. Check token and redeploy."
+  if (state.live === "connecting") return "Gateway is checking this channel"
+  return "Configured — deploys with next redeploy"
 }
 
 export function Step4({ workspaceId }: { workspaceId: string }) {
@@ -1938,12 +1946,20 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [savingChannel, setSavingChannel] = useState<ChannelId | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [workspaceTemplateSlug, setWorkspaceTemplateSlug] = useState<string | null>(null)
 
   const loadChannels = useCallback(async () => {
     try {
-      const res = await fetch(`/api/channels/${workspaceId}`)
-      const json = await res.json()
+      const [statusRes, workspaceRes] = await Promise.all([
+        fetch(`/api/channels/${workspaceId}/status`),
+        fetch(`/api/workspaces/${workspaceId}`),
+      ])
+      const json = await statusRes.json()
       if (json.success) setSummary(json.data as ChannelSummary)
+      const workspaceJson = await workspaceRes.json()
+      if (workspaceJson.success) {
+        setWorkspaceTemplateSlug(workspaceJson.data?.clawTemplate?.slug ?? null)
+      }
     } catch {
       setError("Failed to load channel settings.")
     } finally {
@@ -1976,7 +1992,7 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
         setError(json.error?.message || "Could not save channel.")
         return
       }
-      setSummary(json.data as ChannelSummary)
+      await loadChannels()
       setActiveChannel(null)
       setFormValues({})
     } catch {
@@ -2000,7 +2016,7 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
         setError(json.error?.message || "Could not disconnect channel.")
         return
       }
-      setSummary(json.data as ChannelSummary)
+      await loadChannels()
     } catch {
       setError("Network error while disconnecting channel.")
     } finally {
@@ -2010,6 +2026,10 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
 
   const activeFields = activeChannel?.fields ?? []
   const allRequiredFilled = activeFields.every((field) => (formValues[field.key] ?? "").trim().length > 0)
+  const showEmergencyChannelWarning =
+    workspaceTemplateSlug !== null &&
+    EMERGENCY_CHANNEL_TEMPLATE_SLUGS.has(workspaceTemplateSlug) &&
+    summary?.hasConfiguredChannels === false
 
   return (
     <>
@@ -2023,47 +2043,82 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      <ChannelList>
-        {CHANNELS.map((channel) => (
-          <ChannelRow
-            key={channel.id}
-            name={channel.name}
-            description={channelDescription(channel, summary)}
-            icon={channel.icon}
-            status={
-              channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.configured)
-                ? "connected"
-                : "disconnected"
-            }
-            alwaysConnected={channel.alwaysConnected}
-            onConnect={() => channel.launch && openConnectModal(channel)}
-            onDisconnect={() => channel.channelId && disconnectChannel(channel.channelId)}
-            action={
-              channel.staged ? (
-                <Badge variant="neutral">Coming soon</Badge>
-              ) : channel.channelId && summary?.channels[channel.channelId]?.configured ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => disconnectChannel(channel.channelId!)}
-                  disabled={savingChannel === channel.channelId}
-                >
-                  {savingChannel === channel.channelId ? "Disconnecting..." : "Disconnect"}
-                </Button>
-              ) : channel.launch ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => openConnectModal(channel)}
-                  disabled={loading || (channel.channelId ? savingChannel === channel.channelId : false)}
-                >
-                  Connect
-                </Button>
-              ) : undefined
-            }
-          />
-        ))}
-      </ChannelList>
+      {showEmergencyChannelWarning && (
+        <div className="mb-3.5">
+          <AlertBanner variant="warning">
+            <p className="font-medium">This Claw&apos;s emergency alerts require a connected channel</p>
+            <p className="mt-0.5 opacity-80">Without one, urgent alerts appear only on this dashboard.</p>
+          </AlertBanner>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="space-y-2" aria-label="Loading channel status">
+          <LoadingSkeleton variant="card" />
+          <LoadingSkeleton variant="card" />
+          <LoadingSkeleton variant="card" />
+        </div>
+      ) : (
+        <ChannelList>
+          {CHANNELS.map((channel) => (
+            <ChannelRow
+              key={channel.id}
+              name={channel.name}
+              description={channelDescription(channel, summary)}
+              icon={channel.icon}
+              status={
+                channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.live === "connected")
+                  ? "connected"
+                  : channel.channelId && summary?.channels[channel.channelId]?.live === "error"
+                    ? "error"
+                    : channel.channelId && summary?.channels[channel.channelId]?.live === "connecting"
+                      ? "connecting"
+                  : "disconnected"
+              }
+              errorMessage={channel.channelId && summary?.channels[channel.channelId]?.live === "error"
+                ? "Check token and redeploy."
+                : undefined}
+              alwaysConnected={channel.alwaysConnected}
+              onConnect={() => channel.launch && openConnectModal(channel)}
+              onDisconnect={() => channel.channelId && disconnectChannel(channel.channelId)}
+              action={
+                channel.staged ? (
+                  <Badge variant="neutral">Coming soon</Badge>
+                ) : channel.channelId && summary?.channels[channel.channelId]?.configured ? (
+                  <div className="flex items-center gap-1.5">
+                    {summary.channels[channel.channelId].live === "connected" && (
+                      <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>
+                    )}
+                    {summary.channels[channel.channelId].live === "unknown" && (
+                      <Badge variant="info">Configured</Badge>
+                    )}
+                    {summary.channels[channel.channelId].live === "connecting" && (
+                      <Badge variant="info">Checking</Badge>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => disconnectChannel(channel.channelId!)}
+                      disabled={savingChannel === channel.channelId}
+                    >
+                      {savingChannel === channel.channelId ? "Disconnecting..." : "Disconnect"}
+                    </Button>
+                  </div>
+                ) : channel.launch ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => openConnectModal(channel)}
+                    disabled={channel.channelId ? savingChannel === channel.channelId : false}
+                  >
+                    Connect
+                  </Button>
+                ) : undefined
+              }
+            />
+          ))}
+        </ChannelList>
+      )}
 
       <Modal
         open={activeChannel !== null}
