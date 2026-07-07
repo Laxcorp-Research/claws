@@ -43,6 +43,7 @@ type WsOverrides = {
   lastHealthReason?: string | null;
   lastHealthCheck?: Date | null;
   expiredTools?: Array<{ displayName: string; status: string; connectionType: string }>;
+  todayCallGroups?: Array<{ agentSlug: string | null; _count: { _all: number } }>;
 };
 
 async function callRoute(opts: WsOverrides) {
@@ -87,6 +88,7 @@ async function callRoute(opts: WsOverrides) {
   (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mockResolvedValue(0 as never);
   (prismaMock.activityLog.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { apiCost: 0 } } as never);
   (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
+  (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue((opts.todayCallGroups ?? []) as never);
   (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue((opts.expiredTools ?? []) as never);
   // The route also runs $queryRawUnsafe twice. Mock that.
   (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
@@ -224,6 +226,21 @@ describe("tool connection banner data", () => {
   });
 });
 
+describe("K1 command strip data", () => {
+  it("counts tasks today from TASK_COMPLETE and estimates cost from attributed completions", async () => {
+    const data = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      todayCallGroups: [{ agentSlug: "worker", _count: { _all: 4 } }],
+    });
+
+    const firstTaskCount = (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(firstTaskCount.where.actionType).toBe("TASK_COMPLETE");
+    expect(data.stats.estimatedCostTodayCalls).toBe(4);
+    expect(data.stats.estimatedCostToday).toBe(0.06);
+  });
+});
+
 describe("PR-4: recentLogs detail passthrough", () => {
   it("wires detail through sanitizeActivityDetail; null when absent", async () => {
     // Differentiate the recentLogs query (no actionType filter) from the
@@ -240,6 +257,7 @@ describe("PR-4: recentLogs detail passthrough", () => {
     (prismaMock.agent.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
     (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mockResolvedValue(0 as never);
     (prismaMock.activityLog.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { apiCost: 0 } } as never);
+    (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
     (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
     (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
     (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { where?: { actionType?: unknown } }) => {
