@@ -16,6 +16,14 @@ import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { AlertStack } from "@/components/dashboard/alert-stack"
 import { CommandStrip } from "@/components/dashboard/command-strip"
+import { MissionLog } from "@/components/dashboard/mission-log"
+import {
+  mergeMissionEvent,
+  missionQueryParams,
+  type MissionAgent,
+  type MissionFilters,
+  type MissionLogEntry,
+} from "@/components/dashboard/mission-log-utils"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
@@ -159,6 +167,14 @@ const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC:
 
 const MAX_LOG_ENTRIES = 200
 const STATS_POLL_MS = 30_000
+const DEFAULT_MISSION_FILTERS: MissionFilters = {
+  agentSlug: "",
+  type: "all",
+  channelId: "",
+  time: "today",
+  q: "",
+  showRoutine: true,
+}
 
 const CHANNEL_LABELS: Record<ChannelId, string> = {
   telegram: "Telegram",
@@ -257,6 +273,11 @@ export default function DashboardPage() {
   const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
   const [stableVersion, setStableVersion] = useState<StableVersionInfo | null>(null)
   const [agentCosts, setAgentCosts] = useState<AgentCostRow[]>([])
+  const [missionFilters, setMissionFilters] = useState<MissionFilters>(DEFAULT_MISSION_FILTERS)
+  const [missionRows, setMissionRows] = useState<MissionLogEntry[]>([])
+  const [missionNextCursor, setMissionNextCursor] = useState<string | null>(null)
+  const [missionHasMore, setMissionHasMore] = useState(false)
+  const [missionLoadingMore, setMissionLoadingMore] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
   const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
   const [redeployFromStoppedConfirmOpen, setRedeployFromStoppedConfirmOpen] = useState(false)
@@ -289,9 +310,11 @@ export default function DashboardPage() {
     setSubscribing(false)
   }, [workspaceId])
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (opts: { cursor?: string | null; append?: boolean } = {}) => {
+    if (opts.append) setMissionLoadingMore(true)
     try {
-      const res = await fetch(`/api/activity/${workspaceId}`)
+      const params = missionQueryParams(missionFilters, 50, opts.cursor)
+      const res = await fetch(`/api/activity/${workspaceId}?${params.toString()}`)
       if (!res.ok) {
         if (res.status === 401) { router.push("/auth/signin"); return }
         if (res.status === 403 || res.status === 404) { router.replace("/my-claws"); return }
@@ -305,6 +328,10 @@ export default function DashboardPage() {
         setPendingApprovals(json.data.pendingApprovals ?? [])
         setSpend(json.data.spend ?? null)
         setExpiredTools(json.data.expiredTools ?? [])
+        const incomingRows = Array.isArray(json.data.recentLogs) ? json.data.recentLogs as MissionLogEntry[] : []
+        setMissionRows((prev) => opts.append ? [...prev, ...incomingRows] : incomingRows)
+        setMissionNextCursor(json.data.activityPage?.nextCursor ?? null)
+        setMissionHasMore(Boolean(json.data.activityPage?.hasMore))
         if (json.data.agentCosts) {
           setAgentCosts((json.data.agentCosts as { agentName: string; role: string; model: string; calls: number; cost: number }[]).map((c) => ({
             agentName: c.agentName,
@@ -324,8 +351,9 @@ export default function DashboardPage() {
       setError(err instanceof Error ? err.message : "Failed to load dashboard")
     } finally {
       setLoading(false)
+      if (opts.append) setMissionLoadingMore(false)
     }
-  }, [workspaceId, router])
+  }, [workspaceId, router, missionFilters])
 
   const fetchDeploymentStatus = useCallback(() => {
     fetch(`/api/deploy/${workspaceId}/status?drift=1`)
@@ -412,7 +440,10 @@ export default function DashboardPage() {
   // no listeners attached (see the hook's header comment).
   useActivityStream<LogEntry>(workspaceId, {
     onInit: (initial) => setLogs(initial.slice(-MAX_LOG_ENTRIES)),
-    onLog: (entry) => setLogs((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES)),
+    onLog: (entry) => {
+      setLogs((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES))
+      setMissionRows((prev) => mergeMissionEvent(prev, entry, missionFilters, MAX_LOG_ENTRIES))
+    },
   })
 
   useEffect(() => {
@@ -965,7 +996,7 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="max-w-5xl mx-auto px-5 py-6">
-        <AlertBanner variant="error" actions={<Button variant="outline" size="sm" onClick={fetchStats}>Retry</Button>}>
+        <AlertBanner variant="error" actions={<Button variant="outline" size="sm" onClick={() => fetchStats()}>Retry</Button>}>
           {error}
         </AlertBanner>
       </div>
@@ -1004,6 +1035,12 @@ export default function DashboardPage() {
     lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
     color: a.color,
   }))
+  const missionAgents: MissionAgent[] = sortedAgents.map((a) => ({
+    name: a.name,
+    role: a.role,
+    color: a.color,
+    agentSlug: a.agentSlug,
+  }))
 
   // PR-9/B: the dashboard chat reuses the SAME activity stream (no second
   // EventSource). Filter the live logs to webchat MESSAGE_* rows — channelId
@@ -1034,6 +1071,15 @@ export default function DashboardPage() {
     message: alert.content,
     cta: alert.actions,
   }))
+  const handleMissionFiltersChange = (nextFilters: MissionFilters) => {
+    setMissionNextCursor(null)
+    setMissionHasMore(false)
+    setMissionFilters(nextFilters)
+  }
+  const handleMissionLoadMore = () => {
+    if (!missionNextCursor) return
+    void fetchStats({ cursor: missionNextCursor, append: true })
+  }
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
       <PageHeader
@@ -1157,6 +1203,18 @@ export default function DashboardPage() {
           />
 
           <ConversationsSection workspaceId={workspaceId} status={workspace!.status} />
+
+          <MissionLog
+            entries={missionRows}
+            agents={missionAgents}
+            filters={missionFilters}
+            configuredChannelIds={channelStatus?.configuredChannelIds ?? []}
+            channels={channelStatus?.channels ?? null}
+            hasMore={missionHasMore}
+            loadingMore={missionLoadingMore}
+            onFiltersChange={handleMissionFiltersChange}
+            onLoadMore={handleMissionLoadMore}
+          />
 
           <ClawNarrativeRow
             clawName={workspace!.name}

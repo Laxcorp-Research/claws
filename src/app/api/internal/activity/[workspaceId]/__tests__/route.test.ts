@@ -359,6 +359,18 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       const call = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(call.data.apiCost).toBe(null);
     });
+
+    it("writes channelId to the indexed column and keeps metadata unchanged", async () => {
+      defaultMocks();
+      await callRoute(
+        { events: [makeEvent({ channelId: "slack" })] },
+        { secret: SECRET },
+      );
+
+      const call = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.data.channelId).toBe("slack");
+      expect(JSON.parse(call.data.metadata).channelId).toBe("slack");
+    });
   });
 
   // ─── Response shape ───────────────────────────────────────────────────

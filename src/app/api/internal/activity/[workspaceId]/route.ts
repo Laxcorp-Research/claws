@@ -324,6 +324,7 @@ export async function POST(
           action: ev.action,
           detail: ev.detail,
           actionType: ev.type,
+          channelId: ev.channelId,
           metadata: JSON.stringify({
             ...ev.metadata,
             runId: ev.runId,

@@ -51,6 +51,7 @@ const baseRow = {
   actionType: "TASK_START",
   detail: "[cron:heartbeat-x] full prompt with the cron trace prefix",
   metadata: '{"triggerKind":"heartbeat"}',
+  channelId: null,
   tokenCount: 1234,
   apiCost: 0.0021,
 } as const
@@ -76,12 +77,14 @@ const SSE_EXCLUDED_FIELDS: ReadonlyArray<string> = [
 // PR-9/B: fields formatLog DERIVES from `metadata` rather than serializing a
 // 1:1 schema column. `metadata` itself stays in SSE_EXCLUDED_FIELDS (the raw
 // blob is off the wire); these are the explicit projections the dashboard chat
-// panel needs (messageId = reconciliation key; channelId = webchat filter;
+// panel needs (messageId = reconciliation key;
 // from = sender hint; runId = turn-correlation key for the working indicator).
+// K2 promoted channelId to a scalar column, so it is now covered by the schema
+// field list rather than this derived-field list.
 // Enumerated here so the structural assertion stays exact:
 //   formatLog output === (scalar fields − SSE_EXCLUDED_FIELDS) + SSE_DERIVED_FIELDS.
 // Adding a projection without listing it here (or vice versa) MUST fail (d).
-const SSE_DERIVED_FIELDS: ReadonlyArray<string> = ["messageId", "channelId", "from", "runId"]
+const SSE_DERIVED_FIELDS: ReadonlyArray<string> = ["messageId", "from", "runId"]
 
 function getActivityLogScalarFields(): string[] {
   const schemaPath = join(process.cwd(), "prisma/schema.prisma")

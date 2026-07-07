@@ -44,6 +44,8 @@ type WsOverrides = {
   lastHealthCheck?: Date | null;
   expiredTools?: Array<{ displayName: string; status: string; connectionType: string }>;
   todayCallGroups?: Array<{ agentSlug: string | null; _count: { _all: number } }>;
+  query?: string;
+  recentRows?: unknown[];
 };
 
 async function callRoute(opts: WsOverrides) {
@@ -87,13 +89,16 @@ async function callRoute(opts: WsOverrides) {
   ] as never);
   (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mockResolvedValue(0 as never);
   (prismaMock.activityLog.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { apiCost: 0 } } as never);
-  (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
+  (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { orderBy?: unknown }) => {
+    if (Array.isArray(args.orderBy)) return Promise.resolve((opts.recentRows ?? []) as never);
+    return Promise.resolve([] as never);
+  });
   (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue((opts.todayCallGroups ?? []) as never);
   (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue((opts.expiredTools ?? []) as never);
   // The route also runs $queryRawUnsafe twice. Mock that.
   (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
 
-  const req = createMockRequest(`http://localhost:3000/api/activity/${WORKSPACE_ID}`, { method: "GET" });
+  const req = createMockRequest(`http://localhost:3000/api/activity/${WORKSPACE_ID}${opts.query ?? ""}`, { method: "GET" });
   const res = await GET(req, { params: Promise.resolve({ workspaceId: WORKSPACE_ID }) });
   const body = await res.json();
   return body.data;
@@ -241,6 +246,68 @@ describe("K1 command strip data", () => {
   });
 });
 
+describe("K2 activity pagination and filters", () => {
+  it("uses the extracted channelId column with capped cursor pagination filters", async () => {
+    await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      query: "?agentSlug=worker&actionType=TASK_START&actionType=TASK_COMPLETE&channelId=webchat&since=2026-07-07T00:00:00.000Z&until=2026-07-08T00:00:00.000Z&q=brief&limit=75",
+    });
+
+    const recentQuery = (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mock.calls.find(([arg]) =>
+      Array.isArray(arg.orderBy),
+    )?.[0];
+    expect(recentQuery.take).toBe(51);
+    expect(recentQuery.where.channelId).toBe("webchat");
+    expect(recentQuery.where.metadata).toBeUndefined();
+    expect(recentQuery.where.agentSlug).toBe("worker");
+    expect(recentQuery.where.actionType).toEqual({ in: ["TASK_START", "TASK_COMPLETE"] });
+    expect(recentQuery.where.action).toEqual({ contains: "brief", mode: "insensitive" });
+    expect(recentQuery.where.AND[0].timestamp).toEqual({
+      gte: new Date("2026-07-07T00:00:00.000Z"),
+      lte: new Date("2026-07-08T00:00:00.000Z"),
+    });
+  });
+
+  it("returns a timestamp+id cursor and applies it to page 2 without overlap", async () => {
+    const rows = Array.from({ length: 51 }, (_, index) => ({
+      id: `log-${String(index).padStart(2, "0")}`,
+      timestamp: new Date(`2026-07-07T12:${String(59 - index).padStart(2, "0")}:00.000Z`),
+      agentName: "Worker",
+      agentSlug: "worker",
+      action: `Task ${index}`,
+      detail: null,
+      actionType: "TASK_COMPLETE",
+      apiCost: null,
+      channelId: "webchat",
+      metadata: JSON.stringify({ runId: `run-${index}`, channelId: "webchat" }),
+    }));
+    const page1 = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY", recentRows: rows });
+    expect(page1.recentLogs).toHaveLength(50);
+    expect(page1.activityPage.hasMore).toBe(true);
+    expect(page1.activityPage.nextCursor).toEqual(expect.any(String));
+
+    vi.clearAllMocks();
+    await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      query: `?cursor=${encodeURIComponent(page1.activityPage.nextCursor)}`,
+      recentRows: rows,
+    });
+    const page2Query = (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mock.calls.find(([arg]) =>
+      Array.isArray(arg.orderBy),
+    )?.[0];
+    expect(page2Query.where.AND).toEqual([
+      {
+        OR: [
+          { timestamp: { lt: rows[49].timestamp } },
+          { timestamp: rows[49].timestamp, id: { lt: rows[49].id } },
+        ],
+      },
+    ]);
+  });
+});
+
 describe("PR-4: recentLogs detail passthrough", () => {
   it("wires detail through sanitizeActivityDetail; null when absent", async () => {
     // Differentiate the recentLogs query (no actionType filter) from the
@@ -264,8 +331,8 @@ describe("PR-4: recentLogs detail passthrough", () => {
       // Only the recentLogs query has no actionType filter.
       if (args?.where && args.where.actionType === undefined) {
         return Promise.resolve([
-          { id: "log-1", timestamp: new Date("2026-05-30T08:00:00Z"), agentName: "Orchestrator", action: "Heartbeat check", detail: "[cron:heartbeat-x] Read HEARTBEAT.md and follow it strictly.", actionType: "HEARTBEAT", apiCost: null },
-          { id: "log-2", timestamp: new Date("2026-05-30T07:59:00Z"), agentName: "Worker", action: "Task completed in 2s", detail: null, actionType: "TASK_COMPLETE", apiCost: null },
+          { id: "log-1", timestamp: new Date("2026-05-30T08:00:00Z"), agentName: "Orchestrator", agentSlug: "orchestrator", action: "Heartbeat check", detail: "[cron:heartbeat-x] Read HEARTBEAT.md and follow it strictly.", actionType: "HEARTBEAT", apiCost: null, channelId: null, metadata: null },
+          { id: "log-2", timestamp: new Date("2026-05-30T07:59:00Z"), agentName: "Worker", agentSlug: "worker", action: "Task completed in 2s", detail: null, actionType: "TASK_COMPLETE", apiCost: null, channelId: "webchat", metadata: JSON.stringify({ runId: "run-2", channelId: "webchat" }) },
         ]) as never;
       }
       return Promise.resolve([] as never);
@@ -274,12 +341,14 @@ describe("PR-4: recentLogs detail passthrough", () => {
     const req = createMockRequest(`http://localhost:3000/api/activity/${WORKSPACE_ID}`, { method: "GET" });
     const res = await GET(req, { params: Promise.resolve({ workspaceId: WORKSPACE_ID }) });
     const body = await res.json();
-    const logs = body.data.recentLogs as Array<{ id: string; detail: string | null }>;
+    const logs = body.data.recentLogs as Array<{ id: string; detail: string | null; channelId: string | null; runId: string | null }>;
     const log1 = logs.find((l) => l.id === "log-1")!;
     const log2 = logs.find((l) => l.id === "log-2")!;
     // detail present flows through to the response.
     expect(log1.detail).toBe("[cron:heartbeat-x] Read HEARTBEAT.md and follow it strictly.");
     // Absent detail → null (no expand affordance client-side).
     expect(log2.detail).toBeNull();
+    expect(log2.channelId).toBe("webchat");
+    expect(log2.runId).toBe("run-2");
   });
 });

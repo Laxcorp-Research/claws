@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { ActivityLogEntry } from "./activity-log-entry"
 import { clawNarrative, type NarrativeTone } from "@/lib/utils/narrative"
 import { formatCurrency } from "@/lib/utils/format"
 
@@ -50,8 +49,6 @@ interface ClawNarrativeRowProps {
   onRestartAgent: (id: string) => void
   actionLoadingId?: string | null
 }
-
-const DRILL_LOG_LIMIT = 20
 
 const toneColor: Record<NarrativeTone, string> = {
   calm: "text-[var(--tx2)]",
@@ -109,8 +106,6 @@ export function ClawNarrativeRow({
     for (const l of logs) map.set(l.agentName, l.message)
     return map
   }, [logs])
-
-  const recentLogs = useMemo(() => logs.slice(-DRILL_LOG_LIMIT).reverse(), [logs])
 
   // Only show the cost section when there's something to show — keeps the
   // drill-down calm for BYOK users (and credit users with no recorded spend
@@ -190,28 +185,6 @@ export function ClawNarrativeRow({
             <p className="text-[10px] text-[var(--tx3)] mt-2">
               Only Workers can be paused individually. Use the Claw-level controls above for the Orchestrator and Critic.
             </p>
-          </div>
-
-          {/* Recent activity */}
-          <div>
-            <h3 className="text-[11px] font-semibold text-[var(--tx2)] uppercase tracking-wide mb-1.5">Recent activity</h3>
-            {recentLogs.length === 0 ? (
-              <p className="text-[11px] text-[var(--tx3)] py-2">No activity yet.</p>
-            ) : (
-              <div className="max-h-[320px] overflow-y-auto" role="log" aria-label="Recent agent activity">
-                {recentLogs.map((log) => (
-                  <ActivityLogEntry
-                    key={log.id}
-                    timestamp={log.timestamp}
-                    agentName={log.agentName}
-                    agentColor={log.agentColor}
-                    message={log.message}
-                    detail={log.detail}
-                    channelId={log.channelId}
-                  />
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Cost per agent — credit users with recorded spend only */}
