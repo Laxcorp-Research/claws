@@ -9,6 +9,7 @@ export interface ActivityLogFormatInput {
   detail: string | null
   actionType: string
   apiCost: number | null
+  channelId?: string | null
   metadata: string | null
 }
 
@@ -17,7 +18,7 @@ export interface ActivityLogFormatInput {
 // collapse the same DB row regardless of which source delivered it first.
 export function formatActivityLog(log: ActivityLogFormatInput) {
   let messageId: string | null = null
-  let channelId: string | null = null
+  let channelId: string | null = log.channelId ?? null
   let from: string | null = null
   let runId: string | null = null
 
@@ -25,7 +26,7 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
     try {
       const m = JSON.parse(log.metadata) as Record<string, unknown>
       messageId = typeof m.messageId === "string" ? m.messageId : null
-      channelId = typeof m.channelId === "string" ? m.channelId : null
+      channelId = channelId ?? (typeof m.channelId === "string" ? m.channelId : null)
       from = typeof m.from === "string" ? m.from : null
       runId = typeof m.runId === "string" ? m.runId : null
     } catch {
