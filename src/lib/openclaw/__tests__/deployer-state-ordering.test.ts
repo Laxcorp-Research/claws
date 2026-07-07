@@ -121,6 +121,7 @@ beforeEach(() => {
   mockIsRailwayConfigured.mockReturnValue(true)
   mockGenerateWorkspace.mockResolvedValue(generatedStub())
   mockBuildWorkspaceConfigFingerprint.mockResolvedValue({
+    version: 2,
     hash: "hash-current",
     areas: {
       tools: "tools-hash",
@@ -204,9 +205,11 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
     expect(completedUpdate).toBeTruthy()
     expect(completedUpdate.data.configHash).toBe("hash-current")
     expect(completedUpdate.data.configSnapshot).toContain('"hash":"hash-current"')
+    expect(completedUpdate.data.configSnapshot).toContain('"fingerprintVersion":2')
     expect(completedUpdate.data.configSnapshotGzip).toBeInstanceOf(Uint8Array)
     expect(completedUpdate.data.configSnapshotGzip.length).toBeGreaterThan(0)
     const inflated = JSON.parse(gunzipSync(Buffer.from(completedUpdate.data.configSnapshotGzip)).toString("utf8"))
+    expect(inflated.fingerprintVersion).toBe(2)
     expect(inflated.envManifest.OPENCLAW_GATEWAY_TOKEN).toMatch(/^[a-f0-9]{64}$/)
     expect(inflated.envManifest.ANTHROPIC_API_KEY).toMatch(/^[a-f0-9]{64}$/)
     expect(JSON.stringify(inflated)).not.toContain("gw-token")

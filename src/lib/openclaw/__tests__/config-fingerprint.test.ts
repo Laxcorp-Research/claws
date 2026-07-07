@@ -3,7 +3,7 @@ import { prismaMock } from '@/test/helpers/mock-prisma';
 
 vi.mock('@/lib/db', () => ({ prisma: prismaMock }));
 
-import { buildWorkspaceConfigFingerprint } from '@/lib/openclaw/config-fingerprint';
+import { CONFIG_FINGERPRINT_VERSION, buildWorkspaceConfigFingerprint } from '@/lib/openclaw/config-fingerprint';
 
 function baseWorkspace(overrides: Record<string, unknown> = {}) {
   return {
@@ -115,6 +115,18 @@ async function fingerprintFor(workspace: Record<string, unknown>) {
 describe('buildWorkspaceConfigFingerprint', () => {
   beforeEach(() => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(baseWorkspace());
+  });
+
+  it('golden hash tripwire: projection changes require a fingerprint version bump and golden update', async () => {
+    // Contract: this hash is the committed output for the fixed fixture above.
+    // If a field is added/removed from the fingerprint projection without a
+    // deliberate CONFIG_FINGERPRINT_VERSION bump and golden update, this test
+    // fails and blocks a fleet-wide cry-wolf drift banner.
+    const fingerprint = await fingerprintFor(baseWorkspace());
+
+    expect(CONFIG_FINGERPRINT_VERSION).toBe(2);
+    expect(fingerprint.version).toBe(CONFIG_FINGERPRINT_VERSION);
+    expect(fingerprint.hash).toBe('426dc9ac6591a231a0be32d130606dc4491ed2cd89657587648d1f1335749ef3');
   });
 
   it('tool connect/disconnect changes the hash (mutation guard: dropping toolConnections from inputs fails)', async () => {
