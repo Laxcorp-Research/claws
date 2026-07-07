@@ -699,11 +699,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           .map((e) => resolveToolEntry(e, false))
           .filter((t): t is ToolState => t !== null)
 
-        const allTools = [...resolvedRequired, ...resolvedRecommended]
-          .filter(t => {
-            const def = getToolBySlug(t.slug)
-            return !def?.isAIProvider
-          })
+        const visibleRequired = resolvedRequired.filter(t => {
+          const def = getToolBySlug(t.slug)
+          return !def?.isAIProvider
+        })
+        const requiredSlugs = new Set(visibleRequired.map((t) => t.slug))
+        const visibleRecommended = resolvedRecommended.filter(t => {
+          const def = getToolBySlug(t.slug)
+          return !def?.isAIProvider && !requiredSlugs.has(t.slug)
+        })
+
+        const allTools = [...visibleRequired, ...visibleRecommended]
 
         // PR #4 Commit 9: any ToolConnection row the user created via the
         // Browse Tools modal for a tool NOT in this workspace's template
