@@ -1603,10 +1603,13 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 
 function generateToolsMd(
   workspace: WorkspaceWithRelations,
-  _agent: AgentWithRelations,
+  agent: AgentWithRelations,
   mcpEnabled: boolean,
 ): string {
   const mcpSection = mcpEnabled ? MCP_LONGTAIL_TOOLS_MD_SECTION : '';
+  const pauseSection = agent.role === 'ORCHESTRATOR'
+    ? generatePausedWorkerToolsSection(workspace.agents)
+    : '';
   const toolSections: string[] = [];
   const customApiLines = (workspace.customToolConnections ?? []).map((customConn) => {
     const purpose = customConn.description?.trim() || 'No purpose provided.';
@@ -1647,6 +1650,7 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Report the failed tool name and the exact error text.
 - Never tell the human to open internal runtime settings, local-only URLs, ports, local dashboards, environment variables, or internal container settings.
 - Never fabricate or guess a result for a failed tool call.
+${pauseSection}
 ${mcpSection}`;
   }
 
@@ -1681,7 +1685,22 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Report the failed tool name and the exact error text.
 - Never tell the human to open internal runtime settings, local-only URLs, ports, local dashboards, environment variables, or internal container settings.
 - Never fabricate or guess a result for a failed tool call.
+${pauseSection}
 ${mcpSection}`;
+}
+
+function generatePausedWorkerToolsSection(agents: AgentWithRelations[]): string {
+  const pausedWorkers = agents.filter((agent) => agent.role === 'WORKER' && agent.isPaused);
+  if (pausedWorkers.length === 0) return '';
+  // Runtime 2026.5.22-6 has no agents.list disable flag. This instruction-level
+  // guard is therefore honest fallback enforcement for delegation. Scheduled
+  // worker cron emission is guarded separately if that path is ever introduced.
+  return `
+## Paused Workers
+
+The following Workers are paused in Claws and should not receive delegated work until the human resumes them and redeploys:
+${pausedWorkers.map((worker) => `- Worker ${worker.name} is paused — do not delegate to it.`).join('\n')}
+`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2003,6 +2022,7 @@ type AgentWithRelations = {
   heartbeatTime?: string | null;
   qualityThreshold?: number | null;
   emoji?: string | null;
+  isPaused?: boolean | null;
   skills: { skill: SkillRecord }[];
   outgoingConnections: { targetAgent: { name: string }; condition: string }[];
   incomingConnections: { sourceAgent: { name: string } }[];

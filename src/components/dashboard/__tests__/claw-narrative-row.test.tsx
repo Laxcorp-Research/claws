@@ -58,17 +58,14 @@ describe("ClawNarrativeRow", () => {
     expect(screen.queryByText("Recent activity")).toBeNull()
   })
 
-  it("enables Pause for Workers (wires the handler) and disables it for the Orchestrator", () => {
+  it("renders Pause only for Workers (wires the handler)", () => {
     const { onPauseAgent } = renderRow()
     fireEvent.click(screen.getByRole("button", { name: "Toggle Claw details" }))
 
     const pauseButtons = screen.getAllByRole("button", { name: "Pause" }) as HTMLButtonElement[]
-    const enabled = pauseButtons.filter((b) => !b.disabled)
-    const disabled = pauseButtons.filter((b) => b.disabled)
-    expect(enabled).toHaveLength(1) // only the Worker
-    expect(disabled).toHaveLength(1) // the Orchestrator
+    expect(pauseButtons).toHaveLength(1)
 
-    fireEvent.click(enabled[0])
+    fireEvent.click(pauseButtons[0])
     expect(onPauseAgent).toHaveBeenCalledWith("w1")
   })
 

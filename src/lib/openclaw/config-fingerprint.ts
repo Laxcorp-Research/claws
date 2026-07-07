@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { prisma } from '@/lib/db';
 
-export const CONFIG_FINGERPRINT_VERSION = 2;
+export const CONFIG_FINGERPRINT_VERSION = 3;
 export const CONFIG_FINGERPRINT_MIN_VERSION = 1;
 
 export interface WorkspaceConfigFingerprint {
@@ -61,6 +61,7 @@ type WorkspaceFingerprintInput = {
     heartbeatMd?: string | null;
     heartbeatFrequency?: string | null;
     heartbeatTime?: string | null;
+    isPaused?: boolean | null;
     qualityThreshold?: number | null;
     reportsTo?: string | null;
     skills: Array<{
@@ -146,6 +147,10 @@ function projectCustomApis(input: WorkspaceFingerprintInput) {
 }
 
 function projectAgents(input: WorkspaceFingerprintInput) {
+  return projectAgentsWithOptions(input, { includePauseState: false });
+}
+
+function projectAgentsWithOptions(input: WorkspaceFingerprintInput, options: { includePauseState: boolean }) {
   return input.agents
     .map((agent) => ({
       id: agent.id,
@@ -158,6 +163,7 @@ function projectAgents(input: WorkspaceFingerprintInput) {
       heartbeatMd: agent.heartbeatMd,
       heartbeatFrequency: agent.heartbeatFrequency,
       heartbeatTime: agent.heartbeatTime,
+      ...(options.includePauseState ? { isPaused: Boolean(agent.isPaused) } : {}),
       qualityThreshold: agent.qualityThreshold,
       reportsTo: agent.reportsTo,
       skillIds: sortStrings(agent.skills.map((agentSkill) => agentSkill.skillId)),
@@ -242,12 +248,28 @@ const FINGERPRINT_PROJECTIONS: Record<number, FingerprintProjection> = {
     keys: projectKeys(input),
     workspace: projectWorkspace(input),
   }),
+  3: (input) => ({
+    tools: {
+      connections: projectToolConnections(input),
+      customApis: projectCustomApis(input),
+    },
+    agents: projectAgentsWithOptions(input, { includePauseState: true }),
+    connections: projectConnections(input),
+    channels: { channelConfigEncrypted: fingerprintSecretBlob(input.workspace.channelConfigEncrypted) },
+    keys: projectKeys(input),
+    workspace: projectWorkspace(input),
+  }),
 };
 
 export const FINGERPRINT_TRANSITIONS: Record<number, Partial<Record<FingerprintArea, string>>> = {
   2: {
     tools: 'custom APIs',
   },
+  // FP1.1 limitation: v3 modifies the existing agents projection by adding
+  // isPaused, not a new area. Workspaces deployed with v2 fingerprints compare
+  // against the v2 projection, so a pause-only change does not banner until the
+  // workspace is redeployed/re-baselined on v3.
+  3: {},
 };
 
 export function isKnownFingerprintVersion(version: number): boolean {
