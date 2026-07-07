@@ -50,12 +50,12 @@ describe("ClawNarrativeRow", () => {
     expect(screen.queryByText("Agents")).toBeNull()
   })
 
-  it("expands on chevron click to reveal the roster and recent activity", () => {
+  it("expands on chevron click to reveal the roster", () => {
     renderRow()
     fireEvent.click(screen.getByRole("button", { name: "Toggle Claw details" }))
     expect(screen.getByText("Worker A")).toBeTruthy()
     expect(screen.getByText("Atlas")).toBeTruthy()
-    expect(screen.getByText("Recent activity")).toBeTruthy()
+    expect(screen.queryByText("Recent activity")).toBeNull()
   })
 
   it("enables Pause for Workers (wires the handler) and disables it for the Orchestrator", () => {

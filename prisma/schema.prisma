@@ -759,6 +759,7 @@ model ActivityLog {
   actionType  ActivityType
 
   metadata    String?  @db.Text
+  channelId   String?
   // PR-4: full human-expandable detail behind a short `action` summary.
   // `action` is the one-line feed text (e.g. "Heartbeat check"); `detail`
   // holds the full untruncated context (e.g. the raw heartbeat prompt with
@@ -777,6 +778,9 @@ model ActivityLog {
   @@index([workspaceId, timestamp])
   @@index([workspaceId, agentSlug])
   @@index([actionType])
+  @@index([workspaceId, channelId, timestamp])
+  @@index([workspaceId, agentSlug, timestamp])
+  @@index([workspaceId, actionType, timestamp])
 }
 
 enum ActivityType {

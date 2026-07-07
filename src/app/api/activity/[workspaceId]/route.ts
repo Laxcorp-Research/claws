@@ -4,11 +4,113 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
-import { sanitizeActivityText, sanitizeActivityDetail } from "@/lib/security/sanitize"
+import { sanitizeActivityText } from "@/lib/security/sanitize"
 import { getModelCost } from "@/lib/models"
+import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
+import type { ActivityType, Prisma } from "@/generated/prisma/client"
+
+const MAX_ACTIVITY_LIMIT = 50
+const ACTIVITY_TYPES = new Set<string>([
+  "HEARTBEAT",
+  "TASK_START",
+  "TASK_COMPLETE",
+  "TASK_FAILED",
+  "REVIEW_PASS",
+  "REVIEW_REJECT",
+  "HUMAN_REQUEST",
+  "HUMAN_APPROVE",
+  "HUMAN_REJECT",
+  "MESSAGE_SENT",
+  "MESSAGE_RECEIVED",
+  "SKILL_INVOKED",
+  "ERROR",
+  "SYSTEM",
+  "COST_ALERT",
+  "TRADE_SIGNAL",
+  "TRADE_RECOMMENDED",
+  "TRADE_EXECUTED",
+  "TRADE_SKIPPED",
+  "CIRCUIT_BREAKER",
+])
+
+function parseLimit(value: string | null): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return MAX_ACTIVITY_LIMIT
+  return Math.min(Math.floor(parsed), MAX_ACTIVITY_LIMIT)
+}
+
+function parseDateParam(value: string | null): Date | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function parseActionTypes(searchParams: URLSearchParams): ActivityType[] {
+  const raw = [
+    ...searchParams.getAll("actionType"),
+    ...searchParams.getAll("actionType[]"),
+    ...searchParams.getAll("actionTypes"),
+  ].flatMap((value) => value.split(","))
+  return raw
+    .map((value) => value.trim())
+    .filter((value): value is ActivityType => ACTIVITY_TYPES.has(value))
+}
+
+function encodeCursor(row: { timestamp: Date; id: string }): string {
+  return Buffer.from(`${row.timestamp.toISOString()}|${row.id}`, "utf8").toString("base64url")
+}
+
+function decodeCursor(cursor: string | null): { timestamp: Date; id: string } | null {
+  if (!cursor) return null
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8")
+    const [timestampRaw, id] = decoded.split("|")
+    const timestamp = new Date(timestampRaw)
+    if (!id || Number.isNaN(timestamp.getTime())) return null
+    return { timestamp, id }
+  } catch {
+    return null
+  }
+}
+
+function buildActivityWhere(
+  workspaceId: string,
+  searchParams: URLSearchParams,
+): Prisma.ActivityLogWhereInput {
+  const where: Prisma.ActivityLogWhereInput = { workspaceId }
+  const agentSlug = searchParams.get("agentSlug")?.trim()
+  const channelId = searchParams.get("channelId")?.trim()
+  const q = searchParams.get("q")?.trim()
+  const actionTypes = parseActionTypes(searchParams)
+  const since = parseDateParam(searchParams.get("since"))
+  const until = parseDateParam(searchParams.get("until"))
+  const cursor = decodeCursor(searchParams.get("cursor"))
+
+  if (agentSlug) where.agentSlug = agentSlug
+  if (channelId) {
+    // K2: channel filtering must stay on the extracted/indexed column.
+    where.channelId = channelId
+  }
+  if (actionTypes.length > 0) where.actionType = { in: actionTypes }
+  if (q) where.action = { contains: q, mode: "insensitive" }
+  if (since || until || cursor) {
+    where.AND = [
+      ...(where.AND && Array.isArray(where.AND) ? where.AND : []),
+      ...(since || until ? [{ timestamp: { ...(since ? { gte: since } : {}), ...(until ? { lte: until } : {}) } }] : []),
+      ...(cursor ? [{
+        OR: [
+          { timestamp: { lt: cursor.timestamp } },
+          { timestamp: cursor.timestamp, id: { lt: cursor.id } },
+        ],
+      }] : []),
+    ]
+  }
+
+  return where
+}
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
   const user = await getSessionUser()
@@ -20,6 +122,9 @@ export async function GET(
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   const now = new Date()
+  const searchParams = req.nextUrl.searchParams
+  const activityLimit = parseLimit(searchParams.get("limit"))
+  const activityWhere = buildActivityWhere(workspaceId, searchParams)
 
   const owner = await prisma.user.findUnique({
     where: { id: user.id },
@@ -61,9 +166,9 @@ export async function GET(
       _sum: { apiCost: true },
     }),
     prisma.activityLog.findMany({
-      where: { workspaceId },
-      orderBy: { timestamp: "desc" },
-      take: 50,
+      where: activityWhere,
+      orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+      take: activityLimit + 1,
     }),
     prisma.activityLog.findMany({
       where: { workspaceId, actionType: "HUMAN_REQUEST" },
@@ -87,6 +192,10 @@ export async function GET(
       select: { displayName: true, status: true, connectionType: true },
     }),
   ])
+
+  const hasMoreActivity = recentLogs.length > activityLimit
+  const activityRows = hasMoreActivity ? recentLogs.slice(0, activityLimit) : recentLogs
+  const nextCursor = hasMoreActivity ? encodeCursor(activityRows[activityRows.length - 1]) : null
 
   const respondedRequestIds = new Set<string>()
   for (const r of humanResponses) {
@@ -266,16 +375,11 @@ export async function GET(
       status: t.status,
       connectionType: t.connectionType,
     })),
-    recentLogs: recentLogs.map((log) => ({
-      id: log.id,
-      timestamp: log.timestamp.toISOString(),
-      agentName: log.agentName ?? "System",
-      action: sanitizeActivityText(log.action),
-      // PR-4: full expand-on-click context. null when the row has no detail
-      // beyond its action (the client then renders no expand affordance).
-      detail: sanitizeActivityDetail(log.detail),
-      actionType: log.actionType,
-      apiCost: log.apiCost,
-    })),
+    activityPage: {
+      hasMore: hasMoreActivity,
+      nextCursor,
+      limit: activityLimit,
+    },
+    recentLogs: activityRows.map((log) => formatActivityLog(log as ActivityLogFormatInput)),
   })
 }
