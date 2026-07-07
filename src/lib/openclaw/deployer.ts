@@ -138,6 +138,7 @@ function buildDeploymentCompletionData(
   const envManifest = buildEnvManifest(generated['.env']);
   const snapshotPayload = {
     version: 1,
+    fingerprintVersion: fingerprint.version,
     hash: fingerprint.hash,
     areas: fingerprint.areas,
     envManifest,
@@ -154,6 +155,7 @@ function buildDeploymentCompletionData(
     configHash: fingerprint.hash,
     configSnapshot: JSON.stringify({
       version: 1,
+      fingerprintVersion: fingerprint.version,
       hash: fingerprint.hash,
       generatedAt: new Date().toISOString(),
       areas: fingerprint.areas,

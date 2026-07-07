@@ -4,9 +4,10 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
-import { buildWorkspaceConfigFingerprint } from "@/lib/openclaw/config-fingerprint"
+import { CONFIG_FINGERPRINT_VERSION, buildWorkspaceConfigFingerprint } from "@/lib/openclaw/config-fingerprint"
 
 type SnapshotMetadata = {
+  fingerprintVersion?: number
   areas?: Record<string, string>
 }
 
@@ -55,13 +56,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ work
         ])
         const deployedHash = latestCompleted?.configHash ?? null
         const metadata = parseSnapshotMetadata(latestCompleted?.configSnapshot)
-        const changedAreas = deployedHash
+        const storedFingerprintVersion = metadata.fingerprintVersion ?? null
+        const comparable = Boolean(deployedHash) && storedFingerprintVersion === CONFIG_FINGERPRINT_VERSION
+        // Algorithm-version mismatch means the stored hash is unknown, not stale.
+        // Trade accepted deliberately: real drift that happens across a fingerprint
+        // algorithm change reads fresh until the next deploy resyncs the snapshot.
+        // Silence is safer than fleet-wide cry-wolf banners on projection changes.
+        const changedAreas = comparable
           ? DRIFT_AREAS.filter((area) => metadata.areas?.[area] !== current.areas[area])
           : []
         return {
-          isStale: deployedHash ? current.hash !== deployedHash : false,
+          isStale: comparable ? current.hash !== deployedHash : false,
           currentHash: current.hash,
           deployedHash,
+          currentFingerprintVersion: CONFIG_FINGERPRINT_VERSION,
+          deployedFingerprintVersion: storedFingerprintVersion,
           changedAreas,
           latestCompletedAt: latestCompleted?.completedAt ?? null,
         }
