@@ -34,6 +34,7 @@ import {
   resolveToolRouterSession,
   mergeMcpDenyIntoAgentTools,
 } from '@/lib/openclaw/mcp-longtail';
+import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
   buildOpenClawChannelsConfig,
@@ -172,6 +173,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
         orderBy: { createdAt: 'asc' },
       },
       toolConnections: true,
+      customToolConnections: { orderBy: { createdAt: 'asc' } },
       clawTemplate: true,
       user: {
         include: {
@@ -280,6 +282,11 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // an async step (Tool Router session reuse-or-create) that must run
   // before the sync config assembly.
   const skillsEmission = generateSkillsEntriesConfig(workspaceWithChannels);
+  const customApiSkillEntries = generateCustomApiSkillsEntries(workspaceWithChannels);
+  const skillsEntries = {
+    ...skillsEmission.entries,
+    ...customApiSkillEntries,
+  };
 
   // 5b. Tool Router session for the uncurated long-tail (flag-gated).
   // Quiet no-op when the flag is off, nothing is uncurated, or
@@ -331,7 +338,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     workers,
     critic,
     heartbeat,
-    skillsEmission.entries,
+    skillsEntries,
     mcpEmission,
   );
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
@@ -385,6 +392,9 @@ function generateOpenClawConfig(
   const allAgents = [orchestrator, ...workers, critic];
   const workerIds = workers.map(w => toAgentId(w.name));
   const criticId = toAgentId(critic.name);
+  const customApiSkillSlugs = Array.from(
+    deriveCustomApiIdentities(workspace.customToolConnections ?? []).values(),
+  ).map((identity) => identity.slug);
 
   // Build agents.list - one entry per agent in the Claw
   const agentsList = allAgents.map(agent => {
@@ -415,7 +425,10 @@ function generateOpenClawConfig(
     }
 
     // Per-agent skill filtering: only show relevant skills to each agent
-    const agentSkillSlugs = agent.skills.map(as => as.skill.slug);
+    const agentSkillSlugs = Array.from(new Set([
+      ...agent.skills.map(as => as.skill.slug),
+      ...customApiSkillSlugs,
+    ]));
     if (agentSkillSlugs.length > 0) {
       entry.skills = agentSkillSlugs;
     }
@@ -685,6 +698,53 @@ function parseLocalCredentialMap(toolConn: ToolConnectionRecord): Record<string,
     );
     return null;
   }
+}
+
+function parseCustomApiCredential(customConn: CustomToolConnectionRecord): string | null {
+  try {
+    const plaintext = decrypt(customConn.encryptedCredentials);
+    const parsed = JSON.parse(plaintext);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { credential?: unknown }).credential === 'string'
+    ) {
+      const credential = (parsed as { credential: string }).credential.trim();
+      return credential.length > 0 ? credential : null;
+    }
+    console.warn(`[generator] skipping custom API ${customConn.id}: encryptedCredentials has no credential string`);
+    return null;
+  } catch (err) {
+    console.warn(
+      `[generator] skipping custom API ${customConn.id}: decrypt/parse failed (${err instanceof Error ? err.message : String(err)})`,
+    );
+    return null;
+  }
+}
+
+function generateCustomApiSkillsEntries(
+  workspace: WorkspaceWithRelations,
+): Record<string, unknown> {
+  const customConnections = workspace.customToolConnections ?? [];
+  const identities = deriveCustomApiIdentities(customConnections);
+  const entries: Record<string, unknown> = {};
+
+  for (const customConn of customConnections) {
+    const identity = identities.get(customConn.id);
+    if (!identity) continue;
+    const credential = parseCustomApiCredential(customConn);
+    if (!credential) continue;
+
+    entries[identity.slug] = {
+      enabled: true,
+      env: {
+        [identity.envVar]: credential,
+      },
+    };
+  }
+
+  return entries;
 }
 
 async function lazyBackfillUncuratedLocalKeyConnections(
@@ -1123,7 +1183,7 @@ function generateAgentWorkspaceFiles(
       ? generateHeartbeatMd(orchestrator)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
     'BOOT.md': generateBootMd(agent),
-    skills: generateSkillFiles(agent),
+    skills: generateSkillFiles(agent, workspace),
   };
 }
 
@@ -1548,6 +1608,10 @@ function generateToolsMd(
 ): string {
   const mcpSection = mcpEnabled ? MCP_LONGTAIL_TOOLS_MD_SECTION : '';
   const toolSections: string[] = [];
+  const customApiLines = (workspace.customToolConnections ?? []).map((customConn) => {
+    const purpose = customConn.description?.trim() || 'No purpose provided.';
+    return `- **${customConn.name}**: ${purpose}`;
+  });
 
   for (const toolConn of workspace.toolConnections) {
     // Prefer the user-visible displayName; fall back to the catalog name;
@@ -1572,7 +1636,7 @@ function generateToolsMd(
     toolSections.push(section);
   }
 
-  if (toolSections.length === 0) {
+  if (toolSections.length === 0 && customApiLines.length === 0) {
     return `# TOOLS.md - Environment Notes
 
 No external tools are connected yet. The human can connect tools in the Claws setup wizard.
@@ -1586,15 +1650,29 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 ${mcpSection}`;
   }
 
+  const connectedToolsSection = toolSections.length > 0
+    ? `## Connected Tools
+
+${toolSections.join('\n\n')}`
+    : `## Connected Tools
+
+No catalog tools are connected.`;
+
+  const customApisSection = customApiLines.length > 0
+    ? `
+
+## Custom APIs
+
+${customApiLines.join('\n')}`
+    : '';
+
   return `# TOOLS.md - Environment Notes
 
-## Connected Tools
-
-${toolSections.join('\n\n')}
+${connectedToolsSection}${customApisSection}
 
 ## Notes
 
-- Tool credentials are configured automatically via openclaw.json skills.entries. Use the corresponding skills to interact with these tools.
+- Tool credentials and Custom API credentials are configured automatically via openclaw.json skills.entries. Use the corresponding skills to interact with these tools.
 - If a tool connection fails, advise the human to reconnect in the Claws platform Manage Tools page for this Claw.
 
 ## Tool Connection Errors
@@ -1734,8 +1812,77 @@ function resolveSkillFrontmatterEnv(
   return { requiresEnv: fields.map((f) => f.envVar) };
 }
 
+function customAuthUsage(authType: CustomToolConnectionRecord['authType'], baseUrl: string, envVar: string): string {
+  switch (authType) {
+    case 'API_KEY_HEADER':
+      return `Use header \`X-API-Key: $${envVar}\`.
+
+\`\`\`bash
+curl -H "X-API-Key: $${envVar}" "${baseUrl}"
+\`\`\``;
+    case 'BEARER_TOKEN':
+      return `Use header \`Authorization: Bearer $${envVar}\`.
+
+\`\`\`bash
+curl -H "Authorization: Bearer $${envVar}" "${baseUrl}"
+\`\`\``;
+    case 'BASIC_AUTH':
+      return `Use header \`Authorization: Basic $${envVar}\`. The saved credential is expected to be the Basic credential value this API accepts.
+
+\`\`\`bash
+curl -H "Authorization: Basic $${envVar}" "${baseUrl}"
+\`\`\``;
+    case 'QUERY_PARAM':
+      return `Use query parameter \`api_key=$${envVar}\`.
+
+\`\`\`bash
+curl "${baseUrl}${baseUrl.includes('?') ? '&' : '?'}api_key=$${envVar}"
+\`\`\``;
+  }
+}
+
+function generateCustomApiSkillMd(customConn: CustomToolConnectionRecord, slug: string, envVar: string): string {
+  const frontmatter = {
+    name: slug,
+    description: `Call the ${customConn.name} custom API.`,
+    metadata: {
+      openclaw: {
+        primaryEnv: envVar,
+        requires: { env: [envVar] },
+      },
+    },
+  };
+  const yamlStr = yaml.stringify(frontmatter, { lineWidth: 0 });
+  const purpose = customConn.description?.trim() || '_No purpose provided._';
+
+  return `---
+${yamlStr}---
+
+# ${customConn.name}
+
+## Base URL
+
+${customConn.baseUrl}
+
+## What this API is for
+
+${purpose}
+
+## Authentication
+
+Auth type: ${customConn.authType}
+
+${customAuthUsage(customConn.authType, customConn.baseUrl, envVar)}
+
+## Caution
+
+User-provided API — verify responses; report failures honestly per Tool Connection Errors guidance.
+`;
+}
+
 function generateSkillFiles(
   agent: AgentWithRelations,
+  workspace: WorkspaceWithRelations,
 ): Record<string, { 'SKILL.md': string }> {
   const skills: Record<string, { 'SKILL.md': string }> = {};
 
@@ -1782,6 +1929,16 @@ function generateSkillFiles(
     };
   }
 
+  const customConnections = workspace.customToolConnections ?? [];
+  const identities = deriveCustomApiIdentities(customConnections);
+  for (const customConn of customConnections) {
+    const identity = identities.get(customConn.id);
+    if (!identity) continue;
+    skills[identity.slug] = {
+      'SKILL.md': generateCustomApiSkillMd(customConn, identity.slug, identity.envVar),
+    };
+  }
+
   return skills;
 }
 
@@ -1798,6 +1955,7 @@ type WorkspaceWithRelations = {
   containerHost?: string | null;
   agents: AgentWithRelations[];
   toolConnections: ToolConnectionRecord[];
+  customToolConnections?: CustomToolConnectionRecord[];
   channelConfig: ChannelConfigMap;
   clawTemplate: { name: string; slug: string } | null;
   user: {
@@ -1819,6 +1977,17 @@ type WorkspaceWithRelations = {
   compatibleToolSkills: SkillForToolEmit[];
   /** C-engine B1: stored Tool Router session id (trs_...), null until first resolve. */
   composioToolRouterSessionId?: string | null;
+};
+
+type CustomToolConnectionRecord = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  authType: 'API_KEY_HEADER' | 'BEARER_TOKEN' | 'BASIC_AUTH' | 'QUERY_PARAM';
+  encryptedCredentials: string;
+  description?: string | null;
+  generatedSkillMd?: string | null;
+  createdAt?: Date | string | null;
 };
 
 type AgentWithRelations = {

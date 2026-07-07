@@ -69,6 +69,7 @@ export async function buildWorkspaceConfigFingerprint(workspaceId: string): Prom
       },
       connections: true,
       toolConnections: true,
+      customToolConnections: true,
       clawTemplate: { select: { id: true } },
       user: {
         include: {
@@ -79,20 +80,33 @@ export async function buildWorkspaceConfigFingerprint(workspaceId: string): Prom
   });
 
   const toolConnections = workspace.toolConnections ?? [];
+  const customToolConnections = workspace.customToolConnections ?? [];
   const agentsInput = workspace.agents ?? [];
   const connectionsInput = workspace.connections ?? [];
   const userInput = workspace.user ?? { name: null, apiKeys: [] };
 
-  const tools = toolConnections
-    .map((tool) => ({
-      slug: tool.toolSlug,
-      displayName: tool.displayName,
-      type: tool.connectionType,
-      status: tool.status,
-      composioConnectionId: tool.composioConnectionId,
-      credentialFingerprint: fingerprintSecretBlob(tool.encryptedCredentials),
-    }))
-    .sort((a, b) => a.slug.localeCompare(b.slug));
+  const tools = {
+    connections: toolConnections
+      .map((tool) => ({
+        slug: tool.toolSlug,
+        displayName: tool.displayName,
+        type: tool.connectionType,
+        status: tool.status,
+        composioConnectionId: tool.composioConnectionId,
+        credentialFingerprint: fingerprintSecretBlob(tool.encryptedCredentials),
+      }))
+      .sort((a, b) => a.slug.localeCompare(b.slug)),
+    customApis: customToolConnections
+      .map((customApi) => ({
+        id: customApi.id,
+        name: customApi.name,
+        baseUrl: customApi.baseUrl,
+        authType: customApi.authType,
+        credentialFingerprint: fingerprintSecretBlob(customApi.encryptedCredentials),
+        description: customApi.description ?? null,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  };
 
   const agents = agentsInput
     .map((agent) => ({
