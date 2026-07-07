@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react"
 import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
+import { DriftBanner } from "@/components/shared/drift-banner"
 import { OctagonX, Pause, Square, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -188,19 +189,6 @@ export function ChannelStatusSection({ channelStatus }: { channelStatus: Channel
       </div>
     </div>
   )
-}
-
-function formatChangedAreas(areas: string[]): string {
-  if (areas.length === 0) return "workspace configuration"
-  const labels: Record<string, string> = {
-    tools: "tools",
-    agents: "agents",
-    connections: "agent connections",
-    channels: "channels",
-    keys: "API keys",
-    workspace: "workspace settings",
-  }
-  return areas.map((area) => labels[area] ?? area).join(", ")
 }
 
 function formatTime(isoStr: string) {
@@ -592,25 +580,6 @@ export default function DashboardPage() {
       })
     }
 
-    if (showConfigDrift && configDrift) {
-      list.push({
-        key: "config-drift",
-        priority: 2,
-        variant: "warning",
-        content: (
-          <>
-            <p className="font-medium">Configuration changed since last deploy — redeploy to apply</p>
-            <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
-          </>
-        ),
-        actions: (
-          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
-            Redeploy
-          </Button>
-        ),
-      })
-    }
-
     if (showMcpSessionDead) {
       list.push({
         key: "mcp-session-dead",
@@ -887,7 +856,7 @@ export default function DashboardPage() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showConfigDrift, configDrift, showMcpSessionDead, showActivitySilence, showStateSyncStale, handleResumeAll])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncStale, handleResumeAll])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {
@@ -1043,6 +1012,17 @@ export default function DashboardPage() {
         >
           <p className="font-medium">{redeployBanner.message}</p>
         </AlertBanner>
+      )}
+
+      {showConfigDrift && configDrift && (
+        <DriftBanner
+          changedAreas={configDrift.changedAreas}
+          actions={
+            <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+              Redeploy
+            </Button>
+          }
+        />
       )}
 
       {alerts.length > 0 && (
