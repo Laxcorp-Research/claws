@@ -126,6 +126,8 @@ describe('buildWorkspaceConfigFingerprint', () => {
 
     expect(CONFIG_FINGERPRINT_VERSION).toBe(2);
     expect(fingerprint.version).toBe(CONFIG_FINGERPRINT_VERSION);
+    expect(fingerprint.versionFingerprints[1]?.hash).toBe('c012ea41abadfd5e4d64e06445613db358988f8c2ed471a1b1e71155fd3ee0c7');
+    expect(fingerprint.versionFingerprints[2]?.hash).toBe('426dc9ac6591a231a0be32d130606dc4491ed2cd89657587648d1f1335749ef3');
     expect(fingerprint.hash).toBe('426dc9ac6591a231a0be32d130606dc4491ed2cd89657587648d1f1335749ef3');
   });
 
