@@ -24,7 +24,7 @@ function mockFetch() {
                 sessionKey: "agent:dev-commander:main",
                 channelHint: "telegram",
                 lastActivityAt: "2026-07-06T10:00:00.000Z",
-                messageCount: 2,
+                messageCount: 3,
               },
               {
                 sessionKey: "agent:sender-ish:main",
@@ -45,8 +45,9 @@ function mockFetch() {
             available: true,
             sessionKey: "agent:dev-commander:main",
             messages: [
-              { role: "user", content: "hello from telegram", at: "2026-07-06T10:00:00.000Z" },
-              { role: "assistant", content: "hello back", at: "2026-07-06T10:00:02.000Z" },
+              { type: "message", role: "user", content: "hello from telegram", at: "2026-07-06T10:00:00.000Z" },
+              { type: "tool", name: "web_search", at: "2026-07-06T10:00:01.000Z" },
+              { type: "message", role: "assistant", content: "hello back", at: "2026-07-06T10:00:02.000Z" },
             ],
           },
         }),
@@ -67,7 +68,7 @@ describe("ConversationsSection", () => {
     expect(await screen.findByText("agent:dev-commander:main")).toBeTruthy()
     expect(screen.getByText("via Telegram")).toBeTruthy()
     expect(screen.getByText("agent:sender-ish:main")).toBeTruthy()
-    expect(screen.getByText("2 messages")).toBeTruthy()
+    expect(screen.getByText("3 messages")).toBeTruthy()
     expect(screen.getAllByText(/^via /)).toHaveLength(1)
   })
 
@@ -81,6 +82,7 @@ describe("ConversationsSection", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy()
     expect(screen.getByText("Read-only — reply from the channel itself.")).toBeTruthy()
     await waitFor(() => expect(screen.getByText("hello from telegram")).toBeTruthy())
+    expect(screen.getByText("· used web_search")).toBeTruthy()
     expect(screen.getByText("hello back")).toBeTruthy()
   })
 

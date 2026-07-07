@@ -124,6 +124,43 @@ describe("reconcileChatMessages — optimistic dedupe by messageId === runId", (
     expect(views[1].detail).toBe("hey there")
   })
 
+  it("drops assistant NO_REPLY rows so protocol tokens never render in web chat", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "u1",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-06-22T08:00:00.000Z",
+        agentName: "System",
+        action: "Received from : boot check",
+        detail: "boot check",
+        messageId: "r1",
+      },
+      {
+        id: "a1",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-06-22T08:00:01.000Z",
+        agentName: "Dev Commander",
+        action: "Replied: NO_REPLY",
+        detail: "  NO_REPLY  ",
+        runId: "r1",
+      },
+      {
+        id: "a2",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-06-22T08:00:02.000Z",
+        agentName: "Dev Commander",
+        action: "Replied: ready",
+        detail: "Ready for messages.",
+        runId: "r2",
+      },
+    ]
+
+    const views = reconcileChatMessages([], rows, "Dev Commander")
+
+    expect(views.map((v) => v.key)).toEqual(["u1", "a2"])
+    expect(JSON.stringify(views)).not.toContain("NO_REPLY")
+  })
+
   it("multi-tab lock: a tab with NO optimistic state renders streamed MESSAGE_RECEIVED exactly once as You", () => {
     const rows: ChatRow[] = [
       {
@@ -226,6 +263,24 @@ describe("ChatPanel — composer", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" />)
     expect(screen.getByText("On it — pulling the latest now.")).toBeTruthy()
     expect(screen.getByText("Dev Commander")).toBeTruthy()
+  })
+
+  it("does not render NO_REPLY from streamed assistant rows", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "a1",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-06-22T08:00:05.000Z",
+        agentName: "Dev Commander",
+        action: "Replied: NO_REPLY",
+        detail: "NO_REPLY",
+        messageId: null,
+      },
+    ]
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" />)
+
+    expect(screen.queryByText("NO_REPLY")).toBeNull()
+    expect(screen.getByText("No messages yet. Say hello to get started.")).toBeTruthy()
   })
 
   it("false-empty regression: endpoint-backed history shows chat even when SSE init has no webchat rows", async () => {

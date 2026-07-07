@@ -78,11 +78,13 @@ describe("GET /api/workspaces/[id]/conversations/[sessionKey]", () => {
       sessionKey: "agent:dev-commander:main",
       messages: [
         {
+          type: "message",
           role: "user",
           content: "List three repo-hygiene checks",
           at: "2026-06-10T13:45:38.123Z",
         },
         {
+          type: "message",
           role: "assistant",
           content: "# Weekly Repo-Hygiene Checks",
           at: "2026-06-10T12:25:40.000Z",
