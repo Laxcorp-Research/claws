@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockPush = vi.fn()
@@ -46,6 +46,15 @@ type TestCustomConnection = {
   createdAt: string
 }
 
+type TestTemplateTool = {
+  slug: string
+  name: string
+  category: string
+  connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
+  required: boolean
+  alternatives?: string[]
+}
+
 function jsonResponse(body: unknown): Response {
   return {
     ok: true,
@@ -56,6 +65,8 @@ function jsonResponse(body: unknown): Response {
 
 describe("Manage Tools apply changes redeploy", () => {
   let customConnections: TestCustomConnection[]
+  let workspaceTemplateSlug: string | null
+  let templateTools: { required: TestTemplateTool[]; recommended: TestTemplateTool[] }
   let deployStatusData: { workspaceStatus: string; drift: { isStale: boolean; changedAreas: string[] } }
 
   beforeEach(() => {
@@ -63,6 +74,8 @@ describe("Manage Tools apply changes redeploy", () => {
     searchParamsString = "mode=manage&from=builder"
     mockStartRedeploy.mockResolvedValue(undefined)
     customConnections = []
+    workspaceTemplateSlug = null
+    templateTools = { required: [], recommended: [] }
     deployStatusData = {
       workspaceStatus: "RUNNING",
       drift: { isStale: true, changedAreas: ["tools"] },
@@ -104,8 +117,15 @@ describe("Manage Tools apply changes redeploy", () => {
       if (href.includes("/api/workspaces/ws-1")) {
         return jsonResponse({
           success: true,
-          data: { id: "ws-1", status: "RUNNING", clawTemplate: null },
+          data: {
+            id: "ws-1",
+            status: "RUNNING",
+            clawTemplate: workspaceTemplateSlug ? { slug: workspaceTemplateSlug } : null,
+          },
         })
+      }
+      if (href.includes("/api/templates/")) {
+        return jsonResponse({ success: true, data: { tools: templateTools } })
       }
       if (href.includes("/api/tools/ws-1")) {
         return jsonResponse({
@@ -170,6 +190,51 @@ describe("Manage Tools apply changes redeploy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }))
     await waitFor(() => expect(screen.queryByText("Internal CRM")).toBeNull())
     expect(global.fetch).toHaveBeenCalledWith("/api/tools/ws-1/custom/cust-1", { method: "DELETE" })
+  })
+
+  it("renders an overlapping required/recommended template tool once under Required", async () => {
+    workspaceTemplateSlug = "social-template"
+    templateTools = {
+      required: [
+        {
+          slug: "twitter-api",
+          name: "Twitter/X API",
+          category: "SOCIAL",
+          connectionType: "API_KEY",
+          required: true,
+        },
+      ],
+      recommended: [
+        {
+          slug: "twitter-api",
+          name: "Twitter/X API",
+          category: "SOCIAL",
+          connectionType: "API_KEY",
+          required: false,
+        },
+        {
+          slug: "tavily",
+          name: "Tavily (Web Search)",
+          category: "SEARCH",
+          connectionType: "API_KEY",
+          required: false,
+        },
+      ],
+    }
+
+    render(<SetupStepPage />)
+
+    expect(await screen.findByText("Required tools")).toBeDefined()
+    expect(screen.getAllByText("Twitter/X API")).toHaveLength(1)
+
+    const requiredSection = screen.getByText("Required tools").closest("div")
+    const recommendedSection = screen.getByText("Recommended tools").closest("div")
+
+    expect(requiredSection).not.toBeNull()
+    expect(recommendedSection).not.toBeNull()
+    expect(within(requiredSection!).getByText("Twitter/X API")).toBeDefined()
+    expect(within(recommendedSection!).queryByText("Twitter/X API")).toBeNull()
+    expect(within(recommendedSection!).getByText("Tavily (Web Search)")).toBeDefined()
   })
 
   it("refetches after saving a custom API and opens the drift redeploy prompt on Done", async () => {
