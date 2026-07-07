@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { AlertBanner } from "@/components/ui/alert-banner"
 import { Modal } from "@/components/ui/modal"
+import { DriftBanner } from "@/components/shared/drift-banner"
 import { AgentCanvas } from "@/components/builder/agent-canvas"
 import { AgentSidebar } from "@/components/builder/agent-sidebar"
 import { PropertiesPanel } from "@/components/builder/properties-panel"
@@ -20,19 +20,6 @@ import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redep
 interface ConfigDriftInfo {
   isStale: boolean
   changedAreas: string[]
-}
-
-function formatChangedAreas(areas: string[]): string {
-  if (areas.length === 0) return "workspace configuration"
-  const labels: Record<string, string> = {
-    tools: "tools",
-    agents: "agents",
-    connections: "agent connections",
-    channels: "channels",
-    keys: "API keys",
-    workspace: "workspace settings",
-  }
-  return areas.map((area) => labels[area] ?? area).join(", ")
 }
 
 export default function BuilderPage() {
@@ -190,17 +177,14 @@ export default function BuilderPage() {
 
       {showConfigDrift && configDrift && (
         <div className="px-3 pt-2">
-          <AlertBanner
-            variant="warning"
+          <DriftBanner
+            changedAreas={configDrift.changedAreas}
             actions={
               <Button variant="outline" size="sm" onClick={() => void redeployFlow.startRedeploy()}>
                 Redeploy
               </Button>
             }
-          >
-            <p className="font-medium">Configuration changed since last deploy — redeploy to apply</p>
-            <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
-          </AlertBanner>
+          />
         </div>
       )}
 

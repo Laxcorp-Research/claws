@@ -15,6 +15,7 @@ import { DeployProgress } from "@/components/setup/deploy-progress"
 import { ChannelList } from "@/components/setup/channel-list"
 import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { DriftBanner, formatChangedAreas } from "@/components/shared/drift-banner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -164,19 +165,6 @@ const EMERGENCY_CHANNEL_TEMPLATE_SLUGS = new Set([
 
 function needsRedeployToApply(drift: WizardDriftInfo | null): boolean {
   return (drift?.workspaceStatus === "RUNNING" || drift?.workspaceStatus === "PAUSED") && drift.isStale
-}
-
-function formatChangedAreas(areas: string[]): string {
-  if (areas.length === 0) return "workspace configuration"
-  const labels: Record<string, string> = {
-    tools: "tools",
-    agents: "agents",
-    connections: "agent connections",
-    channels: "channels",
-    keys: "API keys",
-    workspace: "workspace settings",
-  }
-  return areas.map((area) => labels[area] ?? area).join(", ")
 }
 
 const PROVIDER_NAMES: Record<string, string> = {
@@ -747,6 +735,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const customApiStatusCopy = workspaceStatus === "RUNNING"
     ? "Saved — redeploy to apply"
     : "Saved — deploys with next redeploy"
+  const showToolsDrift = driftAfterTools?.isStale === true && (workspaceStatus === "RUNNING" || workspaceStatus === "PAUSED")
   const setupComplianceNotice = workspaceTemplateSlug === "medical-practice-manager"
     ? getComplianceNotice(workspaceTemplateSlug)
     : null
@@ -1256,6 +1245,23 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         <AlertBanner variant="warning">
           {setupComplianceNotice}
         </AlertBanner>
+      )}
+
+      {showToolsDrift && driftAfterTools && (
+        <DriftBanner
+          changedAreas={driftAfterTools.changedAreas}
+          actions={
+            isManageMode ? (
+              <Button variant="outline" size="xs" onClick={() => void redeployFlow.startRedeploy()} loading={redeployFlow.redeploying}>
+                Redeploy
+              </Button>
+            ) : (
+              <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>
+                Go to deploy
+              </Button>
+            )
+          }
+        />
       )}
 
       {(requiredTools.length > 0 || recommendedTools.length > 0) && (
@@ -1945,17 +1951,14 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       {showStaleRunningConfig && (
-        <AlertBanner
-          variant="warning"
+        <DriftBanner
+          changedAreas={configDrift.changedAreas}
           actions={
             <Button variant="primary" size="sm" onClick={() => setApplyDeployOpen(true)} loading={redeployFlow.redeploying}>
               Redeploy
             </Button>
           }
-        >
-          <p className="font-medium">Configuration changed since last deploy — redeploy to apply</p>
-          <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
-        </AlertBanner>
+        />
       )}
 
       <div className="flex justify-between mt-4">
@@ -1970,7 +1973,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         }}
         onConfirm={handleApplyDeployNow}
         title="Apply changes now?"
-        description="Your channel changes take effect after a redeploy."
+        description={`Your Claw is running an older configuration. Redeploy to apply changes to ${formatChangedAreas(configDrift?.changedAreas ?? [])}.`}
         confirmLabel="Redeploy"
         cancelLabel="Not now"
         variant="warning"
@@ -2306,17 +2309,14 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
 
       {showChannelDriftWarning && (
         <div className="mb-3.5">
-          <AlertBanner
-            variant="warning"
+          <DriftBanner
+            changedAreas={channelDrift?.changedAreas ?? []}
             actions={
               <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>
                 Go to deploy
               </Button>
             }
-          >
-            <p className="font-medium">Channel changes saved — redeploy to apply</p>
-            <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(channelDrift?.changedAreas ?? ["channels"])}</p>
-          </AlertBanner>
+          />
         </div>
       )}
 
@@ -2621,16 +2621,14 @@ export function Step5({ workspaceId }: { workspaceId: string }) {
 
       {showGoLiveDrift ? (
         <div className="text-left max-w-lg mx-auto mt-4">
-          <AlertBanner
-            variant="warning"
+          <DriftBanner
+            changedAreas={goLiveDrift?.changedAreas ?? []}
             actions={
-              <Button variant="outline" size="xs" onClick={() => void redeployFlow.startRedeploy()} loading={redeployFlow.redeploying}>
-                Redeploy
+              <Button variant="outline" size="xs" onClick={() => router.push(`/setup/${workspaceId}/step/4`)}>
+                Go to deploy
               </Button>
             }
-          >
-            <p className="font-medium">Your latest changes ({formatChangedAreas(goLiveDrift?.changedAreas ?? ["channels"])}) aren&apos;t live yet — redeploy to apply</p>
-          </AlertBanner>
+          />
         </div>
       ) : (
         <div className="text-left max-w-lg mx-auto bg-[var(--bg2)] rounded-lg p-3.5 mt-4 text-xs text-[var(--tx2)] leading-[1.8]">
