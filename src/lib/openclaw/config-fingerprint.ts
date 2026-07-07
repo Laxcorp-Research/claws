@@ -1,7 +1,10 @@
 import { createHash } from 'crypto';
 import { prisma } from '@/lib/db';
 
+export const CONFIG_FINGERPRINT_VERSION = 2;
+
 export interface WorkspaceConfigFingerprint {
+  version: number;
   hash: string;
   areas: {
     tools: string;
@@ -186,6 +189,7 @@ export async function buildWorkspaceConfigFingerprint(workspaceId: string): Prom
   };
 
   return {
+    version: CONFIG_FINGERPRINT_VERSION,
     hash: hashJson(areas),
     areas,
   };
