@@ -4,11 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
-const searchParams = new URLSearchParams("mode=manage&from=builder")
+let searchParamsString = "mode=manage&from=builder"
 vi.mock("next/navigation", () => ({
   useParams: () => ({ workspaceId: "ws-1", n: "2" }),
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
-  useSearchParams: () => searchParams,
+  useSearchParams: () => new URLSearchParams(searchParamsString),
 }))
 
 const mockStartRedeploy = vi.fn()
@@ -60,6 +60,7 @@ describe("Manage Tools apply changes redeploy", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    searchParamsString = "mode=manage&from=builder"
     mockStartRedeploy.mockResolvedValue(undefined)
     customConnections = []
     deployStatusData = {
@@ -134,7 +135,8 @@ describe("Manage Tools apply changes redeploy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }))
 
     expect(await screen.findByText("Apply changes now?")).toBeDefined()
-    fireEvent.click(screen.getByRole("button", { name: "Redeploy" }))
+    const redeployButtons = screen.getAllByRole("button", { name: "Redeploy" })
+    fireEvent.click(redeployButtons[redeployButtons.length - 1])
 
     expect(mockUseWorkspaceRedeploy).toHaveBeenCalled()
     expect(mockStartRedeploy).toHaveBeenCalledTimes(1)
@@ -171,9 +173,11 @@ describe("Manage Tools apply changes redeploy", () => {
   })
 
   it("refetches after saving a custom API and opens the drift redeploy prompt on Done", async () => {
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: false, changedAreas: [] } }
     render(<SetupStepPage />)
 
     await waitFor(() => expect(screen.getByText("Manage Tools")).toBeDefined())
+    expect(screen.queryByText("Configuration changed since last deploy — redeploy to apply")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "+ Connect custom API" }))
     expect(screen.getByRole("button", { name: "Save" })).toBeDefined()
     expect(screen.queryByRole("button", { name: "Test & save" })).toBeNull()
@@ -193,6 +197,8 @@ describe("Manage Tools apply changes redeploy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
     expect(await screen.findByText("Internal CRM")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Changed: tools")).toBeDefined()
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/tools/ws-1/custom",
       expect.objectContaining({ method: "POST" }),
@@ -201,5 +207,30 @@ describe("Manage Tools apply changes redeploy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }))
     expect(await screen.findByText("Apply changes now?")).toBeDefined()
     expect(screen.getByText("Your Claw is running an older configuration. Redeploy to apply changes to tools.")).toBeDefined()
+  })
+
+  it("wizard step 2 shows the generic drift banner after a custom API save and routes CTA to Deploy", async () => {
+    searchParamsString = ""
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: false, changedAreas: [] } }
+    render(<SetupStepPage />)
+
+    await waitFor(() => expect(screen.getByText("Connect your tools")).toBeDefined())
+    expect(screen.queryByText("Configuration changed since last deploy — redeploy to apply")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "+ Connect custom API" }))
+    fireEvent.change(screen.getByPlaceholderText("e.g., Our Internal CRM"), {
+      target: { value: "Internal CRM" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("https://api.example.com/v1"), {
+      target: { value: "https://crm.example.com/v1" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("Your API key or token"), {
+      target: { value: "crm-secret-key" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+
+    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Changed: tools")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Go to deploy" }))
+    expect(mockPush).toHaveBeenCalledWith("/setup/ws-1/step/4")
   })
 })

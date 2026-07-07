@@ -188,7 +188,8 @@ describe("Setup Step 4 channel persistence UI", () => {
       )
     })
     expect(await screen.findByText("Configured — deploys with next redeploy")).toBeDefined()
-    expect(await screen.findByText("Channel changes saved — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Changed: channels")).toBeDefined()
   })
 
   it("saves optional Telegram allowFrom from the connect modal", async () => {
@@ -389,7 +390,20 @@ describe("Setup Step 4 channel persistence UI", () => {
         }),
       )
     })
-    expect(await screen.findByText("Channel changes saved — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Changed: channels")).toBeDefined()
+  })
+
+  it("renders generic drift copy for a tools-only change on the Channels step", async () => {
+    deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["tools"] } }
+
+    render(<Step4 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Changed: tools")).toBeDefined()
+    expect(screen.queryByText("Channel changes saved — redeploy to apply")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Go to deploy" }))
+    expect(push).toHaveBeenCalledWith("/setup/ws-1/step/4")
   })
 
   it.each(["law-firm-intake-os", "home-services-dispatcher", "medical-practice-manager"])(
@@ -458,6 +472,17 @@ describe("Setup Step 4 channel persistence UI", () => {
     expect(source).not.toContain("setChannelStatuses")
     expect(source).not.toContain("setTimeout(resolve")
   })
+
+  it("does not hardcode area-specific drift banner headlines in setup surfaces", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/app/setup/[workspaceId]/step/[n]/page.tsx"),
+      "utf8",
+    )
+
+    expect(source).not.toContain("Channel changes saved")
+    expect(source).not.toContain("Your latest changes")
+    expect(source).not.toContain("Your channel changes take effect")
+  })
 })
 
 describe("Setup Step 5 drift-aware go live", () => {
@@ -490,9 +515,10 @@ describe("Setup Step 5 drift-aware go live", () => {
 
     render(<Step5 workspaceId="ws-1" />)
 
-    expect(await screen.findByText("Your latest changes (channels) aren't live yet — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Changed: channels")).toBeDefined()
     expect(screen.queryByText("Message your Orchestrator anytime through the connected channels.")).toBeNull()
-    expect(screen.getByRole("button", { name: "Redeploy" })).toBeDefined()
+    expect(screen.getByRole("button", { name: "Go to deploy" })).toBeDefined()
   })
 
   it("keeps the celebration unchanged when drift is fresh", async () => {
@@ -566,7 +592,7 @@ describe("Setup Step 4 Deploy exit drift prompt", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next: Go live →" }))
 
     expect(await screen.findByRole("heading", { name: "Apply changes now?" })).toBeDefined()
-    expect(screen.getByText("Your channel changes take effect after a redeploy.")).toBeDefined()
+    expect(screen.getByText("Your Claw is running an older configuration. Redeploy to apply changes to channels.")).toBeDefined()
   })
 
   it("confirming the Deploy apply prompt invokes shared redeploy then navigates to step 5", async () => {
