@@ -62,6 +62,9 @@ type ScheduledTaskConfig = {
   name?: string;
   schedule: string;
   timezone?: string;
+  agentSlug?: string;
+  agentId?: string;
+  targetAgentSlug?: string;
   isolated?: boolean;
   urgent?: boolean;
   prompt: string;
@@ -232,6 +235,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   const orchestrator = workspaceWithChannels.agents.find(a => a.role === 'ORCHESTRATOR');
   const critic = workspaceWithChannels.agents.find(a => a.role === 'CRITIC');
   const workers = workspaceWithChannels.agents.filter(a => a.role === 'WORKER');
+  const activeWorkers = workers.filter((worker) => !worker.isPaused);
 
   if (!orchestrator) throw new Error(`Workspace ${workspaceId} has no Orchestrator agent`);
   if (!critic) throw new Error(`Workspace ${workspaceId} has no Critic agent`);
@@ -335,14 +339,14 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   const openclawConfig = generateOpenClawConfig(
     workspaceWithChannels,
     orchestrator,
-    workers,
+    activeWorkers,
     critic,
     heartbeat,
     skillsEntries,
     mcpEmission,
   );
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
-  const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug);
+  const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug, activeWorkers);
   const workspaces = generateAllWorkspaceFiles(
     workspaceWithChannels,
     orchestrator,
@@ -1033,8 +1037,13 @@ function generateCronJobs(
   // scheduledTasks crons and to build their sessionTarget for the
   // non-isolated path.
   orchestratorAgentSlug: string,
+  activeWorkers: AgentWithRelations[],
 ): JsonObject[] {
   const jobs: JsonObject[] = [];
+  const schedulableAgentSlugs = new Set([
+    orchestratorAgentSlug,
+    ...activeWorkers.map((worker) => toAgentId(worker.name)),
+  ]);
 
   // Time-of-day heartbeat (daily/weekday) is emitted here as a cron job.
   // Pure interval heartbeats live in agents.defaults.heartbeat and are
@@ -1056,6 +1065,15 @@ function generateCronJobs(
   // feature is wired.
   if (workspace.scheduledTasks && Array.isArray(workspace.scheduledTasks)) {
     for (const task of workspace.scheduledTasks) {
+      const requestedAgentSlug = getScheduledTaskAgentSlug(task);
+      if (requestedAgentSlug && !schedulableAgentSlugs.has(requestedAgentSlug)) {
+        // K3: runtime 2026.5.22-6 has no per-agent disable flag. Excluding
+        // paused Workers from schedulable targets is the deterministic half of
+        // pause enforcement: a deployed container cannot fire cron/heartbeat
+        // work at a Worker that the human has paused.
+        continue;
+      }
+      const targetAgentSlug = requestedAgentSlug ?? orchestratorAgentSlug;
       const taskIdSlug = String(task.name ?? '')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -1065,10 +1083,10 @@ function generateCronJobs(
         id: `task-${taskIdSlug}`,
         name: task.name,
         schedule: parseCronSchedule(task.schedule, task.timezone),
-        agentId: orchestratorAgentSlug,
+        agentId: targetAgentSlug,
         sessionTarget: task.isolated
           ? 'isolated'
-          : `session:agent:${orchestratorAgentSlug}:main`,
+          : `session:agent:${targetAgentSlug}:main`,
         wakeMode: task.urgent ? 'now' : 'next-heartbeat',
         payload: {
           kind: 'agentTurn',
@@ -1087,6 +1105,15 @@ function generateCronJobs(
   }
 
   return jobs;
+}
+
+function getScheduledTaskAgentSlug(task: ScheduledTaskConfig): string | null {
+  const raw =
+    typeof task.agentSlug === 'string' ? task.agentSlug
+      : typeof task.agentId === 'string' ? task.agentId
+        : typeof task.targetAgentSlug === 'string' ? task.targetAgentSlug
+          : null;
+  return raw ? toAgentId(raw) : null;
 }
 
 function parseCronSchedule(

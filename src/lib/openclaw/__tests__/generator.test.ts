@@ -642,7 +642,7 @@ describe('generateWorkspace', () => {
     expect(defaults[0].name).toBe('Test Commander');
   });
 
-  it('K3 fallback: paused Workers get Orchestrator guidance, not an unsupported agents.list flag', async () => {
+  it('K3 fallback: paused Workers are excluded from runtime agents and get Orchestrator guidance', async () => {
     const ws = buildMockWorkspace();
     ws.agents[1].isPaused = true;
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
@@ -650,11 +650,11 @@ describe('generateWorkspace', () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
     const worker = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Data Analyst');
+    const orchestrator = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Test Commander');
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
 
-    expect(worker).not.toHaveProperty('enabled');
-    expect(worker).not.toHaveProperty('disabled');
-    expect(worker).not.toHaveProperty('isPaused');
+    expect(worker).toBeUndefined();
+    expect(orchestrator.subagents.allowAgents).not.toContain('data-analyst');
     expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('Worker Data Analyst is paused — do not delegate to it.');
   });
 
@@ -1139,6 +1139,18 @@ describe('generateWorkspace', () => {
       // Still has id + agentId regardless.
       expect(typeof taskJob.id).toBe('string');
       expect(taskJob.agentId).toBe('test-commander');
+    });
+
+    it('K3 deterministic pause: excludes paused Worker-targeted scheduled crons', async () => {
+      const ws = withScheduledTasks([
+        { name: 'Worker Followup', schedule: '0 9 * * *', timezone: 'UTC', agentSlug: 'data-analyst', isolated: false, urgent: false, prompt: 'Run worker followup.', fullContext: true },
+      ]);
+      ws.agents[1].isPaused = true;
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+      expect(cronJobs.find((j: Record<string, unknown>) => j.name === 'Worker Followup')).toBeUndefined();
     });
 
     it('scheduledTasks ids are deterministic across calls', async () => {
