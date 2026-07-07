@@ -13,8 +13,22 @@ export interface ConversationSummaryView {
   messageCount?: number
 }
 
-export interface ConversationMessageView {
-  role: "user" | "assistant" | "system" | "tool"
+export type ConversationMessageView =
+  | {
+    type?: "message"
+    role: "user" | "assistant"
+    content: string
+    at: string | null
+  }
+  | {
+    type: "tool"
+    name: string
+    at: string | null
+  }
+
+interface ConversationTextMessageView {
+  type?: "message"
+  role: "user" | "assistant"
   content: string
   at: string | null
 }
@@ -52,11 +66,13 @@ function formatTime(iso: string | null): string {
   })} UTC`
 }
 
-function roleLabel(role: ConversationMessageView["role"]): string {
+function roleLabel(role: ConversationTextMessageView["role"]): string {
   if (role === "user") return "User"
-  if (role === "assistant") return "Assistant"
-  if (role === "system") return "System"
-  return "Tool"
+  return "Assistant"
+}
+
+function isToolMessage(message: ConversationMessageView): message is Extract<ConversationMessageView, { type: "tool" }> {
+  return message.type === "tool"
 }
 
 export function ConversationsSection({ workspaceId, status }: ConversationsSectionProps) {
@@ -183,21 +199,30 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
         size="lg"
         footer={<Button variant="outline" size="sm" onClick={() => setSelected(null)}>Close</Button>}
       >
-        <div className="max-h-[420px] overflow-y-auto flex flex-col gap-3">
+        <div className="max-h-[420px] overflow-y-auto overflow-x-hidden flex flex-col gap-3">
           {detailLoading ? (
             <p className="text-[11px] text-[var(--tx3)] py-6 text-center">Loading transcript...</p>
           ) : messages.length === 0 ? (
             <p className="text-[11px] text-[var(--tx3)] py-6 text-center">No transcript messages available.</p>
           ) : (
             messages.map((message, index) => (
-              <ChatMessage
-                key={`${message.at ?? "no-time"}-${index}`}
-                sender={message.role === "user" ? "user" : "agent"}
-                senderName={roleLabel(message.role)}
-                timestamp={formatTime(message.at)}
-                detail={message.content}
-                action={message.content}
-              />
+              isToolMessage(message) ? (
+                <div
+                  key={`${message.at ?? "no-time"}-${index}`}
+                  className="self-start max-w-[85%] rounded-lg border border-[var(--bd)] bg-[var(--bg2)] px-3 py-1.5 text-[11px] leading-snug text-[var(--tx3)] [overflow-wrap:anywhere]"
+                >
+                  · used {message.name}
+                </div>
+              ) : (
+                <ChatMessage
+                  key={`${message.at ?? "no-time"}-${index}`}
+                  sender={message.role === "user" ? "user" : "agent"}
+                  senderName={roleLabel(message.role)}
+                  timestamp={formatTime(message.at)}
+                  detail={message.content}
+                  action={message.content}
+                />
+              )
             ))
           )}
         </div>

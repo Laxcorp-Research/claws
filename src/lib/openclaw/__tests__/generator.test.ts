@@ -71,6 +71,17 @@ type TestToolConn = {
   composioEntityId: string | null;
 };
 
+type TestCustomToolConn = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  authType: 'API_KEY_HEADER' | 'BEARER_TOKEN' | 'BASIC_AUTH' | 'QUERY_PARAM';
+  encryptedCredentials: string;
+  description: string | null;
+  generatedSkillMd: string | null;
+  createdAt: Date;
+};
+
 function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
   return {
     id: 'ws-test-1',
@@ -177,6 +188,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         composioEntityId: null,
       },
     ] as TestToolConn[],
+    customToolConnections: [] as TestCustomToolConn[],
     channelConfig: {},
     clawTemplate: { name: 'Test Template', slug: 'test-template' },
     user: {
@@ -388,6 +400,51 @@ describe('generateWorkspace', () => {
     expect(config.skills.entries.tavily).toBeDefined();
     expect(config.skills.entries.tavily.enabled).toBe(true);
     expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('real-tavily-key');
+  });
+
+  it('emits custom API skill files, TOOLS.md line, and skills.entries env mapping (mutation guard: dropping env injection fails)', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [];
+    ws.customToolConnections = [
+      {
+        id: 'cust_crm_1',
+        name: 'Internal CRM',
+        baseUrl: 'https://crm.example.com/v1',
+        authType: 'API_KEY_HEADER',
+        encryptedCredentials: JSON.stringify({ credential: 'crm-secret-key' }),
+        description: 'Lookup customer renewals.',
+        generatedSkillMd: null,
+        createdAt: new Date('2026-07-06T10:00:00.000Z'),
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    const customSlug = 'custom-internal-crm';
+    const envVar = 'CUSTOM_CUSTOM_INTERNAL_CRM_KEY';
+
+    expect(config.skills.entries[customSlug]).toEqual({
+      enabled: true,
+      env: { [envVar]: 'crm-secret-key' },
+    });
+    for (const agent of config.agents.list) {
+      expect(agent.skills).toContain(customSlug);
+    }
+
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const customSkill = result.workspaces[orchKey!].skills[customSlug]['SKILL.md'];
+    expect(customSkill).toContain('# Internal CRM');
+    expect(customSkill).toContain('https://crm.example.com/v1');
+    expect(customSkill).toContain('## What this API is for');
+    expect(customSkill).toContain('Lookup customer renewals.');
+    expect(customSkill).toContain(`X-API-Key: $${envVar}`);
+    expect(customSkill).toContain('User-provided API — verify responses; report failures honestly');
+
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('## Custom APIs');
+    expect(toolsMd).toContain('**Internal CRM**: Lookup customer renewals.');
+    expect(toolsMd).not.toContain('crm-secret-key');
   });
 
   it('emits a multi-cred env map when the tool has multiple credential fields', async () => {

@@ -21,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { Modal } from "@/components/ui/modal"
+import { StatusDot } from "@/components/ui/status-dot"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
@@ -77,6 +78,67 @@ interface ProviderStatus {
   overrideKeyValid: boolean
   hasKey: boolean
   effectiveSource: "override" | "global" | "none"
+}
+
+interface CustomApiConnectionSummary {
+  id: string
+  slug: string
+  name: string
+  baseUrl: string
+  authType: "API_KEY_HEADER" | "BEARER_TOKEN" | "BASIC_AUTH" | "QUERY_PARAM"
+  description?: string | null
+  createdAt?: string | null
+}
+
+const CUSTOM_AUTH_LABELS: Record<CustomApiConnectionSummary["authType"], string> = {
+  API_KEY_HEADER: "API key header",
+  BEARER_TOKEN: "Bearer token",
+  BASIC_AUTH: "Basic auth",
+  QUERY_PARAM: "Query parameter",
+}
+
+function customApiHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host
+  } catch {
+    return baseUrl
+  }
+}
+
+function CustomApiRow({
+  api,
+  statusCopy,
+  onDelete,
+}: {
+  api: CustomApiConnectionSummary
+  statusCopy: string
+  onDelete: () => void
+}) {
+  const purpose = api.description?.trim() || "No purpose provided."
+  return (
+    <div className="px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <StatusDot status="connected" />
+          <div className="min-w-0">
+            <div className="text-xs font-semibold truncate">{api.name}</div>
+            <div className="text-[10px] text-[var(--tx2)] truncate">
+              {customApiHost(api.baseUrl)} · {CUSTOM_AUTH_LABELS[api.authType]}
+            </div>
+            <div className="text-[10px] text-[var(--tx3)] truncate">{purpose}</div>
+            <div className="text-[10px] text-[var(--ok)] mt-0.5">{statusCopy}</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="text-[10px] px-2.5 py-[3px] text-[var(--tx3)] hover:text-[var(--err)] transition-colors shrink-0"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  )
 }
 
 interface ConfigDriftInfo {
@@ -439,6 +501,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     tool: null,
     apiKeyForm: null,
   })
+  const [customApis, setCustomApis] = useState<CustomApiConnectionSummary[]>([])
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
   const [customApiModal, setCustomApiModal] = useState(false)
@@ -526,6 +589,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         await refreshDriftState()
         const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null; createdAt?: string | null }> = toolsData.success ? toolsData.data.connections : []
+        const existingCustomApis: CustomApiConnectionSummary[] = toolsData.success ? (toolsData.data.customConnections ?? []) : []
+        setCustomApis(existingCustomApis)
 
         // Given a `{ slug, alternatives? }` pair, pick the slug the wizard
         // should render today. Priority:
@@ -679,6 +744,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const recommendedTools = useMemo(() => tools.filter((t) => !t.required && !t.extra), [tools])
   const extraTools = useMemo(() => tools.filter((t) => t.extra), [tools])
   const connectedSlugs = useMemo(() => tools.filter((t) => t.status === "connected").map((t) => t.slug), [tools])
+  const customApiStatusCopy = workspaceStatus === "RUNNING"
+    ? "Saved — redeploy to apply"
+    : "Saved — deploys with next redeploy"
   const setupComplianceNotice = workspaceTemplateSlug === "medical-practice-manager"
     ? getComplianceNotice(workspaceTemplateSlug)
     : null
@@ -700,6 +768,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!data.success) return
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
     const existing: ServerConnectionSummary[] = data.data.connections
+    setCustomApis(data.data.customConnections ?? [])
     // PR2.9-fix3: server response is authoritative. `mergeRefreshedTools`
     // handles all four cases (server-present-template, server-present-
     // extra-new, server-absent-template-reset, server-absent-extra-drop).
@@ -1071,9 +1140,18 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
       })
       const result = await res.json()
-      return result.success ? { success: true } : { success: false, error: result.error?.message }
+      if (result.success) {
+        await refreshTools()
+        return { success: true }
+      }
+      return { success: false, error: result.error?.message }
     } catch { return { success: false, error: "Network error" } }
-  }, [workspaceId])
+  }, [workspaceId, refreshTools])
+
+  const handleCustomDelete = useCallback(async (api: CustomApiConnectionSummary) => {
+    await fetch(`/api/tools/${workspaceId}/custom/${api.id}`, { method: "DELETE" })
+    await refreshTools()
+  }, [workspaceId, refreshTools])
 
   const handleDisconnect = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return
@@ -1304,6 +1382,19 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               testDisabledReason={getTestDisabledReason(tool)}
               onDisconnect={() => handleDisconnect(tool)}
               onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
+            />
+          ))}
+        </ToolConnectionList>
+      )}
+
+      {customApis.length > 0 && (
+        <ToolConnectionList title="Custom APIs" subtitle="User-provided APIs saved for this Claw. Credentials are injected on next deploy.">
+          {customApis.map((api) => (
+            <CustomApiRow
+              key={api.slug}
+              api={api}
+              statusCopy={customApiStatusCopy}
+              onDelete={() => handleCustomDelete(api)}
             />
           ))}
         </ToolConnectionList>

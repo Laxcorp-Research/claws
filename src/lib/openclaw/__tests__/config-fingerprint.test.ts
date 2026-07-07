@@ -102,6 +102,7 @@ function baseWorkspace(overrides: Record<string, unknown> = {}) {
         lastConnectionCheckResult: null,
       },
     ],
+    customToolConnections: [],
     ...overrides,
   };
 }
@@ -161,6 +162,55 @@ describe('buildWorkspaceConfigFingerprint', () => {
     const next = baseWorkspace();
     (next.toolConnections[0] as { encryptedCredentials: string | null }).encryptedCredentials = 'enc-tool-key-v2';
     const after = await fingerprintFor(next);
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.tools).not.toBe(before.areas.tools);
+  });
+
+  it('custom API connect changes the tools hash (mutation guard: dropping customToolConnections from inputs fails)', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const after = await fingerprintFor(baseWorkspace({
+      customToolConnections: [
+        {
+          id: 'cust_crm_1',
+          name: 'Internal CRM',
+          baseUrl: 'https://crm.example.com/v1',
+          authType: 'API_KEY_HEADER',
+          encryptedCredentials: 'enc-custom-crm-v1',
+          description: 'Lookup customer renewals.',
+        },
+      ],
+    }));
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.tools).not.toBe(before.areas.tools);
+  });
+
+  it('custom API credential update changes the tools hash without decrypting the credential', async () => {
+    const before = await fingerprintFor(baseWorkspace({
+      customToolConnections: [
+        {
+          id: 'cust_crm_1',
+          name: 'Internal CRM',
+          baseUrl: 'https://crm.example.com/v1',
+          authType: 'API_KEY_HEADER',
+          encryptedCredentials: 'enc-custom-crm-v1',
+          description: 'Lookup customer renewals.',
+        },
+      ],
+    }));
+    const after = await fingerprintFor(baseWorkspace({
+      customToolConnections: [
+        {
+          id: 'cust_crm_1',
+          name: 'Internal CRM',
+          baseUrl: 'https://crm.example.com/v1',
+          authType: 'API_KEY_HEADER',
+          encryptedCredentials: 'enc-custom-crm-v2',
+          description: 'Lookup customer renewals.',
+        },
+      ],
+    }));
 
     expect(after.hash).not.toBe(before.hash);
     expect(after.areas.tools).not.toBe(before.areas.tools);

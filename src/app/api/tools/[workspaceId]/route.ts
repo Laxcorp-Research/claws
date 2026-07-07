@@ -8,6 +8,7 @@ import { log } from "@/lib/logger"
 import { validateToolKey } from "@/lib/tools/validators"
 import { getToolBySlug, type ToolDefinition } from "@/data/tool-catalog"
 import { getComposio, getComposioUserId } from "@/lib/composio"
+import { deriveCustomApiIdentities } from "@/lib/custom-api-identity"
 import {
   classifyToolkitAuthMode,
   createBYOKConnectedAccount,
@@ -36,10 +37,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     select: { id: true, name: true, baseUrl: true, authType: true, description: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   })
+  const customIdentities = deriveCustomApiIdentities(customConnections)
 
   return apiSuccess({
     connections,
-    customConnections,
+    customConnections: customConnections.map((conn) => ({
+      ...conn,
+      slug: customIdentities.get(conn.id)?.slug ?? conn.id,
+    })),
     composioOAuthAvailable: Boolean(process.env.COMPOSIO_API_KEY?.trim()),
   })
 }
