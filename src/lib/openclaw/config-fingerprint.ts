@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { prisma } from '@/lib/db';
 
 export const CONFIG_FINGERPRINT_VERSION = 2;
+export const CONFIG_FINGERPRINT_MIN_VERSION = 1;
 
 export interface WorkspaceConfigFingerprint {
   version: number;
@@ -14,9 +15,12 @@ export interface WorkspaceConfigFingerprint {
     keys: string;
     workspace: string;
   };
+  versionFingerprints: Partial<Record<number, VersionedWorkspaceConfigFingerprint>>;
+  introducedAreas: Partial<Record<number, Partial<Record<FingerprintArea, boolean>>>>;
 }
 
 type FingerprintArea = keyof WorkspaceConfigFingerprint['areas'];
+export type VersionedWorkspaceConfigFingerprint = Pick<WorkspaceConfigFingerprint, 'hash' | 'areas'>;
 type GeneratorSkillProjection = {
   slug: string;
   name: string;
@@ -29,6 +33,61 @@ type GeneratorSkillProjection = {
 type GeneratorWorkspaceProjection = {
   userContext?: string | null;
 };
+type WorkspaceFingerprintInput = {
+  toolConnections: Array<{
+    toolSlug: string;
+    displayName: string | null;
+    connectionType: string;
+    status: string;
+    composioConnectionId: string | null;
+    encryptedCredentials: string | null;
+  }>;
+  customToolConnections: Array<{
+    id: string;
+    name: string;
+    baseUrl: string;
+    authType: string;
+    encryptedCredentials: string | null;
+    description?: string | null;
+  }>;
+  agents: Array<{
+    id: string;
+    name: string;
+    role: string;
+    description?: string | null;
+    model: string;
+    soulMd?: string | null;
+    agentsMd?: string | null;
+    heartbeatMd?: string | null;
+    heartbeatFrequency?: string | null;
+    heartbeatTime?: string | null;
+    qualityThreshold?: number | null;
+    reportsTo?: string | null;
+    skills: Array<{
+      skillId: string;
+      skill: GeneratorSkillProjection;
+    }>;
+  }>;
+  connections: Array<{
+    sourceAgentId: string;
+    targetAgentId: string;
+    condition: string;
+  }>;
+  user: {
+    name: string | null;
+    apiKeys: Array<{ provider: string; encryptedKey: string }>;
+  };
+  workspace: {
+    timezone?: string | null;
+    userContext?: string | null;
+    clawTemplateId?: string | null;
+    name: string;
+    channelConfigEncrypted?: string | null;
+  };
+  agentNameById: Map<string, string>;
+};
+type ProjectionInputByArea = Record<FingerprintArea, unknown>;
+type FingerprintProjection = (input: WorkspaceFingerprintInput) => ProjectionInputByArea;
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -60,58 +119,34 @@ function sortStrings(values: string[]): string[] {
   return [...values].sort((a, b) => a.localeCompare(b));
 }
 
-export async function buildWorkspaceConfigFingerprint(workspaceId: string): Promise<WorkspaceConfigFingerprint> {
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { id: workspaceId },
-    include: {
-      agents: {
-        include: {
-          skills: { include: { skill: true } },
-        },
-        orderBy: { createdAt: 'asc' },
-      },
-      connections: true,
-      toolConnections: true,
-      customToolConnections: true,
-      clawTemplate: { select: { id: true } },
-      user: {
-        include: {
-          apiKeys: true,
-        },
-      },
-    },
-  });
+function projectToolConnections(input: WorkspaceFingerprintInput) {
+  return input.toolConnections
+    .map((tool) => ({
+      slug: tool.toolSlug,
+      displayName: tool.displayName,
+      type: tool.connectionType,
+      status: tool.status,
+      composioConnectionId: tool.composioConnectionId,
+      credentialFingerprint: fingerprintSecretBlob(tool.encryptedCredentials),
+    }))
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+}
 
-  const toolConnections = workspace.toolConnections ?? [];
-  const customToolConnections = workspace.customToolConnections ?? [];
-  const agentsInput = workspace.agents ?? [];
-  const connectionsInput = workspace.connections ?? [];
-  const userInput = workspace.user ?? { name: null, apiKeys: [] };
+function projectCustomApis(input: WorkspaceFingerprintInput) {
+  return input.customToolConnections
+    .map((customApi) => ({
+      id: customApi.id,
+      name: customApi.name,
+      baseUrl: customApi.baseUrl,
+      authType: customApi.authType,
+      credentialFingerprint: fingerprintSecretBlob(customApi.encryptedCredentials),
+      description: customApi.description ?? null,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
 
-  const tools = {
-    connections: toolConnections
-      .map((tool) => ({
-        slug: tool.toolSlug,
-        displayName: tool.displayName,
-        type: tool.connectionType,
-        status: tool.status,
-        composioConnectionId: tool.composioConnectionId,
-        credentialFingerprint: fingerprintSecretBlob(tool.encryptedCredentials),
-      }))
-      .sort((a, b) => a.slug.localeCompare(b.slug)),
-    customApis: customToolConnections
-      .map((customApi) => ({
-        id: customApi.id,
-        name: customApi.name,
-        baseUrl: customApi.baseUrl,
-        authType: customApi.authType,
-        credentialFingerprint: fingerprintSecretBlob(customApi.encryptedCredentials),
-        description: customApi.description ?? null,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-  };
-
-  const agents = agentsInput
+function projectAgents(input: WorkspaceFingerprintInput) {
+  return input.agents
     .map((agent) => ({
       id: agent.id,
       name: agent.name,
@@ -143,15 +178,18 @@ export async function buildWorkspaceConfigFingerprint(workspaceId: string): Prom
     }))
     .sort((a, b) => {
       const roleOrder = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 } as const;
-      const roleDiff = roleOrder[a.role] - roleOrder[b.role];
+      const roleDiff =
+        (roleOrder[a.role as keyof typeof roleOrder] ?? 99) -
+        (roleOrder[b.role as keyof typeof roleOrder] ?? 99);
       return roleDiff || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     });
+}
 
-  const agentNameById = new Map(agentsInput.map((agent) => [agent.id, agent.name]));
-  const connections = connectionsInput
+function projectConnections(input: WorkspaceFingerprintInput) {
+  return input.connections
     .map((connection) => ({
-      from: agentNameById.get(connection.sourceAgentId) ?? connection.sourceAgentId,
-      to: agentNameById.get(connection.targetAgentId) ?? connection.targetAgentId,
+      from: input.agentNameById.get(connection.sourceAgentId) ?? connection.sourceAgentId,
+      to: input.agentNameById.get(connection.targetAgentId) ?? connection.targetAgentId,
       condition: connection.condition,
     }))
     .sort((a, b) => (
@@ -159,38 +197,148 @@ export async function buildWorkspaceConfigFingerprint(workspaceId: string): Prom
       a.to.localeCompare(b.to) ||
       a.condition.localeCompare(b.condition)
     ));
+}
 
-  const keys = {
-    userName: userInput.name,
-    apiKeys: userInput.apiKeys
+function projectKeys(input: WorkspaceFingerprintInput) {
+  return {
+    userName: input.user.name,
+    apiKeys: input.user.apiKeys
       .map((key) => ({
         provider: key.provider,
         credentialFingerprint: fingerprintSecretBlob(key.encryptedKey),
       }))
       .sort((a, b) => a.provider.localeCompare(b.provider)),
   };
+}
 
-  const workspaceArea = {
-    timezone: workspace.timezone,
-    userContext: (workspace as GeneratorWorkspaceProjection).userContext ?? null,
-    clawTemplateId: workspace.clawTemplateId,
+function projectWorkspace(input: WorkspaceFingerprintInput) {
+  return {
+    timezone: input.workspace.timezone,
+    userContext: input.workspace.userContext ?? null,
+    clawTemplateId: input.workspace.clawTemplateId,
     // The generator's fallback files use workspace.name only when there is no
     // template name available for the Claw name.
-    fallbackWorkspaceName: workspace.clawTemplateId ? null : workspace.name,
+    fallbackWorkspaceName: input.workspace.clawTemplateId ? null : input.workspace.name,
   };
+}
 
-  const areas: Record<FingerprintArea, string> = {
-    tools: hashJson(tools),
-    agents: hashJson(agents),
-    connections: hashJson(connections),
-    channels: hashJson({ channelConfigEncrypted: fingerprintSecretBlob(workspace.channelConfigEncrypted) }),
-    keys: hashJson(keys),
-    workspace: hashJson(workspaceArea),
+const FINGERPRINT_PROJECTIONS: Record<number, FingerprintProjection> = {
+  1: (input) => ({
+    tools: projectToolConnections(input),
+    agents: projectAgents(input),
+    connections: projectConnections(input),
+    channels: { channelConfigEncrypted: fingerprintSecretBlob(input.workspace.channelConfigEncrypted) },
+    keys: projectKeys(input),
+    workspace: projectWorkspace(input),
+  }),
+  2: (input) => ({
+    tools: {
+      connections: projectToolConnections(input),
+      customApis: projectCustomApis(input),
+    },
+    agents: projectAgents(input),
+    connections: projectConnections(input),
+    channels: { channelConfigEncrypted: fingerprintSecretBlob(input.workspace.channelConfigEncrypted) },
+    keys: projectKeys(input),
+    workspace: projectWorkspace(input),
+  }),
+};
+
+export const FINGERPRINT_TRANSITIONS: Record<number, Partial<Record<FingerprintArea, string>>> = {
+  2: {
+    tools: 'custom APIs',
+  },
+};
+
+export function isKnownFingerprintVersion(version: number): boolean {
+  return Object.prototype.hasOwnProperty.call(FINGERPRINT_PROJECTIONS, version);
+}
+
+function hashProjection(projection: ProjectionInputByArea): VersionedWorkspaceConfigFingerprint {
+  const areas = Object.fromEntries(
+    (Object.keys(projection) as FingerprintArea[]).map((area) => [area, hashJson(projection[area])]),
+  ) as WorkspaceConfigFingerprint['areas'];
+  return {
+    hash: hashJson(areas),
+    areas,
   };
+}
+
+function introducedAreasForInput(input: WorkspaceFingerprintInput): WorkspaceConfigFingerprint['introducedAreas'] {
+  return {
+    2: {
+      tools: input.customToolConnections.length > 0,
+    },
+  };
+}
+
+function buildInput(workspace: {
+  name: string;
+  timezone?: string | null;
+  userContext?: string | null;
+  clawTemplateId?: string | null;
+  channelConfigEncrypted?: string | null;
+  agents?: WorkspaceFingerprintInput['agents'];
+  connections?: WorkspaceFingerprintInput['connections'];
+  toolConnections?: WorkspaceFingerprintInput['toolConnections'];
+  customToolConnections?: WorkspaceFingerprintInput['customToolConnections'];
+  user?: WorkspaceFingerprintInput['user'];
+}): WorkspaceFingerprintInput {
+  const agentsInput = workspace.agents ?? [];
+  return {
+    toolConnections: workspace.toolConnections ?? [],
+    customToolConnections: workspace.customToolConnections ?? [],
+    agents: agentsInput,
+    connections: workspace.connections ?? [],
+    user: workspace.user ?? { name: null, apiKeys: [] },
+    workspace: {
+      name: workspace.name,
+      timezone: workspace.timezone,
+      userContext: (workspace as GeneratorWorkspaceProjection).userContext ?? null,
+      clawTemplateId: workspace.clawTemplateId,
+      channelConfigEncrypted: workspace.channelConfigEncrypted,
+    },
+    agentNameById: new Map(agentsInput.map((agent) => [agent.id, agent.name])),
+  };
+}
+
+export async function buildWorkspaceConfigFingerprint(workspaceId: string): Promise<WorkspaceConfigFingerprint> {
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
+    include: {
+      agents: {
+        include: {
+          skills: { include: { skill: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
+      connections: true,
+      toolConnections: true,
+      customToolConnections: true,
+      clawTemplate: { select: { id: true } },
+      user: {
+        include: {
+          apiKeys: true,
+        },
+      },
+    },
+  });
+
+  const input = buildInput(workspace);
+  const versionFingerprints = Object.fromEntries(
+    Object.entries(FINGERPRINT_PROJECTIONS).map(([version, project]) => [
+      Number(version),
+      hashProjection(project(input)),
+    ]),
+  ) as WorkspaceConfigFingerprint['versionFingerprints'];
+  const current = versionFingerprints[CONFIG_FINGERPRINT_VERSION];
+  if (!current) throw new Error(`Missing config fingerprint projection v${CONFIG_FINGERPRINT_VERSION}`);
 
   return {
     version: CONFIG_FINGERPRINT_VERSION,
-    hash: hashJson(areas),
-    areas,
+    hash: current.hash,
+    areas: current.areas,
+    versionFingerprints,
+    introducedAreas: introducedAreasForInput(input),
   };
 }

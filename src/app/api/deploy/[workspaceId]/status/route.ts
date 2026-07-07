@@ -4,7 +4,13 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
-import { CONFIG_FINGERPRINT_VERSION, buildWorkspaceConfigFingerprint } from "@/lib/openclaw/config-fingerprint"
+import {
+  CONFIG_FINGERPRINT_MIN_VERSION,
+  CONFIG_FINGERPRINT_VERSION,
+  FINGERPRINT_TRANSITIONS,
+  buildWorkspaceConfigFingerprint,
+  isKnownFingerprintVersion,
+} from "@/lib/openclaw/config-fingerprint"
 
 type SnapshotMetadata = {
   fingerprintVersion?: number
@@ -12,6 +18,7 @@ type SnapshotMetadata = {
 }
 
 const DRIFT_AREAS = ["tools", "agents", "connections", "channels", "keys", "workspace"] as const
+type DriftArea = typeof DRIFT_AREAS[number]
 
 function parseSnapshotMetadata(snapshot: string | null | undefined): SnapshotMetadata {
   if (!snapshot) return {}
@@ -21,6 +28,36 @@ function parseSnapshotMetadata(snapshot: string | null | undefined): SnapshotMet
   } catch {
     return {}
   }
+}
+
+function storedFingerprintVersion(deployedHash: string | null, metadata: SnapshotMetadata): number | null {
+  if (!deployedHash) return null
+  return typeof metadata.fingerprintVersion === "number"
+    ? metadata.fingerprintVersion
+    : CONFIG_FINGERPRINT_MIN_VERSION
+}
+
+function changedAreasForVersion(
+  metadata: SnapshotMetadata,
+  areas: Record<DriftArea, string>,
+): DriftArea[] {
+  if (!metadata.areas) return []
+  return DRIFT_AREAS.filter((area) => metadata.areas?.[area] !== areas[area])
+}
+
+function nonEmptyIntroducedAreasSince(
+  current: Awaited<ReturnType<typeof buildWorkspaceConfigFingerprint>>,
+  storedVersion: number,
+): DriftArea[] {
+  const out = new Set<DriftArea>()
+  for (let version = storedVersion + 1; version <= CONFIG_FINGERPRINT_VERSION; version += 1) {
+    const transition = FINGERPRINT_TRANSITIONS[version] ?? {}
+    const nonEmptyByArea = current.introducedAreas[version] ?? {}
+    for (const area of DRIFT_AREAS) {
+      if (transition[area] && nonEmptyByArea[area]) out.add(area)
+    }
+  }
+  return [...out]
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
@@ -56,21 +93,39 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ work
         ])
         const deployedHash = latestCompleted?.configHash ?? null
         const metadata = parseSnapshotMetadata(latestCompleted?.configSnapshot)
-        const storedFingerprintVersion = metadata.fingerprintVersion ?? null
-        const comparable = Boolean(deployedHash) && storedFingerprintVersion === CONFIG_FINGERPRINT_VERSION
-        // Algorithm-version mismatch means the stored hash is unknown, not stale.
-        // Trade accepted deliberately: real drift that happens across a fingerprint
-        // algorithm change reads fresh until the next deploy resyncs the snapshot.
-        // Silence is safer than fleet-wide cry-wolf banners on projection changes.
-        const changedAreas = comparable
-          ? DRIFT_AREAS.filter((area) => metadata.areas?.[area] !== current.areas[area])
-          : []
+        const deployedFingerprintVersion = storedFingerprintVersion(deployedHash, metadata)
+
+        let isStale = false
+        let changedAreas: DriftArea[] = []
+        if (deployedHash && deployedFingerprintVersion === CONFIG_FINGERPRINT_VERSION) {
+          isStale = current.hash !== deployedHash
+          changedAreas = isStale ? changedAreasForVersion(metadata, current.areas) : []
+        } else if (
+          deployedHash &&
+          deployedFingerprintVersion !== null &&
+          deployedFingerprintVersion < CONFIG_FINGERPRINT_VERSION &&
+          isKnownFingerprintVersion(deployedFingerprintVersion)
+        ) {
+          const comparable = current.versionFingerprints[deployedFingerprintVersion]
+          if (comparable && comparable.hash !== deployedHash) {
+            isStale = true
+            changedAreas = changedAreasForVersion(metadata, comparable.areas)
+          } else {
+            // The deployed artifact predates the generator reading classes
+            // introduced by later fingerprint versions. If those classes are
+            // non-empty now, that state is by definition absent from the
+            // container. If they are empty, stay silent: no nudge banners.
+            changedAreas = nonEmptyIntroducedAreasSince(current, deployedFingerprintVersion)
+            isStale = changedAreas.length > 0
+          }
+        }
+
         return {
-          isStale: comparable ? current.hash !== deployedHash : false,
+          isStale,
           currentHash: current.hash,
           deployedHash,
           currentFingerprintVersion: CONFIG_FINGERPRINT_VERSION,
-          deployedFingerprintVersion: storedFingerprintVersion,
+          deployedFingerprintVersion,
           changedAreas,
           latestCompletedAt: latestCompleted?.completedAt ?? null,
         }
