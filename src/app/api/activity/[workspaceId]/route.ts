@@ -5,6 +5,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
 import { sanitizeActivityText, sanitizeActivityDetail } from "@/lib/security/sanitize"
+import { getModelCost } from "@/lib/models"
 
 export async function GET(
   _req: NextRequest,
@@ -37,14 +38,14 @@ export async function GET(
     prisma.activityLog.count({
       where: {
         workspaceId,
-        actionType: { in: ["TASK_START", "TASK_COMPLETE", "TASK_FAILED"] },
+        actionType: "TASK_COMPLETE",
         timestamp: { gte: todayStart },
       },
     }),
     prisma.activityLog.count({
       where: {
         workspaceId,
-        actionType: { in: ["TASK_START", "TASK_COMPLETE", "TASK_FAILED"] },
+        actionType: "TASK_COMPLETE",
         timestamp: { gte: yesterdayStart, lt: todayStart },
       },
     }),
@@ -179,9 +180,32 @@ export async function GET(
       )
     : []
 
+  const todayCallsByAgent = agentSlugs.length > 0
+    ? await prisma.activityLog.groupBy({
+        by: ["agentSlug"],
+        where: {
+          workspaceId,
+          agentSlug: { in: agentSlugs },
+          actionType: "TASK_COMPLETE",
+          timestamp: { gte: todayStart },
+        },
+        _count: { _all: true },
+      })
+    : []
+
   const costBySlug = new Map<string, { calls: number; cost: number }>()
   for (const row of perAgentCosts) {
     costBySlug.set(row.agentSlug, { calls: Number(row.calls), cost: Number(row.cost) })
+  }
+
+  const modelBySlug = new Map(agents.map((a) => [a.agentSlug, a.model]))
+  let estimatedCostToday = 0
+  let estimatedCostTodayCalls = 0
+  for (const row of todayCallsByAgent) {
+    if (!row.agentSlug) continue
+    const calls = row._count._all
+    estimatedCostTodayCalls += calls
+    estimatedCostToday += calls * getModelCost(modelBySlug.get(row.agentSlug) ?? "")
   }
 
   const totalApiCost = costAgg._sum.apiCost ?? 0
@@ -220,6 +244,8 @@ export async function GET(
       tasksYesterday,
       apiCostThisMonth: totalApiCost,
       apiCostProjected: Math.round(projectedCost * 100) / 100,
+      estimatedCostToday: Math.round(estimatedCostToday * 100) / 100,
+      estimatedCostTodayCalls,
       pendingReview,
     },
     agents: agentStatuses,
