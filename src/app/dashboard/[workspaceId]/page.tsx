@@ -6,15 +6,16 @@ import { useSession } from "next-auth/react"
 import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
-import { DriftBanner } from "@/components/shared/drift-banner"
-import { OctagonX, Pause, Square, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon } from "lucide-react"
+import { DRIFT_BANNER_HEADLINE, formatChangedAreas } from "@/components/shared/drift-banner"
+import { OctagonX, Pause, Square, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon, ArrowUpCircle } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
-import { VersionUpdateBanner } from "@/components/dashboard/version-update-banner"
+import { AlertStack } from "@/components/dashboard/alert-stack"
+import { CommandStrip } from "@/components/dashboard/command-strip"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
@@ -23,6 +24,7 @@ import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
 import { isCreditUser } from "@/lib/credits/api-key-source"
+import { extractVersionFromImage, isNewerVersion } from "@/lib/openclaw/version-order"
 import type { ApiKeySource } from "@/generated/prisma/client"
 import type { ChannelId, ChannelLiveState, ChannelStatusMap } from "@/lib/openclaw/channel-config"
 
@@ -37,6 +39,8 @@ interface DashboardStats {
   tasksYesterday: number
   apiCostThisMonth: number
   apiCostProjected: number
+  estimatedCostToday: number
+  estimatedCostTodayCalls: number
   pendingReview: number
 }
 
@@ -137,6 +141,12 @@ interface ChannelStatusSummary {
   channels: ChannelStatusMap
   configuredChannelIds: ChannelId[]
   hasConfiguredChannels: boolean
+}
+
+interface StableVersionInfo {
+  version: string
+  dockerImage: string
+  releaseNotes: string | null
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -245,6 +255,7 @@ export default function DashboardPage() {
   const [trialInfo, setTrialInfo] = useState<{ trialUsed: boolean; trialEndsAt: string | null; hasActiveSubscription: boolean } | null>(null)
   const [agentActionLoadingId, setAgentActionLoadingId] = useState<string | null>(null)
   const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
+  const [stableVersion, setStableVersion] = useState<StableVersionInfo | null>(null)
   const [agentCosts, setAgentCosts] = useState<AgentCostRow[]>([])
   const [subscribing, setSubscribing] = useState(false)
   const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
@@ -342,10 +353,20 @@ export default function DashboardPage() {
       .catch(() => {})
   }, [workspaceId])
 
+  const fetchStableVersion = useCallback(() => {
+    fetch("/api/versions/stable")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data) setStableVersion(json.data as StableVersionInfo)
+      })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     fetchStats()
     fetchDeploymentStatus()
     fetchChannelStatus()
+    fetchStableVersion()
     fetch("/api/user/billing")
       .then((r) => r.json())
       .then((json) => {
@@ -363,7 +384,7 @@ export default function DashboardPage() {
       fetchChannelStatus()
     }, STATS_POLL_MS)
     return () => clearInterval(interval)
-  }, [fetchStats, fetchDeploymentStatus, fetchChannelStatus])
+  }, [fetchStats, fetchDeploymentStatus, fetchChannelStatus, fetchStableVersion])
 
   useEffect(() => {
     if (searchParams.get("redeployed") !== "changes-applied") return
@@ -583,7 +604,7 @@ export default function DashboardPage() {
     if (showMcpSessionDead) {
       list.push({
         key: "mcp-session-dead",
-        priority: 3,
+        priority: 4,
         variant: "warning",
         icon: <RefreshCw className="w-4 h-4" />,
         content: (
@@ -605,7 +626,7 @@ export default function DashboardPage() {
     if (showActivitySilence) {
       list.push({
         key: "activity-silence",
-        priority: 3,
+        priority: 1,
         variant: "warning",
         content: (
           <>
@@ -624,7 +645,7 @@ export default function DashboardPage() {
     if (showStateSyncStale) {
       list.push({
         key: "state-sync-stale",
-        priority: 3,
+        priority: 2,
         variant: "warning",
         content: (
           <p className="font-medium">Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.</p>
@@ -721,6 +742,49 @@ export default function DashboardPage() {
           </div>
         ),
       })
+    }
+
+    if (showConfigDrift && configDrift) {
+      list.push({
+        key: "config-drift",
+        priority: 5,
+        variant: "warning",
+        content: (
+          <>
+            <p className="font-medium">{DRIFT_BANNER_HEADLINE}</p>
+            <p className="mt-0.5 opacity-80">Changed: {formatChangedAreas(configDrift.changedAreas)}</p>
+          </>
+        ),
+        actions: (
+          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+            Redeploy
+          </Button>
+        ),
+      })
+    }
+
+    if (deploymentImage && stableVersion) {
+      const currentVer = extractVersionFromImage(deploymentImage)
+      const stableVer = stableVersion.version
+      if (isNewerVersion(stableVer, currentVer)) {
+        list.push({
+          key: "version-update",
+          priority: 6,
+          variant: "info",
+          icon: <ArrowUpCircle className="w-4 h-4" />,
+          content: (
+            <>
+              <p className="font-medium">A runtime update is available — redeploy to apply</p>
+              <p className="mt-0.5 opacity-80">Your Claw is running {currentVer}; the current stable runtime is v{stableVer}.</p>
+            </>
+          ),
+          actions: !showConfigDrift ? (
+            <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+              Redeploy
+            </Button>
+          ) : undefined,
+        })
+      }
     }
 
     const creditUser = isCreditUser(workspace?.apiKeySource)
@@ -856,7 +920,7 @@ export default function DashboardPage() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncStale, handleResumeAll])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion])
 
   const costRows = useMemo(() =>
     [...agentCosts].sort((a, b) => {
@@ -961,6 +1025,15 @@ export default function DashboardPage() {
       messageId: l.messageId ?? null,
       runId: l.runId ?? null,
     }))
+  const agentsActive = agents.filter((a) => a.status !== "paused").length
+  const alertStackItems = alerts.map((alert) => ({
+    id: alert.key,
+    priority: alert.priority,
+    variant: alert.variant,
+    icon: alert.icon,
+    message: alert.content,
+    cta: alert.actions,
+  }))
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
       <PageHeader
@@ -1014,36 +1087,21 @@ export default function DashboardPage() {
         </AlertBanner>
       )}
 
-      {showConfigDrift && configDrift && (
-        <DriftBanner
-          changedAreas={configDrift.changedAreas}
-          actions={
-            <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
-              Redeploy
-            </Button>
-          }
+      {workspace && (
+        <CommandStrip
+          workspaceName={workspace.name}
+          workspaceStatus={workspace.status}
+          agentsActive={agentsActive}
+          agentsTotal={agents.length}
+          tasksToday={stats?.tasksToday ?? 0}
+          estimatedCostToday={stats?.estimatedCostToday ?? 0}
+          estimatedCostTodayCalls={stats?.estimatedCostTodayCalls ?? 0}
+          configuredChannelIds={channelStatus?.configuredChannelIds ?? []}
+          channels={channelStatus?.channels ?? null}
         />
       )}
 
-      {alerts.length > 0 && (
-        <div className="space-y-2 mb-3">
-          {alerts.map((alert) => (
-            <AlertBanner key={alert.key} variant={alert.variant} icon={alert.icon} actions={alert.actions}>
-              {alert.content}
-            </AlertBanner>
-          ))}
-        </div>
-      )}
-
-      <ChannelStatusSection channelStatus={channelStatus} />
-
-      {deploymentImage && (
-        <VersionUpdateBanner
-          currentImage={deploymentImage}
-          onRedeploy={() => setRedeployConfirmOpen(true)}
-          showRedeployAction={!showConfigDrift}
-        />
-      )}
+      <AlertStack alerts={alertStackItems} />
 
       {isEmpty ? (
         <div className="py-8">

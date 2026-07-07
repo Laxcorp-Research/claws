@@ -81,8 +81,18 @@ function activityPayload(opts: {
   mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHABLE" | null;
   activitySilenceDetectedAt?: string | null;
   stateSyncStaleDetectedAt?: string | null;
+  healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
+  lastHealthCheck?: string | null;
+  expiredTools?: Array<{ name: string; status: "ERROR" | "EXPIRED" | "REVOKED"; connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "CHANNEL_NATIVE" }>;
 }) {
-  const { mcpSessionHealthStatus, activitySilenceDetectedAt = null, stateSyncStaleDetectedAt = null } = opts
+  const {
+    mcpSessionHealthStatus,
+    activitySilenceDetectedAt = null,
+    stateSyncStaleDetectedAt = null,
+    healthStatus = "HEALTHY",
+    lastHealthCheck = null,
+    expiredTools = [],
+  } = opts
   return {
     success: true,
     data: {
@@ -90,8 +100,8 @@ function activityPayload(opts: {
         id: "ws-1",
         name: "Sales Claw",
         status: "RUNNING",
-        healthStatus: "HEALTHY",
-        lastHealthCheck: null,
+        healthStatus,
+        lastHealthCheck,
         lastHealthReason: null,
         mcpSessionHealthStatus,
         mcpSessionCheckedAt: mcpSessionHealthStatus ? "2026-07-04T21:20:00.000Z" : null,
@@ -113,6 +123,8 @@ function activityPayload(opts: {
         tasksYesterday: 0,
         apiCostThisMonth: 0,
         apiCostProjected: 0,
+        estimatedCostToday: 0,
+        estimatedCostTodayCalls: 0,
         pendingReview: 0,
       },
       agents: [
@@ -129,7 +141,7 @@ function activityPayload(opts: {
       ],
       pendingApprovals: [],
       spend: { thisMonth: 0, limit: 50, percent: 0 },
-      expiredTools: [],
+      expiredTools,
       recentLogs: [],
       agentCosts: [],
     },
@@ -226,5 +238,71 @@ describe("DashboardPage MCP session banner", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Redeploy" })[0])
 
     expect(await screen.findByText("Memory backup is stale — recent agent memory may be lost.")).toBeDefined()
+  })
+
+  it("orders the seven cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {
+    const payload = activityPayload({
+      mcpSessionHealthStatus: "DEAD",
+      activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z",
+      stateSyncStaleDetectedAt: "2026-07-05T08:31:00.000Z",
+      healthStatus: "UNHEALTHY",
+      lastHealthCheck: "2026-07-05T08:00:00.000Z",
+      expiredTools: [{ name: "HubSpot", status: "EXPIRED", connectionType: "OAUTH_COMPOSIO" }],
+    })
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/api/activity/ws-1")) {
+        return { ok: true, json: async () => payload } as Response
+      }
+      if (url.includes("/api/deploy/ws-1/status?drift=1")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              deployment: { containerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22" },
+              drift: { isStale: true, changedAreas: ["tools"] },
+            },
+          }),
+        } as Response
+      }
+      if (url.includes("/api/versions/stable")) {
+        return {
+          ok: true,
+          json: async () => ({ success: true, data: { version: "2026.6.6", dockerImage: "runtime:2026.6.6", releaseNotes: null } }),
+        } as Response
+      }
+      if (url.includes("/api/user/billing")) {
+        return { ok: true, json: async () => ({ success: true, data: { trialUsed: false, trialEndsAt: null, hasActiveSubscription: true } }) } as Response
+      }
+      if (url.includes("/api/channels/ws-1/status")) {
+        return { ok: true, json: async () => ({ success: true, data: { channels: {}, configuredChannelIds: [], hasConfiguredChannels: false } }) } as Response
+      }
+      return { ok: true, json: async () => ({ success: true }) } as Response
+    })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("Agent container is not responding")).toBeDefined()
+    const expander = await screen.findByRole("button", { name: "6 more alerts" })
+    expect(screen.queryByText("A runtime update is available — redeploy to apply")).toBeNull()
+
+    fireEvent.click(expander)
+
+    expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
+    expect(screen.getByText("Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
+    expect(screen.getByText("HubSpot connection expired")).toBeDefined()
+    expect(screen.getByText("Long-tail tools disconnected — redeploy to restore")).toBeDefined()
+    expect(screen.getByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("A runtime update is available — redeploy to apply")).toBeDefined()
+
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }))
+    expect(mockPush).toHaveBeenCalledWith("/setup/ws-1/step/2?mode=manage")
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Force restart" })[0])
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/restart", { method: "POST" })
+    })
   })
 })
