@@ -372,6 +372,15 @@ function formatClock(ms: number): string {
   return `${hms} UTC`
 }
 
+function formatDay(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+}
+
 interface ChatPanelProps {
   workspaceId: string
   status: string
@@ -663,7 +672,9 @@ export function ChatPanel({
             {historyLoading ? "Loading messages..." : "No messages yet. Say hello to get started."}
           </p>
         ) : (
-          messages.map((m) => {
+          messages.map((m, index) => {
+            const day = formatDay(m.sortTs)
+            const previousDay = index > 0 ? formatDay(messages[index - 1].sortTs) : null
             // A user turn whose runId aged out with no reply → quiet "No
             // response" note (distinct from a send failure: the send succeeded).
             const noResponse =
@@ -679,19 +690,25 @@ export function ChatPanel({
             const failure =
               m.status === "failed" ? chatUnavailableCopy(errorCodeToReason(m.failureCode)) : null
             return (
-              <ChatMessage
-                key={m.key}
-                sender={m.sender}
-                senderName={m.senderName}
-                timestamp={formatClock(m.sortTs)}
-                detail={m.detail}
-                action={m.action}
-                status={m.status}
-                noResponse={noResponse}
-                failureMessage={failure?.message ?? null}
-                onRetry={failure?.cta === "retry" ? () => retry(m.key) : undefined}
-                onWake={failure?.cta === "wake" ? onWake : undefined}
-              />
+              <div key={m.key} className="contents">
+                {day !== previousDay && (
+                  <div className="self-center rounded-full bg-[var(--bg2)] px-3 py-1 text-[10px] text-[var(--tx3)]">
+                    {day}
+                  </div>
+                )}
+                <ChatMessage
+                  sender={m.sender}
+                  senderName={m.senderName}
+                  timestamp={formatClock(m.sortTs)}
+                  detail={m.detail}
+                  action={m.action}
+                  status={m.status}
+                  noResponse={noResponse}
+                  failureMessage={failure?.message ?? null}
+                  onRetry={failure?.cta === "retry" ? () => retry(m.key) : undefined}
+                  onWake={failure?.cta === "wake" ? onWake : undefined}
+                />
+              </div>
             )
           })
         )}

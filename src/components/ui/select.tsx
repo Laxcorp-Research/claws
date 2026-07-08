@@ -102,7 +102,7 @@ export function Select({ value = "", onChange, onValueChange, options, children,
           setOpen((v) => !v)
         }}
         onKeyDown={onKeyDown}
-        className="flex h-[30px] w-full items-center justify-between gap-[6px] rounded-[8px] border border-[var(--bd)] bg-[var(--bg)] px-[8px] text-[11px] text-[var(--tx)] transition-colors hover:border-[var(--bd2)] focus:outline-none focus:ring-2 focus:ring-[var(--ac)]/30"
+        className="flex h-[30px] w-full items-center justify-between gap-[6px] rounded-[8px] border border-[var(--bd)] bg-[var(--bg)] px-[8px] text-[11px] text-[var(--tx)] transition-colors hover:border-[var(--bd2)] focus:outline-none focus:border-[var(--tx)]"
       >
         <TruncatedText>{selected?.label ?? placeholder}</TruncatedText>
         <ChevronDown className={cn("h-3 w-3 shrink-0 text-[var(--tx3)] transition-transform", open && "rotate-180")} />
@@ -119,8 +119,8 @@ export function Select({ value = "", onChange, onValueChange, options, children,
               onClick={() => commit(item.value)}
               className={cn(
                 "block w-full px-[10px] py-[6px] text-left text-[11px] text-[var(--tx2)]",
-                index === activeIndex && "bg-[var(--acbg)] text-[var(--ac-text)]",
-                item.value === value && "bg-[var(--bg2)] font-medium text-[var(--tx)]",
+                index === activeIndex && "bg-[var(--bg2)] text-[var(--tx)]",
+                item.value === value && "bg-[var(--bg3)] font-medium text-[var(--tx)]",
               )}
             >
               <TruncatedText>{item.label}</TruncatedText>
