@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { PageHeader } from "@/components/shared/page-header"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { DRIFT_BANNER_HEADLINE, formatChangedAreas } from "@/components/shared/drift-banner"
@@ -28,9 +27,12 @@ import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
-import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
+import { formatCurrency, formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
+import { getModelCost } from "@/lib/models"
 import { Tabs } from "@/components/ui/tabs"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
+import { TextLink } from "@/components/ui/text-link"
+import { Select } from "@/components/ui/select"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
 import { isCreditUser } from "@/lib/credits/api-key-source"
@@ -179,11 +181,18 @@ const DEFAULT_MISSION_FILTERS: MissionFilters = {
   q: "",
   showRoutine: true,
 }
+type CostRange = "today" | "7d" | "all"
 const DASHBOARD_TABS = [
   { id: "overview", label: "Overview" },
   { id: "chat", label: "Chat" },
   { id: "activity", label: "Activity" },
   { id: "conversations", label: "Conversations" },
+  { id: "costs", label: "Costs" },
+]
+const COST_RANGE_OPTIONS: Array<{ value: CostRange; label: string }> = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "7d" },
+  { value: "all", label: "All" },
 ]
 
 const CHANNEL_LABELS: Record<ChannelId, string> = {
@@ -255,14 +264,6 @@ function relativeTime(isoStr: string | undefined): string {
   return `${hours} hour${hours !== 1 ? "s" : ""} ago`
 }
 
-interface AgentCostRow {
-  agentName: string
-  role: string
-  model: string
-  calls: number
-  cost: number
-}
-
 export default function DashboardPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const router = useRouter()
@@ -282,12 +283,12 @@ export default function DashboardPage() {
   const [agentActionLoadingId, setAgentActionLoadingId] = useState<string | null>(null)
   const [deploymentImage, setDeploymentImage] = useState<string | null>(null)
   const [stableVersion, setStableVersion] = useState<StableVersionInfo | null>(null)
-  const [agentCosts, setAgentCosts] = useState<AgentCostRow[]>([])
   const [missionFilters, setMissionFilters] = useState<MissionFilters>(DEFAULT_MISSION_FILTERS)
   const [missionRows, setMissionRows] = useState<MissionLogEntry[]>([])
   const [missionNextCursor, setMissionNextCursor] = useState<string | null>(null)
   const [missionHasMore, setMissionHasMore] = useState(false)
   const [missionLoadingMore, setMissionLoadingMore] = useState(false)
+  const [costRange, setCostRange] = useState<CostRange>("today")
   const [subscribing, setSubscribing] = useState(false)
   const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
   const [redeployFromStoppedConfirmOpen, setRedeployFromStoppedConfirmOpen] = useState(false)
@@ -342,15 +343,6 @@ export default function DashboardPage() {
         setMissionRows((prev) => opts.append ? [...prev, ...incomingRows] : incomingRows)
         setMissionNextCursor(json.data.activityPage?.nextCursor ?? null)
         setMissionHasMore(Boolean(json.data.activityPage?.hasMore))
-        if (json.data.agentCosts) {
-          setAgentCosts((json.data.agentCosts as { agentName: string; role: string; model: string; calls: number; cost: number }[]).map((c) => ({
-            agentName: c.agentName,
-            role: c.role,
-            model: getModelDisplayName(c.model),
-            calls: c.calls,
-            cost: c.cost,
-          })))
-        }
         const colorMap: Record<string, string> = {}
         for (const a of json.data.agents as AgentInfo[]) {
           colorMap[a.name] = a.color
@@ -962,15 +954,6 @@ export default function DashboardPage() {
     return list
   }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion])
 
-  const costRows = useMemo(() =>
-    [...agentCosts].sort((a, b) => {
-      const ra = ROLE_ORDER[a.role] ?? 1
-      const rb = ROLE_ORDER[b.role] ?? 1
-      if (ra !== rb) return ra - rb
-      return a.agentName.localeCompare(b.agentName)
-    }),
-    [agentCosts],
-  )
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => {
       const ra = ROLE_ORDER[a.role] ?? 1
@@ -1091,45 +1074,71 @@ export default function DashboardPage() {
     void fetchStats({ cursor: missionNextCursor, append: true })
   }
   const recentPreview = missionRows.slice(0, 5)
+  const costSince = (() => {
+    const d = new Date()
+    if (costRange === "today") {
+      d.setHours(0, 0, 0, 0)
+      return d.getTime()
+    }
+    if (costRange === "7d") {
+      d.setDate(d.getDate() - 7)
+      return d.getTime()
+    }
+    return 0
+  })()
+  const estimatedCostRows = sortedAgents.map((agent) => {
+    const calls = missionRows.filter((row) =>
+      row.agentSlug === agent.agentSlug &&
+      row.actionType === "TASK_COMPLETE" &&
+      Date.parse(row.timestamp) >= costSince,
+    ).length
+    const cost = calls * getModelCost(agent.model)
+    return {
+      agentName: agent.name,
+      role: agent.role,
+      color: agent.color,
+      model: getModelDisplayName(agent.model),
+      calls,
+      cost,
+    }
+  })
+  const estimatedCostTotal = estimatedCostRows.reduce((sum, row) => sum + row.cost, 0)
+  const topCostAgent = [...estimatedCostRows].sort((a, b) => b.cost - a.cost || b.calls - a.calls)[0]
+  const headerActions = (
+    <>
+      <Button variant="outline" size="sm" onClick={() => router.push(`/builder/${workspaceId}`)}>
+        Edit in Builder
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2?mode=manage`)}>
+        Manage Tools
+      </Button>
+      {showRedeploy && (
+        <Button
+          variant="outline"
+          size="sm"
+          loading={redeploying}
+          onClick={() => setRedeployConfirmOpen(true)}
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          {redeploying ? "Redeploying…" : "Redeploy"}
+        </Button>
+      )}
+      {isStopped ? (
+        <Button variant="primary" size="sm" onClick={handleResumeAll}>Redeploy</Button>
+      ) : isPaused ? (
+        // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today — do not remove
+        <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setStopConfirmOpen(true)}>
+          <Square className="w-3.5 h-3.5" />
+          Stop
+        </Button>
+      )}
+    </>
+  )
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
-      <PageHeader
-        title={workspace?.name ?? "Dashboard"}
-        breadcrumb="← My Claws"
-        breadcrumbHref="/my-claws"
-        actions={
-          <div className="flex gap-1.5">
-            <Button variant="outline" size="sm" onClick={() => router.push(`/builder/${workspaceId}`)}>
-              Edit in Builder
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => router.push(`/setup/${workspaceId}/step/2?mode=manage`)}>
-              Manage Tools
-            </Button>
-            {showRedeploy && (
-              <Button
-                variant="outline"
-                size="sm"
-                loading={redeploying}
-                onClick={() => setRedeployConfirmOpen(true)}
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                {redeploying ? "Redeploying…" : "Redeploy"}
-              </Button>
-            )}
-            {isStopped ? (
-              <Button variant="primary" size="sm" onClick={handleResumeAll}>Redeploy</Button>
-            ) : isPaused ? (
-              // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today — do not remove
-              <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
-            ) : (
-              <Button variant="outline" size="sm" onClick={() => setStopConfirmOpen(true)}>
-                <Square className="w-3.5 h-3.5" />
-                Stop
-              </Button>
-            )}
-          </div>
-        }
-      />
+      <TextLink href="/my-claws" direction="back" className="mb-3 inline-block">My Claws</TextLink>
 
       {redeployBanner && (
         <AlertBanner
@@ -1155,6 +1164,7 @@ export default function DashboardPage() {
           estimatedCostTodayCalls={stats?.estimatedCostTodayCalls ?? 0}
           configuredChannelIds={channelStatus?.configuredChannelIds ?? []}
           channels={channelStatus?.channels ?? null}
+          actions={headerActions}
         />
       )}
 
@@ -1213,27 +1223,26 @@ export default function DashboardPage() {
               />
               <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Costs">
                 <h2 className="text-[12px] font-semibold text-[var(--tx)]">Costs</h2>
-                {costRows.some((row) => row.calls > 0 || row.cost > 0) ? (
+                {estimatedCostRows.some((row) => row.calls > 0) ? (
                   <div className="mt-2 flex flex-col gap-1.5">
-                    {costRows.map((row) => (
-                      <div key={row.agentName} className="flex items-center justify-between gap-3 text-[11px]">
-                        <TruncatedText className="font-medium text-[var(--tx)]">{row.agentName}</TruncatedText>
-                        <span className="shrink-0 text-[var(--tx2)]">{row.calls.toLocaleString()} calls · {formatCurrencyRounded(row.cost)}</span>
-                      </div>
-                    ))}
+                    <p className="text-[18px] font-semibold text-[var(--tx)]">{formatCurrency(estimatedCostTotal)} est.</p>
+                    <p className="text-[11px] text-[var(--tx2)]">
+                      Top agent: {topCostAgent?.calls ? `${topCostAgent.agentName} (${formatCurrency(topCostAgent.cost)} est.)` : "—"}
+                    </p>
+                    <TextLink direction="forward" onClick={() => switchTab("costs")}>View details</TextLink>
                   </div>
                 ) : (
-                  <p className="mt-2 text-[11px] text-[var(--tx3)]">No recorded per-agent spend yet.</p>
+                  <p className="mt-2 text-[11px] text-[var(--tx3)]">No estimated calls yet.</p>
                 )}
               </section>
             </div>
             <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Recent activity preview">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <h2 className="text-[12px] font-semibold text-[var(--tx)]">Recent activity</h2>
-                <button type="button" className="text-[11px] text-[var(--ac-text)] hover:underline" onClick={() => switchTab("activity")}>View all →</button>
+                <TextLink direction="forward" onClick={() => switchTab("activity")}>View all</TextLink>
               </div>
               {recentPreview.length === 0 ? (
-                <p className="text-[11px] text-[var(--tx3)]">No activity matches the current filters.</p>
+                <p className="text-[11px] text-[var(--tx3)]">No activity yet today.</p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {recentPreview.map((entry) => (
@@ -1275,6 +1284,53 @@ export default function DashboardPage() {
 
           <div hidden={activeTab !== "conversations"}>
             <ConversationsSection workspaceId={workspaceId} status={workspace!.status} />
+          </div>
+
+          <div hidden={activeTab !== "costs"}>
+            <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Costs detail">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[14px] font-semibold text-[var(--tx)]">Costs</h2>
+                  <p className="text-[11px] text-[var(--tx3)]">Estimated from model pricing × call counts; exact billing depends on your provider.</p>
+                </div>
+                <div className="w-[120px]">
+                  <Select value={costRange} onValueChange={(value) => setCostRange(value as CostRange)} options={COST_RANGE_OPTIONS} aria-label="Cost range" />
+                </div>
+              </div>
+              {estimatedCostRows.some((row) => row.calls > 0) ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="border-b border-[var(--bd)] text-left text-[10px] uppercase tracking-[0.04em] text-[var(--tx3)]">
+                        <th className="py-2 font-semibold">Agent</th>
+                        <th className="py-2 font-semibold">Model</th>
+                        <th className="py-2 text-right font-semibold">Calls</th>
+                        <th className="py-2 text-right font-semibold">Estimated cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {estimatedCostRows.map((row) => (
+                        <tr key={row.agentName} className="border-b border-[var(--bd)] last:border-b-0">
+                          <td className="py-2">
+                            <span className="inline-flex min-w-0 items-center gap-1.5">
+                              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: row.color }} aria-hidden="true" />
+                              <TruncatedText className="font-medium text-[var(--tx)]">{row.agentName}</TruncatedText>
+                            </span>
+                          </td>
+                          <td className="py-2"><span className="rounded-[6px] bg-[var(--bg2)] px-[6px] py-[2px] text-[10px] text-[var(--tx2)]">{row.model}</span></td>
+                          <td className="py-2 text-right text-[var(--tx2)]">{row.calls.toLocaleString()}</td>
+                          <td className="py-2 text-right font-semibold text-[var(--tx)]">{row.calls > 0 ? `${formatCurrency(row.cost)} est.` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="rounded-[10px] border border-[var(--bd)] bg-[var(--bg)] p-[14px] text-[11px] text-[var(--tx3)]">
+                  No attributable calls for this range.
+                </div>
+              )}
+            </section>
           </div>
         </>
       )}

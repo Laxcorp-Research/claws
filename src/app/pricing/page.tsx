@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Check, ArrowRight, Gift } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 import { CLAW_TEMPLATES } from "@/data/claw-templates"
+import { TextLink } from "@/components/ui/text-link"
 
 const PAID_TIERS = [
   {
@@ -98,12 +99,7 @@ export default function PricingPage() {
           <p className="text-[13px] text-[var(--tx-muted)]">
             {freeTemplateNames.join(", ")}
           </p>
-          <Link
-            href="/store?price=free"
-            className="text-[11px] text-[var(--ac-text)] mt-2.5 inline-block hover:underline"
-          >
-            Browse free templates →
-          </Link>
+          <TextLink href="/store?price=free" direction="forward" className="mt-2.5 inline-block">Browse free templates</TextLink>
         </div>
 
         {/* Paid template tier cards */}
@@ -128,12 +124,7 @@ export default function PricingPage() {
               <p className="text-[13px] text-[var(--tx-muted)] mt-3">
                 {(TEMPLATE_NAMES_BY_PRICE[tier.priceValue] ?? []).join(", ")}
               </p>
-              <Link
-                href="/store?price=paid"
-                className="text-[11px] text-[var(--ac-text)] mt-3 inline-block hover:underline"
-              >
-                Browse templates →
-              </Link>
+              <TextLink href="/store?price=paid" direction="forward" className="mt-3 inline-block">Browse templates</TextLink>
             </div>
           ))}
         </div>

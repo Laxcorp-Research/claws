@@ -263,6 +263,14 @@ describe("DashboardPage MCP session banner", () => {
     expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=activity")
   })
 
+  it("renders the workspace name exactly once in the consolidated header", async () => {
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    await screen.findByText("Sales Claw")
+    expect(screen.getAllByText("Sales Claw")).toHaveLength(1)
+  })
+
   it("preview View all switches to the Activity tab", async () => {
     mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
     render(<DashboardPage />)
@@ -270,6 +278,15 @@ describe("DashboardPage MCP session banner", () => {
     fireEvent.click(await screen.findByRole("button", { name: "View all →" }))
 
     expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=activity")
+  })
+
+  it("Costs tab keeps zero-call state honest without fabricated $0.00", async () => {
+    mockSearchParams = new URLSearchParams("tab=costs")
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("No attributable calls for this range.")).toBeDefined()
+    expect(screen.queryByText("$0.00")).toBeNull()
   })
 
   it("orders the seven cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {

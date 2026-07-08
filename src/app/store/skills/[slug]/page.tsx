@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import Link from "next/link"
 import { Star, Terminal, Key, Info, Check } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
@@ -11,6 +10,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 import { CustomSelect } from "@/components/ui/custom-select"
+import { TextLink } from "@/components/ui/text-link"
 
 interface SkillData {
   id: string
@@ -183,9 +183,7 @@ export default function SkillDetailPage() {
     return (
       <PageShell background="secondary">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <Link href="/store?tab=skills" className="text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] mb-3 inline-block">
-            ← Back to skills
-          </Link>
+          <TextLink href="/store?tab=skills" direction="back" className="mb-3 inline-block">Back to skills</TextLink>
           <AlertBanner variant="error">
             <p className="font-medium">{error || "Skill not found"}</p>
           </AlertBanner>
@@ -199,9 +197,7 @@ export default function SkillDetailPage() {
   return (
     <PageShell background="secondary">
       <div className="max-w-4xl mx-auto px-4 py-4">
-        <Link href="/store?tab=skills" className="text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] mb-3 inline-block">
-          ← Back to skills
-        </Link>
+        <TextLink href="/store?tab=skills" direction="back" className="mb-3 inline-block">Back to skills</TextLink>
 
         {/* Header: title + install */}
         <div className="flex justify-between items-start mb-4">

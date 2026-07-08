@@ -50,6 +50,26 @@ describe("ChatPanel header", () => {
 
     expect(screen.getByRole("button", { name: "Jump to latest" })).toBeTruthy()
   })
+
+  it("full-height chat keeps the message list as the scroll region and composer visible", () => {
+    const rows: ChatRow[] = Array.from({ length: 100 }, (_, i) => ({
+      id: `m-${i}`,
+      actionType: i % 2 === 0 ? "MESSAGE_RECEIVED" : "MESSAGE_SENT",
+      timestamp: `2026-07-07T12:${String(i % 60).padStart(2, "0")}:00.000Z`,
+      agentName: "Dev Commander",
+      action: `Message ${i}`,
+      detail: `Message ${i}`,
+      messageId: i % 2 === 0 ? `r-${i}` : null,
+      runId: i % 2 === 1 ? `r-${i - 1}` : null,
+      channelId: "webchat",
+    }))
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" fullHeight />)
+
+    expect(screen.getByRole("log").className).toContain("flex-1")
+    expect(screen.getByLabelText("Message")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy()
+  })
 })
 
 describe("reconcileChatMessages — optimistic dedupe by messageId === runId", () => {

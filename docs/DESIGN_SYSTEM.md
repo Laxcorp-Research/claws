@@ -31,6 +31,13 @@
 - Tab: `px-[14px]`, `py-[8px]`, text `12px`, border-bottom `2px`; active uses `var(--tx)`, inactive `var(--tx2)`.
 - Keyboard: ArrowLeft/ArrowRight moves between tabs; Enter/Space activates. Dashboard tabs sync to `?tab=`.
 
+### TextLink
+
+- Purpose: arrow-style text navigation link used for back/forward inline navigation.
+- Variants: back renders `← Label`; forward renders `Label →`.
+- Typography: `11px`, color `var(--tx2)`, hover color `var(--tx)`, underline only when the surrounding surface already uses underlined links.
+- Spacing: inline-block; callers own margin. Same visual treatment as the dashboard breadcrumb.
+
 ### AlertStack
 
 - Purpose: compact top-zone alert surface for the dashboard cockpit.

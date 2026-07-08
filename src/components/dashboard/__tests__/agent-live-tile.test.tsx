@@ -47,4 +47,9 @@ describe("AgentLiveTile controls", () => {
     expect(screen.getByText("PAUSE-PENDING")).toBeDefined()
     expect(screen.getByText("Pause pending — redeploy to apply")).toBeDefined()
   })
+
+  it("renders the agent name through truncation-ready text", () => {
+    render(<AgentLiveTile view={view("WORKER")} onPauseAgent={() => {}} onResumeAgent={() => {}} />)
+    expect(screen.getByText("Worker").className).toContain("truncate")
+  })
 })
