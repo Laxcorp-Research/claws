@@ -57,13 +57,15 @@ export function MissionLog({
         </div>
       </div>
 
-      <MissionLogFilterBar
-        filters={filters}
-        agents={agents}
-        configuredChannelIds={configuredChannelIds}
-        channels={channels}
-        onChange={onFiltersChange}
-      />
+      <div className="sticky top-0 z-20 bg-[var(--bg)] pt-1">
+        <MissionLogFilterBar
+          filters={filters}
+          agents={agents}
+          configuredChannelIds={configuredChannelIds}
+          channels={channels}
+          onChange={onFiltersChange}
+        />
+      </div>
 
       {items.length === 0 ? (
         <div className="rounded-[10px] border border-[var(--bd)] bg-[var(--bg)] p-[14px] text-[11px] text-[var(--tx3)]">

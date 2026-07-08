@@ -1,10 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Modal } from "@/components/ui/modal"
+import { useCallback, useEffect, useState } from "react"
 import { ChatMessage } from "./chat-message"
 import { ProviderChannelBadge } from "./provider-channel-badge"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 export interface ConversationSummaryView {
   sessionKey: string
@@ -132,16 +131,6 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
       .finally(() => setDetailLoading(false))
   }, [workspaceId])
 
-  const modalTitle = useMemo(() => {
-    if (!selected) return "Conversation"
-    return (
-      <span className="inline-flex items-center gap-2">
-        Conversation
-        <ProviderChannelBadge channelId={selected.channelHint} />
-      </span>
-    )
-  }, [selected])
-
   return (
     <section aria-label="Conversations" className="border border-[var(--bd)] rounded-lg mb-6">
       <div className="px-3.5 py-2.5 border-b border-[var(--bd)]">
@@ -159,74 +148,77 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
         ) : conversations.length === 0 ? (
           <p className="text-[11px] text-[var(--tx3)] py-3">No readable gateway conversations yet.</p>
         ) : (
-          <div className="flex flex-col divide-y divide-[var(--bd)]">
-            {conversations.map((conversation) => (
-              <button
-                key={conversation.sessionKey}
-                type="button"
-                onClick={() => openConversation(conversation)}
-                className="py-2 text-left hover:bg-[var(--bg2)] transition-colors"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
+          <div className="grid gap-3 md:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="max-h-[520px] overflow-y-auto rounded-[10px] border border-[var(--bd)]">
+              {conversations.map((conversation) => {
+                const active = selected?.sessionKey === conversation.sessionKey
+                return (
+                  <button
+                    key={conversation.sessionKey}
+                    type="button"
+                    onClick={() => openConversation(conversation)}
+                    className={`w-full border-b border-[var(--bd)] px-3 py-2 text-left transition-colors last:border-b-0 ${active ? "bg-[var(--bg2)]" : "hover:bg-[var(--bg2)]"}`}
+                  >
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[12px] font-medium text-[var(--tx)] truncate">
-                        {conversation.sessionKey}
-                      </span>
+                      <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">{conversation.sessionKey}</TruncatedText>
                       <ProviderChannelBadge channelId={conversation.channelHint} />
                     </div>
-                    <p className="text-[10px] text-[var(--tx3)] mt-0.5">
-                      Last activity {formatTime(conversation.lastActivityAt)}
-                    </p>
+                    <p className="mt-0.5 text-[10px] text-[var(--tx3)]">Last activity {formatTime(conversation.lastActivityAt)}</p>
+                    {typeof conversation.messageCount === "number" && (
+                      <p className="mt-0.5 text-[10px] text-[var(--tx3)]">{conversation.messageCount} message{conversation.messageCount === 1 ? "" : "s"}</p>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="min-h-[360px] rounded-[10px] border border-[var(--bd)] p-3">
+              {!selected ? (
+                <p className="py-10 text-center text-[11px] text-[var(--tx3)]">Select a conversation to view its transcript.</p>
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center justify-between gap-2 border-b border-[var(--bd)] pb-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <TruncatedText className="text-[12px] font-semibold text-[var(--tx)]">{selected.sessionKey}</TruncatedText>
+                        <ProviderChannelBadge channelId={selected.channelHint} />
+                      </div>
+                      <p className="text-[10px] text-[var(--tx3)]">Read-only — reply from the channel itself.</p>
+                    </div>
                   </div>
-                  {typeof conversation.messageCount === "number" && (
-                    <span className="text-[10px] text-[var(--tx3)] shrink-0">
-                      {conversation.messageCount} message{conversation.messageCount === 1 ? "" : "s"}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
+                  <div className="max-h-[470px] overflow-y-auto overflow-x-hidden flex flex-col gap-3">
+                    {detailLoading ? (
+                      <p className="text-[11px] text-[var(--tx3)] py-6 text-center">Loading transcript...</p>
+                    ) : messages.length === 0 ? (
+                      <p className="text-[11px] text-[var(--tx3)] py-6 text-center">No transcript messages available.</p>
+                    ) : (
+                      messages.map((message, index) => (
+                        isToolMessage(message) ? (
+                          <div
+                            key={`${message.at ?? "no-time"}-${index}`}
+                            className="self-start max-w-[85%] rounded-lg border border-[var(--bd)] bg-[var(--bg2)] px-3 py-1.5 text-[11px] leading-snug text-[var(--tx3)] [overflow-wrap:anywhere]"
+                          >
+                            · used {message.name}
+                          </div>
+                        ) : (
+                          <ChatMessage
+                            key={`${message.at ?? "no-time"}-${index}`}
+                            sender={message.role === "user" ? "user" : "agent"}
+                            senderName={roleLabel(message.role)}
+                            timestamp={formatTime(message.at)}
+                            detail={message.content}
+                            action={message.content}
+                          />
+                        )
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
-
-      <Modal
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        title={modalTitle}
-        description="Read-only — reply from the channel itself."
-        size="lg"
-        footer={<Button variant="outline" size="sm" onClick={() => setSelected(null)}>Close</Button>}
-      >
-        <div className="max-h-[420px] overflow-y-auto overflow-x-hidden flex flex-col gap-3">
-          {detailLoading ? (
-            <p className="text-[11px] text-[var(--tx3)] py-6 text-center">Loading transcript...</p>
-          ) : messages.length === 0 ? (
-            <p className="text-[11px] text-[var(--tx3)] py-6 text-center">No transcript messages available.</p>
-          ) : (
-            messages.map((message, index) => (
-              isToolMessage(message) ? (
-                <div
-                  key={`${message.at ?? "no-time"}-${index}`}
-                  className="self-start max-w-[85%] rounded-lg border border-[var(--bd)] bg-[var(--bg2)] px-3 py-1.5 text-[11px] leading-snug text-[var(--tx3)] [overflow-wrap:anywhere]"
-                >
-                  · used {message.name}
-                </div>
-              ) : (
-                <ChatMessage
-                  key={`${message.at ?? "no-time"}-${index}`}
-                  sender={message.role === "user" ? "user" : "agent"}
-                  senderName={roleLabel(message.role)}
-                  timestamp={formatTime(message.at)}
-                  detail={message.content}
-                  action={message.content}
-                />
-              )
-            ))
-          )}
-        </div>
-      </Modal>
     </section>
   )
 }

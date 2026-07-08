@@ -12,8 +12,6 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
-import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
-import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { AlertStack } from "@/components/dashboard/alert-stack"
 import { CommandStrip } from "@/components/dashboard/command-strip"
 import { LiveOpsSection } from "@/components/dashboard/live-ops-section"
@@ -31,6 +29,8 @@ import { ConversationsSection } from "@/components/dashboard/conversations-secti
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
+import { Tabs } from "@/components/ui/tabs"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
 import { isCreditUser } from "@/lib/credits/api-key-source"
@@ -179,6 +179,12 @@ const DEFAULT_MISSION_FILTERS: MissionFilters = {
   q: "",
   showRoutine: true,
 }
+const DASHBOARD_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "chat", label: "Chat" },
+  { id: "activity", label: "Activity" },
+  { id: "conversations", label: "Conversations" },
+]
 
 const CHANNEL_LABELS: Record<ChannelId, string> = {
   telegram: "Telegram",
@@ -559,7 +565,6 @@ export default function DashboardPage() {
 
   const handleAgentPause = (agentId: string) => handleAgentControl(agentId, "pause")
   const handleAgentResume = (agentId: string) => handleAgentControl(agentId, "resume")
-  const handleAgentRestart = (agentId: string) => handleAgentControl(agentId, "restart")
 
   const isPaused = workspace?.status === "PAUSED"
   const isStopped = workspace?.status === "STOPPED"
@@ -1021,24 +1026,6 @@ export default function DashboardPage() {
     workspace.status === "STOPPED" ||
     agents.length === 0
 
-  const briefingLogs = logs.map((l) => ({
-    id: l.id,
-    timestamp: formatTime(l.timestamp),
-    agentName: l.agentName,
-    agentColor: agentColorMapRef.current[l.agentName] ?? AGENT_COLORS["WORKER"],
-    message: l.action,
-    detail: l.detail ?? null,
-    channelId: l.channelId ?? null,
-  }))
-
-  const rosterAgents = sortedAgents.map((a) => ({
-    id: a.id,
-    name: a.name,
-    role: a.role,
-    status: a.status,
-    lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
-    color: a.color,
-  }))
   const missionAgents: MissionAgent[] = sortedAgents.map((a) => ({
     name: a.name,
     role: a.role,
@@ -1061,6 +1048,14 @@ export default function DashboardPage() {
   // EventSource). Filter the live logs to webchat MESSAGE_* rows — channelId
   // keeps external-channel sends/receives (Slack, etc.) out of dashboard chat.
   const orchestratorName = agents.find((a) => a.role === "ORCHESTRATOR")?.name ?? "Orchestrator"
+  const requestedTab = searchParams.get("tab") ?? "overview"
+  const activeTab = DASHBOARD_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : "overview"
+  const switchTab = (tabId: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (tabId === "overview") params.delete("tab")
+    else params.set("tab", tabId)
+    router.replace(`/dashboard/${workspaceId}${params.toString() ? `?${params.toString()}` : ""}`)
+  }
   const chatRows: ChatRow[] = logs
     .filter(
       (l) =>
@@ -1095,6 +1090,7 @@ export default function DashboardPage() {
     if (!missionNextCursor) return
     void fetchStats({ cursor: missionNextCursor, append: true })
   }
+  const recentPreview = missionRows.slice(0, 5)
   return (
     <div className="max-w-5xl mx-auto px-5 py-6">
       <PageHeader
@@ -1164,16 +1160,6 @@ export default function DashboardPage() {
 
       <AlertStack alerts={alertStackItems} />
 
-      {!isEmpty && (
-        <LiveOpsSection
-          agents={liveOpsAgents}
-          events={missionRows}
-          actionLoadingId={agentActionLoadingId}
-          onPauseAgent={handleAgentPause}
-          onResumeAgent={handleAgentResume}
-        />
-      )}
-
       {isEmpty ? (
         <div className="py-8">
           <h1 className="font-serif font-normal text-[28px] leading-tight text-[var(--tx)] mb-3">
@@ -1200,70 +1186,96 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <BriefingHeader
-            name={greetingName}
-            status={workspace!.status}
-            healthStatus={workspace!.healthStatus}
-            lastHealthReason={workspace?.lastHealthReason}
-          />
+          <Tabs tabs={DASHBOARD_TABS} activeTab={activeTab} onTabChange={switchTab} />
 
-          <NeedsYouSection
-            approvals={pendingApprovals.map((a) => ({
-              ...a,
-              agentColor: agentColorMapRef.current[a.agentName] ?? AGENT_COLORS["WORKER"],
-            }))}
-            onApprove={handleApprove}
-            onReject={handleReject}
-          />
+          <div hidden={activeTab !== "overview"}>
+            <BriefingHeader
+              name={greetingName}
+              status={workspace!.status}
+              healthStatus={workspace!.healthStatus}
+              lastHealthReason={workspace?.lastHealthReason}
+            />
+            <LiveOpsSection
+              agents={liveOpsAgents}
+              events={missionRows}
+              actionLoadingId={agentActionLoadingId}
+              onPauseAgent={handleAgentPause}
+              onResumeAgent={handleAgentResume}
+            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <NeedsYouSection
+                approvals={pendingApprovals.map((a) => ({
+                  ...a,
+                  agentColor: agentColorMapRef.current[a.agentName] ?? AGENT_COLORS["WORKER"],
+                }))}
+                onApprove={handleApprove}
+                onReject={handleReject}
+              />
+              <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Costs">
+                <h2 className="text-[12px] font-semibold text-[var(--tx)]">Costs</h2>
+                {costRows.some((row) => row.calls > 0 || row.cost > 0) ? (
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    {costRows.map((row) => (
+                      <div key={row.agentName} className="flex items-center justify-between gap-3 text-[11px]">
+                        <TruncatedText className="font-medium text-[var(--tx)]">{row.agentName}</TruncatedText>
+                        <span className="shrink-0 text-[var(--tx2)]">{row.calls.toLocaleString()} calls · {formatCurrencyRounded(row.cost)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-[var(--tx3)]">No recorded per-agent spend yet.</p>
+                )}
+              </section>
+            </div>
+            <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Recent activity preview">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h2 className="text-[12px] font-semibold text-[var(--tx)]">Recent activity</h2>
+                <button type="button" className="text-[11px] text-[var(--ac-text)] hover:underline" onClick={() => switchTab("activity")}>View all →</button>
+              </div>
+              {recentPreview.length === 0 ? (
+                <p className="text-[11px] text-[var(--tx3)]">No activity matches the current filters.</p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {recentPreview.map((entry) => (
+                    <div key={entry.id} className="flex items-center justify-between gap-3 text-[11px]">
+                      <TruncatedText className="text-[var(--tx2)]">{entry.action}</TruncatedText>
+                      <span className="shrink-0 text-[10px] text-[var(--tx3)]">{formatTime(entry.timestamp)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
 
-          {/* PR-9/B: chat is a PRIMARY surface — a sibling section above the
-              collapsible drill-down, below time-sensitive approvals. */}
-          <ChatPanel
-            workspaceId={workspaceId}
-            status={workspace!.status}
-            rows={chatRows}
-            orchestratorName={orchestratorName}
-            onWake={handleWakeNow}
-            historyEnabled
-          />
+          <div hidden={activeTab !== "chat"}>
+            <ChatPanel
+              workspaceId={workspaceId}
+              status={workspace!.status}
+              rows={chatRows}
+              orchestratorName={orchestratorName}
+              onWake={handleWakeNow}
+              historyEnabled
+              fullHeight
+            />
+          </div>
 
-          <ConversationsSection workspaceId={workspaceId} status={workspace!.status} />
+          <div hidden={activeTab !== "activity"} className="sticky top-0">
+            <MissionLog
+              entries={missionRows}
+              agents={missionAgents}
+              filters={missionFilters}
+              configuredChannelIds={channelStatus?.configuredChannelIds ?? []}
+              channels={channelStatus?.channels ?? null}
+              hasMore={missionHasMore}
+              loadingMore={missionLoadingMore}
+              onFiltersChange={handleMissionFiltersChange}
+              onLoadMore={handleMissionLoadMore}
+            />
+          </div>
 
-          <MissionLog
-            entries={missionRows}
-            agents={missionAgents}
-            filters={missionFilters}
-            configuredChannelIds={channelStatus?.configuredChannelIds ?? []}
-            channels={channelStatus?.channels ?? null}
-            hasMore={missionHasMore}
-            loadingMore={missionLoadingMore}
-            onFiltersChange={handleMissionFiltersChange}
-            onLoadMore={handleMissionLoadMore}
-          />
-
-          <ClawNarrativeRow
-            clawName={workspace!.name}
-            status={workspace!.status}
-            tasksToday={stats?.tasksToday ?? 0}
-            tasksYesterday={stats?.tasksYesterday ?? 0}
-            agentsError={stats?.agentsError ?? 0}
-            pendingReview={stats?.pendingReview ?? 0}
-            agents={rosterAgents}
-            logs={briefingLogs}
-            agentCosts={costRows}
-            showCosts={isCreditUser(workspace?.apiKeySource)}
-            clawPaused={isPaused || isStopped}
-            onPauseAgent={handleAgentPause}
-            onResumeAgent={handleAgentResume}
-            onRestartAgent={handleAgentRestart}
-            actionLoadingId={agentActionLoadingId}
-          />
-
-          <BriefingFooter
-            apiKeySource={workspace!.apiKeySource}
-            consumedCents={credit.totalConsumedCents}
-            creditStatus={credit.status}
-          />
+          <div hidden={activeTab !== "conversations"}>
+            <ConversationsSection workspaceId={workspaceId} status={workspace!.status} />
+          </div>
         </>
       )}
 

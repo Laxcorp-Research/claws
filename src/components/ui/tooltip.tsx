@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect, type ReactNode } from "react"
+import { cloneElement, isValidElement, useId, useState, useRef, useCallback, useEffect, type ReactNode, type ReactElement } from "react"
 import { createPortal } from "react-dom"
 
 interface TooltipProps {
@@ -20,14 +20,10 @@ export function Tooltip({
 }: TooltipProps) {
   const [show, setShow] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, actualSide: side, caretLeft: 0 })
-  const [mounted, setMounted] = useState(false)
+  const tooltipId = useId()
   const triggerRef = useRef<HTMLDivElement>(null)
   const showTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return
@@ -65,6 +61,13 @@ export function Tooltip({
     hideTimeout.current = setTimeout(() => setShow(false), 100)
   }, [])
 
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      clearTimeout(showTimeout.current)
+      setShow(false)
+    }
+  }, [])
+
   useEffect(() => {
     return () => {
       clearTimeout(showTimeout.current)
@@ -75,20 +78,31 @@ export function Tooltip({
   const transform =
     pos.actualSide === "top" ? "translateY(-100%)" : "translateY(0%)"
 
+  const child = isValidElement(children)
+    ? cloneElement(children as ReactElement<{ "aria-describedby"?: string }>, {
+        "aria-describedby": show ? tooltipId : undefined,
+      })
+    : children
+
   return (
     <>
       <div
         ref={triggerRef}
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
+        onFocus={handleEnter}
+        onBlur={handleLeave}
+        onKeyDown={handleKeyDown}
         className="inline-flex items-center max-w-full"
       >
-        {children}
+        {child}
       </div>
       {show &&
-        mounted &&
+        typeof document !== "undefined" &&
         createPortal(
           <div
+            id={tooltipId}
+            role="tooltip"
             className="fixed z-[9999] pointer-events-none"
             style={{ top: pos.top, left: pos.left, transform }}
           >
