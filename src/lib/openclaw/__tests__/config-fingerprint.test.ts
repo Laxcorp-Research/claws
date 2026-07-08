@@ -124,11 +124,12 @@ describe('buildWorkspaceConfigFingerprint', () => {
     // fails and blocks a fleet-wide cry-wolf drift banner.
     const fingerprint = await fingerprintFor(baseWorkspace());
 
-    expect(CONFIG_FINGERPRINT_VERSION).toBe(2);
+    expect(CONFIG_FINGERPRINT_VERSION).toBe(3);
     expect(fingerprint.version).toBe(CONFIG_FINGERPRINT_VERSION);
     expect(fingerprint.versionFingerprints[1]?.hash).toBe('c012ea41abadfd5e4d64e06445613db358988f8c2ed471a1b1e71155fd3ee0c7');
     expect(fingerprint.versionFingerprints[2]?.hash).toBe('426dc9ac6591a231a0be32d130606dc4491ed2cd89657587648d1f1335749ef3');
-    expect(fingerprint.hash).toBe('426dc9ac6591a231a0be32d130606dc4491ed2cd89657587648d1f1335749ef3');
+    expect(fingerprint.versionFingerprints[3]?.hash).toBe('58b933ff08fc5ad3d5e9829b5753003fa72f9c37b83eebcdc2621c10aea5ff0c');
+    expect(fingerprint.hash).toBe('58b933ff08fc5ad3d5e9829b5753003fa72f9c37b83eebcdc2621c10aea5ff0c');
   });
 
   it('tool connect/disconnect changes the hash (mutation guard: dropping toolConnections from inputs fails)', async () => {
@@ -284,7 +285,7 @@ describe('buildWorkspaceConfigFingerprint', () => {
     expect(after.areas.workspace).not.toBe(before.areas.workspace);
   });
 
-  it('cosmetic position, pause, health, and timestamp fields do not change the hash', async () => {
+  it('cosmetic position, health, and timestamp fields do not change the hash', async () => {
     const before = await fingerprintFor(baseWorkspace());
     const next = baseWorkspace({
       healthStatus: 'UNHEALTHY',
@@ -294,11 +295,24 @@ describe('buildWorkspaceConfigFingerprint', () => {
     });
     next.agents[0].positionX = 999;
     next.agents[0].positionY = 999;
-    next.agents[0].isPaused = true;
     next.agents[0].lastActiveAt = new Date('2026-02-01T00:00:00Z');
     const after = await fingerprintFor(next);
 
     expect(after.hash).toBe(before.hash);
+  });
+
+  it('agent pause changes the v3 agents hash while v2 stays comparable (FP1.1 limitation)', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const next = baseWorkspace();
+    next.agents[1].isPaused = true;
+    const after = await fingerprintFor(next);
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.agents).not.toBe(before.areas.agents);
+    // v2 deliberately excludes pause. A workspace deployed with a v2 stored
+    // fingerprint will not banner on a pause-only change until it is rebaselined
+    // by redeploying on v3.
+    expect(after.versionFingerprints[2]?.hash).toBe(before.versionFingerprints[2]?.hash);
   });
 
   it('changing only composioToolRouterSessionId does not change the hash', async () => {

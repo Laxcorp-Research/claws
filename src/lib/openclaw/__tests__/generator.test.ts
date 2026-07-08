@@ -114,6 +114,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         heartbeatTime: null,
         qualityThreshold: 8.0,
         emoji: null,
+        isPaused: false,
         reportsTo: null,
         workspaceId: 'ws-test-1',
         skills: [
@@ -147,6 +148,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         heartbeatTime: null,
         qualityThreshold: 8.0,
         emoji: null,
+        isPaused: false,
         reportsTo: 'agent-orch',
         workspaceId: 'ws-test-1',
         skills: [],
@@ -166,6 +168,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
         heartbeatTime: null,
         qualityThreshold: 8.0,
         emoji: null,
+        isPaused: false,
         reportsTo: 'agent-orch',
         workspaceId: 'ws-test-1',
         skills: [],
@@ -637,6 +640,22 @@ describe('generateWorkspace', () => {
     );
     expect(defaults).toHaveLength(1);
     expect(defaults[0].name).toBe('Test Commander');
+  });
+
+  it('K3 fallback: paused Workers are excluded from runtime agents and get Orchestrator guidance', async () => {
+    const ws = buildMockWorkspace();
+    ws.agents[1].isPaused = true;
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    const worker = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Data Analyst');
+    const orchestrator = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Test Commander');
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+
+    expect(worker).toBeUndefined();
+    expect(orchestrator.subagents.allowAgents).not.toContain('data-analyst');
+    expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('Worker Data Analyst is paused — do not delegate to it.');
   });
 
   it('only orchestrator has meaningful HEARTBEAT.md', async () => {
@@ -1120,6 +1139,18 @@ describe('generateWorkspace', () => {
       // Still has id + agentId regardless.
       expect(typeof taskJob.id).toBe('string');
       expect(taskJob.agentId).toBe('test-commander');
+    });
+
+    it('K3 deterministic pause: excludes paused Worker-targeted scheduled crons', async () => {
+      const ws = withScheduledTasks([
+        { name: 'Worker Followup', schedule: '0 9 * * *', timezone: 'UTC', agentSlug: 'data-analyst', isolated: false, urgent: false, prompt: 'Run worker followup.', fullContext: true },
+      ]);
+      ws.agents[1].isPaused = true;
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+      const cronJobs = JSON.parse(result['cron/jobs.json']);
+      expect(cronJobs.find((j: Record<string, unknown>) => j.name === 'Worker Followup')).toBeUndefined();
     });
 
     it('scheduledTasks ids are deterministic across calls', async () => {

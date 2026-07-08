@@ -16,7 +16,9 @@ import { ClawNarrativeRow } from "@/components/dashboard/claw-narrative-row"
 import { BriefingFooter } from "@/components/dashboard/briefing-footer"
 import { AlertStack } from "@/components/dashboard/alert-stack"
 import { CommandStrip } from "@/components/dashboard/command-strip"
+import { LiveOpsSection } from "@/components/dashboard/live-ops-section"
 import { MissionLog } from "@/components/dashboard/mission-log"
+import type { LiveOpsAgent } from "@/components/dashboard/live-ops-utils"
 import {
   mergeMissionEvent,
   missionQueryParams,
@@ -79,6 +81,8 @@ interface AgentInfo {
   model: string
   agentSlug: string
   status: "healthy" | "paused" | "error" | "offline" | "degraded"
+  isPaused?: boolean
+  pauseApplied?: boolean
   lastActive?: string
 }
 
@@ -1041,6 +1045,17 @@ export default function DashboardPage() {
     color: a.color,
     agentSlug: a.agentSlug,
   }))
+  const liveOpsAgents: LiveOpsAgent[] = sortedAgents.map((a) => ({
+    id: a.id,
+    name: a.name,
+    role: a.role,
+    color: a.color,
+    model: a.model,
+    agentSlug: a.agentSlug,
+    isPaused: Boolean(a.isPaused),
+    pauseApplied: Boolean(a.pauseApplied),
+    lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
+  }))
 
   // PR-9/B: the dashboard chat reuses the SAME activity stream (no second
   // EventSource). Filter the live logs to webchat MESSAGE_* rows — channelId
@@ -1148,6 +1163,16 @@ export default function DashboardPage() {
       )}
 
       <AlertStack alerts={alertStackItems} />
+
+      {!isEmpty && (
+        <LiveOpsSection
+          agents={liveOpsAgents}
+          events={missionRows}
+          actionLoadingId={agentActionLoadingId}
+          onPauseAgent={handleAgentPause}
+          onResumeAgent={handleAgentResume}
+        />
+      )}
 
       {isEmpty ? (
         <div className="py-8">

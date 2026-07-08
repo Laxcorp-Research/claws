@@ -161,11 +161,11 @@ export function ClawNarrativeRow({
                         </div>
                       </div>
                     </div>
-                    {act && (
+                    {act && controllable && (
                       <Button
                         variant={act.kind === "resume" ? "primary" : "outline"}
                         size="xs"
-                        disabled={!controllable || isLoading}
+                        disabled={isLoading}
                         loading={isLoading}
                         onClick={() =>
                           act.kind === "pause"

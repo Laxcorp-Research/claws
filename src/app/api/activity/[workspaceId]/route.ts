@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { gunzipSync } from "node:zlib"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
@@ -32,6 +33,30 @@ const ACTIVITY_TYPES = new Set<string>([
   "TRADE_SKIPPED",
   "CIRCUIT_BREAKER",
 ])
+
+type DeployedSnapshot = {
+  workspaces?: Record<string, { "TOOLS.md"?: string }>
+}
+
+function parseDeployedPauseApplied(configSnapshotGzip: Uint8Array | Buffer | null | undefined): Set<string> {
+  const applied = new Set<string>()
+  if (!configSnapshotGzip) return applied
+  try {
+    const raw = gunzipSync(Buffer.from(configSnapshotGzip)).toString("utf8")
+    const snapshot = JSON.parse(raw) as DeployedSnapshot
+    for (const workspaceFiles of Object.values(snapshot.workspaces ?? {})) {
+      const toolsMd = workspaceFiles["TOOLS.md"]
+      if (typeof toolsMd !== "string") continue
+      for (const line of toolsMd.split("\n")) {
+        const match = line.match(/^- Worker (.+) is paused — do not delegate to it\.$/)
+        if (match?.[1]) applied.add(match[1])
+      }
+    }
+  } catch {
+    return new Set()
+  }
+  return applied
+}
 
 function parseLimit(value: string | null): number {
   const parsed = Number(value)
@@ -135,7 +160,7 @@ export async function GET(
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterdayStart = new Date(todayStart.getTime() - 86_400_000)
 
-  const [agents, tasksToday, tasksYesterday, pendingReview, costAgg, recentLogs, humanRequests, humanResponses, expiredTools] = await Promise.all([
+  const [agents, tasksToday, tasksYesterday, pendingReview, costAgg, recentLogs, humanRequests, humanResponses, expiredTools, latestCompletedDeployment] = await Promise.all([
     prisma.agent.findMany({
       where: { workspaceId },
       select: { id: true, name: true, role: true, color: true, model: true, agentSlug: true, isPaused: true, lastActiveAt: true },
@@ -191,6 +216,11 @@ export async function GET(
       where: { workspaceId, status: { in: ["ERROR", "EXPIRED", "REVOKED"] } },
       select: { displayName: true, status: true, connectionType: true },
     }),
+    prisma.deployment.findFirst({
+      where: { workspaceId, status: "COMPLETED" },
+      orderBy: { completedAt: "desc" },
+      select: { configSnapshotGzip: true },
+    }),
   ])
 
   const hasMoreActivity = recentLogs.length > activityLimit
@@ -242,6 +272,7 @@ export async function GET(
   //      but partially broken; surfaced distinctly so operators don't read
   //      "totally down" into a partial outage)
   //   5. otherwise → "healthy"
+  const deployedPausedWorkerNames = parseDeployedPauseApplied(latestCompletedDeployment?.configSnapshotGzip)
   const agentStatuses = agents.map((a) => {
     let status: "healthy" | "paused" | "error" | "offline" | "degraded"
     if (a.isPaused || workspace!.status === "PAUSED") status = "paused"
@@ -261,6 +292,8 @@ export async function GET(
       model: a.model,
       agentSlug: a.agentSlug,
       status,
+      isPaused: a.isPaused,
+      pauseApplied: a.role === "WORKER" ? deployedPausedWorkerNames.has(a.name) : false,
       lastActive,
     }
   })
