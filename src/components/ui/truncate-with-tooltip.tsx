@@ -4,17 +4,17 @@ import { useRef, useState, useCallback, useEffect } from "react"
 import { Tooltip } from "./tooltip"
 import { cn } from "@/lib/utils"
 
-interface TruncateWithTooltipProps {
+interface TruncatedTextProps {
   children: string
   className?: string
   as?: "span" | "div" | "p" | "td"
 }
 
-export function TruncateWithTooltip({
+export function TruncatedText({
   children,
   className,
   as: Tag = "span",
-}: TruncateWithTooltipProps) {
+}: TruncatedTextProps) {
   const ref = useRef<HTMLElement>(null)
   const [isOverflowing, setIsOverflowing] = useState(false)
 
@@ -26,8 +26,15 @@ export function TruncateWithTooltip({
 
   useEffect(() => {
     checkOverflow()
+    const observer = typeof ResizeObserver !== "undefined" && ref.current
+      ? new ResizeObserver(checkOverflow)
+      : null
+    if (ref.current) observer?.observe(ref.current)
     window.addEventListener("resize", checkOverflow)
-    return () => window.removeEventListener("resize", checkOverflow)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener("resize", checkOverflow)
+    }
   }, [checkOverflow, children])
 
   const element = (
@@ -46,3 +53,5 @@ export function TruncateWithTooltip({
 
   return element
 }
+
+export const TruncateWithTooltip = TruncatedText

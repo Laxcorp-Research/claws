@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { getModelShortDisplayName } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
 import { formatElapsed, type AgentLiveView } from "@/components/dashboard/live-ops-utils"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 interface AgentLiveTileProps {
   view: AgentLiveView
@@ -56,7 +57,7 @@ export function AgentLiveTile({ view, actionLoadingId, onPauseAgent, onResumeAge
         <div className="min-w-0">
           <div className="flex items-center gap-[6px]">
             <span className="h-[8px] w-[8px] rounded-full" style={{ backgroundColor: agent.color }} aria-hidden="true" />
-            <h3 className="truncate text-[13px] font-semibold text-[var(--tx)]">{agent.name}</h3>
+            <h3 className="min-w-0 flex-1 text-[13px] font-semibold text-[var(--tx)]"><TruncatedText>{agent.name}</TruncatedText></h3>
           </div>
           <p className="mt-[1px] text-[10px] text-[var(--tx3)]">{agent.role}</p>
         </div>

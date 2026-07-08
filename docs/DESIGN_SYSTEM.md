@@ -2,6 +2,35 @@
 
 ## 1. Cockpit Dashboard Components
 
+### Tooltip
+
+- Purpose: accessible hover/focus disclosure for clipped or contextual text.
+- Trigger: wraps focusable or text content, `aria-describedby` points at the tooltip while open.
+- Behavior: opens on hover or focus after `300ms`; closes on mouse leave, blur, or `Escape`.
+- Tooltip body: `bg-[var(--tx)]`, white text, `text-[10px]`, `leading-[1.4]`, `px-[8px]`, `py-[5px]`, `rounded-[4px]`, `shadow-modal`, max width `300px`.
+
+### TruncatedText
+
+- Purpose: single-line ellipsis with Tooltip only when text is actually truncated.
+- Element: inline/block span with `overflow-hidden`, `text-overflow: ellipsis`, `white-space: nowrap`, `min-w-0`.
+- Detection: attach tooltip only when `scrollWidth > clientWidth`; recheck on resize via `ResizeObserver` and window resize fallback.
+- Tooltip content: exact full text. Do not show tooltip for non-truncated text.
+
+### Select
+
+- Purpose: platform-styled listbox replacement for native browser dropdowns.
+- Trigger: `h-[30px]`, `px-[8px]`, `rounded-[8px]`, `border border-[var(--bd)]`, `bg-[var(--bg)]`, text `11px`, focus ring `outline-none ring-2 ring-[var(--ac)]/30`.
+- Popover: absolute listbox, `z-50`, `rounded-[8px]`, `border border-[var(--bd)]`, `bg-[var(--bg)]`, `shadow-modal`, `max-h-[220px]`, scrollable.
+- Option: `px-[10px]`, `py-[6px]`, text `11px`; selected option uses `bg-[var(--bg2)]`, `font-medium`; active option uses `bg-[var(--acbg)]`.
+- Keyboard: ArrowUp/ArrowDown moves active option, Enter/Space selects, Escape closes, type-ahead jumps by label prefix. Uses `role="listbox"` / `role="option"`.
+
+### Tabs
+
+- Purpose: dashboard-level navigation without long scrolling.
+- Container: horizontal scroll, `border-b border-[var(--bd)]`, gap `0`.
+- Tab: `px-[14px]`, `py-[8px]`, text `12px`, border-bottom `2px`; active uses `var(--tx)`, inactive `var(--tx2)`.
+- Keyboard: ArrowLeft/ArrowRight moves between tabs; Enter/Space activates. Dashboard tabs sync to `?tab=`.
+
 ### AlertStack
 
 - Purpose: compact top-zone alert surface for the dashboard cockpit.

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 export type StatChipTone = "ok" | "warn" | "err" | "unknown"
 
@@ -26,7 +27,7 @@ export function StatChip({ label, value, dotTone, title, ariaLabel }: StatChipPr
       aria-label={ariaLabel}
     >
       {dotTone && <span className={cn("h-[7px] w-[7px] rounded-full", dotClass[dotTone])} aria-hidden="true" />}
-      <span className="text-[10px] font-medium text-[var(--tx3)]">{label}</span>
+      <TruncatedText className="max-w-[96px] text-[10px] font-medium text-[var(--tx3)]">{label}</TruncatedText>
       <span className="text-[11px] font-semibold text-[var(--tx)]">{value}</span>
     </div>
   )

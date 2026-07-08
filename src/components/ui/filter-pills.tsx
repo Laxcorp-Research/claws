@@ -2,6 +2,7 @@
 
 import { useRef } from "react"
 import { cn } from "@/lib/utils"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 export interface FilterPillOption {
   value: string
@@ -45,7 +46,7 @@ export function FilterPills({ options, value, onChange, className }: FilterPills
                   : "bg-transparent text-[var(--tx2)] border-[var(--bd)] hover:border-[var(--bd2)]",
               )}
             >
-              {option.label}
+              <TruncatedText className="max-w-[120px]">{option.label}</TruncatedText>
             </button>
           )
         })}
