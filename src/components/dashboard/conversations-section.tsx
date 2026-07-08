@@ -159,9 +159,11 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
                     onClick={() => openConversation(conversation)}
                     className={`w-full border-b border-[var(--bd)] px-3 py-2 text-left transition-colors last:border-b-0 ${active ? "bg-[var(--bg2)]" : "hover:bg-[var(--bg2)]"}`}
                   >
-                    <div className="flex items-center gap-1.5">
-                      <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">{conversation.sessionKey}</TruncatedText>
-                      <ProviderChannelBadge channelId={conversation.channelHint} />
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 flex-1">
+                        <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">{conversation.sessionKey}</TruncatedText>
+                      </span>
+                      <ProviderChannelBadge channelId={conversation.channelHint} className="flex-none" />
                     </div>
                     <p className="mt-0.5 text-[10px] text-[var(--tx3)]">Last activity {formatTime(conversation.lastActivityAt)}</p>
                     {typeof conversation.messageCount === "number" && (
@@ -179,9 +181,11 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
                 <>
                   <div className="mb-3 flex items-center justify-between gap-2 border-b border-[var(--bd)] pb-2">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <TruncatedText className="text-[12px] font-semibold text-[var(--tx)]">{selected.sessionKey}</TruncatedText>
-                        <ProviderChannelBadge channelId={selected.channelHint} />
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 flex-1">
+                          <TruncatedText className="text-[12px] font-semibold text-[var(--tx)]">{selected.sessionKey}</TruncatedText>
+                        </span>
+                        <ProviderChannelBadge channelId={selected.channelHint} className="flex-none" />
                       </div>
                       <p className="text-[10px] text-[var(--tx3)]">Read-only — reply from the channel itself.</p>
                     </div>

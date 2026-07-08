@@ -131,8 +131,8 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
 
   return (
     <div className={cn("px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0", className)}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {isError ? (
             <AlertTriangle className="w-3.5 h-3.5 text-[var(--err)] shrink-0" aria-hidden="true" />
           ) : needsCredentials ? (
@@ -143,7 +143,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
               ariaLabel={isExpiredOrRevoked ? `${name} OAuth connection expired` : undefined}
             />
           )}
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="text-xs font-semibold"><TruncatedText>{name}</TruncatedText></div>
             {effectiveDescription && <div className={cn("text-[10px]", effectiveDescriptionTone)}><TruncatedText>{effectiveDescription}</TruncatedText></div>}
             {connectionStatus === "connecting" && <div className="text-[10px] text-[var(--ac-text)] mt-0.5 inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Connecting...</div>}
@@ -151,7 +151,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
             {needsCredentials && <div className="text-[10px] text-[var(--warn)] mt-0.5">Incomplete credentials</div>}
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-none items-center gap-1.5">
           {(connectionStatus === "connected" || isTesting) && (
             <>
               <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>

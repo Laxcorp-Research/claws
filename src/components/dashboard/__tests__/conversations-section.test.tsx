@@ -66,7 +66,7 @@ describe("ConversationsSection", () => {
     render(<ConversationsSection workspaceId="ws-1" status="RUNNING" />)
 
     const key = await screen.findByText("agent:dev-commander:main")
-    expect(key.className).toContain("truncate")
+    expect(key.className).toContain("text-ellipsis")
   })
 
   it("renders sessions with provider tags only for known providers", async () => {

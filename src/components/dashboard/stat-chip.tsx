@@ -26,9 +26,11 @@ export function StatChip({ label, value, dotTone, title, ariaLabel }: StatChipPr
       title={title}
       aria-label={ariaLabel}
     >
-      {dotTone && <span className={cn("h-[7px] w-[7px] rounded-full", dotClass[dotTone])} aria-hidden="true" />}
-      <TruncatedText className="max-w-[96px] text-[10px] font-medium text-[var(--tx3)]">{label}</TruncatedText>
-      <span className="text-[11px] font-semibold text-[var(--tx)]">{value}</span>
+      {dotTone && <span className={cn("h-[7px] w-[7px] flex-none rounded-full", dotClass[dotTone])} aria-hidden="true" />}
+      <span className="min-w-0 flex-1">
+        <TruncatedText className="max-w-[96px] text-[10px] font-medium text-[var(--tx3)]">{label}</TruncatedText>
+      </span>
+      <span className="flex-none text-[11px] font-semibold text-[var(--tx)]">{value}</span>
     </div>
   )
 }
