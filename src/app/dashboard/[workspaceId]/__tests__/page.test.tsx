@@ -5,10 +5,11 @@ import type { ReactNode } from "react"
 
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
+let mockSearchParams = new URLSearchParams()
 vi.mock("next/navigation", () => ({
   useParams: () => ({ workspaceId: "ws-1" }),
   useRouter: () => ({ push: mockPush, replace: mockReplace, refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
 }))
 
 vi.mock("next-auth/react", () => ({
@@ -142,7 +143,19 @@ function activityPayload(opts: {
       pendingApprovals: [],
       spend: { thisMonth: 0, limit: 50, percent: 0 },
       expiredTools,
-      recentLogs: [],
+      recentLogs: [
+        {
+          id: "log-1",
+          timestamp: "2026-07-07T12:00:00.000Z",
+          agentName: "Orchestrator",
+          agentSlug: "orchestrator",
+          action: "Task started: draft brief",
+          actionType: "TASK_START",
+          detail: null,
+          runId: "run-1",
+          channelId: "webchat",
+        },
+      ],
       agentCosts: [],
     },
   }
@@ -176,6 +189,7 @@ function mockFetch(opts: {
 describe("DashboardPage MCP session banner", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSearchParams = new URLSearchParams()
     mockFetch({ mcpSessionHealthStatus: "DEAD" })
   })
 
@@ -238,6 +252,24 @@ describe("DashboardPage MCP session banner", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Redeploy" })[0])
 
     expect(await screen.findByText("Memory backup is stale — recent agent memory may be lost.")).toBeDefined()
+  })
+
+  it("syncs dashboard tabs to the URL", async () => {
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Activity" }))
+
+    expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=activity")
+  })
+
+  it("preview View all switches to the Activity tab", async () => {
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    fireEvent.click(await screen.findByRole("button", { name: "View all →" }))
+
+    expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=activity")
   })
 
   it("orders the seven cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {

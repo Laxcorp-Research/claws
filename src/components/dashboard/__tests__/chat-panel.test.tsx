@@ -38,6 +38,18 @@ describe("ChatPanel header", () => {
       screen.getByText("Direct line to Dev Commander. Conversations on connected channels appear in the activity feed."),
     ).toBeTruthy()
   })
+
+  it("shows a jump-to-latest pill when the user scrolls up", () => {
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" fullHeight />)
+    const log = screen.getByRole("log")
+    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 1000 })
+    Object.defineProperty(log, "clientHeight", { configurable: true, value: 300 })
+    Object.defineProperty(log, "scrollTop", { configurable: true, value: 100 })
+
+    fireEvent.scroll(log)
+
+    expect(screen.getByRole("button", { name: "Jump to latest" })).toBeTruthy()
+  })
 })
 
 describe("reconcileChatMessages — optimistic dedupe by messageId === runId", () => {

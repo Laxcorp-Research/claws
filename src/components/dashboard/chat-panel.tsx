@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage, type ChatBubbleStatus } from "./chat-message"
+import { cn } from "@/lib/utils"
 
 // Mirror of the send endpoint cap (src/app/api/workspaces/[id]/chat/route.ts
 // MESSAGE_MAX_CHARS) so the composer can't compose something the server will
@@ -382,6 +383,8 @@ interface ChatPanelProps {
   onWake?: () => void
   historyEnabled?: boolean
   historyPageSize?: number
+  fullHeight?: boolean
+  className?: string
 }
 
 interface ChatHistoryResponse {
@@ -397,6 +400,8 @@ export function ChatPanel({
   onWake,
   historyEnabled = false,
   historyPageSize = 30,
+  fullHeight = false,
+  className,
 }: ChatPanelProps) {
   const [historyRows, setHistoryRows] = useState<ChatRow[]>([])
   const [nextHistoryCursor, setNextHistoryCursor] = useState<string | null>(null)
@@ -411,6 +416,7 @@ export function ChatPanel({
   // Start pinned; recomputed on every user scroll. When the user scrolls up to
   // read history this goes false and new messages stop yanking them down.
   const nearBottomRef = useRef(true)
+  const [showJump, setShowJump] = useState(false)
 
   const sendable = SENDABLE_STATUSES.has(status)
 
@@ -482,7 +488,10 @@ export function ChatPanel({
 
   const handleScroll = useCallback(() => {
     const el = listRef.current
-    if (el) nearBottomRef.current = isNearBottom(el)
+    if (el) {
+      nearBottomRef.current = isNearBottom(el)
+      setShowJump(!nearBottomRef.current)
+    }
   }, [])
 
   // Pin to newest ONLY when the user is already near the bottom. Scrolls the
@@ -490,7 +499,12 @@ export function ChatPanel({
   // message lands or the working indicator toggles.
   useEffect(() => {
     const el = listRef.current
-    if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight
+    if (el && nearBottomRef.current) {
+      el.scrollTop = el.scrollHeight
+      setShowJump(false)
+    } else if (el) {
+      setShowJump(true)
+    }
   }, [messages.length, working])
 
   useLayoutEffect(() => {
@@ -607,7 +621,7 @@ export function ChatPanel({
   }
 
   return (
-    <section aria-label="Web chat" className="border border-[var(--bd)] rounded-lg mb-6">
+    <section aria-label="Web chat" className={cn("border border-[var(--bd)] rounded-lg mb-6", fullHeight && "flex min-h-[calc(100vh-260px)] flex-col", className)}>
       <div className="px-3.5 py-2.5 border-b border-[var(--bd)]">
         <h2 className="text-[12px] font-semibold text-[var(--tx)]">Web chat</h2>
         <p className="text-[11px] text-[var(--tx3)] mt-0.5">
@@ -618,10 +632,25 @@ export function ChatPanel({
       <div
         ref={listRef}
         onScroll={handleScroll}
-        className="flex flex-col gap-3 p-3.5 min-h-[120px] max-h-[360px] overflow-y-auto"
+        className={cn("flex flex-col gap-3 p-3.5 min-h-[120px] overflow-y-auto", fullHeight ? "max-h-none flex-1" : "max-h-[360px]")}
         role="log"
         aria-label="Chat messages"
       >
+        {showJump && (
+          <button
+            type="button"
+            onClick={() => {
+              const el = listRef.current
+              if (!el) return
+              el.scrollTop = el.scrollHeight
+              nearBottomRef.current = true
+              setShowJump(false)
+            }}
+            className="sticky top-0 z-10 mx-auto rounded-full border border-[var(--bd)] bg-[var(--bg)] px-3 py-1 text-[11px] font-medium text-[var(--ac-text)] shadow-modal"
+          >
+            Jump to latest
+          </button>
+        )}
         {historyEnabled && nextHistoryCursor && (
           <div className="flex justify-center pb-1">
             <Button variant="outline" size="xs" onClick={() => void loadOlder()} loading={olderLoading}>

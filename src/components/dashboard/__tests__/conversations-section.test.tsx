@@ -72,14 +72,13 @@ describe("ConversationsSection", () => {
     expect(screen.getAllByText(/^via /)).toHaveLength(1)
   })
 
-  it("opens a read-only transcript modal with chat-bubble rendering", async () => {
+  it("opens a read-only two-pane transcript with chat-bubble rendering", async () => {
     mockFetch()
 
     render(<ConversationsSection workspaceId="ws-1" status="RUNNING" />)
 
     fireEvent.click(await screen.findByRole("button", { name: /agent:dev-commander:main/i }))
 
-    expect(await screen.findByRole("dialog")).toBeTruthy()
     expect(screen.getByText("Read-only — reply from the channel itself.")).toBeTruthy()
     await waitFor(() => expect(screen.getByText("hello from telegram")).toBeTruthy())
     expect(screen.getByText("· used web_search")).toBeTruthy()

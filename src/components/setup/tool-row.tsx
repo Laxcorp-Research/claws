@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 import { StatusDot } from "@/components/ui/status-dot"
 import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react"
 import type { ToolAuthMode } from "@/data/tool-catalog"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 export type ToolRowStatus =
   | "connected"
@@ -143,8 +144,8 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
             />
           )}
           <div>
-            <div className="text-xs font-semibold">{name}</div>
-            {effectiveDescription && <div className={cn("text-[10px]", effectiveDescriptionTone)}>{effectiveDescription}</div>}
+            <div className="text-xs font-semibold"><TruncatedText>{name}</TruncatedText></div>
+            {effectiveDescription && <div className={cn("text-[10px]", effectiveDescriptionTone)}><TruncatedText>{effectiveDescription}</TruncatedText></div>}
             {connectionStatus === "connecting" && <div className="text-[10px] text-[var(--ac-text)] mt-0.5 inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Connecting...</div>}
             {isError && !errorMessage && <div className="text-[10px] text-[var(--err)] mt-0.5">Connection failed</div>}
             {needsCredentials && <div className="text-[10px] text-[var(--warn)] mt-0.5">Incomplete credentials</div>}
