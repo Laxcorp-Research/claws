@@ -38,7 +38,7 @@ export function TruncatedText({
   }, [checkOverflow, children])
 
   const element = (
-    <Tag ref={ref as React.Ref<never>} className={cn("truncate", className)}>
+    <Tag ref={ref as React.Ref<never>} className={cn("block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap", className)}>
       {children}
     </Tag>
   )

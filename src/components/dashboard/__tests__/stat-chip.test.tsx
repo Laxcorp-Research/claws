@@ -8,6 +8,6 @@ afterEach(() => cleanup())
 describe("StatChip", () => {
   it("renders the label through truncation-ready text", () => {
     render(<StatChip label="Very long stat chip label" value="42" />)
-    expect(screen.getByText("Very long stat chip label").className).toContain("truncate")
+    expect(screen.getByText("Very long stat chip label").className).toContain("text-ellipsis")
   })
 })
