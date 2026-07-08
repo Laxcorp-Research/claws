@@ -45,6 +45,29 @@
 - Expand affordance: chevron `10px`; expanded sequence reuses `ActivityLogEntry` rows inside `mt-[8px]`, `border-t border-[var(--bd)]`, `pt-[6px]`.
 - Page-boundary note: `10px`, color `var(--tx3)`, text `Earlier events may be on the previous page.` rendered when a run has terminal/non-start events but no `TASK_START` on this page.
 
+### AgentLiveTile
+
+- Purpose: Live Ops tile for a single agent's current state.
+- Container: `rounded-[12px]`, `border border-[var(--bd)]`, `bg-[var(--bg)]`, `px-[12px]`, `py-[10px]`, `min-h-[96px]`; Orchestrator tile spans `1.5x` by using `md:col-span-2` in the grid.
+- Grid: parent uses `grid`, `gap-[8px]`, `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`; Orchestrator tile may span two columns.
+- Header: role color dot `8px`, agent name `13px`/`600`/`var(--tx)`, role label `10px`/`var(--tx3)`.
+- Model tag: `10px`, `px-[6px]`, `py-[2px]`, `rounded-[6px]`, `bg-[var(--bg2)]`, `color var(--tx2)`.
+- State line: `12px`, `600`; WORKING uses `var(--ac-text)`, IDLE `var(--tx2)`, PAUSED `var(--warn)`, PAUSE-PENDING `var(--warn)`, ERROR `var(--err)`.
+- Detail line: `11px`, `color var(--tx3)`, `mt-[3px]`; task names line-clamp to 2 lines.
+- Routine variant: add `bg-[var(--bg2)]` and `color var(--tx3)` to the detail; label text starts with `Routine`.
+- Controls: only Worker tiles render Pause/Resume. Button is existing `Button size="xs"`; Orchestrator/Critic render no control slot.
+- Pending pause copy: `Pause pending — redeploy to apply`; never render `Paused` unless deployed config agrees with DB pause truth.
+
+### RunChain
+
+- Purpose: compact active-run path showing which agents have participated.
+- Container: `rounded-[12px]`, `border border-[var(--bd)]`, `bg-[var(--bg)]`, `px-[12px]`, `py-[9px]`, `mb-[10px]`.
+- Header: `10px`, uppercase, `font-semibold`, `tracking-[0.04em]`, `color var(--tx3)`, `mb-[6px]`.
+- AgentPill: inline-flex, `h-[26px]`, `px-[9px]`, `gap-[6px]`, `rounded-[999px]`, `border border-[var(--bd)]`, text `11px`/`600`.
+- Active hop: `border-color var(--ac)`, `background var(--acbg)`, text `var(--ac-text)`.
+- Connector: `12px` arrow `→`, `color var(--tx3)`, horizontal gap `6px`.
+- Empty state: do not render when no active non-routine run exists.
+
 ## 4. API Key Modal
 
 - Title: `"Connect " + <span tool name>`.

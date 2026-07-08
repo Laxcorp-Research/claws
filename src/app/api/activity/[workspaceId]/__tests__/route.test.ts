@@ -9,6 +9,7 @@
 // agent.isPaused). These tests lock the precedence and the
 // agentsRunning headcount fix.
 
+import { gzipSync } from "node:zlib";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prismaMock } from "@/test/helpers/mock-prisma";
 import { createMockRequest } from "@/test/helpers/mock-request";
@@ -40,12 +41,14 @@ type WsOverrides = {
   status?: "RUNNING" | "PAUSED" | "HIBERNATED" | "ERROR" | "STOPPED";
   healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY" | "UNKNOWN";
   isPaused?: boolean;
+  workerPaused?: boolean;
   lastHealthReason?: string | null;
   lastHealthCheck?: Date | null;
   expiredTools?: Array<{ displayName: string; status: string; connectionType: string }>;
   todayCallGroups?: Array<{ agentSlug: string | null; _count: { _all: number } }>;
   query?: string;
   recentRows?: unknown[];
+  deployedPausedWorkers?: string[];
 };
 
 async function callRoute(opts: WsOverrides) {
@@ -83,7 +86,7 @@ async function callRoute(opts: WsOverrides) {
       color: "#fff",
       model: "claude",
       agentSlug: "worker",
-      isPaused: false,
+      isPaused: opts.workerPaused ?? false,
       lastActiveAt: null,
     },
   ] as never);
@@ -95,6 +98,17 @@ async function callRoute(opts: WsOverrides) {
   });
   (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue((opts.todayCallGroups ?? []) as never);
   (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue((opts.expiredTools ?? []) as never);
+  (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+    configSnapshotGzip: gzipSync(JSON.stringify({
+      workspaces: {
+        "workspace-test-commander": {
+          "TOOLS.md": (opts.deployedPausedWorkers ?? [])
+            .map((name) => `- Worker ${name} is paused — do not delegate to it.`)
+            .join("\n"),
+        },
+      },
+    })),
+  } as never);
   // The route also runs $queryRawUnsafe twice. Mock that.
   (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
 
@@ -246,6 +260,17 @@ describe("K1 command strip data", () => {
   });
 });
 
+describe("K3 pause pending truth", () => {
+  it("returns pauseApplied from last deployed snapshot, not DB-only pause state", async () => {
+    const pending = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY", workerPaused: true, deployedPausedWorkers: [] });
+    expect(pending.agents[1].isPaused).toBe(true);
+    expect(pending.agents[1].pauseApplied).toBe(false);
+
+    const applied = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY", workerPaused: true, deployedPausedWorkers: ["Worker"] });
+    expect(applied.agents[1].pauseApplied).toBe(true);
+  });
+});
+
 describe("K2 activity pagination and filters", () => {
   it("uses the extracted channelId column with capped cursor pagination filters", async () => {
     await callRoute({
@@ -326,6 +351,7 @@ describe("PR-4: recentLogs detail passthrough", () => {
     (prismaMock.activityLog.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { apiCost: 0 } } as never);
     (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
     (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
+    (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null as never);
     (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
     (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { where?: { actionType?: unknown } }) => {
       // Only the recentLogs query has no actionType filter.
