@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { TextLink } from "@/components/ui/text-link"
 import { Check, Loader2 } from "lucide-react"
 import type { ToolCredentialField } from "@/data/tool-catalog"
 
@@ -225,14 +226,7 @@ export function CredentialsModal({
         )}
         {helpUrl && !credentialFields.some((f) => f.helpUrl) && (
           <p className="text-[11px] text-[var(--tx3)]">
-            <a
-              href={helpUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline transition-colors"
-            >
-              Where do I find these? →
-            </a>
+            <TextLink href={helpUrl} direction="forward" target="_blank" rel="noopener noreferrer">Where do I find these?</TextLink>
           </p>
         )}
       </div>

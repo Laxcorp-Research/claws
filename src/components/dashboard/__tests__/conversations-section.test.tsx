@@ -60,6 +60,15 @@ function mockFetch() {
 }
 
 describe("ConversationsSection", () => {
+  it("renders conversation session keys through truncation-ready text", async () => {
+    mockFetch()
+
+    render(<ConversationsSection workspaceId="ws-1" status="RUNNING" />)
+
+    const key = await screen.findByText("agent:dev-commander:main")
+    expect(key.className).toContain("truncate")
+  })
+
   it("renders sessions with provider tags only for known providers", async () => {
     mockFetch()
 

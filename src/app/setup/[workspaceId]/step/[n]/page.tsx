@@ -19,6 +19,7 @@ import { DriftBanner, formatChangedAreas } from "@/components/shared/drift-banne
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { TextLink } from "@/components/ui/text-link"
 import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { Modal } from "@/components/ui/modal"
@@ -418,7 +419,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       {/* Navigation */}
       <div className="flex justify-between">
         {isFromBuilder ? (
-          <Button variant="outline" onClick={() => router.push(`/builder/${workspaceId}`)}>← Back to Builder</Button>
+          <TextLink direction="back" onClick={() => router.push(`/builder/${workspaceId}`)}>Back to Builder</TextLink>
         ) : (
           <div />
         )}
@@ -1419,7 +1420,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
       {isManageMode ? (
         <div className="flex justify-between">
-          <Button variant="outline" onClick={() => router.push(`/builder/${workspaceId}`)}>← Back to Builder</Button>
+          <TextLink direction="back" onClick={() => router.push(`/builder/${workspaceId}`)}>Back to Builder</TextLink>
           <Button variant="primary" onClick={handleManageDone}>Done</Button>
         </div>
       ) : (
@@ -2462,14 +2463,7 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
           ))}
           {activeChannel?.helpUrl && (
             <p className="text-[11px] text-[var(--tx3)]">
-              <a
-                href={activeChannel.helpUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline transition-colors"
-              >
-                Setup guide →
-              </a>
+              <TextLink href={activeChannel.helpUrl} direction="forward" target="_blank" rel="noopener noreferrer">Setup guide</TextLink>
             </p>
           )}
         </div>
