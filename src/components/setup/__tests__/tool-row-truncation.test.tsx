@@ -15,6 +15,6 @@ describe("ToolRow truncation adoption", () => {
       />,
     )
 
-    expect(screen.getByText("Very Long Tool Name").className).toContain("truncate")
+    expect(screen.getByText("Very Long Tool Name").className).toContain("text-ellipsis")
   })
 })

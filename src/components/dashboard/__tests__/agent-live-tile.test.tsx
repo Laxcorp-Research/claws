@@ -50,6 +50,6 @@ describe("AgentLiveTile controls", () => {
 
   it("renders the agent name through truncation-ready text", () => {
     render(<AgentLiveTile view={view("WORKER")} onPauseAgent={() => {}} onResumeAgent={() => {}} />)
-    expect(screen.getByText("Worker").className).toContain("truncate")
+    expect(screen.getByText("Worker").className).toContain("text-ellipsis")
   })
 })
