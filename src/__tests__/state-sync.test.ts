@@ -1,10 +1,5 @@
 // PR-1: tests for the shared container state-sync module
-// (container/state-sync.mjs) — the single source of truth for bundling the
-// OpenClaw data dir + uploading it, used by BOTH process-manager (interval/
-// SIGTERM) and the gateway plugin's /internal/sync-now route.
-//
-// Lives under src/__tests__/ so vitest's include picks it up; the module is
-// imported via a relative path (it's baked into the image, not the Next app).
+// (container/state-sync.mjs) — Blob-only transport (token → put → finalize).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import fs from "node:fs"
@@ -20,6 +15,7 @@ const ENV_KEYS = ["CLAWS_METERING_ENDPOINT", "CLAWS_METERING_SECRET", "CLAWS_WOR
 const saved: Record<string, string | undefined> = {}
 
 beforeEach(async () => {
+  vi.resetModules()
   mod = await import("../../container/state-sync.mjs")
   for (const k of ENV_KEYS) saved[k] = process.env[k]
   process.env.CLAWS_METERING_ENDPOINT = "https://app.example/api/internal/metering"
@@ -33,6 +29,42 @@ afterEach(() => {
     else process.env[k] = saved[k]
   }
 })
+
+function blobHappyFetch(finalizeBody: Record<string, unknown> = { success: true, count: 1 }) {
+  return vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes("/blob-token")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          pathname: "runtime-state/ws-test/x.gz",
+          clientToken: "client-token",
+          storeId: "storeTEST",
+          apiUrl: "https://vercel.com/api/blob",
+        }),
+      }
+    }
+    if (u.includes("vercel.com/api/blob")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          url: "https://storeTEST.public.blob.vercel-storage.com/runtime-state/ws-test/x.gz",
+        }),
+        text: async () => "",
+      }
+    }
+    if (u.includes("/finalize")) {
+      return { ok: true, status: 200, json: async () => finalizeBody }
+    }
+    if (u.includes("/state/upload")) {
+      throw new Error("legacy /upload must not be called — Blob-only transport")
+    }
+    throw new Error(`unexpected fetch ${u}`)
+  })
+}
 
 describe("bundleRuntimeState", () => {
   it("includes runtime files (sessions, MEMORY.md) and excludes config/node_modules/dot-dirs", () => {
@@ -55,42 +87,59 @@ describe("bundleRuntimeState", () => {
       expect(keys).toContain("workspace-orchestrator/MEMORY.md")
       expect(keys).not.toContain("openclaw.json")
       expect(keys).not.toContain(".env")
-      expect(keys.some((k) => k.startsWith("cron/"))).toBe(false)
-      expect(keys.some((k) => k.startsWith("node_modules/"))).toBe(false)
+      expect(keys.some((k: string) => k.startsWith("cron/"))).toBe(false)
+      expect(keys.some((k: string) => k.startsWith("node_modules/"))).toBe(false)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
   })
 })
 
-describe("runStateSync — status mapping (the persist confirmation contract)", () => {
+describe("runStateSync — Blob-only status mapping", () => {
   const nonEmptyBundle = () => ({ files: { "agents/main/sessions/s1.jsonl": "e30=" }, totalSize: 2 })
 
-  it("status 'persisted' when the server confirms count>=1", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true, count: 1 }) })
+  it("status 'persisted' when finalize confirms count>=1", async () => {
+    const fetchImpl = blobHappyFetch({ success: true, count: 1 })
     const r = await mod.runStateSync({ bundleFn: nonEmptyBundle, fetchImpl })
     expect(r.status).toBe("persisted")
     expect(r.count).toBe(1)
+    expect(r.path).toBe("blob")
   })
 
-  it("status 'rejected' when the server accepts but count===0 (row missing)", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true, count: 0 }) })
+  it("status 'rejected' when finalize accepts but count===0 (row missing)", async () => {
+    const fetchImpl = blobHappyFetch({ success: true, count: 0 })
     const r = await mod.runStateSync({ bundleFn: nonEmptyBundle, fetchImpl })
     expect(r.status).toBe("rejected")
     expect(r.count).toBe(0)
   })
 
-  it("status 'rejected' (with httpStatus) when the server returns non-ok", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 413, json: async () => ({}) })
+  it("status 'rejected' (with httpStatus) when blob-token returns non-ok", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (String(url).includes("/blob-token")) {
+        return { ok: false, status: 503, json: async () => ({}) }
+      }
+      throw new Error("unexpected " + url)
+    })
     const r = await mod.runStateSync({ bundleFn: nonEmptyBundle, fetchImpl })
     expect(r.status).toBe("rejected")
-    expect(r.httpStatus).toBe(413)
+    expect(r.httpStatus).toBe(503)
   })
 
-  it("status 'error' when the upload throws", async () => {
+  it("status 'error' when the first fetch throws", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"))
     const r = await mod.runStateSync({ bundleFn: nonEmptyBundle, fetchImpl })
     expect(r.status).toBe("error")
+  })
+
+  it("always uses blob-token → put → finalize (never legacy /upload)", async () => {
+    const fetchImpl = blobHappyFetch()
+    const r = await mod.runStateSync({ bundleFn: nonEmptyBundle, fetchImpl })
+    expect(r.status).toBe("persisted")
+    const urls = fetchImpl.mock.calls.map((c: unknown[]) => String(c[0]))
+    expect(urls.some((u: string) => u.includes("/blob-token"))).toBe(true)
+    expect(urls.some((u: string) => u.includes("vercel.com/api/blob"))).toBe(true)
+    expect(urls.some((u: string) => u.includes("/finalize"))).toBe(true)
+    expect(urls.some((u: string) => u.includes("/state/upload"))).toBe(false)
   })
 
   it("status 'empty' when there are no runtime files (nothing to persist)", async () => {
@@ -112,11 +161,14 @@ describe("runStateSync — status mapping (the persist confirmation contract)", 
 describe("runStateSync — per-process in-flight guard", () => {
   it("coalesces concurrent callers into ONE bundle/upload; both resolve identically", async () => {
     let releaseUpload: (v: unknown) => void = () => {}
-    const uploadGate = new Promise((res) => { releaseUpload = res })
+    const uploadGate = new Promise((res) => {
+      releaseUpload = res
+    })
     const bundleFn = vi.fn(() => ({ files: { "agents/main/sessions/s1.jsonl": "e30=" }, totalSize: 2 }))
-    const fetchImpl = vi.fn(async () => {
+    const base = blobHappyFetch()
+    const fetchImpl = vi.fn(async (url: string) => {
       await uploadGate
-      return { ok: true, status: 200, json: async () => ({ success: true, count: 1 }) }
+      return base(url)
     })
 
     const p1 = mod.runStateSync({ bundleFn, fetchImpl })
@@ -126,20 +178,19 @@ describe("runStateSync — per-process in-flight guard", () => {
     releaseUpload(undefined)
     const [r1, r2] = await Promise.all([p1, p2])
 
-    // Mutation guard: remove the in-flight guard and these become 2 each.
     expect(bundleFn).toHaveBeenCalledTimes(1)
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(r1).toBe(r2) // same resolved object — both awaited the one in-flight sync
+    expect(r1).toBe(r2)
     expect(r1.status).toBe("persisted")
     expect(mod.__isSyncInFlight()).toBe(false)
   })
 
   it("a fresh call after completion starts a new sync (guard clears)", async () => {
-    const bundleFn = vi.fn(() => ({ files: { "a": "e30=" }, totalSize: 2 }))
-    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ count: 1 }) }))
+    const bundleFn = vi.fn(() => ({ files: { a: "e30=" }, totalSize: 2 }))
+    const fetchImpl = blobHappyFetch()
     await mod.runStateSync({ bundleFn, fetchImpl })
     await mod.runStateSync({ bundleFn, fetchImpl })
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    // Each sync: blob-token + put + finalize = 3 fetches
+    expect(fetchImpl).toHaveBeenCalledTimes(6)
   })
 })
 
@@ -150,10 +201,6 @@ describe("single source of truth (refactor-safety guard)", () => {
   it("process-manager imports runStateSync from the shared module and has NO inline bundle/upload", () => {
     expect(pm).toMatch(/from ['"]\.\/state-sync\.mjs['"]/)
     expect(pm).toContain("runStateSync")
-    // The bundle/upload logic must NOT be duplicated back into process-manager:
-    // no inline bundler, and no gzipSync( (the sync compression now lives only
-    // in the shared module; process-manager keeps only gunzipSync for restore,
-    // which does not contain the "gzipSync(" substring).
     expect(pm).not.toMatch(/function bundleRuntimeState/)
     expect(pm).not.toContain("gzipSync(")
   })
