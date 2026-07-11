@@ -32,10 +32,14 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
   })
 
   it("happy path persists via ONE updateMany (atomic) when sha256 matches", async () => {
-    const { POST } = await import("@/app/api/internal/state/finalize/route")
+    const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
     const gz = Buffer.from("gzip-payload-bytes")
     const digest = sha256Hex(gz)
     const deleteBlob = vi.fn(async () => {})
+    const POST = createFinalizeHandler({
+      fetchBlobBytes: async () => gz,
+      deleteBlob,
+    })
     const res = await POST(
       req("http://localhost/api/internal/state/finalize", {
         workspaceId: "ws-big",
@@ -43,7 +47,6 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
         sha256: digest,
         uncompressedSize: 100,
       }),
-      { fetchBlobBytes: async () => gz, deleteBlob },
     )
     expect(res.status).toBe(200)
     const json = await res.json()
@@ -56,10 +59,14 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
   })
 
   it("flipped sha256 → runtimeStateUpdatedAt must NOT advance (no updateMany)", async () => {
-    const { POST } = await import("@/app/api/internal/state/finalize/route")
+    const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
     const gz = Buffer.from("real-bytes")
     const wrong = sha256Hex(Buffer.from("other-bytes"))
     const deleteBlob = vi.fn(async () => {})
+    const POST = createFinalizeHandler({
+      fetchBlobBytes: async () => gz,
+      deleteBlob,
+    })
     const res = await POST(
       req("http://localhost/api/internal/state/finalize", {
         workspaceId: "ws-1",
@@ -67,7 +74,6 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
         sha256: wrong,
         uncompressedSize: 10,
       }),
-      { fetchBlobBytes: async () => gz, deleteBlob },
     )
     expect(res.status).toBe(400)
     const json = await res.json()
@@ -78,13 +84,17 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
   })
 
   it("idempotent finalize: same (workspaceId, sha256) → 200 noop, no second updateMany", async () => {
-    const { POST } = await import("@/app/api/internal/state/finalize/route")
+    const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
     const gz = Buffer.from("same-snapshot")
     const digest = sha256Hex(gz)
     ;(prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       runtimeStateSnapshot: new Uint8Array(gz),
     })
     const deleteBlob = vi.fn(async () => {})
+    const POST = createFinalizeHandler({
+      fetchBlobBytes: async () => gz,
+      deleteBlob,
+    })
     const res = await POST(
       req("http://localhost/api/internal/state/finalize", {
         workspaceId: "ws-1",
@@ -92,7 +102,6 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
         sha256: digest,
         uncompressedSize: 12,
       }),
-      { fetchBlobBytes: async () => gz, deleteBlob },
     )
     expect(res.status).toBe(200)
     const json = await res.json()
@@ -103,11 +112,15 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
   })
 
   it("persist succeeds even when del() throws", async () => {
-    const { POST } = await import("@/app/api/internal/state/finalize/route")
+    const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
     const gz = Buffer.from("keep-me")
     const digest = sha256Hex(gz)
     const deleteBlob = vi.fn(async () => {
       throw new Error("blob del failed")
+    })
+    const POST = createFinalizeHandler({
+      fetchBlobBytes: async () => gz,
+      deleteBlob,
     })
     const res = await POST(
       req("http://localhost/api/internal/state/finalize", {
@@ -116,7 +129,6 @@ describe("POST /api/internal/state/finalize — persist + idempotency + del", ()
         sha256: digest,
         uncompressedSize: 7,
       }),
-      { fetchBlobBytes: async () => gz, deleteBlob },
     )
     expect(res.status).toBe(200)
     const json = await res.json()
