@@ -43,6 +43,7 @@
     "@stripe/stripe-js": "^8.9.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
+    "@vercel/blob": "^2.6.1",
     "@xyflow/react": "^12.10.1",
     "archiver": "^7.0.1",
     "clsx": "^2.1.1",
