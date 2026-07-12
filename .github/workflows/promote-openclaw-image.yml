@@ -37,6 +37,23 @@ on:
         required: false
         type: boolean
         default: false
+  # Called by promote-to-production.yml (platform+image one-dispatch). Same inputs;
+  # target_env is a plain string under workflow_call (choice is dispatch-only).
+  workflow_call:
+    inputs:
+      version:
+        description: 'Stable version to promote (must exist as :<version> in GHCR).'
+        required: true
+        type: string
+      target_env:
+        description: 'staging | production — which control plane receives the isStable register POST.'
+        required: true
+        type: string
+      skip_candidate_check:
+        description: 'Emergency override: skip :candidate digest equality gate.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
