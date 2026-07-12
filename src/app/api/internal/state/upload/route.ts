@@ -1,58 +1,37 @@
 import { NextRequest } from "next/server"
-import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
+import { assertMeteringSecret } from "@/lib/openclaw/state-sync-auth"
 
 export const maxDuration = 30
 
+/**
+ * Inline state upload is retired (D2 Blob-only transport).
+ * Old-image containers that still POST here get a loud 413 USE_BLOB so
+ * operators see the failure instead of a silent edge drop.
+ */
 export async function POST(req: NextRequest) {
-  const secret = req.headers.get("X-Metering-Secret")
-  if (secret !== process.env.METERING_MASTER_SECRET) {
+  if (!assertMeteringSecret(req)) {
     return new Response("Unauthorized", { status: 401 })
   }
 
-  const body = await req.json()
-  const { workspaceId, compressedState, uncompressedSize } = body
-
-  if (!workspaceId || !compressedState) {
-    return Response.json({ success: false, error: "Missing fields" }, { status: 400 })
+  // Consume body so clients don't hang; ignore contents.
+  try {
+    await req.json()
+  } catch {
+    // empty / non-JSON still rejected the same way
   }
 
-  const stateBuffer = Buffer.from(compressedState, "base64")
-
-  if (stateBuffer.length > 50 * 1024 * 1024) {
-    log.warn("State snapshot too large, rejected", {
-      workspaceId,
-      compressedSize: stateBuffer.length,
-    })
-    return Response.json({ success: false, error: "State too large" }, { status: 413 })
-  }
-
-  const { count } = await prisma.containerState.updateMany({
-    where: { workspaceId },
-    data: {
-      runtimeStateSnapshot: stateBuffer,
-      runtimeStateUpdatedAt: new Date(),
-      runtimeStateSizeBytes: uncompressedSize || 0,
-    },
+  log.warn("Inline state /upload rejected — Blob transport required", {
+    code: "USE_BLOB",
   })
 
-  if (count === 0) {
-    // Tripwire for the race PR2.5 closed at the deployer level: if this
-    // ever fires again it means a container booted and sync'd before its
-    // ContainerState row was created. State is silently discarded at the
-    // DB layer; surface it loudly so the next bug can't hide.
-    log.warn("State sync received but no ContainerState row — state discarded", {
-      workspaceId,
-      compressedBytes: stateBuffer.length,
-      uncompressedBytes: uncompressedSize,
-    })
-  } else {
-    log.info("Runtime state snapshot stored", {
-      workspaceId,
-      compressedBytes: stateBuffer.length,
-      uncompressedBytes: uncompressedSize,
-    })
-  }
-
-  return Response.json({ success: true, count })
+  return Response.json(
+    {
+      success: false,
+      code: "USE_BLOB",
+      error: "USE_BLOB",
+      message: "Inline state upload removed; use Blob token + finalize",
+    },
+    { status: 413 },
+  )
 }

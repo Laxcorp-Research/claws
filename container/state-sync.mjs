@@ -19,8 +19,9 @@
 // NOT coordinate the route's sync against process-manager's 5-min interval in
 // the other process. That residual race is ACCEPTED AS BENIGN, and stays benign
 // only because of one invariant:
-//   INVARIANT: /api/internal/state/upload writes the snapshot with a SINGLE
+//   INVARIANT: /api/internal/state/finalize writes the snapshot with a SINGLE
 //   atomic `updateMany` (one-shot column write) — never a read-modify-write.
+//   (Legacy /upload is reject-only 413 USE_BLOB.)
 // Given that invariant: concurrent uploads can't tear or partially-overwrite
 // the row; the worst case is an equal-or-fresher snapshot (last writer wins,
 // both bundles captured seconds apart). And on the Stop/hibernate path the
@@ -29,13 +30,22 @@
 // sync-now's 200 (count>=1) is the guarantee: "state as of Stop is persisted."
 // (A regression test locks the atomic-upload invariant; if anyone refactors the
 // upload into a read-modify-write, that test fails.)
+//
+// ── BLOB TRANSPORT (D2 / PR-1) — sole sync path ──
+//   1) POST /state/blob-token → clientToken
+//   2) PUT gzip bytes to Vercel Blob API (bypasses edge body cap)
+//   3) POST /state/finalize { blobUrl, sha256, sizes } — platform verifies hash
+//      then atomic updateMany (+ idempotent noop + best-effort blob del).
+// Legacy /state/upload is reject-only (413 USE_BLOB) for old images.
 
 import fs from "fs"
 import path from "path"
 import zlib from "zlib"
+import crypto from "crypto"
 
 export const OPENCLAW_DATA_DIR = "/home/node/.openclaw"
 const UPLOAD_TIMEOUT_MS = 30_000
+const BLOB_PUT_TIMEOUT_MS = 120_000
 
 // Config files are re-delivered via env vars at every boot (deriveContainerEnv),
 // so they are NOT runtime state — exclude them from the snapshot. Everything
@@ -91,6 +101,160 @@ function resolveStateEndpoint() {
   return m ? m.replace(/\/metering\/?$/, "/state") : null
 }
 
+function sha256Hex(buf) {
+  return crypto.createHash("sha256").update(buf).digest("hex")
+}
+
+/**
+ * PUT gzip bytes to Vercel Blob using a server-issued client token.
+ * Minimal protocol mirror of @vercel/blob put() — no SDK in the image.
+ */
+export async function putGzipToVercelBlob({
+  apiUrl,
+  pathname,
+  clientToken,
+  storeId,
+  body,
+  fetchImpl = fetch,
+  signal,
+}) {
+  const params = new URLSearchParams({ pathname })
+  const base = apiUrl.replace(/\/$/, "")
+  const res = await fetchImpl(`${base}/?${params.toString()}`, {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${clientToken}`,
+      "x-api-version": "12",
+      "x-vercel-blob-store-id": storeId,
+      "x-vercel-blob-access": "private",
+      "x-content-type": "application/gzip",
+      "x-add-random-suffix": "0",
+      "x-allow-overwrite": "1",
+    },
+    body,
+    signal,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`blob put HTTP ${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json()
+}
+
+async function parseCount(res) {
+  let count = null
+  try {
+    const body = await res.json()
+    if (typeof body?.count === "number") count = body.count
+  } catch {
+    // Older server / non-JSON — treat as accepted-unconfirmed when ok.
+  }
+  return count
+}
+
+async function uploadViaBlob({
+  doFetch,
+  STATE_ENDPOINT,
+  METERING_SECRET,
+  WORKSPACE_ID,
+  compressed,
+  uncompressedSize,
+  fileCount,
+  sizeKb,
+  sha256,
+}) {
+  let tokenRes
+  try {
+    tokenRes = await doFetch(`${STATE_ENDPOINT}/blob-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Metering-Secret": METERING_SECRET,
+      },
+      body: JSON.stringify({
+        workspaceId: WORKSPACE_ID,
+        sha256,
+        compressedSize: compressed.length,
+      }),
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+    })
+  } catch (err) {
+    return { status: "error", fileCount, sizeKb, error: err?.message ?? String(err), path: "blob-token" }
+  }
+
+  if (!tokenRes.ok) {
+    return { status: "rejected", httpStatus: tokenRes.status, fileCount, sizeKb, path: "blob-token" }
+  }
+
+  let tokenBody
+  try {
+    tokenBody = await tokenRes.json()
+  } catch (err) {
+    return { status: "error", fileCount, sizeKb, error: "blob-token invalid JSON", path: "blob-token" }
+  }
+
+  const { pathname, clientToken, storeId, apiUrl } = tokenBody || {}
+  if (!pathname || !clientToken || !storeId || !apiUrl) {
+    return { status: "error", fileCount, sizeKb, error: "blob-token missing fields", path: "blob-token" }
+  }
+
+  let putResult
+  try {
+    putResult = await putGzipToVercelBlob({
+      apiUrl,
+      pathname,
+      clientToken,
+      storeId,
+      body: compressed,
+      fetchImpl: doFetch,
+      signal: AbortSignal.timeout(BLOB_PUT_TIMEOUT_MS),
+    })
+  } catch (err) {
+    return { status: "error", fileCount, sizeKb, error: err?.message ?? String(err), path: "blob-put" }
+  }
+
+  const blobUrl = putResult?.url || putResult?.downloadUrl
+  if (!blobUrl) {
+    return { status: "error", fileCount, sizeKb, error: "blob put returned no url", path: "blob-put" }
+  }
+
+  let finRes
+  try {
+    finRes = await doFetch(`${STATE_ENDPOINT}/finalize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Metering-Secret": METERING_SECRET,
+      },
+      body: JSON.stringify({
+        workspaceId: WORKSPACE_ID,
+        blobUrl,
+        sha256,
+        uncompressedSize,
+      }),
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+    })
+  } catch (err) {
+    return { status: "error", fileCount, sizeKb, error: err?.message ?? String(err), path: "finalize" }
+  }
+
+  if (!finRes.ok) {
+    return { status: "rejected", httpStatus: finRes.status, fileCount, sizeKb, path: "finalize" }
+  }
+
+  const count = await parseCount(finRes)
+  if (count === 0) {
+    return { status: "rejected", count: 0, fileCount, sizeKb, path: "finalize" }
+  }
+  return {
+    status: count === null ? "accepted-unconfirmed" : "persisted",
+    count,
+    fileCount,
+    sizeKb,
+    path: "blob",
+  }
+}
+
 // One bundle + gzip + upload. Returns a STRUCTURED result; callers interpret it
 // (process-manager reproduces its existing log lines; the route maps to a
 // status code). status values:
@@ -118,43 +282,20 @@ async function doStateSync({ bundleFn = bundleRuntimeState, fetchImpl } = {}) {
   const jsonStr = JSON.stringify(bundle)
   const compressed = zlib.gzipSync(Buffer.from(jsonStr))
   const sizeKb = Math.round(compressed.length / 1024)
+  const uncompressedSize = Buffer.byteLength(jsonStr)
+  const sha256 = sha256Hex(compressed)
 
-  let res
-  try {
-    res = await doFetch(`${STATE_ENDPOINT}/upload`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Metering-Secret": METERING_SECRET,
-      },
-      body: JSON.stringify({
-        workspaceId: WORKSPACE_ID,
-        compressedState: compressed.toString("base64"),
-        uncompressedSize: Buffer.byteLength(jsonStr),
-      }),
-      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
-    })
-  } catch (err) {
-    return { status: "error", fileCount, sizeKb, error: err?.message ?? String(err) }
-  }
-
-  if (!res.ok) {
-    return { status: "rejected", httpStatus: res.status, fileCount, sizeKb }
-  }
-
-  let count = null
-  try {
-    const body = await res.json()
-    if (typeof body?.count === "number") count = body.count
-  } catch {
-    // Older server that doesn't return count — treat as accepted-unconfirmed.
-  }
-
-  if (count === 0) {
-    // Accepted by the server but no ContainerState row matched → NOT persisted.
-    return { status: "rejected", count: 0, fileCount, sizeKb }
-  }
-  return { status: count === null ? "accepted-unconfirmed" : "persisted", count, fileCount, sizeKb }
+  return uploadViaBlob({
+    doFetch,
+    STATE_ENDPOINT,
+    METERING_SECRET,
+    WORKSPACE_ID,
+    compressed,
+    uncompressedSize,
+    fileCount,
+    sizeKb,
+    sha256,
+  })
 }
 
 // Per-process in-flight guard. A second caller in the SAME process awaits the
