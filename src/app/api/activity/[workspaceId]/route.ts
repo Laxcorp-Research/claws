@@ -8,6 +8,7 @@ import { getApiKeySource } from "@/lib/credits/api-key-source"
 import { sanitizeActivityText } from "@/lib/security/sanitize"
 import { getModelCost } from "@/lib/models"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
+import { resolveWindowCost } from "@/lib/activity-cost-display"
 import type { ActivityType, Prisma } from "@/generated/prisma/client"
 
 const MAX_ACTIVITY_LIMIT = 50
@@ -335,6 +336,18 @@ export async function GET(
       })
     : []
 
+  const todayMessageSents = agentSlugs.length > 0
+    ? await prisma.activityLog.findMany({
+        where: {
+          workspaceId,
+          agentSlug: { in: agentSlugs },
+          actionType: "MESSAGE_SENT",
+          timestamp: { gte: todayStart },
+        },
+        select: { agentSlug: true, apiCost: true },
+      })
+    : []
+
   const costBySlug = new Map<string, { calls: number; cost: number }>()
   for (const row of perAgentCosts) {
     costBySlug.set(row.agentSlug, { calls: Number(row.calls), cost: Number(row.cost) })
@@ -349,6 +362,19 @@ export async function GET(
     estimatedCostTodayCalls += calls
     estimatedCostToday += calls * getModelCost(modelBySlug.get(row.agentSlug) ?? "")
   }
+
+  // Honesty: when every MESSAGE_SENT today carries apiCost, prefer the real sum.
+  const todayCostResolved = resolveWindowCost(
+    todayMessageSents.map((r) => ({ apiCost: r.apiCost })),
+    estimatedCostToday,
+  )
+  if (todayMessageSents.length > 0 && !todayCostResolved.isEstimate) {
+    estimatedCostToday = todayCostResolved.cost
+  }
+  const estimatedCostTodayIsEstimate =
+    todayMessageSents.length === 0
+      ? estimatedCostTodayCalls > 0
+      : todayCostResolved.isEstimate
 
   const totalApiCost = costAgg._sum.apiCost ?? 0
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -388,6 +414,7 @@ export async function GET(
       apiCostProjected: Math.round(projectedCost * 100) / 100,
       estimatedCostToday: Math.round(estimatedCostToday * 100) / 100,
       estimatedCostTodayCalls,
+      estimatedCostTodayIsEstimate,
       pendingReview,
     },
     agents: agentStatuses,

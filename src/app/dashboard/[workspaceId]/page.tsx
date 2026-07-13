@@ -28,7 +28,7 @@ import { ConversationsSection } from "@/components/dashboard/conversations-secti
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrency, formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
-import { getModelCost } from "@/lib/models"
+import { resolveAgentCostWindow } from "@/lib/activity-cost-display"
 import { Tabs } from "@/components/ui/tabs"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { TextLink } from "@/components/ui/text-link"
@@ -53,6 +53,7 @@ interface DashboardStats {
   apiCostProjected: number
   estimatedCostToday: number
   estimatedCostTodayCalls: number
+  estimatedCostTodayIsEstimate?: boolean
   pendingReview: number
 }
 
@@ -1087,23 +1088,28 @@ export default function DashboardPage() {
     return 0
   })()
   const estimatedCostRows = sortedAgents.map((agent) => {
-    const calls = missionRows.filter((row) =>
-      row.agentSlug === agent.agentSlug &&
-      row.actionType === "TASK_COMPLETE" &&
-      Date.parse(row.timestamp) >= costSince,
-    ).length
-    const cost = calls * getModelCost(agent.model)
+    const resolved = resolveAgentCostWindow({
+      rows: missionRows,
+      agentSlug: agent.agentSlug,
+      model: agent.model,
+      sinceMs: costSince,
+    })
     return {
       agentName: agent.name,
       role: agent.role,
       color: agent.color,
       model: getModelDisplayName(agent.model),
-      calls,
-      cost,
+      calls: resolved.calls,
+      cost: resolved.cost,
+      isEstimate: resolved.isEstimate,
     }
   })
   const estimatedCostTotal = estimatedCostRows.reduce((sum, row) => sum + row.cost, 0)
   const topCostAgent = [...estimatedCostRows].sort((a, b) => b.cost - a.cost || b.calls - a.calls)[0]
+  // Mixed windows (any active row still estimated) stay labeled "est."
+  const costWindowIsEstimate = estimatedCostRows
+    .filter((row) => row.calls > 0 || row.cost > 0)
+    .some((row) => row.isEstimate)
   const headerActions = (
     <>
       <Button variant="outline" size="sm" onClick={() => router.push(`/builder/${workspaceId}`)}>
@@ -1162,6 +1168,7 @@ export default function DashboardPage() {
           tasksToday={stats?.tasksToday ?? 0}
           estimatedCostToday={stats?.estimatedCostToday ?? 0}
           estimatedCostTodayCalls={stats?.estimatedCostTodayCalls ?? 0}
+          estimatedCostTodayIsEstimate={stats?.estimatedCostTodayIsEstimate ?? true}
           configuredChannelIds={channelStatus?.configuredChannelIds ?? []}
           channels={channelStatus?.channels ?? null}
           actions={headerActions}
@@ -1223,11 +1230,22 @@ export default function DashboardPage() {
               />
               <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Costs">
                 <h2 className="text-[12px] font-semibold text-[var(--tx)]">Costs</h2>
-                {estimatedCostRows.some((row) => row.calls > 0) ? (
+                {estimatedCostRows.some((row) => row.calls > 0 || row.cost > 0) ? (
                   <div className="mt-2 flex flex-col gap-1.5">
-                    <p className="text-[18px] font-semibold text-[var(--tx)]">{formatCurrency(estimatedCostTotal)} est.</p>
+                    <p className="text-[18px] font-semibold text-[var(--tx)]">
+                      {costWindowIsEstimate
+                        ? `${formatCurrency(estimatedCostTotal)} est.`
+                        : formatCurrency(estimatedCostTotal)}
+                    </p>
                     <p className="text-[11px] text-[var(--tx2)]">
-                      Top agent: {topCostAgent?.calls ? `${topCostAgent.agentName} (${formatCurrency(topCostAgent.cost)} est.)` : "—"}
+                      Top agent:{" "}
+                      {topCostAgent && (topCostAgent.calls > 0 || topCostAgent.cost > 0)
+                        ? `${topCostAgent.agentName} (${
+                            topCostAgent.isEstimate || costWindowIsEstimate
+                              ? `${formatCurrency(topCostAgent.cost)} est.`
+                              : formatCurrency(topCostAgent.cost)
+                          })`
+                        : "—"}
                     </p>
                     <TextLink direction="forward" onClick={() => switchTab("costs")}>View details</TextLink>
                   </div>
@@ -1291,13 +1309,17 @@ export default function DashboardPage() {
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-[14px] font-semibold text-[var(--tx)]">Costs</h2>
-                  <p className="text-[11px] text-[var(--tx3)]">Estimated from model pricing × call counts; exact billing depends on your provider.</p>
+                  <p className="text-[11px] text-[var(--tx3)]">
+                    {costWindowIsEstimate
+                      ? "Estimated from model pricing × call counts; exact billing depends on your provider."
+                      : "Summed from reported provider costs on activity rows."}
+                  </p>
                 </div>
                 <div className="w-[120px]">
                   <Select value={costRange} onValueChange={(value) => setCostRange(value as CostRange)} options={COST_RANGE_OPTIONS} aria-label="Cost range" />
                 </div>
               </div>
-              {estimatedCostRows.some((row) => row.calls > 0) ? (
+              {estimatedCostRows.some((row) => row.calls > 0 || row.cost > 0) ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-[11px]">
                     <thead>
@@ -1305,7 +1327,9 @@ export default function DashboardPage() {
                         <th className="py-2 font-semibold">Agent</th>
                         <th className="py-2 font-semibold">Model</th>
                         <th className="py-2 text-right font-semibold">Calls</th>
-                        <th className="py-2 text-right font-semibold">Estimated cost</th>
+                        <th className="py-2 text-right font-semibold">
+                          {costWindowIsEstimate ? "Estimated cost" : "Cost"}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1319,7 +1343,13 @@ export default function DashboardPage() {
                           </td>
                           <td className="py-2"><span className="rounded-[6px] bg-[var(--bg2)] px-[6px] py-[2px] text-[10px] text-[var(--tx2)]">{row.model}</span></td>
                           <td className="py-2 text-right text-[var(--tx2)]">{row.calls.toLocaleString()}</td>
-                          <td className="py-2 text-right font-semibold text-[var(--tx)]">{row.calls > 0 ? `${formatCurrency(row.cost)} est.` : "—"}</td>
+                          <td className="py-2 text-right font-semibold text-[var(--tx)]">
+                            {row.calls > 0 || row.cost > 0
+                              ? row.isEstimate
+                                ? `${formatCurrency(row.cost)} est.`
+                                : formatCurrency(row.cost)
+                              : "—"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

@@ -342,16 +342,36 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
     });
   });
 
-  // ─── apiCost not set ──────────────────────────────────────────────────
+  // ─── apiCost from usage.costTotal ─────────────────────────────────────
 
-  describe("PR-2 scope guard", () => {
-    it("never writes apiCost (deferred to PR-2b)", async () => {
+  describe("apiCost from metadata.usage.costTotal", () => {
+    it("MUTATION-anchored: writes apiCost from usage.costTotal", async () => {
       defaultMocks();
       await callRoute(
         {
           events: [
-            // Try to inject apiCost via metadata or top-level.
-            makeEvent({ apiCost: 0.01, metadata: { apiCost: 0.01 } }),
+            makeEvent({
+              type: "MESSAGE_SENT",
+              metadata: { usage: { input: 10, output: 20, costTotal: 0.0042 } },
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      const call = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      // Dropping the costTotal→apiCost mapping must fail this assertion.
+      expect(call.data.apiCost).toBe(0.0042);
+    });
+
+    it("rejects insane costTotal (> $50/event) as null", async () => {
+      defaultMocks();
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_SENT",
+              metadata: { usage: { costTotal: 51 } },
+            }),
           ],
         },
         { secret: SECRET },
@@ -360,6 +380,62 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       expect(call.data.apiCost).toBe(null);
     });
 
+    it("rejects negative / non-finite costTotal as null", async () => {
+      defaultMocks();
+      await callRoute(
+        {
+          events: [
+            makeEvent({ metadata: { usage: { costTotal: -0.01 } } }),
+            makeEvent({ metadata: { usage: { costTotal: Number.NaN } } }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      const calls = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls[0][0].data.apiCost).toBe(null);
+      expect(calls[1][0].data.apiCost).toBe(null);
+    });
+
+    it("ignores top-level apiCost forge attempts; only usage.costTotal counts", async () => {
+      defaultMocks();
+      await callRoute(
+        {
+          events: [makeEvent({ apiCost: 0.01, metadata: { apiCost: 0.01 } })],
+        },
+        { secret: SECRET },
+      );
+      const call = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.data.apiCost).toBe(null);
+    });
+  });
+
+  describe("MESSAGE_RECEIVED agentSlug fallback", () => {
+    it("MUTATION-anchored: derives agentSlug from sessionKey when agentId is omitted", async () => {
+      defaultMocks();
+      (prismaMock.agent.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: "cuid-cmd", agentSlug: "twitter-commander", name: "Twitter Commander" },
+      ]);
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_RECEIVED",
+              agentId: null,
+              sessionKey: "agent:twitter-commander:main",
+              action: "Received from webchat: hi",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      const call = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      // Removing resolveEventAgentId sessionKey fallback must fail this.
+      expect(call.data.agentSlug).toBe("twitter-commander");
+      expect(call.data.agentName).toBe("Twitter Commander");
+    });
+  });
+
+  describe("channelId column", () => {
     it("writes channelId to the indexed column and keeps metadata unchanged", async () => {
       defaultMocks();
       await callRoute(

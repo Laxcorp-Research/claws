@@ -36,6 +36,8 @@ interface CommandStripProps {
   tasksToday: number
   estimatedCostToday: number
   estimatedCostTodayCalls: number
+  /** When false, Cost today is fully backed by ActivityLog.apiCost (no "est."). */
+  estimatedCostTodayIsEstimate?: boolean
   configuredChannelIds: ChannelId[]
   channels: ChannelStatusMap | null
   actions?: ReactNode
@@ -49,11 +51,17 @@ export function CommandStrip({
   tasksToday,
   estimatedCostToday,
   estimatedCostTodayCalls,
+  estimatedCostTodayIsEstimate = true,
   configuredChannelIds,
   channels,
   actions,
 }: CommandStripProps) {
-  const costValue = estimatedCostTodayCalls > 0 ? `~${formatCurrency(estimatedCostToday)} est.` : "—"
+  const hasActivity = estimatedCostTodayCalls > 0 || estimatedCostToday > 0
+  const costValue = !hasActivity
+    ? "—"
+    : estimatedCostTodayIsEstimate
+      ? `~${formatCurrency(estimatedCostToday)} est.`
+      : formatCurrency(estimatedCostToday)
 
   return (
     <section className="mb-3 rounded-xl border border-[var(--bd)] bg-[var(--bg)] px-[14px] py-[12px]" aria-label="Command strip">
