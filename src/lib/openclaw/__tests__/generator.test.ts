@@ -668,8 +668,9 @@ describe('generateWorkspace', () => {
   it('MUTATION-anchored: .env TZ=UTC even when workspace.timezone is non-UTC; cron schedule.tz untouched', async () => {
     // Fixture timezone is America/New_York. Dropping TZ=UTC force in generateEnvFile fails.
     const ws = buildMockWorkspace();
-    ws.agents[0].heartbeatFrequency = 'daily';
-    ws.agents[0].heartbeatTime = '08:00';
+    const orch = ws.agents.find((a) => a.role === 'ORCHESTRATOR')! as Record<string, unknown>;
+    orch.heartbeatFrequency = 'daily';
+    orch.heartbeatTime = '08:00';
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
     const result = await generateWorkspace('ws-test-1');
