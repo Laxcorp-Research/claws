@@ -71,6 +71,7 @@ beforeEach(async () => {
   delete process.env.CLAWS_ACTIVITY_ENDPOINT;
   delete process.env.CLAWS_ACTIVITY_SECRET;
   delete process.env.CLAWS_WORKSPACE_ID;
+  delete process.env.CLAWS_OVERLAY_SHA;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mod = (await import("../../container/claws-activity-reporter/index.mjs")) as any;
   plugin = mod.__test__ as PluginTestSurface;
@@ -766,5 +767,24 @@ describe("claws-activity-reporter — PR-9/A webchat reply rows", () => {
     expect(cut.truncated).toBe(true);
     // clip() unchanged: same output text for the same input.
     expect(plugin.clip("z".repeat(5000))).toBe(cut.text);
+  });
+});
+
+describe("claws-activity-reporter — overlay boot emission-version (PR-2 -8)", () => {
+  it("boot event carries metadata.clawsOverlaySha from CLAWS_OVERLAY_SHA", async () => {
+    vi.resetModules();
+    process.env.CLAWS_OVERLAY_SHA = "abc123overlaysha";
+    delete process.env.CLAWS_ACTIVITY_ENDPOINT;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = (await import("../../container/claws-activity-reporter/index.mjs")) as any;
+    mod.__test__.reporter.pending.length = 0;
+    mod.__test__.emitOverlayBootEvent();
+    const rec = mod.__test__.reporter.pending[0];
+    expect(rec.type).toBe("TASK_START");
+    expect(rec.action).toBe("Claws overlay boot");
+    expect(rec.metadata.eventKind).toBe("overlay_boot");
+    expect(rec.metadata.clawsOverlaySha).toBe("abc123overlaysha");
+    // Mutation: dropping clawsOverlaySha from the boot payload fails.
+    expect(rec.metadata).toHaveProperty("clawsOverlaySha");
   });
 });

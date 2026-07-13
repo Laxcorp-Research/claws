@@ -47,6 +47,14 @@ export const OPENCLAW_DATA_DIR = "/home/node/.openclaw"
 const UPLOAD_TIMEOUT_MS = 30_000
 const BLOB_PUT_TIMEOUT_MS = 120_000
 
+// Must stay in lockstep with src/lib/openclaw/state-sync-limits.ts
+export const ABSOLUTE_MAX_COMPRESSED_BYTES = 50 * 1024 * 1024
+export const NEAR_CAP_WARN_BYTES = Math.floor(ABSOLUTE_MAX_COMPRESSED_BYTES * 0.8) // 40MB
+export const NEAR_CAP_REARM_BYTES = Math.floor(ABSOLUTE_MAX_COMPRESSED_BYTES * 0.7) // 35MB
+
+const UUID_RE =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+
 // Config files are re-delivered via env vars at every boot (deriveContainerEnv),
 // so they are NOT runtime state — exclude them from the snapshot. Everything
 // else under the data dir (agents/<id>/sessions/*.jsonl, MEMORY.md, logs,
@@ -61,9 +69,78 @@ export function isRuntimeFile(relativePath) {
   return true
 }
 
+/**
+ * Parse live session UUIDs from an agent's sessions.json.
+ * Returns null when the index is missing/unreadable → caller fail-opens
+ * (ships everything for that agent rather than silently dropping live data).
+ */
+export function loadLiveSessionIds(sessionsDir) {
+  const indexPath = path.join(sessionsDir, "sessions.json")
+  if (!fs.existsSync(indexPath)) return null
+  try {
+    const raw = fs.readFileSync(indexPath, "utf8")
+    const obj = JSON.parse(raw)
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null
+    const ids = new Set()
+    for (const v of Object.values(obj)) {
+      if (typeof v === "string") {
+        ids.add(v.replace(/\.jsonl$/i, ""))
+      } else if (v && typeof v === "object") {
+        for (const key of ["sessionId", "sessionFile", "id"]) {
+          const val = v[key]
+          if (typeof val === "string") ids.add(val.replace(/\.jsonl$/i, ""))
+        }
+      }
+    }
+    return ids
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Bundle-hygiene gate for a single file under agents/<agent>/sessions/.
+ * liveIds === null → fail-open (include everything, including reset files).
+ */
+export function shouldIncludeSessionArtifact(fileName, liveIds) {
+  if (fileName === "sessions.json") return true
+  // Indexed agents: always drop reset leftovers.
+  if (liveIds !== null && fileName.includes(".jsonl.reset.")) return false
+  // No index → ship everything (fail-open).
+  if (liveIds === null) return true
+
+  const isJsonlOrTrajectory =
+    fileName.endsWith(".jsonl") ||
+    fileName.includes("trajectory") ||
+    fileName.includes(".jsonl.")
+  if (!isJsonlOrTrajectory) return true
+
+  const m = fileName.match(UUID_RE)
+  if (!m) return true // unrecognized name — keep rather than drop live data
+  return liveIds.has(m[1])
+}
+
+function agentSessionsDirFromRelative(relativePath) {
+  // agents/<agentId>/sessions/<file>
+  const parts = relativePath.split("/")
+  if (parts.length >= 4 && parts[0] === "agents" && parts[2] === "sessions") {
+    return { agentId: parts[1], fileName: parts.slice(3).join("/"), sessionsPrefix: `agents/${parts[1]}/sessions` }
+  }
+  return null
+}
+
 export function bundleRuntimeState(dataDir = OPENCLAW_DATA_DIR) {
   const files = {}
   let totalSize = 0
+  /** @type {Map<string, Set<string> | null>} */
+  const liveByAgent = new Map()
+
+  function liveIdsFor(sessionsDir, agentId) {
+    if (liveByAgent.has(agentId)) return liveByAgent.get(agentId)
+    const ids = loadLiveSessionIds(sessionsDir)
+    liveByAgent.set(agentId, ids)
+    return ids
+  }
 
   function walkDir(dir, prefix = "") {
     let entries
@@ -81,6 +158,12 @@ export function bundleRuntimeState(dataDir = OPENCLAW_DATA_DIR) {
       if (entry.isDirectory()) {
         walkDir(fullPath, relativePath)
       } else if (entry.isFile()) {
+        const sess = agentSessionsDirFromRelative(relativePath)
+        if (sess) {
+          const sessionsDir = path.join(dataDir, sess.sessionsPrefix)
+          const liveIds = liveIdsFor(sessionsDir, sess.agentId)
+          if (!shouldIncludeSessionArtifact(sess.fileName, liveIds)) continue
+        }
         try {
           const content = fs.readFileSync(fullPath)
           files[relativePath] = content.toString("base64")
@@ -103,6 +186,91 @@ function resolveStateEndpoint() {
 
 function sha256Hex(buf) {
   return crypto.createHash("sha256").update(buf).digest("hex")
+}
+
+/**
+ * POST one activity event via the reporter ingest path
+ * (CLAWS_ACTIVITY_ENDPOINT / CLAWS_ACTIVITY_SECRET). Used for near-cap
+ * WARNING-class rows and process-manager sync-failure ERROR rows.
+ */
+export async function postActivityEvent(event, { fetchImpl = fetch } = {}) {
+  const ENDPOINT_BASE = process.env.CLAWS_ACTIVITY_ENDPOINT
+  const ACTIVITY_SECRET = process.env.CLAWS_ACTIVITY_SECRET
+  const WORKSPACE_ID = process.env.CLAWS_WORKSPACE_ID
+  if (!ENDPOINT_BASE || !ACTIVITY_SECRET || !WORKSPACE_ID) {
+    return { ok: false, reason: "unconfigured" }
+  }
+  const url = `${ENDPOINT_BASE.replace(/\/$/, "")}/${encodeURIComponent(WORKSPACE_ID)}`
+  try {
+    const res = await fetchImpl(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Activity-Secret": ACTIVITY_SECRET,
+      },
+      body: JSON.stringify({ events: [event] }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    return { ok: res.ok, status: res.status }
+  } catch (err) {
+    return { ok: false, reason: err?.message ?? String(err) }
+  }
+}
+
+// Near-cap hysteresis: emit once when crossing ≥80% of ABSOLUTE_MAX; re-arm
+// only after compressed size drops below 70%.
+let nearCapArmed = true
+
+export function __resetNearCapHysteresis() {
+  nearCapArmed = true
+}
+
+export function __getNearCapArmed() {
+  return nearCapArmed
+}
+
+/**
+ * Evaluate compressed size against the near-cap band. Returns whether a
+ * WARNING-class event should be emitted this call (caller performs the POST).
+ */
+export function evaluateNearCap(compressedBytes) {
+  if (typeof compressedBytes !== "number" || !Number.isFinite(compressedBytes)) {
+    return { emit: false, armed: nearCapArmed }
+  }
+  if (compressedBytes >= NEAR_CAP_WARN_BYTES && nearCapArmed) {
+    nearCapArmed = false
+    return { emit: true, armed: nearCapArmed, warnBytes: NEAR_CAP_WARN_BYTES }
+  }
+  if (compressedBytes < NEAR_CAP_REARM_BYTES) {
+    nearCapArmed = true
+  }
+  return { emit: false, armed: nearCapArmed }
+}
+
+async function maybeEmitNearCapWarning(compressedBytes, sizeKb, fetchImpl) {
+  const decision = evaluateNearCap(compressedBytes)
+  if (!decision.emit) return
+  // Ingest ALLOWED has no WARNING type — use ERROR with class:"WARNING".
+  await postActivityEvent(
+    {
+      type: "ERROR",
+      timestamp: new Date().toISOString(),
+      agentId: null,
+      runId: null,
+      sessionKey: null,
+      channelId: null,
+      action: `WARNING: runtime state near capacity (${sizeKb}KB compressed, ≥80% of ${ABSOLUTE_MAX_COMPRESSED_BYTES} byte cap)`,
+      detail: `compressedBytes=${compressedBytes} warnAt=${NEAR_CAP_WARN_BYTES} rearmBelow=${NEAR_CAP_REARM_BYTES}`,
+      metadata: {
+        class: "WARNING",
+        kind: "state_sync_near_cap",
+        compressedBytes,
+        sizeKb,
+        absoluteMaxCompressedBytes: ABSOLUTE_MAX_COMPRESSED_BYTES,
+      },
+    },
+    { fetchImpl },
+  )
 }
 
 /**
@@ -284,6 +452,9 @@ async function doStateSync({ bundleFn = bundleRuntimeState, fetchImpl } = {}) {
   const sizeKb = Math.round(compressed.length / 1024)
   const uncompressedSize = Buffer.byteLength(jsonStr)
   const sha256 = sha256Hex(compressed)
+
+  // Near-cap WARNING (pre-PUT) — does not block the upload attempt.
+  await maybeEmitNearCapWarning(compressed.length, sizeKb, doFetch)
 
   return uploadViaBlob({
     doFetch,
