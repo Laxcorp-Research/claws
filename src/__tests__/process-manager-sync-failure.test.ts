@@ -13,10 +13,17 @@ beforeEach(async () => {
 
 describe("createSyncFailureTracker — consecutive non-2xx token/finalize", () => {
   it("MUTATION-anchored: 3 consecutive rejects emit once; 2 do not; second emit suppressed until recovery", async () => {
-    const emitError = vi.fn(async () => {})
+    const emitError = vi.fn(
+      async (_args: {
+        httpStatus: number
+        consecutive: number
+        sizeKb: number
+        path: string
+      }) => {},
+    )
     const tracker = pm.createSyncFailureTracker({ threshold: 3, emitError })
 
-    const reject = (n: number) => ({
+    const reject = (_n: number) => ({
       status: "rejected",
       httpStatus: 503,
       path: "finalize",
@@ -32,12 +39,14 @@ describe("createSyncFailureTracker — consecutive non-2xx token/finalize", () =
     // 3rd — emit once.
     expect((await tracker.noteResult(reject(3))).emitted).toBe(true)
     expect(emitError).toHaveBeenCalledTimes(1)
-    expect(emitError.mock.calls[0][0]).toMatchObject({
-      httpStatus: 503,
-      consecutive: 3,
-      sizeKb: 12,
-      path: "finalize",
-    })
+    expect(emitError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        httpStatus: 503,
+        consecutive: 3,
+        sizeKb: 12,
+        path: "finalize",
+      }),
+    )
 
     // Further fails in the same streak — suppressed.
     expect((await tracker.noteResult(reject(4))).emitted).toBe(false)
@@ -66,7 +75,14 @@ describe("createSyncFailureTracker — consecutive non-2xx token/finalize", () =
   })
 
   it("counts blob-token non-2xx the same as finalize", async () => {
-    const emitError = vi.fn(async () => {})
+    const emitError = vi.fn(
+      async (_args: {
+        httpStatus: number
+        consecutive: number
+        sizeKb: number
+        path: string
+      }) => {},
+    )
     const tracker = pm.createSyncFailureTracker({ threshold: 3, emitError })
     for (let i = 0; i < 3; i++) {
       await tracker.noteResult({
@@ -77,6 +93,6 @@ describe("createSyncFailureTracker — consecutive non-2xx token/finalize", () =
       })
     }
     expect(emitError).toHaveBeenCalledTimes(1)
-    expect(emitError.mock.calls[0][0].path).toBe("blob-token")
+    expect(emitError).toHaveBeenCalledWith(expect.objectContaining({ path: "blob-token" }))
   })
 })
