@@ -43,6 +43,29 @@ import {
 } from '@/lib/openclaw/channel-config';
 import yaml from 'yaml';
 
+/** Catalog slugs that can back OpenClaw's built-in web_search tool. */
+export const SEARCH_BACKEND_TOOL_SLUGS = [
+  'tavily',
+  'brave_search',
+  'exa_search',
+  'serp_api',
+] as const;
+
+/**
+ * True when the workspace has a CONNECTED search-category tool from the
+ * known slug set. We do not currently emit tools.web.search provider/apiKey
+ * for these connections (skills.entries only) — see dead-tool honesty.
+ */
+export function workspaceHasSearchBackend(
+  workspace: { toolConnections: Array<{ toolSlug: string; status: string }> },
+): boolean {
+  return workspace.toolConnections.some(
+    (tc) =>
+      tc.status === 'CONNECTED' &&
+      (SEARCH_BACKEND_TOOL_SLUGS as readonly string[]).includes(tc.toolSlug),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Composio constants (OAUTH_COMPOSIO emission)
 // ---------------------------------------------------------------------------
@@ -514,6 +537,24 @@ function generateOpenClawConfig(
   // Add skill entries if any tools have credentials
   if (Object.keys(skillsEntries).length > 0) {
     config.skills = { entries: skillsEntries };
+  }
+
+  // Dead-tool honesty: when no search backend is configured, disable the
+  // built-in web_search tool (createWebSearchTool returns null when
+  // tools.web.search.enabled === false). Connecting a SEARCH catalog tool
+  // today only emits skills.entries[<slug>] — it does NOT wire
+  // tools.web.search provider/apiKey. So "backend present" here means we
+  // leave web_search enabled (agent may still fail at call time until a
+  // future PR wires provider config); "backend absent" means we disable it.
+  if (!workspaceHasSearchBackend(workspace)) {
+    config.tools = {
+      ...(typeof config.tools === 'object' && config.tools && !Array.isArray(config.tools)
+        ? (config.tools as Record<string, unknown>)
+        : {}),
+      web: {
+        search: { enabled: false },
+      },
+    };
   }
 
   // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
@@ -1015,10 +1056,9 @@ function generateEnvFile(
   }
   lines.push('');
 
-  // Timezone
-  if (workspace.timezone) {
-    lines.push(`TZ=${workspace.timezone}`);
-  }
+  // Timezone — container process TZ is always UTC (matches buildRailwayEnvVars).
+  // Workspace timezone remains for cron schedule.tz + USER.md context only.
+  lines.push('TZ=UTC');
 
   return lines.join('\n');
 }
@@ -1644,6 +1684,14 @@ function generateToolsMd(
   const spawnSection = agent.role === 'ORCHESTRATOR'
     ? generateOrchestratorSpawnToolsSection()
     : '';
+  const searchSection = workspaceHasSearchBackend(workspace)
+    ? ''
+    : `
+## Web Search
+
+\`web_search\` is disabled — no search backend is connected for this Claw.
+Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Search, Exa, or SerpAPI in Manage Tools and redeploy.
+`;
   const toolSections: string[] = [];
   const customApiLines = (workspace.customToolConnections ?? []).map((customConn) => {
     const purpose = customConn.description?.trim() || 'No purpose provided.';
@@ -1686,6 +1734,7 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Never fabricate or guess a result for a failed tool call.
 ${spawnSection}
 ${pauseSection}
+${searchSection}
 ${mcpSection}`;
   }
 
@@ -1722,6 +1771,7 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Never fabricate or guess a result for a failed tool call.
 ${spawnSection}
 ${pauseSection}
+${searchSection}
 ${mcpSection}`;
 }
 

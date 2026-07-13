@@ -508,3 +508,33 @@ describe('buildRailwayEnvVars — Composio fail-closed pin sources workspace.use
     expect(() => buildRailwayEnvVars(minimalGenerated, wsWith(''), nonCreditUser)).not.toThrow();
   });
 });
+
+describe('buildRailwayEnvVars — TZ=UTC force (PR-2 rider 2)', () => {
+  let prevActivityEndpoint: string | undefined;
+  let prevMeteringEndpoint: string | undefined;
+  let prevAppUrl: string | undefined;
+  beforeEach(() => {
+    prevActivityEndpoint = process.env.ACTIVITY_ENDPOINT;
+    prevMeteringEndpoint = process.env.METERING_ENDPOINT;
+    prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    setStagingLikeEnv();
+  });
+  afterEach(() => {
+    if (prevActivityEndpoint === undefined) delete process.env.ACTIVITY_ENDPOINT;
+    else process.env.ACTIVITY_ENDPOINT = prevActivityEndpoint;
+    if (prevMeteringEndpoint === undefined) delete process.env.METERING_ENDPOINT;
+    else process.env.METERING_ENDPOINT = prevMeteringEndpoint;
+    if (prevAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
+  });
+
+  it('MUTATION-anchored: emits TZ=UTC regardless of workspace.timezone', () => {
+    const env = buildRailwayEnvVars(
+      minimalGenerated,
+      { ...workspace, timezone: 'America/New_York' },
+      { apiKeySource: 'USER_OWN_KEY', apiKeys: [] },
+    );
+    // Dropping the TZ:'UTC' force (reverting to workspace.timezone ?? 'UTC') must fail.
+    expect(env.TZ).toBe('UTC');
+  });
+});

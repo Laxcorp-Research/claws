@@ -867,7 +867,10 @@ export function buildRailwayEnvVars(
     CLAWS_ENV_GZ_B64: gzipBase64(envFileContent),
     CLAWS_FILES_GZ_B64: gzipBase64(JSON.stringify(workspaceFiles)),
     OPENCLAW_GATEWAY_TOKEN: generated.gatewayToken,
-    TZ: workspace.timezone ?? 'UTC',
+    // Container process clock is infrastructure UTC. Workspace timezone stays
+    // on cron schedule.tz + agent context docs; do NOT derive process TZ from it.
+    // Was: TZ: workspace.timezone ?? 'UTC'
+    TZ: 'UTC',
     NODE_ENV: 'production',
     PORT: '18789',
   };
