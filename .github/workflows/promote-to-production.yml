@@ -1,0 +1,524 @@
+name: Promote to Production
+
+# One-dispatch prod promotion: platform (staging→main BUILD) then image (:version→:latest
+# + prod OpenClawVersion isStable). Replaces the manual #265 + promote-openclaw-image sequence.
+#
+# MIGRATION RULE: the platform job MUST create a real Production BUILD from the merge
+# commit on main (Vercel git integration). NEVER promote a Preview/staging artifact to
+# Production — that would skip prod build env, migrations, and commit provenance.
+#
+# Dispatchability note: workflow_dispatch reads the DEFAULT BRANCH (main) copy of this
+# file. This workflow is only runnable AFTER it lands on main via a normal staging→main
+# promotion (chicken/egg for the first ship).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Runtime version already stable on staging (e.g. 2026.5.22-7). Must exist as :<version> in GHCR.'
+        required: true
+        type: string
+      confirm:
+        description: 'Type PROMOTE-PROD exactly to proceed (deliberate-action gate).'
+        required: true
+        type: string
+      skip_candidate_check:
+        description: 'Emergency override: skip :candidate digest == :<version> gate (same semantics as promote-openclaw-image.yml).'
+        required: false
+        type: boolean
+        default: false
+
+# Two promotions must never overlap (platform/image window is order-sensitive).
+concurrency:
+  group: promote-to-production
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: read
+  actions: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: laxcorp-research/openclaw-runtime
+  STAGING_APP: https://staging.app.buildclaws.ai
+  PROD_APP: https://app.buildclaws.ai
+
+jobs:
+  # ─── 0. Deliberate-action + version shape ───────────────────────────────
+  gate:
+    name: Confirm gate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+      skip_candidate_check: ${{ inputs.skip_candidate_check }}
+    steps:
+      - name: Require confirm == PROMOTE-PROD
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "PROMOTE-PROD" ]; then
+            echo "::error::confirm must be exactly PROMOTE-PROD (got '${{ inputs.confirm }}'). Refusing to start the promotion window."
+            exit 1
+          fi
+
+      - name: Validate version format
+        id: validate
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]{4}\.[0-9]+\.[0-9]+(-[0-9]+)?$'; then
+            echo "::error::version '$VERSION' must match YYYY.M.D or YYYY.M.D-N."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  # ─── 1. PRE-FLIGHT ──────────────────────────────────────────────────────
+  preflight:
+    name: Pre-flight (GHCR + staging-proven)
+    needs: gate
+    runs-on: ubuntu-latest
+    outputs:
+      version_digest: ${{ steps.digests.outputs.version_digest }}
+      window_state: preflight-done
+    steps:
+      - name: Resolve GHCR digests for :<version> and :candidate
+        id: digests
+        env:
+          GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+          GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GHCR_READ_USER:-}" ] || [ -z "${GHCR_READ_PAT:-}" ]; then
+            echo "::error::vars.GHCR_READ_USER and secrets.GHCR_READ_PAT must both be configured."
+            exit 1
+          fi
+
+          TOKEN=$(curl -sS -u "${GHCR_READ_USER}:${GHCR_READ_PAT}" \
+            "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
+            | jq -r .token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Failed to mint GHCR pull token."
+            exit 1
+          fi
+
+          ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
+
+          VERSION_DIGEST=$(curl -sS -D - -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: $ACCEPT" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/$VERSION" \
+            | tr -d '\r' | awk '/^docker-content-digest:/{print $2}')
+          if [ -z "$VERSION_DIGEST" ]; then
+            echo "::error:::$VERSION does not exist in GHCR. Cannot promote."
+            exit 1
+          fi
+          echo "Resolved :$VERSION → $VERSION_DIGEST"
+          echo "version_digest=$VERSION_DIGEST" >> "$GITHUB_OUTPUT"
+
+          CANDIDATE_DIGEST=$(curl -sS -D - -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: $ACCEPT" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/candidate" \
+            | tr -d '\r' | awk '/^docker-content-digest:/{print $2}' || echo "")
+          echo "Resolved :candidate → ${CANDIDATE_DIGEST:-<missing>}"
+          echo "candidate_digest=${CANDIDATE_DIGEST:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify :candidate matches :<version>
+        if: ${{ inputs.skip_candidate_check != true }}
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+          VD: ${{ steps.digests.outputs.version_digest }}
+          CD: ${{ steps.digests.outputs.candidate_digest }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CD:-}" ]; then
+            echo "::error:::candidate missing. Re-run build-openclaw-image.yml or set skip_candidate_check=true."
+            exit 1
+          fi
+          if [ "$VD" != "$CD" ]; then
+            echo "::error::Digest mismatch: :candidate=$CD vs :$VERSION=$VD."
+            exit 1
+          fi
+          echo "Candidate digest matches :$VERSION ($VD)."
+
+      # Staging-proven gate: public GET /api/versions/stable on staging (already
+      # exists; no new secret). Promote-to-prod requires the version to already
+      # be isStable on staging before we open the prod window.
+      - name: Verify staging OpenClawVersion isStable == version
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          BODY=$(curl -sS --max-time 30 "${{ env.STAGING_APP }}/api/versions/stable")
+          echo "staging /api/versions/stable → $BODY"
+          STABLE=$(printf '%s' "$BODY" | jq -r '.data.version // empty')
+          if [ -z "$STABLE" ]; then
+            echo "::error::Could not read staging stable version (empty/malformed response)."
+            exit 1
+          fi
+          if [ "$STABLE" != "$VERSION" ]; then
+            echo "::error::Staging-proven gate failed: staging stable='$STABLE' != requested '$VERSION'. Promote on staging first."
+            exit 1
+          fi
+          echo "Staging-proven: stable=$STABLE"
+
+  # ─── 2. PLATFORM (real Production BUILD — never artifact promote) ───────
+  platform:
+    name: Platform promote (staging→main BUILD)
+    needs: [gate, preflight]
+    runs-on: ubuntu-latest
+    outputs:
+      merge_sha: ${{ steps.merge.outputs.merge_sha }}
+      pr_url: ${{ steps.pr.outputs.pr_url }}
+      window_state: ${{ steps.state.outputs.window_state }}
+    steps:
+      - name: Create or reuse staging→main PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Match #265 pattern: PR staging → main, then merge.
+          EXISTING=$(gh pr list --base main --head staging --state open --json number,url --jq '.[0] // empty')
+          if [ -n "$EXISTING" ]; then
+            PR_NUMBER=$(printf '%s' "$EXISTING" | jq -r .number)
+            PR_URL=$(printf '%s' "$EXISTING" | jq -r .url)
+            echo "Reusing open PR #$PR_NUMBER"
+          else
+            PR_URL=$(gh pr create --base main --head staging \
+              --title "Promote staging to main (runtime $VERSION)" \
+              --body "$(printf '%s\n' \
+                "## Summary" \
+                "- Automated platform promote via promote-to-production.yml" \
+                "- Runtime version gate: \`$VERSION\` (staging-proven)" \
+                "" \
+                "## Note" \
+                "This is a real Production BUILD from the merge commit — not an artifact promote." \
+              )")
+            PR_NUMBER=$(basename "$PR_URL")
+            echo "Created PR #$PR_NUMBER"
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Merge PR (match #265)
+        id: merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          # Empirical: try GITHUB_TOKEN first. Do NOT speculate a PAT.
+          # On branch-protection rejection, fail with the remedy secret name.
+          set +e
+          MERGE_OUT=$(gh pr merge "$PR_NUMBER" --merge --admin 2>&1)
+          MERGE_EC=$?
+          set -e
+          if [ "$MERGE_EC" -ne 0 ]; then
+            echo "$MERGE_OUT"
+            if echo "$MERGE_OUT" | grep -Eiq 'protected branch|required status|review|not authorized|forbidden|Resource not accessible|GraphQL: .+ blocked|Cannot merge'; then
+              echo "::error::GITHUB_TOKEN could not merge PR #$PR_NUMBER (branch protection / permissions). Create repo secret PROMOTE_GITHUB_TOKEN (PAT that can bypass required checks / merge to main), then re-run. Do not mint the PAT until this failure is observed."
+            else
+              echo "::error::gh pr merge failed for PR #$PR_NUMBER (exit $MERGE_EC). See output above."
+            fi
+            exit 1
+          fi
+          MERGE_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq .mergeCommit.oid)
+          if [ -z "$MERGE_SHA" ] || [ "$MERGE_SHA" = "null" ]; then
+            echo "::error::PR #$PR_NUMBER merged but mergeCommit sha missing."
+            exit 1
+          fi
+          echo "merge_sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Merged → $MERGE_SHA"
+
+      - name: Wait for Vercel Production READY
+        id: vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "::error::secrets.VERCEL_TOKEN and secrets.VERCEL_PROJECT_ID are required to poll Production READY."
+            exit 1
+          fi
+
+          # Tolerate missing VERCEL_TEAM_ID: try with team scope when set, else
+          # without; if a scoped list returns empty/error, retry without team.
+          list_deployments() {
+            local team_qs="${1:-}"
+            curl -sS --max-time 30 \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v6/deployments?projectId=${VERCEL_PROJECT_ID}&target=production&limit=20${team_qs}"
+          }
+
+          find_match() {
+            local resp="$1"
+            local short="${MERGE_SHA:0:7}"
+            printf '%s' "$resp" | jq -c --arg sha "$MERGE_SHA" --arg short "$short" '
+              (.deployments // [])
+              | map(select(
+                  ((.meta.githubCommitSha // "") == $sha)
+                  or ((.meta.githubCommitSha // "") == $short)
+                  or ((.meta.gitCommitSha // "") == $sha)
+                ))
+              | .[0] // empty
+            '
+          }
+
+          # Poll up to ~12 minutes. Lookup by git commit sha among Production deploys.
+          DEADLINE=$((SECONDS + 720))
+          while [ $SECONDS -lt $DEADLINE ]; do
+            MATCH=""
+            if [ -n "${VERCEL_TEAM_ID:-}" ]; then
+              RESP=$(list_deployments "&teamId=${VERCEL_TEAM_ID}" || true)
+              MATCH=$(find_match "$RESP")
+              if [ -z "$MATCH" ]; then
+                echo "No match with teamId — retrying listing without team scope…"
+                RESP=$(list_deployments "")
+                MATCH=$(find_match "$RESP")
+              fi
+            else
+              echo "VERCEL_TEAM_ID unset — listing without team scope (create the secret for Laxcorp Research team)."
+              RESP=$(list_deployments "")
+              MATCH=$(find_match "$RESP")
+            fi
+
+            if [ -n "$MATCH" ]; then
+              DEPLOY_STATE=$(printf '%s' "$MATCH" | jq -r '.readyState // .state // empty')
+              DEPLOY_URL=$(printf '%s' "$MATCH" | jq -r '.url // empty')
+              UID=$(printf '%s' "$MATCH" | jq -r '.uid // empty')
+              echo "Found deploy uid=$UID readyState=$DEPLOY_STATE url=$DEPLOY_URL"
+              if [ "$DEPLOY_STATE" = "READY" ]; then
+                echo "deploy_url=https://$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+                echo "deploy_uid=$UID" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              if [ "$DEPLOY_STATE" = "ERROR" ] || [ "$DEPLOY_STATE" = "CANCELED" ]; then
+                echo "::error::Vercel Production deploy $UID ended in $DEPLOY_STATE."
+                exit 1
+              fi
+            else
+              echo "No Production deploy for $MERGE_SHA yet…"
+            fi
+            sleep 20
+          done
+          echo "::error::Timed out waiting for Vercel Production READY for $MERGE_SHA."
+          exit 1
+
+      - name: Record window state
+        id: state
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "window_state=platform-done" >> "$GITHUB_OUTPUT"
+          else
+            echo "window_state=platform-failed" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── 3. IMAGE + REGISTER (reuse promote-openclaw-image.yml) ─────────────
+  image:
+    name: Image promote + prod register
+    needs: [gate, platform]
+    uses: ./.github/workflows/promote-openclaw-image.yml
+    with:
+      version: ${{ needs.gate.outputs.version }}
+      target_env: production
+      skip_candidate_check: ${{ inputs.skip_candidate_check }}
+    secrets: inherit
+
+  # ─── 4. PROBES (six) ────────────────────────────────────────────────────
+  probes:
+    name: Post-promote probes
+    needs: [gate, preflight, platform, image]
+    runs-on: ubuntu-latest
+    outputs:
+      window_state: probes-done
+    steps:
+      - name: Probe 1 — GET /api/health → 200
+        # PROBE_ASSERT: health_http_200
+        run: |
+          set -euo pipefail
+          CODE=$(curl -sS -o /tmp/health.json -w "%{http_code}" --max-time 30 "${{ env.PROD_APP }}/api/health")
+          echo "HTTP $CODE body=$(cat /tmp/health.json)"
+          test "$CODE" = "200"
+
+      - name: Probe 2 — POST /blob-token unauth → 401
+        # PROBE_ASSERT: blob_token_http_401
+        run: |
+          set -euo pipefail
+          CODE=$(curl -sS -o /tmp/bt.txt -w "%{http_code}" --max-time 30 \
+            -X POST "${{ env.PROD_APP }}/api/internal/state/blob-token" \
+            -H "Content-Type: application/json" -d "{}")
+          echo "HTTP $CODE body=$(cat /tmp/bt.txt)"
+          test "$CODE" = "401"
+
+      - name: Probe 3 — POST /finalize unauth → 401
+        # PROBE_ASSERT: finalize_http_401
+        run: |
+          set -euo pipefail
+          CODE=$(curl -sS -o /tmp/fin.txt -w "%{http_code}" --max-time 30 \
+            -X POST "${{ env.PROD_APP }}/api/internal/state/finalize" \
+            -H "Content-Type: application/json" -d "{}")
+          echo "HTTP $CODE body=$(cat /tmp/fin.txt)"
+          test "$CODE" = "401"
+
+      - name: Probe 4 — POST /upload + metering → 413 USE_BLOB
+        # PROBE_ASSERT: upload_http_413_USE_BLOB
+        env:
+          PROD_METERING_MASTER_SECRET: ${{ secrets.PROD_METERING_MASTER_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PROD_METERING_MASTER_SECRET:-}" ]; then
+            echo "::error::secrets.PROD_METERING_MASTER_SECRET missing (prod METERING_MASTER_SECRET)."
+            exit 1
+          fi
+          BODY='{"workspaceId":"probe","snapshotGzipBase64":"H4sIAAAAAAAAAytJLS7hAgADyz+XBQAAAA=="}'
+          CODE=$(curl -sS -o /tmp/up.json -w "%{http_code}" --max-time 30 \
+            -X POST "${{ env.PROD_APP }}/api/internal/state/upload" \
+            -H "Content-Type: application/json" \
+            -H "X-Metering-Secret: $PROD_METERING_MASTER_SECRET" \
+            -d "$BODY")
+          echo "HTTP $CODE body=$(cat /tmp/up.json)"
+          test "$CODE" = "413"
+          jq -e '.code == "USE_BLOB"' /tmp/up.json >/dev/null
+
+      - name: Probe 5 — prod stable version via public API
+        # PROBE_ASSERT: stable_version_match
+        # Design: use existing public GET /api/versions/stable (no DATABASE_URL in
+        # Actions — avoids shipping prod DB creds to CI). Asserts version string.
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          BODY=$(curl -sS --max-time 30 "${{ env.PROD_APP }}/api/versions/stable")
+          echo "prod /api/versions/stable → $BODY"
+          STABLE=$(printf '%s' "$BODY" | jq -r '.data.version // empty')
+          test "$STABLE" = "$VERSION"
+
+      - name: Probe 6 — :latest references :<version> digest
+        # PROBE_ASSERT: latest_references_version_digest
+        env:
+          GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+          GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          EXPECTED: ${{ needs.preflight.outputs.version_digest }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -sS -u "${GHCR_READ_USER}:${GHCR_READ_PAT}" \
+            "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
+            | jq -r .token)
+          ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
+
+          # Top-level digest of :latest (may be an imagetools-wrapped index).
+          LATEST_DIGEST=$(curl -sS -D - -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: $ACCEPT" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/latest" \
+            | tr -d '\r' | awk '/^docker-content-digest:/{print $2}')
+
+          if [ "$LATEST_DIGEST" = "$EXPECTED" ]; then
+            echo ":latest digest == :$VERSION ($LATEST_DIGEST)"
+            exit 0
+          fi
+
+          LATEST_BODY=$(curl -sS \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: $ACCEPT" \
+            "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/latest")
+          MEDIA_TYPE=$(printf '%s' "$LATEST_BODY" | jq -r '.mediaType // ""')
+          REFERENCED=$(printf '%s' "$LATEST_BODY" \
+            | jq -r --arg d "$EXPECTED" '((.manifests // []) | map(.digest) | index($d)) != null')
+
+          case "$MEDIA_TYPE" in
+            *image.index*|*manifest.list*)
+              if [ "$REFERENCED" = "true" ]; then
+                echo ":latest ($LATEST_DIGEST) references :$VERSION ($EXPECTED)"
+                exit 0
+              fi
+              ;;
+          esac
+
+          echo "::error:::latest=$LATEST_DIGEST neither equals nor references $EXPECTED"
+          exit 1
+
+  # ─── 5. SUMMARY (always) ────────────────────────────────────────────────
+  summary:
+    name: Promotion summary
+    if: always()
+    needs: [gate, preflight, platform, image, probes]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write run summary + window state
+        env:
+          GATE: ${{ needs.gate.result }}
+          PREFLIGHT: ${{ needs.preflight.result }}
+          PLATFORM: ${{ needs.platform.result }}
+          IMAGE: ${{ needs.image.result }}
+          PROBES: ${{ needs.probes.result }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          MERGE_SHA: ${{ needs.platform.outputs.merge_sha }}
+          PR_URL: ${{ needs.platform.outputs.pr_url }}
+          VERSION_DIGEST: ${{ needs.preflight.outputs.version_digest }}
+        run: |
+          set -euo pipefail
+
+          # Derive recovery-oriented window state from job results.
+          if [ "$GATE" != "success" ]; then
+            WINDOW="not-started (confirm/version gate failed)"
+          elif [ "$PREFLIGHT" != "success" ]; then
+            WINDOW="preflight-failed (no platform/image changes)"
+          elif [ "$PLATFORM" != "success" ]; then
+            WINDOW="platform-failed (image not started — main may be partially merged; inspect PR)"
+          elif [ "$IMAGE" != "success" ]; then
+            WINDOW="platform-done / image-pending-or-failed — PROD may be Blob-only on old stable image; do NOT deploy containers; re-run image promote for $VERSION"
+          elif [ "$PROBES" != "success" ]; then
+            WINDOW="platform-done / image-done / probes-failed — inspect which probe; runtime may already be $VERSION"
+          else
+            WINDOW="complete — platform+image+probes green"
+          fi
+
+          {
+            echo "### Promote to Production"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| **version** | \`$VERSION\` |"
+            echo "| **version digest** | \`$VERSION_DIGEST\` |"
+            echo "| **merge sha** | \`$MERGE_SHA\` |"
+            echo "| **PR** | $PR_URL |"
+            echo "| **window state** | $WINDOW |"
+            echo ""
+            echo "### Job results"
+            echo "| Job | Result |"
+            echo "|---|---|"
+            echo "| gate | $GATE |"
+            echo "| preflight | $PREFLIGHT |"
+            echo "| platform | $PLATFORM |"
+            echo "| image | $IMAGE |"
+            echo "| probes | $PROBES |"
+            echo ""
+            echo "### Probe table (expected)"
+            echo "| # | Probe | Expect |"
+            echo "|---|---|---|"
+            echo "| 1 | GET /api/health | 200 |"
+            echo "| 2 | POST /blob-token (unauth) | 401 |"
+            echo "| 3 | POST /finalize (unauth) | 401 |"
+            echo "| 4 | POST /upload + metering | 413 USE_BLOB |"
+            echo "| 5 | GET /api/versions/stable | version == input |"
+            echo "| 6 | GHCR :latest | equals/references version digest |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "WINDOW_STATE=$WINDOW"
+          # Fail the summary job if any required job failed (so the run is red).
+          if [ "$GATE" != "success" ] || [ "$PREFLIGHT" != "success" ] || \
+             [ "$PLATFORM" != "success" ] || [ "$IMAGE" != "success" ] || \
+             [ "$PROBES" != "success" ]; then
+            echo "::error::Promotion incomplete — $WINDOW"
+            exit 1
+          fi

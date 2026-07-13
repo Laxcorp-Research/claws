@@ -421,10 +421,13 @@ function generateOpenClawConfig(
       // Orchestrator. (A channel:'*' binding does NOT do this — see the
       // comment at the config assembly below and #117.)
       entry.default = true;
-      // Allow orchestrator to spawn workers and critic as subagents
+      // Allow orchestrator to spawn workers and critic as subagents.
+      // Do NOT set subagents.model — that latent default overrides the target
+      // worker's list model when sessions_spawn omits agentId (self-target →
+      // commander model). requireAgentId forces explicit worker selection.
       entry.subagents = {
         allowAgents: [...workerIds, criticId],
-        model: resolveModel(agent.model), // Default model for spawned subagents
+        requireAgentId: true,
       };
     }
 
@@ -1428,6 +1431,7 @@ The Worker will execute the task and the result will be returned to you automati
 
 **Important rules:**
 - Always specify the \`agentId\` of the target Worker
+- Never pass a \`model\` param on \`sessions_spawn\` — models are configured per-agent
 - Provide a clear, complete task description with all necessary context
 - The Worker cannot see your conversation history - include everything they need
 - You can spawn multiple Workers in parallel for independent tasks
@@ -1637,6 +1641,9 @@ function generateToolsMd(
   const pauseSection = agent.role === 'ORCHESTRATOR'
     ? generatePausedWorkerToolsSection(workspace.agents)
     : '';
+  const spawnSection = agent.role === 'ORCHESTRATOR'
+    ? generateOrchestratorSpawnToolsSection()
+    : '';
   const toolSections: string[] = [];
   const customApiLines = (workspace.customToolConnections ?? []).map((customConn) => {
     const purpose = customConn.description?.trim() || 'No purpose provided.';
@@ -1677,6 +1684,7 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Report the failed tool name and the exact error text.
 - Never tell the human to open internal runtime settings, local-only URLs, ports, local dashboards, environment variables, or internal container settings.
 - Never fabricate or guess a result for a failed tool call.
+${spawnSection}
 ${pauseSection}
 ${mcpSection}`;
   }
@@ -1712,8 +1720,18 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Report the failed tool name and the exact error text.
 - Never tell the human to open internal runtime settings, local-only URLs, ports, local dashboards, environment variables, or internal container settings.
 - Never fabricate or guess a result for a failed tool call.
+${spawnSection}
 ${pauseSection}
 ${mcpSection}`;
+}
+
+/** Belt-line for orchestrator TOOLS.md — closes omit-agentId / model-param spawn footguns. */
+function generateOrchestratorSpawnToolsSection(): string {
+  return `
+## Subagent Spawn
+
+Always pass \`agentId\` on \`sessions_spawn\`; never pass a model param (models are configured per-agent).
+`;
 }
 
 function generatePausedWorkerToolsSection(agents: AgentWithRelations[]): string {
