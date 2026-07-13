@@ -36,6 +36,12 @@ const REQUIRED_STRUCTURAL = [
   "window_state",
   "PROMOTE_GITHUB_TOKEN",
   "retrying listing without team scope",
+  // Migration guard (maiden window ships the guard; later dispatches enforce it).
+  "MIGRATION_GUARD_ASSERT: prisma_migrations_ack",
+  "ACK-MIGRATIONS",
+  "migrations_ack",
+  "prisma/migrations/",
+  "migration_guard",
 ] as const;
 
 function loadWorkflow(): string {
@@ -80,6 +86,23 @@ describe("promote-to-production.yml contract", () => {
       "REMOVED_TEAM_RETRY",
     );
     expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+  });
+
+  it("MUTATION-anchored: removing migration guard assert fails structural check", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace(
+      "MIGRATION_GUARD_ASSERT: prisma_migrations_ack",
+      "MIGRATION_GUARD_ASSERT: REMOVED",
+    );
+    expect(mutated).not.toContain("MIGRATION_GUARD_ASSERT: prisma_migrations_ack");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+  });
+
+  it("platform job needs migration_guard (guard sits between preflight and platform)", () => {
+    const yml = loadWorkflow();
+    expect(yml).toMatch(
+      /platform:[\s\S]*?needs:\s*\[[^\]]*\bmigration_guard\b[^\]]*\]/,
+    );
   });
 
   it("merge step uses GITHUB_TOKEN only (no speculative PAT prefer)", () => {
