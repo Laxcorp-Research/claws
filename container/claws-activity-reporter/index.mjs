@@ -192,6 +192,31 @@ class ActivityReporter {
 
 const reporter = new ActivityReporter();
 
+/**
+ * -8 emission-version boot stamp. Synchronous enqueue only (hook invariant).
+ * Uses TASK_START (allowed ingest type) with metadata.clawsOverlaySha.
+ */
+export function emitOverlayBootEvent() {
+  const sha =
+    typeof process.env.CLAWS_OVERLAY_SHA === "string" && process.env.CLAWS_OVERLAY_SHA.length > 0
+      ? process.env.CLAWS_OVERLAY_SHA
+      : null;
+  reporter.add({
+    type: "TASK_START",
+    timestamp: new Date().toISOString(),
+    agentId: null,
+    runId: null,
+    sessionKey: null,
+    channelId: null,
+    action: "Claws overlay boot",
+    detail: sha ? `CLAWS_OVERLAY_SHA=${sha}` : "CLAWS_OVERLAY_SHA unset",
+    metadata: {
+      eventKind: "overlay_boot",
+      clawsOverlaySha: sha,
+    },
+  });
+}
+
 // ─── Event marshalling helpers ───────────────────────────────────────────
 //
 // Each helper returns the ActivityLog-shaped record we POST. agentSlug is
@@ -643,6 +668,9 @@ const pluginEntry = {
       "gateway_start",
       () => {
         reporter.start();
+        // -8 emission-version: stamp CLAWS_OVERLAY_SHA (baked at image build)
+        // onto a boot event so operators can see which overlay is running.
+        emitOverlayBootEvent();
       },
       { timeoutMs: HANDLER_TIMEOUT_MS },
     );
@@ -700,4 +728,5 @@ export const __test__ = {
   isWebchatReplyTurn,
   extractAssistantReply,
   handleSyncNow,
+  emitOverlayBootEvent,
 };

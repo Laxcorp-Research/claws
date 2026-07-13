@@ -10,11 +10,12 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
+import { fileURLToPath } from 'url';
 // PR-1 (sync-now): bundle + upload logic is the single source of truth in
 // state-sync.mjs, imported by BOTH this entrypoint and the gateway plugin's
 // /internal/sync-now route. The image copies that one file to both
 // /usr/local/bin/state-sync.mjs (here) and /opt/state-sync.mjs (the plugin).
-import { OPENCLAW_DATA_DIR, runStateSync } from './state-sync.mjs';
+import { OPENCLAW_DATA_DIR, runStateSync, postActivityEvent } from './state-sync.mjs';
 
 const CREDIT_MODE = process.env.CLAWS_CREDIT_MODE === 'true';
 const GATEWAY_PORT = process.env.PORT || '18789';
@@ -35,6 +36,90 @@ const STATE_ENDPOINT = METERING_ENDPOINT
 const children = new Set();
 let proxyRestartCount = 0;
 let shuttingDown = false;
+
+// ─── Sync-failure → ERROR (consecutive non-2xx token/finalize) ───────────
+// ≥3 consecutive rejected blob-token/finalize responses with an HTTP status
+// → one ERROR activity event. Counter resets on success. At most one emit
+// per failure streak (no 5-min spam until recovery).
+
+export function isTokenOrFinalizeHttpReject(result) {
+  return (
+    result != null &&
+    result.status === 'rejected' &&
+    typeof result.httpStatus === 'number' &&
+    (result.path === 'blob-token' || result.path === 'finalize')
+  );
+}
+
+export function createSyncFailureTracker({
+  threshold = 3,
+  emitError = async () => {},
+} = {}) {
+  let consecutive = 0;
+  let emittedForStreak = false;
+
+  return {
+    async noteResult(result) {
+      if (
+        result?.status === 'persisted' ||
+        result?.status === 'accepted-unconfirmed'
+      ) {
+        consecutive = 0;
+        emittedForStreak = false;
+        return { emitted: false, consecutive };
+      }
+
+      if (!isTokenOrFinalizeHttpReject(result)) {
+        return { emitted: false, consecutive };
+      }
+
+      consecutive += 1;
+      if (consecutive >= threshold && !emittedForStreak) {
+        emittedForStreak = true;
+        await emitError({
+          httpStatus: result.httpStatus,
+          consecutive,
+          sizeKb: result.sizeKb ?? 0,
+          path: result.path,
+        });
+        return { emitted: true, consecutive };
+      }
+      return { emitted: false, consecutive };
+    },
+    getState() {
+      return { consecutive, emittedForStreak };
+    },
+    __reset() {
+      consecutive = 0;
+      emittedForStreak = false;
+    },
+  };
+}
+
+async function emitSyncFailureError({ httpStatus, consecutive, sizeKb, path: failPath }) {
+  await postActivityEvent({
+    type: 'ERROR',
+    timestamp: new Date().toISOString(),
+    agentId: null,
+    runId: null,
+    sessionKey: null,
+    channelId: null,
+    action: `State sync failed: HTTP ${httpStatus} on ${failPath} (${consecutive} consecutive; ${sizeKb}KB)`,
+    detail: `consecutiveNon2xx=${consecutive} httpStatus=${httpStatus} path=${failPath} sizeKb=${sizeKb}`,
+    metadata: {
+      kind: 'state_sync_failure',
+      httpStatus,
+      consecutive,
+      sizeKb,
+      path: failPath,
+    },
+  });
+}
+
+const syncFailureTracker = createSyncFailureTracker({
+  threshold: 3,
+  emitError: emitSyncFailureError,
+});
 
 // ─── Runtime State Sync ─────────────────────────────────
 // bundleRuntimeState + the gzip/upload/count-check now live in state-sync.mjs
@@ -70,6 +155,11 @@ function restoreRuntimeState(stateJson) {
 // before; 'unconfigured'/'empty' are silent early-returns, same as before.)
 async function syncState() {
   const r = await runStateSync();
+  try {
+    await syncFailureTracker.noteResult(r);
+  } catch (err) {
+    console.error('[process-manager] Sync-failure ERROR emit failed:', err?.message ?? err);
+  }
   switch (r.status) {
     case 'unconfigured':
     case 'empty':
@@ -259,7 +349,28 @@ async function main() {
   console.log('[process-manager] All processes started');
 }
 
-main().catch(err => {
-  console.error('[process-manager] Fatal error:', err);
-  process.exit(1);
-});
+function isDirectEntrypoint() {
+  try {
+    const thisFile = fileURLToPath(import.meta.url);
+    const invoked = process.argv[1] && path.resolve(process.argv[1]);
+    return Boolean(invoked) && thisFile === invoked;
+  } catch {
+    // If resolution fails, prefer starting (container entrypoint safety).
+    return true;
+  }
+}
+
+if (isDirectEntrypoint()) {
+  main().catch(err => {
+    console.error('[process-manager] Fatal error:', err);
+    process.exit(1);
+  });
+}
+
+export const __test__ = {
+  createSyncFailureTracker,
+  isTokenOrFinalizeHttpReject,
+  syncFailureTracker,
+  syncState,
+  isDirectEntrypoint,
+};

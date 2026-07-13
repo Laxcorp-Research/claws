@@ -1,6 +1,12 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
+# -8 emission-version: bake overlay source SHA (hash of docker/+container/
+# at image build) so the reporter can emit it on boot. Workflow passes
+# CLAWS_OVERLAY_SHA=steps.overlay.outputs.sha.
+ARG CLAWS_OVERLAY_SHA=
+ENV CLAWS_OVERLAY_SHA=${CLAWS_OVERLAY_SHA}
+
 COPY container/process-manager.mjs /usr/local/bin/process-manager.mjs
 COPY container/credit-proxy.mjs /usr/local/bin/credit-proxy.mjs
 
