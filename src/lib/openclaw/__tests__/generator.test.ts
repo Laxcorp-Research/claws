@@ -623,6 +623,48 @@ describe('generateWorkspace', () => {
     expect(orchestrator.subagents.allowAgents).toContain('quality-reviewer');
   });
 
+  it('B-hardening: no subagents.model anywhere; orchestrator requireAgentId; worker models intact', async () => {
+    // Mutation: re-add orchestrator subagents.model → JSON.stringify match fails.
+    // Mutation: drop requireAgentId → expect(true) fails.
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    const list = config.agents.list as Array<{
+      id: string;
+      name: string;
+      model: string;
+      subagents?: { model?: string; requireAgentId?: boolean; allowAgents?: string[] };
+    }>;
+
+    const blob = JSON.stringify(config);
+    expect(blob).not.toMatch(/"subagents"\s*:\s*\{[^}]*"model"/);
+    for (const entry of list) {
+      expect(entry.subagents?.model).toBeUndefined();
+    }
+    expect(config.agents.defaults?.subagents?.model).toBeUndefined();
+
+    const orchestrator = list.find((a) => a.name === 'Test Commander');
+    expect(orchestrator?.subagents?.requireAgentId).toBe(true);
+
+    const worker = list.find((a) => a.name === 'Data Analyst');
+    const critic = list.find((a) => a.name === 'Quality Reviewer');
+    expect(worker?.subagents).toBeUndefined();
+    expect(critic?.subagents).toBeUndefined();
+    expect(worker?.model).toBeTruthy();
+    expect(critic?.model).toBeTruthy();
+    expect(worker?.model).not.toBe(orchestrator?.model);
+  });
+
+  it('B-hardening: orchestrator TOOLS.md belt-line requires agentId and forbids model param', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const workerKey = Object.keys(result.workspaces).find((k) => k.includes('data-analyst'));
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain(
+      'Always pass `agentId` on `sessions_spawn`; never pass a model param (models are configured per-agent).',
+    );
+    expect(result.workspaces[workerKey!]['TOOLS.md']).not.toContain('## Subagent Spawn');
+  });
+
   it('emits NO bindings key — Orchestrator routing is via default:true (#117, dead config removed)', async () => {
     // Regression guard: we used to emit
     //   bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]

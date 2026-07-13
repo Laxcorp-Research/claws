@@ -373,6 +373,12 @@ function extractAssistantReply(messages, event) {
 }
 
 function handleAgentEnd(event, ctx) {
+  // PR-2 stub (Finding B fidelity telemetry): servedModel is NOT overlay-reachable
+  // on agent_end today — ctx exposes agentId/runId/sessionKey/channelId/jobId/trigger
+  // only; assistant message snapshot used here carries text/stopReason/usage, not
+  // modelId. Do NOT invent a field. Next PR: confirm upstream hook payload (or
+  // session store) surfaces the resolved model, then emit servedModel into
+  // metadata (column-free JSON) so Watchtower can reconcile config-vs-served.
   const success = event?.success === true;
   const actionType = success ? "TASK_COMPLETE" : "TASK_FAILED";
   const fullError = typeof event?.error === "string" ? event.error : "";
