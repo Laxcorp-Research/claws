@@ -48,11 +48,21 @@ concurrency:
 # permissions can only be downgraded by the caller, never elevated — violations
 # are BOOT-TIME startup_failures with zero jobs and zero logs (maiden run
 # 29266873589).
+#
+# Wait-then-merge poll APIs → required scopes (round-4 / run 29331408200):
+#   - `gh pr view --json statusCheckRollup` (GraphQL statusCheckRollup)
+#       → checks: read  +  statuses: read
+#         (CheckRun nodes need checks; commit StatusContext nodes need statuses.
+#          Missing either → "Resource not accessible by integration".)
+#   - `gh pr checks "$PR"` (REST Checks API — timeout/failure diagnostics only)
+#       → checks: read
 permissions:
   contents: write
   pull-requests: write
   packages: write
   actions: read
+  checks: read # CHECKS_READ_PERMISSION_ASSERT
+  statuses: read # STATUSES_READ_PERMISSION_ASSERT
 
 env:
   REGISTRY: ghcr.io
@@ -97,6 +107,27 @@ jobs:
       version_digest: ${{ steps.digests.outputs.version_digest }}
       window_state: preflight-done
     steps:
+      # PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable
+      # Read-only GraphQL probe BEFORE GHCR/staging gates open any window.
+      # Same API as wait-then-merge (`gh pr view --json statusCheckRollup`).
+      # Requires workflow-level checks: read + statuses: read (see top comment).
+      # Failure here = loud red on dry-run and real runs alike (kills the
+      # 29331408200 class before platform create/merge).
+      - name: Probe GITHUB_TOKEN can read statusCheckRollup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR=$(gh pr list --state all --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            echo "::error::permissions-probe: no PRs in repo to probe against."
+            exit 1
+          fi
+          echo "Probing statusCheckRollup on PR #$PR…"
+          COUNT=$(gh pr view "$PR" --json statusCheckRollup \
+            --jq '[.statusCheckRollup[]? | select(.name != null and .name != "")] | length')
+          echo "permissions-probe OK: statusCheckRollup readable on PR #$PR (named checks=$COUNT)"
+
       - name: Resolve GHCR digests for :<version> and :candidate
         id: digests
         env:
@@ -347,6 +378,10 @@ jobs:
           # Merge WITHOUT --admin so GITHUB_TOKEN only succeeds when protection is
           # actually satisfied (linear history must allow merge commits; reviews/
           # remaining gates → PROMOTE_GITHUB_TOKEN remedy below).
+          #
+          # Poll implementation → scopes (must match workflow-level permissions):
+          #   gh pr view --json statusCheckRollup  → checks:read + statuses:read
+          #   gh pr checks (diagnostics on fail/timeout) → checks:read
           DEADLINE_SECS=2400
           START=$SECONDS
           echo "Waiting up to ${DEADLINE_SECS}s for PR #$PR_NUMBER check-runs to go green…"
@@ -358,7 +393,7 @@ jobs:
               exit 1
             fi
 
-            # statusCheckRollup: name/status/conclusion (ignore nameless rollup rows)
+            # GraphQL statusCheckRollup: name/status/conclusion (ignore nameless rows)
             ROLLUP=$(gh pr view "$PR_NUMBER" --json statusCheckRollup \
               --jq '[.statusCheckRollup[]? | select(.name != null and .name != "")]')
             TOTAL=$(printf '%s' "$ROLLUP" | jq 'length')
