@@ -2,7 +2,7 @@
 
 Principles: one glance = what's happening now; history is navigable not scrollable; unknown renders unknown, never fabricated; DS-first.
 
-ZONE A Command Strip: name+StatusBadge, StatChips (agents active n/m, tasks today, cost today est., channel dots), AlertStack (priority: container-down > silence > sync-stale > connection-expired > session-dead > drift > version-update; top alert inline + "N more" expander, every CTA intact).
+ZONE A Command Strip: name+StatusBadge, StatChips (agents active n/m, tasks today, cost today est., channel dots), AlertStack (priority: container-down > silence > near-cap > sync-stale > connection-expired > session-dead > drift > version-update; top alert inline + "N more" expander, every CTA intact).
 
 ZONE B Live Ops: AgentLiveTile per agent (WORKING from open runId <30min / IDLE / PAUSED / ERROR; heartbeat starts down-ranked), RunChain Orchestrator->Worker->Critic.
 

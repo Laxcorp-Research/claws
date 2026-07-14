@@ -82,6 +82,7 @@ function activityPayload(opts: {
   mcpSessionHealthStatus: "HEALTHY" | "DEAD" | "UNREACHABLE" | null;
   activitySilenceDetectedAt?: string | null;
   stateSyncStaleDetectedAt?: string | null;
+  stateSyncNearCapActive?: boolean;
   healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
   lastHealthCheck?: string | null;
   expiredTools?: Array<{ name: string; status: "ERROR" | "EXPIRED" | "REVOKED"; connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "CHANNEL_NATIVE" }>;
@@ -90,6 +91,7 @@ function activityPayload(opts: {
     mcpSessionHealthStatus,
     activitySilenceDetectedAt = null,
     stateSyncStaleDetectedAt = null,
+    stateSyncNearCapActive = false,
     healthStatus = "HEALTHY",
     lastHealthCheck = null,
     expiredTools = [],
@@ -109,6 +111,7 @@ function activityPayload(opts: {
         mcpSessionLastError: mcpSessionHealthStatus === "DEAD" ? "session not found" : null,
         activitySilenceDetectedAt,
         stateSyncStaleDetectedAt,
+        stateSyncNearCapActive,
         currentMonthApiCost: 0,
         apiSpendLimit: 50,
         costAlertThreshold: 0.8,
@@ -165,11 +168,13 @@ function mockFetch(opts: {
   mcpSessionHealthStatus?: "HEALTHY" | "DEAD" | "UNREACHABLE" | null;
   activitySilenceDetectedAt?: string | null;
   stateSyncStaleDetectedAt?: string | null;
+  stateSyncNearCapActive?: boolean;
 } = {}) {
   const payloadOptions = {
     mcpSessionHealthStatus: opts.mcpSessionHealthStatus ?? null,
     activitySilenceDetectedAt: opts.activitySilenceDetectedAt ?? null,
     stateSyncStaleDetectedAt: opts.stateSyncStaleDetectedAt ?? null,
+    stateSyncNearCapActive: opts.stateSyncNearCapActive ?? false,
   }
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -289,10 +294,11 @@ describe("DashboardPage MCP session banner", () => {
     expect(screen.queryByText("$0.00")).toBeNull()
   })
 
-  it("orders the seven cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {
+  it("orders the eight cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {
     const payload = activityPayload({
       mcpSessionHealthStatus: "DEAD",
       activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z",
+      stateSyncNearCapActive: true,
       stateSyncStaleDetectedAt: "2026-07-05T08:31:00.000Z",
       healthStatus: "UNHEALTHY",
       lastHealthCheck: "2026-07-05T08:00:00.000Z",
@@ -334,12 +340,14 @@ describe("DashboardPage MCP session banner", () => {
     render(<DashboardPage />)
 
     expect(await screen.findByText("Agent container is not responding")).toBeDefined()
-    const expander = await screen.findByRole("button", { name: "6 more alerts" })
+    const expander = await screen.findByRole("button", { name: "7 more alerts" })
     expect(screen.queryByText("A runtime update is available — redeploy to apply")).toBeNull()
 
     fireEvent.click(expander)
 
     expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
+    expect(screen.getByText(/Memory bundle approaching size limit/)).toBeDefined()
+    expect(screen.getByRole("button", { name: "Manage sessions" })).toBeDefined()
     expect(screen.getByText("Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
     expect(screen.getByText("HubSpot connection expired")).toBeDefined()
     expect(screen.getByText("Long-tail tools disconnected — redeploy to restore")).toBeDefined()
@@ -353,5 +361,22 @@ describe("DashboardPage MCP session banner", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/restart", { method: "POST" })
     })
+  })
+
+  it("renders near-cap banner from synthetic stateSyncNearCapActive and routes Manage sessions", async () => {
+    mockFetch({ stateSyncNearCapActive: true })
+    render(<DashboardPage />)
+
+    expect(await screen.findByText(/Memory bundle approaching size limit/)).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Manage sessions" }))
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/ws-1?tab=conversations")
+  })
+
+  it("hides near-cap banner when stateSyncNearCapActive is false (auto-resolved)", async () => {
+    mockFetch({ stateSyncNearCapActive: false, activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z" })
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
+    expect(screen.queryByText(/Memory bundle approaching size limit/)).toBeNull()
   })
 })

@@ -73,6 +73,8 @@ interface WorkspaceInfo {
   mcpSessionLastError?: string | null
   activitySilenceDetectedAt?: string | null
   stateSyncStaleDetectedAt?: string | null
+  /** PR-3: true while newest near-cap WARNING is unresolved (no post-warn sync below re-arm). */
+  stateSyncNearCapActive?: boolean
   apiKeySource?: ApiKeySource
 }
 
@@ -573,6 +575,11 @@ export default function DashboardPage() {
   const showStateSyncStale =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.stateSyncStaleDetectedAt)
+  // K1 ordering: container-down (0) > silence (1) > near-cap (2) > sync-stale (3) >
+  // connection-expired (4) > session-dead (5) > drift (6) > version-update (7)
+  const showStateSyncNearCap =
+    workspace?.status === "RUNNING" &&
+    Boolean(workspace.stateSyncNearCapActive)
   const redeploying = redeployFlow.redeploying
   const spendPercent = spend?.percent ?? 0
   const spendLimitReached = spendPercent >= 100
@@ -637,7 +644,7 @@ export default function DashboardPage() {
     if (showMcpSessionDead) {
       list.push({
         key: "mcp-session-dead",
-        priority: 4,
+        priority: 5,
         variant: "warning",
         icon: <RefreshCw className="w-4 h-4" />,
         content: (
@@ -675,10 +682,30 @@ export default function DashboardPage() {
       })
     }
 
+    if (showStateSyncNearCap) {
+      list.push({
+        key: "state-sync-near-cap",
+        priority: 2,
+        variant: "warning",
+        content: (
+          <p className="font-medium">
+            Memory bundle approaching size limit —{" "}
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:opacity-80"
+              onClick={() => router.push(`/dashboard/${workspaceId}?tab=conversations`)}
+            >
+              Manage sessions
+            </button>
+          </p>
+        ),
+      })
+    }
+
     if (showStateSyncStale) {
       list.push({
         key: "state-sync-stale",
-        priority: 2,
+        priority: 3,
         variant: "warning",
         content: (
           <p className="font-medium">Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.</p>
@@ -757,7 +784,7 @@ export default function DashboardPage() {
       const manageHref = `/setup/${workspaceId}/step/2?mode=manage`
       list.push({
         key: "tools-expired",
-        priority: 3,
+        priority: 4,
         variant: "warning",
         icon: <Unplug className="w-4 h-4" />,
         content: (
@@ -780,7 +807,7 @@ export default function DashboardPage() {
     if (showConfigDrift && configDrift) {
       list.push({
         key: "config-drift",
-        priority: 5,
+        priority: 6,
         variant: "warning",
         content: (
           <>
@@ -802,7 +829,7 @@ export default function DashboardPage() {
       if (isNewerVersion(stableVer, currentVer)) {
         list.push({
           key: "version-update",
-          priority: 6,
+          priority: 7,
           variant: "info",
           icon: <ArrowUpCircle className="w-4 h-4" />,
           content: (
@@ -953,7 +980,7 @@ export default function DashboardPage() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncNearCap, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion])
 
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => {
