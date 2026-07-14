@@ -113,18 +113,27 @@ jobs:
       # Requires workflow-level checks: read + statuses: read (see top comment).
       # Failure here = loud red on dry-run and real runs alike (kills the
       # 29331408200 class before platform create/merge).
+      #
+      # NO checkout by design: preflight stays workspace-free (curl/API only for
+      # digests + staging-proven). Every `gh` call MUST pass
+      # `-R ${{ github.repository }}` so the probe does not need a local .git
+      # (round-5 / run 29333451353: bare `gh pr list` → "not a git repository").
       - name: Probe GITHUB_TOKEN can read statusCheckRollup
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          PR=$(gh pr list --state all --limit 1 --json number --jq '.[0].number // empty')
+          # gh calls in this step (all must carry -R):
+          #   1. gh pr list -R …
+          #   2. gh pr view -R … "$PR" --json statusCheckRollup
+          REPO="${{ github.repository }}"
+          PR=$(gh pr list -R "$REPO" --state all --limit 1 --json number --jq '.[0].number // empty')
           if [ -z "$PR" ]; then
             echo "::error::permissions-probe: no PRs in repo to probe against."
             exit 1
           fi
           echo "Probing statusCheckRollup on PR #$PR…"
-          COUNT=$(gh pr view "$PR" --json statusCheckRollup \
+          COUNT=$(gh pr view -R "$REPO" "$PR" --json statusCheckRollup \
             --jq '[.statusCheckRollup[]? | select(.name != null and .name != "")] | length')
           echo "permissions-probe OK: statusCheckRollup readable on PR #$PR (named checks=$COUNT)"
 

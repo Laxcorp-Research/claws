@@ -181,11 +181,41 @@ describe("promote-to-production.yml contract", () => {
     const preflight = jobBlock(yml, "preflight");
     expect(preflight).toContain("PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable");
     expect(preflight).toContain("Probe GITHUB_TOKEN can read statusCheckRollup");
-    expect(preflight).toContain("gh pr view \"$PR\" --json statusCheckRollup");
+    expect(preflight).toContain('gh pr view -R "$REPO" "$PR" --json statusCheckRollup');
+    expect(preflight).toContain("NO checkout by design");
     const probeIdx = preflight.indexOf("PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable");
     const digestsIdx = preflight.indexOf("Resolve GHCR digests");
     expect(probeIdx).toBeGreaterThanOrEqual(0);
     expect(digestsIdx).toBeGreaterThan(probeIdx);
+  });
+
+  it("permissions-probe gh commands carry -R (workspace-free)", () => {
+    const yml = loadWorkflow();
+    const preflight = jobBlock(yml, "preflight");
+    const probeStart = preflight.indexOf("Probe GITHUB_TOKEN can read statusCheckRollup");
+    const probeEnd = preflight.indexOf("Resolve GHCR digests");
+    const probe = preflight.slice(probeStart, probeEnd);
+    expect(probe).toContain('gh pr list -R "$REPO"');
+    expect(probe).toContain('gh pr view -R "$REPO"');
+    // Every gh invocation in the probe must include -R.
+    const ghLines = probe.split("\n").filter((l) => /\bgh pr\b/.test(l));
+    expect(ghLines.length).toBeGreaterThanOrEqual(2);
+    for (const line of ghLines) {
+      expect(line, `missing -R: ${line}`).toMatch(/\s-R\s/);
+    }
+  });
+
+  it("MUTATION: stripping -R from probe gh calls fails contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml
+      .replace('gh pr list -R "$REPO"', "gh pr list")
+      .replace('gh pr view -R "$REPO"', "gh pr view");
+    const preflight = jobBlock(mutated, "preflight");
+    const probeStart = preflight.indexOf("Probe GITHUB_TOKEN can read statusCheckRollup");
+    const probeEnd = preflight.indexOf("Resolve GHCR digests");
+    const probe = preflight.slice(probeStart, probeEnd);
+    const ghLines = probe.split("\n").filter((l) => /\bgh pr\b/.test(l));
+    expect(ghLines.some((l) => !/\s-R\s/.test(l))).toBe(true);
   });
 
   it("MUTATION: removing permissions-probe marker fails contract", () => {
