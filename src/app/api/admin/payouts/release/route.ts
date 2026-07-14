@@ -6,11 +6,16 @@ import { logAdminAction } from "@/lib/security/audit-log"
 
 export const maxDuration = 30
 
-export async function GET() {
-  try {
-    await requireAdmin()
-  } catch {
-    return apiError("FORBIDDEN", "Admin access required", 403)
+export async function GET(request: NextRequest) {
+  const cronAuth = request.headers.get("authorization")
+  const isCron = cronAuth === `Bearer ${process.env.CRON_SECRET}` && !!process.env.CRON_SECRET
+
+  if (!isCron) {
+    try {
+      await requireAdmin()
+    } catch {
+      return apiError("FORBIDDEN", "Admin access required", 403)
+    }
   }
 
   const batches = await getReleasablePayoutBatches()
