@@ -32,6 +32,11 @@ on:
         required: false
         type: boolean
         default: false
+      dry_run:
+        description: 'Rehearsal mode: preflight+guard run for real; platform/image echo side-effecting commands; probes run health+stable GET only and echo the rest. No prod window.'
+        required: false
+        type: boolean
+        default: false
 
 # Two promotions must never overlap (platform/image window is order-sensitive).
 concurrency:
@@ -228,17 +233,79 @@ jobs:
           echo "migrations_ack=ACK-MIGRATIONS accepted; proceeding with migrations aboard."
 
   # ─── 2. PLATFORM (real Production BUILD — never artifact promote) ───────
+  # Checkout audit: gate/preflight/probes/summary use curl/API only (no git).
+  # migration_guard already checkouts. platform runs git rev-list + gh pr *
+  # against the repo — MUST checkout first (run 29301681427 failed without it).
   platform:
     name: Platform promote (staging→main BUILD)
     needs: [gate, preflight, migration_guard]
     runs-on: ubuntu-latest
     outputs:
-      merge_sha: ${{ steps.merge.outputs.merge_sha }}
-      pr_url: ${{ steps.pr.outputs.pr_url }}
+      merge_sha: ${{ steps.finalize.outputs.merge_sha }}
+      pr_url: ${{ steps.finalize.outputs.pr_url }}
+      platform_mode: ${{ steps.resolve.outputs.platform_mode }}
       window_state: ${{ steps.state.outputs.window_state }}
     steps:
+      - name: Checkout (fetch-depth 0 for main..staging history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve platform mode (noop / promote / dry-run)
+        id: resolve
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch origin main staging
+          COUNT=$(git rev-list --count origin/main..origin/staging)
+          MAIN_SHA=$(git rev-parse origin/main)
+          echo "origin/main..origin/staging commit count=$COUNT (main=$MAIN_SHA)"
+
+          if [ "${DRY_RUN}" = "true" ]; then
+            # DRY_RUN_ASSERT: platform_echo
+            echo "DRY_RUN=true — echoing platform side effects only."
+            if [ "$COUNT" -eq 0 ]; then
+              echo "WOULD: skip PR/merge (platform already current; staging==main)"
+            else
+              echo "WOULD: gh pr create --base main --head staging --title \"Promote staging to main (runtime $VERSION)\""
+              echo "WOULD: gh pr merge <PR> --merge --admin"
+              echo "WOULD: poll Vercel Production READY for the merge commit"
+            fi
+            {
+              echo "### Platform (dry-run)"
+              echo ""
+              echo "ahead_count=$COUNT — **no side effects**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "platform_mode=dry_run" >> "$GITHUB_OUTPUT"
+            echo "merge_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+            echo "pr_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$COUNT" -eq 0 ]; then
+            # PLATFORM_NOOP_ASSERT: staging_eq_main
+            echo "platform already current (staging==main)"
+            {
+              echo "### Platform"
+              echo ""
+              echo "platform already current (staging==main) — skipping PR/merge; image+probes continue."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "platform_mode=noop" >> "$GITHUB_OUTPUT"
+            echo "merge_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+            echo "pr_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "platform_mode=promote" >> "$GITHUB_OUTPUT"
+          echo "ahead_count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "merge_sha=" >> "$GITHUB_OUTPUT"
+          echo "pr_url=" >> "$GITHUB_OUTPUT"
+
       - name: Create or reuse staging→main PR
         id: pr
+        if: ${{ steps.resolve.outputs.platform_mode == 'promote' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.gate.outputs.version }}
@@ -269,6 +336,7 @@ jobs:
 
       - name: Merge PR (match #265)
         id: merge
+        if: ${{ steps.resolve.outputs.platform_mode == 'promote' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
@@ -299,6 +367,7 @@ jobs:
 
       - name: Wait for Vercel Production READY
         id: vercel
+        if: ${{ steps.resolve.outputs.platform_mode == 'promote' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -374,6 +443,20 @@ jobs:
           echo "::error::Timed out waiting for Vercel Production READY for $MERGE_SHA."
           exit 1
 
+      - name: Finalize platform outputs
+        id: finalize
+        run: |
+          set -euo pipefail
+          MODE="${{ steps.resolve.outputs.platform_mode }}"
+          if [ "$MODE" = "promote" ]; then
+            echo "merge_sha=${{ steps.merge.outputs.merge_sha }}" >> "$GITHUB_OUTPUT"
+            echo "pr_url=${{ steps.pr.outputs.pr_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "merge_sha=${{ steps.resolve.outputs.merge_sha }}" >> "$GITHUB_OUTPUT"
+            echo "pr_url=${{ steps.resolve.outputs.pr_url }}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "platform_mode=$MODE" >> "$GITHUB_OUTPUT"
+
       - name: Record window state
         id: state
         if: always()
@@ -389,8 +472,10 @@ jobs:
   # caller, never elevated. The callee (promote-openclaw-image.yml) declares
   # packages: write — this job MUST grant it. Elevating beyond the caller's
   # grant is a BOOT-TIME startup_failure with zero logs (not a step failure).
+  # Checkout audit: callee uses docker/curl only — no git checkout required.
   image:
     name: Image promote + prod register
+    if: ${{ inputs.dry_run != true }}
     needs: [gate, platform]
     permissions:
       contents: read
@@ -404,10 +489,51 @@ jobs:
       skip_candidate_check: ${{ inputs.skip_candidate_check == true }}
     secrets: inherit
 
+  image_dry_run:
+    name: Image promote + prod register (dry-run)
+    if: ${{ inputs.dry_run == true }}
+    needs: [gate, preflight, platform]
+    runs-on: ubuntu-latest
+    steps:
+      - name: DRY_RUN echo retag + register (no side effects)
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+          VERSION_DIGEST: ${{ needs.preflight.outputs.version_digest }}
+        run: |
+          set -euo pipefail
+          # DRY_RUN_ASSERT: image_echo
+          UPSTREAM_VERSION="${VERSION%%-*}"
+          UPSTREAM_TAG="v${UPSTREAM_VERSION}"
+          DOCKER_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          REGISTER_URL="https://app.buildclaws.ai/api/internal/versions/register"
+          echo "WOULD retag command:"
+          echo "  docker buildx imagetools create --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          PAYLOAD=$(jq -n \
+            --arg version "$VERSION" \
+            --arg dockerImage "$DOCKER_IMAGE" \
+            --arg imageDigest "$VERSION_DIGEST" \
+            --arg buildSourceTag "$UPSTREAM_TAG" \
+            --arg buildPushedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg releaseNotesUrl "https://github.com/openclaw/openclaw/releases/tag/$UPSTREAM_TAG" \
+            '{version: $version, dockerImage: $dockerImage, imageDigest: $imageDigest, buildSourceTag: $buildSourceTag, buildPushedAt: $buildPushedAt, releaseNotesUrl: $releaseNotesUrl, isStable: true, isCandidate: false}')
+          echo "WOULD register POST $REGISTER_URL payload:"
+          echo "$PAYLOAD" | jq -c .
+          {
+            echo "### Image (dry-run)"
+            echo ""
+            echo "Retag + register **echoed only** — no GHCR/:latest move, no prod isStable write."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ─── 4. PROBES (six) ────────────────────────────────────────────────────
   probes:
     name: Post-promote probes
-    needs: [gate, preflight, platform, image]
+    needs: [gate, preflight, platform, image, image_dry_run]
+    if: |
+      always() &&
+      needs.gate.result == 'success' &&
+      needs.preflight.result == 'success' &&
+      needs.platform.result == 'success' &&
+      (needs.image.result == 'success' || needs.image_dry_run.result == 'success')
     runs-on: ubuntu-latest
     outputs:
       window_state: probes-done
@@ -422,8 +548,15 @@ jobs:
 
       - name: Probe 2 — POST /blob-token unauth → 401
         # PROBE_ASSERT: blob_token_http_401
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "DRY_RUN_ASSERT: probe_echo blob_token"
+            echo "WOULD: POST /api/internal/state/blob-token unauth → expect 401"
+            exit 0
+          fi
           CODE=$(curl -sS -o /tmp/bt.txt -w "%{http_code}" --max-time 30 \
             -X POST "${{ env.PROD_APP }}/api/internal/state/blob-token" \
             -H "Content-Type: application/json" -d "{}")
@@ -432,8 +565,15 @@ jobs:
 
       - name: Probe 3 — POST /finalize unauth → 401
         # PROBE_ASSERT: finalize_http_401
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "DRY_RUN_ASSERT: probe_echo finalize"
+            echo "WOULD: POST /api/internal/state/finalize unauth → expect 401"
+            exit 0
+          fi
           CODE=$(curl -sS -o /tmp/fin.txt -w "%{http_code}" --max-time 30 \
             -X POST "${{ env.PROD_APP }}/api/internal/state/finalize" \
             -H "Content-Type: application/json" -d "{}")
@@ -443,9 +583,15 @@ jobs:
       - name: Probe 4 — POST /upload + metering → 413 USE_BLOB
         # PROBE_ASSERT: upload_http_413_USE_BLOB
         env:
+          DRY_RUN: ${{ inputs.dry_run }}
           PROD_METERING_MASTER_SECRET: ${{ secrets.PROD_METERING_MASTER_SECRET }}
         run: |
           set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "DRY_RUN_ASSERT: probe_echo upload"
+            echo "WOULD: POST /api/internal/state/upload + metering → expect 413 USE_BLOB"
+            exit 0
+          fi
           if [ -z "${PROD_METERING_MASTER_SECRET:-}" ]; then
             echo "::error::secrets.PROD_METERING_MASTER_SECRET missing (prod METERING_MASTER_SECRET)."
             exit 1
@@ -464,24 +610,37 @@ jobs:
         # PROBE_ASSERT: stable_version_match
         # Design: use existing public GET /api/versions/stable (no DATABASE_URL in
         # Actions — avoids shipping prod DB creds to CI). Asserts version string.
+        # dry_run: still GET (read-only) but do not fail on mismatch (image not promoted).
         env:
+          DRY_RUN: ${{ inputs.dry_run }}
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
           BODY=$(curl -sS --max-time 30 "${{ env.PROD_APP }}/api/versions/stable")
           echo "prod /api/versions/stable → $BODY"
           STABLE=$(printf '%s' "$BODY" | jq -r '.data.version // empty')
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "DRY_RUN_ASSERT: probe_stable_get"
+            echo "WOULD assert STABLE==$VERSION (observed=$STABLE)"
+            exit 0
+          fi
           test "$STABLE" = "$VERSION"
 
       - name: Probe 6 — :latest references :<version> digest
         # PROBE_ASSERT: latest_references_version_digest
         env:
+          DRY_RUN: ${{ inputs.dry_run }}
           GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
           GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
           VERSION: ${{ needs.gate.outputs.version }}
           EXPECTED: ${{ needs.preflight.outputs.version_digest }}
         run: |
           set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "DRY_RUN_ASSERT: probe_echo latest_digest"
+            echo "WOULD: assert :latest equals/references $EXPECTED for :$VERSION"
+            exit 0
+          fi
           TOKEN=$(curl -sS -u "${GHCR_READ_USER}:${GHCR_READ_PAT}" \
             "https://ghcr.io/token?scope=repository:${{ env.IMAGE_NAME }}:pull&service=ghcr.io" \
             | jq -r .token)
@@ -523,7 +682,7 @@ jobs:
   summary:
     name: Promotion summary
     if: always()
-    needs: [gate, preflight, migration_guard, platform, image, probes]
+    needs: [gate, preflight, migration_guard, platform, image, image_dry_run, probes]
     runs-on: ubuntu-latest
     steps:
       - name: Write run summary + window state
@@ -532,14 +691,25 @@ jobs:
           PREFLIGHT: ${{ needs.preflight.result }}
           MIGRATION_GUARD: ${{ needs.migration_guard.result }}
           PLATFORM: ${{ needs.platform.result }}
-          IMAGE: ${{ needs.image.result }}
+          IMAGE_REAL: ${{ needs.image.result }}
+          IMAGE_DRY: ${{ needs.image_dry_run.result }}
           PROBES: ${{ needs.probes.result }}
           VERSION: ${{ needs.gate.outputs.version }}
           MERGE_SHA: ${{ needs.platform.outputs.merge_sha }}
           PR_URL: ${{ needs.platform.outputs.pr_url }}
+          PLATFORM_MODE: ${{ needs.platform.outputs.platform_mode }}
           VERSION_DIGEST: ${{ needs.preflight.outputs.version_digest }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
+
+          if [ "$IMAGE_REAL" = "failure" ] || [ "$IMAGE_DRY" = "failure" ]; then
+            IMAGE=failure
+          elif [ "$IMAGE_REAL" = "success" ] || [ "$IMAGE_DRY" = "success" ]; then
+            IMAGE=success
+          else
+            IMAGE=skipped
+          fi
 
           # Derive recovery-oriented window state from job results.
           if [ "$GATE" != "success" ]; then
@@ -554,6 +724,8 @@ jobs:
             WINDOW="platform-done / image-pending-or-failed — PROD may be Blob-only on old stable image; do NOT deploy containers; re-run image promote for $VERSION"
           elif [ "$PROBES" != "success" ]; then
             WINDOW="platform-done / image-done / probes-failed — inspect which probe; runtime may already be $VERSION"
+          elif [ "${DRY_RUN}" = "true" ]; then
+            WINDOW="complete — dry_run rehearsal green (no prod side effects)"
           else
             WINDOW="complete — platform+image+probes green"
           fi
@@ -567,6 +739,8 @@ jobs:
             echo "| **version digest** | \`$VERSION_DIGEST\` |"
             echo "| **merge sha** | \`$MERGE_SHA\` |"
             echo "| **PR** | $PR_URL |"
+            echo "| **platform_mode** | \`$PLATFORM_MODE\` |"
+            echo "| **dry_run** | \`$DRY_RUN\` |"
             echo "| **window state** | $WINDOW |"
             echo ""
             echo "### Job results"
@@ -576,7 +750,8 @@ jobs:
             echo "| preflight | $PREFLIGHT |"
             echo "| migration_guard | $MIGRATION_GUARD |"
             echo "| platform | $PLATFORM |"
-            echo "| image | $IMAGE |"
+            echo "| image | $IMAGE_REAL |"
+            echo "| image_dry_run | $IMAGE_DRY |"
             echo "| probes | $PROBES |"
             echo ""
             echo "### Probe table (expected)"
