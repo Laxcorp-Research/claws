@@ -1,9 +1,8 @@
 "use client"
 
 import { useMemo } from "react"
-import Link from "next/link"
-import { ArrowRight } from "lucide-react"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { TextLink } from "@/components/ui/text-link"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useCreditUsage } from "@/hooks/use-credit-usage"
 import { UsageSummary } from "@/components/credits/usage-summary"
@@ -69,13 +68,9 @@ export function UsageDashboard() {
           <p className="text-[11px] text-[var(--tx2)] mb-[12px]">
             Your credit usage will appear here once your agents start working.
           </p>
-          <Link
-            href="/my-claws"
-            className="text-[12px] text-[var(--ac-text)] hover:underline inline-flex items-center gap-[4px]"
-          >
+          <TextLink href="/my-claws" direction="forward">
             Go to My Claws
-            <ArrowRight className="w-3 h-3" />
-          </Link>
+          </TextLink>
         </div>
       ) : (
         <>

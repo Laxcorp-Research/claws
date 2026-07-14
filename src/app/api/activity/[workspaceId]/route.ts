@@ -6,9 +6,14 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
 import { sanitizeActivityText } from "@/lib/security/sanitize"
-import { getModelCost } from "@/lib/models"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
-import { resolveWindowCost } from "@/lib/activity-cost-display"
+import {
+  aggregateAgentCostRow,
+  parseCostRange,
+  sinceForCostRange,
+  utcDayStart,
+  type CostRange,
+} from "@/lib/activity-cost-display"
 import {
   decideNearCapAlert,
   NEAR_CAP_METADATA_CONTAINS,
@@ -162,8 +167,11 @@ export async function GET(
   })
 
   const apiKeySource = getApiKeySource(workspace!, owner)
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  // Rule 18: UTC day boundaries only — never local `new Date(y, m, d)`.
+  const todayStart = utcDayStart(now)
   const yesterdayStart = new Date(todayStart.getTime() - 86_400_000)
+  const costRange: CostRange = parseCostRange(searchParams.get("costRange"))
+  const costRangeSince = sinceForCostRange(costRange, now)
 
   const [agents, tasksToday, tasksYesterday, pendingReview, costAgg, recentLogs, humanRequests, humanResponses, expiredTools, latestCompletedDeployment] = await Promise.all([
     prisma.agent.findMany({
@@ -361,62 +369,91 @@ export async function GET(
       )
     : []
 
-  const todayCallsByAgent = agentSlugs.length > 0
-    ? await prisma.activityLog.groupBy({
-        by: ["agentSlug"],
-        where: {
-          workspaceId,
-          agentSlug: { in: agentSlugs },
-          actionType: "TASK_COMPLETE",
-          timestamp: { gte: todayStart },
-        },
-        _count: { _all: true },
-      })
-    : []
-
-  const todayMessageSents = agentSlugs.length > 0
-    ? await prisma.activityLog.findMany({
-        where: {
-          workspaceId,
-          agentSlug: { in: agentSlugs },
-          actionType: "MESSAGE_SENT",
-          timestamp: { gte: todayStart },
-        },
-        select: { agentSlug: true, apiCost: true },
-      })
-    : []
-
   const costBySlug = new Map<string, { calls: number; cost: number }>()
   for (const row of perAgentCosts) {
     costBySlug.set(row.agentSlug, { calls: Number(row.calls), cost: Number(row.cost) })
   }
 
   const modelBySlug = new Map(agents.map((a) => [a.agentSlug, a.model]))
-  let estimatedCostToday = 0
-  let estimatedCostTodayCalls = 0
-  for (const row of todayCallsByAgent) {
-    if (!row.agentSlug) continue
-    const calls = row._count._all
-    estimatedCostTodayCalls += calls
-    estimatedCostToday += calls * getModelCost(modelBySlug.get(row.agentSlug) ?? "")
+
+  /**
+   * One aggregation core, three windows: today chip always uses UTC today;
+   * costRange=today|7d|all selects the Costs tab / Overview card window.
+   * Reuses aggregateAgentCostRow (TASK_COMPLETE calls + MESSAGE_SENT apiCost honesty).
+   */
+  async function loadCostWindow(since: Date | null) {
+    if (agentSlugs.length === 0) {
+      return {
+        agents: [] as Array<{ agentSlug: string; calls: number; cost: number; isEstimate: boolean }>,
+        total: 0,
+        totalCalls: 0,
+        isEstimate: false,
+      }
+    }
+    const timestampFilter = since ? { gte: since } : undefined
+    const [callsByAgent, messageSents] = await Promise.all([
+      prisma.activityLog.groupBy({
+        by: ["agentSlug"],
+        where: {
+          workspaceId,
+          agentSlug: { in: agentSlugs },
+          actionType: "TASK_COMPLETE",
+          ...(timestampFilter ? { timestamp: timestampFilter } : {}),
+        },
+        _count: { _all: true },
+      }),
+      // MUTATION: widen to non-MESSAGE_SENT → route honesty tests fail.
+      prisma.activityLog.findMany({
+        where: {
+          workspaceId,
+          agentSlug: { in: agentSlugs },
+          actionType: "MESSAGE_SENT",
+          ...(timestampFilter ? { timestamp: timestampFilter } : {}),
+        },
+        select: { agentSlug: true, apiCost: true },
+      }),
+    ])
+
+    const callsMap = new Map<string, number>()
+    for (const row of callsByAgent) {
+      if (!row.agentSlug) continue
+      callsMap.set(row.agentSlug, row._count._all)
+    }
+    const sentsBySlug = new Map<string, Array<{ apiCost: number | null }>>()
+    for (const row of messageSents) {
+      if (!row.agentSlug) continue
+      const list = sentsBySlug.get(row.agentSlug) ?? []
+      list.push({ apiCost: row.apiCost })
+      sentsBySlug.set(row.agentSlug, list)
+    }
+
+    const agentRows = agentSlugs.map((slug) => {
+      const resolved = aggregateAgentCostRow({
+        model: modelBySlug.get(slug) ?? "",
+        taskCompleteCalls: callsMap.get(slug) ?? 0,
+        messageSents: sentsBySlug.get(slug) ?? [],
+      })
+      return { agentSlug: slug, ...resolved }
+    })
+
+    const total = Math.round(agentRows.reduce((sum, row) => sum + row.cost, 0) * 100) / 100
+    const totalCalls = agentRows.reduce((sum, row) => sum + row.calls, 0)
+    const active = agentRows.filter((row) => row.calls > 0 || row.cost > 0)
+    const isEstimate = active.length === 0 ? false : active.some((row) => row.isEstimate)
+    return { agents: agentRows, total, totalCalls, isEstimate }
   }
 
-  // Honesty: when every MESSAGE_SENT today carries apiCost, prefer the real sum.
-  const todayCostResolved = resolveWindowCost(
-    todayMessageSents.map((r) => ({ apiCost: r.apiCost })),
-    estimatedCostToday,
-  )
-  if (todayMessageSents.length > 0 && !todayCostResolved.isEstimate) {
-    estimatedCostToday = todayCostResolved.cost
-  }
-  const estimatedCostTodayIsEstimate =
-    todayMessageSents.length === 0
-      ? estimatedCostTodayCalls > 0
-      : todayCostResolved.isEstimate
+  const todayWindow = await loadCostWindow(todayStart)
+  const selectedWindow =
+    costRange === "today" ? todayWindow : await loadCostWindow(costRangeSince)
+
+  const estimatedCostToday = todayWindow.total
+  const estimatedCostTodayCalls = todayWindow.totalCalls
+  const estimatedCostTodayIsEstimate = todayWindow.isEstimate
 
   const totalApiCost = costAgg._sum.apiCost ?? 0
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const dayOfMonth = now.getDate()
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  const dayOfMonth = now.getUTCDate()
   const projectedCost = dayOfMonth > 0 ? (totalApiCost / dayOfMonth) * daysInMonth : 0
 
   return apiSuccess({
@@ -455,6 +492,18 @@ export async function GET(
       estimatedCostTodayCalls,
       estimatedCostTodayIsEstimate,
       pendingReview,
+    },
+    costWindow: {
+      range: costRange,
+      since: costRangeSince ? costRangeSince.toISOString() : null,
+      agents: selectedWindow.agents.map((row) => ({
+        agentSlug: row.agentSlug,
+        calls: row.calls,
+        cost: Math.round(row.cost * 100) / 100,
+        isEstimate: row.isEstimate,
+      })),
+      total: selectedWindow.total,
+      isEstimate: selectedWindow.isEstimate,
     },
     agents: agentStatuses,
     pendingApprovals,

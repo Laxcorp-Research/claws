@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
@@ -160,6 +160,13 @@ function activityPayload(opts: {
         },
       ],
       agentCosts: [],
+      costWindow: {
+        range: "today",
+        since: "2026-07-14T00:00:00.000Z",
+        agents: [],
+        total: 0,
+        isEstimate: false,
+      },
     },
   }
 }
@@ -285,6 +292,24 @@ describe("DashboardPage MCP session banner", () => {
     expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=activity")
   })
 
+  it("Costs preview View details lives in the header row, not the body", async () => {
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    const costs = await screen.findByRole("region", { name: "Costs" })
+    const headerLink = within(costs).getByRole("button", { name: "View details →" })
+    expect(headerLink).toBeTruthy()
+
+    const headerRow = headerLink.parentElement
+    expect(headerRow?.className).toContain("justify-between")
+    expect(within(headerRow!).getByRole("heading", { name: "Costs" })).toBeTruthy()
+
+    // Empty-state body copy is outside the header row (link only in header).
+    const bodyEmpty = within(costs).getByText("No estimated calls yet.")
+    expect(bodyEmpty.closest(".justify-between")).toBeNull()
+    expect(headerLink.closest(".justify-between")).toBeTruthy()
+  })
+
   it("Costs tab keeps zero-call state honest without fabricated $0.00", async () => {
     mockSearchParams = new URLSearchParams("tab=costs")
     mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
@@ -292,6 +317,19 @@ describe("DashboardPage MCP session banner", () => {
 
     expect(await screen.findByText("No attributable calls for this range.")).toBeDefined()
     expect(screen.queryByText("$0.00")).toBeNull()
+  })
+
+  it("MUTATION-anchored: page does not client-derive costs via costSince/resolveAgentCostWindow", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(
+      join(process.cwd(), "src/app/dashboard/[workspaceId]/page.tsx"),
+      "utf8",
+    )
+    // MUTATION: reinject client-side costSince filter / resolveAgentCostWindow → fails.
+    expect(src.includes("resolveAgentCostWindow")).toBe(false)
+    expect(/\bcostSince\b/.test(src)).toBe(false)
+    expect(src.includes('params.set("costRange", costRange)')).toBe(true)
   })
 
   it("orders the eight cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {

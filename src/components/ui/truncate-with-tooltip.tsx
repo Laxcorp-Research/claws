@@ -15,43 +15,66 @@ export function TruncatedText({
   className,
   as: Tag = "span",
 }: TruncatedTextProps) {
-  const ref = useRef<HTMLElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLElement>(null)
   const [isOverflowing, setIsOverflowing] = useState(false)
 
   const checkOverflow = useCallback(() => {
-    if (ref.current) {
-      setIsOverflowing(ref.current.scrollWidth > ref.current.clientWidth)
-    }
+    const el = textRef.current
+    if (!el) return
+    setIsOverflowing(el.scrollWidth > el.clientWidth)
   }, [])
 
   useEffect(() => {
-    checkOverflow()
-    const observer = typeof ResizeObserver !== "undefined" && ref.current
-      ? new ResizeObserver(checkOverflow)
-      : null
-    if (ref.current) observer?.observe(ref.current)
-    window.addEventListener("resize", checkOverflow)
+    let raf = 0
+    // Post-layout remeasure: sync useEffect can run before the constrained
+    // parent has a final width. rAF + ResizeObserver on the wrapper fix that.
+    // MUTATION: drop the rAF schedule / only measure synchronously → overflow
+    // detection flakes and truncation tests fail.
+    const schedule = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        checkOverflow()
+      })
+    }
+
+    schedule()
+
+    const wrap = wrapRef.current
+    const observer =
+      typeof ResizeObserver !== "undefined" && wrap
+        ? new ResizeObserver(schedule)
+        : null
+    if (wrap) observer?.observe(wrap)
+    window.addEventListener("resize", schedule)
     return () => {
+      cancelAnimationFrame(raf)
       observer?.disconnect()
-      window.removeEventListener("resize", checkOverflow)
+      window.removeEventListener("resize", schedule)
     }
   }, [checkOverflow, children])
 
   const element = (
-    <Tag ref={ref as React.Ref<never>} className={cn("block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap", className)}>
+    <Tag
+      ref={textRef as React.Ref<never>}
+      className={cn(
+        "block w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap",
+        className,
+      )}
+    >
       {children}
     </Tag>
   )
 
-  if (isOverflowing) {
-    return (
-      <Tooltip content={children} maxWidth={300}>
+  // Stable outer + Tooltip trigger (disabled when not truncated) so overflow
+  // remounts do not collapse width via inline-flex content sizing.
+  return (
+    <div ref={wrapRef} className="block w-full min-w-0 max-w-full">
+      <Tooltip content={children} maxWidth={400} disabled={!isOverflowing}>
         {element}
       </Tooltip>
-    )
-  }
-
-  return element
+    </div>
+  )
 }
 
 export const TruncateWithTooltip = TruncatedText
