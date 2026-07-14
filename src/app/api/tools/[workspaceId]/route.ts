@@ -29,7 +29,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
 
   const connections = await prisma.toolConnection.findMany({
     where: { workspaceId },
-    select: { id: true, toolSlug: true, displayName: true, connectionType: true, keyHint: true, status: true, lastTestedAt: true, lastError: true, createdAt: true },
+    select: {
+      id: true,
+      toolSlug: true,
+      displayName: true,
+      connectionType: true,
+      keyHint: true,
+      status: true,
+      lastTestedAt: true,
+      lastError: true,
+      createdAt: true,
+      encryptedCredentials: true,
+    },
     orderBy: { createdAt: "asc" },
   })
   const customConnections = await prisma.customToolConnection.findMany({
@@ -40,7 +51,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   const customIdentities = deriveCustomApiIdentities(customConnections)
 
   return apiSuccess({
-    connections,
+    // hasCredentials is a boolean projection — never return ciphertext.
+    connections: connections.map(({ encryptedCredentials, ...conn }) => ({
+      ...conn,
+      hasCredentials: encryptedCredentials != null,
+    })),
     customConnections: customConnections.map((conn) => ({
       ...conn,
       slug: customIdentities.get(conn.id)?.slug ?? conn.id,

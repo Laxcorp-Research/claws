@@ -32,6 +32,17 @@ import { getComplianceNotice } from "@/lib/compliance-notices"
 import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
 import { STARTER_CREDIT_CENTS, formatCreditDollars } from "@/lib/credits/constants"
 import {
+  filterNonAiProviderRequiredEntries,
+  isAiProviderSlug,
+  missingRequiredToolsBannerTitle,
+  MISSING_REQUIRED_TOOLS_BANNER_BODY,
+  REQUIRED_TOOLS_SECTION_SUBTITLE,
+  requiredToolsSatisfied,
+  unverifiedToolsInfoLine,
+  type RequiredToolConnection,
+  type RequiredToolsSatisfaction,
+} from "@/lib/tools/required-tools"
+import {
   type ToolState,
   type ServerConnectionSummary,
   type BYOKModalState,
@@ -700,15 +711,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           .map((e) => resolveToolEntry(e, false))
           .filter((t): t is ToolState => t !== null)
 
-        const visibleRequired = resolvedRequired.filter(t => {
-          const def = getToolBySlug(t.slug)
-          return !def?.isAIProvider
-        })
+        // Finding F: same isAIProvider exclusion the deploy gate uses.
+        const visibleRequired = resolvedRequired.filter((t) => !isAiProviderSlug(t.slug))
         const requiredSlugs = new Set(visibleRequired.map((t) => t.slug))
-        const visibleRecommended = resolvedRecommended.filter(t => {
-          const def = getToolBySlug(t.slug)
-          return !def?.isAIProvider && !requiredSlugs.has(t.slug)
-        })
+        const visibleRecommended = resolvedRecommended.filter(
+          (t) => !isAiProviderSlug(t.slug) && !requiredSlugs.has(t.slug),
+        )
 
         const allTools = [...visibleRequired, ...visibleRecommended]
 
@@ -1292,7 +1300,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       )}
 
       {requiredTools.length > 0 && (
-        <ToolConnectionList title="Required tools" subtitle="Must be connected before deployment">
+        <ToolConnectionList title="Required tools" subtitle={REQUIRED_TOOLS_SECTION_SUBTITLE}>
           {requiredTools.map((tool) => (
             <ToolRow
               key={tool.slug}
@@ -1620,7 +1628,14 @@ interface DeployEligibility {
   isFirstDeploy: boolean
 }
 
-async function loadDeployToolPrerequisites(workspaceId: string): Promise<boolean> {
+const EMPTY_TOOL_PREREQS: RequiredToolsSatisfaction = {
+  satisfied: true,
+  missingSlugs: [],
+  missingLabels: [],
+  unverifiedCount: 0,
+}
+
+async function loadDeployToolPrerequisites(workspaceId: string): Promise<RequiredToolsSatisfaction> {
   try {
     const [workspaceRes, toolsRes] = await Promise.all([
       fetch(`/api/workspaces/${workspaceId}`),
@@ -1628,24 +1643,29 @@ async function loadDeployToolPrerequisites(workspaceId: string): Promise<boolean
     ])
     const [workspaceJson, toolsJson] = await Promise.all([workspaceRes.json(), toolsRes.json()])
     const templateSlug = workspaceJson.success ? workspaceJson.data?.clawTemplate?.slug : null
-    if (!templateSlug) return true
+    if (!templateSlug) return EMPTY_TOOL_PREREQS
 
     const tplRes = await fetch(`/api/templates/${templateSlug}`)
     const tplJson = await tplRes.json()
-    if (!tplJson.success) return false
+    if (!tplJson.success) {
+      return { satisfied: false, missingSlugs: [], missingLabels: [], unverifiedCount: 0 }
+    }
 
-    const requiredEntries = (tplJson.data.tools?.required ?? []) as Array<{ slug: string; alternatives?: string[] }>
-    if (requiredEntries.length === 0) return true
+    const requiredEntries = (tplJson.data.tools?.required ?? []) as Array<{
+      slug: string
+      name?: string
+      alternatives?: string[]
+    }>
+    // Finding F: exclude isAIProvider (anthropic_api etc.) — Step 1 domain.
+    const gatedRequired = filterNonAiProviderRequiredEntries(requiredEntries)
+    if (gatedRequired.length === 0) return EMPTY_TOOL_PREREQS
 
-    const connections = toolsJson.success
-      ? (toolsJson.data.connections ?? []) as Array<{ toolSlug: string; status: string }>
-      : []
-    return requiredEntries.every((entry) => {
-      const candidates = [entry.slug, ...(entry.alternatives ?? [])]
-      return connections.some((connection) => candidates.includes(connection.toolSlug) && connection.status === "CONNECTED")
-    })
+    const connections = (toolsJson.success
+      ? (toolsJson.data.connections ?? [])
+      : []) as RequiredToolConnection[]
+    return requiredToolsSatisfied(gatedRequired, connections)
   } catch {
-    return false
+    return { satisfied: false, missingSlugs: [], missingLabels: [], unverifiedCount: 0 }
   }
 }
 
@@ -1664,7 +1684,9 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
   const [hasConfiguredChannels, setHasConfiguredChannels] = useState(false)
   const [applyDeployOpen, setApplyDeployOpen] = useState(false)
-  const [toolPrereqsReady, setToolPrereqsReady] = useState(false)
+  const [toolPrereqs, setToolPrereqs] = useState<RequiredToolsSatisfaction>(EMPTY_TOOL_PREREQS)
+  const toolPrereqsReady = toolPrereqs.satisfied
+  const unverifiedInfo = unverifiedToolsInfoLine(toolPrereqs.unverifiedCount)
   const creditUser = isCreditUser(apiKeySource)
   const redeployFlow = useWorkspaceRedeploy({
     workspaceId,
@@ -1730,7 +1752,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         if (channelsJson.success) {
           setHasConfiguredChannels(Boolean(channelsJson.data?.hasConfiguredChannels))
         }
-        setToolPrereqsReady(toolsReady)
+        setToolPrereqs(toolsReady)
       } catch (err) {
         console.error("Failed to load setup data:", err)
       } finally {
@@ -1924,8 +1946,16 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       {!toolPrereqsReady && !deploymentStatus && (
         <div className="mt-3.5">
           <AlertBanner variant="warning">
-            <p className="font-medium">Required tools must be connected before deployment</p>
-            <p className="mt-0.5 opacity-80">Go back to Tools and connect the required services for this Claw.</p>
+            <p className="font-medium">{missingRequiredToolsBannerTitle(toolPrereqs.missingLabels)}</p>
+            <p className="mt-0.5 opacity-80">{MISSING_REQUIRED_TOOLS_BANNER_BODY}</p>
+          </AlertBanner>
+        </div>
+      )}
+
+      {toolPrereqsReady && unverifiedInfo && !deploymentStatus && (
+        <div className="mt-3.5">
+          <AlertBanner variant="info">
+            <p className="font-medium">{unverifiedInfo}</p>
           </AlertBanner>
         </div>
       )}

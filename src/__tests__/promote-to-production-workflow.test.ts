@@ -44,6 +44,10 @@ const REQUIRED_STRUCTURAL = [
   "migration_guard",
   // Boot-time reusable-call grant (packages: write must cover the image callee).
   "packages: write",
+  // Round-4: wait-then-merge / permissions-probe need check + status reads.
+  "CHECKS_READ_PERMISSION_ASSERT",
+  "STATUSES_READ_PERMISSION_ASSERT",
+  "PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable",
   // Platform checkout + noop + dry-run (round-2 boot/platform fixes).
   "PLATFORM_NOOP_ASSERT: staging_eq_main",
   "platform already current (staging==main)",
@@ -133,6 +137,16 @@ describe("promote-to-production.yml contract", () => {
     expect(top).not.toMatch(/permissions:[\s\S]*?\bpackages:\s*read\b/);
   });
 
+  it("workflow-level permissions grant checks: read + statuses: read (wait-then-merge)", () => {
+    const yml = loadWorkflow();
+    const top = yml.slice(0, yml.indexOf("\njobs:"));
+    expect(top).toMatch(/\bchecks:\s*read\b.*CHECKS_READ_PERMISSION_ASSERT/);
+    expect(top).toMatch(/\bstatuses:\s*read\b.*STATUSES_READ_PERMISSION_ASSERT/);
+    // Scope map comment must name both poll APIs.
+    expect(top).toContain("gh pr view --json statusCheckRollup");
+    expect(top).toContain("gh pr checks");
+  });
+
   it("MUTATION: removing packages: write fails permissions contract", () => {
     const yml = loadWorkflow();
     const mutated = yml.replaceAll("packages: write", "packages: read");
@@ -140,6 +154,48 @@ describe("promote-to-production.yml contract", () => {
     expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
     const top = mutated.slice(0, mutated.indexOf("\njobs:"));
     expect(top).not.toMatch(/permissions:[\s\S]*?\bpackages:\s*write\b/);
+  });
+
+  it("MUTATION: removing checks: read fails permissions contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace(
+      / {2}checks: read # CHECKS_READ_PERMISSION_ASSERT\r?\n/,
+      "",
+    );
+    expect(mutated).not.toContain("CHECKS_READ_PERMISSION_ASSERT");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+  });
+
+  it("MUTATION: removing statuses: read fails permissions contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace(
+      / {2}statuses: read # STATUSES_READ_PERMISSION_ASSERT\r?\n/,
+      "",
+    );
+    expect(mutated).not.toContain("STATUSES_READ_PERMISSION_ASSERT");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+  });
+
+  it("preflight permissions-probe reads statusCheckRollup before GHCR gates", () => {
+    const yml = loadWorkflow();
+    const preflight = jobBlock(yml, "preflight");
+    expect(preflight).toContain("PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable");
+    expect(preflight).toContain("Probe GITHUB_TOKEN can read statusCheckRollup");
+    expect(preflight).toContain("gh pr view \"$PR\" --json statusCheckRollup");
+    const probeIdx = preflight.indexOf("PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable");
+    const digestsIdx = preflight.indexOf("Resolve GHCR digests");
+    expect(probeIdx).toBeGreaterThanOrEqual(0);
+    expect(digestsIdx).toBeGreaterThan(probeIdx);
+  });
+
+  it("MUTATION: removing permissions-probe marker fails contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace(
+      "PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable",
+      "PERMISSIONS_PROBE_ASSERT: REMOVED",
+    );
+    expect(mutated).not.toContain("PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
   });
 
   it("image job grants packages: write for the workflow_call", () => {
