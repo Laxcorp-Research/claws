@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
@@ -283,6 +283,24 @@ describe("DashboardPage MCP session banner", () => {
     fireEvent.click(await screen.findByRole("button", { name: "View all →" }))
 
     expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=activity")
+  })
+
+  it("Costs preview View details lives in the header row, not the body", async () => {
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    const costs = await screen.findByRole("region", { name: "Costs" })
+    const headerLink = within(costs).getByRole("button", { name: "View details →" })
+    expect(headerLink).toBeTruthy()
+
+    const headerRow = headerLink.parentElement
+    expect(headerRow?.className).toContain("justify-between")
+    expect(within(headerRow!).getByRole("heading", { name: "Costs" })).toBeTruthy()
+
+    // Empty-state body copy is outside the header row (link only in header).
+    const bodyEmpty = within(costs).getByText("No estimated calls yet.")
+    expect(bodyEmpty.closest(".justify-between")).toBeNull()
+    expect(headerLink.closest(".justify-between")).toBeTruthy()
   })
 
   it("Costs tab keeps zero-call state honest without fabricated $0.00", async () => {

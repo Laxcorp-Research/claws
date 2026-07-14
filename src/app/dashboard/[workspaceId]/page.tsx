@@ -1256,9 +1256,12 @@ export default function DashboardPage() {
                 onReject={handleReject}
               />
               <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Costs">
-                <h2 className="text-[12px] font-semibold text-[var(--tx)]">Costs</h2>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <h2 className="text-[12px] font-semibold text-[var(--tx)]">Costs</h2>
+                  <TextLink direction="forward" onClick={() => switchTab("costs")}>View details</TextLink>
+                </div>
                 {estimatedCostRows.some((row) => row.calls > 0 || row.cost > 0) ? (
-                  <div className="mt-2 flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-1.5">
                     <p className="text-[18px] font-semibold text-[var(--tx)]">
                       {costWindowIsEstimate
                         ? `${formatCurrency(estimatedCostTotal)} est.`
@@ -1274,10 +1277,9 @@ export default function DashboardPage() {
                           })`
                         : "—"}
                     </p>
-                    <TextLink direction="forward" onClick={() => switchTab("costs")}>View details</TextLink>
                   </div>
                 ) : (
-                  <p className="mt-2 text-[11px] text-[var(--tx3)]">No estimated calls yet.</p>
+                  <p className="text-[11px] text-[var(--tx3)]">No estimated calls yet.</p>
                 )}
               </section>
             </div>

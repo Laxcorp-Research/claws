@@ -30,7 +30,7 @@ import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getComplianceNotice } from "@/lib/compliance-notices"
 import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
-import { STARTER_CREDIT_CENTS, formatCreditDollars } from "@/lib/credits/constants"
+import { StarterCreditBanner } from "@/components/setup/starter-credit-banner"
 import {
   filterNonAiProviderRequiredEntries,
   isAiProviderSlug,
@@ -222,6 +222,8 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
   const [isSavingModels, setIsSavingModels] = useState(false)
   const [overrideModal, setOverrideModal] = useState<{ provider: string; providerName: string } | null>(null)
   const [creditMode, setCreditMode] = useState(false)
+  /** null until balance loads; when creditMode, live balanceCents from /api/credits/balance. */
+  const [creditBalanceCents, setCreditBalanceCents] = useState<number | null>(null)
 
   const fetchKeyStatus = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`)
@@ -249,6 +251,11 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         const creditData = await creditRes.json()
         if (creditData.success && creditData.data?.hasCredits && creditData.data?.status === "ACTIVE") {
           setCreditMode(true)
+          setCreditBalanceCents(
+            typeof creditData.data.balanceCents === "number" ? creditData.data.balanceCents : null,
+          )
+        } else if (creditData.success && creditData.data?.hasCredits === false) {
+          setCreditBalanceCents(null)
         }
       } catch (e) {
         console.error("Failed to load setup data:", e)
@@ -318,15 +325,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           : "Your agents need API keys to think. Configure keys for each provider your agents use."}
       </p>
 
-      {creditMode && (
-        <div className="bg-[var(--bg2)] border border-[var(--bd)] rounded-xl p-3.5 mb-3.5 flex items-start gap-2.5">
-          <CheckCircle className="w-4 h-4 text-[var(--ok)] flex-shrink-0 mt-[1px]" />
-          <div>
-            <p className="text-[13px] font-medium mb-0.5">AI models powered by Claws Starter Credits</p>
-            <p className="text-[11px] text-[var(--tx2)]">You have {formatCreditDollars(STARTER_CREDIT_CENTS)} in free credits — no API key needed.</p>
-          </div>
-        </div>
-      )}
+      {creditMode && <StarterCreditBanner balanceCents={creditBalanceCents} />}
 
       {!creditMode && (
       <>
