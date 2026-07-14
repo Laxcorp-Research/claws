@@ -59,6 +59,9 @@ const REQUIRED_STRUCTURAL = [
   "continue-on-error: true",
   "SUMMARY_ALWAYS_SUCCEEDS",
   "closed-successful",
+  // Bash readonly builtin collision guard (UID= maiden failure).
+  "BASH_READONLY_ASSIGN_ASSERT",
+  "DEPLOY_UID=",
 ] as const;
 
 /** Jobs that run git / gh-against-repo and therefore require checkout. */
@@ -384,5 +387,35 @@ describe("promote-to-production.yml contract", () => {
     const yml = readFileSync(path, "utf8");
     expect(yml).toContain("workflow_call:");
     expect(yml).toContain("target_env:");
+  });
+
+  /**
+   * Bash readonly builtins — assigning to these in `run: |` scripts aborts
+   * under `set -e` (maiden promote: UID= → "UID: readonly variable").
+   * IFS= in `while IFS= read` is intentional and allowed (not readonly).
+   * Boundary must not match DEPLOY_UID= (suffix collision).
+   */
+  const BASH_READONLY_ASSIGN_RE =
+    /(?:^|[^A-Za-z0-9_])(UID|EUID|GROUPS|PPID|BASHPID|SHELLOPTS|BASHOPTS|BASH_VERSINFO|FUNCNAME|DIRSTACK|PIPESTATUS)\s*=/m;
+
+  it("no bash-readonly builtin assignments in promote-to-production.yml (BASH_READONLY_ASSIGN_ASSERT)", () => {
+    const yml = loadWorkflow();
+    expect(yml).toContain("BASH_READONLY_ASSIGN_ASSERT");
+    expect(yml).toContain("DEPLOY_UID=");
+    expect(yml).not.toMatch(BASH_READONLY_ASSIGN_RE);
+    // Explicit: the Vercel-wait deploy id must not use bare UID=
+    const vercelWait = yml.slice(
+      yml.indexOf("Wait for Vercel Production READY"),
+      yml.indexOf("Finalize platform outputs"),
+    );
+    expect(vercelWait).toContain("DEPLOY_UID=");
+    expect(vercelWait).not.toMatch(/(?:^|[^A-Za-z0-9_])UID\s*=/m);
+  });
+
+  it("MUTATION: reintroducing UID= assignment fails bash-readonly contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replaceAll("DEPLOY_UID=", "UID=");
+    expect(mutated).toMatch(BASH_READONLY_ASSIGN_RE);
+    expect(mutated).not.toContain("DEPLOY_UID=");
   });
 });
