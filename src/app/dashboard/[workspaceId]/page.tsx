@@ -28,7 +28,6 @@ import { ConversationsSection } from "@/components/dashboard/conversations-secti
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrency, formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
-import { resolveAgentCostWindow } from "@/lib/activity-cost-display"
 import { Tabs } from "@/components/ui/tabs"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { TextLink } from "@/components/ui/text-link"
@@ -185,6 +184,19 @@ const DEFAULT_MISSION_FILTERS: MissionFilters = {
   showRoutine: true,
 }
 type CostRange = "today" | "7d" | "all"
+type CostWindowAgent = {
+  agentSlug: string
+  calls: number
+  cost: number
+  isEstimate: boolean
+}
+type CostWindowPayload = {
+  range: CostRange
+  since: string | null
+  agents: CostWindowAgent[]
+  total: number
+  isEstimate: boolean
+}
 const DASHBOARD_TABS = [
   { id: "overview", label: "Overview" },
   { id: "chat", label: "Chat" },
@@ -292,6 +304,7 @@ export default function DashboardPage() {
   const [missionHasMore, setMissionHasMore] = useState(false)
   const [missionLoadingMore, setMissionLoadingMore] = useState(false)
   const [costRange, setCostRange] = useState<CostRange>("today")
+  const [costWindow, setCostWindow] = useState<CostWindowPayload | null>(null)
   const [subscribing, setSubscribing] = useState(false)
   const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
   const [redeployFromStoppedConfirmOpen, setRedeployFromStoppedConfirmOpen] = useState(false)
@@ -328,6 +341,7 @@ export default function DashboardPage() {
     if (opts.append) setMissionLoadingMore(true)
     try {
       const params = missionQueryParams(missionFilters, 50, opts.cursor)
+      params.set("costRange", costRange)
       const res = await fetch(`/api/activity/${workspaceId}?${params.toString()}`)
       if (!res.ok) {
         if (res.status === 401) { router.push("/auth/signin"); return }
@@ -342,6 +356,7 @@ export default function DashboardPage() {
         setPendingApprovals(json.data.pendingApprovals ?? [])
         setSpend(json.data.spend ?? null)
         setExpiredTools(json.data.expiredTools ?? [])
+        setCostWindow((json.data.costWindow as CostWindowPayload | undefined) ?? null)
         const incomingRows = Array.isArray(json.data.recentLogs) ? json.data.recentLogs as MissionLogEntry[] : []
         setMissionRows((prev) => opts.append ? [...prev, ...incomingRows] : incomingRows)
         setMissionNextCursor(json.data.activityPage?.nextCursor ?? null)
@@ -358,7 +373,7 @@ export default function DashboardPage() {
       setLoading(false)
       if (opts.append) setMissionLoadingMore(false)
     }
-  }, [workspaceId, router, missionFilters])
+  }, [workspaceId, router, missionFilters, costRange])
 
   const fetchDeploymentStatus = useCallback(() => {
     fetch(`/api/deploy/${workspaceId}/status?drift=1`)
@@ -1102,41 +1117,27 @@ export default function DashboardPage() {
     void fetchStats({ cursor: missionNextCursor, append: true })
   }
   const recentPreview = missionRows.slice(0, 5)
-  const costSince = (() => {
-    const d = new Date()
-    if (costRange === "today") {
-      d.setHours(0, 0, 0, 0)
-      return d.getTime()
-    }
-    if (costRange === "7d") {
-      d.setDate(d.getDate() - 7)
-      return d.getTime()
-    }
-    return 0
-  })()
+  // API-backed cost window via costRange param. Client missionRows derivation deleted.
+  // MUTATION: reinject client since-filter + in-memory cost window helper → grep-guard fails.
+  const costBySlug = new Map((costWindow?.agents ?? []).map((row) => [row.agentSlug, row]))
   const estimatedCostRows = sortedAgents.map((agent) => {
-    const resolved = resolveAgentCostWindow({
-      rows: missionRows,
-      agentSlug: agent.agentSlug,
-      model: agent.model,
-      sinceMs: costSince,
-    })
+    const agg = costBySlug.get(agent.agentSlug)
     return {
       agentName: agent.name,
       role: agent.role,
       color: agent.color,
       model: getModelDisplayName(agent.model),
-      calls: resolved.calls,
-      cost: resolved.cost,
-      isEstimate: resolved.isEstimate,
+      calls: agg?.calls ?? 0,
+      cost: agg?.cost ?? 0,
+      isEstimate: agg?.isEstimate ?? false,
     }
   })
-  const estimatedCostTotal = estimatedCostRows.reduce((sum, row) => sum + row.cost, 0)
+  const estimatedCostTotal = costWindow?.total ?? estimatedCostRows.reduce((sum, row) => sum + row.cost, 0)
   const topCostAgent = [...estimatedCostRows].sort((a, b) => b.cost - a.cost || b.calls - a.calls)[0]
-  // Mixed windows (any active row still estimated) stay labeled "est."
-  const costWindowIsEstimate = estimatedCostRows
-    .filter((row) => row.calls > 0 || row.cost > 0)
-    .some((row) => row.isEstimate)
+  const costWindowIsEstimate = costWindow?.isEstimate
+    ?? estimatedCostRows
+      .filter((row) => row.calls > 0 || row.cost > 0)
+      .some((row) => row.isEstimate)
   const headerActions = (
     <>
       <Button variant="outline" size="sm" onClick={() => router.push(`/builder/${workspaceId}`)}>

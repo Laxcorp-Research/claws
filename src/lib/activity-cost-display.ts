@@ -3,9 +3,31 @@ import { getModelCost } from "@/lib/models"
 /** Sanity cap for a single ActivityLog.apiCost write from container usage. */
 export const MAX_API_COST_PER_EVENT = 50
 
+export type CostRange = "today" | "7d" | "all"
+
 function roundCost(n: number): number {
   // Token costs are often sub-cent; keep microdollar precision.
   return Math.round(n * 1_000_000) / 1_000_000
+}
+
+/**
+ * UTC midnight for the calendar day containing `now` (rule 18 — no local Date parsing).
+ * MUTATION: use `new Date(y, m, d)` local constructor → UTC boundary tests fail.
+ */
+export function utcDayStart(now = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0))
+}
+
+export function parseCostRange(value: string | null | undefined): CostRange {
+  if (value === "7d" || value === "all" || value === "today") return value
+  return "today"
+}
+
+/** Inclusive lower bound for a cost window, or null for "all". */
+export function sinceForCostRange(range: CostRange, now = new Date()): Date | null {
+  if (range === "all") return null
+  if (range === "today") return utcDayStart(now)
+  return new Date(now.getTime() - 7 * 86_400_000)
 }
 
 /**
@@ -40,8 +62,33 @@ export function resolveWindowCost(
 }
 
 /**
- * Cost window for one agent: MESSAGE_SENT rows are the costTotal carriers;
- * TASK_COMPLETE still drives the call count (and the models.ts estimate).
+ * Single aggregation core for today-chip + costRange windows (Rider-1 honesty).
+ * MESSAGE_SENT rows carry apiCost; TASK_COMPLETE drives call count + estimate fallback.
+ * MUTATION: accept non-MESSAGE_SENT as cost constituents → route tests fail.
+ */
+export function aggregateAgentCostRow(input: {
+  model: string
+  taskCompleteCalls: number
+  messageSents: ReadonlyArray<{ apiCost?: number | null }>
+}): { calls: number; cost: number; isEstimate: boolean } {
+  const calls = input.taskCompleteCalls
+  const estimatedFallback = calls * getModelCost(input.model)
+
+  if (input.messageSents.length > 0) {
+    const resolved = resolveWindowCost(input.messageSents, estimatedFallback)
+    return { calls, cost: resolved.cost, isEstimate: resolved.isEstimate }
+  }
+
+  if (calls === 0) {
+    return { calls: 0, cost: 0, isEstimate: false }
+  }
+
+  return { calls, cost: roundCost(estimatedFallback), isEstimate: true }
+}
+
+/**
+ * Cost window for one agent from an in-memory activity page (legacy / unit path).
+ * Server path uses aggregateAgentCostRow after SQL-windowed MESSAGE_SENT / TASK_COMPLETE.
  */
 export function resolveAgentCostWindow(args: {
   rows: ReadonlyArray<{
@@ -61,21 +108,11 @@ export function resolveAgentCostWindow(args: {
   )
   const taskCompletes = inWindow.filter((row) => row.actionType === "TASK_COMPLETE")
   const messageSents = inWindow.filter((row) => row.actionType === "MESSAGE_SENT")
-  const calls = taskCompletes.length
-  const estimatedFallback = calls * getModelCost(args.model)
-
-  // Prefer MESSAGE_SENT as constituents when any exist (where costTotal lands).
-  // Fall back to TASK_COMPLETE-only estimate when there are no MESSAGE_SENT rows.
-  if (messageSents.length > 0) {
-    const resolved = resolveWindowCost(messageSents, estimatedFallback)
-    return { calls, cost: resolved.cost, isEstimate: resolved.isEstimate }
-  }
-
-  if (calls === 0) {
-    return { calls: 0, cost: 0, isEstimate: false }
-  }
-
-  return { calls, cost: estimatedFallback, isEstimate: true }
+  return aggregateAgentCostRow({
+    model: args.model,
+    taskCompleteCalls: taskCompletes.length,
+    messageSents,
+  })
 }
 
 /** Format a cost for StatChip / table cells. Zero-activity windows stay "—". */

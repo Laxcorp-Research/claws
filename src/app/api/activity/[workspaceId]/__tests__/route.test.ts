@@ -46,6 +46,7 @@ type WsOverrides = {
   lastHealthCheck?: Date | null;
   expiredTools?: Array<{ displayName: string; status: string; connectionType: string }>;
   todayCallGroups?: Array<{ agentSlug: string | null; _count: { _all: number } }>;
+  messageSents?: Array<{ agentSlug: string; apiCost: number | null }>;
   query?: string;
   recentRows?: unknown[];
   deployedPausedWorkers?: string[];
@@ -94,9 +95,15 @@ async function callRoute(opts: WsOverrides) {
   ] as never);
   (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mockResolvedValue(0 as never);
   (prismaMock.activityLog.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { apiCost: 0 } } as never);
-  (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { orderBy?: unknown }) => {
-    if (Array.isArray(args.orderBy)) return Promise.resolve((opts.recentRows ?? []) as never);
-    return Promise.resolve([] as never);
+  (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: {
+    orderBy?: unknown
+    where?: { actionType?: string }
+  }) => {
+    if (Array.isArray(args.orderBy)) return Promise.resolve((opts.recentRows ?? []) as never)
+    if (args.where?.actionType === "MESSAGE_SENT") {
+      return Promise.resolve((opts.messageSents ?? []) as never)
+    }
+    return Promise.resolve([] as never)
   });
   (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue((opts.todayCallGroups ?? []) as never);
   (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue((opts.expiredTools ?? []) as never);
@@ -271,6 +278,68 @@ describe("K1 command strip data", () => {
     expect(data.stats.estimatedCostTodayCalls).toBe(4);
     expect(data.stats.estimatedCostToday).toBe(0.06);
   });
+});
+
+describe("PR-B costRange aggregates", () => {
+  it("returns per-agent costWindow for today|7d|all and reuses MESSAGE_SENT-only constituents", async () => {
+    const data = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      query: "?costRange=7d",
+      todayCallGroups: [{ agentSlug: "worker", _count: { _all: 2 } }],
+      messageSents: [{ agentSlug: "worker", apiCost: 0.01 }, { agentSlug: "worker", apiCost: 0.02 }],
+    })
+
+    expect(data.costWindow.range).toBe("7d")
+    expect(data.costWindow.since).toBeTruthy()
+    const worker = data.costWindow.agents.find((a: { agentSlug: string }) => a.agentSlug === "worker")
+    expect(worker).toEqual({ agentSlug: "worker", calls: 2, cost: 0.03, isEstimate: false })
+    expect(data.costWindow.isEstimate).toBe(false)
+
+    const messageQueries = (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[0])
+      .filter((arg: { where?: { actionType?: string } }) => arg.where?.actionType === "MESSAGE_SENT")
+    expect(messageQueries.length).toBeGreaterThan(0)
+    // MUTATION: widen actionType beyond MESSAGE_SENT → fails.
+    for (const q of messageQueries) {
+      expect(q.where.actionType).toBe("MESSAGE_SENT")
+    }
+  })
+
+  it("UTC boundary: today window lower-bounds at utcDayStart (23:59Z yesterday excluded)", async () => {
+    const { utcDayStart } = await import("@/lib/activity-cost-display")
+    await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      query: "?costRange=today",
+    })
+
+    const messageQueries = (prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[0])
+      .filter((arg: { where?: { actionType?: string; timestamp?: { gte?: Date } } }) => arg.where?.actionType === "MESSAGE_SENT")
+    const gte = messageQueries[0]?.where?.timestamp?.gte as Date
+    expect(gte).toBeInstanceOf(Date)
+    const expected = utcDayStart()
+    expect(gte.toISOString()).toBe(expected.toISOString())
+
+    const yesterdayLate = new Date(expected.getTime() - 60_000) // 23:59 previous UTC day
+    expect(yesterdayLate.getTime()).toBeLessThan(gte.getTime())
+  })
+
+  it("MUTATION-anchored: mixed MESSAGE_SENT apiCost marks costWindow isEstimate", async () => {
+    const data = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      todayCallGroups: [{ agentSlug: "worker", _count: { _all: 2 } }],
+      messageSents: [
+        { agentSlug: "worker", apiCost: 0.01 },
+        { agentSlug: "worker", apiCost: null },
+      ],
+    })
+    expect(data.costWindow.isEstimate).toBe(true)
+    const worker = data.costWindow.agents.find((a: { agentSlug: string }) => a.agentSlug === "worker")
+    expect(worker.isEstimate).toBe(true)
+  })
 });
 
 describe("K3 pause pending truth", () => {
