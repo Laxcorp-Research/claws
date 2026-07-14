@@ -9,6 +9,10 @@ import { sanitizeActivityText } from "@/lib/security/sanitize"
 import { getModelCost } from "@/lib/models"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
 import { resolveWindowCost } from "@/lib/activity-cost-display"
+import {
+  decideNearCapAlert,
+  NEAR_CAP_METADATA_CONTAINS,
+} from "@/lib/openclaw/near-cap-alert"
 import type { ActivityType, Prisma } from "@/generated/prisma/client"
 
 const MAX_ACTIVITY_LIMIT = 50
@@ -228,6 +232,40 @@ export async function GET(
   const activityRows = hasMoreActivity ? recentLogs.slice(0, activityLimit) : recentLogs
   const nextCursor = hasMoreActivity ? encodeCursor(activityRows[activityRows.length - 1]) : null
 
+  // PR-3 near-cap: newest WARNING event (container emits ERROR + kind state_sync_near_cap)
+  // stays unresolved until a later sync drops below re-arm (<70%).
+  const [latestNearCapWarning, containerStateRow] = await Promise.all([
+    prisma.activityLog.findFirst({
+      where: {
+        workspaceId,
+        actionType: "ERROR",
+        metadata: { contains: NEAR_CAP_METADATA_CONTAINS },
+      },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true },
+    }),
+    prisma.containerState.findUnique({
+      where: { workspaceId },
+      select: {
+        runtimeStateUpdatedAt: true,
+        runtimeStateSizeBytes: true,
+      },
+    }),
+  ])
+  const stateSyncNearCapActive = decideNearCapAlert({
+    latestWarning: latestNearCapWarning
+      ? { timestamp: latestNearCapWarning.timestamp }
+      : null,
+    latestSnapshot:
+      containerStateRow?.runtimeStateUpdatedAt != null &&
+      containerStateRow.runtimeStateSizeBytes != null
+        ? {
+            updatedAt: containerStateRow.runtimeStateUpdatedAt,
+            compressedBytes: containerStateRow.runtimeStateSizeBytes,
+          }
+        : null,
+  })
+
   const respondedRequestIds = new Set<string>()
   for (const r of humanResponses) {
     try {
@@ -396,6 +434,7 @@ export async function GET(
       mcpSessionLastError: workspace!.mcpSessionLastError,
       activitySilenceDetectedAt: workspace!.activitySilenceDetectedAt ? workspace!.activitySilenceDetectedAt.toISOString() : null,
       stateSyncStaleDetectedAt: workspace!.stateSyncStaleDetectedAt ? workspace!.stateSyncStaleDetectedAt.toISOString() : null,
+      stateSyncNearCapActive,
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,
       costAlertThreshold: workspace!.costAlertThreshold,
