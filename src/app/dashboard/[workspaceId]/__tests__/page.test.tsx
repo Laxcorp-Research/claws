@@ -160,6 +160,13 @@ function activityPayload(opts: {
         },
       ],
       agentCosts: [],
+      costWindow: {
+        range: "today",
+        since: "2026-07-14T00:00:00.000Z",
+        agents: [],
+        total: 0,
+        isEstimate: false,
+      },
     },
   }
 }
@@ -310,6 +317,19 @@ describe("DashboardPage MCP session banner", () => {
 
     expect(await screen.findByText("No attributable calls for this range.")).toBeDefined()
     expect(screen.queryByText("$0.00")).toBeNull()
+  })
+
+  it("MUTATION-anchored: page does not client-derive costs via costSince/resolveAgentCostWindow", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(
+      join(process.cwd(), "src/app/dashboard/[workspaceId]/page.tsx"),
+      "utf8",
+    )
+    // MUTATION: reinject client-side costSince filter / resolveAgentCostWindow → fails.
+    expect(src.includes("resolveAgentCostWindow")).toBe(false)
+    expect(/\bcostSince\b/.test(src)).toBe(false)
+    expect(src.includes('params.set("costRange", costRange)')).toBe(true)
   })
 
   it("orders the eight cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {

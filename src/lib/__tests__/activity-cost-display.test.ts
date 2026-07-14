@@ -1,10 +1,44 @@
 import { describe, expect, it } from "vitest"
 import {
+  aggregateAgentCostRow,
   formatCostDisplay,
   resolveAgentCostWindow,
   resolveWindowCost,
+  sinceForCostRange,
+  utcDayStart,
 } from "@/lib/activity-cost-display"
 import { getModelCost } from "@/lib/models"
+
+describe("utcDayStart / sinceForCostRange (rule 18)", () => {
+  it("uses UTC midnight — not local Date(y,m,d)", () => {
+    const now = new Date("2026-07-14T03:15:00.000Z")
+    expect(utcDayStart(now).toISOString()).toBe("2026-07-14T00:00:00.000Z")
+    expect(sinceForCostRange("today", now)?.toISOString()).toBe("2026-07-14T00:00:00.000Z")
+    expect(sinceForCostRange("all", now)).toBeNull()
+    const week = sinceForCostRange("7d", now)!
+    expect(week.getTime()).toBe(now.getTime() - 7 * 86_400_000)
+  })
+})
+
+describe("aggregateAgentCostRow", () => {
+  it("sums all-real MESSAGE_SENT without estimate", () => {
+    const resolved = aggregateAgentCostRow({
+      model: "anthropic/claude-haiku-4-5-20251001",
+      taskCompleteCalls: 2,
+      messageSents: [{ apiCost: 0.01 }, { apiCost: 0.02 }],
+    })
+    expect(resolved).toEqual({ calls: 2, cost: 0.03, isEstimate: false })
+  })
+
+  it("MUTATION-anchored: mixed MESSAGE_SENT stays estimate", () => {
+    const resolved = aggregateAgentCostRow({
+      model: "anthropic/claude-haiku-4-5-20251001",
+      taskCompleteCalls: 2,
+      messageSents: [{ apiCost: 0.01 }, { apiCost: null }],
+    })
+    expect(resolved.isEstimate).toBe(true)
+  })
+})
 
 describe("resolveWindowCost", () => {
   it("sums real apiCost when every constituent row has one", () => {
