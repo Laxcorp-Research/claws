@@ -501,15 +501,18 @@ jobs:
             if [ -n "$MATCH" ]; then
               DEPLOY_STATE=$(printf '%s' "$MATCH" | jq -r '.readyState // .state // empty')
               DEPLOY_URL=$(printf '%s' "$MATCH" | jq -r '.url // empty')
-              UID=$(printf '%s' "$MATCH" | jq -r '.uid // empty')
-              echo "Found deploy uid=$UID readyState=$DEPLOY_STATE url=$DEPLOY_URL"
+              # BASH_READONLY_ASSIGN_ASSERT: never assign UID/EUID/GROUPS/PPID/etc
+              # Gotcha: UID/EUID/GROUPS/PPID/BASHPID/SHELLOPTS/etc are readonly
+              # bash builtins — never assign to them (maiden promote failed here).
+              DEPLOY_UID=$(printf '%s' "$MATCH" | jq -r '.uid // empty')
+              echo "Found deploy uid=$DEPLOY_UID readyState=$DEPLOY_STATE url=$DEPLOY_URL"
               if [ "$DEPLOY_STATE" = "READY" ]; then
                 echo "deploy_url=https://$DEPLOY_URL" >> "$GITHUB_OUTPUT"
-                echo "deploy_uid=$UID" >> "$GITHUB_OUTPUT"
+                echo "deploy_uid=$DEPLOY_UID" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
               if [ "$DEPLOY_STATE" = "ERROR" ] || [ "$DEPLOY_STATE" = "CANCELED" ]; then
-                echo "::error::Vercel Production deploy $UID ended in $DEPLOY_STATE."
+                echo "::error::Vercel Production deploy $DEPLOY_UID ended in $DEPLOY_STATE."
                 exit 1
               fi
             else
