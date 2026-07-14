@@ -42,6 +42,8 @@ const REQUIRED_STRUCTURAL = [
   "migrations_ack",
   "prisma/migrations/",
   "migration_guard",
+  // Boot-time reusable-call grant (packages: write must cover the image callee).
+  "packages: write",
 ] as const;
 
 function loadWorkflow(): string {
@@ -96,6 +98,30 @@ describe("promote-to-production.yml contract", () => {
     );
     expect(mutated).not.toContain("MIGRATION_GUARD_ASSERT: prisma_migrations_ack");
     expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+  });
+
+  it("workflow-level permissions grant packages: write (reusable image callee)", () => {
+    const yml = loadWorkflow();
+    // Top-level permissions block (before jobs:) must include packages: write.
+    const top = yml.slice(0, yml.indexOf("\njobs:"));
+    expect(top).toMatch(/permissions:[\s\S]*?\bpackages:\s*write\b/);
+    expect(top).not.toMatch(/permissions:[\s\S]*?\bpackages:\s*read\b/);
+  });
+
+  it("MUTATION: removing packages: write fails permissions contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replaceAll("packages: write", "packages: read");
+    expect(mutated).not.toContain("packages: write");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+    const top = mutated.slice(0, mutated.indexOf("\njobs:"));
+    expect(top).not.toMatch(/permissions:[\s\S]*?\bpackages:\s*write\b/);
+  });
+
+  it("image job grants packages: write for the workflow_call", () => {
+    const yml = loadWorkflow();
+    expect(yml).toMatch(
+      /image:[\s\S]*?permissions:[\s\S]*?\bpackages:\s*write\b[\s\S]*?uses:\s*\.\/\.github\/workflows\/promote-openclaw-image\.yml/,
+    );
   });
 
   it("platform job needs migration_guard (guard sits between preflight and platform)", () => {
