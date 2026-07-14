@@ -38,11 +38,16 @@ concurrency:
   group: promote-to-production
   cancel-in-progress: false
 
+# Workflow-level grant. packages: write is required because the image job calls
+# promote-openclaw-image.yml (callee declares packages: write). Reusable-workflow
+# permissions can only be downgraded by the caller, never elevated — violations
+# are BOOT-TIME startup_failures with zero jobs and zero logs (maiden run
+# 29266873589).
 permissions:
   contents: write
   pull-requests: write
-  packages: read
-  actions: write
+  packages: write
+  actions: read
 
 env:
   REGISTRY: ghcr.io
@@ -131,7 +136,7 @@ jobs:
           echo "candidate_digest=${CANDIDATE_DIGEST:-}" >> "$GITHUB_OUTPUT"
 
       - name: Verify :candidate matches :<version>
-        if: ${{ inputs.skip_candidate_check != true }}
+        if: ${{ !inputs.skip_candidate_check }}
         env:
           VERSION: ${{ needs.gate.outputs.version }}
           VD: ${{ steps.digests.outputs.version_digest }}
@@ -380,14 +385,23 @@ jobs:
           fi
 
   # ─── 3. IMAGE + REGISTER (reuse promote-openclaw-image.yml) ─────────────
+  # GitHub rule: reusable-workflow permissions can only be downgraded by the
+  # caller, never elevated. The callee (promote-openclaw-image.yml) declares
+  # packages: write — this job MUST grant it. Elevating beyond the caller's
+  # grant is a BOOT-TIME startup_failure with zero logs (not a step failure).
   image:
     name: Image promote + prod register
     needs: [gate, platform]
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/promote-openclaw-image.yml
     with:
       version: ${{ needs.gate.outputs.version }}
       target_env: production
-      skip_candidate_check: ${{ inputs.skip_candidate_check }}
+      # Typed boolean on both sides; == true keeps a real boolean for workflow_call
+      # (string "false"/"" would be a compile-time type error on the callee).
+      skip_candidate_check: ${{ inputs.skip_candidate_check == true }}
     secrets: inherit
 
   # ─── 4. PROBES (six) ────────────────────────────────────────────────────
