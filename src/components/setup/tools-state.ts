@@ -15,6 +15,7 @@
 import type { ToolRowStatus } from "@/components/setup/tool-row"
 import { getToolBySlug } from "@/data/tool-catalog"
 import type { ApiKeyFormPayload } from "@/lib/oauth/use-oauth-connection"
+import { isCredentialedKeyPending } from "@/lib/tools/required-tools"
 
 export function titleCaseToolSlug(slug: string): string {
   return slug
@@ -66,6 +67,9 @@ export interface ServerConnectionSummary {
   displayName?: string
   connectionType?: string
   lastError?: string | null
+  /** True when encrypted credentials exist (GET /api/tools). */
+  hasCredentials?: boolean
+  keyHint?: string | null
   /** PR #4 Commit 6: passed through for OAuth "Connected N days ago" rendering. */
   createdAt?: string | null
 }
@@ -104,10 +108,12 @@ export function connectionUiState(conn: ServerConnectionSummary): {
           "Some required fields are missing. Click Complete to finish setting this up.",
       }
     case "PENDING":
-      // API_KEY rows land PENDING when the key saved but couldn't be
-      // validated — treat as connected-with-warning, not disconnected.
-      if (conn.connectionType === "API_KEY" && conn.lastError) {
-        return { status: "connected", warningMessage: conn.lastError }
+      // Finding F: same credentialed-key PENDING predicate as the deploy gate.
+      if (isCredentialedKeyPending(conn)) {
+        return {
+          status: "connected",
+          warningMessage: conn.lastError ?? undefined,
+        }
       }
       return { status: "disconnected" }
     default:
