@@ -47,5 +47,11 @@ curl -s "https://staging.app.buildclaws.ai/api/cron/reconcile-container-env" \
   -H "Authorization: Bearer ${CRON_SECRET}"
 ```
 
+**Automated staging ticks (D1):** `.github/workflows/staging-cron-scheduler.yml`
+mirrors `vercel.json` cron paths on a schedule (hibernation / health-monitor use
+Actions `*/5` — accepted delta vs prod every-minute / `*/2`). Requires repo secret
+`STAGING_CRON_SECRET` (= staging Vercel `CRON_SECRET`). Failures turn the workflow
+red — first scheduled-failure surface for staging crons.
+
 See `docs/CONTAINER_ENV_RECONCILIATION_CONTRACT.md` §11 for the original PR-8
 context in which this limitation was discovered.
