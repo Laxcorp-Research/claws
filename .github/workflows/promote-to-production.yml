@@ -525,6 +525,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ─── 4. PROBES (six) ────────────────────────────────────────────────────
+  # Each probe is independent (continue-on-error) so a mid-list failure still
+  # runs the rest and the aggregate step emits a complete table. Overall job
+  # (and thus workflow) red/green is decided solely by the aggregate step.
   probes:
     name: Post-promote probes
     needs: [gate, preflight, platform, image, image_dry_run]
@@ -537,8 +540,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       window_state: probes-done
+      probe_table: ${{ steps.aggregate.outputs.probe_table }}
+      probes_ok: ${{ steps.aggregate.outputs.probes_ok }}
     steps:
       - name: Probe 1 — GET /api/health → 200
+        id: probe1
+        continue-on-error: true
         # PROBE_ASSERT: health_http_200
         run: |
           set -euo pipefail
@@ -547,6 +554,8 @@ jobs:
           test "$CODE" = "200"
 
       - name: Probe 2 — POST /blob-token unauth → 401
+        id: probe2
+        continue-on-error: true
         # PROBE_ASSERT: blob_token_http_401
         env:
           DRY_RUN: ${{ inputs.dry_run }}
@@ -564,6 +573,8 @@ jobs:
           test "$CODE" = "401"
 
       - name: Probe 3 — POST /finalize unauth → 401
+        id: probe3
+        continue-on-error: true
         # PROBE_ASSERT: finalize_http_401
         env:
           DRY_RUN: ${{ inputs.dry_run }}
@@ -581,7 +592,11 @@ jobs:
           test "$CODE" = "401"
 
       - name: Probe 4 — POST /upload + metering → 413 USE_BLOB
+        id: probe4
+        continue-on-error: true
         # PROBE_ASSERT: upload_http_413_USE_BLOB
+        # Secret name (operator-confirmed): secrets.PROD_METERING_MASTER_SECRET
+        # — mirrors prod app env METERING_MASTER_SECRET; do not invent aliases.
         env:
           DRY_RUN: ${{ inputs.dry_run }}
           PROD_METERING_MASTER_SECRET: ${{ secrets.PROD_METERING_MASTER_SECRET }}
@@ -607,6 +622,8 @@ jobs:
           jq -e '.code == "USE_BLOB"' /tmp/up.json >/dev/null
 
       - name: Probe 5 — prod stable version via public API
+        id: probe5
+        continue-on-error: true
         # PROBE_ASSERT: stable_version_match
         # Design: use existing public GET /api/versions/stable (no DATABASE_URL in
         # Actions — avoids shipping prod DB creds to CI). Asserts version string.
@@ -627,6 +644,8 @@ jobs:
           test "$STABLE" = "$VERSION"
 
       - name: Probe 6 — :latest references :<version> digest
+        id: probe6
+        continue-on-error: true
         # PROBE_ASSERT: latest_references_version_digest
         env:
           DRY_RUN: ${{ inputs.dry_run }}
@@ -678,7 +697,54 @@ jobs:
           echo "::error:::latest=$LATEST_DIGEST neither equals nor references $EXPECTED"
           exit 1
 
-  # ─── 5. SUMMARY (always) ────────────────────────────────────────────────
+      - name: Aggregate probe verdict (complete table; fail job if any red)
+        id: aggregate
+        if: always()
+        env:
+          P1: ${{ steps.probe1.outcome }}
+          P2: ${{ steps.probe2.outcome }}
+          P3: ${{ steps.probe3.outcome }}
+          P4: ${{ steps.probe4.outcome }}
+          P5: ${{ steps.probe5.outcome }}
+          P6: ${{ steps.probe6.outcome }}
+        run: |
+          set -euo pipefail
+          # PROBE_AGGREGATE_ASSERT: independent_probes_complete_table
+          TABLE=$(printf '%s\n' \
+            "| # | Probe | Outcome |" \
+            "|---|---|---|" \
+            "| 1 | GET /api/health | ${P1} |" \
+            "| 2 | POST /blob-token (unauth) | ${P2} |" \
+            "| 3 | POST /finalize (unauth) | ${P3} |" \
+            "| 4 | POST /upload + metering | ${P4} |" \
+            "| 5 | GET /api/versions/stable | ${P5} |" \
+            "| 6 | GHCR :latest digest | ${P6} |")
+          {
+            echo "### Probe results (independent)"
+            echo ""
+            printf '%s\n' "$TABLE"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Single-line for job output (summary job re-prints).
+          echo "probe_table<<EOF" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$TABLE" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          FAIL=0
+          for o in "$P1" "$P2" "$P3" "$P4" "$P5" "$P6"; do
+            if [ "$o" != "success" ]; then FAIL=1; fi
+          done
+          if [ "$FAIL" -ne 0 ]; then
+            echo "probes_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::error::One or more probes failed — see complete table above."
+            exit 1
+          fi
+          echo "probes_ok=true" >> "$GITHUB_OUTPUT"
+          echo "All six probes green."
+
+  # ─── 5. SUMMARY (always succeeds at summarizing) ────────────────────────
+  # Writes window-state + probe table unconditionally (exit 0). Overall run
+  # red/green is carried by the probes aggregate step (and earlier jobs), not
+  # by failing this summarizer.
   summary:
     name: Promotion summary
     if: always()
@@ -694,6 +760,7 @@ jobs:
           IMAGE_REAL: ${{ needs.image.result }}
           IMAGE_DRY: ${{ needs.image_dry_run.result }}
           PROBES: ${{ needs.probes.result }}
+          PROBE_TABLE: ${{ needs.probes.outputs.probe_table }}
           VERSION: ${{ needs.gate.outputs.version }}
           MERGE_SHA: ${{ needs.platform.outputs.merge_sha }}
           PR_URL: ${{ needs.platform.outputs.pr_url }}
@@ -727,7 +794,7 @@ jobs:
           elif [ "${DRY_RUN}" = "true" ]; then
             WINDOW="complete — dry_run rehearsal green (no prod side effects)"
           else
-            WINDOW="complete — platform+image+probes green"
+            WINDOW="closed-successful — platform+image+probes green"
           fi
 
           {
@@ -754,23 +821,22 @@ jobs:
             echo "| image_dry_run | $IMAGE_DRY |"
             echo "| probes | $PROBES |"
             echo ""
-            echo "### Probe table (expected)"
-            echo "| # | Probe | Expect |"
-            echo "|---|---|---|"
-            echo "| 1 | GET /api/health | 200 |"
-            echo "| 2 | POST /blob-token (unauth) | 401 |"
-            echo "| 3 | POST /finalize (unauth) | 401 |"
-            echo "| 4 | POST /upload + metering | 413 USE_BLOB |"
-            echo "| 5 | GET /api/versions/stable | version == input |"
-            echo "| 6 | GHCR :latest | equals/references version digest |"
+            echo "### Probe table"
+            if [ -n "${PROBE_TABLE:-}" ]; then
+              printf '%s\n' "$PROBE_TABLE"
+            else
+              echo "| # | Probe | Expect |"
+              echo "|---|---|---|"
+              echo "| 1 | GET /api/health | 200 |"
+              echo "| 2 | POST /blob-token (unauth) | 401 |"
+              echo "| 3 | POST /finalize (unauth) | 401 |"
+              echo "| 4 | POST /upload + metering | 413 USE_BLOB |"
+              echo "| 5 | GET /api/versions/stable | version == input |"
+              echo "| 6 | GHCR :latest | equals/references version digest |"
+              echo ""
+              echo "(probe outcomes unavailable — probes job did not emit table)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "WINDOW_STATE=$WINDOW"
-          # Fail the summary job if any required job failed (so the run is red).
-          if [ "$GATE" != "success" ] || [ "$PREFLIGHT" != "success" ] || \
-             [ "$MIGRATION_GUARD" != "success" ] || \
-             [ "$PLATFORM" != "success" ] || [ "$IMAGE" != "success" ] || \
-             [ "$PROBES" != "success" ]; then
-            echo "::error::Promotion incomplete — $WINDOW"
-            exit 1
-          fi
+          # SUMMARY_ALWAYS_SUCCEEDS: do not exit 1 here — aggregate/probes carry red.
