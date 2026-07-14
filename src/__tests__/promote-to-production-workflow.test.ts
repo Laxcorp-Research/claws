@@ -44,10 +44,30 @@ const REQUIRED_STRUCTURAL = [
   "migration_guard",
   // Boot-time reusable-call grant (packages: write must cover the image callee).
   "packages: write",
+  // Platform checkout + noop + dry-run (round-2 boot/platform fixes).
+  "PLATFORM_NOOP_ASSERT: staging_eq_main",
+  "platform already current (staging==main)",
+  "DRY_RUN_ASSERT: platform_echo",
+  "DRY_RUN_ASSERT: image_echo",
+  "dry_run:",
 ] as const;
+
+/** Jobs that run git / gh-against-repo and therefore require checkout. */
+const GIT_USING_JOBS = ["migration_guard", "platform"] as const;
 
 function loadWorkflow(): string {
   return readFileSync(WORKFLOW_PATH, "utf8");
+}
+
+/** Slice of the workflow YAML from `jobKey:` until the next top-level job or EOF. */
+function jobBlock(yml: string, jobKey: string): string {
+  const re = new RegExp(`^  ${jobKey}:\\r?\\n`, "m");
+  const m = re.exec(yml);
+  expect(m, `job ${jobKey} missing`).toBeTruthy();
+  const start = m!.index;
+  const rest = yml.slice(start + 1);
+  const next = rest.search(/\n  [a-z_][a-z0-9_]*:\r?\n/);
+  return next === -1 ? yml.slice(start) : yml.slice(start, start + 1 + next);
 }
 
 describe("promote-to-production.yml contract", () => {
@@ -135,6 +155,77 @@ describe("promote-to-production.yml contract", () => {
     const yml = loadWorkflow();
     expect(yml).not.toContain("PROMOTE_GITHUB_TOKEN || secrets.GITHUB_TOKEN");
     expect(yml).toMatch(/Merge PR[\s\S]*?GH_TOKEN:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/);
+  });
+
+  it("each git-using job has actions/checkout before git/gh repo ops", () => {
+    const yml = loadWorkflow();
+    for (const job of GIT_USING_JOBS) {
+      const block = jobBlock(yml, job);
+      expect(block, `${job} missing actions/checkout@v4`).toContain(
+        "uses: actions/checkout@v4",
+      );
+      expect(block, `${job} missing fetch-depth: 0`).toMatch(/fetch-depth:\s*0/);
+      const checkoutIdx = block.indexOf("uses: actions/checkout@v4");
+      const gitIdx = block.search(/\bgit (fetch|rev-list|diff|rev-parse)\b/);
+      const ghPrIdx = block.search(/\bgh pr (create|list|merge)\b/);
+      const firstRepoOp = [gitIdx, ghPrIdx].filter((i) => i >= 0).sort((a, b) => a - b)[0];
+      expect(firstRepoOp, `${job} has no git/gh repo op`).toBeGreaterThanOrEqual(0);
+      expect(checkoutIdx, `${job} checkout must precede git/gh`).toBeLessThan(firstRepoOp!);
+    }
+  });
+
+  it("MUTATION: removing platform checkout fails checkout-present contract", () => {
+    const yml = loadWorkflow();
+    const platform = jobBlock(yml, "platform");
+    const mutatedPlatform = platform.replace(
+      /uses: actions\/checkout@v4/,
+      "uses: actions/checkout@REMOVED",
+    );
+    const mutated = yml.replace(platform, mutatedPlatform);
+    const block = jobBlock(mutated, "platform");
+    expect(block).not.toContain("uses: actions/checkout@v4");
+    expect(block).toContain("uses: actions/checkout@REMOVED");
+  });
+
+  it("no-op path: rev-list count 0 skips PR and continues (marker + success path)", () => {
+    const yml = loadWorkflow();
+    expect(yml).toContain("git rev-list --count origin/main..origin/staging");
+    expect(yml).toContain("PLATFORM_NOOP_ASSERT: staging_eq_main");
+    expect(yml).toContain("platform already current (staging==main)");
+    expect(yml).toMatch(/platform_mode=noop/);
+    // Promote PR steps only run when mode == promote (noop must not fail the job).
+    expect(yml).toMatch(
+      /Create or reuse staging→main PR[\s\S]*?if:\s*\$\{\{\s*steps\.resolve\.outputs\.platform_mode\s*==\s*'promote'\s*\}\}/,
+    );
+  });
+
+  it("MUTATION: making 0-count fail the job breaks no-op contract", () => {
+    const yml = loadWorkflow();
+    // Simulate a broken noop that exits 1 when count==0 (would fail image-only re-runs).
+    const mutated = yml.replace(
+      'echo "platform_mode=noop" >> "$GITHUB_OUTPUT"',
+      'echo "::error::refusing noop"; exit 1',
+    );
+    expect(mutated).not.toContain('echo "platform_mode=noop" >> "$GITHUB_OUTPUT"');
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(true);
+    // Structural markers alone don't catch this — assert the success-path assignment is gone.
+    expect(mutated).not.toMatch(/platform_mode=noop/);
+  });
+
+  it("dry_run input + echo markers for platform/image/probes", () => {
+    const yml = loadWorkflow();
+    expect(yml).toMatch(/dry_run:\s*\n\s+description:/);
+    expect(yml).toContain("DRY_RUN_ASSERT: platform_echo");
+    expect(yml).toContain("DRY_RUN_ASSERT: image_echo");
+    expect(yml).toContain("image_dry_run:");
+    expect(yml).toContain("DRY_RUN_ASSERT: probe_echo");
+    expect(yml).toContain("DRY_RUN_ASSERT: probe_stable_get");
+  });
+
+  it("MUTATION: removing dry_run input fails structural check", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replaceAll("dry_run:", "dry_run_REMOVED:");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
   });
 
   it("promote-openclaw-image.yml exposes workflow_call", () => {
