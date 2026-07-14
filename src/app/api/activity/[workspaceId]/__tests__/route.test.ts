@@ -49,6 +49,8 @@ type WsOverrides = {
   query?: string;
   recentRows?: unknown[];
   deployedPausedWorkers?: string[];
+  nearCapWarningAt?: Date | null;
+  nearCapSnapshot?: { updatedAt: Date; compressedBytes: number } | null;
 };
 
 async function callRoute(opts: WsOverrides) {
@@ -109,6 +111,17 @@ async function callRoute(opts: WsOverrides) {
       },
     })),
   } as never);
+  (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
+    opts.nearCapWarningAt ? ({ timestamp: opts.nearCapWarningAt } as never) : (null as never),
+  );
+  (prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+    opts.nearCapSnapshot
+      ? ({
+          runtimeStateUpdatedAt: opts.nearCapSnapshot.updatedAt,
+          runtimeStateSizeBytes: opts.nearCapSnapshot.compressedBytes,
+        } as never)
+      : (null as never),
+  );
   // The route also runs $queryRawUnsafe twice. Mock that.
   (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockResolvedValue([] as never);
 
@@ -376,5 +389,37 @@ describe("PR-4: recentLogs detail passthrough", () => {
     expect(log2.detail).toBeNull();
     expect(log2.channelId).toBe("webchat");
     expect(log2.runId).toBe("run-2");
+  });
+});
+
+describe("PR-3 near-cap AlertStack detector surface", () => {
+  it("sets stateSyncNearCapActive when newest near-cap warning has no re-arm sync", async () => {
+    const warnAt = new Date("2026-07-14T10:00:00.000Z");
+    const data = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      nearCapWarningAt: warnAt,
+      nearCapSnapshot: { updatedAt: warnAt, compressedBytes: 42_000_000 },
+    });
+    expect(data.workspace.stateSyncNearCapActive).toBe(true);
+  });
+
+  it("clears stateSyncNearCapActive when a later sync is below re-arm", async () => {
+    const warnAt = new Date("2026-07-14T10:00:00.000Z");
+    const data = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      nearCapWarningAt: warnAt,
+      nearCapSnapshot: {
+        updatedAt: new Date("2026-07-14T11:00:00.000Z"),
+        compressedBytes: 30_000_000,
+      },
+    });
+    expect(data.workspace.stateSyncNearCapActive).toBe(false);
+  });
+
+  it("defaults stateSyncNearCapActive to false when no warning exists", async () => {
+    const data = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY" });
+    expect(data.workspace.stateSyncNearCapActive).toBe(false);
   });
 });

@@ -1,0 +1,113 @@
+name: Staging cron scheduler
+
+# Vercel.json crons never fire on preview/staging (docs/VERCEL_CRON_NOTES.md).
+# This workflow mirrors production vercel.json cadences by curling staging
+# routes with Authorization: Bearer $STAGING_CRON_SECRET.
+#
+# OPERATOR: create repo secret STAGING_CRON_SECRET with the same value as the
+# staging Vercel env CRON_SECRET (Vercel → staging.app.buildclaws.ai →
+# Settings → Environment Variables → CRON_SECRET). Without it every tick fails red.
+#
+# Cadence deltas vs vercel.json (accepted):
+#   - /api/cron/hibernation: vercel `* * * * *` → Actions `*/5 * * * *`
+#     (GH Actions minimum schedule granularity is 5 minutes + delay jitter)
+#   - /api/cron/health-monitor: vercel `*/2 * * * *` → Actions `*/5 * * * *`
+#     (same 5-minute floor; grouped with the other sub-5-min routes)
+
+on:
+  schedule:
+    # vercel: /api/admin/payouts/release → 0 0 * * *
+    - cron: "0 0 * * *"
+    # vercel: reconcile-credit-balances, reconcile-container-env → */5
+    # vercel: hibernation → * * * * * (Actions */5, accepted delta)
+    # vercel: health-monitor → */2 (Actions */5, accepted delta)
+    - cron: "*/5 * * * *"
+    # vercel: /api/cron/aggregate-credit-usage → 0 2 * * *
+    - cron: "0 2 * * *"
+    # vercel: credit-pool-monitor, connection-health → 0 * * * *
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: staging-cron-scheduler
+  cancel-in-progress: false
+
+env:
+  STAGING_APP: https://staging.app.buildclaws.ai
+
+jobs:
+  invoke:
+    name: Curl staging cron routes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require STAGING_CRON_SECRET
+        env:
+          STAGING_CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_CRON_SECRET:-}" ]; then
+            echo "::error::STAGING_CRON_SECRET is missing. Create it in repo Settings → Secrets with the staging Vercel CRON_SECRET value (Vercel → staging.app.buildclaws.ai → Environment Variables)."
+            exit 1
+          fi
+
+      - name: Resolve routes for this tick
+        id: routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          # STAGING_CRON_ROUTES_ASSERT: markers match vercel.json path list (contract test)
+          SCHEDULE="${{ github.event.schedule }}"
+          case "$SCHEDULE" in
+            "0 0 * * *")
+              PATHS='["/api/admin/payouts/release"]'
+              ;;
+            "*/5 * * * *")
+              PATHS='["/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/hibernation","/api/cron/health-monitor"]'
+              ;;
+            "0 2 * * *")
+              PATHS='["/api/cron/aggregate-credit-usage"]'
+              ;;
+            "0 * * * *")
+              PATHS='["/api/cron/credit-pool-monitor","/api/cron/connection-health"]'
+              ;;
+            "")
+              # workflow_dispatch — exercise every vercel.json cron path once
+              PATHS='["/api/admin/payouts/release","/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/aggregate-credit-usage","/api/cron/credit-pool-monitor","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/connection-health"]'
+              ;;
+            *)
+              echo "::error::Unexpected schedule expression: $SCHEDULE"
+              exit 1
+              ;;
+          esac
+          echo "paths=$PATHS" >> "$GITHUB_OUTPUT"
+          echo "Resolved schedule=${SCHEDULE:-workflow_dispatch} paths=$PATHS"
+
+      - name: Curl staging cron routes
+        env:
+          STAGING_CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
+          ROUTES_JSON: ${{ steps.routes.outputs.paths }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            url="${STAGING_APP}${path}"
+            echo "→ GET $url"
+            # Failures → workflow red (first scheduled-failure surface for staging crons)
+            code=$(curl -sS -o /tmp/cron-body.txt -w "%{http_code}" \
+              -H "Authorization: Bearer ${STAGING_CRON_SECRET}" \
+              --max-time 120 \
+              "$url" || echo "000")
+            body=$(head -c 500 /tmp/cron-body.txt || true)
+            echo "  HTTP $code"
+            if [ -n "$body" ]; then
+              echo "  body: $body"
+            fi
+            if [ "$code" != "200" ]; then
+              echo "::error::Cron route $path returned HTTP $code (expected 200)"
+              fail=1
+            fi
+          done < <(printf '%s' "$ROUTES_JSON" | jq -r '.[]')
+          exit "$fail"

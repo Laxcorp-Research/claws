@@ -270,7 +270,7 @@ jobs:
               echo "WOULD: skip PR/merge (platform already current; staging==main)"
             else
               echo "WOULD: gh pr create --base main --head staging --title \"Promote staging to main (runtime $VERSION)\""
-              echo "WOULD: gh pr merge <PR> --merge --admin"
+              echo "WOULD: wait for PR check-runs green (≤40m), then gh pr merge <PR> --merge (no --admin)"
               echo "WOULD: poll Vercel Production READY for the merge commit"
             fi
             {
@@ -334,7 +334,7 @@ jobs:
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Merge PR (match #265)
+      - name: Wait for checks, then merge (no --admin)
         id: merge
         if: ${{ steps.resolve.outputs.platform_mode == 'promote' }}
         env:
@@ -342,19 +342,52 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
           set -euo pipefail
-          # Empirical: try GITHUB_TOKEN first. Do NOT speculate a PAT.
-          # On branch-protection rejection, fail with the remedy secret name.
+          # WAIT_THEN_MERGE_ASSERT: poll_checks_before_merge
+          # Bounded wait for PR check-runs. Fail loud on timeout or any failed check.
+          # Merge WITHOUT --admin so GITHUB_TOKEN only succeeds when protection is
+          # actually satisfied (linear history must allow merge commits; reviews/
+          # remaining gates → PROMOTE_GITHUB_TOKEN remedy below).
+          DEADLINE_SECS=2400
+          START=$SECONDS
+          echo "Waiting up to ${DEADLINE_SECS}s for PR #$PR_NUMBER check-runs to go green…"
+          while true; do
+            ELAPSED=$((SECONDS - START))
+            if [ "$ELAPSED" -ge "$DEADLINE_SECS" ]; then
+              echo "::error::Timed out after ${DEADLINE_SECS}s waiting for PR #$PR_NUMBER checks to go green."
+              gh pr checks "$PR_NUMBER" || true
+              exit 1
+            fi
+
+            # statusCheckRollup: name/status/conclusion (ignore nameless rollup rows)
+            ROLLUP=$(gh pr view "$PR_NUMBER" --json statusCheckRollup \
+              --jq '[.statusCheckRollup[]? | select(.name != null and .name != "")]')
+            TOTAL=$(printf '%s' "$ROLLUP" | jq 'length')
+            PENDING=$(printf '%s' "$ROLLUP" | jq '[.[] | select(.status != "COMPLETED")] | length')
+            FAILED=$(printf '%s' "$ROLLUP" | jq -r '[.[] | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED" or .conclusion == "TIMED_OUT" or .conclusion == "ACTION_REQUIRED" or .conclusion == "STARTUP_FAILURE")] | .[].name' | sort -u)
+
+            if [ -n "$FAILED" ]; then
+              echo "::error::PR #$PR_NUMBER has failed check(s): $(printf '%s' "$FAILED" | paste -sd ', ' -)"
+              gh pr checks "$PR_NUMBER" || true
+              exit 1
+            fi
+
+            if [ "$TOTAL" -gt 0 ] && [ "$PENDING" -eq 0 ]; then
+              echo "All $TOTAL named check-runs COMPLETED with no failures (elapsed ${ELAPSED}s)."
+              break
+            fi
+
+            echo "checks: total=$TOTAL pending=$PENDING elapsed=${ELAPSED}s — sleeping 20s"
+            sleep 20
+          done
+
+          # MERGE_WITHOUT_ADMIN_ASSERT: no --admin on the merge invocation
           set +e
-          MERGE_OUT=$(gh pr merge "$PR_NUMBER" --merge --admin 2>&1)
+          MERGE_OUT=$(gh pr merge "$PR_NUMBER" --merge 2>&1)
           MERGE_EC=$?
           set -e
           if [ "$MERGE_EC" -ne 0 ]; then
             echo "$MERGE_OUT"
-            if echo "$MERGE_OUT" | grep -Eiq 'protected branch|required status|review|not authorized|forbidden|Resource not accessible|GraphQL: .+ blocked|Cannot merge'; then
-              echo "::error::GITHUB_TOKEN could not merge PR #$PR_NUMBER (branch protection / permissions). Create repo secret PROMOTE_GITHUB_TOKEN (PAT that can bypass required checks / merge to main), then re-run. Do not mint the PAT until this failure is observed."
-            else
-              echo "::error::gh pr merge failed for PR #$PR_NUMBER (exit $MERGE_EC). See output above."
-            fi
+            echo "::error::GITHUB_TOKEN could not merge PR #$PR_NUMBER after checks were green (branch protection / permissions / merge method). Create repo secret PROMOTE_GITHUB_TOKEN (PAT that can bypass required checks / merge to main), then re-run. Do not mint the PAT until this failure is observed."
             exit 1
           fi
           MERGE_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq .mergeCommit.oid)

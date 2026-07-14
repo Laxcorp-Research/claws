@@ -16,15 +16,16 @@ function item(id: string, priority: number, cta = vi.fn()): AlertStackItem {
 }
 
 describe("AlertStack", () => {
-  it("orders all seven cockpit alerts by priority with container-down first", () => {
+  it("orders all eight cockpit alerts by priority with container-down first", () => {
     render(
       <AlertStack
         alerts={[
-          item("version-update", 6),
-          item("drift", 5),
-          item("session-dead", 4),
-          item("connection-expired", 3),
-          item("sync-stale", 2),
+          item("version-update", 7),
+          item("drift", 6),
+          item("session-dead", 5),
+          item("connection-expired", 4),
+          item("sync-stale", 3),
+          item("near-cap", 2),
           item("silence", 1),
           item("container-down", 0),
         ]}
@@ -33,7 +34,7 @@ describe("AlertStack", () => {
 
     expect(screen.getByText("container-down message")).toBeDefined()
     expect(screen.queryByText("version-update message")).toBeNull()
-    expect(screen.getByRole("button", { name: "6 more alerts" })).toBeDefined()
+    expect(screen.getByRole("button", { name: "7 more alerts" })).toBeDefined()
   })
 
   it("reveals remaining alerts and keeps each CTA wired", () => {
