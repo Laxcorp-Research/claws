@@ -159,7 +159,46 @@ describe("promote-to-production.yml contract", () => {
   it("merge step uses GITHUB_TOKEN only (no speculative PAT prefer)", () => {
     const yml = loadWorkflow();
     expect(yml).not.toContain("PROMOTE_GITHUB_TOKEN || secrets.GITHUB_TOKEN");
-    expect(yml).toMatch(/Merge PR[\s\S]*?GH_TOKEN:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/);
+    expect(yml).toMatch(
+      /Wait for checks, then merge[\s\S]*?GH_TOKEN:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/,
+    );
+  });
+
+  it("wait-then-merge: polls checks then merges without --admin", () => {
+    const yml = loadWorkflow();
+    expect(yml).toContain("WAIT_THEN_MERGE_ASSERT: poll_checks_before_merge");
+    expect(yml).toContain("MERGE_WITHOUT_ADMIN_ASSERT: no --admin on the merge invocation");
+    expect(yml).toContain("DEADLINE_SECS=2400");
+    // Happy-path merge must NOT use --admin (PROMOTE_GITHUB_TOKEN remains the loud-fail remedy).
+    const mergeStep = yml.slice(
+      yml.indexOf("Wait for checks, then merge"),
+      yml.indexOf("Wait for Vercel Production READY"),
+    );
+    expect(mergeStep).toContain('gh pr merge "$PR_NUMBER" --merge');
+    expect(mergeStep).not.toMatch(/gh pr merge[^\n]*--admin/);
+    expect(mergeStep).toContain("PROMOTE_GITHUB_TOKEN");
+  });
+
+  it("MUTATION: removing wait-loop marker fails wait-then-merge contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace(
+      "WAIT_THEN_MERGE_ASSERT: poll_checks_before_merge",
+      "WAIT_THEN_MERGE_ASSERT: REMOVED",
+    );
+    expect(mutated).not.toContain("WAIT_THEN_MERGE_ASSERT: poll_checks_before_merge");
+  });
+
+  it("MUTATION: adding --admin back to merge invocation fails no-admin contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace(
+      'gh pr merge "$PR_NUMBER" --merge 2>&1',
+      'gh pr merge "$PR_NUMBER" --merge --admin 2>&1',
+    );
+    const mergeStep = mutated.slice(
+      mutated.indexOf("Wait for checks, then merge"),
+      mutated.indexOf("Wait for Vercel Production READY"),
+    );
+    expect(mergeStep).toMatch(/gh pr merge[^\n]*--admin/);
   });
 
   it("each git-using job has actions/checkout before git/gh repo ops", () => {
