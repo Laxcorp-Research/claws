@@ -4,12 +4,14 @@ import { AgentLiveTile } from "@/components/dashboard/agent-live-tile"
 import { ProviderChannelBadge } from "@/components/dashboard/provider-channel-badge"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
-const LONG_AGENT_NAME = "Extremely Long Strategic Research Agent Name That Must Ellipsize"
+export const LONG_AGENT_NAME = "Extremely Long Strategic Research Agent Name That Must Ellipsize"
 const LONG_SESSION_KEY = "agent:twitter-commander:subagent:151eda19-a0c9-49de-969d-ed39d16fe21c"
 
 export function TruncationFixture() {
+  // Center the fixtures so a maxWidth=300 tooltip is not left-edge-clamped
+  // (clamping is correct, but the bbox-center assertion needs an unclamped case).
   return (
-    <main className="max-w-[360px] p-6">
+    <main className="mx-auto flex min-h-screen max-w-[720px] flex-col items-center justify-start p-6 pt-24">
       <div className="w-[240px]" data-testid="agent-fixture">
         <AgentLiveTile
           view={{
@@ -39,4 +41,3 @@ export function TruncationFixture() {
     </main>
   )
 }
-

@@ -629,9 +629,18 @@ export function ChatPanel({
     }
   }
 
+  // fullHeight: bound the pane to the viewport (header + tabs + bottom gap ≈ 260px).
+  // MUTATION: strip max-h-[calc(...)] → unit + Playwright viewport assertions fail.
   return (
-    <section aria-label="Web chat" className={cn("border border-[var(--bd)] rounded-lg mb-6", fullHeight && "flex min-h-[calc(100vh-260px)] flex-col", className)}>
-      <div className="px-3.5 py-2.5 border-b border-[var(--bd)]">
+    <section
+      aria-label="Web chat"
+      className={cn(
+        "border border-[var(--bd)] rounded-lg mb-6",
+        fullHeight && "flex max-h-[calc(100vh-260px)] flex-col",
+        className,
+      )}
+    >
+      <div className="shrink-0 px-3.5 py-2.5 border-b border-[var(--bd)]">
         <h2 className="text-[12px] font-semibold text-[var(--tx)]">Web chat</h2>
         <p className="text-[11px] text-[var(--tx3)] mt-0.5">
           Direct line to {orchestratorName || "your orchestrator"}. Conversations on connected channels appear in the activity feed.
@@ -641,7 +650,10 @@ export function ChatPanel({
       <div
         ref={listRef}
         onScroll={handleScroll}
-        className={cn("flex flex-col gap-3 p-3.5 min-h-[120px] overflow-y-auto", fullHeight ? "max-h-none flex-1" : "max-h-[360px]")}
+        className={cn(
+          "flex flex-col gap-3 p-3.5 min-h-[120px] overflow-y-auto",
+          fullHeight ? "min-h-0 flex-1" : "max-h-[360px]",
+        )}
         role="log"
         aria-label="Chat messages"
       >
@@ -715,7 +727,7 @@ export function ChatPanel({
         {working && <WorkingIndicator orchestratorName={orchestratorName} />}
       </div>
 
-      <div className="border-t border-[var(--bd)] p-3.5">
+      <div className="shrink-0 border-t border-[var(--bd)] p-3.5">
         {!sendable && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] text-[var(--tx3)]">{composerNote}</p>

@@ -51,6 +51,33 @@ describe("ChatPanel header", () => {
     expect(screen.getByRole("button", { name: "Jump to latest" })).toBeTruthy()
   })
 
+  it("fullHeight bounds the pane with max-h calc and keeps the list as flex scroll region", () => {
+    const rows: ChatRow[] = Array.from({ length: 40 }, (_, i) => ({
+      id: `m-${i}`,
+      timestamp: `2026-07-01T12:${String(i % 60).padStart(2, "0")}:00.000Z`,
+      agentName: i % 2 === 0 ? "You" : "Dev Commander",
+      agentSlug: i % 2 === 0 ? null : "orchestrator",
+      action: `msg ${i}`,
+      actionType: i % 2 === 0 ? "MESSAGE_RECEIVED" : "MESSAGE_SENT",
+      detail: `body ${i}`,
+      channelId: "webchat",
+      runId: `run-${i}`,
+    }))
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" fullHeight />)
+
+    const pane = screen.getByRole("region", { name: "Web chat" })
+    // MUTATION: strip max-h-[calc(100vh-260px)] → this fails.
+    expect(pane.className).toContain("max-h-[calc(100vh-260px)]")
+    expect(pane.className).toContain("flex")
+    expect(pane.className).not.toContain("min-h-[calc(100vh-260px)]")
+
+    const log = screen.getByRole("log")
+    expect(log.className).toContain("flex-1")
+    expect(log.className).toContain("min-h-0")
+    expect(log.className).toContain("overflow-y-auto")
+    expect(log.className).not.toContain("max-h-none")
+  })
+
   it("full-height chat keeps the message list as the scroll region and composer visible", () => {
     const rows: ChatRow[] = Array.from({ length: 100 }, (_, i) => ({
       id: `m-${i}`,

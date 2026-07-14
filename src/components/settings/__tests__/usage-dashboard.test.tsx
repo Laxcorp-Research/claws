@@ -35,4 +35,13 @@ describe("UsageDashboard", () => {
     expect(screen.queryByText("$NaN")).toBeNull()
     expect(screen.getAllByText("$0.00").length).toBeGreaterThanOrEqual(1)
   })
+
+  it("empty-state uses DS TextLink forward to My Claws", () => {
+    render(<UsageDashboard />)
+    const link = screen.getByRole("link", { name: /Go to My Claws/ })
+    expect(link.getAttribute("href")).toBe("/my-claws")
+    expect(link.textContent).toContain("→")
+    // MUTATION: reinstate raw <Link>+ArrowRight without TextLink → role/name still works
+    // but text would lack the DS " →" suffix from TextLink direction=forward.
+  })
 })
