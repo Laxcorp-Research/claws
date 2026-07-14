@@ -50,6 +50,11 @@ const REQUIRED_STRUCTURAL = [
   "DRY_RUN_ASSERT: platform_echo",
   "DRY_RUN_ASSERT: image_echo",
   "dry_run:",
+  // Independent probes + always-succeed summary (round-3 verification harden).
+  "PROBE_AGGREGATE_ASSERT: independent_probes_complete_table",
+  "continue-on-error: true",
+  "SUMMARY_ALWAYS_SUCCEEDS",
+  "closed-successful",
 ] as const;
 
 /** Jobs that run git / gh-against-repo and therefore require checkout. */
@@ -225,6 +230,24 @@ describe("promote-to-production.yml contract", () => {
   it("MUTATION: removing dry_run input fails structural check", () => {
     const yml = loadWorkflow();
     const mutated = yml.replaceAll("dry_run:", "dry_run_REMOVED:");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+  });
+
+  it("probes use continue-on-error + aggregate; summary always succeeds", () => {
+    const yml = loadWorkflow();
+    expect(yml).toContain("PROBE_AGGREGATE_ASSERT: independent_probes_complete_table");
+    expect(yml).toContain("SUMMARY_ALWAYS_SUCCEEDS");
+    expect(yml).toContain("closed-successful");
+    const probes = jobBlock(yml, "probes");
+    expect((probes.match(/continue-on-error:\s*true/g) || []).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("MUTATION: removing probe aggregate assert fails structural check", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace(
+      "PROBE_AGGREGATE_ASSERT: independent_probes_complete_table",
+      "PROBE_AGGREGATE_ASSERT: REMOVED",
+    );
     expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
   });
 
