@@ -194,6 +194,102 @@ describe("runStateSync — per-process in-flight guard", () => {
   })
 })
 
+describe("bundle hygiene — live-set filter (PR-2 -8)", () => {
+  const LIVE_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  const LIVE_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+  const LIVE_C = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+  const ORPHAN = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+
+  function writeSessionsTree(root: string) {
+    const sess = path.join(root, "agents", "main", "sessions")
+    fs.mkdirSync(sess, { recursive: true })
+    const index = {
+      "agent:main:a": { sessionId: LIVE_A },
+      "agent:main:b": { sessionId: LIVE_B },
+      "agent:main:c": { sessionId: LIVE_C },
+    }
+    fs.writeFileSync(path.join(sess, "sessions.json"), JSON.stringify(index))
+    for (const id of [LIVE_A, LIVE_B, LIVE_C, ORPHAN]) {
+      fs.writeFileSync(path.join(sess, `${id}.jsonl`), `{"id":"${id}"}\n`)
+      fs.writeFileSync(path.join(sess, `${id}.trajectory.jsonl`), "{}\n")
+      fs.writeFileSync(path.join(sess, `${id}.trajectory-path.json`), "{}")
+    }
+    fs.writeFileSync(
+      path.join(sess, `${ORPHAN}.jsonl.reset.2026-01-01T00-00-00`),
+      "reset-bytes",
+    )
+    fs.mkdirSync(path.join(root, "workspace-main"), { recursive: true })
+    fs.writeFileSync(path.join(root, "workspace-main", "MEMORY.md"), "# mem")
+  }
+
+  it("MUTATION-anchored: ships live trio + sessions.json; excludes orphan + reset", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-hygiene-"))
+    try {
+      writeSessionsTree(dir)
+      const { files } = mod.bundleRuntimeState(dir)
+      const keys = Object.keys(files)
+
+      expect(keys).toContain("agents/main/sessions/sessions.json")
+      for (const id of [LIVE_A, LIVE_B, LIVE_C]) {
+        expect(keys).toContain(`agents/main/sessions/${id}.jsonl`)
+        expect(keys).toContain(`agents/main/sessions/${id}.trajectory.jsonl`)
+        expect(keys).toContain(`agents/main/sessions/${id}.trajectory-path.json`)
+      }
+      // Dropping the live-set gate (always include) fails these:
+      expect(keys).not.toContain(`agents/main/sessions/${ORPHAN}.jsonl`)
+      expect(keys).not.toContain(`agents/main/sessions/${ORPHAN}.trajectory.jsonl`)
+      expect(keys.some((k: string) => k.includes(".jsonl.reset."))).toBe(false)
+      expect(keys).toContain("workspace-main/MEMORY.md")
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("MUTATION-anchored: agent with NO sessions.json ships everything (fail-open)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-hygiene-fo-"))
+    try {
+      const sess = path.join(dir, "agents", "orphan-agent", "sessions")
+      fs.mkdirSync(sess, { recursive: true })
+      fs.writeFileSync(path.join(sess, `${ORPHAN}.jsonl`), "{}\n")
+      fs.writeFileSync(path.join(sess, `${ORPHAN}.jsonl.reset.x`), "r")
+      // No sessions.json — dropping fail-open (treat as empty live set) fails.
+      const { files } = mod.bundleRuntimeState(dir)
+      const keys = Object.keys(files)
+      expect(keys).toContain(`agents/orphan-agent/sessions/${ORPHAN}.jsonl`)
+      expect(keys).toContain(`agents/orphan-agent/sessions/${ORPHAN}.jsonl.reset.x`)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("near-cap WARNING hysteresis (PR-2 -8)", () => {
+  beforeEach(() => {
+    mod.__resetNearCapHysteresis()
+  })
+
+  it("MUTATION-anchored: emits once at ≥80% of ABSOLUTE_MAX; no re-emit until below 70%", () => {
+    const warnAt = mod.NEAR_CAP_WARN_BYTES
+    const rearmBelow = mod.NEAR_CAP_REARM_BYTES
+    expect(warnAt).toBe(Math.floor(mod.ABSOLUTE_MAX_COMPRESSED_BYTES * 0.8))
+    expect(rearmBelow).toBe(Math.floor(mod.ABSOLUTE_MAX_COMPRESSED_BYTES * 0.7))
+
+    // Just under 80% — no emit. Dropping the ≥ check (always emit) would fail.
+    expect(mod.evaluateNearCap(warnAt - 1).emit).toBe(false)
+
+    // Cross 80% — emit once.
+    expect(mod.evaluateNearCap(warnAt).emit).toBe(true)
+    // Still above rearm band — suppressed.
+    expect(mod.evaluateNearCap(warnAt + 1000).emit).toBe(false)
+    expect(mod.evaluateNearCap(rearmBelow).emit).toBe(false)
+
+    // Drop below 70% re-arms; next crossing emits again.
+    expect(mod.evaluateNearCap(rearmBelow - 1).emit).toBe(false)
+    expect(mod.__getNearCapArmed()).toBe(true)
+    expect(mod.evaluateNearCap(warnAt).emit).toBe(true)
+  })
+})
+
 describe("single source of truth (refactor-safety guard)", () => {
   const pm = readFileSync(resolve(process.cwd(), "container/process-manager.mjs"), "utf8")
   const plugin = readFileSync(resolve(process.cwd(), "container/claws-activity-reporter/index.mjs"), "utf8")

@@ -11,8 +11,11 @@
 // values here so a compromised container secret can't forge them.
 //
 // Allowed actionType subset (8 of 21 — see ALLOWED_ACTION_TYPES below).
-// Out-of-scope this PR: writing `apiCost`. The endpoint accepts no `apiCost`
-// field; all rows have `apiCost: null`. PR-2b will wire cost separately.
+// apiCost: written from metadata.usage.costTotal when present (finite ≥ 0,
+// ≤ $50/event). No pricing-table fallback here — costTotal is the truth
+// source; client-side models.ts estimation covers historical null rows.
+// Backfill: NOT in this PR. Staging had 11 ActivityLog rows with costTotal
+// in metadata that WOULD be eligible for a later backfill script.
 
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
@@ -20,6 +23,7 @@ import { apiSuccess, apiError } from "@/lib/api/response";
 import { log } from "@/lib/logger";
 import type { ActivityType } from "@/generated/prisma/client";
 import { getToolBySlug } from "@/data/tool-catalog";
+import { MAX_API_COST_PER_EVENT } from "@/lib/activity-cost-display";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -150,6 +154,59 @@ function validateEvent(raw: IncomingEvent, index: number):
 }
 
 const NO_ACTIVE_CONNECTION_RE = /\bNo Active connection for toolkit=([A-Za-z0-9_-]+)/;
+
+/**
+ * Read apiCost from metadata.usage.costTotal (reporter emission).
+ * Invalid / insane values → null + warn (row still written).
+ */
+export function resolveApiCostFromMetadata(
+  metadata: Record<string, unknown>,
+  workspaceId?: string,
+): number | null {
+  const usage = metadata.usage;
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+  const raw = (usage as Record<string, unknown>).costTotal;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) {
+    if (raw !== undefined) {
+      log.warn("activity: rejecting non-finite/negative usage.costTotal", {
+        workspaceId,
+        costTotal: raw,
+      });
+    }
+    return null;
+  }
+  if (raw > MAX_API_COST_PER_EVENT) {
+    log.warn("activity: rejecting usage.costTotal over per-event sanity cap", {
+      workspaceId,
+      costTotal: raw,
+      cap: MAX_API_COST_PER_EVENT,
+    });
+    return null;
+  }
+  return raw;
+}
+
+/** agent:<slug>:… → slug. Used when MESSAGE_RECEIVED omits top-level agentId. */
+export function agentIdFromSessionKey(sessionKey: string | null): string | null {
+  if (!sessionKey) return null;
+  const m = /^agent:([^:]+):/.exec(sessionKey);
+  return m?.[1] && m[1].length > 0 ? m[1] : null;
+}
+
+/**
+ * Prefer top-level agentId; for MESSAGE_RECEIVED with a missing agentId
+ * (the residual null-slug class), fall back to sessionKey / metadata.agentId.
+ */
+export function resolveEventAgentId(event: ValidatedEvent): string | null {
+  if (event.agentId) return event.agentId;
+  if (event.type === "MESSAGE_RECEIVED") {
+    const fromSession = agentIdFromSessionKey(event.sessionKey);
+    if (fromSession) return fromSession;
+    const metaAgent = event.metadata.agentId;
+    if (typeof metaAgent === "string" && metaAgent.length > 0) return metaAgent;
+  }
+  return null;
+}
 
 function extractNoActiveConnectionToolkit(detail: string | null): string | null {
   const match = detail?.match(NO_ACTIVE_CONNECTION_RE);
@@ -288,8 +345,9 @@ export async function POST(
   // So `event.agentId` here is `Agent.agentSlug` in our DB, NOT
   // `Agent.id` (which is a cuid). Resolve by agentSlug, scoped to this
   // workspace so we never cross-tenant.
+  const resolvedAgentIds = validated.map((e) => resolveEventAgentId(e));
   const distinctAgentSlugs = Array.from(
-    new Set(validated.map((e) => e.agentId).filter((id): id is string => typeof id === "string")),
+    new Set(resolvedAgentIds.filter((id): id is string => typeof id === "string")),
   );
   const agentRows =
     distinctAgentSlugs.length > 0
@@ -310,7 +368,9 @@ export async function POST(
   const errors: Array<{ index: number; error: string }> = [];
   for (let i = 0; i < validated.length; i++) {
     const ev = validated[i];
-    const agent = ev.agentId ? agentInfoBySlug.get(ev.agentId) : undefined;
+    const resolvedAgentId = resolvedAgentIds[i];
+    const agent = resolvedAgentId ? agentInfoBySlug.get(resolvedAgentId) : undefined;
+    const apiCost = resolveApiCostFromMetadata(ev.metadata, workspaceId);
     try {
       await prisma.activityLog.create({
         data: {
@@ -320,7 +380,7 @@ export async function POST(
           // Agent row (the plugin saw an agentId we no longer have). The
           // dashboard filters by agentSlug, so a stale row is still
           // attributable to the right agent slot.
-          agentSlug: agent?.agentSlug ?? ev.agentId ?? null,
+          agentSlug: agent?.agentSlug ?? resolvedAgentId ?? null,
           action: ev.action,
           detail: ev.detail,
           actionType: ev.type,
@@ -330,11 +390,10 @@ export async function POST(
             runId: ev.runId,
             sessionKey: ev.sessionKey,
             channelId: ev.channelId,
-            sourceAgentId: ev.agentId,
+            sourceAgentId: resolvedAgentId,
           }),
           timestamp: ev.timestamp,
-          // apiCost intentionally not set — PR-2b will wire cost separately.
-          apiCost: null,
+          apiCost,
         },
       });
       try {
@@ -375,4 +434,7 @@ export async function POST(
 export const __internal = {
   extractNoActiveConnectionToolkit,
   toolConnectionToolkitSlug,
+  resolveApiCostFromMetadata,
+  resolveEventAgentId,
+  agentIdFromSessionKey,
 };

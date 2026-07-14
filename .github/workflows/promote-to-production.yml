@@ -22,6 +22,11 @@ on:
         description: 'Type PROMOTE-PROD exactly to proceed (deliberate-action gate).'
         required: true
         type: string
+      migrations_ack:
+        description: 'Required when prisma/migrations/ differs between main and staging. Type ACK-MIGRATIONS exactly to proceed with migrations aboard; leave empty when the diff is empty.'
+        required: false
+        type: string
+        default: ''
       skip_candidate_check:
         description: 'Emergency override: skip :candidate digest == :<version> gate (same semantics as promote-openclaw-image.yml).'
         required: false
@@ -33,11 +38,16 @@ concurrency:
   group: promote-to-production
   cancel-in-progress: false
 
+# Workflow-level grant. packages: write is required because the image job calls
+# promote-openclaw-image.yml (callee declares packages: write). Reusable-workflow
+# permissions can only be downgraded by the caller, never elevated — violations
+# are BOOT-TIME startup_failures with zero jobs and zero logs (maiden run
+# 29266873589).
 permissions:
   contents: write
   pull-requests: write
-  packages: read
-  actions: write
+  packages: write
+  actions: read
 
 env:
   REGISTRY: ghcr.io
@@ -126,7 +136,7 @@ jobs:
           echo "candidate_digest=${CANDIDATE_DIGEST:-}" >> "$GITHUB_OUTPUT"
 
       - name: Verify :candidate matches :<version>
-        if: ${{ inputs.skip_candidate_check != true }}
+        if: ${{ !inputs.skip_candidate_check }}
         env:
           VERSION: ${{ needs.gate.outputs.version }}
           VD: ${{ steps.digests.outputs.version_digest }}
@@ -164,10 +174,63 @@ jobs:
           fi
           echo "Staging-proven: stable=$STABLE"
 
+  # ─── 1b. MIGRATION GUARD (staging vs main) ──────────────────────────────
+  # Runs between preflight and platform. Lists prisma/migrations/ drift into the
+  # step summary always. Nonempty drift requires inputs.migrations_ack ==
+  # ACK-MIGRATIONS (maiden window may land this guard; second dispatch onward
+  # enforces it when migrations ride the promote).
+  migration_guard:
+    name: Migration guard (prisma/migrations)
+    needs: [gate, preflight]
+    runs-on: ubuntu-latest
+    outputs:
+      window_state: migration-guard-done
+    steps:
+      - name: Checkout (fetch main + staging for diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard prisma/migrations drift (main..staging)
+        id: migrations
+        env:
+          MIGRATIONS_ACK: ${{ inputs.migrations_ack }}
+        run: |
+          set -euo pipefail
+          # MIGRATION_GUARD_ASSERT: prisma_migrations_ack
+          git fetch origin main staging --depth=1 2>/dev/null || git fetch origin main staging
+          LIST=$(git diff --name-only origin/main..origin/staging -- prisma/migrations/ || true)
+          if [ -z "${LIST}" ]; then
+            echo "Migration diff (origin/main..origin/staging -- prisma/migrations/): none"
+            {
+              echo "### Migration guard"
+              echo ""
+              echo "prisma/migrations/ diff vs main: **none**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Migration directories riding this promote:"
+          printf '%s\n' "$LIST"
+          {
+            echo "### Migration guard"
+            echo ""
+            echo "prisma/migrations/ directories vs main:"
+            echo '```'
+            printf '%s\n' "$LIST"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${MIGRATIONS_ACK}" != "ACK-MIGRATIONS" ]; then
+            echo "::error::prisma/migrations/ differs between origin/main and origin/staging (see list above). Re-dispatch with migrations_ack=ACK-MIGRATIONS to acknowledge, or remove the passenger migrations from staging first."
+            exit 1
+          fi
+          echo "migrations_ack=ACK-MIGRATIONS accepted; proceeding with migrations aboard."
+
   # ─── 2. PLATFORM (real Production BUILD — never artifact promote) ───────
   platform:
     name: Platform promote (staging→main BUILD)
-    needs: [gate, preflight]
+    needs: [gate, preflight, migration_guard]
     runs-on: ubuntu-latest
     outputs:
       merge_sha: ${{ steps.merge.outputs.merge_sha }}
@@ -322,14 +385,23 @@ jobs:
           fi
 
   # ─── 3. IMAGE + REGISTER (reuse promote-openclaw-image.yml) ─────────────
+  # GitHub rule: reusable-workflow permissions can only be downgraded by the
+  # caller, never elevated. The callee (promote-openclaw-image.yml) declares
+  # packages: write — this job MUST grant it. Elevating beyond the caller's
+  # grant is a BOOT-TIME startup_failure with zero logs (not a step failure).
   image:
     name: Image promote + prod register
     needs: [gate, platform]
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/promote-openclaw-image.yml
     with:
       version: ${{ needs.gate.outputs.version }}
       target_env: production
-      skip_candidate_check: ${{ inputs.skip_candidate_check }}
+      # Typed boolean on both sides; == true keeps a real boolean for workflow_call
+      # (string "false"/"" would be a compile-time type error on the callee).
+      skip_candidate_check: ${{ inputs.skip_candidate_check == true }}
     secrets: inherit
 
   # ─── 4. PROBES (six) ────────────────────────────────────────────────────
@@ -451,13 +523,14 @@ jobs:
   summary:
     name: Promotion summary
     if: always()
-    needs: [gate, preflight, platform, image, probes]
+    needs: [gate, preflight, migration_guard, platform, image, probes]
     runs-on: ubuntu-latest
     steps:
       - name: Write run summary + window state
         env:
           GATE: ${{ needs.gate.result }}
           PREFLIGHT: ${{ needs.preflight.result }}
+          MIGRATION_GUARD: ${{ needs.migration_guard.result }}
           PLATFORM: ${{ needs.platform.result }}
           IMAGE: ${{ needs.image.result }}
           PROBES: ${{ needs.probes.result }}
@@ -473,6 +546,8 @@ jobs:
             WINDOW="not-started (confirm/version gate failed)"
           elif [ "$PREFLIGHT" != "success" ]; then
             WINDOW="preflight-failed (no platform/image changes)"
+          elif [ "$MIGRATION_GUARD" != "success" ]; then
+            WINDOW="migration-guard-failed (ack missing or check errored — no platform/image changes)"
           elif [ "$PLATFORM" != "success" ]; then
             WINDOW="platform-failed (image not started — main may be partially merged; inspect PR)"
           elif [ "$IMAGE" != "success" ]; then
@@ -499,6 +574,7 @@ jobs:
             echo "|---|---|"
             echo "| gate | $GATE |"
             echo "| preflight | $PREFLIGHT |"
+            echo "| migration_guard | $MIGRATION_GUARD |"
             echo "| platform | $PLATFORM |"
             echo "| image | $IMAGE |"
             echo "| probes | $PROBES |"
@@ -517,6 +593,7 @@ jobs:
           echo "WINDOW_STATE=$WINDOW"
           # Fail the summary job if any required job failed (so the run is red).
           if [ "$GATE" != "success" ] || [ "$PREFLIGHT" != "success" ] || \
+             [ "$MIGRATION_GUARD" != "success" ] || \
              [ "$PLATFORM" != "success" ] || [ "$IMAGE" != "success" ] || \
              [ "$PROBES" != "success" ]; then
             echo "::error::Promotion incomplete — $WINDOW"

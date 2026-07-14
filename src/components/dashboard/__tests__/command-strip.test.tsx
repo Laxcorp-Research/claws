@@ -38,6 +38,13 @@ describe("CommandStrip", () => {
     expect(screen.getByText("~$1.23 est.")).toBeDefined()
   })
 
+  it("renders real cost without est. when the window is fully real", () => {
+    renderStrip({ estimatedCostTodayIsEstimate: false })
+
+    expect(screen.getByText("$1.23")).toBeDefined()
+    expect(screen.queryByText("~$1.23 est.")).toBeNull()
+  })
+
   it("renders em dash instead of fabricated $0.00 when there are no attributable calls", () => {
     renderStrip({ estimatedCostToday: 0, estimatedCostTodayCalls: 0 })
 

@@ -665,6 +665,59 @@ describe('generateWorkspace', () => {
     expect(result.workspaces[workerKey!]['TOOLS.md']).not.toContain('## Subagent Spawn');
   });
 
+  it('MUTATION-anchored: .env TZ=UTC even when workspace.timezone is non-UTC; cron schedule.tz untouched', async () => {
+    // Fixture timezone is America/New_York. Dropping TZ=UTC force in generateEnvFile fails.
+    const ws = buildMockWorkspace();
+    const orch = ws.agents.find((a) => a.role === 'ORCHESTRATOR')! as Record<string, unknown>;
+    orch.heartbeatFrequency = 'daily';
+    orch.heartbeatTime = '08:00';
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    expect(result['.env']).toMatch(/^TZ=UTC$/m);
+    expect(result['.env']).not.toContain('TZ=America/New_York');
+
+    const cronJobs = JSON.parse(result['cron/jobs.json']) as Array<{
+      schedule?: { tz?: string }
+    }>;
+    const heartbeatJob = cronJobs.find((j) => j.schedule?.tz);
+    expect(heartbeatJob?.schedule?.tz).toBe('America/New_York');
+  });
+
+  it('MUTATION-anchored: disables tools.web.search when no search backend is connected', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = []; // no tavily/brave/exa/serp
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    // Dropping the workspaceHasSearchBackend gate (always omit enabled:false) fails.
+    expect(config.tools?.web?.search?.enabled).toBe(false);
+
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('## Web Search');
+    expect(toolsMd).toContain('web_search');
+    expect(toolsMd).toContain('web_fetch');
+    expect(toolsMd).toContain('Manage Tools');
+  });
+
+  it('leaves tools.web.search enabled (no enabled:false) when a search backend is connected', async () => {
+    // Default fixture has CONNECTED tavily — wiring finding: only skills.entries,
+    // not tools.web.search provider/apiKey. We still leave web_search enabled.
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.tools?.web?.search?.enabled).not.toBe(false);
+    expect(config.skills.entries.tavily.enabled).toBe(true);
+    expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('real-tavily-key');
+    // Finding: connecting Tavily wires skills.entries only — nothing reaches tools.web.search.
+    expect(config.tools?.web?.search?.apiKey).toBeUndefined();
+    expect(config.tools?.web?.search?.provider).toBeUndefined();
+
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    expect(result.workspaces[orchKey!]['TOOLS.md']).not.toContain('## Web Search');
+  });
+
   it('emits NO bindings key — Orchestrator routing is via default:true (#117, dead config removed)', async () => {
     // Regression guard: we used to emit
     //   bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]

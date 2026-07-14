@@ -394,6 +394,8 @@ jobs:
           build-args: |
             # PR-4c: refer to the same upstream_version-tagged base.
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.upstream_version }}
+            # -8 emission-version: bake overlay SHA into container env for boot telemetry.
+            CLAWS_OVERLAY_SHA=${{ steps.overlay.outputs.sha }}
           # PR-1: auto-build pushes :<version> (immutable) and :candidate
           # (moving). NEVER :latest — only promote-openclaw-image.yml
           # rewrites :latest, gated by manual review.
