@@ -10,6 +10,40 @@ interface TruncatedTextProps {
   as?: "span" | "div" | "p" | "td"
 }
 
+let measureCanvas: HTMLCanvasElement | null = null
+
+/**
+ * True when single-line ellipsis is active.
+ *
+ * Chromium can paint `text-overflow: ellipsis` while reporting
+ * `scrollWidth === clientWidth` (founder SS1 Social Content OK / SS2 Trend & Topic
+ * no tip). Canvas text-width is the fallback that closes that false-negative.
+ */
+export function isTextTruncated(el: HTMLElement): boolean {
+  if (el.clientWidth <= 0) return false
+  // Subpixel-safe primary signal.
+  if (Math.ceil(el.scrollWidth) - Math.floor(el.clientWidth) > 0) return true
+
+  const text = el.textContent ?? ""
+  if (!text) return false
+  try {
+    if (!measureCanvas) measureCanvas = document.createElement("canvas")
+    const ctx = measureCanvas.getContext("2d")
+    if (!ctx) return false
+    const cs = window.getComputedStyle(el)
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+    const letterSpacing = Number.parseFloat(cs.letterSpacing)
+    const measured = ctx.measureText(text).width
+    const spacing =
+      Number.isFinite(letterSpacing) && text.length > 1
+        ? letterSpacing * (text.length - 1)
+        : 0
+    return measured + spacing > el.clientWidth + 0.5
+  } catch {
+    return false
+  }
+}
+
 /** Nearest layout ancestor that can constrain width (flex/grid min-size or overflow). */
 function constraintAncestors(start: HTMLElement | null): HTMLElement[] {
   const out: HTMLElement[] = []
@@ -24,7 +58,6 @@ function constraintAncestors(start: HTMLElement | null): HTMLElement[] {
       style.display.includes("flex") ||
       style.display.includes("grid")
     if (constrains) out.push(node)
-    // Stop at a fixed-width box — further ancestors don't change our text width.
     if (style.width.endsWith("px") && node.clientWidth > 0 && !style.display.includes("flex")) {
       break
     }
@@ -45,22 +78,26 @@ export function TruncatedText({
   const checkOverflow = useCallback(() => {
     const el = textRef.current
     if (!el) return
-    // display:none / not laid out yet — do not lock in "not truncated".
     if (el.clientWidth === 0) {
       setIsOverflowing(false)
       return
     }
-    setIsOverflowing(el.scrollWidth > el.clientWidth)
+    setIsOverflowing(isTextTruncated(el))
+  }, [])
+
+  // HOVER_REMEASURE_ASSERT: tooltip gating must call isTextTruncated live on
+  // enter — never rely solely on stale ResizeObserver state (SS2 miss).
+  const isDisabledForTooltip = useCallback(() => {
+    const el = textRef.current
+    if (!el || el.clientWidth === 0) return true
+    const truncated = isTextTruncated(el)
+    setIsOverflowing(truncated)
+    return !truncated
   }, [])
 
   useEffect(() => {
     let raf = 0
     let cancelled = false
-    // Post-layout remeasure: sync useEffect can run before the constrained
-    // parent has a final width. Double-rAF + ResizeObserver on the text node
-    // AND constrained ancestors + font load cover the Live Ops tile path.
-    // MUTATION: drop the rAF schedule / only measure synchronously → overflow
-    // detection flakes and truncation tests fail.
     const schedule = () => {
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
@@ -80,12 +117,9 @@ export function TruncatedText({
     for (const a of constraintAncestors(text)) targets.add(a)
 
     const observer =
-      typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(schedule)
-        : null
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(schedule) : null
     for (const t of targets) observer?.observe(t)
 
-    // hidden attribute / style toggles (dashboard tabs use `hidden={...}`).
     const mutation =
       typeof MutationObserver !== "undefined" && wrap
         ? new MutationObserver(schedule)
@@ -102,9 +136,6 @@ export function TruncatedText({
     }
 
     window.addEventListener("resize", schedule)
-
-    // Font swap can widen glyphs without changing the constraint box size —
-    // ResizeObserver alone would miss it (founder Live Ops miss).
     const fonts = document.fonts
     const onFonts = () => schedule()
     fonts?.addEventListener?.("loadingdone", onFonts)
@@ -135,11 +166,9 @@ export function TruncatedText({
     </Tag>
   )
 
-  // Stable outer + Tooltip trigger (disabled when not truncated) so overflow
-  // remounts do not collapse width via inline-flex content sizing.
   return (
     <div ref={wrapRef} className="block w-full min-w-0 max-w-full">
-      <Tooltip content={children} maxWidth={400} disabled={!isOverflowing}>
+      <Tooltip content={children} maxWidth={400} disabled={isDisabledForTooltip}>
         {element}
       </Tooltip>
     </div>
