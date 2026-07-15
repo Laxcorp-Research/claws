@@ -10,41 +10,42 @@ interface TruncatedTextProps {
   as?: "span" | "div" | "p" | "td"
 }
 
-let measureCanvas: HTMLCanvasElement | null = null
-
 /**
- * True when single-line ellipsis is active.
- *
- * Chromium can paint `text-overflow: ellipsis` while reporting
- * `scrollWidth === clientWidth` (founder SS1 Social Content OK / SS2 Trend & Topic
- * no tip). Canvas text-width is the fallback that closes that false-negative.
+ * Best-effort overflow signal for `data-truncated` / tests.
+ * NOT used to gate the tooltip — Chromium can paint ellipsis while
+ * scrollWidth === clientWidth (founder: Engagement tips, Trend & Topic does not).
  */
 export function isTextTruncated(el: HTMLElement): boolean {
   if (el.clientWidth <= 0) return false
-  // Subpixel-safe primary signal.
   if (Math.ceil(el.scrollWidth) - Math.floor(el.clientWidth) > 0) return true
 
-  const text = el.textContent ?? ""
-  if (!text) return false
-  try {
-    if (!measureCanvas) measureCanvas = document.createElement("canvas")
-    const ctx = measureCanvas.getContext("2d")
-    if (!ctx) return false
-    const cs = window.getComputedStyle(el)
-    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
-    const letterSpacing = Number.parseFloat(cs.letterSpacing)
-    const measured = ctx.measureText(text).width
-    const spacing =
-      Number.isFinite(letterSpacing) && text.length > 1
-        ? letterSpacing * (text.length - 1)
-        : 0
-    return measured + spacing > el.clientWidth + 0.5
-  } catch {
-    return false
-  }
+  // Unconstrained clone uses the live computed font (canvas underestimates
+  // webfonts and left Trend & Topic as a false-negative).
+  const cs = window.getComputedStyle(el)
+  const clone = el.cloneNode(true) as HTMLElement
+  clone.style.cssText = [
+    "position:absolute",
+    "left:-99999px",
+    "top:0",
+    "visibility:hidden",
+    "pointer-events:none",
+    "height:auto",
+    "width:auto",
+    "max-width:none",
+    "min-width:0",
+    "overflow:visible",
+    "text-overflow:clip",
+    "white-space:nowrap",
+    `font:${cs.font}`,
+    `letter-spacing:${cs.letterSpacing}`,
+    `text-transform:${cs.textTransform}`,
+  ].join(";")
+  document.body.appendChild(clone)
+  const full = clone.offsetWidth
+  document.body.removeChild(clone)
+  return full > el.clientWidth + 0.5
 }
 
-/** Nearest layout ancestor that can constrain width (flex/grid min-size or overflow). */
 function constraintAncestors(start: HTMLElement | null): HTMLElement[] {
   const out: HTMLElement[] = []
   let node: HTMLElement | null = start?.parentElement ?? null
@@ -83,16 +84,6 @@ export function TruncatedText({
       return
     }
     setIsOverflowing(isTextTruncated(el))
-  }, [])
-
-  // HOVER_REMEASURE_ASSERT: tooltip gating must call isTextTruncated live on
-  // enter — never rely solely on stale ResizeObserver state (SS2 miss).
-  const isDisabledForTooltip = useCallback(() => {
-    const el = textRef.current
-    if (!el || el.clientWidth === 0) return true
-    const truncated = isTextTruncated(el)
-    setIsOverflowing(truncated)
-    return !truncated
   }, [])
 
   useEffect(() => {
@@ -166,9 +157,12 @@ export function TruncatedText({
     </Tag>
   )
 
+  // ALWAYS_TIP_ASSERT: never gate TruncatedText tooltips on overflow detection.
+  // Detection false-negatives left Trend & Topic without a tip while Engagement
+  // Strategist tipped on the same Live Ops grid (founder SS1/SS2).
   return (
     <div ref={wrapRef} className="block w-full min-w-0 max-w-full">
-      <Tooltip content={children} maxWidth={400} disabled={isDisabledForTooltip}>
+      <Tooltip content={children} maxWidth={400} disabled={false}>
         {element}
       </Tooltip>
     </div>

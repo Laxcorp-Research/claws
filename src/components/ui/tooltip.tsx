@@ -116,14 +116,12 @@ export function Tooltip({
   }, [disabled])
 
   // Re-measure after paint so clamping uses real bubble width.
+  // Do NOT re-run disabled() here — a second Chromium false-negative would
+  // immediately hide a tip that already passed the enter check (SS2 kill).
   useLayoutEffect(() => {
     if (!show) return
-    if (isDisabled()) {
-      setShow(false)
-      return
-    }
     updatePosition()
-  }, [show, isDisabled, content, updatePosition])
+  }, [show, content, updatePosition])
 
   const transform =
     pos.actualSide === "top"
