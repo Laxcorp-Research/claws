@@ -59,10 +59,11 @@ function MoreButton({ onClick, loading, children }: { onClick: () => void; loadi
   )
 }
 
-const TEMPLATE_GRID = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
+const TEMPLATE_LIST = "space-y-2"
+const TEMPLATE_INITIAL_VISIBLE = 4
 const SKILL_GRID = "grid grid-cols-1 sm:grid-cols-2 gap-2"
 
-function TemplateGrid({
+function TemplateList({
   templates,
   defaultCreatorName,
   hideTrustBadge,
@@ -72,7 +73,7 @@ function TemplateGrid({
   hideTrustBadge?: boolean
 }) {
   return (
-    <div className={TEMPLATE_GRID}>
+    <div className={TEMPLATE_LIST}>
       {templates.map((t) => (
         <ClawCard
           key={t.id}
@@ -114,7 +115,24 @@ function TemplateSection({
   defaultCreatorName?: string
   hideTrustBadge?: boolean
 }) {
+  const [visibleCount, setVisibleCount] = useState(TEMPLATE_INITIAL_VISIBLE)
+
   if (!isLoading && templates.length === 0 && !error && !emptyText) return null
+
+  const visible = templates.slice(0, visibleCount)
+  const hasMoreLoaded = visibleCount < templates.length
+  const canShowMore = hasMoreLoaded || !!nextCursor
+
+  // Reveal the next batch of already-loaded claws; only hit the server once the
+  // loaded set is exhausted but more pages exist.
+  const handleShowMore = () => {
+    if (hasMoreLoaded) {
+      setVisibleCount((count) => count + TEMPLATE_INITIAL_VISIBLE)
+    } else if (nextCursor) {
+      loadMore()
+      setVisibleCount((count) => count + TEMPLATE_INITIAL_VISIBLE)
+    }
+  }
 
   return (
     <section className="mb-6">
@@ -127,11 +145,11 @@ function TemplateSection({
         <p className="text-[12px] text-[var(--tx3)]">{emptyText ?? "No templates found."}</p>
       ) : (
         <>
-          <TemplateGrid templates={templates} defaultCreatorName={defaultCreatorName} hideTrustBadge={hideTrustBadge} />
-          {nextCursor && (
-            <div className="text-center mt-4">
-              <MoreButton onClick={loadMore} loading={isLoadingMore}>
-                Load more
+          <TemplateList templates={visible} defaultCreatorName={defaultCreatorName} hideTrustBadge={hideTrustBadge} />
+          {canShowMore && (
+            <div className="mt-2">
+              <MoreButton onClick={handleShowMore} loading={!hasMoreLoaded && isLoadingMore}>
+                Show more
               </MoreButton>
             </div>
           )}
@@ -143,8 +161,8 @@ function TemplateSection({
 
 function TemplateSkeleton() {
   return (
-    <div className={TEMPLATE_GRID}>
-      {[1, 2, 3, 4, 5, 6].map((i) => (
+    <div className={TEMPLATE_LIST}>
+      {[1, 2, 3, 4].map((i) => (
         <div key={i} className="border border-[var(--bd)] rounded-[12px] px-4 py-3">
           <div className="flex justify-between mb-2">
             <div className="h-4 bg-[var(--bg3)] rounded w-1/2 animate-pulse" />
@@ -348,7 +366,7 @@ function StoreContent() {
                   />
                 ) : (
                   <>
-                    <div className={TEMPLATE_GRID}>
+                    <div className={TEMPLATE_LIST}>
                       {templateSearch.items.map((t) => (
                         <ClawCard
                           key={t.id}
