@@ -48,6 +48,7 @@ interface MarketplaceFiltersProps {
   onCategoryChange: (category: string) => void
   onPriceFilterChange: (filter: "" | "free" | "paid") => void
   onSortChange: (sort: SortOption) => void
+  hideCategories?: boolean
 }
 
 function SortDropdown({ value, onChange }: { value: SortOption; onChange: (v: SortOption) => void }) {
@@ -102,6 +103,7 @@ export function MarketplaceFilters({
   onCategoryChange,
   onPriceFilterChange,
   onSortChange,
+  hideCategories,
 }: MarketplaceFiltersProps) {
   const categories = mode === "templates" ? TEMPLATE_CATEGORIES : SKILL_CATEGORIES
 
@@ -114,13 +116,15 @@ export function MarketplaceFilters({
 
   return (
     <div className="mt-2 mb-3" role="toolbar" aria-label="Filter options">
-      {/* Row 1: Category pills - allowed to wrap */}
-      <FilterPills
-        options={categories}
-        value={activeCategory}
-        onChange={onCategoryChange}
-        className="mb-2"
-      />
+      {/* Row 1: Category pills - allowed to wrap (hidden when categories are surfaced elsewhere) */}
+      {!hideCategories && (
+        <FilterPills
+          options={categories}
+          value={activeCategory}
+          onChange={onCategoryChange}
+          className="mb-2"
+        />
+      )}
 
       {/* Row 2: Price toggles + Sort dropdown */}
       <div className="flex items-center justify-between">
