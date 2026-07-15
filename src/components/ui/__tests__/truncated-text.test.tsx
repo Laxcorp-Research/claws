@@ -54,10 +54,56 @@ describe("TruncatedText", () => {
 
     // MUTATION: remove rAF schedule in TruncatedText → this assertion fails.
     expect(rafSpy).toHaveBeenCalled()
+    // Double-rAF schedule (layout-robust path).
+    expect(rafSpy.mock.calls.length).toBeGreaterThanOrEqual(1)
 
     fireEvent.mouseEnter(screen.getByText("Post-layout clipped name that must ellipsize"))
     await new Promise((resolve) => setTimeout(resolve, 360))
     expect((await screen.findByRole("tooltip")).textContent).toContain("Post-layout clipped name that must ellipsize")
+  })
+
+  it("remeasures after document.fonts.ready (font-load path)", async () => {
+    const listeners: Array<() => void> = []
+    const fontsReady = Promise.resolve()
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: {
+        ready: fontsReady,
+        addEventListener: (_: string, cb: () => void) => listeners.push(cb),
+        removeEventListener: () => {},
+      },
+    })
+
+    let scrollWidth = 80
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get: () => scrollWidth,
+    })
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 80,
+    })
+
+    await act(async () => {
+      render(<TruncatedText>Font load widens this clipped agent name</TruncatedText>)
+    })
+
+    // Initially not overflowing (scrollWidth == clientWidth).
+    fireEvent.mouseEnter(screen.getByText("Font load widens this clipped agent name"))
+    await new Promise((resolve) => setTimeout(resolve, 360))
+    expect(screen.queryByRole("tooltip")).toBeNull()
+
+    scrollWidth = 240
+    await act(async () => {
+      await fontsReady
+      for (const cb of listeners) cb()
+    })
+
+    fireEvent.mouseEnter(screen.getByText("Font load widens this clipped agent name"))
+    await new Promise((resolve) => setTimeout(resolve, 360))
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Font load widens this clipped agent name",
+    )
   })
 })
 

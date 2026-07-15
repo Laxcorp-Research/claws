@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { ActivityLogEntry } from "@/components/dashboard/activity-log-entry"
 import { providerChannelLabel } from "@/components/dashboard/provider-channel-badge"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { cn } from "@/lib/utils"
 import type { MissionLogEntry, MissionRunCard } from "@/components/dashboard/mission-log-utils"
 
@@ -70,8 +71,8 @@ export function RunCard({ item }: RunCardProps) {
           {statusIcon(item.status)}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate text-[13px] font-semibold text-[var(--tx)]", item.routine && "text-[var(--tx2)]")}>
-            {item.taskName}
+          <span className={cn("block min-w-0 text-[13px] font-semibold text-[var(--tx)]", item.routine && "text-[var(--tx2)]")}>
+            <TruncatedText>{item.taskName}</TruncatedText>
           </span>
           <span className="mt-[2px] flex flex-wrap items-center gap-[8px] text-[10px] text-[var(--tx3)]">
             <span className="inline-flex items-center gap-1">

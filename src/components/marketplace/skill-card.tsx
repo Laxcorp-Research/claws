@@ -32,6 +32,7 @@ export function SkillCard({ skill, hideTrustBadge }: SkillCardProps) {
         {!hideTrustBadge && <TrustBadge tier={skill.trustTier} />}
       </div>
 
+      {/* truncate-allowlist: multi-line skill description (line-clamp-2) */}
       <p className="text-[11px] text-[var(--tx2)] mt-1 line-clamp-2">
         {skill.description}
       </p>

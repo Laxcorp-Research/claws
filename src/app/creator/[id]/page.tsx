@@ -194,6 +194,7 @@ export default function CreatorProfilePage() {
                         <span className="text-[13px] font-semibold text-[var(--tx)]">{t.name}</span>
                         <TrustBadge tier={t.trustTier} />
                       </div>
+                      {/* truncate-allowlist: multi-line tagline (line-clamp-2); TruncatedText is single-line */}
                       <p className="text-[11px] text-[var(--tx2)] mt-1 line-clamp-2">{t.tagline}</p>
                     </div>
                     <span className="text-[13px] font-bold text-[var(--tx)] shrink-0 ml-3">
