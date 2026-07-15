@@ -56,7 +56,7 @@ export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount,
         </div>
 
         <div className="mb-1 min-w-0 text-[12px] leading-normal text-[var(--tx2)]">
-          <TruncatedText>{claw.tagline}</TruncatedText>
+          <TruncateWithTooltip>{claw.tagline}</TruncateWithTooltip>
         </div>
 
         <div className="flex items-center gap-2 text-[10px] text-[var(--tx3)] mb-1.5">
