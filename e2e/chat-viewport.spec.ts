@@ -12,62 +12,67 @@ test.describe('Chat viewport bound (PR-A §6)', () => {
     const workspaceId = await getOrCreateWorkspaceId(page);
 
     await page.route(`**/api/activity/${workspaceId}**`, async (route) => {
-      const response = await route.fetch();
-      const json = (await response.json()) as {
-        data?: {
-          agents?: Array<Record<string, unknown>>;
-          workspace?: Record<string, unknown>;
-          stats?: Record<string, unknown>;
-          recentLogs?: unknown[];
-          pendingApprovals?: unknown[];
-        };
-      };
-      if (json.data) {
-        if (json.data.workspace) {
-          json.data.workspace = {
-            ...json.data.workspace,
-            status: 'RUNNING',
-            healthStatus: json.data.workspace.healthStatus ?? 'HEALTHY',
-          };
-        }
-        if (!Array.isArray(json.data.agents) || json.data.agents.length === 0) {
-          json.data.agents = [
-            {
-              id: 'e2e-orch',
-              name: 'Orchestrator',
-              role: 'ORCHESTRATOR',
-              color: '#8BFCAE',
-              model: 'anthropic/claude-sonnet-4-6',
-              agentSlug: 'orchestrator',
-              status: 'healthy',
-            },
-          ];
-        }
-        if (!json.data.stats) {
-          json.data.stats = {
-            agentsRunning: 1,
-            agentsPaused: 0,
-            agentsError: 0,
-            agentsOffline: 0,
-            agentsDegraded: 0,
-            tasksToday: 0,
-            tasksYesterday: 0,
-            apiCostThisMonth: 0,
-            apiCostProjected: 0,
-            estimatedCostToday: 0,
-            estimatedCostTodayCalls: 0,
-            pendingReview: 0,
-          };
-        }
-        if (!Array.isArray(json.data.recentLogs)) json.data.recentLogs = [];
-        if (!Array.isArray(json.data.pendingApprovals)) json.data.pendingApprovals = [];
-      }
       await route.fulfill({
-        status: response.status(),
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(json),
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            workspace: {
+              id: workspaceId,
+              name: 'E2E Chat Workspace',
+              status: 'RUNNING',
+              healthStatus: 'HEALTHY',
+              currentMonthApiCost: 0,
+              apiSpendLimit: 100,
+              costAlertThreshold: 80,
+            },
+            stats: {
+              agentsRunning: 1,
+              agentsPaused: 0,
+              agentsError: 0,
+              agentsOffline: 0,
+              agentsDegraded: 0,
+              tasksToday: 0,
+              tasksYesterday: 0,
+              apiCostThisMonth: 0,
+              apiCostProjected: 0,
+              estimatedCostToday: 0,
+              estimatedCostTodayCalls: 0,
+              pendingReview: 0,
+            },
+            agents: [
+              {
+                id: 'e2e-orch',
+                name: 'Orchestrator',
+                role: 'ORCHESTRATOR',
+                color: '#8BFCAE',
+                model: 'anthropic/claude-sonnet-4-6',
+                agentSlug: 'orchestrator',
+                status: 'healthy',
+              },
+            ],
+            recentLogs: [],
+            pendingApprovals: [],
+            spend: null,
+            expiredTools: [],
+            activityPage: { nextCursor: null, hasMore: false },
+          },
+        }),
       });
     });
+
+    // Stub ancillary dashboard fetches so the Chat tab can mount.
+    await page.route(`**/api/deploy/${workspaceId}/**`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true,"data":{}}' }),
+    );
+    await page.route(`**/api/channels/${workspaceId}/**`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{"success":true,"data":{"configuredChannelIds":[],"channels":{}}}',
+      }),
+    );
 
     await page.goto(`/dashboard/${workspaceId}?tab=chat`);
     await expect(page.getByRole('status', { name: 'Loading briefing' })).toHaveCount(0, {
