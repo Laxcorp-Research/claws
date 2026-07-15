@@ -42,10 +42,13 @@ describe("agent name readability (WCAG AA)", () => {
   it("roster: name uses --tx and has NO inline color (hue lives on the dot)", () => {
     renderRowExpanded()
     const name = screen.getByText("Worker A")
-    expect(name.className).toContain("text-[var(--tx)]")
+    // TruncatedText owns the text node; readable --tx lives on the wrapper.
+    const readable = name.closest(".text-\\[var\\(--tx\\)\\]") ?? name.parentElement
+    expect(readable?.className ?? "").toMatch(/text-\[var\(--tx\)\]/)
     expect(name.style.color).toBe("")
     // The identity hue is still present as a decorative dot near the name.
-    const dot = name.parentElement?.querySelector("span[style]") as HTMLElement | null
+    const row = name.closest(".flex.items-center.gap-1\\.5") ?? name.parentElement?.parentElement
+    const dot = row?.querySelector("span[style]") as HTMLElement | null
     expect(dot).not.toBeNull()
     expect(dot!.style.backgroundColor).not.toBe("")
   })

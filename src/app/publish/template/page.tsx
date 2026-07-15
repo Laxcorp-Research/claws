@@ -9,6 +9,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TrustBadge, PriceDisplay, CreatorCard } from "@/components/marketplace"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
@@ -427,7 +428,11 @@ function PublishContent() {
                         <span className="text-[var(--tx2)] ml-[8px]">{f.agentName} - {f.file} line {f.line}</span>
                       </div>
                       <div className="text-[12px] mt-[2px] text-[var(--tx)]">{f.description}</div>
-                      {f.matchedText && <code className="text-[10px] text-[var(--tx3)] mt-[2px] block truncate">{f.matchedText}</code>}
+                      {f.matchedText && (
+                        <code className="mt-[2px] block min-w-0 text-[10px] text-[var(--tx3)]">
+                          <TruncatedText>{f.matchedText}</TruncatedText>
+                        </code>
+                      )}
                     </div>
                   ))}
                 </div>

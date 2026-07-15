@@ -10,8 +10,11 @@ interface TooltipProps {
   delay?: number
   maxWidth?: number
   side?: "top" | "bottom"
-  /** When true, never show the tooltip (still renders a width-stable trigger wrapper). */
-  disabled?: boolean
+  /**
+   * When true, never show the tooltip (still renders a width-stable trigger).
+   * Pass a function to re-evaluate on every enter (TruncatedText hover remasure).
+   */
+  disabled?: boolean | (() => boolean)
   /** Extra classes on the trigger wrapper — keep width-stable for TruncatedText. */
   triggerClassName?: string
 }
@@ -74,14 +77,20 @@ export function Tooltip({
     })
   }, [side])
 
+  const isDisabled = useCallback(() => {
+    return typeof disabled === "function" ? disabled() : Boolean(disabled)
+  }, [disabled])
+
   const handleEnter = useCallback(() => {
-    if (disabled) return
+    // Evaluate disabled at enter time so TruncatedText can remasure live
+    // (stale boolean disabled left SS2 Trend & Topic tip dead).
+    if (isDisabled()) return
     clearTimeout(hideTimeout.current)
     showTimeout.current = setTimeout(() => {
       updatePosition()
       setShow(true)
     }, delay)
-  }, [delay, disabled, updatePosition])
+  }, [delay, isDisabled, updatePosition])
 
   const handleLeave = useCallback(() => {
     clearTimeout(showTimeout.current)
@@ -103,14 +112,16 @@ export function Tooltip({
   }, [])
 
   useEffect(() => {
-    if (disabled) setShow(false)
+    if (typeof disabled !== "function" && disabled) setShow(false)
   }, [disabled])
 
   // Re-measure after paint so clamping uses real bubble width.
+  // Do NOT re-run disabled() here — a second Chromium false-negative would
+  // immediately hide a tip that already passed the enter check (SS2 kill).
   useLayoutEffect(() => {
-    if (!show || disabled) return
+    if (!show) return
     updatePosition()
-  }, [show, disabled, content, updatePosition])
+  }, [show, content, updatePosition])
 
   const transform =
     pos.actualSide === "top"
@@ -137,7 +148,6 @@ export function Tooltip({
         {child}
       </div>
       {show &&
-        !disabled &&
         typeof document !== "undefined" &&
         createPortal(
           <div

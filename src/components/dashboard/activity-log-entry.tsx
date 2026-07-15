@@ -43,6 +43,7 @@ export function ActivityLogEntry({ timestamp, agentName, agentColor, message, de
             aria-expanded={expanded}
             className={cn(
               "text-[var(--tx2)] text-left w-full cursor-pointer hover:text-[var(--tx1)] transition-colors",
+              // truncate-allowlist: expand/collapse multi-line preview (line-clamp-2)
               !expanded && "line-clamp-2",
             )}
             title={expanded ? "Click to collapse" : "Click to expand"}
@@ -63,7 +64,10 @@ export function ActivityLogEntry({ timestamp, agentName, agentColor, message, de
             {viaBadge}
           </button>
         ) : (
-          <span className="text-[var(--tx2)] line-clamp-2 block">
+          <span
+            // truncate-allowlist: non-expandable multi-line preview (line-clamp-2)
+            className="text-[var(--tx2)] line-clamp-2 block"
+          >
             {message}
             {viaBadge}
           </span>

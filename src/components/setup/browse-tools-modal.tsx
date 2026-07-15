@@ -8,6 +8,7 @@ import { FilterPills } from "@/components/ui/filter-pills"
 import { Input } from "@/components/ui/input"
 import { StatusDot } from "@/components/ui/status-dot"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { CredentialsModal } from "./credentials-modal"
 import { ALL_TOOLS, TOOL_CATEGORIES, type ToolDefinition } from "@/data/tool-catalog"
 
@@ -255,9 +256,11 @@ export function BrowseToolsModal({
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <StatusDot status={isConnected ? "connected" : "disconnected"} />
                       <div className="min-w-0">
-                        <div className="text-xs font-semibold truncate">{tool.name}</div>
-                        <div className="text-[10px] text-[var(--tx2)] truncate">
-                          {tool.description || tool.category}
+                        <div className="min-w-0 text-xs font-semibold">
+                          <TruncatedText>{tool.name}</TruncatedText>
+                        </div>
+                        <div className="min-w-0 text-[10px] text-[var(--tx2)]">
+                          <TruncatedText>{tool.description || tool.category}</TruncatedText>
                         </div>
                         {oauthError && (
                           <div className="text-[10px] text-[var(--err)] mt-0.5">{oauthError}</div>
