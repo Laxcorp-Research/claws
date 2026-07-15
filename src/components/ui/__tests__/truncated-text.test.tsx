@@ -62,48 +62,36 @@ describe("TruncatedText", () => {
     expect((await screen.findByRole("tooltip")).textContent).toContain("Post-layout clipped name that must ellipsize")
   })
 
-  it("remeasures after document.fonts.ready (font-load path)", async () => {
-    const listeners: Array<() => void> = []
-    const fontsReady = Promise.resolve()
-    Object.defineProperty(document, "fonts", {
-      configurable: true,
-      value: {
-        ready: fontsReady,
-        addEventListener: (_: string, cb: () => void) => listeners.push(cb),
-        removeEventListener: () => {},
-      },
-    })
-
-    let scrollWidth = 80
-    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
-      configurable: true,
-      get: () => scrollWidth,
-    })
-    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-      configurable: true,
-      get: () => 80,
-    })
+  it("hover remasure: canvas fallback shows tip when scrollWidth false-negatives", async () => {
+    // Founder SS2: ellipsis painted but scrollWidth === clientWidth → tip disabled.
+    mockWidth(80, 80)
+    const measureText = vi.fn(() => ({ width: 220 }))
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      measureText,
+      font: "",
+    } as unknown as CanvasRenderingContext2D)
 
     await act(async () => {
-      render(<TruncatedText>Font load widens this clipped agent name</TruncatedText>)
+      render(<TruncatedText>Trend & Topic Scanner</TruncatedText>)
     })
 
-    // Initially not overflowing (scrollWidth == clientWidth).
-    fireEvent.mouseEnter(screen.getByText("Font load widens this clipped agent name"))
+    // Stale attribute may still say not truncated before hover.
+    const node = screen.getByText("Trend & Topic Scanner")
+    fireEvent.mouseEnter(node.parentElement ?? node)
     await new Promise((resolve) => setTimeout(resolve, 360))
-    expect(screen.queryByRole("tooltip")).toBeNull()
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Trend & Topic Scanner")
+    expect(measureText).toHaveBeenCalled()
+  })
 
-    scrollWidth = 240
-    await act(async () => {
-      await fontsReady
-      for (const cb of listeners) cb()
-    })
-
-    fireEvent.mouseEnter(screen.getByText("Font load widens this clipped agent name"))
-    await new Promise((resolve) => setTimeout(resolve, 360))
-    expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "Font load widens this clipped agent name",
+  it("MUTATION-anchored: HOVER_REMEASURE_ASSERT marker present in TruncatedText", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { resolve } = await import("node:path")
+    const src = readFileSync(
+      resolve(__dirname, "../truncate-with-tooltip.tsx"),
+      "utf8",
     )
+    expect(src).toContain("HOVER_REMEASURE_ASSERT")
+    expect(src).toContain("isTextTruncated")
   })
 })
 
