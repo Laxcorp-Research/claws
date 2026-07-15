@@ -4,7 +4,7 @@ import { TrustBadge } from "@/components/marketplace/trust-badge"
 import type { TrustTier } from "@/types/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
-const MAX_VISIBLE_PILLS = 3
+const MAX_VISIBLE_PILLS = 4
 
 export interface ClawCardData {
   name: string
@@ -34,8 +34,8 @@ export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount,
   const remainingCount = workers.length - MAX_VISIBLE_PILLS
 
   return (
-    <Link href={`/store/${claw.slug}`} className="block h-full">
-      <div className="flex h-full flex-col bg-[var(--bg)] border border-[var(--bd)] rounded-[12px] px-4 py-3 hover:border-[var(--bd2)] transition-[border-color] duration-150 cursor-pointer">
+    <Link href={`/store/${claw.slug}`} className="block">
+      <div className="bg-[var(--bg)] border border-[var(--bd)] rounded-[12px] px-4 py-3 hover:border-[var(--bd2)] transition-[border-color] duration-150 cursor-pointer">
         <div className="flex justify-between items-start mb-1">
           <div className="flex items-center gap-2 min-w-0">
             <TruncateWithTooltip className="text-[15px] font-semibold text-[var(--tx)]">
@@ -59,28 +59,26 @@ export function ClawCard({ claw, index, trustTier, hideTrustBadge, installCount,
           <TruncateWithTooltip>{claw.tagline}</TruncateWithTooltip>
         </div>
 
-        <div className="mt-auto pt-1.5">
-          <div className="flex items-center gap-2 text-[10px] text-[var(--tx3)] mb-1.5">
-            {creatorName && <span>by {creatorName}</span>}
-            {installCount !== undefined && installCount > 0 && (
-              <><span>·</span><span>{installCount.toLocaleString()} installs</span></>
-            )}
-            {avgRating !== undefined && avgRating !== null && avgRating > 0 && (
-              <><span>·</span><span><span style={{ color: "#FFDC6E" }}>&#9733;</span> {avgRating.toFixed(1)}</span></>
-            )}
-          </div>
-
-          {visibleAgents.length > 0 && (
-            <div className="flex flex-wrap gap-[5px]">
-              {visibleAgents.map((agent) => (
-                <AgentPill key={agent.name} name={agent.name} color={agent.color} role={agent.role as "ORCHESTRATOR" | "WORKER" | "CRITIC"} />
-              ))}
-              {remainingCount > 0 && (
-                <span className="text-[10px] text-[var(--tx3)] self-center px-1">+{remainingCount} more</span>
-              )}
-            </div>
+        <div className="flex items-center gap-2 text-[10px] text-[var(--tx3)] mb-1.5">
+          {creatorName && <span>by {creatorName}</span>}
+          {installCount !== undefined && installCount > 0 && (
+            <><span>·</span><span>{installCount.toLocaleString()} installs</span></>
+          )}
+          {avgRating !== undefined && avgRating !== null && avgRating > 0 && (
+            <><span>·</span><span><span style={{ color: "#FFDC6E" }}>&#9733;</span> {avgRating.toFixed(1)}</span></>
           )}
         </div>
+
+        {visibleAgents.length > 0 && (
+          <div className="flex flex-wrap gap-[5px]">
+            {visibleAgents.map((agent) => (
+              <AgentPill key={agent.name} name={agent.name} color={agent.color} role={agent.role as "ORCHESTRATOR" | "WORKER" | "CRITIC"} />
+            ))}
+            {remainingCount > 0 && (
+              <span className="text-[10px] text-[var(--tx3)] self-center px-1">+{remainingCount} more</span>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   )
