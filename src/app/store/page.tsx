@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { ClawCard, type ClawCardData } from "@/components/store/claw-card"
-import { CategoryTiles } from "@/components/store/category-tiles"
+import { CategoryTiles, TEMPLATE_CATEGORIES, SKILL_CATEGORIES } from "@/components/store/category-tiles"
 import { MarketplaceTabs } from "@/components/marketplace/marketplace-tabs"
 import { MarketplaceFilters } from "@/components/marketplace/marketplace-filters"
 import { SkillCard } from "@/components/marketplace/skill-card"
@@ -331,10 +331,15 @@ function StoreContent() {
           </p>
         )}
 
-        {isTemplatesTab && !isSearchActive && (
+        {!isSearchActive && (
           <div className="mb-4">
             <h2 className="text-[13px] font-semibold text-[var(--tx)] mb-2.5">Browse by category</h2>
-            <CategoryTiles activeCategory={activeCategory} onSelect={(category) => updateParams({ category })} />
+            <CategoryTiles
+              categories={isTemplatesTab ? TEMPLATE_CATEGORIES : SKILL_CATEGORIES}
+              size={isTemplatesTab ? "default" : "compact"}
+              activeCategory={activeCategory}
+              onSelect={(category) => updateParams({ category })}
+            />
           </div>
         )}
 
@@ -346,7 +351,7 @@ function StoreContent() {
           onCategoryChange={(category) => updateParams({ category })}
           onPriceFilterChange={(price) => updateParams({ price })}
           onSortChange={(s) => updateParams({ sort: s })}
-          hideCategories={isTemplatesTab}
+          hideCategories
         />
 
         {isTemplatesTab && (
