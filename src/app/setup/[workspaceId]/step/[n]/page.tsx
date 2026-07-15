@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { Modal } from "@/components/ui/modal"
 import { StatusDot } from "@/components/ui/status-dot"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
@@ -134,11 +135,17 @@ function CustomApiRow({
         <div className="flex items-center gap-2 min-w-0">
           <StatusDot status="connected" />
           <div className="min-w-0">
-            <div className="text-xs font-semibold truncate">{api.name}</div>
-            <div className="text-[10px] text-[var(--tx2)] truncate">
-              {customApiHost(api.baseUrl)} · {CUSTOM_AUTH_LABELS[api.authType]}
+            <div className="min-w-0 text-xs font-semibold">
+              <TruncatedText>{api.name}</TruncatedText>
             </div>
-            <div className="text-[10px] text-[var(--tx3)] truncate">{purpose}</div>
+            <div className="min-w-0 text-[10px] text-[var(--tx2)]">
+              <TruncatedText>
+                {`${customApiHost(api.baseUrl)} · ${CUSTOM_AUTH_LABELS[api.authType]}`}
+              </TruncatedText>
+            </div>
+            <div className="min-w-0 text-[10px] text-[var(--tx3)]">
+              <TruncatedText>{purpose}</TruncatedText>
+            </div>
             <div className="text-[10px] text-[var(--ok)] mt-0.5">{statusCopy}</div>
           </div>
         </div>

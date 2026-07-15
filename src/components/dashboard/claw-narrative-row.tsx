@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { clawNarrative, type NarrativeTone } from "@/lib/utils/narrative"
 import { formatCurrency } from "@/lib/utils/format"
 
@@ -153,11 +154,14 @@ export function ClawNarrativeRow({
                               pale worker hues were ~1.2:1 as text on white). Role is
                               also conveyed by the label below. */}
                           <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: agent.color }} aria-hidden="true" />
-                          <div className="text-[12px] font-semibold text-[var(--tx)] truncate">{agent.name}</div>
+                          <div className="min-w-0 text-[12px] font-semibold text-[var(--tx)]">
+                            <TruncatedText>{agent.name}</TruncatedText>
+                          </div>
                         </div>
-                        <div className="text-[10px] text-[var(--tx2)] truncate">
-                          {roleLabel[agent.role]}
-                          {activity ? ` · ${activity}` : agent.lastActive ? ` · Last active ${agent.lastActive}` : ""}
+                        <div className="min-w-0 text-[10px] text-[var(--tx2)]">
+                          <TruncatedText>
+                            {`${roleLabel[agent.role]}${activity ? ` · ${activity}` : agent.lastActive ? ` · Last active ${agent.lastActive}` : ""}`}
+                          </TruncatedText>
                         </div>
                       </div>
                     </div>

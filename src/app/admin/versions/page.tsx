@@ -305,7 +305,10 @@ export default function AdminVersionsPage() {
               </div>
 
               {v.releaseNotes && (
-                <div className="text-[12px] text-[var(--tx3)] mb-[4px] line-clamp-2">
+                <div
+                  // truncate-allowlist: multi-line release notes (line-clamp-2)
+                  className="text-[12px] text-[var(--tx3)] mb-[4px] line-clamp-2"
+                >
                   {v.releaseNotes}
                 </div>
               )}

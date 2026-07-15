@@ -1,5 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
+/**
+ * REAL-SURFACE RULE: primary Live Ops truncation coverage lives in
+ * e2e/truncation-live-ops.spec.ts (real /dashboard/:id Overview tile).
+ * This file keeps the synthetic /e2e-truncation page as a supplement.
+ */
 const LONG_AGENT_NAME = 'Extremely Long Strategic Research Agent Name That Must Ellipsize';
 
 async function expectEllipsisAndTooltip(page: Page, locator: Locator, text: string) {
@@ -11,8 +16,9 @@ async function expectEllipsisAndTooltip(page: Page, locator: Locator, text: stri
   await expect(page.getByRole('tooltip')).toContainText(text);
 }
 
-test.describe('K4.2 truncation layout', () => {
+test.describe('K4.2 truncation layout (synthetic supplement)', () => {
   test('agent tile long name ellipsizes and shows tooltip', async ({ page }) => {
+    // Synthetic fixture page — see truncation-live-ops.spec.ts for real dashboard.
     await page.goto('/e2e-truncation');
     await expectEllipsisAndTooltip(
       page,
