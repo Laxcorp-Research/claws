@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { ClawCard, type ClawCardData } from "@/components/store/claw-card"
+import { CategoryTiles } from "@/components/store/category-tiles"
 import { MarketplaceTabs } from "@/components/marketplace/marketplace-tabs"
 import { MarketplaceFilters } from "@/components/marketplace/marketplace-filters"
 import { SkillCard } from "@/components/marketplace/skill-card"
@@ -30,11 +31,60 @@ function toClawCard(t: MarketplaceTemplate): ClawCardData {
 
 function SectionHeader({ title, count, badge }: { title: string; count?: number; badge?: React.ReactNode }) {
   return (
-    <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-[var(--bd)]">
+    <div className="flex justify-between items-center mb-3 pb-1.5 border-b border-[var(--bd)]">
       <h2 className="text-[14px] font-semibold text-[var(--tx)]">
         {title}{count !== undefined && count > 0 && <span className="text-[var(--tx3)] font-normal"> · {count}</span>}
       </h2>
       {badge}
+    </div>
+  )
+}
+
+// Shared "reveal more" control (Load more / Show all) so every disclosure link
+// behaves identically: neutral grey text that darkens + underlines on hover.
+function MoreButton({ onClick, loading, children }: { onClick: () => void; loading?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      aria-busy={loading || undefined}
+      className="inline-flex items-center gap-1.5 text-[12px] text-[var(--tx2)] hover:text-[var(--tx)] hover:underline cursor-pointer bg-transparent border-0 p-0 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+    >
+      {loading && (
+        <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0" aria-hidden="true" />
+      )}
+      {children}
+    </button>
+  )
+}
+
+const TEMPLATE_GRID = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
+const SKILL_GRID = "grid grid-cols-1 sm:grid-cols-2 gap-2"
+
+function TemplateGrid({
+  templates,
+  defaultCreatorName,
+  hideTrustBadge,
+}: {
+  templates: MarketplaceTemplate[]
+  defaultCreatorName?: string
+  hideTrustBadge?: boolean
+}) {
+  return (
+    <div className={TEMPLATE_GRID}>
+      {templates.map((t) => (
+        <ClawCard
+          key={t.id}
+          claw={toClawCard(t)}
+          trustTier={t.trustTier}
+          hideTrustBadge={hideTrustBadge}
+          installCount={t.installCount}
+          avgRating={t.avgRating}
+          creatorName={defaultCreatorName ?? t.creator?.displayName ?? null}
+          creatorId={t.creator?.id ?? null}
+        />
+      ))}
     </div>
   )
 }
@@ -77,25 +127,12 @@ function TemplateSection({
         <p className="text-[12px] text-[var(--tx3)]">{emptyText ?? "No templates found."}</p>
       ) : (
         <>
-          <div className="space-y-2">
-            {templates.map((t) => (
-              <ClawCard
-                key={t.id}
-                claw={toClawCard(t)}
-                trustTier={t.trustTier}
-                hideTrustBadge={hideTrustBadge}
-                installCount={t.installCount}
-                avgRating={t.avgRating}
-                creatorName={defaultCreatorName ?? t.creator?.displayName ?? null}
-                creatorId={t.creator?.id ?? null}
-              />
-            ))}
-          </div>
+          <TemplateGrid templates={templates} defaultCreatorName={defaultCreatorName} hideTrustBadge={hideTrustBadge} />
           {nextCursor && (
             <div className="text-center mt-4">
-              <Button variant="outline" onClick={loadMore} loading={isLoadingMore}>
+              <MoreButton onClick={loadMore} loading={isLoadingMore}>
                 Load more
-              </Button>
+              </MoreButton>
             </div>
           )}
         </>
@@ -106,14 +143,18 @@ function TemplateSection({
 
 function TemplateSkeleton() {
   return (
-    <div className="space-y-2">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="border border-[var(--bd)] rounded-[12px] p-3.5">
-          <div className="h-4 bg-[var(--bg3)] rounded w-1/3 mb-2 animate-pulse" />
-          <div className="h-3 bg-[var(--bg3)] rounded w-2/3 mb-2 animate-pulse" />
-          <div className="flex gap-2">
-            <div className="h-5 bg-[var(--bg3)] rounded w-16 animate-pulse" />
-            <div className="h-5 bg-[var(--bg3)] rounded w-16 animate-pulse" />
+    <div className={TEMPLATE_GRID}>
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <div key={i} className="border border-[var(--bd)] rounded-[12px] px-4 py-3">
+          <div className="flex justify-between mb-2">
+            <div className="h-4 bg-[var(--bg3)] rounded w-1/2 animate-pulse" />
+            <div className="h-4 bg-[var(--bg3)] rounded w-10 animate-pulse" />
+          </div>
+          <div className="h-3 bg-[var(--bg3)] rounded w-3/4 mb-2 animate-pulse" />
+          <div className="h-3 bg-[var(--bg3)] rounded w-1/3 mb-2.5 animate-pulse" />
+          <div className="flex gap-1.5">
+            <div className="h-5 bg-[var(--bg3)] rounded-full w-16 animate-pulse" />
+            <div className="h-5 bg-[var(--bg3)] rounded-full w-16 animate-pulse" />
           </div>
         </div>
       ))}
@@ -123,8 +164,8 @@ function TemplateSkeleton() {
 
 function SkillSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {[1, 2, 3, 4].map((i) => (
+    <div className={SKILL_GRID}>
+      {[1, 2, 3, 4, 5, 6].map((i) => (
         <div key={i} className="border border-[var(--bd)] rounded-[12px] p-3">
           <div className="h-4 bg-[var(--bg3)] rounded w-1/2 mb-2 animate-pulse" />
           <div className="h-3 bg-[var(--bg3)] rounded w-full animate-pulse" />
@@ -272,6 +313,13 @@ function StoreContent() {
           </p>
         )}
 
+        {isTemplatesTab && !isSearchActive && (
+          <div className="mb-4">
+            <h2 className="text-[13px] font-semibold text-[var(--tx)] mb-2.5">Browse by category</h2>
+            <CategoryTiles activeCategory={activeCategory} onSelect={(category) => updateParams({ category })} />
+          </div>
+        )}
+
         <MarketplaceFilters
           mode={activeTab}
           activeCategory={activeCategory}
@@ -280,6 +328,7 @@ function StoreContent() {
           onCategoryChange={(category) => updateParams({ category })}
           onPriceFilterChange={(price) => updateParams({ price })}
           onSortChange={(s) => updateParams({ sort: s })}
+          hideCategories={isTemplatesTab}
         />
 
         {isTemplatesTab && (
@@ -299,7 +348,7 @@ function StoreContent() {
                   />
                 ) : (
                   <>
-                    <div className="space-y-2">
+                    <div className={TEMPLATE_GRID}>
                       {templateSearch.items.map((t) => (
                         <ClawCard
                           key={t.id}
@@ -313,10 +362,10 @@ function StoreContent() {
                       ))}
                     </div>
                     {templateSearch.nextCursor && (
-                      <div className="text-center mt-4">
-                        <Button variant="outline" onClick={templateSearch.loadMore} loading={templateSearch.isLoadingMore}>
+                      <div className="text-center mt-5">
+                        <MoreButton onClick={templateSearch.loadMore} loading={templateSearch.isLoadingMore}>
                           Load more
-                        </Button>
+                        </MoreButton>
                       </div>
                     )}
                   </>
@@ -391,16 +440,16 @@ function StoreContent() {
                   />
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className={SKILL_GRID}>
                       {popularSkills.items.map((skill) => (
                         <SkillCard key={skill.id} skill={skill} />
                       ))}
                     </div>
                     {popularSkills.nextCursor && (
                       <div className="text-center mt-4">
-                        <Button variant="outline" onClick={popularSkills.loadMore} loading={popularSkills.isLoadingMore}>
+                        <MoreButton onClick={popularSkills.loadMore} loading={popularSkills.isLoadingMore}>
                           Load more
-                        </Button>
+                        </MoreButton>
                       </div>
                     )}
                   </>
@@ -419,18 +468,17 @@ function StoreContent() {
                     <p className="text-[12px] text-[var(--tx3)]">No official skills in this category.</p>
                   ) : (
                     <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className={SKILL_GRID}>
                         {displayedOfficialSkills.map((skill) => (
                           <SkillCard key={skill.id} skill={skill} hideTrustBadge />
                         ))}
                       </div>
                       {!showAllOfficial && officialSkills.items.length > INITIAL_OFFICIAL_SKILLS && (
-                        <button
-                          className="text-[12px] text-[var(--ac-text)] mt-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
-                          onClick={() => setShowAllOfficial(true)}
-                        >
-                          Show all {officialSkills.items.length} official skills
-                        </button>
+                        <div className="mt-2">
+                          <MoreButton onClick={() => setShowAllOfficial(true)}>
+                            Show all {officialSkills.items.length} official skills
+                          </MoreButton>
+                        </div>
                       )}
                     </>
                   )}
@@ -444,16 +492,16 @@ function StoreContent() {
                       <SkillSkeleton />
                     ) : (
                       <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className={SKILL_GRID}>
                           {popularSkills.items.map((skill) => (
                             <SkillCard key={skill.id} skill={skill} />
                           ))}
                         </div>
                         {popularSkills.nextCursor && (
                           <div className="text-center mt-4">
-                            <Button variant="outline" onClick={popularSkills.loadMore} loading={popularSkills.isLoadingMore}>
+                            <MoreButton onClick={popularSkills.loadMore} loading={popularSkills.isLoadingMore}>
                               Load more skills
-                            </Button>
+                            </MoreButton>
                           </div>
                         )}
                       </>
