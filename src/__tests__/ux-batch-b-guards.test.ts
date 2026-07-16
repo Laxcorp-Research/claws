@@ -53,4 +53,12 @@ describe("Batch B recurrence guards", () => {
     const stop = read("src/app/api/deploy/[workspaceId]/stop/route.ts")
     expect(stop).toContain('status: "STOPPED"')
   })
+
+  it("E2E test-session JWT includes onboardingCompleted (proxy gate)", () => {
+    const src = read("src/app/api/auth/test-session/route.ts")
+    expect(src).toContain("onboardingCompleted: true")
+    // MUTATION: omit claim from encode → E2E waitForURL(/my-claws) fails
+    const encodeBlock = src.slice(src.indexOf("encode("), src.indexOf("secret:"))
+    expect(encodeBlock).toContain("onboardingCompleted")
+  })
 })
