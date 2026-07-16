@@ -23,6 +23,7 @@ import {
   connectionUiState,
   buildExtraToolState,
   buildExtraToolsFromConnections,
+  buildWorkspaceToolStates,
   mergeRefreshedTools,
   resolveByokModalProps,
   type ServerConnectionSummary,
@@ -234,6 +235,85 @@ describe("buildExtraToolsFromConnections", () => {
       ],
     )
     expect(result.map((r) => r.slug)).toEqual(["gmail", "slack", "github"])
+  })
+
+  it("claimedSlugs prevent requirement oneOf connections from becoming extras", () => {
+    const result = buildExtraToolsFromConnections(
+      [{ slug: "twitter-api" }],
+      [conn({ toolSlug: "twitter-api", status: "CONNECTED" })],
+      ["twitter-api"],
+    )
+    expect(result).toEqual([])
+  })
+})
+
+describe("PR-5 defect 1 — one requirement row per canonical slug", () => {
+  const isAi = (slug: string) => slug === "anthropic_api"
+
+  it("demoted twitter with live connection → single Recommended row (not dual-source)", () => {
+    const required: never[] = []
+    const recommended = [
+      {
+        slug: "twitter-api",
+        name: "Twitter API",
+        category: "Platform",
+        connectionType: "API_KEY" as const,
+        required: false,
+        customized: true,
+      },
+    ]
+    const connections = [
+      conn({
+        toolSlug: "twitter-api",
+        status: "CONNECTED",
+        displayName: "Twitter/X API",
+      }),
+    ]
+    const tools = buildWorkspaceToolStates(required, recommended, connections, isAi)
+    const twitterRows = tools.filter((t) => t.slug === "twitter-api")
+    expect(twitterRows).toHaveLength(1)
+    expect(twitterRows[0].required).toBe(false)
+    expect(twitterRows[0].customized).toBe(true)
+    expect(twitterRows[0].extra).toBeUndefined()
+    expect(twitterRows[0].status).toBe("connected")
+    expect(tools.filter((t) => t.extra && t.slug === "twitter-api")).toHaveLength(0)
+  })
+
+  it("MUTATION: reintroduce dual-source render (extras ignore claimed) → fails", () => {
+    const recommended = [
+      {
+        slug: "twitter-api",
+        name: "Twitter API",
+        category: "Platform",
+        connectionType: "API_KEY" as const,
+        required: false,
+        customized: true,
+      },
+    ]
+    const connections = [conn({ toolSlug: "twitter-api", status: "CONNECTED" })]
+    const requirementRows = buildWorkspaceToolStates([], recommended, connections, isAi)
+    // Dual-source bug: build extras WITHOUT claiming requirement slugs.
+    const orphanExtras = buildExtraToolsFromConnections(
+      // Pretend category-swap rewrote the row slug away from twitter-api:
+      requirementRows.map((t) =>
+        t.slug === "twitter-api" ? { ...t, slug: "gmail" } : t,
+      ),
+      connections,
+      // MUTATION lock: empty claimed set reintroduces the duplicate.
+      [],
+    )
+    const dual = [
+      ...requirementRows.filter((t) => t.slug === "twitter-api"),
+      ...orphanExtras.filter((t) => t.slug === "twitter-api"),
+    ]
+    // This proves the dual-source failure mode exists when claimed is skipped.
+    expect(dual.length).toBeGreaterThan(1)
+    // Correct path must stay single-row.
+    expect(
+      buildWorkspaceToolStates([], recommended, connections, isAi).filter(
+        (t) => t.slug === "twitter-api",
+      ),
+    ).toHaveLength(1)
   })
 })
 
