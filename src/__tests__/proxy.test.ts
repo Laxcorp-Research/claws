@@ -60,7 +60,7 @@ describe('Proxy', () => {
     });
 
     it('sets security headers on protected page routes when authenticated', async () => {
-      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1' });
+      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: true });
       const res = await proxy(createReq('/my-claws'));
       expect(res.status).toBe(200);
       expect(res.headers.get('X-Frame-Options')).toBe('DENY');
@@ -124,9 +124,29 @@ describe('Proxy', () => {
     });
 
     it('allows authenticated user through to protected routes', async () => {
-      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1' });
+      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: true });
       const res = await proxy(createReq('/my-claws'));
       expect(res.status).toBe(200);
+    });
+
+    it('Batch B: incomplete onboarding → redirect /my-claws to /onboarding', async () => {
+      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: false });
+      const res = await proxy(createReq('/my-claws'));
+      expect(res.status).toBe(307);
+      expect(res.headers.get('Location')).toContain('/onboarding');
+    });
+
+    it('Batch B: incomplete onboarding may still open /settings (API key CTA)', async () => {
+      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: false });
+      const res = await proxy(createReq('/settings'));
+      expect(res.status).toBe(200);
+    });
+
+    it('Batch B: MUTATION always-redirect — completed users must reach /my-claws', async () => {
+      (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: true });
+      const res = await proxy(createReq('/my-claws'));
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Location')).toBeNull();
     });
 
     it('includes callbackUrl in redirect', async () => {
@@ -204,7 +224,11 @@ describe('Admin authorization at the edge (#133)', () => {
   // non-admin would pass through with no rewrite, the old vulnerable behavior).
   it('non-admin token + ADMIN_EMAILS set → 404 rewrite to not-found, NOT the admin route', async () => {
     process.env.ADMIN_EMAILS = ADMIN;
-    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sub: 'u-2',
+      email: 'random@user.com',
+      onboardingCompleted: true,
+    });
     const res = await proxy(createReq('/admin/versions'));
     expect(res.headers.get('x-middleware-rewrite') ?? '').toContain('/_not-found');
     expect(res.headers.get('Location')).toBeNull(); // not a redirect; a rewrite (URL stays /admin/*)
@@ -212,7 +236,11 @@ describe('Admin authorization at the edge (#133)', () => {
 
   it('admin token (the operator account) → passes through to the admin route', async () => {
     process.env.ADMIN_EMAILS = ADMIN;
-    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-1', email: ADMIN });
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sub: 'u-1',
+      email: ADMIN,
+      onboardingCompleted: true,
+    });
     const res = await proxy(createReq('/admin/versions'));
     expect(res.status).toBe(200);
     expect(res.headers.get('x-middleware-rewrite')).toBeNull();
@@ -221,7 +249,11 @@ describe('Admin authorization at the edge (#133)', () => {
 
   it('admin match is case-insensitive', async () => {
     process.env.ADMIN_EMAILS = ADMIN;
-    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-1', email: ADMIN.toUpperCase() });
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sub: 'u-1',
+      email: ADMIN.toUpperCase(),
+      onboardingCompleted: true,
+    });
     const res = await proxy(createReq('/admin'));
     expect(res.status).toBe(200);
     expect(res.headers.get('x-middleware-rewrite')).toBeNull();
@@ -232,7 +264,11 @@ describe('Admin authorization at the edge (#133)', () => {
   it('ADMIN_EMAILS unset → does NOT 404 a non-admin; falls through + logs', async () => {
     delete process.env.ADMIN_EMAILS;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sub: 'u-2',
+      email: 'random@user.com',
+      onboardingCompleted: true,
+    });
     const res = await proxy(createReq('/admin/versions'));
     expect(res.headers.get('x-middleware-rewrite')).toBeNull();
     expect(res.status).toBe(200);
@@ -242,7 +278,11 @@ describe('Admin authorization at the edge (#133)', () => {
   it('ADMIN_EMAILS whitespace-only → treated as unset (fall through, no 404)', async () => {
     process.env.ADMIN_EMAILS = '   ';
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sub: 'u-2',
+      email: 'random@user.com',
+      onboardingCompleted: true,
+    });
     const res = await proxy(createReq('/admin'));
     expect(res.headers.get('x-middleware-rewrite')).toBeNull();
     expect(res.status).toBe(200);
@@ -250,7 +290,11 @@ describe('Admin authorization at the edge (#133)', () => {
 
   it('non-admin on a NON-admin protected route is unaffected (still passes)', async () => {
     process.env.ADMIN_EMAILS = ADMIN;
-    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'u-2', email: 'random@user.com' });
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sub: 'u-2',
+      email: 'random@user.com',
+      onboardingCompleted: true,
+    });
     const res = await proxy(createReq('/my-claws'));
     expect(res.status).toBe(200);
     expect(res.headers.get('x-middleware-rewrite')).toBeNull();

@@ -107,6 +107,7 @@ describe("POST /api/deploy/[workspaceId]/stop", () => {
 
     expect(res.status).toBe(200)
     expect(json.data.stopped).toBe(true)
+    expect(json.data.status).toBe("STOPPED")
     // proves it went through syncThenDestroy, not bare destroyContainer
     expect(mockFetch).toHaveBeenCalledWith(
       "https://claw-ws-1.up.railway.app/internal/sync-now",
@@ -126,6 +127,7 @@ describe("POST /api/deploy/[workspaceId]/stop", () => {
 
     expect(res.status).toBe(200)
     expect(json.data.stopped).toBe(true)
+    expect(json.data.status).toBe("STOPPED")
     // the failure was recorded...
     expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -20,11 +20,12 @@ interface WorkspaceCardProps {
   onRename: (id: string, currentName: string) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string, name: string) => void
+  onStopped?: (id: string, status: string) => void
 }
 
 export function WorkspaceCard({
   id, name, status, apiStatus, agentCount, agentRoles, lastActive, monthlyCost, source,
-  isCreatorEnrolled, onRename, onDuplicate, onDelete,
+  isCreatorEnrolled, onRename, onDuplicate, onDelete, onStopped,
 }: WorkspaceCardProps) {
   const router = useRouter()
 
@@ -62,6 +63,7 @@ export function WorkspaceCard({
             onRename={onRename}
             onDuplicate={onDuplicate}
             onDelete={onDelete}
+            onStopped={onStopped}
           />
         </div>
       </div>
