@@ -12,6 +12,8 @@ import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { CredentialsModal } from "./credentials-modal"
 import { ALL_TOOLS, TOOL_CATEGORIES, type ToolDefinition } from "@/data/tool-catalog"
 
+export type BrowseToolsModalMode = "browse" | "swap"
+
 interface BrowseToolsModalProps {
   open: boolean
   onClose: () => void
@@ -38,6 +40,18 @@ interface BrowseToolsModalProps {
   workspaceId?: string
   pendingOAuthSlug?: string | null
   oauthErrors?: Record<string, string | undefined>
+  /** Default browse; swap = replace requirement-set row (not plain-add). */
+  mode?: BrowseToolsModalMode
+  /** Pre-select category filter when opening (swap uses the row's category). */
+  initialCategory?: string
+  /** Template-curated alternatives[] — pinned under "Suggested". */
+  suggestedSlugs?: string[]
+  /** Current row slug excluded from the list in swap mode. */
+  excludeSlug?: string
+  /** Swap selection — requirement-set replace; not connect. */
+  onSwapSelect?: (tool: ToolDefinition) => void
+  /** Display name of the tool being replaced (swap title). */
+  swapCurrentName?: string
 }
 
 export function BrowseToolsModal({
@@ -51,8 +65,15 @@ export function BrowseToolsModal({
   workspaceId,
   pendingOAuthSlug = null,
   oauthErrors = {},
+  mode = "browse",
+  initialCategory,
+  suggestedSlugs = [],
+  excludeSlug,
+  onSwapSelect,
+  swapCurrentName,
 }: BrowseToolsModalProps) {
   void onByokConnect // reserved for future browse-time BYOK detection; see prop docstring
+  const isSwap = mode === "swap"
   const [search, setSearch] = useState("")
   const [activeCategory, setActiveCategory] = useState("All")
   const [apiKeyTool, setApiKeyTool] = useState<ToolDefinition | null>(null)
@@ -72,11 +93,8 @@ export function BrowseToolsModal({
   useEffect(() => {
     if (!open || !workspaceId) return
     // PR2.9 Task 7a: reset transient view state on every modal open.
-    // Previously search + category persisted across reopens (e.g. user
-    // searched "outlook", closed, reopened, still saw "outlook" filter)
-    // which felt buggy.
     setSearch("")
-    setActiveCategory("All")
+    setActiveCategory(initialCategory && initialCategory.trim() ? initialCategory : "All")
     let cancelled = false
     setBrowseLoading(true)
     ;(async () => {
@@ -98,13 +116,15 @@ export function BrowseToolsModal({
     return () => {
       cancelled = true
     }
-  }, [open, workspaceId])
+  }, [open, workspaceId, initialCategory])
 
   const tools = remoteTools ?? ALL_TOOLS
   const categoryList = useMemo(() => remoteCategories ?? [...TOOL_CATEGORIES], [remoteCategories])
+  const suggestedSet = useMemo(() => new Set(suggestedSlugs), [suggestedSlugs])
 
   const filtered = useMemo(() => {
-    return tools.filter((tool) => {
+    const base = tools.filter((tool) => {
+      if (excludeSlug && tool.slug === excludeSlug) return false
       const matchesSearch =
         !search ||
         tool.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -112,11 +132,31 @@ export function BrowseToolsModal({
       const matchesCategory = activeCategory === "All" || tool.category === activeCategory
       return matchesSearch && matchesCategory
     })
-  }, [tools, search, activeCategory])
+    if (!isSwap || suggestedSet.size === 0) return base
+    // Pin Suggested (alternatives[]) at top; preserve relative order within buckets.
+    const suggested: ToolDefinition[] = []
+    const rest: ToolDefinition[] = []
+    for (const tool of base) {
+      if (suggestedSet.has(tool.slug)) suggested.push(tool)
+      else rest.push(tool)
+    }
+    // Order Suggested by alternatives[] order when possible.
+    suggested.sort((a, b) => {
+      const ia = suggestedSlugs.indexOf(a.slug)
+      const ib = suggestedSlugs.indexOf(b.slug)
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
+    })
+    return [...suggested, ...rest]
+  }, [tools, search, activeCategory, excludeSlug, isSwap, suggestedSet, suggestedSlugs])
 
   const allConnected = useMemo(() => new Set([...connectedSlugs, ...localConnected]), [connectedSlugs, localConnected])
 
   function handleToolClick(tool: ToolDefinition) {
+    if (isSwap) {
+      onSwapSelect?.(tool)
+      onClose()
+      return
+    }
     if (tool.slug === pendingOAuthSlug) return
     if (tool.authMode === "none") {
       void handleNoAuthAdd(tool)
@@ -183,17 +223,29 @@ export function BrowseToolsModal({
     if (listRef.current) listRef.current.scrollTop = 0
   }, [search, activeCategory, tools])
 
+  const modalTitle = isSwap
+    ? `Swap${swapCurrentName ? `: ${swapCurrentName}` : ""}`
+    : "Browse tools"
+  const modalDescription = isSwap
+    ? "Your agents adapt automatically via generated skill instructions."
+    : browseLoading
+      ? "Loading catalog…"
+      : `Browse ${tools.length} tools. Curated list first; Composio catalog fills in when configured.`
+
+  // Virtualization: when Suggested pins exist, render a non-virtualized Suggested
+  // header by flattening — first suggested slug in visible window gets a label.
+  const firstSuggestedSlug =
+    isSwap && suggestedSlugs.length > 0
+      ? filtered.find((t) => suggestedSet.has(t.slug))?.slug
+      : undefined
+
   return (
     <>
       <Modal
         open={open}
         onClose={onClose}
-        title="Browse tools"
-        description={
-          browseLoading
-            ? "Loading catalog…"
-            : `Browse ${tools.length} tools. Curated list first; Composio catalog fills in when configured.`
-        }
+        title={modalTitle}
+        description={modalDescription}
         size="lg"
         footer={
           <div className="flex items-center justify-between w-full">
@@ -223,11 +275,9 @@ export function BrowseToolsModal({
             className="border border-[var(--bd)] rounded-xl overflow-hidden overflow-y-auto"
             style={{ maxHeight: LIST_HEIGHT }}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+            data-testid={isSwap ? "browse-tools-swap" : "browse-tools"}
           >
             {browseLoading && (
-              // PR2.9 Task 7c: shimmer skeleton (Design System §LoadingSkeleton)
-              // replaces the bare "Loading tools…" line. 4 card rows roughly
-              // matches the visible height of the rendered list.
               <div className="px-3.5 py-3">
                 <LoadingSkeleton variant="card" count={4} />
               </div>
@@ -247,12 +297,23 @@ export function BrowseToolsModal({
                 const brokeredByComposio = tool.connectionType === "OAUTH_COMPOSIO" || tool.connectionType === "NO_AUTH" || tool.credentialFields.length === 0
                 const customOauthBlocked = tool.authMode === "custom-oauth-required"
                 const comingSoonReason = tool.comingSoonReason ?? "Requires a Claws-owned OAuth app before connection is available."
+                const isSuggested = isSwap && suggestedSet.has(tool.slug)
+                const showSuggestedLabel = isSuggested && tool.slug === firstSuggestedSlug && startIndex === 0
                 return (
-                  <div
-                    key={tool.slug}
-                    className="flex items-center gap-3 px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0"
-                    style={{ minHeight: ROW_HEIGHT }}
-                  >
+                  <div key={tool.slug}>
+                    {showSuggestedLabel && (
+                      <div
+                        className="px-3.5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-[var(--tx3)]"
+                        data-testid="swap-suggested-label"
+                      >
+                        Suggested
+                      </div>
+                    )}
+                    <div
+                      className="flex items-center gap-3 px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0"
+                      style={{ minHeight: ROW_HEIGHT }}
+                      data-suggested={isSuggested ? "true" : undefined}
+                    >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <StatusDot status={isConnected ? "connected" : "disconnected"} />
                       <div className="min-w-0">
@@ -270,7 +331,17 @@ export function BrowseToolsModal({
                         )}
                       </div>
                     </div>
-                    {isConnected ? (
+                    {isSwap ? (
+                      <Button
+                        type="button"
+                        onClick={() => handleToolClick(tool)}
+                        size="sm"
+                        className="shrink-0"
+                        disabled={customOauthBlocked}
+                      >
+                        Select
+                      </Button>
+                    ) : isConnected ? (
                       <span className="text-[10px] text-[var(--ok)] font-medium shrink-0">Connected</span>
                     ) : customOauthBlocked ? (
                       <Badge variant="warning" title={comingSoonReason} className="shrink-0">
@@ -297,16 +368,6 @@ export function BrowseToolsModal({
                           disabled={isPendingOAuth}
                           className="shrink-0"
                         >
-                          {/* PR2.9-fix1 (Bug 1A): label is auth-mode-correct
-                              at first paint, no server round-trip. The hook
-                              still does final BYOK detection from the
-                              initiate response — but the user sees the
-                              right intent before clicking.
-                              Fallback for OAUTH_COMPOSIO entries missing
-                              authMode (e.g., dynamic Composio catalog
-                              entries from composio-catalog.ts): treat as
-                              managed-oauth. Safe because the server
-                              classifier is canonical anyway. */}
                           {tool.authMode === "byok-api-key" ? "Enter API key" : "Connect with OAuth"}
                         </Button>
                       ) : (
@@ -320,13 +381,10 @@ export function BrowseToolsModal({
                         onClick={() => handleToolClick(tool)}
                         className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none shrink-0"
                       >
-                        {/* PR2.9-fix1 alignment: was "Connect", now "Enter
-                            API key" to match the inline ToolRow API_KEY
-                            label and the BYOK button above. Same user
-                            action (paste a key), same wording. */}
                         Enter API key
                       </button>
                     )}
+                    </div>
                   </div>
                 )
               })}
@@ -336,7 +394,7 @@ export function BrowseToolsModal({
         </div>
       </Modal>
 
-      {apiKeyTool && (
+      {apiKeyTool && !isSwap && (
         <CredentialsModal
           open={true}
           onClose={() => setApiKeyTool(null)}

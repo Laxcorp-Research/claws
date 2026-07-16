@@ -22,6 +22,9 @@ snapshot via `resolveWorkspaceToolRequirements`. New installs always seed JSON.
 | `undismiss` | Clear dismissed |
 | `restore` | Re-hydrate that slug from template defaults |
 | `remove` | Drop slug from the workspace set only |
+| `swap` | Replace `slug` with catalog `replaceWith`, carrying `required`; keeps curated `alternatives[]` as Suggested pins |
+
+**Suggested source:** `WorkspaceToolRequirement.alternatives` (seeded from `SeedTool.alternatives` → `ClawTemplate.workspaceSnapshot.tools[]`). Swap UI opens BrowseToolsModal (category-filtered library) with those slugs pinned under "Suggested".
 
 `remove` does **not** delete `ToolConnection` rows. Disconnect / credential
 deletion is a separate explicit action (REMOVE dialog checkbox, default on).

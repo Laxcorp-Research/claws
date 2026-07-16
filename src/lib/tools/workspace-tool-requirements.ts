@@ -5,6 +5,7 @@
  * template snapshot tools[]). Legacy null → fall back to template snapshot.
  * All consumers must route through resolveWorkspaceToolRequirements.
  */
+import { getToolBySlug } from "@/data/tool-catalog"
 import { prisma } from "@/lib/db"
 import { isAiProviderSlug } from "@/lib/tools/required-tools"
 
@@ -24,10 +25,13 @@ export type ToolRequirementOpName =
   | "dismiss"
   | "undismiss"
   | "remove"
+  | "swap"
 
 export interface ToolRequirementOp {
   op: ToolRequirementOpName
   slug: string
+  /** Catalog slug that replaces `slug` when op === "swap". */
+  replaceWith?: string
 }
 
 export type ResolveSource = "workspace" | "template" | "empty"
@@ -205,6 +209,20 @@ export async function loadTemplateToolDefaults(
   return parseToolsFromTemplateSnapshot(template.workspaceSnapshot)
 }
 
+/**
+ * Template-default tools that are absent from the workspace set (removed).
+ * AI providers excluded. Dismissed tools remain in the set and are not listed.
+ */
+export function listRemovedTemplateTools(
+  current: WorkspaceToolRequirement[],
+  templateDefaults: WorkspaceToolRequirement[],
+): WorkspaceToolRequirement[] {
+  const currentSlugs = new Set(current.map((t) => t.slug))
+  return templateDefaults.filter(
+    (t) => !isAiProviderSlug(t.slug) && !currentSlugs.has(t.slug),
+  )
+}
+
 export type ApplyToolRequirementResult =
   | { ok: true; tools: WorkspaceToolRequirement[] }
   | { ok: false; code: string; message: string; status: number }
@@ -252,6 +270,75 @@ export function applyToolRequirementOp(
     const { dismissed: _d, ...restored } = defaults
     const without = current.filter((t) => t.slug !== slug)
     return { ok: true, tools: [...without, { ...restored }] }
+  }
+
+  if (op.op === "swap") {
+    const replaceWith =
+      typeof op.replaceWith === "string" ? op.replaceWith.trim() : ""
+    if (!replaceWith) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        message: "replaceWith is required for swap",
+        status: 400,
+      }
+    }
+    if (isAiProviderSlug(replaceWith)) {
+      return {
+        ok: false,
+        code: "AI_PROVIDER_NOT_CUSTOMIZABLE",
+        message: "AI provider tools are managed on Step 1 and cannot be customized here",
+        status: 400,
+      }
+    }
+    const index = current.findIndex((t) => t.slug === slug)
+    if (index < 0) {
+      return {
+        ok: false,
+        code: "SLUG_NOT_IN_SET",
+        message: `Tool "${slug}" is not in this workspace's tool requirement set`,
+        status: 400,
+      }
+    }
+    if (replaceWith === slug) {
+      return { ok: true, tools: current.map((t) => ({ ...t })) }
+    }
+    if (current.some((t) => t.slug === replaceWith)) {
+      return {
+        ok: false,
+        code: "SLUG_ALREADY_IN_SET",
+        message: `Tool "${replaceWith}" is already in this workspace's tool requirement set`,
+        status: 400,
+      }
+    }
+    const catalog = getToolBySlug(replaceWith)
+    if (!catalog) {
+      return {
+        ok: false,
+        code: "UNKNOWN_TOOL",
+        message: `Tool "${replaceWith}" is not in the catalog`,
+        status: 400,
+      }
+    }
+    const old = current[index]
+    const nextEntry: WorkspaceToolRequirement = {
+      slug: catalog.slug,
+      name: catalog.name,
+      category: catalog.category,
+      connectionType: catalog.connectionType,
+      required: old.required,
+    }
+    // Keep template-curated alternatives[] as Suggested pins for the next swap.
+    if (old.alternatives && old.alternatives.length > 0) {
+      nextEntry.alternatives = old.alternatives.filter((a) => a !== replaceWith)
+      if (!nextEntry.alternatives.includes(slug)) {
+        nextEntry.alternatives = [slug, ...nextEntry.alternatives]
+      }
+      if (nextEntry.alternatives.length === 0) delete nextEntry.alternatives
+    }
+    const next = current.map((t) => ({ ...t }))
+    next[index] = nextEntry
+    return { ok: true, tools: next }
   }
 
   const index = current.findIndex((t) => t.slug === slug)
