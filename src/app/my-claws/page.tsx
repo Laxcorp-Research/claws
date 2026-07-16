@@ -191,6 +191,18 @@ export default function MyClawsPage() {
     }
   }
 
+  /** Batch B: Stop reconciles the row from server status (no full remount). */
+  function handleStopped(id: string, apiStatus: string) {
+    const badge = mapWorkspaceStatus(apiStatus)
+    setWorkspaces((prev) =>
+      prev
+        ? prev.map((w) =>
+            w.id === id ? { ...w, apiStatus, status: badge } : w,
+          )
+        : prev,
+    )
+  }
+
   const fetchWorkspaces = useCallback(async () => {
     setError(null)
     setWorkspaces(null)
@@ -294,6 +306,7 @@ export default function MyClawsPage() {
                 onRename={openRename}
                 onDuplicate={handleDuplicate}
                 onDelete={(id, name) => setDeleteTarget({ id, name })}
+                onStopped={handleStopped}
               />
             ))}
           </div>

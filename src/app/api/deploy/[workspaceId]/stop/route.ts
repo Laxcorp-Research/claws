@@ -22,7 +22,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
     // Single workspace under maxDuration=60 → full default (~18s) sync budget.
     const { syncThenDestroy } = await import("@/lib/openclaw/deployer")
     await syncThenDestroy(workspaceId)
-    return apiSuccess({ stopped: true })
+    // Batch B: surface status so My Claws can reconcile the row without a full remount.
+    return apiSuccess({ stopped: true, status: "STOPPED" })
   } catch (err: unknown) {
     return apiError("STOP_FAILED", err instanceof Error ? err.message : "Stop failed", 500)
   }

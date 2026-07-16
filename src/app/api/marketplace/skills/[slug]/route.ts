@@ -50,6 +50,7 @@ export async function GET(
 
   let installStatus: {
     installed: boolean
+    hasPurchased: boolean
     hasRunningWorkspaces: boolean
     workspaces: Array<{ id: string; name: string }>
   } | null = null
@@ -61,6 +62,12 @@ export async function GET(
         where: { skillId_userId: { skillId: skill.id, userId: user.id } },
       })
 
+      // Entitlement = MarketplaceSale row (buyerId + skillId). No skill checkout yet.
+      const purchase = await prisma.marketplaceSale.findFirst({
+        where: { skillId: skill.id, buyerId: user.id },
+        select: { id: true },
+      })
+
       const runningWorkspaces = await prisma.workspace.findMany({
         where: { userId: user.id, status: "RUNNING" },
         select: { id: true, name: true },
@@ -68,6 +75,7 @@ export async function GET(
 
       installStatus = {
         installed: !!existingInstall,
+        hasPurchased: !!purchase,
         hasRunningWorkspaces: runningWorkspaces.length > 0,
         workspaces: runningWorkspaces,
       }

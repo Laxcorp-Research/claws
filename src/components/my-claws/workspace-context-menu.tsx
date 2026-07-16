@@ -26,6 +26,8 @@ interface WorkspaceContextMenuProps {
   onRename: (id: string, currentName: string) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string, name: string) => void
+  /** Batch B: patch local list from stop response (reload-consistency). */
+  onStopped?: (id: string, status: string) => void
 }
 
 export function WorkspaceContextMenu({
@@ -37,6 +39,7 @@ export function WorkspaceContextMenu({
   onRename,
   onDuplicate,
   onDelete,
+  onStopped,
 }: WorkspaceContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
@@ -51,7 +54,11 @@ export function WorkspaceContextMenu({
       await mutateWithFeedback(
         async () => {
           const res = await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
-          if (!res.ok) throw new Error("Could not stop Claw")
+          const json = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(json?.error?.message || "Could not stop Claw")
+          const nextStatus =
+            typeof json?.data?.status === "string" ? json.data.status : "STOPPED"
+          onStopped?.(workspaceId, nextStatus)
           router.refresh()
         },
         { message: "Claw stopped", errorMessage: "Could not stop Claw" },

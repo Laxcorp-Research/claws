@@ -46,6 +46,7 @@ interface PageData {
   reviewCount: number
   installStatus: {
     installed: boolean
+    hasPurchased: boolean
     hasRunningWorkspaces: boolean
     workspaces: Array<{ id: string; name: string }>
   } | null
@@ -228,30 +229,45 @@ export default function SkillDetailPage() {
 
           <div className="text-right shrink-0 ml-4">
             <PriceDisplay price={skill.price} isFree={skill.isFree} showPlatformFee={false} />
-            {installStatus?.installed ? (
-              <Button disabled className="mt-3 px-6 py-2 text-[13px]">
-                <Check size={14} className="mr-1" aria-hidden="true" />
-                Installed
-              </Button>
-            ) : (
-              <Button
-                size="lg"
-                className="mt-3"
-                onClick={() => {
-                  if (!installStatus) {
-                    window.location.href = "/auth/signin"
-                    return
-                  }
-                  if (!installStatus.hasRunningWorkspaces) {
-                    setInstallError("You need a running workspace to install skills. Deploy a Claw first.")
-                    return
-                  }
-                  setShowInstallModal(true)
-                }}
-              >
-                Install to Workspace
-              </Button>
-            )}
+            {(() => {
+              const isPaid = !skill.isFree && skill.price != null && skill.price > 0
+              const needsPurchase = isPaid && !(installStatus?.hasPurchased)
+              if (installStatus?.installed) {
+                return (
+                  <Button disabled className="mt-3 px-6 py-2 text-[13px]">
+                    <Check size={14} className="mr-1" aria-hidden="true" />
+                    Installed
+                  </Button>
+                )
+              }
+              // Batch A / A2: no skill-checkout flow — paid-unowned is disabled honesty, not a CTA.
+              if (needsPurchase && installStatus) {
+                return (
+                  <Button disabled size="lg" className="mt-3">
+                    Purchase coming soon
+                  </Button>
+                )
+              }
+              return (
+                <Button
+                  size="lg"
+                  className="mt-3"
+                  onClick={() => {
+                    if (!installStatus) {
+                      window.location.href = "/auth/signin"
+                      return
+                    }
+                    if (!installStatus.hasRunningWorkspaces) {
+                      setInstallError("You need a running workspace to install skills. Deploy a Claw first.")
+                      return
+                    }
+                    setShowInstallModal(true)
+                  }}
+                >
+                  Install to Workspace
+                </Button>
+              )
+            })()}
             {installError && !showInstallModal && (
               <p className="text-[10px] text-[var(--err)] mt-1 max-w-[200px] ml-auto">{installError}</p>
             )}
@@ -366,7 +382,9 @@ export default function SkillDetailPage() {
           <div className="text-center py-4">
             <Check size={24} className="mx-auto mb-2 text-[var(--ok)]" />
             <p className="text-[13px] font-semibold text-[var(--ok)]">Skill installed successfully!</p>
-            <p className="text-[11px] text-[var(--tx2)] mt-1">The skill is now available to all agents in this workspace.</p>
+            <p className="text-[11px] text-[var(--tx2)] mt-1">
+              Saved to your workspace. Runtime hot-add is pending — agents pick it up after the next deploy.
+            </p>
           </div>
         ) : (
           <>

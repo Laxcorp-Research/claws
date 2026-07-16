@@ -52,6 +52,23 @@ export async function POST(
     return apiError("ALREADY_INSTALLED", "This skill is already installed", 409)
   }
 
+  // Batch A / A2: paid skills require an existing MarketplaceSale purchase row.
+  // No skill-checkout flow exists yet — unentitled paid installs are rejected.
+  const isPaid = !skill.isFree && skill.price != null && skill.price > 0
+  if (isPaid) {
+    const purchase = await prisma.marketplaceSale.findFirst({
+      where: { skillId: skill.id, buyerId: user.id },
+      select: { id: true },
+    })
+    if (!purchase) {
+      return apiError(
+        "PURCHASE_REQUIRED",
+        "Purchase required before installing this skill. Purchase coming soon.",
+        403,
+      )
+    }
+  }
+
   // TODO: Hot-add skill to running container via Docker exec
   // The deployer.ts has Docker infrastructure but no exported exec helper for skill injection.
   // When container hosting is live (Tier 3), implement:

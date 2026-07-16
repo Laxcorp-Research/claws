@@ -104,9 +104,13 @@ export function BillingDashboard() {
 
   if (!data) return null
 
-  const activeWorkspaces = workspaces.filter((w) => w.status === "RUNNING" || w.status === "PAUSED")
-  const activeClaws = activeWorkspaces.length
-  const monthlyTotal = activeClaws * 79
+  // Batch A / A6: display-only estimate from API runningClaws (RUNNING only).
+  // List may still show paused claws; they do not enter the × $79 math.
+  const runningClaws = data.runningClaws
+  const monthlyTotal = runningClaws * 79
+  const listedWorkspaces = workspaces.filter(
+    (w) => w.status === "RUNNING" || w.status === "PAUSED",
+  )
 
   const now = new Date()
   const trialEnd = data.trialEndsAt ? new Date(data.trialEndsAt) : null
@@ -148,17 +152,21 @@ export function BillingDashboard() {
       <p className="text-[11px] text-[var(--tx2)] mb-[12px]">You pay $79/mo per running Claw. No tiers, no surprises.</p>
 
       <div className="grid grid-cols-3 gap-[8px] my-[10px]">
-        <StatCard label="Active Claws" value={activeClaws} trend="$79/mo each" />
-        <StatCard label="Est. monthly" value={`$${monthlyTotal}`} trend={`${activeClaws} running Claw${activeClaws !== 1 ? "s" : ""} × $79`} />
+        <StatCard label="Running Claws" value={runningClaws} trend="$79/mo each" />
+        <StatCard
+          label="Est. monthly"
+          value={`$${monthlyTotal}`}
+          trend={`${runningClaws} running Claw${runningClaws !== 1 ? "s" : ""} × $79`}
+        />
         <StatCard label="Trial status" value={trialStatusLabel} trend={trialTrend} />
       </div>
 
       <div className="border border-[var(--bd)] rounded-[var(--r,8px)] p-[10px] my-[10px]">
         <h3 className="text-[12px] font-semibold mb-[6px]">Your Claws</h3>
-        {activeWorkspaces.length === 0 ? (
+        {listedWorkspaces.length === 0 ? (
           <p className="text-[11px] text-[var(--tx2)]">No running Claws. Deploy a Claw to start your subscription.</p>
         ) : (
-          activeWorkspaces.map((ws) => (
+          listedWorkspaces.map((ws) => (
             <div key={ws.id} className="flex justify-between items-center text-[11px] py-[4px] border-b border-[var(--bd)] last:border-0">
               <span className="font-medium">{ws.name}</span>
               <StatusBadge status={mapStatus(ws.status)} />

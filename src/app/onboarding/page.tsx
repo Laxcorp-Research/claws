@@ -1,24 +1,66 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
+import Link from "next/link"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { OnboardingStep } from "@/components/onboarding/onboarding-step"
-import Link from "next/link"
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const { update } = useSession()
+  const { data: session, status, update } = useSession()
+  const [isCreating, setIsCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
-  const handleSkip = async () => {
+  // Returning users (flag true) never see onboarding again.
+  useEffect(() => {
+    if (status === "authenticated" && session?.onboardingCompleted === true) {
+      router.replace("/my-claws")
+    }
+  }, [status, session?.onboardingCompleted, router])
+
+  const markComplete = async () => {
     await fetch("/api/user/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ onboardingCompleted: true }),
-    }).catch(() => {})
-    await update({ onboardingCompleted: true }).catch(() => {})
+    })
+    await update({ onboardingCompleted: true })
+  }
+
+  const handleSkip = async () => {
+    try {
+      await markComplete()
+    } catch {
+      /* still leave — next visit reloads JWT from DB */
+    }
     router.push("/my-claws")
+  }
+
+  /** Match My Claws "+ Create custom Claw": POST /api/workspaces → /builder/{id}. */
+  const handleCreateCustomClaw = async () => {
+    if (isCreating) return
+    setIsCreating(true)
+    setCreateError(null)
+    try {
+      const res = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "My Claw 1" }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error?.message || "Failed to create workspace")
+      const workspaceId = data.data?.id || data.id
+      if (!workspaceId) throw new Error("No workspace ID returned")
+      await markComplete().catch(() => {})
+      router.push(`/builder/${workspaceId}`)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create workspace")
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   return (
@@ -36,8 +78,12 @@ export default function OnboardingPage() {
             description="Your agents need an AI model to think. We support Anthropic, OpenAI, and Google."
             actions={
               <>
-                <Button variant="primary" size="sm">Add Anthropic key</Button>
-                <Button variant="outline" size="sm">Add OpenAI key</Button>
+                <Link href="/settings?tab=api-keys">
+                  <Button variant="primary" size="sm">Add Anthropic key</Button>
+                </Link>
+                <Link href="/settings?tab=api-keys">
+                  <Button variant="outline" size="sm">Add OpenAI key</Button>
+                </Link>
               </>
             }
           />
@@ -47,8 +93,17 @@ export default function OnboardingPage() {
             description="Choose a pre-built team or create your own from scratch."
             actions={
               <>
-                <Link href="/store"><Button variant="primary" size="sm">Browse the store</Button></Link>
-                <Button variant="outline" size="sm">Create custom Claw</Button>
+                <Link href="/store">
+                  <Button variant="primary" size="sm">Browse the store</Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  loading={isCreating}
+                  onClick={handleCreateCustomClaw}
+                >
+                  {isCreating ? "Creating..." : "Create custom Claw"}
+                </Button>
               </>
             }
           />
@@ -60,7 +115,15 @@ export default function OnboardingPage() {
           />
         </div>
 
-        <button onClick={handleSkip} className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline cursor-pointer transition-colors">
+        {createError && (
+          <p className="text-[12px] text-[var(--err)] mb-2">{createError}</p>
+        )}
+
+        <button
+          type="button"
+          onClick={handleSkip}
+          className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline cursor-pointer transition-colors bg-transparent border-0"
+        >
           Skip onboarding →
         </button>
       </div>
