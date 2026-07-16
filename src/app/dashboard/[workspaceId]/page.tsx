@@ -34,6 +34,8 @@ import { TextLink } from "@/components/ui/text-link"
 import { Select } from "@/components/ui/select"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import { extractVersionFromImage, isNewerVersion } from "@/lib/openclaw/version-order"
 import type { ApiKeySource } from "@/generated/prisma/client"
@@ -318,6 +320,13 @@ export default function DashboardPage() {
 
   const credit = useCreditBalance(30_000)
   const creditMode = credit.hasCredits && (credit.status === "ACTIVE" || credit.status === "EXHAUSTED")
+  const snackbar = useSnackbarOptional()
+  const showSnackbar = useCallback(
+    (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
+      snackbar?.show(options)
+    },
+    [snackbar],
+  )
 
   const handleSubscribe = useCallback(async () => {
     setSubscribing(true)
@@ -485,15 +494,35 @@ export default function DashboardPage() {
   }, [workspace?.status, workspaceId, router, fetchStats, fetchChannelStatus])
 
   const handleWakeNow = useCallback(async () => {
-    await fetch(`/api/dashboard/${workspaceId}/wake`, { method: "POST" })
-    setWorkspace((prev) => prev ? { ...prev, status: "WAKING" } : prev)
-  }, [workspaceId])
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/dashboard/${workspaceId}/wake`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not wake Claw")
+          setWorkspace((prev) => (prev ? { ...prev, status: "WAKING" } : prev))
+        },
+        { message: "Claw waking…", errorMessage: "Could not wake Claw" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
+    }
+  }, [workspaceId, showSnackbar])
 
   const handleStopConfirmed = async () => {
     setStopping(true)
     try {
-      await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
-      fetchStats()
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not stop Claw")
+          fetchStats()
+        },
+        { message: "Claw stopped", errorMessage: "Could not stop Claw" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     } finally {
       setStopping(false)
       setStopConfirmOpen(false)
@@ -507,16 +536,38 @@ export default function DashboardPage() {
       setRedeployFromStoppedConfirmOpen(true)
       return
     }
-    await fetch(`/api/deploy/${workspaceId}/restart`, { method: "POST" })
-    fetchStats()
-    fetchChannelStatus()
-  }, [workspace?.status, workspaceId, fetchStats, fetchChannelStatus])
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/deploy/${workspaceId}/restart`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not restart Claw")
+          fetchStats()
+          fetchChannelStatus()
+        },
+        { message: "Claw restarting", errorMessage: "Could not restart Claw" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
+    }
+  }, [workspace?.status, workspaceId, fetchStats, fetchChannelStatus, showSnackbar])
 
   const handleRedeployFromStopped = async () => {
     setRedeployFromStoppedConfirmOpen(false)
-    await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
-    fetchStats()
-    fetchChannelStatus()
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not restart Claw")
+          fetchStats()
+          fetchChannelStatus()
+        },
+        { message: "Claw restarting", errorMessage: "Could not restart Claw" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
+    }
   }
 
   const redeployFlow = useWorkspaceRedeploy({
@@ -536,38 +587,70 @@ export default function DashboardPage() {
   }, [redeployFlow])
 
   const handleApprove = async (activityLogId: string) => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ activityLogId, action: "approve" }),
-    })
-    if (res.ok) {
-      setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
-      fetchStats()
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ activityLogId, action: "approve" }),
+          })
+          if (!res.ok) throw new Error("Could not approve")
+          setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
+          fetchStats()
+        },
+        { message: "Approved", errorMessage: "Could not approve" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     }
   }
 
   const handleReject = async (activityLogId: string, feedback?: string) => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ activityLogId, action: "reject", feedback }),
-    })
-    if (res.ok) {
-      setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
-      fetchStats()
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ activityLogId, action: "reject", feedback }),
+          })
+          if (!res.ok) throw new Error("Could not reject")
+          setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
+          fetchStats()
+        },
+        { message: "Rejected", errorMessage: "Could not reject" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     }
   }
 
   const handleAgentControl = async (agentId: string, action: "pause" | "resume" | "restart") => {
     setAgentActionLoadingId(agentId)
+    const successMessage =
+      action === "pause" ? "Agent paused" : action === "resume" ? "Agent resumed" : "Agent restarting"
     try {
-      await fetch(`/api/agents/${workspaceId}/${agentId}/control`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      })
-      fetchStats()
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/agents/${workspaceId}/${agentId}/control`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action }),
+          })
+          if (!res.ok) throw new Error(`Could not ${action} agent`)
+          fetchStats()
+        },
+        {
+          message: successMessage,
+          errorMessage: `Could not ${action} agent`,
+        },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     } finally {
       setAgentActionLoadingId(null)
     }

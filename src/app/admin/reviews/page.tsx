@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface CreatorInfo {
   id: string
@@ -404,6 +406,7 @@ function DetailPanel({ item, onClose, onApprove, onReject, actionLoading }: {
 }
 
 export default function AdminReviewsPage() {
+  const snackbar = useSnackbarOptional()
   const [activeTab, setActiveTab] = useState("templates")
   const [templates, setTemplates] = useState<ReviewTemplate[]>([])
   const [skills, setSkills] = useState<ReviewSkill[]>([])
@@ -450,14 +453,22 @@ export default function AdminReviewsPage() {
   async function handleApprove(type: "templates" | "skills", id: string) {
     setActionLoading(id)
     try {
-      const res = await fetch(`/api/admin/review-queue/${type}/${id}/approve`, { method: "POST" })
-      if (!res.ok) throw new Error("Failed")
-      if (type === "templates") {
-        setTemplates(prev => prev.filter(t => t.id !== id))
-      } else {
-        setSkills(prev => prev.filter(s => s.id !== id))
-      }
-      if (selectedItem?.id === id) setSelectedItem(null)
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/admin/review-queue/${type}/${id}/approve`, {
+            method: "POST",
+          })
+          if (!res.ok) throw new Error("Could not approve")
+          if (type === "templates") {
+            setTemplates((prev) => prev.filter((t) => t.id !== id))
+          } else {
+            setSkills((prev) => prev.filter((s) => s.id !== id))
+          }
+          if (selectedItem?.id === id) setSelectedItem(null)
+        },
+        { message: "Approved", errorMessage: "Could not approve" },
+        (opts) => snackbar?.show(opts),
+      )
     } catch (error) {
       console.error("Approve failed:", error)
     } finally {

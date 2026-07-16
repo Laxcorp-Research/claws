@@ -1390,10 +1390,26 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch { return { success: false, error: "Network error" } }
   }, [workspaceId, refreshTools])
 
-  const handleCustomDelete = useCallback(async (api: CustomApiConnectionSummary) => {
-    await fetch(`/api/tools/${workspaceId}/custom/${api.id}`, { method: "DELETE" })
-    await refreshTools()
-  }, [workspaceId, refreshTools])
+  const handleCustomDelete = useCallback(
+    async (api: CustomApiConnectionSummary) => {
+      try {
+        await mutateWithFeedback(
+          async () => {
+            const res = await fetch(`/api/tools/${workspaceId}/custom/${api.id}`, {
+              method: "DELETE",
+            })
+            if (!res.ok) throw new Error("Could not delete custom API")
+            await refreshTools()
+          },
+          { message: "Custom API deleted", errorMessage: "Could not delete custom API" },
+          showSnackbar,
+        )
+      } catch {
+        /* error snackbar already shown */
+      }
+    },
+    [workspaceId, refreshTools, showSnackbar],
+  )
 
   const handleDisconnect = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return

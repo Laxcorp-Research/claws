@@ -14,6 +14,8 @@ import { mapWorkspaceStatus, timeAgo } from "@/lib/utils"
 import { formatCurrency } from "@/lib/utils/format"
 import { Bot, Search, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface ApiWorkspace {
   id: string
@@ -58,6 +60,13 @@ const FILTERS = ["All", "Running", "Paused", "Error", "Draft", "Setup"]
 
 export default function MyClawsPage() {
   const router = useRouter()
+  const snackbar = useSnackbarOptional()
+  const showSnackbar = useCallback(
+    (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
+      snackbar?.show(options)
+    },
+    [snackbar],
+  )
   const [search, setSearch] = useState("")
   const [activeFilter, setActiveFilter] = useState("All")
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[] | null>(null)
@@ -113,11 +122,17 @@ export default function MyClawsPage() {
     if (!deleteTarget || isDeleting || deleteConfirmText !== deleteTarget.name) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/workspaces/${deleteTarget.id}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Failed to delete")
-      setWorkspaces(prev => prev ? prev.filter(w => w.id !== deleteTarget.id) : prev)
-      setDeleteTarget(null)
-      setDeleteConfirmText("")
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/workspaces/${deleteTarget.id}`, { method: "DELETE" })
+          if (!res.ok) throw new Error("Could not delete Claw")
+          setWorkspaces((prev) => (prev ? prev.filter((w) => w.id !== deleteTarget.id) : prev))
+          setDeleteTarget(null)
+          setDeleteConfirmText("")
+        },
+        { message: "Claw deleted", errorMessage: "Could not delete Claw" },
+        showSnackbar,
+      )
     } catch (err) {
       console.error("Failed to delete workspace:", err)
     } finally {
@@ -136,20 +151,31 @@ export default function MyClawsPage() {
     setIsRenaming(true)
     setRenameError(null)
     try {
-      const res = await fetch(`/api/workspaces/${renameTarget.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: renameValue.trim() }),
-      })
-      const json = await res.json()
-      if (!res.ok || !json.success) {
-        setRenameError(json.error?.message || "Failed to rename")
-        return
-      }
-      setWorkspaces(prev => prev ? prev.map(w => w.id === renameTarget.id ? { ...w, name: renameValue.trim() } : w) : prev)
-      setRenameTarget(null)
-    } catch {
-      setRenameError("Failed to rename")
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/workspaces/${renameTarget.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: renameValue.trim() }),
+          })
+          const json = await res.json()
+          if (!res.ok || !json.success) {
+            throw new Error(json.error?.message || "Could not rename Claw")
+          }
+          setWorkspaces((prev) =>
+            prev
+              ? prev.map((w) =>
+                  w.id === renameTarget.id ? { ...w, name: renameValue.trim() } : w,
+                )
+              : prev,
+          )
+          setRenameTarget(null)
+        },
+        { message: "Claw renamed", errorMessage: "Could not rename Claw" },
+        showSnackbar,
+      )
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : "Failed to rename")
     } finally {
       setIsRenaming(false)
     }

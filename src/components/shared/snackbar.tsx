@@ -16,7 +16,7 @@ import {
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 
-export type SnackbarVariant = "success" | "info" | "undo-action"
+export type SnackbarVariant = "success" | "info" | "undo-action" | "error"
 
 export interface SnackbarShowOptions {
   message: string
@@ -129,8 +129,11 @@ function SnackbarHost({
       className={cn(
         "fixed bottom-[20px] left-1/2 z-[100] -translate-x-1/2",
         "flex max-w-[420px] items-center gap-[10px]",
-        "rounded-[8px] border border-[var(--bd)] bg-[var(--tx)] px-[14px] py-[10px]",
+        "rounded-[8px] border px-[14px] py-[10px]",
         "text-[12px] font-medium text-white shadow-modal",
+        active.variant === "error"
+          ? "border-[var(--err)] bg-[var(--tx)]"
+          : "border-[var(--bd)] bg-[var(--tx)]",
       )}
     >
       <span className="min-w-0 flex-1 leading-[1.4]">{active.message}</span>
