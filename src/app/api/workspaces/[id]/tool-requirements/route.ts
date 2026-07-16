@@ -9,6 +9,7 @@ import {
   loadTemplateToolDefaults,
   partitionToolRequirements,
   resolveWorkspaceToolRequirements,
+  withCustomizationFlags,
   type ToolRequirementOpName,
 } from "@/lib/tools/workspace-tool-requirements"
 
@@ -37,9 +38,13 @@ export async function GET(
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   const resolved = await resolveWorkspaceToolRequirements(id)
-  const partitioned = partitionToolRequirements(resolved.tools)
+  const templateDefaults = await loadTemplateToolDefaults(resolved.clawTemplateId)
+  const flagged = withCustomizationFlags(resolved.tools, templateDefaults)
+  const partitioned = partitionToolRequirements(flagged)
   return apiSuccess({
-    ...partitioned,
+    tools: flagged,
+    required: partitioned.required as typeof flagged,
+    recommended: partitioned.recommended as typeof flagged,
     source: resolved.source,
     templateSlug: resolved.templateSlug,
   })
@@ -103,9 +108,12 @@ export async function PATCH(
     data: { toolRequirements: applied.tools as unknown as Prisma.InputJsonValue },
   })
 
-  const partitioned = partitionToolRequirements(applied.tools)
+  const flagged = withCustomizationFlags(applied.tools, templateDefaults)
+  const partitioned = partitionToolRequirements(flagged)
   return apiSuccess({
-    ...partitioned,
+    tools: flagged,
+    required: partitioned.required as typeof flagged,
+    recommended: partitioned.recommended as typeof flagged,
     source: "workspace" as const,
     templateSlug: resolved.templateSlug,
   })

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Modal } from "./modal";
 import { Button } from "./button";
 import { AlertTriangle } from "lucide-react";
@@ -15,6 +16,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: "danger" | "warning";
   loading?: boolean;
+  /** Optional body slot (e.g. dependents list + disconnect checkbox). */
+  children?: ReactNode;
 }
 
 export function ConfirmDialog({
@@ -28,6 +31,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   variant = "danger",
   loading,
+  children,
 }: ConfirmDialogProps) {
   return (
     <Modal
@@ -38,7 +42,7 @@ export function ConfirmDialog({
       size="sm"
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>{cancelLabel}</Button>
+          <Button variant="outline" onClick={onClose} disabled={loading}>{cancelLabel}</Button>
           {variant === "danger" ? (
             <Button variant="danger" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
           ) : (
@@ -53,6 +57,7 @@ export function ConfirmDialog({
           {warningText}
         </div>
       )}
+      {children}
     </Modal>
   );
 }

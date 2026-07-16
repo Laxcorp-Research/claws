@@ -44,6 +44,11 @@ export interface ToolState {
   keyPlaceholder?: string
   required: boolean
   /**
+   * Tool customization PR-2: true when this entry differs from the
+   * template default (demoted, etc.). Drives Restore affordance.
+   */
+  customized?: boolean
+  /**
    * PR #4 Commit 6: timestamp the OAuth connection was first established.
    * Sourced from `ToolConnection.createdAt`.
    */

@@ -130,6 +130,26 @@ export function partitionToolRequirements(
   return { tools, required, recommended }
 }
 
+export interface WorkspaceToolRequirementView extends WorkspaceToolRequirement {
+  /** True when this entry differs from the template default for the same slug. */
+  customized: boolean
+}
+
+/** Compare workspace set to template defaults (demote / dismiss / extras). */
+export function withCustomizationFlags(
+  tools: WorkspaceToolRequirement[],
+  templateDefaults: WorkspaceToolRequirement[],
+): WorkspaceToolRequirementView[] {
+  const bySlug = new Map(templateDefaults.map((t) => [t.slug, t]))
+  return tools.map((t) => {
+    const def = bySlug.get(t.slug)
+    if (!def) return { ...t, customized: true }
+    const customized =
+      t.required !== def.required || t.dismissed === true
+    return { ...t, customized }
+  })
+}
+
 export async function resolveWorkspaceToolRequirements(
   workspaceId: string,
 ): Promise<ResolvedWorkspaceToolRequirements> {
