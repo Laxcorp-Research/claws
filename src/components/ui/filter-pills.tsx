@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef } from "react"
+import { useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
@@ -18,6 +18,15 @@ interface FilterPillsProps {
 
 export function FilterPills({ options, value, onChange, className }: FilterPillsProps) {
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const activePillRef = useRef<HTMLButtonElement | null>(null)
+
+  // PR-5 defect 2: when a category is preselected (e.g. Swap → Browse),
+  // scroll the active pill into the horizontal strip (centered).
+  useEffect(() => {
+    const pill = activePillRef.current
+    if (!pill || typeof pill.scrollIntoView !== "function") return
+    pill.scrollIntoView({ inline: "center", block: "nearest", behavior: "auto" })
+  }, [value, options])
 
   return (
     <div className={cn("relative", className)}>
@@ -30,6 +39,7 @@ export function FilterPills({ options, value, onChange, className }: FilterPills
           scroller.scrollLeft += event.deltaY
         }}
         className="flex gap-1.5 overflow-x-auto pb-1 pr-5 scrollbar-hide"
+        data-testid="filter-pills-scroller"
       >
         {options.map((option) => {
           const active = value === option.value
@@ -37,8 +47,10 @@ export function FilterPills({ options, value, onChange, className }: FilterPills
             <button
               key={option.value || "all"}
               type="button"
+              ref={active ? (el) => { activePillRef.current = el } : undefined}
               onClick={() => onChange(option.value)}
               aria-pressed={active}
+              data-active={active ? "true" : undefined}
               className={cn(
                 "text-[11px] font-medium px-[10px] py-[3px] rounded-[8px] border transition-colors cursor-pointer whitespace-nowrap shrink-0",
                 active
