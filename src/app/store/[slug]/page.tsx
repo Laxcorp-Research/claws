@@ -16,6 +16,7 @@ import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { getComplianceNotice } from "@/lib/compliance-notices"
+import { formatEstimatedMonthlyTotal } from "@/lib/marketplace/estimated-monthly-total"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 
 interface TemplateAgent {
@@ -391,7 +392,7 @@ export default function TemplateDetailPage() {
           </div>
           <div className="flex justify-between text-[12px] font-semibold text-[var(--tx)] mt-2 pt-2 border-t border-[var(--bd)]">
             <span>Estimated total</span>
-            <span>~${template.estimatedMonthlyCost ? `${Number(template.estimatedMonthlyCost) + 79}` : "120–160"}/mo</span>
+            <span>~${formatEstimatedMonthlyTotal(template.estimatedMonthlyCost)}/mo</span>
           </div>
         </div>
 

@@ -49,6 +49,50 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe("BillingDashboard Batch A / A6 — runningClaws estimate", () => {
+  it("uses data.runningClaws for Est. monthly (PAUSED not billed as running)", async () => {
+    const billing = {
+      success: true,
+      data: {
+        hasActiveSubscription: true,
+        activeClaws: 2,
+        runningClaws: 1,
+        pausedClaws: 1,
+        thisMonthTotal: 0,
+        trialUsed: true,
+        trialStartedAt: null,
+        trialEndsAt: null,
+      },
+    }
+    const workspaces = {
+      success: true,
+      data: [
+        { id: "w1", name: "Run", status: "RUNNING" },
+        { id: "w2", name: "Pause", status: "PAUSED" },
+      ],
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("/api/user/billing")) {
+          return Promise.resolve({ json: () => Promise.resolve(billing) })
+        }
+        if (url.includes("/api/workspaces")) {
+          return Promise.resolve({ json: () => Promise.resolve(workspaces) })
+        }
+        return Promise.resolve({ json: () => Promise.resolve({ success: false }) })
+      }) as unknown as typeof fetch,
+    )
+
+    render(<BillingDashboard />)
+    await screen.findByText("Billing summary")
+    expect(screen.getByText("$79")).toBeTruthy() // Est. monthly = 1 × 79
+    expect(screen.getByText("1 running Claw × $79")).toBeTruthy()
+    expect(screen.queryByText("2 running Claws × $79")).toBeNull()
+    expect(screen.queryByText("$158")).toBeNull()
+  })
+})
+
 describe("BillingDashboard billing portal", () => {
   it("surfaces the server message when portalUrl is null", async () => {
     vi.spyOn(window, "open").mockReturnValue(null as unknown as Window)
