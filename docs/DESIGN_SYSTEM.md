@@ -110,3 +110,29 @@
 - Title font: `16px`, weight `600`.
 - Tool-name span color: `var(--ac)`, same font-size and weight as the title.
 - This is a deliberate extension of `--ac` beyond links, scoped to connect-modal tool names only.
+
+## Snackbar (platform feedback)
+
+**File:** `src/components/shared/snackbar.tsx` · Provider wired in `src/components/providers.tsx`.
+
+**Platform rule:** any mutation that applies instantly without navigation, dialog, or inline state change MUST fire a Snackbar.
+
+### Anatomy
+
+- Single-slot host: fixed bottom center (`bottom-[20px]`, `-translate-x-1/2`), `z-[100]`.
+- Container: `max-w-[420px]`, `rounded-[8px]`, `border border-[var(--bd)]`, `bg-[var(--tx)]`, white text, `px-[14px]`, `py-[10px]`, `gap-[10px]`, `text-[12px]` / `font-medium`, `shadow-modal`.
+- Message: flex-1, `leading-[1.4]`.
+- Undo (optional): `text-[11px]`, `font-semibold`, uppercase, `tracking-[0.04em]`, `color var(--ac)`.
+- Dismiss ×: `text-[14px]`, white/70 → white on hover.
+- Auto-dismiss: **8000ms** default; new show replaces the current slot (no stack).
+
+### Variants
+
+| Variant | When |
+|---------|------|
+| `success` | Instant mutation succeeded (default without Undo) |
+| `info` | Neutral notice |
+| `undo-action` | Instant mutation with reversible Undo (default when `onUndo` set) |
+| `error` | Instant mutation failed (non-2xx / thrown); no Undo; state must not be updated as success |
+
+Use `mutateWithFeedback` (`src/lib/ui/mutate-with-feedback.ts`) so tool-customization ops cannot skip feedback.

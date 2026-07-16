@@ -11,6 +11,7 @@ import { prismaMock } from "@/test/helpers/mock-prisma"
 import {
   applyToolRequirementOp,
   cloneToolsForWorkspaceSeed,
+  listRemovedTemplateTools,
   partitionToolRequirements,
   parseToolsFromTemplateSnapshot,
   resolveWorkspaceToolRequirements,
@@ -44,6 +45,7 @@ const SNAPSHOT_TOOLS: WorkspaceToolRequirement[] = [
     category: "Research",
     connectionType: "API_KEY",
     required: false,
+    alternatives: ["serp_api", "exa_search"],
   },
 ]
 
@@ -236,6 +238,42 @@ describe("applyToolRequirementOp", () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.code).toBe("SLUG_NOT_IN_SET")
+  })
+
+  it("swap replaces slug and carries required-ness (not plain-add)", () => {
+    const result = applyToolRequirementOp(
+      SNAPSHOT_TOOLS,
+      { op: "swap", slug: "twitter-api", replaceWith: "polymarket" },
+      SNAPSHOT_TOOLS,
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.tools.find((t) => t.slug === "twitter-api")).toBeUndefined()
+    const swapped = result.tools.find((t) => t.slug === "polymarket")
+    expect(swapped?.required).toBe(true)
+    // MUTATION: plain-add would leave twitter-api in the set.
+    expect(result.tools.filter((t) => t.slug === "twitter-api")).toHaveLength(0)
+    expect(result.tools.length).toBe(SNAPSHOT_TOOLS.length)
+  })
+
+  it("swap Suggested pins preserve alternatives[] source", () => {
+    const result = applyToolRequirementOp(
+      SNAPSHOT_TOOLS,
+      { op: "swap", slug: "tavily", replaceWith: "serp_api" },
+      SNAPSHOT_TOOLS,
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const entry = result.tools.find((t) => t.slug === "serp_api")
+    expect(entry?.alternatives).toContain("tavily")
+    expect(entry?.alternatives).toContain("exa_search")
+    expect(entry?.required).toBe(false)
+  })
+
+  it("listRemovedTemplateTools lists dropped template tools", () => {
+    const withoutTavily = SNAPSHOT_TOOLS.filter((t) => t.slug !== "tavily")
+    const removed = listRemovedTemplateTools(withoutTavily, SNAPSHOT_TOOLS)
+    expect(removed.map((t) => t.slug)).toEqual(["tavily"])
   })
 })
 

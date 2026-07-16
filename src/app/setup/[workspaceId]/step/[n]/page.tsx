@@ -7,8 +7,9 @@ import { ModelSelectionTable } from "@/components/setup/model-selection-table"
 import { ToolConnectionList } from "@/components/setup/tool-connection-list"
 import { ToolRow } from "@/components/setup/tool-row"
 import { CredentialsModal } from "@/components/setup/credentials-modal"
-import { ToolSwapModal } from "@/components/setup/tool-swap-modal"
 import { BrowseToolsModal } from "@/components/setup/browse-tools-modal"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { CustomApiModal } from "@/components/setup/custom-api-modal"
 
 import { DeployProgress } from "@/components/setup/deploy-progress"
@@ -30,7 +31,7 @@ import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redep
 import { useOAuthConnection } from "@/lib/oauth/use-oauth-connection"
 import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getComplianceNotice } from "@/lib/compliance-notices"
-import { getToolBySlug, getToolsByCategory, type ToolDefinition } from "@/data/tool-catalog"
+import { getToolBySlug, type ToolDefinition } from "@/data/tool-catalog"
 import { StarterCreditBanner } from "@/components/setup/starter-credit-banner"
 import {
   filterNonAiProviderRequiredEntries,
@@ -492,6 +493,13 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
 
 function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isManageMode?: boolean }) {
   const router = useRouter()
+  const snackbar = useSnackbarOptional()
+  const showSnackbar = useCallback(
+    (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
+      snackbar?.show(options)
+    },
+    [snackbar],
+  )
   const [tools, setTools] = useState<ToolState[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [composioOAuthAvailable, setComposioOAuthAvailable] = useState(false)
@@ -508,8 +516,14 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     apiKeyForm: null,
   })
   const [customApis, setCustomApis] = useState<CustomApiConnectionSummary[]>([])
+  /** Swap uses BrowseToolsModal (filtered library), not ToolSwapModal. */
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
+  /** Template tools dropped from the workspace set — Restore via `restore` op. */
+  const [removedFromTemplate, setRemovedFromTemplate] = useState<
+    Array<{ slug: string; name: string }>
+  >([])
+  const [removedExpanded, setRemovedExpanded] = useState(false)
   const [customApiModal, setCustomApiModal] = useState(false)
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
   const [workspaceTemplateSlug, setWorkspaceTemplateSlug] = useState<string | null>(null)
@@ -589,6 +603,13 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           if (reqData.success) {
             requiredEntries = (reqData.data.required ?? []) as TemplateToolEntry[]
             recommendedEntries = (reqData.data.recommended ?? []) as TemplateToolEntry[]
+            const removed = (reqData.data.removedFromTemplate ?? []) as Array<{
+              slug: string
+              name: string
+            }>
+            setRemovedFromTemplate(
+              removed.map((r) => ({ slug: r.slug, name: r.name })),
+            )
           }
         } catch { /* fall through to defaults */ }
 
@@ -657,6 +678,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             return null
           }
 
+          const alternatives = entry.alternatives
+
           const directMatch = existingConnections.find((c) => c.toolSlug === chosenSlug)
           if (directMatch) {
             const ui = connectionUiState(directMatch)
@@ -674,6 +697,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               keyPlaceholder: def.keyPlaceholder,
               required,
               customized: entry.customized === true,
+              alternatives,
             }
           }
 
@@ -701,6 +725,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               keyPlaceholder: swapDef?.keyPlaceholder,
               required,
               customized: entry.customized === true,
+              alternatives,
             }
           }
 
@@ -714,6 +739,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             keyPlaceholder: def.keyPlaceholder,
             required,
             customized: entry.customized === true,
+            alternatives,
           }
         }
 
@@ -832,15 +858,30 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   }, [workspaceId, revokeState.tool, refreshTools])
 
   const patchToolRequirement = useCallback(
-    async (op: "demote" | "restore" | "dismiss" | "undismiss" | "remove", slug: string) => {
+    async (
+      op: "demote" | "restore" | "dismiss" | "undismiss" | "remove" | "swap",
+      slug: string,
+      replaceWith?: string,
+    ) => {
       const res = await fetch(`/api/workspaces/${workspaceId}/tool-requirements`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op, slug }),
+        body: JSON.stringify({
+          op,
+          slug,
+          ...(op === "swap" && replaceWith ? { replaceWith } : {}),
+        }),
       })
       const json = await res.json()
       if (!json.success) {
         throw new Error(json.error?.message || `Failed to ${op} tool`)
+      }
+      if (Array.isArray(json.data?.removedFromTemplate)) {
+        setRemovedFromTemplate(
+          (json.data.removedFromTemplate as Array<{ slug: string; name: string }>).map(
+            (r) => ({ slug: r.slug, name: r.name }),
+          ),
+        )
       }
       setToolsReloadToken((t) => t + 1)
     },
@@ -850,34 +891,52 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const handleDemote = useCallback(
     async (tool: ToolState) => {
       try {
-        await patchToolRequirement("demote", tool.slug)
+        await mutateWithFeedback(
+          () => patchToolRequirement("demote", tool.slug),
+          {
+            message: `${tool.name} is now optional`,
+            undo: () => patchToolRequirement("restore", tool.slug),
+          },
+          showSnackbar,
+        )
       } catch (err) {
         console.error(err)
       }
     },
-    [patchToolRequirement],
+    [patchToolRequirement, showSnackbar],
   )
 
   const handleRestore = useCallback(
-    async (tool: ToolState) => {
+    async (tool: { slug: string; name: string }) => {
       try {
-        await patchToolRequirement("restore", tool.slug)
+        await mutateWithFeedback(
+          () => patchToolRequirement("restore", tool.slug),
+          { message: `${tool.name} restored` },
+          showSnackbar,
+        )
       } catch (err) {
         console.error(err)
       }
     },
-    [patchToolRequirement],
+    [patchToolRequirement, showSnackbar],
   )
 
   const handleDismiss = useCallback(
     async (tool: ToolState) => {
       try {
-        await patchToolRequirement("dismiss", tool.slug)
+        await mutateWithFeedback(
+          () => patchToolRequirement("dismiss", tool.slug),
+          {
+            message: `${tool.name} removed from recommendations`,
+            undo: () => patchToolRequirement("undismiss", tool.slug),
+          },
+          showSnackbar,
+        )
       } catch (err) {
         console.error(err)
       }
     },
-    [patchToolRequirement],
+    [patchToolRequirement, showSnackbar],
   )
 
   // Tool customization PR-2: REMOVE warning — requirement-set drop + optional disconnect.
@@ -942,15 +1001,27 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!tool) return
     setRemoveState((s) => ({ ...s, loading: true, error: null }))
     try {
-      await patchToolRequirement("remove", tool.slug)
-      if (removeState.alsoDisconnect) {
-        if (tool.connectionType === "OAUTH_COMPOSIO") {
-          await disconnectOauthTool(workspaceId, tool.slug)
-        } else if (tool.connectionId) {
-          await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, { method: "DELETE" })
-        }
-        await refreshTools()
-      }
+      const alsoDisconnect = removeState.alsoDisconnect
+      await mutateWithFeedback(
+        async () => {
+          await patchToolRequirement("remove", tool.slug)
+          if (alsoDisconnect) {
+            if (tool.connectionType === "OAUTH_COMPOSIO") {
+              await disconnectOauthTool(workspaceId, tool.slug)
+            } else if (tool.connectionId) {
+              await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, {
+                method: "DELETE",
+              })
+            }
+            await refreshTools()
+          }
+        },
+        {
+          message: `${tool.name} removed from this Claw`,
+          undo: () => patchToolRequirement("restore", tool.slug),
+        },
+        showSnackbar,
+      )
       setRemoveState({
         tool: null,
         loading: false,
@@ -963,7 +1034,14 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       const msg = err instanceof Error ? err.message : "Failed to remove tool"
       setRemoveState((s) => ({ ...s, loading: false, error: msg }))
     }
-  }, [removeState.tool, removeState.alsoDisconnect, patchToolRequirement, workspaceId, refreshTools])
+  }, [
+    removeState.tool,
+    removeState.alsoDisconnect,
+    patchToolRequirement,
+    workspaceId,
+    refreshTools,
+    showSnackbar,
+  ])
 
   const handleRemoveCancel = useCallback(() => {
     if (removeState.loading) return
@@ -1265,33 +1343,34 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     [oauth, composioOAuthAvailable],
   )
 
-  const handleSwapSelect = useCallback(async (newTool: ToolDefinition) => {
-    if (!swapModal.tool) return
-    const oldTool = swapModal.tool
-
-    if (oldTool.connectionId && !oldTool.connectionId.startsWith("apikey-")) {
-      await fetch(`/api/tools/${workspaceId}/${oldTool.connectionId}`, { method: "DELETE" }).catch(() => {})
-    }
-
-    const res = await fetch(`/api/tools/${workspaceId}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toolSlug: newTool.slug, displayName: newTool.name, connectionType: newTool.connectionType }),
-    })
-    const json = await res.json()
-    const newConnectionId = json.data?.id
-
-    setTools((prev) => prev.map((t) => (t.slug === oldTool.slug ? {
-      ...t,
-      slug: newTool.slug,
-      name: newTool.name,
-      connectionType: newTool.connectionType,
-      category: newTool.category || oldTool.category,
-      helpUrl: newTool.helpUrl,
-      keyPlaceholder: newTool.keyPlaceholder,
-      status: "disconnected" as const,
-      connectionId: newConnectionId || undefined,
-    } : t)))
-  }, [swapModal.tool, workspaceId])
+  const handleSwapSelect = useCallback(
+    async (newTool: ToolDefinition) => {
+      if (!swapModal.tool) return
+      const oldTool = swapModal.tool
+      try {
+        await mutateWithFeedback(
+          async () => {
+            // Requirement-set replace (carries required-ness) — not plain-add.
+            await patchToolRequirement("swap", oldTool.slug, newTool.slug)
+            if (oldTool.connectionId && !oldTool.connectionId.startsWith("apikey-")) {
+              await fetch(`/api/tools/${workspaceId}/${oldTool.connectionId}`, {
+                method: "DELETE",
+              }).catch(() => {})
+            }
+          },
+          {
+            message: `Swapped ${oldTool.name} → ${newTool.name}`,
+            undo: () => patchToolRequirement("swap", newTool.slug, oldTool.slug),
+          },
+          showSnackbar,
+        )
+        setSwapModal({ open: false, tool: null })
+      } catch (err) {
+        console.error(err)
+      }
+    },
+    [swapModal.tool, workspaceId, patchToolRequirement, showSnackbar],
+  )
 
   const handleBrowseConnect = useCallback(async () => {
     await refreshTools()
@@ -1311,10 +1390,26 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch { return { success: false, error: "Network error" } }
   }, [workspaceId, refreshTools])
 
-  const handleCustomDelete = useCallback(async (api: CustomApiConnectionSummary) => {
-    await fetch(`/api/tools/${workspaceId}/custom/${api.id}`, { method: "DELETE" })
-    await refreshTools()
-  }, [workspaceId, refreshTools])
+  const handleCustomDelete = useCallback(
+    async (api: CustomApiConnectionSummary) => {
+      try {
+        await mutateWithFeedback(
+          async () => {
+            const res = await fetch(`/api/tools/${workspaceId}/custom/${api.id}`, {
+              method: "DELETE",
+            })
+            if (!res.ok) throw new Error("Could not delete custom API")
+            await refreshTools()
+          },
+          { message: "Custom API deleted", errorMessage: "Could not delete custom API" },
+          showSnackbar,
+        )
+      } catch {
+        /* error snackbar already shown */
+      }
+    },
+    [workspaceId, refreshTools, showSnackbar],
+  )
 
   const handleDisconnect = useCallback(async (tool: ToolState) => {
     if (!tool.connectionId) return
@@ -1507,42 +1602,91 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           title="Recommended tools"
           subtitle="Pre-selected. Connect, swap, or dismiss. Demoted required tools land here — Restore to put them back."
         >
-          {recommendedTools.map((tool) => (
-            <ToolRow
-              key={tool.slug}
-              name={tool.name}
-              description={
-                tool.customized
-                  ? `${tool.category} · Was required`
-                  : tool.category
-              }
-              connectionStatus={tool.status}
-              connectionType={tool.connectionType}
-              authMode={getToolBySlug(tool.slug)?.authMode}
-              composioOAuthAvailable={composioOAuthAvailable}
-              errorMessage={tool.errorMessage}
-              warningMessage={tool.warningMessage}
-              connectedAt={tool.connectedAt}
-              swappable={!tool.customized}
-              onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
-              onReconnect={
-                tool.connectionType === "API_KEY"
-                  ? () => setApiKeyModal({ open: true, tool })
-                  : tool.status === "expired" || tool.status === "revoked"
-                    ? () => handleOauthReconnect(tool)
-                    : () => handleOAuthConnect(tool)
-              }
-              onSwap={tool.customized ? undefined : () => setSwapModal({ open: true, tool })}
-              onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
-              testDisabledReason={getTestDisabledReason(tool)}
-              onDisconnect={() => handleDisconnect(tool)}
-              onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
-              onRestore={tool.customized ? () => handleRestore(tool) : undefined}
-              onDismiss={() => handleDismiss(tool)}
-              onRemove={() => handleRemoveOpen(tool)}
-            />
-          ))}
+          {recommendedTools.map((tool) => {
+            // PR-3 affordances: unconnected recommended → × only; Remove on
+            // demoted (customized) or connected rows. Warning dialog unchanged.
+            const isConnectedRow =
+              tool.status === "connected" ||
+              tool.status === "testing" ||
+              tool.status === "needs-credentials" ||
+              tool.status === "expired" ||
+              tool.status === "revoked" ||
+              tool.status === "error"
+            const showRemove = Boolean(tool.customized) || isConnectedRow
+            const showDismiss = !tool.customized && !isConnectedRow
+            return (
+              <ToolRow
+                key={tool.slug}
+                name={tool.name}
+                description={
+                  tool.customized
+                    ? `${tool.category} · Was required`
+                    : tool.category
+                }
+                connectionStatus={tool.status}
+                connectionType={tool.connectionType}
+                authMode={getToolBySlug(tool.slug)?.authMode}
+                composioOAuthAvailable={composioOAuthAvailable}
+                errorMessage={tool.errorMessage}
+                warningMessage={tool.warningMessage}
+                connectedAt={tool.connectedAt}
+                swappable={!tool.customized}
+                onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
+                onReconnect={
+                  tool.connectionType === "API_KEY"
+                    ? () => setApiKeyModal({ open: true, tool })
+                    : tool.status === "expired" || tool.status === "revoked"
+                      ? () => handleOauthReconnect(tool)
+                      : () => handleOAuthConnect(tool)
+                }
+                onSwap={tool.customized ? undefined : () => setSwapModal({ open: true, tool })}
+                onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
+                testDisabledReason={getTestDisabledReason(tool)}
+                onDisconnect={() => handleDisconnect(tool)}
+                onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
+                onRestore={tool.customized ? () => handleRestore(tool) : undefined}
+                onDismiss={showDismiss ? () => handleDismiss(tool) : undefined}
+                onRemove={showRemove ? () => handleRemoveOpen(tool) : undefined}
+              />
+            )
+          })}
         </ToolConnectionList>
+      )}
+
+      {removedFromTemplate.length > 0 && (
+        <div className="mb-3.5 rounded-[8px] border border-[var(--bd)] bg-[var(--bg)]">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[11px] font-medium text-[var(--tx2)] hover:text-[var(--tx)]"
+            onClick={() => setRemovedExpanded((v) => !v)}
+            data-testid="removed-from-claw"
+            aria-expanded={removedExpanded}
+          >
+            <span>
+              Removed from this Claw ({removedFromTemplate.length}) — Restore
+            </span>
+            <span className="text-[var(--tx3)]">{removedExpanded ? "▾" : "▸"}</span>
+          </button>
+          {removedExpanded && (
+            <div className="border-t border-[var(--bd)]">
+              {removedFromTemplate.map((tool) => (
+                <div
+                  key={tool.slug}
+                  className="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-[var(--bd)] last:border-b-0"
+                >
+                  <span className="text-xs font-semibold text-[var(--tx)]">{tool.name}</span>
+                  <button
+                    type="button"
+                    className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)] transition-colors"
+                    onClick={() => void handleRestore(tool)}
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* PR #4 Commit 9: Additional tools = ToolConnection rows not in this
@@ -1601,7 +1745,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       {isManageMode ? (
         <div className="flex justify-between">
           <TextLink direction="back" onClick={() => router.push(`/builder/${workspaceId}`)}>Back to Builder</TextLink>
-          <Button variant="primary" onClick={handleManageDone}>Done</Button>
+          <Button variant="primary" onClick={handleManageDone}>Back to Builder</Button>
         </div>
       ) : (
         <div className="flex justify-between">
@@ -1644,13 +1788,20 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           />
         )
       })()}
-      <ToolSwapModal
+      <BrowseToolsModal
         open={swapModal.open}
         onClose={() => setSwapModal({ open: false, tool: null })}
-        category={swapModal.tool?.category || ""}
-        currentTool={swapModal.tool?.name || ""}
-        alternatives={swapModal.tool ? getToolsByCategory(swapModal.tool.category).filter((t) => t.slug !== swapModal.tool!.slug) : []}
-        onSelect={handleSwapSelect}
+        mode="swap"
+        initialCategory={swapModal.tool?.category}
+        suggestedSlugs={swapModal.tool?.alternatives ?? []}
+        excludeSlug={swapModal.tool?.slug}
+        swapCurrentName={swapModal.tool?.name}
+        onSwapSelect={(tool) => void handleSwapSelect(tool)}
+        connectedSlugs={connectedSlugs}
+        onConnect={handleBrowseConnect}
+        composioOAuthAvailable={composioOAuthAvailable}
+        onOAuthConnect={() => {}}
+        workspaceId={workspaceId}
       />
       <BrowseToolsModal
         open={browseModal}
