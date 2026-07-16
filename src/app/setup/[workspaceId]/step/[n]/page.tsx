@@ -577,16 +577,17 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         let requiredEntries: TemplateToolEntry[] = []
         let recommendedEntries: TemplateToolEntry[] = []
 
-        if (wsData.success && wsData.data?.clawTemplate?.slug) {
-          try {
-            const tplRes = await fetch(`/api/templates/${wsData.data.clawTemplate.slug}`)
-            const tplData = await tplRes.json()
-            if (tplData.success) {
-              requiredEntries = (tplData.data.tools?.required ?? []) as TemplateToolEntry[]
-              recommendedEntries = (tplData.data.tools?.recommended ?? []) as TemplateToolEntry[]
-            }
-          } catch { /* fall through to defaults */ }
-        }
+        // Tool customization PR-1: workspace-owned set via dual-read resolver
+        // (Workspace.toolRequirements, else template snapshot for legacy null).
+        // Dismissed recommended rows are already excluded server-side.
+        try {
+          const reqRes = await fetch(`/api/workspaces/${workspaceId}/tool-requirements`)
+          const reqData = await reqRes.json()
+          if (reqData.success) {
+            requiredEntries = (reqData.data.required ?? []) as TemplateToolEntry[]
+            recommendedEntries = (reqData.data.recommended ?? []) as TemplateToolEntry[]
+          }
+        } catch { /* fall through to defaults */ }
 
         const toolsRes = await fetch(`/api/tools/${workspaceId}`)
         const toolsData = await toolsRes.json()
@@ -1643,21 +1644,17 @@ const EMPTY_TOOL_PREREQS: RequiredToolsSatisfaction = {
 
 async function loadDeployToolPrerequisites(workspaceId: string): Promise<RequiredToolsSatisfaction> {
   try {
-    const [workspaceRes, toolsRes] = await Promise.all([
-      fetch(`/api/workspaces/${workspaceId}`),
+    const [reqRes, toolsRes] = await Promise.all([
+      // Tool customization PR-1: workspace set via resolver — never template JSON.
+      fetch(`/api/workspaces/${workspaceId}/tool-requirements`),
       fetch(`/api/tools/${workspaceId}`),
     ])
-    const [workspaceJson, toolsJson] = await Promise.all([workspaceRes.json(), toolsRes.json()])
-    const templateSlug = workspaceJson.success ? workspaceJson.data?.clawTemplate?.slug : null
-    if (!templateSlug) return EMPTY_TOOL_PREREQS
-
-    const tplRes = await fetch(`/api/templates/${templateSlug}`)
-    const tplJson = await tplRes.json()
-    if (!tplJson.success) {
+    const [reqJson, toolsJson] = await Promise.all([reqRes.json(), toolsRes.json()])
+    if (!reqJson.success) {
       return { satisfied: false, missingSlugs: [], missingLabels: [], unverifiedCount: 0 }
     }
 
-    const requiredEntries = (tplJson.data.tools?.required ?? []) as Array<{
+    const requiredEntries = (reqJson.data.required ?? []) as Array<{
       slug: string
       name?: string
       alternatives?: string[]

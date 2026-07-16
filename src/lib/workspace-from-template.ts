@@ -1,4 +1,6 @@
+import type { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/db"
+import { cloneToolsForWorkspaceSeed } from "@/lib/tools/workspace-tool-requirements"
 
 interface SnapshotAgent {
   agentSlug: string
@@ -26,6 +28,7 @@ interface SnapshotConnection {
 interface WorkspaceSnapshot {
   agents: SnapshotAgent[]
   connections?: SnapshotConnection[]
+  tools?: unknown
 }
 
 interface CreateWorkspaceOptions {
@@ -44,6 +47,7 @@ type ConnectionCondition = "ON_COMPLETE" | "ON_APPROVAL" | "ON_REJECTION" | "ON_
 /**
  * Creates a Workspace + Agents + AgentConnections from a ClawTemplate snapshot.
  * Also creates a TemplateInstall record and increments ClawTemplate.installCount.
+ * Copies snapshot.tools → workspace.toolRequirements (template JSON untouched).
  *
  * Used by: checkout route (mock mode + free templates), webhook (paid templates).
  */
@@ -59,6 +63,10 @@ export async function createWorkspaceFromTemplate(
   const raw = template.workspaceSnapshot
   const snapshot: WorkspaceSnapshot =
     typeof raw === "string" ? JSON.parse(raw) : (raw as unknown as WorkspaceSnapshot)
+
+  // Verbatim copy of snapshot.tools into the workspace-owned set. Dismissed
+  // defaults absent/false. Template workspaceSnapshot is never written back.
+  const toolRequirements = cloneToolsForWorkspaceSeed(snapshot.tools)
 
   return prisma.$transaction(async (tx) => {
     const existingCount = await tx.workspace.count({
@@ -76,6 +84,7 @@ export async function createWorkspaceFromTemplate(
         description: template.description,
         status: "SETUP_INCOMPLETE",
         clawTemplateId: template.id,
+        toolRequirements: toolRequirements as unknown as Prisma.InputJsonValue,
       },
     })
 
