@@ -6,6 +6,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import {
   applyToolRequirementOp,
+  listRemovedTemplateTools,
   loadTemplateToolDefaults,
   partitionToolRequirements,
   resolveWorkspaceToolRequirements,
@@ -19,6 +20,7 @@ const OPS = new Set<ToolRequirementOpName>([
   "dismiss",
   "undismiss",
   "remove",
+  "swap",
 ])
 
 /**
@@ -41,17 +43,22 @@ export async function GET(
   const templateDefaults = await loadTemplateToolDefaults(resolved.clawTemplateId)
   const flagged = withCustomizationFlags(resolved.tools, templateDefaults)
   const partitioned = partitionToolRequirements(flagged)
+  const removedFromTemplate = listRemovedTemplateTools(
+    resolved.tools,
+    templateDefaults,
+  )
   return apiSuccess({
     tools: flagged,
     required: partitioned.required as typeof flagged,
     recommended: partitioned.recommended as typeof flagged,
+    removedFromTemplate,
     source: resolved.source,
     templateSlug: resolved.templateSlug,
   })
 }
 
 /**
- * PATCH — demote | restore | dismiss | undismiss | remove.
+ * PATCH — demote | restore | dismiss | undismiss | remove | swap.
  * Never touches ToolConnection (disconnect is a separate explicit action).
  */
 export async function PATCH(
@@ -81,6 +88,10 @@ export async function PATCH(
     typeof body === "object" && body !== null && "slug" in body
       ? (body as { slug: unknown }).slug
       : undefined
+  const replaceWithRaw =
+    typeof body === "object" && body !== null && "replaceWith" in body
+      ? (body as { replaceWith: unknown }).replaceWith
+      : undefined
 
   if (typeof opRaw !== "string" || !OPS.has(opRaw as ToolRequirementOpName)) {
     return ERRORS.VALIDATION(
@@ -95,7 +106,12 @@ export async function PATCH(
   const templateDefaults = await loadTemplateToolDefaults(resolved.clawTemplateId)
   const applied = applyToolRequirementOp(
     resolved.tools,
-    { op: opRaw as ToolRequirementOpName, slug: slugRaw },
+    {
+      op: opRaw as ToolRequirementOpName,
+      slug: slugRaw,
+      replaceWith:
+        typeof replaceWithRaw === "string" ? replaceWithRaw : undefined,
+    },
     templateDefaults,
   )
 
@@ -110,10 +126,15 @@ export async function PATCH(
 
   const flagged = withCustomizationFlags(applied.tools, templateDefaults)
   const partitioned = partitionToolRequirements(flagged)
+  const removedFromTemplate = listRemovedTemplateTools(
+    applied.tools,
+    templateDefaults,
+  )
   return apiSuccess({
     tools: flagged,
     required: partitioned.required as typeof flagged,
     recommended: partitioned.recommended as typeof flagged,
+    removedFromTemplate,
     source: "workspace" as const,
     templateSlug: resolved.templateSlug,
   })

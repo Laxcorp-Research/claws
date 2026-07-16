@@ -160,7 +160,9 @@ describe("Manage Tools apply changes redeploy", () => {
     render(<SetupStepPage />)
 
     await waitFor(() => expect(screen.getByText("Manage Tools")).toBeDefined())
-    fireEvent.click(screen.getByRole("button", { name: "Done" }))
+    // Primary CTA (not the TextLink) — both say "Back to Builder" (nav, not commit).
+    const backButtons = screen.getAllByRole("button", { name: "Back to Builder" })
+    fireEvent.click(backButtons[backButtons.length - 1])
 
     expect(await screen.findByText("Apply changes now?")).toBeDefined()
     const redeployButtons = screen.getAllByRole("button", { name: "Redeploy" })
@@ -277,7 +279,8 @@ describe("Manage Tools apply changes redeploy", () => {
       expect.objectContaining({ method: "POST" }),
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "Done" }))
+    const backButtons = screen.getAllByRole("button", { name: "Back to Builder" })
+    fireEvent.click(backButtons[backButtons.length - 1])
     expect(await screen.findByText("Apply changes now?")).toBeDefined()
     expect(screen.getByText("Your Claw is running an older configuration. Redeploy to apply changes to tools.")).toBeDefined()
   })

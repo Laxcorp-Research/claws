@@ -199,6 +199,8 @@ describe("Tool customization UI (Manage Tools)", () => {
     render(<SetupStepPage />)
     // Catalog display name (not seed snapshot name).
     expect(await screen.findByText("Tavily (Web Search)")).toBeDefined()
+    // PR-3: unconnected recommended → × only (no Remove on that row).
+    expect(screen.getByRole("button", { name: "Dismiss Tavily (Web Search)" })).toBeDefined()
     fireEvent.click(screen.getByRole("button", { name: "Dismiss Tavily (Web Search)" }))
     await waitFor(() => expect(lastPatchBody).toEqual({ op: "dismiss", slug: "tavily" }))
     await waitFor(() => expect(screen.queryByText("Tavily (Web Search)")).toBeNull())

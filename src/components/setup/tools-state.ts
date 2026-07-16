@@ -49,6 +49,11 @@ export interface ToolState {
    */
   customized?: boolean
   /**
+   * Template-curated oneOf alternatives (WorkspaceToolRequirement.alternatives).
+   * Suggested pins when Swap opens BrowseToolsModal.
+   */
+  alternatives?: string[]
+  /**
    * PR #4 Commit 6: timestamp the OAuth connection was first established.
    * Sourced from `ToolConnection.createdAt`.
    */
