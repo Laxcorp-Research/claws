@@ -48,8 +48,8 @@ import {
   type ToolState,
   type ServerConnectionSummary,
   type BYOKModalState,
-  connectionUiState,
-  buildExtraToolsFromConnections,
+  type RequirementToolEntry,
+  buildWorkspaceToolStates,
   mergeRefreshedTools,
   resolveByokModalProps,
 } from "@/components/setup/tools-state"
@@ -573,36 +573,18 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         // catalog (see the pre-PR2.7 Deploy-blocker for the "Claude API" vs
         // "Anthropic (Claude)" miss that TOOL_NAME_ALIASES papered over).
         //
-        // Each entry has shape:
-        //   { slug: string, name: string, category, connectionType, required,
-        //     alternatives?: string[] }
-        // `alternatives` is typed as a "oneOf" — the user can connect any one
-        // of `[slug, ...alternatives]` to satisfy the entry. Pre-PR2.8a this
-        // field was decorative (only the marketplace store page rendered it as
-        // a visual hint); now it's load-bearing in the resolver's default-pick
-        // logic. PR2.8b adds explicit picker UI.
-        interface TemplateToolEntry {
-          slug: string
-          name: string
-          category: string
-          connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
-          required: boolean
-          alternatives?: string[]
-          customized?: boolean
-        }
+        // Tool customization: workspace-owned set via dual-read resolver.
+        // Requirement entry = row of record; ToolConnection only decorates
+        // (PR-5: no category-wide steal that orphans a second row).
+        let requiredEntries: RequirementToolEntry[] = []
+        let recommendedEntries: RequirementToolEntry[] = []
 
-        let requiredEntries: TemplateToolEntry[] = []
-        let recommendedEntries: TemplateToolEntry[] = []
-
-        // Tool customization PR-1: workspace-owned set via dual-read resolver
-        // (Workspace.toolRequirements, else template snapshot for legacy null).
-        // Dismissed recommended rows are already excluded server-side.
         try {
           const reqRes = await fetch(`/api/workspaces/${workspaceId}/tool-requirements`)
           const reqData = await reqRes.json()
           if (reqData.success) {
-            requiredEntries = (reqData.data.required ?? []) as TemplateToolEntry[]
-            recommendedEntries = (reqData.data.recommended ?? []) as TemplateToolEntry[]
+            requiredEntries = (reqData.data.required ?? []) as RequirementToolEntry[]
+            recommendedEntries = (reqData.data.recommended ?? []) as RequirementToolEntry[]
             const removed = (reqData.data.removedFromTemplate ?? []) as Array<{
               slug: string
               name: string
@@ -619,154 +601,22 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
         }
         await refreshDriftState()
-        const existingConnections: Array<{ toolSlug: string; status: string; id: string; displayName: string; connectionType: string; lastError?: string | null; createdAt?: string | null }> = toolsData.success ? toolsData.data.connections : []
-        const existingCustomApis: CustomApiConnectionSummary[] = toolsData.success ? (toolsData.data.customConnections ?? []) : []
+        const existingConnections: ServerConnectionSummary[] = toolsData.success
+          ? toolsData.data.connections
+          : []
+        const existingCustomApis: CustomApiConnectionSummary[] = toolsData.success
+          ? (toolsData.data.customConnections ?? [])
+          : []
         setCustomApis(existingCustomApis)
 
-        // Given a `{ slug, alternatives? }` pair, pick the slug the wizard
-        // should render today. Priority:
-        //   1. Any slug in the oneOf set with an already-connected
-        //      ToolConnection row (preserves user's prior choice).
-        //   2. The first non-`comingSoon` catalog entry in the oneOf set.
-        //   3. The primary slug (even if `comingSoon`) — caller then decides
-        //      whether to drop the row via comingSoon filtering.
-        // Returns the catalog ToolDefinition for the chosen slug, or undefined
-        // if the primary slug itself isn't in the catalog (shouldn't happen
-        // post-PR2.8a Task 5 — every seed slug is catalog-resident).
-        const resolveOneOfSlug = (entry: TemplateToolEntry): { slug: string; def: ToolDefinition | undefined } => {
-          const candidates = [entry.slug, ...(entry.alternatives ?? [])]
-          // 1. Already-connected?
-          for (const s of candidates) {
-            if (existingConnections.some((c) => c.toolSlug === s)) {
-              return { slug: s, def: getToolBySlug(s) }
-            }
-          }
-          // 2. First non-comingSoon catalog entry?
-          for (const s of candidates) {
-            const d = getToolBySlug(s)
-            if (d && !d.comingSoon) return { slug: s, def: d }
-          }
-          // 3. Primary fallback (may be comingSoon or missing from catalog).
-          return { slug: entry.slug, def: getToolBySlug(entry.slug) }
-        }
-
-        // Turn one TemplateToolEntry into a ToolState row, or null if the
-        // entry resolves entirely to `comingSoon: true` catalog entries and
-        // should be filtered from render today. PR2.8b replaces the null
-        // return with proper "Coming Soon" badge rendering.
-        const resolveToolEntry = (entry: TemplateToolEntry, required: boolean): ToolState | null => {
-          const { slug: chosenSlug, def } = resolveOneOfSlug(entry)
-
-          if (!def) {
-            // Primary slug + alternatives all missing from catalog. PR2.8a
-            // Task 5 reconciliation + template-tool-references.test.ts
-            // guarantee this can't happen; fail loud if it ever does so a
-            // regression is caught at runtime rather than silently rendered
-            // as an "Enter all 0 required fields" modal.
-            throw new Error(
-              `[setup-wizard] template references slug "${entry.slug}" (+ alternatives ${JSON.stringify(entry.alternatives ?? [])}) but none resolve in ALL_TOOLS. Update the catalog or the template.`,
-            )
-          }
-
-          if (def.comingSoon) {
-            // Every slug in the oneOf set is `comingSoon: true` — the
-            // integration isn't shippable yet. Skip from render; PR2.8b
-            // replaces this with a "Coming Soon" badge.
-            console.info(
-              `[setup-wizard] filtering ${required ? "required" : "recommended"} tool entry "${entry.slug}" — all candidates are comingSoon (${def.comingSoonReason ?? "no reason given"}).`,
-            )
-            return null
-          }
-
-          const alternatives = entry.alternatives
-
-          const directMatch = existingConnections.find((c) => c.toolSlug === chosenSlug)
-          if (directMatch) {
-            const ui = connectionUiState(directMatch)
-            return {
-              slug: chosenSlug,
-              name: def.name,
-              connectionType: def.connectionType,
-              category: def.category,
-              status: ui.status,
-              errorMessage: ui.errorMessage,
-              warningMessage: ui.warningMessage,
-              connectionId: directMatch.id,
-              connectedAt: directMatch.createdAt ?? null,
-              helpUrl: def.helpUrl,
-              keyPlaceholder: def.keyPlaceholder,
-              required,
-              customized: entry.customized === true,
-              alternatives,
-            }
-          }
-
-          // Existing category-level swap-match preserved — user may have
-          // connected a different tool in the same category via Browse Tools;
-          // surface that connection in this row. Pre-PR2.8a behavior.
-          const swapMatch = existingConnections.find((c) => {
-            const connDef = getToolBySlug(c.toolSlug)
-            return connDef && connDef.category === def.category && c.toolSlug !== chosenSlug
-          })
-          if (swapMatch) {
-            const swapDef = getToolBySlug(swapMatch.toolSlug)
-            const ui = connectionUiState(swapMatch)
-            return {
-              slug: swapMatch.toolSlug,
-              name: swapDef?.name || swapMatch.displayName || def.name,
-              connectionType: (swapDef?.connectionType || swapMatch.connectionType || "API_KEY") as "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH",
-              category: def.category,
-              status: ui.status,
-              errorMessage: ui.errorMessage,
-              warningMessage: ui.warningMessage,
-              connectionId: swapMatch.id,
-              connectedAt: swapMatch.createdAt ?? null,
-              helpUrl: swapDef?.helpUrl,
-              keyPlaceholder: swapDef?.keyPlaceholder,
-              required,
-              customized: entry.customized === true,
-              alternatives,
-            }
-          }
-
-          return {
-            slug: chosenSlug,
-            name: def.name,
-            connectionType: def.connectionType,
-            category: def.category,
-            status: "disconnected" as const,
-            helpUrl: def.helpUrl,
-            keyPlaceholder: def.keyPlaceholder,
-            required,
-            customized: entry.customized === true,
-            alternatives,
-          }
-        }
-
-        const resolvedRequired = requiredEntries
-          .map((e) => resolveToolEntry(e, true))
-          .filter((t): t is ToolState => t !== null)
-        const resolvedRecommended = recommendedEntries
-          .map((e) => resolveToolEntry(e, false))
-          .filter((t): t is ToolState => t !== null)
-
-        // Finding F: same isAIProvider exclusion the deploy gate uses.
-        const visibleRequired = resolvedRequired.filter((t) => !isAiProviderSlug(t.slug))
-        const requiredSlugs = new Set(visibleRequired.map((t) => t.slug))
-        const visibleRecommended = resolvedRecommended.filter(
-          (t) => !isAiProviderSlug(t.slug) && !requiredSlugs.has(t.slug),
+        setTools(
+          buildWorkspaceToolStates(
+            requiredEntries,
+            recommendedEntries,
+            existingConnections,
+            isAiProviderSlug,
+          ),
         )
-
-        const allTools = [...visibleRequired, ...visibleRecommended]
-
-        // PR #4 Commit 9: any ToolConnection row the user created via the
-        // Browse Tools modal for a tool NOT in this workspace's template
-        // still needs to surface in the wizard UI, otherwise the modal
-        // keeps showing "Connect OAuth" for an already-connected tool
-        // (see GH #39, moved into PR #4 scope and fixed here).
-        const extraTools = buildExtraToolsFromConnections(allTools, existingConnections)
-
-        setTools([...allTools, ...extraTools])
       } catch (e) {
         console.error("Failed to load tools:", e)
       } finally {
@@ -857,6 +707,44 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     }
   }, [workspaceId, revokeState.tool, refreshTools])
 
+  /**
+   * PR-5: one reconcile pattern — apply server tool-requirements payload
+   * (+ live connections) after every customization op. No optimistic local
+   * requirement edits.
+   */
+  const applyToolRequirementsPayload = useCallback(
+    async (data: {
+      required?: RequirementToolEntry[]
+      recommended?: RequirementToolEntry[]
+      removedFromTemplate?: Array<{ slug: string; name: string }>
+    }) => {
+      if (Array.isArray(data.removedFromTemplate)) {
+        setRemovedFromTemplate(
+          data.removedFromTemplate.map((r) => ({ slug: r.slug, name: r.name })),
+        )
+      }
+      const toolsRes = await fetch(`/api/tools/${workspaceId}`)
+      const toolsData = await toolsRes.json()
+      const connections: ServerConnectionSummary[] = toolsData.success
+        ? toolsData.data.connections
+        : []
+      if (toolsData.success) {
+        setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
+        setCustomApis(toolsData.data.customConnections ?? [])
+      }
+      setTools(
+        buildWorkspaceToolStates(
+          (data.required ?? []) as RequirementToolEntry[],
+          (data.recommended ?? []) as RequirementToolEntry[],
+          connections,
+          isAiProviderSlug,
+        ),
+      )
+      await refreshDriftState()
+    },
+    [workspaceId, refreshDriftState],
+  )
+
   const patchToolRequirement = useCallback(
     async (
       op: "demote" | "restore" | "dismiss" | "undismiss" | "remove" | "swap",
@@ -876,16 +764,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       if (!json.success) {
         throw new Error(json.error?.message || `Failed to ${op} tool`)
       }
-      if (Array.isArray(json.data?.removedFromTemplate)) {
-        setRemovedFromTemplate(
-          (json.data.removedFromTemplate as Array<{ slug: string; name: string }>).map(
-            (r) => ({ slug: r.slug, name: r.name }),
-          ),
-        )
-      }
-      setToolsReloadToken((t) => t + 1)
+      // Server response is authoritative — reconcile immediately (not optimistic).
+      await applyToolRequirementsPayload(json.data)
     },
-    [workspaceId],
+    [workspaceId, applyToolRequirementsPayload],
   )
 
   const handleDemote = useCallback(
@@ -895,7 +777,13 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           () => patchToolRequirement("demote", tool.slug),
           {
             message: `${tool.name} is now optional`,
-            undo: () => patchToolRequirement("restore", tool.slug),
+            undo: async () => {
+              await mutateWithFeedback(
+                () => patchToolRequirement("restore", tool.slug),
+                { message: "Restored to Required tools" },
+                showSnackbar,
+              )
+            },
           },
           showSnackbar,
         )
@@ -911,7 +799,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       try {
         await mutateWithFeedback(
           () => patchToolRequirement("restore", tool.slug),
-          { message: `${tool.name} restored` },
+          { message: "Restored to Required tools" },
           showSnackbar,
         )
       } catch (err) {
@@ -928,7 +816,13 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           () => patchToolRequirement("dismiss", tool.slug),
           {
             message: `${tool.name} removed from recommendations`,
-            undo: () => patchToolRequirement("undismiss", tool.slug),
+            undo: async () => {
+              await mutateWithFeedback(
+                () => patchToolRequirement("undismiss", tool.slug),
+                { message: `${tool.name} restored to recommendations` },
+                showSnackbar,
+              )
+            },
           },
           showSnackbar,
         )
@@ -1018,7 +912,13 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         },
         {
           message: `${tool.name} removed from this Claw`,
-          undo: () => patchToolRequirement("restore", tool.slug),
+          undo: async () => {
+            await mutateWithFeedback(
+              () => patchToolRequirement("restore", tool.slug),
+              { message: "Restored to Required tools" },
+              showSnackbar,
+            )
+          },
         },
         showSnackbar,
       )

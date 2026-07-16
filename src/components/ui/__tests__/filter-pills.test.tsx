@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { FilterPills } from "@/components/ui/filter-pills"
 
 describe("FilterPills", () => {
+  beforeEach(() => {
+    // jsdom lacks scrollIntoView — stub for PR-5 preselect scroll.
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    })
+  })
+
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
@@ -39,5 +48,33 @@ describe("FilterPills", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "CRM" }))
     expect(onChange).toHaveBeenCalledWith("CRM")
+  })
+
+  it("scrolls the preselected active pill into view (centered)", () => {
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    })
+
+    const options = Array.from({ length: 24 }, (_, i) => ({
+      value: `cat-${i}`,
+      label: `Category ${i}`,
+    }))
+
+    render(
+      <FilterPills
+        value="cat-18"
+        onChange={() => {}}
+        options={options}
+      />,
+    )
+
+    const active = screen.getByRole("button", { name: "Category 18" })
+    expect(active.getAttribute("data-active")).toBe("true")
+    expect(scrollIntoView).toHaveBeenCalled()
+    expect(scrollIntoView.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ inline: "center", block: "nearest" }),
+    )
   })
 })

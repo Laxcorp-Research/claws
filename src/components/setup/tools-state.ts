@@ -215,17 +215,135 @@ export function resolveByokModalProps(state: BYOKModalState): {
 }
 
 /**
+ * Workspace requirement entry from GET/PATCH tool-requirements.
+ * Requirement entry is the row of record; ToolConnection only decorates it.
+ */
+export interface RequirementToolEntry {
+  slug: string
+  name: string
+  category: string
+  connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH" | string
+  required: boolean
+  alternatives?: string[]
+  customized?: boolean
+  dismissed?: boolean
+}
+
+/**
+ * Resolve one requirement entry → one ToolState row.
+ * Canonical identity is the oneOf-resolved slug (entry.slug or a connected
+ * alternative). Connection state decorates that row. Open category-wide
+ * "swap match" is intentionally NOT used — it orphaned the requirement
+ * slug's connection as a second "Additional tools" row (PR-5 defect 1).
+ */
+export function resolveRequirementToolState(
+  entry: RequirementToolEntry,
+  required: boolean,
+  connections: ServerConnectionSummary[],
+): ToolState | null {
+  const oneOf = [entry.slug, ...(entry.alternatives ?? [])]
+  let chosenSlug = entry.slug
+  for (const s of oneOf) {
+    if (connections.some((c) => c.toolSlug === s)) {
+      chosenSlug = s
+      break
+    }
+  }
+  if (chosenSlug === entry.slug) {
+    for (const s of oneOf) {
+      const d = getToolBySlug(s)
+      if (d && !d.comingSoon) {
+        chosenSlug = s
+        break
+      }
+    }
+  }
+
+  const def = getToolBySlug(chosenSlug) ?? getToolBySlug(entry.slug)
+  if (!def) {
+    throw new Error(
+      `[setup-wizard] requirement slug "${entry.slug}" (+ alternatives ${JSON.stringify(entry.alternatives ?? [])}) unresolved in ALL_TOOLS.`,
+    )
+  }
+  if (def.comingSoon) return null
+
+  const conn = connections.find((c) => c.toolSlug === chosenSlug)
+  const ui = conn
+    ? connectionUiState(conn)
+    : { status: "disconnected" as const, errorMessage: undefined, warningMessage: undefined }
+
+  return {
+    slug: chosenSlug,
+    name: def.name,
+    connectionType: def.connectionType,
+    category: def.category,
+    status: ui.status,
+    errorMessage: ui.errorMessage,
+    warningMessage: ui.warningMessage,
+    connectionId: conn?.id,
+    connectedAt: conn?.createdAt ?? null,
+    helpUrl: def.helpUrl,
+    keyPlaceholder: def.keyPlaceholder,
+    required,
+    customized: entry.customized === true,
+    alternatives: entry.alternatives,
+  }
+}
+
+/** OneOf set for a requirement entry — used to claim connections so extras can't duplicate. */
+export function requirementClaimedSlugs(entry: RequirementToolEntry): string[] {
+  return [entry.slug, ...(entry.alternatives ?? [])]
+}
+
+/**
+ * Build Step-2 tool rows: requirement entries (required + recommended) as
+ * rows of record, then extras for connections not claimed by any entry.
+ */
+export function buildWorkspaceToolStates(
+  requiredEntries: RequirementToolEntry[],
+  recommendedEntries: RequirementToolEntry[],
+  connections: ServerConnectionSummary[],
+  isAiProvider: (slug: string) => boolean,
+): ToolState[] {
+  const claimed = new Set<string>()
+  for (const e of [...requiredEntries, ...recommendedEntries]) {
+    for (const s of requirementClaimedSlugs(e)) claimed.add(s)
+  }
+
+  const resolvedRequired = requiredEntries
+    .map((e) => resolveRequirementToolState(e, true, connections))
+    .filter((t): t is ToolState => t !== null)
+    .filter((t) => !isAiProvider(t.slug))
+
+  const requiredSlugs = new Set(resolvedRequired.map((t) => t.slug))
+  const resolvedRecommended = recommendedEntries
+    .map((e) => resolveRequirementToolState(e, false, connections))
+    .filter((t): t is ToolState => t !== null)
+    .filter((t) => !isAiProvider(t.slug) && !requiredSlugs.has(t.slug))
+
+  const allTools = [...resolvedRequired, ...resolvedRecommended]
+  const extras = buildExtraToolsFromConnections(allTools, connections, claimed)
+  return [...allTools, ...extras]
+}
+
+/**
  * Given the template-driven `tools` array and the full list of DB
  * connections, return entries for every connection whose slug isn't
  * already represented in `tools`. These are appended to Step 2's state
  * under the "Additional tools" section so the UI correctly reflects
  * tools the user connected via the Browse Tools modal.
+ *
+ * @param claimedSlugs Optional oneOf / requirement slugs that must not
+ *   surface as extras even when the rendered row currently uses a
+ *   different chosen slug (PR-5 defect 1).
  */
 export function buildExtraToolsFromConnections(
   existingTools: Pick<ToolState, "slug">[],
   connections: ServerConnectionSummary[],
+  claimedSlugs: Iterable<string> = [],
 ): ToolState[] {
   const existingSlugs = new Set(existingTools.map((t) => t.slug))
+  for (const s of claimedSlugs) existingSlugs.add(s)
   const out: ToolState[] = []
   const seenExtras = new Set<string>()
   for (const conn of connections) {
@@ -315,6 +433,12 @@ export function mergeRefreshedTools(
     })
     .filter((t): t is ToolState => t !== null)
 
-  const extras = buildExtraToolsFromConnections(reconciled, connections)
+  const claimed = new Set<string>()
+  for (const t of reconciled) {
+    if (t.extra) continue
+    claimed.add(t.slug)
+    for (const a of t.alternatives ?? []) claimed.add(a)
+  }
+  const extras = buildExtraToolsFromConnections(reconciled, connections, claimed)
   return extras.length > 0 ? [...reconciled, ...extras] : reconciled
 }
