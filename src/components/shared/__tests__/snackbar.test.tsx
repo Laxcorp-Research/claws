@@ -29,6 +29,12 @@ function Probe() {
       </button>
       <button
         type="button"
+        onClick={() => show({ message: "Failed", variant: "error" })}
+      >
+        error
+      </button>
+      <button
+        type="button"
         onClick={() => show({ message: "A" })}
       >
         first
@@ -49,7 +55,7 @@ describe("Snackbar", () => {
     vi.useRealTimers()
   })
 
-  it("renders success / info / undo-action variants", () => {
+  it("renders success / info / undo-action / error variants", () => {
     render(
       <SnackbarProvider>
         <Probe />
@@ -62,6 +68,9 @@ describe("Snackbar", () => {
     fireEvent.click(screen.getByRole("button", { name: "undo" }))
     expect(screen.getByTestId("snackbar").getAttribute("data-variant")).toBe("undo-action")
     expect(screen.getByRole("button", { name: "Undo" })).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "error" }))
+    expect(screen.getByTestId("snackbar").getAttribute("data-variant")).toBe("error")
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
   })
 
   it("auto-dismisses after ~8s and keeps a single slot", () => {

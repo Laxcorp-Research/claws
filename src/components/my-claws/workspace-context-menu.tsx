@@ -14,6 +14,8 @@ import {
   Trash2,
 } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface WorkspaceContextMenuProps {
   workspaceId: string
@@ -41,12 +43,22 @@ export function WorkspaceContextMenu({
   const [stopping, setStopping] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const snackbar = useSnackbarOptional()
 
   async function handleStop() {
     setStopping(true)
     try {
-      await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
-      router.refresh()
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/deploy/${workspaceId}/stop`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not stop Claw")
+          router.refresh()
+        },
+        { message: "Claw stopped", errorMessage: "Could not stop Claw" },
+        (opts) => snackbar?.show(opts),
+      )
+    } catch {
+      /* error snackbar already shown */
     } finally {
       setStopping(false)
       setStopConfirmOpen(false)

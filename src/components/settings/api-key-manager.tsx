@@ -8,6 +8,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { CreditBalanceCard } from "@/components/credits/credit-balance-card"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface ApiKey {
   id: string
@@ -27,6 +29,13 @@ const PROVIDERS = [
 ] as const
 
 export function ApiKeyManager() {
+  const snackbar = useSnackbarOptional()
+  const showSnackbar = useCallback(
+    (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
+      snackbar?.show(options)
+    },
+    [snackbar],
+  )
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
   const [addProvider, setAddProvider] = useState<string | null>(null)
@@ -96,8 +105,17 @@ export function ApiKeyManager() {
     if (!removeId) return
     setRemoving(true)
     try {
-      await fetch(`/api/api-keys/${removeId}`, { method: "DELETE" })
-      await fetchKeys()
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/api-keys/${removeId}`, { method: "DELETE" })
+          if (!res.ok) throw new Error("Could not delete API key")
+          await fetchKeys()
+        },
+        { message: "API key deleted", errorMessage: "Could not delete API key" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     } finally {
       setRemoving(false)
       setRemoveId(null)

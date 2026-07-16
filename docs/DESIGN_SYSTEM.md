@@ -133,5 +133,6 @@
 | `success` | Instant mutation succeeded (default without Undo) |
 | `info` | Neutral notice |
 | `undo-action` | Instant mutation with reversible Undo (default when `onUndo` set) |
+| `error` | Instant mutation failed (non-2xx / thrown); no Undo; state must not be updated as success |
 
 Use `mutateWithFeedback` (`src/lib/ui/mutate-with-feedback.ts`) so tool-customization ops cannot skip feedback.

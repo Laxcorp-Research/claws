@@ -6,6 +6,8 @@ import { MarkdownEditor } from "./markdown-editor"
 import { SkillPicker } from "./skill-picker"
 import { CustomSelect } from "./custom-select"
 import { HelpTooltip } from "@/components/ui/help-tooltip"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { AI_MODELS } from "@/lib/models"
 
 const MODEL_OPTIONS = AI_MODELS.map(m => ({ value: m.value, label: m.label }))
@@ -74,6 +76,7 @@ function ConnectionPanel() {
 
 export function PropertiesPanel() {
   const { nodes, edges, selectedAgentId, selectedEdgeId, updateAgentProperty, deleteAgent, addConnection, removeConnection: removeConn, updateConnection } = useBuilderStore()
+  const snackbar = useSnackbarOptional()
 
   if (selectedEdgeId) {
     return <ConnectionPanel />
@@ -262,7 +265,15 @@ export function PropertiesPanel() {
 
       {canDelete && (
         <button
-          onClick={() => deleteAgent(selectedAgentId!)}
+          onClick={() => {
+            void mutateWithFeedback(
+              async () => {
+                deleteAgent(selectedAgentId!)
+              },
+              { message: "Agent removed", errorMessage: "Could not remove agent" },
+              (opts) => snackbar?.show(opts),
+            )
+          }}
           className="w-full mt-3 py-1.5 text-[10px] text-[var(--err)] border border-[var(--err)] rounded-[6px] hover:bg-[var(--errbg)] transition-colors cursor-pointer bg-transparent"
         >
           Remove agent
