@@ -264,9 +264,15 @@ function StoreContent() {
     { type: "skills", section: "official", initialLimit: 50, enabled: isSkillsTab && !isSearchActive }
   )
 
+  // Browse: popular excludes Official. Search: no section so Official is included (Batch A / A1).
   const popularSkills = useMarketplace<MarketplaceSkill>(
+    filtersNoSearch,
+    { type: "skills", section: "popular", initialLimit: 20, enabled: isSkillsTab && !isSearchActive }
+  )
+
+  const skillSearch = useMarketplace<MarketplaceSkill>(
     filters,
-    { type: "skills", section: "popular", initialLimit: 20, enabled: isSkillsTab }
+    { type: "skills", initialLimit: 20, enabled: isSkillsTab && isSearchActive }
   )
 
   const handleTabChange = (tab: "templates" | "skills") => {
@@ -450,11 +456,11 @@ function StoreContent() {
           <div id="tabpanel-skills" role="tabpanel">
             {isSearchActive ? (
               <section>
-                {popularSkills.isLoading ? (
+                {skillSearch.isLoading ? (
                   <SkillSkeleton />
-                ) : popularSkills.error ? (
-                  <AlertBanner variant="error">{popularSkills.error}</AlertBanner>
-                ) : popularSkills.items.length === 0 ? (
+                ) : skillSearch.error ? (
+                  <AlertBanner variant="error">{skillSearch.error}</AlertBanner>
+                ) : skillSearch.items.length === 0 ? (
                   <EmptyState
                     icon={<Search className="w-10 h-10" />}
                     title={`No skills match "${searchQuery}"`}
@@ -464,13 +470,13 @@ function StoreContent() {
                 ) : (
                   <>
                     <div className={SKILL_GRID}>
-                      {popularSkills.items.map((skill) => (
+                      {skillSearch.items.map((skill) => (
                         <SkillCard key={skill.id} skill={skill} />
                       ))}
                     </div>
-                    {popularSkills.nextCursor && (
+                    {skillSearch.nextCursor && (
                       <div className="text-center mt-4">
-                        <MoreButton onClick={popularSkills.loadMore} loading={popularSkills.isLoadingMore}>
+                        <MoreButton onClick={skillSearch.loadMore} loading={skillSearch.isLoadingMore}>
                           Load more
                         </MoreButton>
                       </div>
