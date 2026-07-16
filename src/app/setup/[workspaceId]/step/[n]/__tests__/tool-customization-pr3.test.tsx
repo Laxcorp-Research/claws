@@ -42,22 +42,32 @@ function jsonResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as Response
 }
 
-const REQUIRED = [
+type ReqTool = {
+  slug: string
+  name: string
+  category: string
+  connectionType: "API_KEY"
+  required: boolean
+  customized: boolean
+  alternatives?: string[]
+}
+
+const REQUIRED: ReqTool[] = [
   {
     slug: "twitter-api",
     name: "Twitter/X API",
     category: "Social",
-    connectionType: "API_KEY" as const,
+    connectionType: "API_KEY",
     required: true,
     customized: false,
   },
 ]
-const RECOMMENDED = [
+const RECOMMENDED: ReqTool[] = [
   {
     slug: "tavily",
     name: "Tavily",
     category: "SEARCH",
-    connectionType: "API_KEY" as const,
+    connectionType: "API_KEY",
     required: false,
     customized: false,
     alternatives: ["serp_api", "exa_search"],
