@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { apiRateLimit, authRateLimit } from "./lib/rate-limit";
 import { getAdminEmails, isAdminEmail } from "./lib/admin-emails";
+import { isAllowedDuringOnboarding } from "./lib/auth/post-auth-path";
 
 const allowedOrigins = [
   "https://app.buildclaws.ai",
@@ -199,6 +200,16 @@ export async function proxy(request: NextRequest) {
       const signInUrl = new URL("/auth/signin", request.url);
       signInUrl.searchParams.set("callbackUrl", request.url);
       return NextResponse.redirect(signInUrl);
+    }
+
+    // Batch B: first sign-in → /onboarding until User.onboardingCompleted
+    // (JWT also sets true when user already has workspaces). Settings allowed
+    // so "Add API key" CTA works during onboarding.
+    if (
+      token.onboardingCompleted !== true &&
+      !isAllowedDuringOnboarding(pathname)
+    ) {
+      return NextResponse.redirect(new URL("/onboarding", request.url));
     }
 
     // #133: server-side admin authorization at the edge. Admin is the

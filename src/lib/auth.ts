@@ -156,6 +156,8 @@ export const authOptions: NextAuthOptions = {
       if (session.user && token.sub) {
         session.user.id = token.sub
       }
+      // Batch B: expose shown-once flag (User.onboardingCompleted / hasWorkspaces).
+      session.onboardingCompleted = token.onboardingCompleted === true
       return session
     },
     async jwt({ token, user, trigger, session }) {

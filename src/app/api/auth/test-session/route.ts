@@ -18,13 +18,18 @@ export async function GET(req: NextRequest) {
   const email = isAdmin ? 'e2e-admin@buildclaws.ai' : 'e2e-test@buildclaws.ai';
   const name = isAdmin ? 'E2E Admin User' : 'E2E Test User';
 
+  // Batch B: E2E users must clear the shown-once onboarding gate. This route
+  // encodes the JWT directly (skips Auth.js jwt callback), so the claim must
+  // be on the cookie — otherwise proxy redirects /my-claws → /onboarding and
+  // Playwright waitForURL('**/my-claws') times out.
   const testUser = await prisma.user.upsert({
     where: { email },
-    update: {},
+    update: { onboardingCompleted: true },
     create: {
       email,
       name,
       hasActiveSubscription: true,
+      onboardingCompleted: true,
     },
   });
 
@@ -33,6 +38,7 @@ export async function GET(req: NextRequest) {
       sub: testUser.id,
       email: testUser.email,
       name: testUser.name,
+      onboardingCompleted: true,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
     },
