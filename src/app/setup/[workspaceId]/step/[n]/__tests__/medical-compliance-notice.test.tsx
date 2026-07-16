@@ -34,6 +34,16 @@ import { MEDICAL_HIPAA_RESPONSIBILITY_NOTICE } from "@/lib/compliance-notices"
 function mockStep2Fetch() {
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
+    if (url.includes("/api/workspaces/ws-1/tool-requirements")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { tools: [], required: [], recommended: [], source: "workspace" },
+        }),
+      } as Response
+    }
     if (url.includes("/api/workspaces/ws-1")) {
       return {
         ok: true,
@@ -42,13 +52,6 @@ function mockStep2Fetch() {
           success: true,
           data: { id: "ws-1", status: "DRAFT", clawTemplate: { slug: templateSlug } },
         }),
-      } as Response
-    }
-    if (url.includes("/api/templates/")) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, data: { tools: { required: [], recommended: [] } } }),
       } as Response
     }
     if (url.includes("/api/tools/ws-1")) {

@@ -158,6 +158,22 @@ describe("requiredToolsSatisfied — founder repro (cmrbpav2i…)", () => {
       /connection\.status === ["']CONNECTED["']\s*\)/,
     )
   })
+
+  it("MUTATION source lock: deploy gate reads workspace tool-requirements, not template", () => {
+    const page = readFileSync(
+      join(process.cwd(), "src/app/setup/[workspaceId]/step/[n]/page.tsx"),
+      "utf8",
+    )
+    // loadDeployToolPrerequisites must consume the workspace resolver API.
+    expect(page).toContain("/tool-requirements")
+    // Must not re-introduce template fetch inside the gate helper.
+    const gateFn = page.slice(
+      page.indexOf("async function loadDeployToolPrerequisites"),
+      page.indexOf("export function Step3"),
+    )
+    expect(gateFn).toContain("/tool-requirements")
+    expect(gateFn).not.toContain("/api/templates/")
+  })
 })
 
 describe("gate copy helpers", () => {

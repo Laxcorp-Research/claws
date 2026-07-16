@@ -209,6 +209,13 @@ model Workspace {
 
   clawTemplateId String?
 
+  // Tool customization PR-1: per-workspace copy of template snapshot tools[]
+  // (required / recommended). Null = legacy install → dual-read falls back to
+  // ClawTemplate.workspaceSnapshot.tools. Seeded at createWorkspaceFromTemplate;
+  // mutated via PATCH /api/workspaces/[id]/tool-requirements. Template JSON
+  // stays intact for the next buyer.
+  toolRequirements Json?
+
   containerState           ContainerState?
   apiKeySourceOverride     ApiKeySource?
 

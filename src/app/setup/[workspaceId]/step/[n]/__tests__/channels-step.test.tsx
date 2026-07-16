@@ -570,6 +570,12 @@ describe("Setup Step 4 Deploy exit drift prompt", () => {
       if (href.includes("/api/channels/ws-1")) {
         return jsonResponse({ success: true, data: { hasConfiguredChannels: true } })
       }
+      if (href.includes("/api/workspaces/ws-1/tool-requirements")) {
+        return jsonResponse({
+          success: true,
+          data: { tools: [], required: [], recommended: [], source: "empty" },
+        })
+      }
       if (href.includes("/api/workspaces/ws-1")) {
         return jsonResponse({ success: true, data: { clawTemplate: null } })
       }

@@ -173,6 +173,8 @@ describe("container payload delivery", () => {
     }
   })
 
+  // Real child-process I/O (execFileSync + gzip unpack) — can exceed the
+  // default 5s under full-suite parallel load. Not a timer race.
   it("round-trips gzipped payload vars through the actual UNPACK_NODE_SCRIPT", () => {
     const generated = minimalGenerated()
     const env = buildRailwayEnvVars(generated, workspace, user)
@@ -186,7 +188,7 @@ describe("container payload delivery", () => {
 
     const outputDir = executeUnpack(env)
     expectUnpackedFiles(outputDir, generated)
-  })
+  }, 15_000)
 
   it("keeps youtube-channel-os seed payload vars under the 30,000 char safety ceiling", () => {
     const youtube = ALL_TEMPLATES.find((template) => template.slug === "youtube-channel-os")
@@ -225,5 +227,5 @@ describe("container payload delivery", () => {
     } finally {
       rmSync(outputDir, { recursive: true, force: true })
     }
-  })
+  }, 15_000)
 })
