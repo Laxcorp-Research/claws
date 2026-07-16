@@ -517,6 +517,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [applyChangesOpen, setApplyChangesOpen] = useState(false)
   const [pendingOAuthSlug, setPendingOAuthSlug] = useState<string | null>(null)
   const [oauthErrors, setOauthErrors] = useState<Record<string, string | undefined>>({})
+  /** Bump to re-run Step-2 tool load after requirement-set mutations. */
+  const [toolsReloadToken, setToolsReloadToken] = useState(0)
   const redeployFlow = useWorkspaceRedeploy({
     workspaceId,
     onCompleted: () => {
@@ -572,6 +574,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
           required: boolean
           alternatives?: string[]
+          customized?: boolean
         }
 
         let requiredEntries: TemplateToolEntry[] = []
@@ -670,6 +673,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               helpUrl: def.helpUrl,
               keyPlaceholder: def.keyPlaceholder,
               required,
+              customized: entry.customized === true,
             }
           }
 
@@ -696,6 +700,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               helpUrl: swapDef?.helpUrl,
               keyPlaceholder: swapDef?.keyPlaceholder,
               required,
+              customized: entry.customized === true,
             }
           }
 
@@ -708,6 +713,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             helpUrl: def.helpUrl,
             keyPlaceholder: def.keyPlaceholder,
             required,
+            customized: entry.customized === true,
           }
         }
 
@@ -742,7 +748,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       }
     }
     load()
-  }, [workspaceId, refreshDriftState])
+  }, [workspaceId, refreshDriftState, toolsReloadToken])
 
   // PR #4 Commit 9: split the `tools` state into three disjoint buckets.
   // `extra` rows come from non-template ToolConnection rows (added via
@@ -824,6 +830,152 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       setRevokeState((s) => ({ ...s, loading: false, error: msg }))
     }
   }, [workspaceId, revokeState.tool, refreshTools])
+
+  const patchToolRequirement = useCallback(
+    async (op: "demote" | "restore" | "dismiss" | "undismiss" | "remove", slug: string) => {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tool-requirements`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op, slug }),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        throw new Error(json.error?.message || `Failed to ${op} tool`)
+      }
+      setToolsReloadToken((t) => t + 1)
+    },
+    [workspaceId],
+  )
+
+  const handleDemote = useCallback(
+    async (tool: ToolState) => {
+      try {
+        await patchToolRequirement("demote", tool.slug)
+      } catch (err) {
+        console.error(err)
+      }
+    },
+    [patchToolRequirement],
+  )
+
+  const handleRestore = useCallback(
+    async (tool: ToolState) => {
+      try {
+        await patchToolRequirement("restore", tool.slug)
+      } catch (err) {
+        console.error(err)
+      }
+    },
+    [patchToolRequirement],
+  )
+
+  const handleDismiss = useCallback(
+    async (tool: ToolState) => {
+      try {
+        await patchToolRequirement("dismiss", tool.slug)
+      } catch (err) {
+        console.error(err)
+      }
+    },
+    [patchToolRequirement],
+  )
+
+  // Tool customization PR-2: REMOVE warning — requirement-set drop + optional disconnect.
+  const [removeState, setRemoveState] = useState<{
+    tool: ToolState | null
+    loading: boolean
+    error: string | null
+    alsoDisconnect: boolean
+    labels: string[]
+    honestLimitCopy: string
+  }>({
+    tool: null,
+    loading: false,
+    error: null,
+    alsoDisconnect: true,
+    labels: [],
+    honestLimitCopy: "",
+  })
+
+  const handleRemoveOpen = useCallback(
+    async (tool: ToolState) => {
+      setRemoveState({
+        tool,
+        loading: true,
+        error: null,
+        alsoDisconnect: true,
+        labels: [],
+        honestLimitCopy: "",
+      })
+      try {
+        const res = await fetch(
+          `/api/workspaces/${workspaceId}/tool-requirements/dependents?slug=${encodeURIComponent(tool.slug)}`,
+        )
+        const json = await res.json()
+        if (!json.success) {
+          setRemoveState((s) => ({
+            ...s,
+            loading: false,
+            error: json.error?.message || "Could not load dependents",
+          }))
+          return
+        }
+        setRemoveState((s) => ({
+          ...s,
+          loading: false,
+          labels: (json.data.labels as string[]) ?? [],
+          honestLimitCopy: (json.data.honestLimitCopy as string) ?? "",
+        }))
+      } catch {
+        setRemoveState((s) => ({
+          ...s,
+          loading: false,
+          error: "Could not load dependents",
+        }))
+      }
+    },
+    [workspaceId],
+  )
+
+  const handleRemoveConfirm = useCallback(async () => {
+    const tool = removeState.tool
+    if (!tool) return
+    setRemoveState((s) => ({ ...s, loading: true, error: null }))
+    try {
+      await patchToolRequirement("remove", tool.slug)
+      if (removeState.alsoDisconnect) {
+        if (tool.connectionType === "OAUTH_COMPOSIO") {
+          await disconnectOauthTool(workspaceId, tool.slug)
+        } else if (tool.connectionId) {
+          await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, { method: "DELETE" })
+        }
+        await refreshTools()
+      }
+      setRemoveState({
+        tool: null,
+        loading: false,
+        error: null,
+        alsoDisconnect: true,
+        labels: [],
+        honestLimitCopy: "",
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to remove tool"
+      setRemoveState((s) => ({ ...s, loading: false, error: msg }))
+    }
+  }, [removeState.tool, removeState.alsoDisconnect, patchToolRequirement, workspaceId, refreshTools])
+
+  const handleRemoveCancel = useCallback(() => {
+    if (removeState.loading) return
+    setRemoveState({
+      tool: null,
+      loading: false,
+      error: null,
+      alsoDisconnect: true,
+      labels: [],
+      honestLimitCopy: "",
+    })
+  }, [removeState.loading])
 
   const handleOauthRevokeCancel = useCallback(() => {
     // Don't dismiss while the request is in flight; user might mistake
@@ -1342,18 +1494,28 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               testDisabledReason={getTestDisabledReason(tool)}
               onDisconnect={() => handleDisconnect(tool)}
               onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
+              onDemote={() => handleDemote(tool)}
+              onRestore={tool.customized ? () => handleRestore(tool) : undefined}
+              onRemove={() => handleRemoveOpen(tool)}
             />
           ))}
         </ToolConnectionList>
       )}
 
       {recommendedTools.length > 0 && (
-        <ToolConnectionList title="Recommended tools" subtitle="Pre-selected. Connect or swap for an alternative.">
+        <ToolConnectionList
+          title="Recommended tools"
+          subtitle="Pre-selected. Connect, swap, or dismiss. Demoted required tools land here — Restore to put them back."
+        >
           {recommendedTools.map((tool) => (
             <ToolRow
               key={tool.slug}
               name={tool.name}
-              description={tool.category}
+              description={
+                tool.customized
+                  ? `${tool.category} · Was required`
+                  : tool.category
+              }
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
               authMode={getToolBySlug(tool.slug)?.authMode}
@@ -1361,7 +1523,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
               connectedAt={tool.connectedAt}
-              swappable
+              swappable={!tool.customized}
               onConnect={() => tool.connectionType === "API_KEY" ? setApiKeyModal({ open: true, tool }) : handleOAuthConnect(tool)}
               onReconnect={
                 tool.connectionType === "API_KEY"
@@ -1370,11 +1532,14 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                     ? () => handleOauthReconnect(tool)
                     : () => handleOAuthConnect(tool)
               }
-              onSwap={() => setSwapModal({ open: true, tool })}
+              onSwap={tool.customized ? undefined : () => setSwapModal({ open: true, tool })}
               onTest={tool.status === "connected" || tool.status === "testing" ? () => handleTest(tool) : undefined}
               testDisabledReason={getTestDisabledReason(tool)}
               onDisconnect={() => handleDisconnect(tool)}
               onRevoke={tool.connectionType === "OAUTH_COMPOSIO" ? () => handleOauthRevoke(tool) : undefined}
+              onRestore={tool.customized ? () => handleRestore(tool) : undefined}
+              onDismiss={() => handleDismiss(tool)}
+              onRemove={() => handleRemoveOpen(tool)}
             />
           ))}
         </ToolConnectionList>
@@ -1536,6 +1701,51 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         variant="danger"
         loading={revokeState.loading}
       />
+      <ConfirmDialog
+        open={removeState.tool !== null}
+        onClose={handleRemoveCancel}
+        onConfirm={handleRemoveConfirm}
+        title={`Remove ${removeState.tool?.name ?? "this tool"} from this Claw?`}
+        description={
+          removeState.tool
+            ? `This drops ${removeState.tool.name} from this workspace's requirement set. The template stays intact for the next buyer.`
+            : ""
+        }
+        warningText={removeState.error ?? undefined}
+        confirmLabel="Remove"
+        variant="danger"
+        loading={removeState.loading}
+      >
+        {removeState.labels.length > 0 ? (
+          <div className="mb-3">
+            <p className="text-[11px] font-medium text-[var(--tx)] mb-1">Affects:</p>
+            <ul className="text-[11px] text-[var(--tx2)] list-disc pl-4 space-y-0.5">
+              {removeState.labels.map((label) => (
+                <li key={label}>{label}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          removeState.tool && !removeState.loading && (
+            <p className="text-[11px] text-[var(--tx2)] mb-3">No labeled agent dependents found.</p>
+          )
+        )}
+        {removeState.honestLimitCopy && (
+          <p className="text-[10px] text-[var(--tx3)] mb-3 leading-[1.4]">{removeState.honestLimitCopy}</p>
+        )}
+        <label className="flex items-start gap-2 text-[11px] text-[var(--tx)] cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={removeState.alsoDisconnect}
+            disabled={removeState.loading}
+            onChange={(e) =>
+              setRemoveState((s) => ({ ...s, alsoDisconnect: e.target.checked }))
+            }
+          />
+          <span>Also disconnect and delete saved credentials</span>
+        </label>
+      </ConfirmDialog>
       <ConfirmDialog
         open={applyChangesOpen}
         onClose={() => {

@@ -73,6 +73,14 @@ interface ToolRowProps {
    * (outline danger) and the confirm-dialog copy (PR #4 Commit 7 wires this).
    */
   onRevoke?: () => void
+  /** Tool customization PR-2: demote required → optional. */
+  onDemote?: () => void
+  /** Re-hydrate from template defaults. */
+  onRestore?: () => void
+  /** Dismiss recommended row (persisted). */
+  onDismiss?: () => void
+  /** Open REMOVE warning (requirement set; optional disconnect). */
+  onRemove?: () => void
   className?: string
 }
 
@@ -94,7 +102,7 @@ function daysAgoLabel(from: ToolRowProps["connectedAt"]): string | null {
   return `Connected ${days} days ago`
 }
 
-export function ToolRow({ name, description, connectionStatus, connectionType, authMode, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, testDisabledReason, onDisconnect, onReconnect, onRevoke, className }: ToolRowProps) {
+export function ToolRow({ name, description, connectionStatus, connectionType, authMode, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, testDisabledReason, onDisconnect, onReconnect, onRevoke, onDemote, onRestore, onDismiss, onRemove, className }: ToolRowProps) {
   const isError = connectionStatus === "error"
   const isTesting = connectionStatus === "testing"
   const needsCredentials = connectionStatus === "needs-credentials"
@@ -229,6 +237,45 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
           {needsCredentials && (onReconnect || onConnect) && (
             <button onClick={onReconnect || onConnect} className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--warn)] text-[var(--warn)] hover:bg-[color:color-mix(in_oklab,var(--warn)_12%,transparent)] transition-colors">
               Complete
+            </button>
+          )}
+          {/* Tool customization PR-2 — requirement-set actions (no connection side-effects). */}
+          {onDemote && (
+            <button
+              type="button"
+              onClick={onDemote}
+              className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)] transition-colors"
+            >
+              Make optional
+            </button>
+          )}
+          {onRestore && (
+            <button
+              type="button"
+              onClick={onRestore}
+              className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)] transition-colors"
+            >
+              Restore
+            </button>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-[10px] px-2.5 py-[3px] text-[var(--tx3)] hover:text-[var(--err)] transition-colors"
+            >
+              Remove
+            </button>
+          )}
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label={`Dismiss ${name}`}
+              title="Dismiss recommended tool"
+              className="text-[12px] w-6 h-6 flex items-center justify-center rounded-md text-[var(--tx3)] hover:text-[var(--err)] hover:bg-[var(--errbg)] transition-colors"
+            >
+              ×
             </button>
           )}
         </div>
