@@ -5,6 +5,23 @@ vi.mock('@/lib/db', () => ({ prisma: prismaMock }));
 
 import { createWorkspaceFromTemplate } from '@/lib/workspace-from-template';
 
+const SNAPSHOT_TOOLS = [
+  {
+    slug: 'twitter-api',
+    name: 'Twitter/X API',
+    category: 'Social',
+    connectionType: 'API_KEY',
+    required: true,
+  },
+  {
+    slug: 'tavily',
+    name: 'Tavily',
+    category: 'Research',
+    connectionType: 'API_KEY',
+    required: false,
+  },
+];
+
 const MOCK_TEMPLATE = {
   id: 'tpl-1',
   slug: 'test-claw',
@@ -19,6 +36,7 @@ const MOCK_TEMPLATE = {
     connections: [
       { sourceSlug: 'orch', targetSlug: 'worker', condition: 'ON_COMPLETE' },
     ],
+    tools: SNAPSHOT_TOOLS,
   }),
 };
 
@@ -27,6 +45,7 @@ function setupMocks() {
     async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
   );
   (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
+  (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
   (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-1', name: 'Test Claw' });
   (prismaMock.agent.create as ReturnType<typeof vi.fn>)
     .mockResolvedValueOnce({ id: 'agent-orch' })
@@ -50,6 +69,30 @@ describe('createWorkspaceFromTemplate', () => {
     expect(prismaMock.templateInstall.upsert).toHaveBeenCalledTimes(1);
     expect(prismaMock.clawTemplate.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { installCount: { increment: 1 } } }),
+    );
+  });
+
+  it('seeds toolRequirements from snapshot.tools (MUTATION: skip copy → fail)', async () => {
+    setupMocks();
+    await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
+
+    expect(prismaMock.workspace.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          toolRequirements: SNAPSHOT_TOOLS,
+        }),
+      }),
+    );
+    // Template JSON must remain untouched — only installCount update on template.
+    expect(prismaMock.clawTemplate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { installCount: { increment: 1 } },
+      }),
+    );
+    expect(prismaMock.clawTemplate.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspaceSnapshot: expect.anything() }),
+      }),
     );
   });
 
@@ -103,12 +146,14 @@ describe('createWorkspaceFromTemplate', () => {
       ...MOCK_TEMPLATE,
       workspaceSnapshot: JSON.stringify({
         agents: [{ agentSlug: 'solo', name: 'Solo', role: 'WORKER', model: 'm', soulMd: 's', agentsMd: 'a' }],
+        tools: SNAPSHOT_TOOLS,
       }),
     };
     (prismaMock.$transaction as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
     );
     (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(noConnTemplate);
+    (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
     (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-solo', name: 'Test Claw' });
     (prismaMock.agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'agent-solo' });
     (prismaMock.templateInstall.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});

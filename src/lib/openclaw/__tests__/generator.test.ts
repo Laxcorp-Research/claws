@@ -405,6 +405,26 @@ describe('generateWorkspace', () => {
     expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('real-tavily-key');
   });
 
+  it('A4: removed + disconnected tool emits no skills.entries / TOOLS.md line (mutation: reinstate emission → fail)', async () => {
+    const ws = buildMockWorkspace();
+    // Tool customization: slug dropped from requirement set AND ToolConnection gone.
+    ws.toolConnections = [];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+    (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.skills?.entries?.tavily).toBeUndefined();
+    // MUTATION: if generator re-emits tavily without a connection, this fails.
+    expect(JSON.stringify(config.skills?.entries ?? {})).not.toContain('tavily');
+
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    expect(orchKey).toBeDefined();
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'] ?? '';
+    expect(toolsMd).not.toMatch(/###\s*Tavily\b/);
+    expect(toolsMd).not.toContain('tavily');
+  });
+
   it('emits custom API skill files, TOOLS.md line, and skills.entries env mapping (mutation guard: dropping env injection fails)', async () => {
     const ws = buildMockWorkspace();
     ws.toolConnections = [];

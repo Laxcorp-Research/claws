@@ -296,6 +296,51 @@ describe("ToolRow — API_KEY rows unaffected by OAuth-specific rendering (PR #4
     expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull()
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined()
   })
+})
+
+describe("ToolRow — tool customization PR-2 affordances", () => {
+  it("renders Make optional / Restore / Remove / Dismiss when handlers provided", () => {
+    const onDemote = vi.fn()
+    const onRestore = vi.fn()
+    const onRemove = vi.fn()
+    const onDismiss = vi.fn()
+    render(
+      <ToolRow
+        name="Twitter/X API"
+        description="Social · Was required"
+        connectionStatus="disconnected"
+        connectionType="API_KEY"
+        onDemote={onDemote}
+        onRestore={onRestore}
+        onRemove={onRemove}
+        onDismiss={onDismiss}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Make optional" }))
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }))
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }))
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Twitter/X API" }))
+    expect(onDemote).toHaveBeenCalledTimes(1)
+    expect(onRestore).toHaveBeenCalledTimes(1)
+    expect(onRemove).toHaveBeenCalledTimes(1)
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it("omits customization buttons when handlers absent", () => {
+    render(
+      <ToolRow
+        name="Tavily"
+        description="SEARCH"
+        connectionStatus="disconnected"
+        connectionType="API_KEY"
+        onConnect={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Make optional" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /Dismiss/ })).toBeNull()
+  })
 
   it("API_KEY 'error' status renders the primary Retry button (the new OAuth-specific primary Reconnect is NOT used)", () => {
     const onReconnect = vi.fn()

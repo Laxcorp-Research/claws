@@ -114,6 +114,17 @@ describe("Manage Tools apply changes redeploy", () => {
         }
         return jsonResponse({ success: true, data: { deleted: true } })
       }
+      if (href.includes("/api/workspaces/ws-1/tool-requirements")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            tools: [...templateTools.required, ...templateTools.recommended],
+            required: templateTools.required,
+            recommended: templateTools.recommended,
+            source: "workspace",
+          },
+        })
+      }
       if (href.includes("/api/workspaces/ws-1")) {
         return jsonResponse({
           success: true,
@@ -123,9 +134,6 @@ describe("Manage Tools apply changes redeploy", () => {
             clawTemplate: workspaceTemplateSlug ? { slug: workspaceTemplateSlug } : null,
           },
         })
-      }
-      if (href.includes("/api/templates/")) {
-        return jsonResponse({ success: true, data: { tools: templateTools } })
       }
       if (href.includes("/api/tools/ws-1")) {
         return jsonResponse({
