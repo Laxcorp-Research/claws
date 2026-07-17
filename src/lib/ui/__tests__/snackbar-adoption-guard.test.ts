@@ -51,6 +51,11 @@ describe("PR-4 Snackbar adoption guard", () => {
       handlers: ["Agent removed"],
     },
     {
+      file: "src/components/builder/version-history-panel.tsx",
+      // Batch D: restore failure must surface via mutateWithFeedback.
+      handlers: ["Version restored", "Could not restore version"],
+    },
+    {
       file: "src/components/my-claws/workspace-context-menu.tsx",
       handlers: ["handleStop"],
     },
