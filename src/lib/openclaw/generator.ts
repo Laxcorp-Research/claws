@@ -41,6 +41,9 @@ import {
   parseChannelConfigBlob,
   type ChannelConfigMap,
 } from '@/lib/openclaw/channel-config';
+import { getApiKeySource } from '@/lib/credits/api-key-source';
+import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
+import type { ApiKeySource } from '@/generated/prisma/client';
 import yaml from 'yaml';
 
 /** Catalog slugs that can back OpenClaw's built-in web_search tool. */
@@ -586,6 +589,24 @@ function generateOpenClawConfig(
     };
   }
 
+  // Credit metering: route every anthropic/* model through the in-container
+  // proxy. OpenClaw 2026.5.22-8 does NOT read process.env.ANTHROPIC_BASE_URL
+  // for the messages client — it uses model.baseUrl, which
+  // applyConfiguredProviderOverrides sets from
+  // models.providers.<id>.baseUrl (dist model-cgt_Zkgh.js). Schema:
+  // ModelsConfigSchema.providers → ModelProviderSchema.baseUrl
+  // (zod-schema.core-D7Y_eqdd.js). anthropic is a built-in overlay id, so
+  // models[] is optional. BYOK/NONE: omit — clients hit api.anthropic.com.
+  if (getApiKeySource(workspace, workspace.user) === 'PLATFORM_CREDIT') {
+    config.models = {
+      providers: {
+        anthropic: {
+          baseUrl: ANTHROPIC_PROXY_URL,
+        },
+      },
+    };
+  }
+
   // PR-2: Claws Activity Reporter plugin (overlay baked into the Docker
   // image at /opt/claws-activity-reporter — see docker/Dockerfile + the
   // plugin source at container/claws-activity-reporter/). Always emit;
@@ -1031,12 +1052,20 @@ function generateEnvFile(
   lines.push(`OPENCLAW_GATEWAY_TOKEN=${gatewayToken}`);
   lines.push('');
 
-  // AI Provider API keys (decrypted from our DB)
+  // AI Provider API keys (decrypted from our DB).
+  // PLATFORM_CREDIT: omit ANTHROPIC_API_KEY from the synced .env — the Railway
+  // service env already carries the platform master key (deriveContainerEnv),
+  // and baking the user's BYOK key here would let OpenClaw bypass the proxy
+  // if baseUrl were ever missing. credit-proxy.mjs forwards upstream with
+  // its own MASTER_KEY (x-api-key), ignoring inbound Authorization.
+  const creditMode = getApiKeySource(workspace, workspace.user) === 'PLATFORM_CREDIT';
   for (const apiKey of workspace.user.apiKeys) {
     const decrypted = decrypt(apiKey.encryptedKey);
     switch (apiKey.provider) {
       case 'ANTHROPIC':
-        lines.push(`ANTHROPIC_API_KEY=${decrypted}`);
+        if (!creditMode) {
+          lines.push(`ANTHROPIC_API_KEY=${decrypted}`);
+        }
         break;
       case 'OPENAI':
         lines.push(`OPENAI_API_KEY=${decrypted}`);
@@ -2067,6 +2096,8 @@ type WorkspaceWithRelations = {
   userContext?: string | null;
   scheduledTasks?: ScheduledTaskConfig[] | null;
   containerHost?: string | null;
+  /** Wins over user.apiKeySource via getApiKeySource (credit routing). */
+  apiKeySourceOverride?: ApiKeySource | null;
   agents: AgentWithRelations[];
   toolConnections: ToolConnectionRecord[];
   customToolConnections?: CustomToolConnectionRecord[];
@@ -2077,6 +2108,8 @@ type WorkspaceWithRelations = {
      *  top-level `user: { include: { apiKeys: true } }` in generateWorkspace. */
     id: string;
     name: string | null;
+    /** Fallback when apiKeySourceOverride is null. */
+    apiKeySource?: ApiKeySource | null;
     apiKeys: { provider: string; encryptedKey: string }[];
   };
   /**
