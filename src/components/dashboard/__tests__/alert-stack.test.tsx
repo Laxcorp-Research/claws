@@ -1,9 +1,31 @@
 // @vitest-environment jsdom
+/**
+ * Batch E — AlertStack total order + N-more expander.
+ * MUTATION: swap any two adjacent priorities in TOTAL_ORDER → fail.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { AlertStack, type AlertStackItem } from "@/components/dashboard/alert-stack"
 
 afterEach(() => cleanup())
+
+/** Batch E unique total order (must match dashboard page priorities). */
+const TOTAL_ORDER: Array<{ id: string; priority: number }> = [
+  { id: "container-down", priority: 0 },
+  { id: "credits-exhausted", priority: 1 },
+  { id: "spend-limit", priority: 2 },
+  { id: "trial-expired", priority: 3 },
+  { id: "silence", priority: 4 },
+  { id: "near-cap", priority: 5 },
+  { id: "sync-stale", priority: 6 },
+  { id: "connection-expired", priority: 7 },
+  { id: "session-dead", priority: 8 },
+  { id: "spend-warning", priority: 9 },
+  { id: "trial-active", priority: 10 },
+  { id: "lifecycle", priority: 11 },
+  { id: "drift", priority: 12 },
+  { id: "version-update", priority: 13 },
+]
 
 function item(id: string, priority: number, cta = vi.fn()): AlertStackItem {
   return {
@@ -16,17 +38,31 @@ function item(id: string, priority: number, cta = vi.fn()): AlertStackItem {
 }
 
 describe("AlertStack", () => {
-  it("orders all eight cockpit alerts by priority with container-down first", () => {
+  it("TOTAL_ORDER is unique and strictly increasing (adjacent-swap mutation)", () => {
+    const priorities = TOTAL_ORDER.map((e) => e.priority)
+    expect(new Set(priorities).size).toBe(priorities.length)
+    for (let i = 0; i < priorities.length - 1; i++) {
+      expect(
+        priorities[i],
+        `adjacent swap would break: ${TOTAL_ORDER[i].id} (${priorities[i]}) vs ${TOTAL_ORDER[i + 1].id} (${priorities[i + 1]})`,
+      ).toBeLessThan(priorities[i + 1])
+    }
+  })
+
+  it("orders cockpit alerts by Batch E priorities with container-down first", () => {
+    // K1 eight + money insertions — shuffled input, container-down primary.
     render(
       <AlertStack
         alerts={[
-          item("version-update", 7),
-          item("drift", 6),
-          item("session-dead", 5),
-          item("connection-expired", 4),
-          item("sync-stale", 3),
-          item("near-cap", 2),
-          item("silence", 1),
+          item("version-update", 13),
+          item("drift", 12),
+          item("trial-active", 10),
+          item("spend-warning", 9),
+          item("session-dead", 8),
+          item("connection-expired", 7),
+          item("sync-stale", 6),
+          item("near-cap", 5),
+          item("silence", 4),
           item("container-down", 0),
         ]}
       />,
@@ -34,12 +70,26 @@ describe("AlertStack", () => {
 
     expect(screen.getByText("container-down message")).toBeDefined()
     expect(screen.queryByText("version-update message")).toBeNull()
-    expect(screen.getByRole("button", { name: "7 more alerts" })).toBeDefined()
+    expect(screen.getByRole("button", { name: "9 more alerts" })).toBeDefined()
+  })
+
+  it("spend-limit (money) outranks silence (informational) as primary", () => {
+    render(
+      <AlertStack
+        alerts={[
+          item("silence", 4),
+          item("spend-limit", 2),
+        ]}
+      />,
+    )
+    expect(screen.getByText("spend-limit message")).toBeDefined()
+    expect(screen.queryByText("silence message")).toBeNull()
+    expect(screen.getByRole("button", { name: "1 more alert" })).toBeDefined()
   })
 
   it("reveals remaining alerts and keeps each CTA wired", () => {
     const second = vi.fn()
-    render(<AlertStack alerts={[item("container-down", 0), item("silence", 1, second)]} />)
+    render(<AlertStack alerts={[item("container-down", 0), item("silence", 4, second)]} />)
 
     fireEvent.click(screen.getByRole("button", { name: "1 more alert" }))
     fireEvent.click(screen.getByRole("button", { name: "silence CTA" }))

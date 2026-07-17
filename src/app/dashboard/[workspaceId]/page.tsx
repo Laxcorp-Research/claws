@@ -673,8 +673,12 @@ export default function DashboardPage() {
   const showStateSyncStale =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.stateSyncStaleDetectedAt)
-  // K1 ordering: container-down (0) > silence (1) > near-cap (2) > sync-stale (3) >
-  // connection-expired (4) > session-dead (5) > drift (6) > version-update (7)
+  // Batch E total order (unique priorities; MONEY/DATA never lose to informational):
+  // 0 container-error|degraded > 1 credits-exhausted > 2 spend-limit > 3 trial-expired >
+  // 4 activity-silence > 5 state-sync-near-cap > 6 state-sync-stale >
+  // 7 tools-expired > 8 mcp-session-dead > 9 spend-warning > 10 trial-active
+  //   (functional degrade above money-soft/info) >
+  // 11 paused|stopped|hibernated|waking > 12 config-drift > 13 version-update
   const showStateSyncNearCap =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.stateSyncNearCapActive)
@@ -742,7 +746,7 @@ export default function DashboardPage() {
     if (showMcpSessionDead) {
       list.push({
         key: "mcp-session-dead",
-        priority: 5,
+        priority: 8,
         variant: "warning",
         icon: <RefreshCw className="w-4 h-4" />,
         content: (
@@ -764,7 +768,7 @@ export default function DashboardPage() {
     if (showActivitySilence) {
       list.push({
         key: "activity-silence",
-        priority: 1,
+        priority: 4,
         variant: "warning",
         content: (
           <>
@@ -783,7 +787,7 @@ export default function DashboardPage() {
     if (showStateSyncNearCap) {
       list.push({
         key: "state-sync-near-cap",
-        priority: 2,
+        priority: 5,
         variant: "warning",
         content: (
           <p className="font-medium">
@@ -803,7 +807,7 @@ export default function DashboardPage() {
     if (showStateSyncStale) {
       list.push({
         key: "state-sync-stale",
-        priority: 3,
+        priority: 6,
         variant: "warning",
         content: (
           <p className="font-medium">Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.</p>
@@ -819,7 +823,7 @@ export default function DashboardPage() {
     if (spendLimitReached) {
       list.push({
         key: "spend-limit",
-        priority: 1,
+        priority: 2,
         variant: "error",
         icon: <OctagonX className="w-4 h-4" />,
         content: (
@@ -839,7 +843,7 @@ export default function DashboardPage() {
       const daysRemaining = dailyAvg > 0 ? Math.round(remaining / dailyAvg) : 0
       list.push({
         key: "spend-warning",
-        priority: 4,
+        priority: 9,
         variant: "warning",
         icon: <TrendingUp className="w-4 h-4" />,
         content: (
@@ -851,7 +855,13 @@ export default function DashboardPage() {
         actions: (
           <div className="flex gap-1.5">
             <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Increase limit</Button>
-            <Button variant="outline" size="xs">Optimize costs</Button>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => router.push(`/dashboard/${workspaceId}?tab=costs`)}
+            >
+              Optimize costs
+            </Button>
           </div>
         ),
       })
@@ -882,7 +892,7 @@ export default function DashboardPage() {
       const manageHref = `/setup/${workspaceId}/step/2?mode=manage`
       list.push({
         key: "tools-expired",
-        priority: 4,
+        priority: 7,
         variant: "warning",
         icon: <Unplug className="w-4 h-4" />,
         content: (
@@ -905,7 +915,7 @@ export default function DashboardPage() {
     if (showConfigDrift && configDrift) {
       list.push({
         key: "config-drift",
-        priority: 6,
+        priority: 12,
         variant: "warning",
         content: (
           <>
@@ -927,7 +937,7 @@ export default function DashboardPage() {
       if (isNewerVersion(stableVer, currentVer)) {
         list.push({
           key: "version-update",
-          priority: 7,
+          priority: 13,
           variant: "info",
           icon: <ArrowUpCircle className="w-4 h-4" />,
           content: (
@@ -957,7 +967,7 @@ export default function DashboardPage() {
         const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000))
         list.push({
           key: "trial-active",
-          priority: 2,
+          priority: 10,
           variant: "warning",
           icon: <Clock className="w-4 h-4" />,
           content: (
@@ -975,7 +985,7 @@ export default function DashboardPage() {
       } else {
         list.push({
           key: "trial-expired",
-          priority: 1,
+          priority: 3,
           variant: "error",
           icon: <Clock className="w-4 h-4" />,
           content: (
@@ -997,7 +1007,7 @@ export default function DashboardPage() {
     if (isPaused) {
       list.push({
         key: "paused",
-        priority: 5,
+        priority: 11,
         variant: "warning",
         icon: <Pause className="w-4 h-4" />,
         content: (
@@ -1012,7 +1022,7 @@ export default function DashboardPage() {
     if (isStopped) {
       list.push({
         key: "stopped",
-        priority: 5,
+        priority: 11,
         variant: "warning",
         icon: <OctagonX className="w-4 h-4" />,
         content: (
@@ -1028,7 +1038,7 @@ export default function DashboardPage() {
     if (workspace?.status === "HIBERNATED") {
       list.push({
         key: "hibernated",
-        priority: 5,
+        priority: 11,
         variant: "info",
         icon: <Moon className="w-4 h-4" />,
         content: (
@@ -1044,7 +1054,7 @@ export default function DashboardPage() {
     if (workspace?.status === "WAKING") {
       list.push({
         key: "waking",
-        priority: 5,
+        priority: 11,
         variant: "info",
         content: (
           <>
@@ -1058,7 +1068,7 @@ export default function DashboardPage() {
     if (creditMode && credit.status === "EXHAUSTED") {
       list.push({
         key: "credits-exhausted",
-        priority: 0,
+        priority: 1,
         variant: "error",
         icon: <Gift className="w-4 h-4" />,
         content: (

@@ -86,6 +86,7 @@ function activityPayload(opts: {
   healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
   lastHealthCheck?: string | null;
   expiredTools?: Array<{ name: string; status: "ERROR" | "EXPIRED" | "REVOKED"; connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "CHANNEL_NATIVE" }>;
+  spend?: { thisMonth: number; limit: number; percent: number };
 }) {
   const {
     mcpSessionHealthStatus,
@@ -95,6 +96,7 @@ function activityPayload(opts: {
     healthStatus = "HEALTHY",
     lastHealthCheck = null,
     expiredTools = [],
+    spend = { thisMonth: 0, limit: 50, percent: 0 },
   } = opts
   return {
     success: true,
@@ -112,8 +114,8 @@ function activityPayload(opts: {
         activitySilenceDetectedAt,
         stateSyncStaleDetectedAt,
         stateSyncNearCapActive,
-        currentMonthApiCost: 0,
-        apiSpendLimit: 50,
+        currentMonthApiCost: spend.thisMonth,
+        apiSpendLimit: spend.limit,
         costAlertThreshold: 0.8,
         apiKeySource: "USER_OWN_KEY",
       },
@@ -144,7 +146,7 @@ function activityPayload(opts: {
         },
       ],
       pendingApprovals: [],
-      spend: { thisMonth: 0, limit: 50, percent: 0 },
+      spend,
       expiredTools,
       recentLogs: [
         {
@@ -416,5 +418,91 @@ describe("DashboardPage MCP session banner", () => {
 
     expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
     expect(screen.queryByText(/Memory bundle approaching size limit/)).toBeNull()
+  })
+
+  it("Batch E: spend-limit (money) is primary over activity-silence", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/api/activity/ws-1")) {
+        return {
+          ok: true,
+          json: async () =>
+            activityPayload({
+              mcpSessionHealthStatus: "HEALTHY",
+              activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z",
+              spend: { thisMonth: 50, limit: 50, percent: 100 },
+            }),
+        } as Response
+      }
+      if (url.includes("/api/user/billing")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { trialUsed: false, trialEndsAt: null, hasActiveSubscription: true },
+          }),
+        } as Response
+      }
+      return { ok: true, json: async () => ({ success: true }) } as Response
+    })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText(/Monthly API spend limit reached/)).toBeDefined()
+    expect(
+      screen.queryByText("Activity feed appears silent — agents may be running but not reporting."),
+    ).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "1 more alert" }))
+    expect(
+      screen.getByText("Activity feed appears silent — agents may be running but not reporting."),
+    ).toBeDefined()
+  })
+
+  it("Batch E: Optimize costs navigates to Costs tab", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/api/activity/ws-1")) {
+        return {
+          ok: true,
+          json: async () =>
+            activityPayload({
+              mcpSessionHealthStatus: "HEALTHY",
+              spend: { thisMonth: 42, limit: 50, percent: 84 },
+            }),
+        } as Response
+      }
+      if (url.includes("/api/user/billing")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { trialUsed: false, trialEndsAt: null, hasActiveSubscription: true },
+          }),
+        } as Response
+      }
+      return { ok: true, json: async () => ({ success: true }) } as Response
+    })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText(/API spend at 84%/)).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Optimize costs" }))
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/ws-1?tab=costs")
+  })
+
+  it("MUTATION: Optimize costs onClick removed → fail", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(
+      join(process.cwd(), "src/app/dashboard/[workspaceId]/page.tsx"),
+      "utf8",
+    )
+    const spendBlock = src.slice(
+      src.indexOf('key: "spend-warning"'),
+      src.indexOf('key: "tools-expired"'),
+    )
+    expect(spendBlock).toContain("Optimize costs")
+    expect(spendBlock).toContain("?tab=costs")
+    expect(spendBlock).toMatch(/onClick=\{/)
   })
 })
