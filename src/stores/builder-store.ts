@@ -562,12 +562,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
 
         if (!wsRes.ok) {
-          if (wsRes.status === 401 || wsRes.status === 403 || wsRes.status === 404) {
-            set({ isLoading: false, loadError: wsRes.status })
-            return
-          }
-          const text = await wsRes.text().catch(() => "")
-          throw new Error(`Workspace API returned ${wsRes.status}: ${text.slice(0, 200)}`)
+          // Batch D: any non-OK (incl. 5xx) sets loadError so the page can show
+          // NetworkError + Retry — never a silent empty canvas.
+          set({ isLoading: false, loadError: wsRes.status })
+          return
         }
 
         const wsJson = await wsRes.json()
@@ -683,7 +681,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         set({ _draftIntervalId: intervalId })
       } catch (err) {
         console.error("Failed to load workspace:", err)
-        set({ isLoading: false })
+        // Network / parse failures — distinct from auth redirects (401/403/404).
+        set({ isLoading: false, loadError: 0 })
       }
     },
 
@@ -718,6 +717,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           const isOrchestrator = d.role === "ORCHESTRATOR"
 
           if (isTemp) {
+            // Batch D: include skillIds on create — omitting drops selected skills
+            // (PATCH-only path never runs for brand-new temp agents).
             const createRes = await fetch(`/api/agents/${wid}`, {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -725,6 +726,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
                 soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
                 positionX: node.position.x, positionY: node.position.y,
                 qualityThreshold: d.qualityThreshold,
+                skillIds: d.agentSkillIds || [],
               }),
             })
             if (!createRes.ok) throw new Error(`Failed to create agent ${d.name}: ${createRes.status}`)
@@ -852,10 +854,19 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       try {
         const res = await fetch(`/api/workspaces/${s.workspaceId}/snapshots/${snapshotId}/restore`, { method: "POST" })
         const json = await res.json()
-        if (json.success) await get().loadWorkspace(s.workspaceId!)
+        if (!json.success) {
+          // Batch D: success:false must clear loading (was stuck forever).
+          set({ isLoading: false })
+          throw new Error(
+            (typeof json.error?.message === "string" && json.error.message) ||
+              "Failed to restore version",
+          )
+        }
+        await get().loadWorkspace(s.workspaceId!)
       } catch (err) {
         console.error("Restore failed:", err)
         set({ isLoading: false })
+        throw err
       }
     },
   }

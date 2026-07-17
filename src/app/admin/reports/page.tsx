@@ -9,6 +9,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
+import { NetworkError } from "@/components/shared/network-error"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface EnrichedReport {
   id: string
@@ -54,17 +57,20 @@ function capitalize(s: string): string {
 }
 
 export default function AdminReportsPage() {
+  const snackbar = useSnackbarOptional()
   const [activeTab, setActiveTab] = useState("open")
   const [openReports, setOpenReports] = useState<EnrichedReport[]>([])
   const [resolvedReports, setResolvedReports] = useState<EnrichedReport[]>([])
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [resolveItem, setResolveItem] = useState<EnrichedReport | null>(null)
   const [resolution, setResolution] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
       const [openRes, resolvedRes] = await Promise.all([
         fetch("/api/admin/reports?resolved=false"),
@@ -77,16 +83,23 @@ export default function AdminReportsPage() {
         return
       }
 
-      if (openRes.ok) {
-        const openJson = await openRes.json()
-        setOpenReports(openJson.data ?? [])
+      // Batch G: non-403 failures → NetworkError, never a false-empty queue.
+      if (!openRes.ok || !resolvedRes.ok) {
+        setLoadError(true)
+        setOpenReports([])
+        setResolvedReports([])
+        return
       }
-      if (resolvedRes.ok) {
-        const resolvedJson = await resolvedRes.json()
-        setResolvedReports(resolvedJson.data ?? [])
-      }
+
+      const openJson = await openRes.json()
+      const resolvedJson = await resolvedRes.json()
+      setOpenReports(openJson.data ?? [])
+      setResolvedReports(resolvedJson.data ?? [])
     } catch (error) {
       console.error("Failed to fetch reports:", error)
+      setLoadError(true)
+      setOpenReports([])
+      setResolvedReports([])
     } finally {
       setLoading(false)
     }
@@ -100,17 +113,28 @@ export default function AdminReportsPage() {
     if (!resolveItem || !resolution.trim()) return
     setActionLoading(resolveItem.id)
     try {
-      const res = await fetch(`/api/admin/reports/${resolveItem.id}/resolve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resolution: resolution.trim() }),
-      })
-      if (!res.ok) throw new Error("Failed")
-      setOpenReports(prev => prev.filter(r => r.id !== resolveItem.id))
-      const resolvedReport = { ...resolveItem, resolved: true, resolution: resolution.trim(), resolvedAt: new Date().toISOString() }
-      setResolvedReports(prev => [resolvedReport, ...prev])
-      setResolveItem(null)
-      setResolution("")
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/admin/reports/${resolveItem.id}/resolve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resolution: resolution.trim() }),
+          })
+          if (!res.ok) throw new Error("Could not resolve report")
+          setOpenReports((prev) => prev.filter((r) => r.id !== resolveItem.id))
+          const resolvedReport = {
+            ...resolveItem,
+            resolved: true,
+            resolution: resolution.trim(),
+            resolvedAt: new Date().toISOString(),
+          }
+          setResolvedReports((prev) => [resolvedReport, ...prev])
+          setResolveItem(null)
+          setResolution("")
+        },
+        { message: "Report resolved", errorMessage: "Could not resolve report" },
+        (opts) => snackbar?.show(opts),
+      )
     } catch (error) {
       console.error("Resolve failed:", error)
     } finally {
@@ -136,6 +160,13 @@ export default function AdminReportsPage() {
 
       {loading ? (
         <LoadingSkeleton variant="line" count={6} />
+      ) : loadError ? (
+        <NetworkError
+          message="Failed to load reports. Check your connection and try again."
+          onRetry={() => {
+            void fetchData()
+          }}
+        />
       ) : reports.length === 0 ? (
         <EmptyState
           icon={<Flag className="w-5 h-5" />}

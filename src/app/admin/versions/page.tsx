@@ -10,6 +10,9 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
+import { NetworkError } from "@/components/shared/network-error"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { compareOpenClawVersions } from "@/lib/openclaw/version-order"
 
 interface VersionItem {
@@ -40,9 +43,11 @@ function relativeTime(date: string | Date): string {
 }
 
 export default function AdminVersionsPage() {
+  const snackbar = useSnackbarOptional()
   const [versions, setVersions] = useState<VersionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addForm, setAddForm] = useState({
     version: "",
@@ -70,6 +75,7 @@ export default function AdminVersionsPage() {
   const [editError, setEditError] = useState<string | null>(null)
 
   const fetchVersions = useCallback(async () => {
+    setLoadError(false)
     try {
       const res = await fetch("/api/admin/versions")
       // Defense-in-depth: a 403 means unauthorized, NOT an empty list. Branch
@@ -79,12 +85,18 @@ export default function AdminVersionsPage() {
         setForbidden(true)
         return
       }
-      if (res.ok) {
-        const json = await res.json()
-        setVersions(json.data ?? [])
+      // Batch G: non-403 failures → NetworkError, never a false-empty queue.
+      if (!res.ok) {
+        setLoadError(true)
+        setVersions([])
+        return
       }
+      const json = await res.json()
+      setVersions(json.data ?? [])
     } catch (error) {
       console.error("Failed to fetch versions:", error)
+      setLoadError(true)
+      setVersions([])
     } finally {
       setLoading(false)
     }
@@ -125,9 +137,15 @@ export default function AdminVersionsPage() {
   async function handlePromote(id: string) {
     setActionLoading(id)
     try {
-      const res = await fetch(`/api/admin/versions/${id}/promote`, { method: "POST" })
-      if (!res.ok) throw new Error("Failed")
-      fetchVersions()
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/admin/versions/${id}/promote`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not promote version")
+          await fetchVersions()
+        },
+        { message: "Version promoted", errorMessage: "Could not promote version" },
+        (opts) => snackbar?.show(opts),
+      )
     } catch (error) {
       console.error("Promote failed:", error)
     } finally {
@@ -236,6 +254,14 @@ export default function AdminVersionsPage() {
 
       {loading ? (
         <LoadingSkeleton variant="card" count={3} />
+      ) : loadError ? (
+        <NetworkError
+          message="Failed to load versions. Check your connection and try again."
+          onRetry={() => {
+            setLoading(true)
+            void fetchVersions()
+          }}
+        />
       ) : versions.length === 0 ? (
         <EmptyState
           icon={<Package className="w-5 h-5" />}

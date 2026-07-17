@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
+import { NetworkError } from "@/components/shared/network-error"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
@@ -169,7 +170,11 @@ function ScanStatus({ passed }: { passed: boolean | null }) {
 }
 
 function isSkill(item: ReviewItem): item is ReviewSkill {
-  return 'skillMd' in item
+  return "skillMd" in item
+}
+
+function reviewQueueType(item: ReviewItem): "templates" | "skills" {
+  return isSkill(item) ? "skills" : "templates"
 }
 
 function AgentAccordion({ agent }: { agent: SnapshotAgent }) {
@@ -412,6 +417,7 @@ export default function AdminReviewsPage() {
   const [skills, setSkills] = useState<ReviewSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [selectedItem, setSelectedItem] = useState<ReviewItem | null>(null)
   const [rejectItem, setRejectItem] = useState<ReviewItem | null>(null)
   const [rejectReason, setRejectReason] = useState("")
@@ -419,6 +425,7 @@ export default function AdminReviewsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
       const [tplRes, skillRes] = await Promise.all([
         fetch("/api/admin/review-queue/templates"),
@@ -431,16 +438,23 @@ export default function AdminReviewsPage() {
         return
       }
 
-      if (tplRes.ok) {
-        const tplJson = await tplRes.json()
-        setTemplates(tplJson.data ?? [])
+      // Batch G: non-403 failures → NetworkError, never a false-empty queue.
+      if (!tplRes.ok || !skillRes.ok) {
+        setLoadError(true)
+        setTemplates([])
+        setSkills([])
+        return
       }
-      if (skillRes.ok) {
-        const skillJson = await skillRes.json()
-        setSkills(skillJson.data ?? [])
-      }
+
+      const tplJson = await tplRes.json()
+      const skillJson = await skillRes.json()
+      setTemplates(tplJson.data ?? [])
+      setSkills(skillJson.data ?? [])
     } catch (error) {
       console.error("Failed to fetch review queue:", error)
+      setLoadError(true)
+      setTemplates([])
+      setSkills([])
     } finally {
       setLoading(false)
     }
@@ -478,23 +492,29 @@ export default function AdminReviewsPage() {
 
   async function handleReject() {
     if (!rejectItem || !rejectReason.trim()) return
-    const type = activeTab as "templates" | "skills"
+    const type = reviewQueueType(rejectItem)
     setActionLoading(rejectItem.id)
     try {
-      const res = await fetch(`/api/admin/review-queue/${type}/${rejectItem.id}/reject`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: rejectReason.trim() }),
-      })
-      if (!res.ok) throw new Error("Failed")
-      if (type === "templates") {
-        setTemplates(prev => prev.filter(t => t.id !== rejectItem.id))
-      } else {
-        setSkills(prev => prev.filter(s => s.id !== rejectItem.id))
-      }
-      setRejectItem(null)
-      setRejectReason("")
-      if (selectedItem?.id === rejectItem.id) setSelectedItem(null)
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/admin/review-queue/${type}/${rejectItem.id}/reject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason: rejectReason.trim() }),
+          })
+          if (!res.ok) throw new Error("Could not reject")
+          if (type === "templates") {
+            setTemplates((prev) => prev.filter((t) => t.id !== rejectItem.id))
+          } else {
+            setSkills((prev) => prev.filter((s) => s.id !== rejectItem.id))
+          }
+          setRejectItem(null)
+          setRejectReason("")
+          if (selectedItem?.id === rejectItem.id) setSelectedItem(null)
+        },
+        { message: "Rejected", errorMessage: "Could not reject" },
+        (opts) => snackbar?.show(opts),
+      )
     } catch (error) {
       console.error("Reject failed:", error)
     } finally {
@@ -516,10 +536,27 @@ export default function AdminReviewsPage() {
     <div className="max-w-5xl mx-auto px-4 py-4">
       <h1 className="text-[16px] font-semibold mb-3 text-[var(--tx)]">Review Queue</h1>
 
-      <Tabs tabs={tabDefs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <Tabs
+        tabs={tabDefs}
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab)
+          // Batch G: detail closes on tab switch (type must not follow stale tab).
+          setSelectedItem(null)
+          setRejectItem(null)
+          setRejectReason("")
+        }}
+      />
 
       {loading ? (
         <LoadingSkeleton variant="line" count={6} />
+      ) : loadError ? (
+        <NetworkError
+          message="Failed to load the review queue. Check your connection and try again."
+          onRetry={() => {
+            void fetchData()
+          }}
+        />
       ) : items.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 className="w-5 h-5" />}
@@ -582,7 +619,7 @@ export default function AdminReviewsPage() {
                           size="sm"
                           variant="primary"
                           loading={actionLoading === item.id}
-                          onClick={() => handleApprove(activeTab as "templates" | "skills", item.id)}
+                          onClick={() => handleApprove(reviewQueueType(item), item.id)}
                         >
                           Approve
                         </Button>
@@ -661,7 +698,7 @@ export default function AdminReviewsPage() {
         <DetailPanel
           item={selectedItem}
           onClose={() => setSelectedItem(null)}
-          onApprove={() => handleApprove(activeTab as "templates" | "skills", selectedItem.id)}
+          onApprove={() => handleApprove(reviewQueueType(selectedItem), selectedItem.id)}
           onReject={() => { setRejectItem(selectedItem); setRejectReason("") }}
           actionLoading={actionLoading === selectedItem.id}
         />

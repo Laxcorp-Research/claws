@@ -308,7 +308,7 @@ function PublishSkillContent() {
             <div className="text-center py-6">
               <Check size={32} className="mx-auto mb-3 text-[var(--ok)]" aria-hidden="true" />
               <h2 className="text-[18px] font-semibold text-[var(--tx)]">Skill Published!</h2>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">Auto-scan passed. Listed as Unreviewed. Sandbox test and manual review queued.</p>
+              <p className="text-[12px] text-[var(--tx2)] mt-1">Auto-scan passed. Listed as Unreviewed. Submitted for manual review.</p>
               <div className="flex justify-center gap-2 mt-4">
                 {publishedSlug && <Link href={`/store/skills/${publishedSlug}`}><Button variant="outline">View in Marketplace</Button></Link>}
                 <Link href="/settings?tab=creator"><Button variant="outline">Creator Dashboard</Button></Link>

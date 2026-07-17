@@ -56,5 +56,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       qualityThreshold: body.qualityThreshold ?? 8.0, reportsTo: body.reportsTo || null,
     },
   })
+
+  // Batch D: persist skillIds on create (builder save previously omitted them).
+  if (Array.isArray(body.skillIds) && body.skillIds.length > 0) {
+    await prisma.agentSkill.createMany({
+      data: (body.skillIds as string[]).map((skillId: string) => ({
+        agentId: agent.id,
+        skillId,
+      })),
+      skipDuplicates: true,
+    })
+  }
+
   return apiSuccess(agent, 201)
 }
