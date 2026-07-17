@@ -31,6 +31,16 @@ describe("PR-4 Snackbar adoption guard", () => {
       handlers: ["handleRemove"],
     },
     {
+      file: "src/components/settings/account-settings.tsx",
+      // Batch F: delete signs out only after res.ok via helper.
+      handlers: ["handleDelete"],
+    },
+    {
+      file: "src/components/settings/creator-dashboard.tsx",
+      // Batch F: profile save must not silently catch.
+      handlers: ["handleSaveProfile"],
+    },
+    {
       file: "src/app/setup/[workspaceId]/step/[n]/page.tsx",
       handlers: [
         "handleCustomDelete",

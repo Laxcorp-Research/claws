@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { ExternalLink, Plus, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,8 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { StatCard } from "@/components/ui/stat-card"
 import { formatCurrencyRounded } from "@/lib/utils/format"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import type { TrustTier } from "@/types/marketplace"
 
 interface CreatorProfile {
@@ -65,6 +67,13 @@ interface PublishedSkill {
 }
 
 export function CreatorDashboard() {
+  const snackbar = useSnackbarOptional()
+  const showSnackbar = useCallback(
+    (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
+      snackbar?.show(options)
+    },
+    [snackbar],
+  )
   const [enrolled, setEnrolled] = useState<boolean | null>(null)
   const [profile, setProfile] = useState<CreatorProfile | null>(null)
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
@@ -146,21 +155,33 @@ export function CreatorDashboard() {
     setIsSavingProfile(true)
     setProfileSaved(false)
     try {
-      const res = await fetch("/api/creator/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          displayName: editName.trim(),
-          bio: editBio.trim() || null,
-          twitterUrl: editTwitter.trim() || null,
-          githubUrl: editGithub.trim() || null,
-          websiteUrl: editWebsite.trim() || null,
-        }),
-      })
-      if (!res.ok) throw new Error("Save failed")
-      setProfileSaved(true)
-      setTimeout(() => setProfileSaved(false), 3000)
-    } catch { /* show nothing for now */ }
+      // Batch F: silent catch → mutateWithFeedback (success + failure snackbars).
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch("/api/creator/profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              displayName: editName.trim(),
+              bio: editBio.trim() || null,
+              twitterUrl: editTwitter.trim() || null,
+              githubUrl: editGithub.trim() || null,
+              websiteUrl: editWebsite.trim() || null,
+            }),
+          })
+          if (!res.ok) throw new Error("Could not save profile")
+          setProfileSaved(true)
+          setTimeout(() => setProfileSaved(false), 3000)
+        },
+        {
+          message: "Profile saved",
+          errorMessage: "Could not save profile",
+        },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
+    }
     setIsSavingProfile(false)
   }
 
