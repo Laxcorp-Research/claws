@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { apiSuccess, apiError } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { redis } from "@/lib/redis"
@@ -46,11 +46,16 @@ export async function POST(req: NextRequest) {
   }
 
   let totalProcessed = 0
+  // Collect exhaustion side-effects outside the transaction; schedule via
+  // after() so Vercel does not kill setImmediate/bare-promise work when the
+  // response ends (same class as the dashboard wake fire-and-forget bug).
+  const exhaustedUserIds: string[] = []
 
   for (const [userId, userRecords] of byUser) {
     const totalCost = userRecords.reduce((sum, r) => sum + (r.costCents || 0), 0)
 
     try {
+      let exhausted = false
       await prisma.$transaction(async (tx) => {
         const account = await tx.creditAccount.findUnique({ where: { userId } })
         if (!account || account.status !== "ACTIVE") return
@@ -84,15 +89,25 @@ export async function POST(req: NextRequest) {
         await redis.set(`credit:balance:${userId}`, newBalance.toString())
         await redis.decrby(`credit:reservations:${userId}`, totalCost)
 
-        if (newBalance === 0) {
-          setImmediate(() => onCreditsExhausted(userId))
-        }
+        exhausted = newBalance === 0
       })
 
+      if (exhausted) exhaustedUserIds.push(userId)
       totalProcessed += userRecords.length
     } catch (err) {
       log.error("Failed to process usage records", { userId, error: String(err) })
     }
+  }
+
+  for (const userId of exhaustedUserIds) {
+    after(() =>
+      onCreditsExhausted(userId).catch((err) => {
+        log.error("onCreditsExhausted failed after report-batch", {
+          userId,
+          error: String(err),
+        })
+      }),
+    )
   }
 
   return apiSuccess({ processed: totalProcessed })

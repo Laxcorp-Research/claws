@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
@@ -38,12 +38,19 @@ export async function POST(
     }),
   ])
 
-  wakeWorkspace(workspaceId).catch((err) => {
-    log.error("Dashboard wake async failed, cron will retry", {
-      workspaceId,
-      error: String(err),
-    })
-  })
+  // after() keeps wakeWorkspace alive after the HTTP response (Vercel would
+  // otherwise kill a bare promise). Route still returns immediately for the
+  // Waking… UX. Fallback: cron/hibernation STUCK WAKING RECOVERY retries
+  // containerPhase=WAKING with wakeRequestedAt older than 5m
+  // (src/app/api/cron/hibernation/route.ts).
+  after(() =>
+    wakeWorkspace(workspaceId).catch((err) => {
+      log.error("Dashboard wake async failed; hibernation cron stuck-WAKING recovery retries after 5m", {
+        workspaceId,
+        error: String(err),
+      })
+    }),
+  )
 
   return apiSuccess({ status: "WAKING" })
 }
