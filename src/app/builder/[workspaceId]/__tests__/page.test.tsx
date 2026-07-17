@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -138,5 +140,47 @@ describe("BuilderPage drift banner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Redeploy" }))
     expect(useWorkspaceRedeploy).toHaveBeenCalled()
     expect(mockStartRedeploy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("BuilderPage Batch D — load 5xx NetworkError", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    storeState.workspaceStatus = "DRAFT"
+    storeState.isDirty = false
+    storeState.isLoading = false
+    storeState.loadError = null
+    mockDriftResponse(false)
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    storeState.loadError = null
+  })
+
+  it("5xx loadError → NetworkError + Retry, never silent empty canvas", () => {
+    storeState.loadError = 500
+    render(<BuilderPage />)
+
+    expect(screen.getByText("Unable to load")).toBeDefined()
+    expect(screen.getByRole("button", { name: /Try again/i })).toBeDefined()
+    expect(screen.queryByText("Canvas")).toBeNull()
+  })
+
+  it("Retry calls loadWorkspace", () => {
+    storeState.loadError = 500
+    render(<BuilderPage />)
+    fireEvent.click(screen.getByRole("button", { name: /Try again/i }))
+    expect(mockLoadWorkspace).toHaveBeenCalledWith("ws-1")
+  })
+
+  it("MUTATION: empty render on 5xx → fail", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/builder/[workspaceId]/page.tsx"),
+      "utf8",
+    )
+    expect(src).toContain("NetworkError")
+    expect(src).toContain("isLoadNetworkError")
   })
 })

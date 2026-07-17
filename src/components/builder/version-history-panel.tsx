@@ -5,6 +5,8 @@ import { useBuilderStore } from "@/stores/builder-store"
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface VersionHistoryPanelProps {
   open: boolean
@@ -14,6 +16,7 @@ interface VersionHistoryPanelProps {
 
 export function VersionHistoryPanel({ open, onClose, refreshKey }: VersionHistoryPanelProps) {
   const { snapshots, isLoadingSnapshots, loadSnapshots, restoreSnapshot } = useBuilderStore()
+  const snackbar = useSnackbarOptional()
 
   useEffect(() => {
     if (open) loadSnapshots()
@@ -72,7 +75,17 @@ export function VersionHistoryPanel({ open, onClose, refreshKey }: VersionHistor
                       size="xs"
                       onClick={() => {
                         if (confirm("Revert workspace to this version? Current unsaved changes will be lost.")) {
-                          restoreSnapshot(snap.id)
+                          // Batch D: success:false → loading cleared + error snackbar.
+                          void mutateWithFeedback(
+                            async () => {
+                              await restoreSnapshot(snap.id)
+                            },
+                            {
+                              message: "Version restored",
+                              errorMessage: "Could not restore version",
+                            },
+                            (opts) => snackbar?.show(opts),
+                          )
                           onClose()
                         }
                       }}

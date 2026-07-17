@@ -12,6 +12,7 @@ import { PropertiesPanel } from "@/components/builder/properties-panel"
 import { HeartbeatConfig } from "@/components/builder/heartbeat-config"
 import { VersionHistoryPanel } from "@/components/builder/version-history-panel"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { NetworkError } from "@/components/shared/network-error"
 import { useBuilderStore } from "@/stores/builder-store"
 import { Loader2, Send, Save, Check, AlertTriangle } from "lucide-react"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
@@ -68,6 +69,10 @@ export default function BuilderPage() {
     if (loadError === 401) router.push("/auth/signin")
     else if (loadError === 403 || loadError === 404) router.replace("/my-claws")
   }, [loadError, router])
+
+  // Batch D: 5xx / network — distinct NetworkError + Retry (not empty canvas).
+  const isLoadNetworkError =
+    loadError !== null && loadError !== 401 && loadError !== 403 && loadError !== 404
 
   useEffect(() => {
     setLocalName(workspaceName)
@@ -230,6 +235,15 @@ export default function BuilderPage() {
             <LoadingSkeleton variant="line" />
             <LoadingSkeleton variant="line" />
           </div>
+        </div>
+      ) : isLoadNetworkError ? (
+        <div className="flex-1 flex items-center justify-center min-h-0">
+          <NetworkError
+            message="Failed to load the builder. Check your connection and try again."
+            onRetry={() => {
+              void loadWorkspace(workspaceId)
+            }}
+          />
         </div>
       ) : (
         <div className="flex-1 grid grid-cols-[220px_1fr_260px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
