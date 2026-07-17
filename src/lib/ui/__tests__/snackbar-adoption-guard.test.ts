@@ -28,12 +28,12 @@ describe("PR-4 Snackbar adoption guard", () => {
     },
     {
       file: "src/components/settings/api-key-manager.tsx",
-      handlers: ["handleRemove"],
+      handlers: ["handleRemove", "handleAdd", "handleTest", "handleSwitchSource"],
     },
     {
       file: "src/components/settings/account-settings.tsx",
       // Batch F: delete signs out only after res.ok via helper.
-      handlers: ["handleDelete"],
+      handlers: ["handleDelete", "handleSave"],
     },
     {
       file: "src/components/settings/creator-dashboard.tsx",
@@ -49,7 +49,12 @@ describe("PR-4 Snackbar adoption guard", () => {
         "handleRestore",
         "handleRemoveConfirm",
         "handleSwapSelect",
+        "handleBrowseConnect",
       ],
+    },
+    {
+      file: "src/app/store/skills/[slug]/page.tsx",
+      handlers: ["handleInstall"],
     },
     {
       file: "src/app/admin/reviews/page.tsx",
@@ -79,7 +84,7 @@ describe("PR-4 Snackbar adoption guard", () => {
     },
     {
       file: "src/app/my-claws/page.tsx",
-      handlers: ["handleDelete", "handleRename"],
+      handlers: ["handleDelete", "handleRename", "handleCreateCustomClaw", "handleDuplicate"],
     },
   ]
 

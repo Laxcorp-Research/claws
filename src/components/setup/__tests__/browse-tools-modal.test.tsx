@@ -65,7 +65,7 @@ const twitterCatalogTool = {
   composioToolkitId: "twitter",
   authMode: "custom-oauth-required" as const,
   comingSoon: true,
-  comingSoonReason: "OAuth-only on Composio; operator registering with Twitter Developer this week",
+  comingSoonReason: "OAuth app registration in progress with Twitter Developer",
   description: "Social media",
   credentialFields: [],
 }
@@ -230,7 +230,7 @@ describe("BrowseToolsModal — connected-state reflection", () => {
     await waitFor(() => expect(screen.getByText("Twitter/X")).toBeDefined())
     const badge = screen.getByText("Coming Soon")
     expect(badge).toBeDefined()
-    expect(badge.getAttribute("title")).toContain("OAuth-only on Composio")
+    expect(badge.getAttribute("title")).toContain("OAuth app registration in progress")
     expect(screen.queryByRole("button", { name: "Connect with OAuth" })).toBeNull()
   })
 

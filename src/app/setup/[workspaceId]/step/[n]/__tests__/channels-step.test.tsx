@@ -336,7 +336,7 @@ describe("Setup Step 4 channel persistence UI", () => {
 
     render(<Step4 workspaceId="ws-1" />)
 
-    expect(await screen.findByText("Verified by gateway")).toBeDefined()
+    expect(await screen.findByText("Verified by the runtime")).toBeDefined()
     expect(screen.getByText("Connected")).toBeDefined()
     expect(screen.getByText("invalid token. Check token and redeploy.")).toBeDefined()
     expect(screen.getByText("Check token and redeploy.")).toBeDefined()

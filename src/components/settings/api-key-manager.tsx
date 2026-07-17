@@ -69,22 +69,31 @@ export function ApiKeyManager() {
     setValidationState("validating")
     setValidationError("")
     try {
-      const res = await fetch("/api/api-keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: addProvider, apiKey: keyInput.trim() }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error?.message ?? "Failed to save key")
-      }
-      setValidationState("success")
-      setTimeout(() => {
-        setAddProvider(null)
-        setKeyInput("")
-        setValidationState("idle")
-        fetchKeys()
-      }, 1000)
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch("/api/api-keys", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: addProvider, apiKey: keyInput.trim() }),
+          })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error?.message ?? "Failed to save key")
+          }
+          setValidationState("success")
+          setTimeout(() => {
+            setAddProvider(null)
+            setKeyInput("")
+            setValidationState("idle")
+            fetchKeys()
+          }, 1000)
+        },
+        {
+          message: "API key saved",
+          errorMessage: "Could not save API key",
+        },
+        showSnackbar,
+      )
     } catch (err) {
       setValidationState("error")
       setValidationError(err instanceof Error ? err.message : "Invalid API key")
@@ -94,8 +103,17 @@ export function ApiKeyManager() {
   const handleTest = async (keyId: string) => {
     setTestingId(keyId)
     try {
-      await fetch(`/api/api-keys/${keyId}/validate`, { method: "POST" })
-      await fetchKeys()
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/api-keys/${keyId}/validate`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not validate API key")
+          await fetchKeys()
+        },
+        { message: "API key validated", errorMessage: "Could not validate API key" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     } finally {
       setTestingId(null)
     }
@@ -138,11 +156,21 @@ export function ApiKeyManager() {
   const handleSwitchSource = async () => {
     setSwitching(true)
     try {
-      const res = await fetch("/api/api-keys/switch-source", { method: "POST" })
-      if (res.ok) {
-        credit.refetch()
-        fetchKeys()
-      }
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch("/api/api-keys/switch-source", { method: "POST" })
+          if (!res.ok) throw new Error("Could not switch to your key")
+          credit.refetch()
+          await fetchKeys()
+        },
+        {
+          message: "Switched to your API key",
+          errorMessage: "Could not switch to your key",
+        },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     } finally {
       setSwitching(false)
       setSwitchConfirmOpen(false)

@@ -98,20 +98,25 @@ export default function MyClawsPage() {
     setIsCreating(true)
     setCreateError(null)
     try {
-      const count = workspaces?.length ?? 0
-      const name = `My Claw ${count + 1}`
-      const res = await fetch("/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error?.message || `Failed to create workspace (${res.status})`)
-      const workspaceId = data.data?.id || data.id
-      if (workspaceId) router.push(`/builder/${workspaceId}`)
-      else throw new Error("No workspace ID returned")
+      await mutateWithFeedback(
+        async () => {
+          const count = workspaces?.length ?? 0
+          const name = `My Claw ${count + 1}`
+          const res = await fetch("/api/workspaces", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data?.error?.message || `Failed to create workspace (${res.status})`)
+          const workspaceId = data.data?.id || data.id
+          if (!workspaceId) throw new Error("No workspace ID returned")
+          router.push(`/builder/${workspaceId}`)
+        },
+        { message: "Claw created", errorMessage: "Could not create Claw" },
+        showSnackbar,
+      )
     } catch (err) {
-      console.error("Failed to create custom Claw:", err)
       setCreateError(err instanceof Error ? err.message : "Failed to create workspace")
     } finally {
       setIsCreating(false)
@@ -183,11 +188,17 @@ export default function MyClawsPage() {
 
   async function handleDuplicate(id: string) {
     try {
-      const res = await fetch(`/api/workspaces/${id}/duplicate`, { method: "POST" })
-      if (!res.ok) throw new Error("Failed to duplicate")
-      fetchWorkspaces()
-    } catch (err) {
-      console.error("Failed to duplicate:", err)
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/workspaces/${id}/duplicate`, { method: "POST" })
+          if (!res.ok) throw new Error("Could not duplicate Claw")
+          await fetchWorkspaces()
+        },
+        { message: "Claw duplicated", errorMessage: "Could not duplicate Claw" },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
     }
   }
 

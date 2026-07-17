@@ -121,7 +121,7 @@ function PublishContent() {
 
   const SCAN_STEPS = [
     "Validating template details",
-    "Building workspace snapshot",
+    "Building workspace version",
     "Running pattern scan",
     "AI security review",
     "Generating scan report",
