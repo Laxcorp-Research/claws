@@ -110,7 +110,7 @@ export function TopBar() {
     <header className="flex items-center justify-between h-[52px] px-8 border-b border-[var(--bd)] bg-[var(--bg)]">
       <div className="flex items-center gap-8">
         <Link href="/store" className="flex items-center">
-          <img src="/logo-full.svg" alt="Claws home" height={20} className="h-5 w-auto" />
+          <img src="/logo-full.svg" alt="Claws home" height={18} className="h-[18px] w-auto" />
         </Link>
 
         <nav aria-label="Main navigation" className="flex items-center gap-8">
