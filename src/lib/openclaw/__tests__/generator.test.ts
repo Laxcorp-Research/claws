@@ -98,6 +98,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
     gatewayToken: null,
     hostPort: null,
     containerName: null,
+    apiKeySourceOverride: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -198,6 +199,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
     user: {
       id: 'user-1',
       name: 'Test User',
+      apiKeySource: 'USER_OWN_KEY',
       apiKeys: [
         { provider: 'ANTHROPIC', encryptedKey: 'encrypted-anthropic-key' },
       ],

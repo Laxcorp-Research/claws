@@ -2097,7 +2097,7 @@ type WorkspaceWithRelations = {
   scheduledTasks?: ScheduledTaskConfig[] | null;
   containerHost?: string | null;
   /** Wins over user.apiKeySource via getApiKeySource (credit routing). */
-  apiKeySourceOverride?: ApiKeySource | null;
+  apiKeySourceOverride: ApiKeySource | null;
   agents: AgentWithRelations[];
   toolConnections: ToolConnectionRecord[];
   customToolConnections?: CustomToolConnectionRecord[];
@@ -2109,7 +2109,7 @@ type WorkspaceWithRelations = {
     id: string;
     name: string | null;
     /** Fallback when apiKeySourceOverride is null. */
-    apiKeySource?: ApiKeySource | null;
+    apiKeySource: ApiKeySource;
     apiKeys: { provider: string; encryptedKey: string }[];
   };
   /**
