@@ -43,7 +43,15 @@ describe("PR-4 Snackbar adoption guard", () => {
     },
     {
       file: "src/app/admin/reviews/page.tsx",
-      handlers: ["handleApprove"],
+      handlers: ["handleApprove", "handleReject"],
+    },
+    {
+      file: "src/app/admin/reports/page.tsx",
+      handlers: ["handleResolve"],
+    },
+    {
+      file: "src/app/admin/versions/page.tsx",
+      handlers: ["handlePromote"],
     },
     {
       file: "src/components/builder/properties-panel.tsx",
