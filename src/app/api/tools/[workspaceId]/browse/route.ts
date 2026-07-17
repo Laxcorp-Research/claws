@@ -36,10 +36,21 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     composioTools = []
   }
 
-  const staticSlugs = new Set(ALL_TOOLS.map((t) => t.slug))
+  // Prefer curated ALL_TOOLS rows. Dedup by slug AND composioToolkitId so
+  // alias pairs (google_calendar↔googlecalendar, convertkit↔kit) don't
+  // surface twice when the live catalog uses the broker slug.
+  const claimedIds = new Set<string>()
+  for (const t of ALL_TOOLS) {
+    claimedIds.add(t.slug)
+    if (t.composioToolkitId) claimedIds.add(t.composioToolkitId)
+  }
   const merged: ToolDefinition[] = [
     ...ALL_TOOLS,
-    ...composioTools.filter((t) => !staticSlugs.has(t.slug)),
+    ...composioTools.filter((t) => {
+      if (claimedIds.has(t.slug)) return false
+      if (t.composioToolkitId && claimedIds.has(t.composioToolkitId)) return false
+      return true
+    }),
   ]
 
   const categorySet = new Set<string>([...TOOL_CATEGORIES])

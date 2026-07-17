@@ -50,6 +50,41 @@ describe("FilterPills", () => {
     expect(onChange).toHaveBeenCalledWith("CRM")
   })
 
+  it("clicking the active category pill clears back to All", () => {
+    const onChange = vi.fn()
+    render(
+      <FilterPills
+        value="CRM"
+        onChange={onChange}
+        options={[
+          { value: "All", label: "All" },
+          { value: "CRM", label: "CRM" },
+          { value: "EMAIL", label: "Email" },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "CRM" }))
+    expect(onChange).toHaveBeenCalledWith("All")
+  })
+
+  it("pins the All pill with sticky positioning", () => {
+    render(
+      <FilterPills
+        value="All"
+        onChange={() => {}}
+        options={[
+          { value: "All", label: "All" },
+          { value: "CRM", label: "CRM" },
+        ]}
+      />,
+    )
+
+    const all = screen.getByRole("button", { name: "All" })
+    expect(all.getAttribute("data-sticky-all")).toBe("true")
+    expect(all.className).toContain("sticky")
+  })
+
   it("scrolls the preselected active pill into view (centered)", () => {
     const scrollIntoView = vi.fn()
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {

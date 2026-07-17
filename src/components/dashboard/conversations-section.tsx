@@ -136,7 +136,7 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
       <div className="px-3.5 py-2.5 border-b border-[var(--bd)]">
         <h2 className="text-[12px] font-semibold text-[var(--tx)]">Conversations</h2>
         <p className="text-[11px] text-[var(--tx3)] mt-0.5">
-          Read-only gateway transcripts from connected sessions.
+          Read-only session transcripts from connected channels.
         </p>
       </div>
 
@@ -146,7 +146,7 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
         ) : loadedWorkspaceId !== workspaceId ? (
           <p className="text-[11px] text-[var(--tx3)] py-3">Loading conversations...</p>
         ) : conversations.length === 0 ? (
-          <p className="text-[11px] text-[var(--tx3)] py-3">No readable gateway conversations yet.</p>
+          <p className="text-[11px] text-[var(--tx3)] py-3">No readable conversations yet.</p>
         ) : (
           <div className="grid gap-3 md:grid-cols-[280px_minmax(0,1fr)]">
             <div className="max-h-[520px] overflow-y-auto rounded-[10px] border border-[var(--bd)]">

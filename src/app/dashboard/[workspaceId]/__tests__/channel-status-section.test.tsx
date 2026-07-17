@@ -22,7 +22,7 @@ describe("ChannelStatusSection", () => {
     )
 
     expect(screen.getByText("Channel status")).toBeDefined()
-    expect(screen.getByText("Verified from gateway when reachable")).toBeDefined()
+    expect(screen.getByText("Verified from the runtime when reachable")).toBeDefined()
     expect(screen.getByText("Telegram")).toBeDefined()
     expect(screen.getByText("Discord")).toBeDefined()
     expect(screen.getByText("Slack")).toBeDefined()

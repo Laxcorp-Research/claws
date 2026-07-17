@@ -235,7 +235,7 @@ export function ChannelStatusSection({ channelStatus }: { channelStatus: Channel
     <div className="mb-3 rounded-xl border border-[var(--bd)] bg-[var(--bg)] p-3">
       <div className="flex items-center justify-between gap-3 mb-2">
         <p className="text-[12px] font-semibold text-[var(--tx)]">Channel status</p>
-        <p className="text-[10px] text-[var(--tx3)]">Verified from gateway when reachable</p>
+        <p className="text-[10px] text-[var(--tx3)]">Verified from the runtime when reachable</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {configuredChannelIds.map((channelId) => {

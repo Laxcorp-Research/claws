@@ -35,17 +35,26 @@ export function AccountSettings({ user }: AccountSettingsProps) {
     setError(null)
     setSaved(false)
     try {
-      const res = await fetch("/api/user/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error?.message ?? "Failed to save")
-      }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch("/api/user/profile", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error?.message ?? "Failed to save")
+          }
+          setSaved(true)
+          setTimeout(() => setSaved(false), 3000)
+        },
+        {
+          message: "Profile saved",
+          errorMessage: "Could not save profile",
+        },
+        showSnackbar,
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save")
     } finally {

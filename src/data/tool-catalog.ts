@@ -263,7 +263,7 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   // (no token to manage). "BYOK fallback for OAuth toolkits" is tracked
   // at GH#77.
   { slug: "hubspot", name: "HubSpot", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "hubspot", authMode: "managed-oauth", description: "CRM pipeline management", credentialFields: [] },
-  { slug: "salesforce", name: "Salesforce", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "salesforce", authMode: "managed-oauth", description: "CRM data access (OAuth via Composio)", credentialFields: [] },
+  { slug: "salesforce", name: "Salesforce", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "salesforce", authMode: "managed-oauth", description: "CRM data access via secure OAuth", credentialFields: [] },
   { slug: "gmail", name: "Gmail", connectionType: "OAUTH_COMPOSIO", category: "EMAIL", composioToolkitId: "gmail", authMode: "managed-oauth", description: "Email sending and monitoring", credentialFields: [] },
   { slug: "google_calendar", name: "Google Calendar", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "googlecalendar", authMode: "managed-oauth", description: "Calendar events", credentialFields: [] },
   { slug: "google-analytics", name: "Google Analytics", connectionType: "OAUTH_COMPOSIO", category: "ANALYTICS", composioToolkitId: "google_analytics", authMode: "managed-oauth", description: "Analytics data", credentialFields: [] },
@@ -279,8 +279,8 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   // before this toolkit becomes connectable. PR2.9 BYOK doesn't unblock
   // it because there's no API_KEY mode to broker. Tracked in
   // docs/COMPOSIO_RUNTIME_CONTRACT.md "Custom OAuth toolkits (operator tracker)".
-  { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", authMode: "custom-oauth-required", description: "Social media", comingSoon: true, comingSoonReason: "OAuth-only on Composio; operator registering with Twitter Developer this week", credentialFields: [] },
-  { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "kit", authMode: "managed-oauth", description: "Email marketing (Composio slug is `kit` post-2024 rebrand)", credentialFields: [] },
+  { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", authMode: "custom-oauth-required", description: "Social media", comingSoon: true, comingSoonReason: "OAuth app registration in progress with Twitter Developer", credentialFields: [] },
+  { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "kit", authMode: "managed-oauth", description: "Email marketing (Kit)", credentialFields: [] },
   { slug: "shopify", name: "Shopify", connectionType: "OAUTH_COMPOSIO", category: "ECOMMERCE", composioToolkitId: "shopify", authMode: "byok-api-key", description: "E-commerce platform", credentialFields: [] },
   { slug: "jira", name: "Jira", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "jira", authMode: "managed-oauth", description: "Issue tracking", credentialFields: [] },
   { slug: "calendly", name: "Calendly", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "calendly", authMode: "managed-oauth", description: "Scheduling", credentialFields: [] },
@@ -320,7 +320,7 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   { slug: "typefully", name: "Typefully", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "typefully", authMode: "byok-api-key", description: "Twitter/X content scheduling", credentialFields: [] },
   // OAuth-only on Composio (no API_KEY mode). PR2.9 BYOK can't unblock —
   // operator must register a custom OAuth app at DocuSign Developer.
-  { slug: "docusign", name: "DocuSign", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "docusign", authMode: "custom-oauth-required", description: "E-signature and document workflows", comingSoon: true, comingSoonReason: "OAuth-only on Composio; operator registering custom app with DocuSign Developer", credentialFields: [] },
+  { slug: "docusign", name: "DocuSign", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "docusign", authMode: "custom-oauth-required", description: "E-signature and document workflows", comingSoon: true, comingSoonReason: "OAuth app registration in progress with DocuSign Developer", credentialFields: [] },
   { slug: "follow_up_boss", name: "Follow Up Boss", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "follow_up_boss", authMode: "byok-api-key", description: "Real estate CRM", credentialFields: [] },
   { slug: "freshbooks", name: "FreshBooks", connectionType: "OAUTH_COMPOSIO", category: "PAYMENTS", composioToolkitId: "freshbooks", authMode: "managed-oauth", description: "Small-business accounting and invoicing", credentialFields: [] },
   { slug: "gitlab", name: "GitLab", connectionType: "OAUTH_COMPOSIO", category: "DEVELOPMENT", composioToolkitId: "gitlab", authMode: "managed-oauth", description: "Repos, issues, and CI", credentialFields: [] },
