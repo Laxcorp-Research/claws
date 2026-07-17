@@ -1,16 +1,25 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface AccountSettingsProps {
   user: { id: string; name: string | null; email: string; image: string | null }
 }
 
 export function AccountSettings({ user }: AccountSettingsProps) {
+  const snackbar = useSnackbarOptional()
+  const showSnackbar = useCallback(
+    (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
+      snackbar?.show(options)
+    },
+    [snackbar],
+  )
   const [name, setName] = useState(user.name ?? "")
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -47,10 +56,22 @@ export function AccountSettings({ user }: AccountSettingsProps) {
   const handleDelete = async () => {
     setDeleting(true)
     try {
-      await fetch("/api/user/profile", { method: "DELETE" })
-      await signOut({ redirect: false })
-      window.location.href = "/store"
+      // Batch F: signOut ONLY on res.ok — failure keeps session + error snackbar.
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch("/api/user/profile", { method: "DELETE" })
+          if (!res.ok) throw new Error("Could not delete account")
+          await signOut({ redirect: false })
+          window.location.href = "/store"
+        },
+        {
+          message: "Account deleted",
+          errorMessage: "Could not delete account",
+        },
+        showSnackbar,
+      )
     } catch {
+      /* error snackbar already shown; session intact */
       setDeleting(false)
     }
   }
