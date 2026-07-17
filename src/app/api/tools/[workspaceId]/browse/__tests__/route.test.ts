@@ -66,6 +66,56 @@ describe("GET /api/tools/[workspaceId]/browse — full catalog exposure (B2)", (
     expect(slugs.has("hubspot")).toBe(true)
   })
 
+  it("dedups live catalog rows by composioToolkitId alias (googlecalendar/kit)", async () => {
+    mockGetComposioCatalogTools.mockResolvedValue([
+      {
+        slug: "googlecalendar",
+        name: "Google Calendar (live)",
+        connectionType: "OAUTH_COMPOSIO",
+        authMode: "managed-oauth",
+        category: "CALENDAR",
+        composioToolkitId: "googlecalendar",
+        credentialFields: [],
+      },
+      {
+        slug: "kit",
+        name: "Kit (live)",
+        connectionType: "OAUTH_COMPOSIO",
+        authMode: "managed-oauth",
+        category: "NEWSLETTER",
+        composioToolkitId: "kit",
+        credentialFields: [],
+      },
+      {
+        slug: "typefully",
+        name: "Typefully (live duplicate)",
+        connectionType: "OAUTH_COMPOSIO",
+        authMode: "byok-api-key",
+        category: "SOCIAL",
+        composioToolkitId: "typefully",
+        credentialFields: [],
+      },
+    ])
+
+    const req = createMockRequest("http://localhost:3000/api/tools/ws-1/browse")
+    const res = await GET(req, { params: Promise.resolve({ workspaceId: "ws-1" }) })
+    const { status, data } = await parseResponse(res)
+    expect(status).toBe(200)
+
+    const tools: Array<{ slug: string; name: string }> = data.data.tools
+    const bySlug = (slug: string) => tools.filter((t) => t.slug === slug)
+
+    expect(bySlug("google_calendar")).toHaveLength(1)
+    expect(bySlug("google_calendar")[0]?.name).toBe("Google Calendar")
+    expect(bySlug("googlecalendar")).toHaveLength(0)
+
+    expect(bySlug("convertkit")).toHaveLength(1)
+    expect(bySlug("kit")).toHaveLength(0)
+
+    expect(bySlug("typefully")).toHaveLength(1)
+    expect(bySlug("typefully")[0]?.name).toBe("Typefully")
+  })
+
   it("exposes merged live catalog counts above 1000 with mocked Composio pages", async () => {
     mockGetComposioCatalogTools.mockResolvedValue(
       Array.from({ length: 1100 }, (_, i) => ({

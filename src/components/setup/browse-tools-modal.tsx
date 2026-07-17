@@ -230,7 +230,7 @@ export function BrowseToolsModal({
     ? "Your agents adapt automatically via generated skill instructions."
     : browseLoading
       ? "Loading catalog…"
-      : `Browse ${tools.length} tools. Curated list first; Composio catalog fills in when configured.`
+      : `Browse ${tools.length} tools available to connect.`
 
   // Virtualization: when Suggested pins exist, render a non-virtualized Suggested
   // header by flattening — first suggested slug in visible window gets a label.

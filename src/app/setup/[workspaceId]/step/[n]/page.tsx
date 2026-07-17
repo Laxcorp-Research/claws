@@ -281,7 +281,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
   const handleNext = useCallback(async () => {
     setIsSavingModels(true)
     try {
-      await Promise.all(
+      const results = await Promise.all(
         agents.map((agent) =>
           fetch(`/api/agents/${workspaceId}/${agent.id}`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -289,6 +289,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           })
         )
       )
+      if (!results.every((res) => res.ok)) {
+        throw new Error("Failed to save models")
+      }
       router.push(`/setup/${workspaceId}/step/2`)
     } catch (e) {
       console.error("Failed to save models:", e)
@@ -502,6 +505,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   )
   const [tools, setTools] = useState<ToolState[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [toolsLoadError, setToolsLoadError] = useState<string | null>(null)
   const [composioOAuthAvailable, setComposioOAuthAvailable] = useState(false)
   const [apiKeyModal, setApiKeyModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   // PR2.9: BYOK modal state. Distinct from `apiKeyModal` because:
@@ -557,6 +561,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   useEffect(() => {
     async function load() {
       setIsLoading(true)
+      setToolsLoadError(null)
       try {
         const wsRes = await fetch(`/api/workspaces/${workspaceId}`)
         const wsData = await wsRes.json()
@@ -597,6 +602,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
         const toolsRes = await fetch(`/api/tools/${workspaceId}`)
         const toolsData = await toolsRes.json()
+        if (!toolsRes.ok || !toolsData.success) {
+          setToolsLoadError("Failed to load tools")
+          return
+        }
         if (toolsData.success) {
           setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
         }
@@ -619,6 +628,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         )
       } catch (e) {
         console.error("Failed to load tools:", e)
+        setToolsLoadError("Failed to load tools")
       } finally {
         setIsLoading(false)
       }
@@ -655,10 +665,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     return UNSUPPORTED_TOOLKITS.includes(toolkitSlug) ? UNSUPPORTED_TOOLKIT_TOOLTIP : undefined
   }, [])
 
-  const refreshTools = useCallback(async () => {
+  const refreshTools = useCallback(async (): Promise<boolean> => {
     const res = await fetch(`/api/tools/${workspaceId}`)
     const data = await res.json()
-    if (!data.success) return
+    if (!data.success) return false
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
     const existing: ServerConnectionSummary[] = data.data.connections
     setCustomApis(data.data.customConnections ?? [])
@@ -669,6 +679,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     // stale `status: "connected"` on rows until a manual page reload.
     setTools((prev) => mergeRefreshedTools(prev, existing))
     await refreshDriftState()
+    return true
   }, [workspaceId, refreshDriftState])
 
   // PR #4 Commit 7: Revoke flow state. When a user clicks the Revoke button
@@ -915,7 +926,11 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           undo: async () => {
             await mutateWithFeedback(
               () => patchToolRequirement("restore", tool.slug),
-              { message: "Restored to Required tools" },
+              {
+                message: tool.required
+                  ? "Restored to Required tools"
+                  : "Restored to Recommended tools",
+              },
               showSnackbar,
             )
           },
@@ -1272,9 +1287,26 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     [swapModal.tool, workspaceId, patchToolRequirement, showSnackbar],
   )
 
-  const handleBrowseConnect = useCallback(async () => {
-    await refreshTools()
-  }, [refreshTools])
+  const handleBrowseConnect = useCallback(
+    async (tool: ToolDefinition) => {
+      try {
+        await mutateWithFeedback(
+          async () => {
+            const ok = await refreshTools()
+            if (!ok) throw new Error("Could not connect tool")
+          },
+          {
+            message: `${tool.name} connected`,
+            errorMessage: "Could not connect tool",
+          },
+          showSnackbar,
+        )
+      } catch {
+        /* error snackbar already shown */
+      }
+    },
+    [refreshTools, showSnackbar],
+  )
 
   const handleCustomSave = useCallback(async (data: { name: string; baseUrl: string; authType: string; credential: string; description: string }): Promise<{ success: boolean; error?: string }> => {
     try {
@@ -1443,7 +1475,14 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         </div>
       )}
 
-      {requiredTools.length === 0 && recommendedTools.length === 0 && (
+      {toolsLoadError && (
+        <AlertBanner variant="error">
+          <p className="font-medium">{toolsLoadError}</p>
+          <p className="text-[11px] mt-0.5 opacity-80">Something went wrong loading your tools. Please refresh the page.</p>
+        </AlertBanner>
+      )}
+
+      {requiredTools.length === 0 && recommendedTools.length === 0 && !toolsLoadError && (
         <div className="text-center py-[30px] border border-dashed border-[var(--bd)] rounded-[12px] mb-3.5">
           <Wrench className="w-[24px] h-[24px] text-[var(--tx3)] mx-auto mb-[8px]" />
           <p className="text-[13px] font-medium text-[var(--tx)] mb-[4px]">No tools configured yet</p>
@@ -1683,7 +1722,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             toolName={byokProps.toolName}
             helpUrl={byokProps.helpUrl}
             credentialFields={byokProps.credentialFields}
-            description="Enter your API key. The key is held by Composio (not Claws) and never appears in logs."
+            description="Enter your API key. The key is stored securely by our connection broker and never appears in logs."
             onSave={handleByokSubmit}
           />
         )
@@ -1834,7 +1873,7 @@ const BASE_DEPLOY_STAGES = [
   { label: "Generating workspace files", key: "GENERATING" },
   { label: "Provisioning container", key: "PROVISIONING" },
   { label: "Configuring workspace", key: "CONFIGURING" },
-  { label: "Starting gateway", key: "STARTING" },
+  { label: "Starting runtime", key: "STARTING" },
   { label: "Health check", key: "HEALTH_CHECK" },
   { label: "Complete", key: "COMPLETED" },
 ]
@@ -2406,9 +2445,9 @@ function channelDescription(channel: ChannelDefinition, summary: ChannelSummary 
   if (!channel.channelId) return channel.description
   const state = summary?.channels[channel.channelId]
   if (!state?.configured) return channel.description
-  if (state.live === "connected") return "Verified by gateway"
-  if (state.live === "error") return state.detail ? `${state.detail}. Check token and redeploy.` : "Gateway reported an error. Check token and redeploy."
-  if (state.live === "connecting") return "Gateway is checking this channel"
+  if (state.live === "connected") return "Verified by the runtime"
+  if (state.live === "error") return state.detail ? `${state.detail}. Check token and redeploy.` : "Runtime reported an error. Check token and redeploy."
+  if (state.live === "connecting") return "Checking this channel"
   if (drift?.workspaceStatus !== "RUNNING" && drift?.workspaceStatus !== "PAUSED") return "Will connect when you deploy"
   return "Configured — deploys with next redeploy"
 }

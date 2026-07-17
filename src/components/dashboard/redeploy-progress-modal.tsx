@@ -9,7 +9,7 @@ const REDEPLOY_STAGES = [
   { label: "Generating workspace files", key: "GENERATING" },
   { label: "Provisioning container", key: "PROVISIONING" },
   { label: "Configuring workspace", key: "CONFIGURING" },
-  { label: "Starting gateway", key: "STARTING" },
+  { label: "Starting runtime", key: "STARTING" },
   { label: "Health check", key: "HEALTH_CHECK" },
   { label: "Connecting channels", key: "WAITING_CHANNELS" },
   { label: "Complete", key: "COMPLETED" },

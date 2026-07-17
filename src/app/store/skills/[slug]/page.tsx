@@ -11,6 +11,8 @@ import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TextLink } from "@/components/ui/text-link"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface SkillData {
   id: string
@@ -55,6 +57,13 @@ interface PageData {
 export default function SkillDetailPage() {
   const params = useParams<{ slug: string }>()
   const slug = params.slug
+  const snackbar = useSnackbarOptional()
+  const showSnackbar = useCallback(
+    (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
+      snackbar?.show(options)
+    },
+    [snackbar],
+  )
 
   const [data, setData] = useState<PageData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -117,26 +126,36 @@ export default function SkillDetailPage() {
     setIsInstalling(true)
     setInstallError(null)
     try {
-      const res = await fetch(`/api/marketplace/skills/${slug}/install`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId: selectedWorkspaceId }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error?.message || "Installation failed")
-      }
-      setInstallSuccess(true)
-      setTimeout(() => {
-        fetchData()
-        setShowInstallModal(false)
-        setInstallSuccess(false)
-        setSelectedWorkspaceId("")
-      }, 1500)
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/marketplace/skills/${slug}/install`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workspaceId: selectedWorkspaceId }),
+          })
+          if (!res.ok) {
+            const err = await res.json()
+            throw new Error(err.error?.message || "Installation failed")
+          }
+          setInstallSuccess(true)
+          setTimeout(() => {
+            fetchData()
+            setShowInstallModal(false)
+            setInstallSuccess(false)
+            setSelectedWorkspaceId("")
+          }, 1500)
+        },
+        {
+          message: "Skill installed",
+          errorMessage: "Could not install skill",
+        },
+        showSnackbar,
+      )
     } catch (err: unknown) {
       setInstallError(err instanceof Error ? err.message : "Installation failed")
+    } finally {
+      setIsInstalling(false)
     }
-    setIsInstalling(false)
   }
 
   const handleSubmitReview = async () => {
