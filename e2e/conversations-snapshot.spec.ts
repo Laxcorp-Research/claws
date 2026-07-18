@@ -18,7 +18,18 @@ test.describe("Conversations from snapshot (hibernated)", () => {
     await signInAsTestUser(page)
     const { workspaceId } = await seedHibernatedConversationsFixture()
 
-    await page.goto(`/dashboard/${workspaceId}?tab=conversations`)
+    const api = await page.request.get(`/api/workspaces/${workspaceId}/conversations`)
+    expect(api.status()).toBe(200)
+    const apiJson = await api.json()
+    expect(apiJson.success).toBe(true)
+    expect(apiJson.data).toMatchObject({
+      available: true,
+      mode: "snapshot",
+      asOf: E2E_SNAPSHOT_AS_OF,
+    })
+
+    await page.goto(`/dashboard/${workspaceId}`)
+    await page.getByRole("tab", { name: "Conversations" }).click()
 
     await expect(page.getByTestId("conversations-readonly-banner")).toHaveText(
       `Read-only · as of ${E2E_SNAPSHOT_AS_OF.replace(".000Z", "Z")}`,
