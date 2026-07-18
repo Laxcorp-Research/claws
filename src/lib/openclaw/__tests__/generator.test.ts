@@ -31,6 +31,7 @@ vi.mock('@/lib/crypto', () => ({
 }));
 
 import { generateWorkspace } from '@/lib/openclaw/generator';
+import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { generateSecureToken } from '@/lib/crypto';
 
 const runtimeChannelsSchema2026052206 = z.object({
@@ -97,6 +98,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
     gatewayToken: null,
     hostPort: null,
     containerName: null,
+    apiKeySourceOverride: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -197,6 +199,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
     user: {
       id: 'user-1',
       name: 'Test User',
+      apiKeySource: 'USER_OWN_KEY',
       apiKeys: [
         { provider: 'ANTHROPIC', encryptedKey: 'encrypted-anthropic-key' },
       ],
@@ -1279,6 +1282,91 @@ describe('generateWorkspace', () => {
       expect(aJobs.find((j: Record<string, unknown>) => j.name === 'My Task').id).toBe(
         bJobs.find((j: Record<string, unknown>) => j.name === 'My Task').id,
       );
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 3.2 credit metering: PLATFORM_CREDIT openclaw.json baseUrl + omit
+  // user ANTHROPIC_API_KEY from .env. Mutations that drop emission or bake
+  // the key back must fail these assertions.
+  // Resolved mode = workspace.apiKeySourceOverride ?? user.apiKeySource.
+  // ─────────────────────────────────────────────────────────────────────
+  describe('3.2 PLATFORM_CREDIT: proxy baseUrl + omit BYOK ANTHROPIC_API_KEY', () => {
+    // buildMockWorkspace spreads overrides before hardcoding `user`, so
+    // mode fields must be patched onto the fixture after build.
+    function creditWorkspace(opts: {
+      override: 'PLATFORM_CREDIT' | null;
+      userSource: 'NONE' | 'USER_OWN_KEY' | 'PLATFORM_CREDIT';
+    }) {
+      const ws = buildMockWorkspace({ apiKeySourceOverride: opts.override });
+      (ws as { user: Record<string, unknown> }).user = {
+        ...ws.user,
+        apiKeySource: opts.userSource,
+        apiKeys: [{ provider: 'ANTHROPIC', encryptedKey: 'encrypted-anthropic-key' }],
+      };
+      return ws;
+    }
+
+    it('credit-mode (workspace override): emits models.providers.anthropic.baseUrl and omits user ANTHROPIC_API_KEY from .env', async () => {
+      // Mutation: drop baseUrl emission → fail. Mutation: bake user key → fail.
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        creditWorkspace({ override: 'PLATFORM_CREDIT', userSource: 'NONE' }),
+      );
+
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']) as {
+        models?: { providers?: { anthropic?: { baseUrl?: string } } };
+      };
+
+      expect(config.models?.providers?.anthropic?.baseUrl).toBe(ANTHROPIC_PROXY_URL);
+      expect(ANTHROPIC_PROXY_URL).toBe('http://localhost:3789');
+      expect(result['.env']).not.toContain('ANTHROPIC_API_KEY=');
+      // Resolved-mode source: override drives PLATFORM_CREDIT despite user NONE.
+      expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=');
+    });
+
+    it('resolved-mode source: workspace override PLATFORM_CREDIT beats user USER_OWN_KEY', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        creditWorkspace({ override: 'PLATFORM_CREDIT', userSource: 'USER_OWN_KEY' }),
+      );
+
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']) as {
+        models?: { providers?: { anthropic?: { baseUrl?: string } } };
+      };
+
+      expect(config.models?.providers?.anthropic?.baseUrl).toBe('http://localhost:3789');
+      expect(result['.env']).not.toContain('ANTHROPIC_API_KEY=');
+    });
+
+    it('BYOK workspace: no models.providers.anthropic.baseUrl and user ANTHROPIC_API_KEY present', async () => {
+      // Regression both ways vs credit-mode assertions above.
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        creditWorkspace({ override: null, userSource: 'USER_OWN_KEY' }),
+      );
+
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']) as {
+        models?: { providers?: { anthropic?: { baseUrl?: string } } };
+      };
+
+      expect(config.models?.providers?.anthropic?.baseUrl).toBeUndefined();
+      expect(config.models).toBeUndefined();
+      expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
+    });
+
+    it('NONE mode with stored key: no baseUrl, still emits user key (stale-BYOK path)', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        creditWorkspace({ override: null, userSource: 'NONE' }),
+      );
+
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']) as {
+        models?: { providers?: { anthropic?: { baseUrl?: string } } };
+      };
+
+      expect(config.models).toBeUndefined();
+      expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
     });
   });
 });

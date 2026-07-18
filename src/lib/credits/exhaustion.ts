@@ -1,14 +1,18 @@
 import { prisma } from "@/lib/db"
 import { getResend } from "@/lib/resend"
 import { log } from "@/lib/logger"
-import { destroyContainer } from "@/lib/openclaw/deployer"
+import { syncThenDestroy } from "@/lib/openclaw/deployer"
+import { getApiKeySource, isCreditUser } from "@/lib/credits/api-key-source"
 import { STARTER_CREDIT_CENTS, formatCreditDollars } from "@/lib/credits/constants"
 
 export async function onCreditsExhausted(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
-      workspaces: { where: { status: { in: ["RUNNING"] } } },
+      workspaces: {
+        where: { status: { in: ["RUNNING"] } },
+        select: { id: true, apiKeySourceOverride: true },
+      },
       creditAccount: { select: { initialGrantCents: true } },
     },
   })
@@ -22,31 +26,35 @@ export async function onCreditsExhausted(userId: string) {
   )
 
   for (const ws of user.workspaces) {
-    if (user.apiKeySource === "PLATFORM_CREDIT") {
-      try {
-        await destroyContainer(ws.id)
-      } catch (err) {
-        log.error("Failed to destroy container on credit exhaustion", {
-          workspaceId: ws.id,
-          userId,
-          error: String(err),
-        })
-      }
+    // Resolved mode (override ?? user), not user-only — WIRE-TEST-style
+    // fixtures set Workspace.apiKeySourceOverride=PLATFORM_CREDIT while
+    // User.apiKeySource stays NONE.
+    if (!isCreditUser(getApiKeySource(ws, user))) continue
 
-      // TODO: containerPhase='HIBERNATED' set here is inconsistent with
-      // destroyContainer's containerPhase='STOPPED' (applied one call up).
-      // Result: this branch leaves Workspace.status='STOPPED' but
-      // ContainerState.containerPhase='HIBERNATED', a semantic mismatch
-      // that predates the STOPPED/HIBERNATED distinction. To be resolved
-      // in the billing-overhaul PR9: under the per-Claw subscription
-      // model, credit exhaustion NO LONGER destroys containers
-      // (subscription-funded), so this entire if-branch and the
-      // destroyContainer call above both disappear.
-      await prisma.containerState.updateMany({
-        where: { workspaceId: ws.id },
-        data: { containerPhase: "HIBERNATED", hibernatedAt: new Date() },
+    try {
+      // Final state sync before teardown (same path as hibernation Stop).
+      await syncThenDestroy(ws.id)
+    } catch (err) {
+      log.error("Failed to destroy container on credit exhaustion", {
+        workspaceId: ws.id,
+        userId,
+        error: String(err),
       })
     }
+
+    // TODO: containerPhase='HIBERNATED' set here is inconsistent with
+    // destroyContainer's containerPhase='STOPPED' (applied inside
+    // syncThenDestroy). Result: this branch leaves Workspace.status='STOPPED'
+    // but ContainerState.containerPhase='HIBERNATED', a semantic mismatch
+    // that predates the STOPPED/HIBERNATED distinction. To be resolved
+    // in the billing-overhaul PR9: under the per-Claw subscription
+    // model, credit exhaustion NO LONGER destroys containers
+    // (subscription-funded), so this entire if-branch and the
+    // syncThenDestroy call above both disappear.
+    await prisma.containerState.updateMany({
+      where: { workspaceId: ws.id },
+      data: { containerPhase: "HIBERNATED", hibernatedAt: new Date() },
+    })
   }
 
   try {
