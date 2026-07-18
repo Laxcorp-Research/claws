@@ -71,10 +71,13 @@ describe("POST /api/internal/metering/report-batch — exhaustion after()", () =
         records: [
           {
             workspaceId: "ws-1",
+            agentId: null,
+            provider: "ANTHROPIC",
             model: "claude-sonnet-4-6",
             inputTokens: 100,
             outputTokens: 50,
             costCents: 5,
+            timestamp: "2026-07-18T12:00:00.000Z",
           },
         ],
       },
@@ -121,10 +124,13 @@ describe("POST /api/internal/metering/report-batch — exhaustion after()", () =
         records: [
           {
             workspaceId: "ws-1",
+            agentId: null,
+            provider: "ANTHROPIC",
             model: "claude-sonnet-4-6",
             inputTokens: 10,
             outputTokens: 5,
             costCents: 1,
+            timestamp: "2026-07-18T12:00:00.000Z",
           },
         ],
       },
