@@ -163,6 +163,29 @@ function summarizeJsonl(text: string): { messageCount: number; lastActivityAt: s
   return { messageCount, lastActivityAt }
 }
 
+function stripUntrustedEnvelope(text: string): string {
+  let cleaned = text.replace(/EXTERNAL_UNTRUSTED_CONTENT[\s\S]*?(?=\n\n|$)/gi, "")
+  cleaned = cleaned.replace(/^Sender \(untrusted metadata\):[\s\S]*?```[\s\S]*?```\s*/i, "")
+  return cleaned.trim()
+}
+
+function rewriteOpenClawContent(content: unknown): unknown {
+  if (typeof content === "string") return stripUntrustedEnvelope(content)
+  if (!Array.isArray(content)) return content
+  return content.map((block) => {
+    const record = asRecord(block)
+    if (!record) return block
+    if (record.type === "toolCall") {
+      return { ...record, type: "tool_use", name: record.name }
+    }
+    if (record.type === "text" && typeof record.text === "string") {
+      return { ...record, text: stripUntrustedEnvelope(record.text) }
+    }
+    return block
+  })
+}
+
+/** Map OpenClaw session JSONL rows → shapes normalizeConversationMessages understands. */
 function linesToMessages(text: string): ConversationMessage[] {
   const rows: unknown[] = []
   for (const line of text.split("\n")) {
@@ -170,8 +193,23 @@ function linesToMessages(text: string): ConversationMessage[] {
     try {
       const row: unknown = JSON.parse(line)
       const record = asRecord(row)
-      const nested = asRecord(record?.message)
-      rows.push(nested ?? row)
+      if (!record) continue
+      const nested = asRecord(record.message)
+      if (record.type === "message" && nested) {
+        rows.push({
+          role: nested.role,
+          content: rewriteOpenClawContent(nested.content),
+          timestamp: record.timestamp ?? nested.timestamp,
+        })
+        continue
+      }
+      if (typeof record.role === "string") {
+        rows.push({
+          role: record.role,
+          content: rewriteOpenClawContent(record.content),
+          timestamp: record.timestamp ?? record.at,
+        })
+      }
     } catch {
       // skip
     }
@@ -302,7 +340,8 @@ function buildSessionFileIndex(files: Record<string, string>): SessionFileIndex 
         continue
       }
 
-      if (fileName.endsWith(".jsonl") && !fileName.includes(".jsonl.")) {
+      // Plain {uuid}.jsonl only — never trajectory*.jsonl (would overwrite live transcript).
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(fileName)) {
         const m = fileName.match(UUID_RE)
         if (m) uuidJsonl.set(m[1].toLowerCase(), content)
       }

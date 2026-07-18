@@ -28,8 +28,8 @@ export type ConversationMessage = ConversationTextMessage | ConversationToolMess
 
 const KNOWN_PROVIDER_IDS = new Set<string>(CHANNEL_IDS)
 const EXPLICIT_NON_PROVIDER_HINTS = new Set(["webchat"])
-const TOOL_CALL_TYPES = new Set(["tool_use", "tool_call", "function_call"])
-const TOOL_RESULT_TYPES = new Set(["tool_result", "tool_response"])
+const TOOL_CALL_TYPES = new Set(["tool_use", "tool_call", "function_call", "toolCall"])
+const TOOL_RESULT_TYPES = new Set(["tool_result", "tool_response", "toolResult"])
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null
