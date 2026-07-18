@@ -48,6 +48,34 @@ export function fingerprintKey(key: string): string {
 }
 
 /**
+ * Local `.env.local` sometimes carries `placeholder-*` stubs (e.g.
+ * `METERING_MASTER_SECRET=placeholder-generate-random-hex`). Baking those into
+ * a live container makes reserve/report-batch 401 forever while the proxy
+ * still looks "healthy". Refuse loudly at derive/deploy time.
+ */
+export const PLACEHOLDER_ENV_VALUE_RE = /^placeholder-/
+
+/**
+ * Throw if any string value in `env` matches `/^placeholder-/`.
+ * Used by `deriveContainerEnv` and `buildRailwayEnvVars`.
+ */
+export function assertNoPlaceholderEnvValues(
+  env: Record<string, unknown>,
+  source: string,
+): void {
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value !== "string" || value.length === 0) continue
+    if (PLACEHOLDER_ENV_VALUE_RE.test(value)) {
+      throw new Error(
+        `${source}: refusing to bake placeholder env value for ${key} ` +
+          `(matches /^placeholder-/). Fix the control-plane secret ` +
+          `(do not deploy with local placeholder stubs).`,
+      )
+    }
+  }
+}
+
+/**
  * Derive a container's credential env from current DB state. Pure: no DB or
  * network — callers pass row subsets.
  *
@@ -63,28 +91,38 @@ export function deriveContainerEnv(
 ): DerivedContainerEnv {
   const source = getApiKeySource(workspace, user)
 
+  let derived: DerivedContainerEnv
   if (source === "PLATFORM_CREDIT") {
     // Platform master key — NOT the user's key. Matches deployer.ts:551.
     const masterKey = process.env.CLAWS_MASTER_ANTHROPIC_KEY || ""
-    return {
+    derived = {
       ANTHROPIC_API_KEY: masterKey,
       CLAWS_CREDIT_MODE: true,
       ANTHROPIC_BASE_URL: ANTHROPIC_PROXY_URL,
       keyFingerprint: masterKey ? fingerprintKey(masterKey) : null,
     }
-  }
-
-  // USER_OWN_KEY or NONE → the user's own ANTHROPIC key if present, else none.
-  // (NONE-with-key is the "stale BYOK" state surfaced in the PR-8 investigation.)
-  const anthropicKey = user.apiKeys.find((k) => k.provider === "ANTHROPIC")
-  if (anthropicKey) {
-    const decrypted = decrypt(anthropicKey.encryptedKey)
-    return {
-      ANTHROPIC_API_KEY: decrypted,
-      CLAWS_CREDIT_MODE: false,
-      keyFingerprint: fingerprintKey(decrypted),
+  } else {
+    // USER_OWN_KEY or NONE → the user's own ANTHROPIC key if present, else none.
+    // (NONE-with-key is the "stale BYOK" state surfaced in the PR-8 investigation.)
+    const anthropicKey = user.apiKeys.find((k) => k.provider === "ANTHROPIC")
+    if (anthropicKey) {
+      const decrypted = decrypt(anthropicKey.encryptedKey)
+      derived = {
+        ANTHROPIC_API_KEY: decrypted,
+        CLAWS_CREDIT_MODE: false,
+        keyFingerprint: fingerprintKey(decrypted),
+      }
+    } else {
+      derived = { CLAWS_CREDIT_MODE: false, keyFingerprint: null }
     }
   }
 
-  return { CLAWS_CREDIT_MODE: false, keyFingerprint: null }
+  assertNoPlaceholderEnvValues(
+    {
+      ANTHROPIC_API_KEY: derived.ANTHROPIC_API_KEY,
+      ANTHROPIC_BASE_URL: derived.ANTHROPIC_BASE_URL,
+    },
+    "deriveContainerEnv",
+  )
+  return derived
 }

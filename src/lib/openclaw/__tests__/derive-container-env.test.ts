@@ -13,6 +13,7 @@ vi.mock("@/lib/encryption", () => ({
 }))
 
 import {
+  assertNoPlaceholderEnvValues,
   deriveContainerEnv,
   fingerprintKey,
   ANTHROPIC_PROXY_URL,
@@ -99,6 +100,26 @@ describe("deriveContainerEnv — apiKeySource × hasKey matrix", () => {
     const env = deriveContainerEnv(ws("USER_OWN_KEY"), usr("PLATFORM_CREDIT", [anthropicKey]))
     expect(env.CLAWS_CREDIT_MODE).toBe(false)
     expect(env.ANTHROPIC_API_KEY).toBe("sk-ant-plain-ENC_ANTHROPIC")
+  })
+
+  it("throws loud when CLAWS_MASTER_ANTHROPIC_KEY is a placeholder-* stub (WAKE-4 class)", () => {
+    process.env.CLAWS_MASTER_ANTHROPIC_KEY = "placeholder-generate-random-hex"
+    expect(() => deriveContainerEnv(ws(), usr("PLATFORM_CREDIT"))).toThrow(
+      /deriveContainerEnv: refusing to bake placeholder env value for ANTHROPIC_API_KEY/,
+    )
+  })
+
+  it("mutation: assertNoPlaceholderEnvValues must reject placeholder-* (remove guard → fail)", () => {
+    // Locks the shared helper; deriveContainerEnv + buildRailwayEnvVars both call it.
+    expect(() =>
+      assertNoPlaceholderEnvValues(
+        { CLAWS_METERING_SECRET: "placeholder-generate-random-hex" },
+        "buildRailwayEnvVars",
+      ),
+    ).toThrow(/buildRailwayEnvVars: refusing to bake placeholder env value for CLAWS_METERING_SECRET/)
+    expect(() =>
+      assertNoPlaceholderEnvValues({ CLAWS_METERING_SECRET: "817bc44add3b-real" }, "buildRailwayEnvVars"),
+    ).not.toThrow()
   })
 })
 
