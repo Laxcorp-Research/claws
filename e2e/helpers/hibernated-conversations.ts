@@ -1,6 +1,5 @@
 import { gzipSync } from "node:zlib"
-import { PrismaPg } from "@prisma/adapter-pg"
-import { PrismaClient } from "../../src/generated/prisma/client"
+import { Client } from "pg"
 
 export const E2E_SNAPSHOT_AS_OF = "2026-07-11T12:41:00.000Z"
 export const E2E_OLD_MAIN = "6f484ca3-1111-2222-3333-444444444444"
@@ -18,28 +17,31 @@ function buildGzipFixture(fileContents: Record<string, string>): Buffer {
   return gzipSync(JSON.stringify({ files, totalSize }))
 }
 
-function createClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL
-  if (!connectionString) {
-    throw new Error("DATABASE_URL required to seed hibernated conversations fixture")
-  }
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
-}
-
 /**
  * Seeds a HIBERNATED workspace owned by the E2E test user with a real
- * runtimeStateSnapshot (gzip bundle). Conversations API + UI hit this row —
- * no route mocking (real-surface).
+ * runtimeStateSnapshot (gzip bundle). Uses `pg` (not Prisma client) so
+ * Playwright's ESM loader does not choke on generated client.ts.
  */
 export async function seedHibernatedConversationsFixture(): Promise<{
   workspaceId: string
   asOf: string
 }> {
-  const prisma = createClient()
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) {
+    throw new Error("DATABASE_URL required to seed hibernated conversations fixture")
+  }
+
+  const client = new Client({ connectionString })
+  await client.connect()
   try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { email: "e2e-test@buildclaws.ai" },
-    })
+    const userRes = await client.query<{ id: string }>(
+      `SELECT id FROM "User" WHERE email = $1 LIMIT 1`,
+      ["e2e-test@buildclaws.ai"],
+    )
+    const userId = userRes.rows[0]?.id
+    if (!userId) {
+      throw new Error("E2E test user e2e-test@buildclaws.ai not found — sign in first")
+    }
 
     const gzip = buildGzipFixture({
       "agents/dev-commander/sessions/sessions.json": JSON.stringify({
@@ -66,27 +68,35 @@ export async function seedHibernatedConversationsFixture(): Promise<{
 
     const asOf = new Date(E2E_SNAPSHOT_AS_OF)
     const slug = `e2e-hibernated-conversations-${Date.now()}`
+    const workspaceId = `e2e_hib_conv_${Date.now().toString(36)}`
 
-    const workspace = await prisma.workspace.create({
-      data: {
-        userId: user.id,
-        name: "E2E Hibernated Conversations",
-        slug,
-        status: "HIBERNATED",
-        containerState: {
-          create: {
-            containerPhase: "HIBERNATED",
-            runtimeStateSnapshot: new Uint8Array(gzip),
-            runtimeStateUpdatedAt: asOf,
-            runtimeStateSizeBytes: gzip.length,
-          },
-        },
-      },
-      select: { id: true },
-    })
+    await client.query(
+      `INSERT INTO "Workspace" (id, "userId", name, slug, status, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, 'HIBERNATED', NOW(), NOW())`,
+      [workspaceId, userId, "E2E Hibernated Conversations", slug],
+    )
 
-    return { workspaceId: workspace.id, asOf: asOf.toISOString() }
+    await client.query(
+      `INSERT INTO "ContainerState" (
+         id, "workspaceId", "containerPhase",
+         "runtimeStateSnapshot", "runtimeStateUpdatedAt", "runtimeStateSizeBytes",
+         "createdAt", "updatedAt"
+       ) VALUES (
+         $1, $2, 'HIBERNATED',
+         $3, $4, $5,
+         NOW(), NOW()
+       )`,
+      [
+        `e2e_cs_${Date.now().toString(36)}`,
+        workspaceId,
+        gzip,
+        asOf,
+        gzip.length,
+      ],
+    )
+
+    return { workspaceId, asOf: asOf.toISOString() }
   } finally {
-    await prisma.$disconnect()
+    await client.end()
   }
 }
