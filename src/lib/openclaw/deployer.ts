@@ -41,7 +41,12 @@ import {
 } from './railway-client';
 import { log } from '@/lib/logger';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
-import { deriveContainerEnv, type DeriveWorkspaceInput, type DeriveUserInput } from './derive-container-env';
+import {
+  assertNoPlaceholderEnvValues,
+  deriveContainerEnv,
+  type DeriveWorkspaceInput,
+  type DeriveUserInput,
+} from './derive-container-env';
 import {
   hasConfiguredChannels,
   parseChannelConfigBlob,
@@ -970,6 +975,9 @@ export function buildRailwayEnvVars(
   }
 
   assertContainerPayloadEnvVarSizes(vars);
+  // WAKE-4: local placeholder stubs (esp. CLAWS_METERING_SECRET) must never
+  // reach Railway — same /^placeholder-/ gate as deriveContainerEnv.
+  assertNoPlaceholderEnvValues(vars, "buildRailwayEnvVars");
 
   return vars;
 }

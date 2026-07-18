@@ -443,6 +443,16 @@ describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => 
     const env = callIt();
     expect(env.CLAWS_ACTIVITY_ENDPOINT).toBe('https://app.buildclaws.ai/api/internal/activity');
   });
+
+  it('throws when METERING_MASTER_SECRET is placeholder-* (WAKE-4 local-wake footgun)', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
+    process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
+    process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
+    process.env.METERING_MASTER_SECRET = 'placeholder-generate-random-hex';
+    expect(callIt).toThrow(
+      /buildRailwayEnvVars: refusing to bake placeholder env value for CLAWS_METERING_SECRET/,
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

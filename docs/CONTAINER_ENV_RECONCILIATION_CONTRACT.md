@@ -204,6 +204,21 @@ Before PR-8b merges, query staging Axiom for historical `"Container recycle need
 
 ---
 
+## 9b. Placeholder env guard + credit-proxy observability backlog (−9)
+
+**Placeholder guard (shipped):** `deriveContainerEnv` and `buildRailwayEnvVars` refuse any string value matching `/^placeholder-/` (loud throw). Prevents local `.env.local` stubs such as `METERING_MASTER_SECRET=placeholder-generate-random-hex` from being baked into Railway as `CLAWS_METERING_SECRET` (WAKE-4: proxy looks healthy, reserve/report-batch 401 forever, zero `CreditUsageRecord`).
+
+**−9 observability (queued, not in this PR):** the in-container credit proxy still lacks operator-visible report/spawn signals. Spec for the next overlay/image bump:
+
+1. Log on report success: `[credit-proxy] report-batch ok n=…`
+2. Log on report failure: `[credit-proxy] report-batch failed status=… / error=…` (today failures silent-requeue with no log)
+3. On SIGTERM flush: log flushed pending count (shutdown already calls `flush()`)
+4. Emit an `ActivityLog` spawn-status event when the proxy starts / becomes healthy / fails health
+
+Until −9 lands, ATTEMPT-5-class forks (real `apiCost` + zero `CreditUsageRecord` with a healthy Listening line) cannot be distinguished in Railway logs between **proxy bypass** and **silent report requeue**.
+
+---
+
 ## 10. Non-goals / derivation scope (why `deriveContainerEnv` is Anthropic-only)
 
 `deriveContainerEnv` (`src/lib/openclaw/derive-container-env.ts`) is deliberately scoped to the **credit-mode / Anthropic credential triple** (`ANTHROPIC_API_KEY`, `CLAWS_CREDIT_MODE`, `ANTHROPIC_BASE_URL`, plus the drift `keyFingerprint`) because that triple — and only that triple — is what *drifts* between DB state and a running container when a user's `apiKeySource` or keys change. It is the contract surface for this reconciliation effort, not a general-purpose provider-env manager. As of PR-8a it is the single source of truth for the two paths that inject those vars into a live container: the deploy path (`deployer.ts:buildRailwayEnvVars`) and the runtime secret-fetch path (`container-secrets/route.ts`). The remaining emission of `ANTHROPIC_API_KEY` in the codebase — `generator.ts` baking it into the workspace `.env` (`generator.ts:647`) — is **intentionally left separate**: the generator is a multi-provider `.env` baker that provisions *every* configured provider key for the workspace (Anthropic, OpenAI, etc. — see `generator.ts:84`), which is a workspace-provisioning concern unrelated to credit-mode drift. Folding it into `deriveContainerEnv` today would force an Anthropic-only helper to grow multi-provider responsibilities it doesn't need. If multi-provider metering is ever introduced (the platform currently meters only `provider="ANTHROPIC"` in `report-batch`), the expansion path is: extend `deriveContainerEnv` to emit the full provider set, then unify `generator.ts`'s `.env` baking onto it — at which point the "single source of truth" guarantee extends to all providers. Until then, `generator.ts` is the documented, expected exception, and the §9 assertions cover only the Anthropic/credit-mode surface. The other documented exception is `OPENCLAW_GATEWAY_TOKEN` (§6 note): emitted at deploy time, never drift-compared, load-bearing for dashboard chat since PR-9/A.
