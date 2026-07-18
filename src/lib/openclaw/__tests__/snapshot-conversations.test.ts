@@ -231,6 +231,57 @@ describe("response cache keyed (workspaceId, runtimeStateUpdatedAt)", () => {
   })
 })
 
+describe("OpenClaw session JSONL shape", () => {
+  it("reads wrapped message.content text and ignores trajectory overwrite", () => {
+    const uuid = "88edda74-0689-403b-a7b6-0107cf3a6877"
+    const jsonl = [
+      JSON.stringify({
+        type: "message",
+        timestamp: "2026-07-13T16:08:01.398Z",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Please run another trend scan now." }],
+        },
+      }),
+      JSON.stringify({
+        type: "message",
+        timestamp: "2026-07-13T16:08:12.243Z",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: "t1", name: "sessions_spawn", arguments: {} },
+            { type: "text", text: "Spawned the Trend & Topic Scout at 16:07 UTC!" },
+          ],
+        },
+      }),
+    ].join("\n")
+    const trajectory = JSON.stringify({
+      type: "trace.metadata",
+      ts: "2026-07-13T16:08:01.000Z",
+      sessionId: uuid,
+    })
+    const gzip = buildRuntimeStateGzipFixture({
+      "agents/twitter-commander/sessions/sessions.json": JSON.stringify({
+        "agent:twitter-commander:main": uuid,
+      }),
+      [`agents/twitter-commander/sessions/${uuid}.jsonl`]: jsonl,
+      [`agents/twitter-commander/sessions/${uuid}.trajectory.jsonl`]: trajectory,
+    })
+    const result = loadSnapshotConversationsFromGzip({
+      workspaceId: "ws-openclaw-shape",
+      gzipBytes: gzip,
+      runtimeStateUpdatedAt: AS_OF,
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.view.conversations[0]?.lastActivityAt).toBe("2026-07-13T16:08:12.243Z")
+    const messages = readSnapshotSessionMessages(result.files, "agent:twitter-commander:main")
+    expect(messages?.some((m) => m.type === "message" && m.content.includes("trend scan"))).toBe(true)
+    expect(messages?.some((m) => m.type === "message" && m.content.includes("16:07 UTC"))).toBe(true)
+    expect(messages?.some((m) => m.type === "tool" && m.name === "sessions_spawn")).toBe(true)
+  })
+})
+
 describe("size ceiling", () => {
   it("returns honest too_large when uncompressed totalSize exceeds 100MB", () => {
     const gzip = buildRuntimeStateGzipFixture(
