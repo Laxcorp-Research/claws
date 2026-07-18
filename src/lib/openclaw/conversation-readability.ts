@@ -26,3 +26,7 @@ export function isLiveGatewayStatus(status: string): boolean {
 export function isConversationReadableStatus(status: string): boolean {
   return READABLE_STATUSES.has(status)
 }
+
+/** API `mode` value for read-from-persisted-state responses (not user-facing copy). */
+export const CONVERSATIONS_MODE_SNAPSHOT = "snapshot" as const
+export const CONVERSATIONS_MODE_LIVE = "live" as const

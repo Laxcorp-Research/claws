@@ -19,6 +19,7 @@ function mockFetch() {
           success: true,
           data: {
             available: true,
+            mode: "live",
             conversations: [
               {
                 sessionKey: "agent:dev-commander:main",
@@ -30,6 +31,15 @@ function mockFetch() {
                 sessionKey: "agent:sender-ish:main",
                 channelHint: "unknown",
                 lastActivityAt: null,
+              },
+            ],
+            archived: [
+              {
+                sessionKey: "orphaned:6f484ca3-1111-2222-3333-444444444444",
+                channelHint: "unknown",
+                lastActivityAt: "2026-07-08T06:31:00.000Z",
+                messageCount: 2,
+                reason: "rotated-main",
               },
             ],
           },
@@ -94,8 +104,18 @@ describe("ConversationsSection", () => {
     expect(screen.getByText("hello back")).toBeTruthy()
   })
 
-  it("STOPPED fetches snapshot-mode conversations (READABLE includes non-live statuses)", async () => {
-    const fetchMock = vi.fn(async () => ({
+  it("live mode renders archived section with rotated-main row", async () => {
+    mockFetch()
+    render(<ConversationsSection workspaceId="ws-1" status="RUNNING" />)
+
+    expect(await screen.findByTestId("conversations-archived")).toBeTruthy()
+    expect(screen.getByText("Archived sessions")).toBeTruthy()
+    expect(screen.getByText(/orphaned:6f484ca3/)).toBeTruthy()
+    expect(screen.getByText(/rotated main/)).toBeTruthy()
+  })
+
+  it("HIBERNATED snapshot mode shows Read-only · as of banner", async () => {
+    global.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({
         success: true,
@@ -115,15 +135,36 @@ describe("ConversationsSection", () => {
         },
       }),
     })) as unknown as typeof fetch
-    global.fetch = fetchMock
 
-    render(<ConversationsSection workspaceId="ws-1" status="STOPPED" />)
+    render(<ConversationsSection workspaceId="ws-1" status="HIBERNATED" />)
 
-    expect(await screen.findByText("agent:dev-commander:main")).toBeTruthy()
-    expect(fetchMock).toHaveBeenCalled()
+    const banner = await screen.findByTestId("conversations-readonly-banner")
+    expect(banner.textContent).toBe("Read-only · as of 2026-07-11T12:41:00Z")
+    expect(screen.getByText("agent:dev-commander:main")).toBeTruthy()
   })
 
-  it("STOPPED with no snapshot shows the quiet unavailable empty state", async () => {
+  it("WAKING banner variant mentions Waking + asOf when saved history present", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          available: true,
+          mode: "snapshot",
+          asOf: "2026-07-11T12:41:00.000Z",
+          conversations: [],
+          archived: [],
+        },
+      }),
+    })) as unknown as typeof fetch
+
+    render(<ConversationsSection workspaceId="ws-1" status="WAKING" />)
+
+    const banner = await screen.findByTestId("conversations-readonly-banner")
+    expect(banner.textContent).toBe("Waking · showing saved history as of 2026-07-11T12:41:00Z")
+  })
+
+  it("STOPPED with no saved history shows empty copy", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -135,7 +176,50 @@ describe("ConversationsSection", () => {
     render(<ConversationsSection workspaceId="ws-1" status="STOPPED" />)
 
     expect(
-      await screen.findByText("Conversations are readable while the Claw is running."),
+      await screen.findByText("No saved conversation history yet. Wake or run the Claw once to capture history."),
     ).toBeTruthy()
+  })
+
+  it("corrupt gzip shows error banner + empty copy", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          available: false,
+          reason: "corrupt",
+          asOf: "2026-07-11T12:41:00.000Z",
+          conversations: [],
+          archived: [],
+        },
+      }),
+    })) as unknown as typeof fetch
+
+    render(<ConversationsSection workspaceId="ws-1" status="HIBERNATED" />)
+
+    expect(await screen.findByTestId("conversations-corrupt-banner")).toBeTruthy()
+    expect(
+      screen.getByText(/Saved conversation history is unreadable/),
+    ).toBeTruthy()
+  })
+
+  it("saved history with zero sessions shows no-sessions empty copy", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          available: true,
+          mode: "snapshot",
+          asOf: "2026-07-11T12:41:00.000Z",
+          conversations: [],
+          archived: [],
+        },
+      }),
+    })) as unknown as typeof fetch
+
+    render(<ConversationsSection workspaceId="ws-1" status="HIBERNATED" />)
+
+    expect(await screen.findByText("No readable conversations in saved history.")).toBeTruthy()
   })
 })
