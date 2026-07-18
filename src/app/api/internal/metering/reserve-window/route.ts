@@ -1,10 +1,16 @@
 import { NextRequest } from "next/server"
 import { apiSuccess, apiError } from "@/lib/api/response"
 import { redis } from "@/lib/redis"
+import { prisma } from "@/lib/db"
+import {
+  METERING_SECRET_HEADER,
+  proxyReserveWindowBodySchema,
+} from "@/lib/credits/proxy-metering-payload"
 
 function verifyMeteringSecret(req: NextRequest): boolean {
-  const secret = req.headers.get("X-Metering-Secret")
-  return secret === process.env.METERING_MASTER_SECRET
+  const secret = req.headers.get(METERING_SECRET_HEADER)?.trim()
+  const expected = process.env.METERING_MASTER_SECRET?.trim()
+  return Boolean(secret && expected && secret === expected)
 }
 
 export async function POST(req: NextRequest) {
@@ -12,14 +18,39 @@ export async function POST(req: NextRequest) {
     return apiError("UNAUTHORIZED", "Invalid metering secret", 401)
   }
 
-  const { userId, windowSizeCents } = await req.json()
+  let raw: unknown
+  try {
+    raw = await req.json()
+  } catch {
+    return apiError("VALIDATION_ERROR", "Body must be JSON", 400)
+  }
 
-  if (!userId || !windowSizeCents) {
+  const parsed = proxyReserveWindowBodySchema.safeParse(raw)
+  if (!parsed.success) {
     return apiError("VALIDATION_ERROR", "userId and windowSizeCents required", 400)
   }
 
+  const { userId, windowSizeCents } = parsed.data
+
   const balanceKey = `credit:balance:${userId}`
   const reservationsKey = `credit:reservations:${userId}`
+
+  // Seed Redis from the durable ledger when the cache key is missing so
+  // credit-proxy canSpend does not fail-closed (or degrade) on a cold cache.
+  try {
+    const cached = await redis.get(balanceKey)
+    if (cached === null) {
+      const account = await prisma.creditAccount.findUnique({
+        where: { userId },
+        select: { balanceCents: true, status: true },
+      })
+      if (account && account.status === "ACTIVE") {
+        await redis.set(balanceKey, account.balanceCents.toString())
+      }
+    }
+  } catch {
+    // Proceed to lua; if Redis is fully down the proxy degrades open.
+  }
 
   const luaScript = `
     local balance = tonumber(redis.call('GET', KEYS[1]) or '0')
@@ -39,10 +70,11 @@ export async function POST(req: NextRequest) {
   const remaining = (await redis.eval(
     luaScript,
     [balanceKey, reservationsKey],
-    [windowSizeCents.toString()]
+    [windowSizeCents.toString()],
   )) as number
 
   if (remaining < 0) {
+    // Envelope: { success, data: { allowed, reason } } — proxy reads data.data.allowed
     return apiSuccess({ allowed: false, reason: "INSUFFICIENT_CREDITS" })
   }
 
