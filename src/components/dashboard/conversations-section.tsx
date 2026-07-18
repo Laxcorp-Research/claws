@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { ChatMessage } from "./chat-message"
 import { ProviderChannelBadge } from "./provider-channel-badge"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
+import { isConversationReadableStatus } from "@/lib/openclaw/conversation-readability"
 
 export interface ConversationSummaryView {
   sessionKey: string
@@ -50,8 +51,6 @@ interface ConversationsSectionProps {
   status: string
 }
 
-const READABLE_STATUSES = new Set(["RUNNING", "PAUSED"])
-
 function formatTime(iso: string | null): string {
   if (!iso) return "unknown"
   const parsed = Date.parse(iso)
@@ -75,7 +74,7 @@ function isToolMessage(message: ConversationMessageView): message is Extract<Con
 }
 
 export function ConversationsSection({ workspaceId, status }: ConversationsSectionProps) {
-  const statusReadable = READABLE_STATUSES.has(status)
+  const statusReadable = isConversationReadableStatus(status)
   const [gatewayAvailable, setGatewayAvailable] = useState(true)
   const [conversations, setConversations] = useState<ConversationSummaryView[]>([])
   const [loadedWorkspaceId, setLoadedWorkspaceId] = useState<string | null>(null)
