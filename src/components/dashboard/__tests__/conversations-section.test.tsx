@@ -94,13 +94,48 @@ describe("ConversationsSection", () => {
     expect(screen.getByText("hello back")).toBeTruthy()
   })
 
-  it("shows a quiet empty state for stopped workspaces without fetching", () => {
-    const fetchMock = vi.fn()
+  it("STOPPED fetches snapshot-mode conversations (READABLE includes non-live statuses)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          available: true,
+          mode: "snapshot",
+          asOf: "2026-07-11T12:41:00.000Z",
+          conversations: [
+            {
+              sessionKey: "agent:dev-commander:main",
+              channelHint: "telegram",
+              lastActivityAt: "2026-07-11T12:42:00.000Z",
+              messageCount: 1,
+            },
+          ],
+          archived: [],
+        },
+      }),
+    })) as unknown as typeof fetch
     global.fetch = fetchMock
 
     render(<ConversationsSection workspaceId="ws-1" status="STOPPED" />)
 
-    expect(screen.getByText("Conversations are readable while the Claw is running.")).toBeTruthy()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await screen.findByText("agent:dev-commander:main")).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it("STOPPED with no snapshot shows the quiet unavailable empty state", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: { available: false, reason: "not_running", conversations: [], archived: [] },
+      }),
+    })) as unknown as typeof fetch
+
+    render(<ConversationsSection workspaceId="ws-1" status="STOPPED" />)
+
+    expect(
+      await screen.findByText("Conversations are readable while the Claw is running."),
+    ).toBeTruthy()
   })
 })
