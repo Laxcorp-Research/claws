@@ -70,30 +70,56 @@ export async function seedHibernatedConversationsFixture(): Promise<{
     const slug = `e2e-hibernated-conversations-${Date.now()}`
     const workspaceId = `e2e_hib_conv_${Date.now().toString(36)}`
 
-    await client.query(
-      `INSERT INTO "Workspace" (id, "userId", name, slug, status, "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, 'HIBERNATED', NOW(), NOW())`,
-      [workspaceId, userId, "E2E Hibernated Conversations", slug],
-    )
+    await client.query("BEGIN")
+    try {
+      await client.query(
+        `INSERT INTO "Workspace" (id, "userId", name, slug, status, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, 'HIBERNATED', NOW(), NOW())`,
+        [workspaceId, userId, "E2E Hibernated Conversations", slug],
+      )
 
-    await client.query(
-      `INSERT INTO "ContainerState" (
-         id, "workspaceId", "containerPhase",
-         "runtimeStateSnapshot", "runtimeStateUpdatedAt", "runtimeStateSizeBytes",
-         "createdAt", "updatedAt"
-       ) VALUES (
-         $1, $2, 'HIBERNATED',
-         $3, $4, $5,
-         NOW(), NOW()
-       )`,
-      [
-        `e2e_cs_${Date.now().toString(36)}`,
-        workspaceId,
-        gzip,
-        asOf,
-        gzip.length,
-      ],
-    )
+      // Dashboard hides tabs when agents.length === 0 (isEmpty path).
+      await client.query(
+        `INSERT INTO "Agent" (
+           id, "workspaceId", "agentSlug", name, role, color,
+           "soulMd", "agentsMd", model, "positionX", "positionY",
+           "createdAt", "updatedAt"
+         ) VALUES (
+           $1, $2, 'dev-commander', 'E2E Commander', 'ORCHESTRATOR', '#5BA1F5',
+           $3, $4, 'anthropic/claude-sonnet-4-6', 0, 0,
+           NOW(), NOW()
+         )`,
+        [
+          `e2e_ag_${Date.now().toString(36)}`,
+          workspaceId,
+          "# E2E soul",
+          "# E2E agents",
+        ],
+      )
+
+      await client.query(
+        `INSERT INTO "ContainerState" (
+           id, "workspaceId", "containerPhase",
+           "runtimeStateSnapshot", "runtimeStateUpdatedAt", "runtimeStateSizeBytes",
+           "createdAt", "updatedAt"
+         ) VALUES (
+           $1, $2, 'HIBERNATED',
+           $3, $4, $5,
+           NOW(), NOW()
+         )`,
+        [
+          `e2e_cs_${Date.now().toString(36)}`,
+          workspaceId,
+          gzip,
+          asOf,
+          gzip.length,
+        ],
+      )
+      await client.query("COMMIT")
+    } catch (err) {
+      await client.query("ROLLBACK")
+      throw err
+    }
 
     return { workspaceId, asOf: asOf.toISOString() }
   } finally {

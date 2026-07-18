@@ -28,7 +28,10 @@ test.describe("Conversations from snapshot (hibernated)", () => {
       asOf: E2E_SNAPSHOT_AS_OF,
     })
 
-    await page.goto(`/dashboard/${workspaceId}`)
+    await page.goto(`/dashboard/${workspaceId}?tab=conversations`)
+    await expect(page.getByRole("tab", { name: "Conversations" })).toBeVisible({
+      timeout: 20_000,
+    })
     await page.getByRole("tab", { name: "Conversations" }).click()
 
     await expect(page.getByTestId("conversations-readonly-banner")).toHaveText(
