@@ -79,9 +79,30 @@ const CONTAINER_PAYLOAD_SAFETY_CEILING = 30_000;
 // src/app/api/cron/hibernation/route.ts.
 const DEFAULT_SYNC_TIMEOUT_MS = 18_000;
 
-function isMissingRailwayServiceError(err: unknown): boolean {
+/**
+ * Missing Railway service (404 / not found) — safe to adopt-by-name or fresh-create.
+ * BEFORE P4: only this shape fell through; NotAuthorized rethrew forever.
+ */
+export function isMissingRailwayServiceError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /(?:service|deployment).*not\s+found|not\s+found.*(?:service|deployment)|404/i.test(message);
+}
+
+/**
+ * Lifecycle P4: orphan-class errors on an EXISTING service id during redeploy.
+ * Includes missing-service AND NotAuthorized (stale ACL / deleted service
+ * still referenced by our stored containerId). Fresh createService auth
+ * outages are NOT orphan — they must fail loud (no infinite provision loop).
+ */
+export function isOrphanRailwayServiceError(err: unknown): boolean {
+  if (isMissingRailwayServiceError(err)) return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /NotAuthorized|not\s*authorized|unauthorized/i.test(message);
+}
+
+function isRailwayAuthOutageError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /NotAuthorized|not\s*authorized|unauthorized|401/i.test(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +396,8 @@ export async function deployToCloud(workspaceId: string): Promise<{
           oldServiceId: workspace.containerId,
           error: redeployErr instanceof Error ? redeployErr.message : String(redeployErr),
         });
-        if (!isMissingRailwayServiceError(redeployErr)) {
+        // P4: NotAuthorized on existing service → orphan fall-through (was rethrow).
+        if (!isOrphanRailwayServiceError(redeployErr)) {
           throw redeployErr;
         }
 
@@ -394,13 +416,29 @@ export async function deployToCloud(workspaceId: string): Promise<{
             where: { id: workspaceId },
             data: { containerId: null, containerName: null, containerHost: null },
           });
-          result = await createService({ name: serviceName, envVars, image });
+          try {
+            result = await createService({ name: serviceName, envVars, image });
+          } catch (freshErr) {
+            // Guard: auth outage on NEW provision fails loud — do not loop.
+            if (isRailwayAuthOutageError(freshErr)) {
+              throw new Error(
+                `Railway auth outage on fresh provision after orphan clear: ${
+                  freshErr instanceof Error ? freshErr.message : String(freshErr)
+                }`,
+              );
+            }
+            throw freshErr;
+          }
         }
       }
     } else {
       try {
         result = await createService({ name: serviceName, envVars, image });
       } catch (err: unknown) {
+        // Fresh provision NotAuthorized → fail loud (no orphan clear/retry loop).
+        if (isRailwayAuthOutageError(err) && !String(err).includes('already exists')) {
+          throw err;
+        }
         const msg = err instanceof Error ? err.message : '';
         if (msg.includes('already exists')) {
           log.warn('Service already exists, looking it up by name', { serviceName, workspaceId });
