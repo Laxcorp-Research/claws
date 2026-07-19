@@ -3,6 +3,11 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
 import type { WorkspaceStatus, HealthStatus } from "@/generated/prisma/client"
+import {
+  decideHeartbeatMissed,
+  HEARTBEAT_MISS_GRACE_MS,
+  lastExpectedCronFire,
+} from "@/lib/hibernation/next-heartbeat"
 
 // PR-3 — Health Monitor cron.
 //
@@ -413,8 +418,13 @@ export async function GET(req: NextRequest) {
       gatewayToken: true,
       activitySilenceDetectedAt: true,
       stateSyncStaleDetectedAt: true,
+      heartbeatMissedAt: true,
       containerState: {
-        select: { runtimeStateUpdatedAt: true },
+        select: {
+          runtimeStateUpdatedAt: true,
+          containerPhase: true,
+          heartbeatCronExpressions: true,
+        },
       },
       deployments: {
         where: { completedAt: { not: null } },
@@ -479,6 +489,60 @@ export async function GET(req: NextRequest) {
       nowMs: startedAt,
     })
 
+    // Lifecycle P2 Watchtower: missed cron heartbeat window (ops-gap).
+    // Distinct from activity-silence — both flags may coexist.
+    let heartbeatMissedAt: Date | null | undefined = undefined
+    const phase = ws.containerState?.containerPhase
+    const cronExprs = ws.containerState?.heartbeatCronExpressions
+    if (phase === "RUNNING" || phase === "WARM") {
+      const expected = lastExpectedCronFire(cronExprs, new Date(startedAt))
+      let hasEvidence = false
+      if (expected) {
+        const windowEnd = new Date(expected.getTime() + HEARTBEAT_MISS_GRACE_MS)
+        const evidence = await prisma.activityLog.findFirst({
+          where: {
+            workspaceId: ws.id,
+            actionType: "HEARTBEAT",
+            timestamp: { gte: expected, lte: windowEnd },
+          },
+          select: { id: true },
+        })
+        hasEvidence = evidence !== null
+      }
+      heartbeatMissedAt = decideHeartbeatMissed({
+        containerPhase: phase,
+        heartbeatCronExpressions: cronExprs,
+        hasHeartbeatEvidenceInWindow: hasEvidence,
+        currentFlag: ws.heartbeatMissedAt,
+        nowMs: startedAt,
+      })
+      // First transition into miss → ActivityLog ERROR (Watchtower signal).
+      if (
+        heartbeatMissedAt instanceof Date &&
+        ws.heartbeatMissedAt === null &&
+        expected
+      ) {
+        try {
+          await prisma.activityLog.create({
+            data: {
+              workspaceId: ws.id,
+              action: "Heartbeat missed",
+              detail: `No HEARTBEAT evidence in [${expected.toISOString()}, ${new Date(expected.getTime() + HEARTBEAT_MISS_GRACE_MS).toISOString()}]`,
+              actionType: "ERROR",
+              timestamp: new Date(startedAt),
+              metadata: JSON.stringify({
+                eventKind: "heartbeat_missed",
+                expectedAt: expected.toISOString(),
+                graceMs: HEARTBEAT_MISS_GRACE_MS,
+              }),
+            },
+          })
+        } catch (err) {
+          errors.push(`${ws.id}: heartbeat-miss ActivityLog failed ${String(err)}`)
+        }
+      }
+    }
+
     if (probe.result.kind === "healthy") healthy++
     else if (probe.result.kind === "degraded") degraded++
     else failed++
@@ -500,6 +564,7 @@ export async function GET(req: NextRequest) {
           ...(update.lastHealthCheck ? { lastHealthCheck: update.lastHealthCheck } : {}),
           ...(activitySilenceDetectedAt !== undefined ? { activitySilenceDetectedAt } : {}),
           ...(stateSyncStaleDetectedAt !== undefined ? { stateSyncStaleDetectedAt } : {}),
+          ...(heartbeatMissedAt !== undefined ? { heartbeatMissedAt } : {}),
         },
       })
     } catch (err) {
@@ -557,9 +622,11 @@ export const __internal = {
   decideUpdate,
   decideActivitySilence,
   decideStateSyncStale,
+  decideHeartbeatMissed,
   heartbeatIntervalMs,
   UNHEALTHY_THRESHOLD,
   ERROR_THRESHOLD,
   ACTIVITY_SILENCE_MIN_THRESHOLD_MS,
   STATE_SYNC_STALE_THRESHOLD_MS,
+  HEARTBEAT_MISS_GRACE_MS,
 }

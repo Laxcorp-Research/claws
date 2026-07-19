@@ -28,6 +28,10 @@ import {
   isExternalChannelInbound,
   touchLastChannelMessageAt,
 } from "@/lib/hibernation/channel-inbound";
+import {
+  computeNextHeartbeatAt,
+  isHeartbeatShapedActivity,
+} from "@/lib/hibernation/next-heartbeat";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -417,6 +421,41 @@ export async function POST(
           log.error("activity: failed to stamp lastChannelMessageAt", {
             workspaceId,
             error: touchErr instanceof Error ? touchErr.message : String(touchErr),
+          });
+        }
+      }
+      // Lifecycle P2: roll nextHeartbeatAt on heartbeat-shaped activity (HEARTBEAT
+      // cron fire or overlay_boot). Clears Watchtower miss flag when HEARTBEAT lands.
+      if (isHeartbeatShapedActivity({ type: ev.type, metadata: ev.metadata })) {
+        try {
+          const state = await prisma.containerState.findUnique({
+            where: { workspaceId },
+            select: {
+              heartbeatCronExpressions: true,
+              heartbeatInterval: true,
+            },
+          });
+          if (state) {
+            const nextHeartbeatAt = computeNextHeartbeatAt({
+              now: ev.timestamp,
+              heartbeatCronExpressions: state.heartbeatCronExpressions,
+              heartbeatIntervalMs: state.heartbeatInterval,
+            });
+            await prisma.containerState.update({
+              where: { workspaceId },
+              data: { nextHeartbeatAt },
+            });
+          }
+          if (ev.type === "HEARTBEAT") {
+            await prisma.workspace.updateMany({
+              where: { id: workspaceId, heartbeatMissedAt: { not: null } },
+              data: { heartbeatMissedAt: null },
+            });
+          }
+        } catch (rollErr) {
+          log.error("activity: failed to roll nextHeartbeatAt", {
+            workspaceId,
+            error: rollErr instanceof Error ? rollErr.message : String(rollErr),
           });
         }
       }

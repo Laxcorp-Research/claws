@@ -74,6 +74,8 @@ interface WorkspaceInfo {
   mcpSessionLastError?: string | null
   activitySilenceDetectedAt?: string | null
   stateSyncStaleDetectedAt?: string | null
+  /** Lifecycle P2: Watchtower missed cron-heartbeat window (ops-gap). */
+  heartbeatMissedAt?: string | null
   /** PR-3: true while newest near-cap WARNING is unresolved (no post-warn sync below re-arm). */
   stateSyncNearCapActive?: boolean
   apiKeySource?: ApiKeySource
@@ -670,12 +672,16 @@ export default function DashboardPage() {
   const showActivitySilence =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.activitySilenceDetectedAt)
+  const showHeartbeatMissed =
+    workspace?.status === "RUNNING" &&
+    Boolean(workspace.heartbeatMissedAt)
   const showStateSyncStale =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.stateSyncStaleDetectedAt)
   // Batch E total order (unique priorities; MONEY/DATA never lose to informational):
   // 0 container-error|degraded > 1 credits-exhausted > 2 spend-limit > 3 trial-expired >
-  // 4 activity-silence > 5 state-sync-near-cap > 6 state-sync-stale >
+  // 4 ops-gap: heartbeat-missed | activity-silence (shared slot; both may coexist) >
+  // 5 state-sync-near-cap > 6 state-sync-stale >
   // 7 tools-expired > 8 mcp-session-dead > 9 spend-warning > 10 trial-active
   //   (functional degrade above money-soft/info) >
   // 11 paused|stopped|hibernated|waking > 12 config-drift > 13 version-update
@@ -760,6 +766,27 @@ export default function DashboardPage() {
         actions: (
           <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
             Redeploy
+          </Button>
+        ),
+      })
+    }
+
+    // Ops-gap class @ priority 4: heartbeat-missed pushed before activity-silence
+    // so when both coexist the miss banner wins the inline slot.
+    if (showHeartbeatMissed) {
+      list.push({
+        key: "heartbeat-missed",
+        priority: 4,
+        variant: "warning",
+        content: (
+          <>
+            <p className="font-medium">Scheduled heartbeat missed its window — agents may have skipped a run.</p>
+            <p className="mt-0.5 opacity-80">Check Activity for the miss event, or restart to re-arm the schedule.</p>
+          </>
+        ),
+        actions: (
+          <Button variant="danger" size="xs" onClick={handleResumeAll}>
+            Force restart
           </Button>
         ),
       })
