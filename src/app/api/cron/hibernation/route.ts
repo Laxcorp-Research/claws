@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   const startedAt = Date.now()
   let hibernated = 0
+  let refused = 0
   let woke = 0
   let errors = 0
   let syncSkippedForBudget = 0
@@ -59,11 +60,13 @@ export async function GET(req: NextRequest) {
     const skipSync = Date.now() - startedAt > SYNC_BUDGET_CUTOFF_MS
     if (skipSync) syncSkippedForBudget++
     try {
-      await hibernateWorkspace(candidate.workspaceId, {
+      // P3: skipSync under refuse-unsafe refuses (never bare-destroys).
+      const result = await hibernateWorkspace(candidate.workspaceId, {
         syncTimeoutMs: HIBERNATE_SYNC_TIMEOUT_MS,
         skipSync,
       })
-      hibernated++
+      if (result.hibernated) hibernated++
+      else refused++
     } catch (err) {
       errors++
       log.error("Hibernation cron: hibernate failed", {
@@ -151,5 +154,8 @@ export async function GET(req: NextRequest) {
     syncSkippedForBudget,
   })
 
-  return Response.json({ success: true, data: { hibernated, woke, errors, syncSkippedForBudget } })
+  return Response.json({
+    success: true,
+    data: { hibernated, refused, woke, errors, syncSkippedForBudget },
+  })
 }

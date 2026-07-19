@@ -43,6 +43,8 @@ let nowSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   mockHibernate.mockReset()
   mockWake.mockReset()
+  // P3: hibernateWorkspace returns { hibernated: true|false }
+  mockHibernate.mockResolvedValue({ hibernated: true })
   prevCronSecret = process.env.CRON_SECRET
   process.env.CRON_SECRET = CRON_SECRET
   delete process.env.HIBERNATION_ENABLED
@@ -69,6 +71,7 @@ describe("hibernation cron — budget guard", () => {
     nowSpy = vi.spyOn(Date, "now").mockImplementation(() => fakeNow)
     mockHibernate.mockImplementation(async () => {
       fakeNow += 20_000
+      return { hibernated: true }
     })
 
     const res = await callCron()
@@ -97,6 +100,7 @@ describe("hibernation cron — budget guard", () => {
     nowSpy = vi.spyOn(Date, "now").mockImplementation(() => fakeNow)
     mockHibernate.mockImplementation(async () => {
       fakeNow += 100
+      return { hibernated: true }
     })
 
     const res = await callCron()

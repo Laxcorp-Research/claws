@@ -5,7 +5,15 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 
 export const maxDuration = 60
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
+/**
+ * POST /api/deploy/[workspaceId]/stop
+ *
+ * Lifecycle P3:
+ * - Default: destroy-anyway — sync fail surfaces syncWarning but Stop proceeds
+ *   (user's call, their claw).
+ * - ?force=1 (or body.force): ops FORCE — destroyPolicy force (skip refuse gates).
+ */
+export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
   if (!user) return ERRORS.UNAUTHORIZED()
   const { workspaceId } = await params
@@ -14,16 +22,28 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "NOT_FOUND") return ERRORS.NOT_FOUND("Workspace")
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
+  const urlForce = req.nextUrl.searchParams.get("force") === "1"
+    || req.nextUrl.searchParams.get("force") === "true"
+  let bodyForce = false
   try {
-    // PR-2: route Stop through syncThenDestroy so the container's runtime
-    // state is confirmed-persisted before teardown. It never throws on a sync
-    // failure (destroys anyway + records an incomplete-sync marker), so a slow
-    // or unreachable container can never trap the user on the Stop button.
-    // Single workspace under maxDuration=60 → full default (~18s) sync budget.
+    const body = (await req.json()) as { force?: unknown }
+    bodyForce = body?.force === true || body?.force === "1"
+  } catch {
+    // empty body is fine
+  }
+  const force = urlForce || bodyForce
+
+  try {
     const { syncThenDestroy } = await import("@/lib/openclaw/deployer")
-    await syncThenDestroy(workspaceId)
-    // Batch B: surface status so My Claws can reconcile the row without a full remount.
-    return apiSuccess({ stopped: true, status: "STOPPED" })
+    const result = await syncThenDestroy(workspaceId, {
+      destroyPolicy: force ? "force" : "destroy-anyway",
+    })
+    return apiSuccess({
+      stopped: result.destroyed,
+      status: result.destroyed ? "STOPPED" : undefined,
+      syncWarning: result.destroyed ? result.syncWarning ?? null : null,
+      force,
+    })
   } catch (err: unknown) {
     return apiError("STOP_FAILED", err instanceof Error ? err.message : "Stop failed", 500)
   }

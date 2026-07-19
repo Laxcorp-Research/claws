@@ -1,0 +1,96 @@
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { prismaMock } from "@/test/helpers/mock-prisma"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
+vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
+
+const mockSyncThenDestroy = vi.fn()
+vi.mock("@/lib/openclaw/deployer", () => ({
+  syncThenDestroy: (...args: unknown[]) => mockSyncThenDestroy(...args),
+  deployToCloud: vi.fn(),
+}))
+
+vi.mock("@/lib/logger", () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
+
+import { hibernateWorkspace } from "@/lib/hibernation/manager"
+import {
+  HIBERNATION_REFUSED_ACTION,
+  isRuntimeStateStale,
+  staleDestroyMaxAgeMs,
+} from "@/lib/hibernation/stale-destroy"
+
+describe("staleDestroyMaxAgeMs / isRuntimeStateStale", () => {
+  it("defaults to 30 minutes", () => {
+    delete process.env.STALE_DESTROY_MAX_AGE_MIN
+    expect(staleDestroyMaxAgeMs()).toBe(30 * 60 * 1000)
+  })
+
+  it("treats null updatedAt as stale", () => {
+    expect(isRuntimeStateStale(null)).toBe(true)
+  })
+
+  it("25m old is fresh under default 30m; 35m is stale", () => {
+    const now = Date.now()
+    expect(isRuntimeStateStale(new Date(now - 25 * 60 * 1000), now)).toBe(false)
+    expect(isRuntimeStateStale(new Date(now - 35 * 60 * 1000), now)).toBe(true)
+  })
+})
+
+describe("hibernateWorkspace — P3 refuse path", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "ws-1",
+      containerId: "svc-1",
+      containerState: {
+        runtimeStateUpdatedAt: new Date(),
+        runtimeStateSnapshot: null,
+        heartbeatInterval: null,
+        heartbeatCronExpressions: null,
+      },
+    } as never)
+    ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
+    ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
+  })
+
+  it("sync-fail → container kept + ERROR ActivityLog + hibernationRefusedAt", async () => {
+    mockSyncThenDestroy.mockResolvedValue({
+      destroyed: false,
+      refused: true,
+      reason: "sync-failed:timeout",
+    })
+
+    const result = await hibernateWorkspace("ws-1")
+
+    expect(result).toEqual({
+      hibernated: false,
+      refused: true,
+      reason: "sync-failed:timeout",
+    })
+    expect(mockSyncThenDestroy).toHaveBeenCalledWith(
+      "ws-1",
+      expect.objectContaining({ destroyPolicy: "refuse-unsafe" }),
+    )
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: HIBERNATION_REFUSED_ACTION,
+          actionType: "ERROR",
+        }),
+      }),
+    )
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ hibernationRefusedAt: expect.any(Date) }),
+      }),
+    )
+  })
+
+  it("MUTATION: hibernate must pass refuse-unsafe (destroy-anyway restored → fail)", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/hibernation/manager.ts"), "utf8")
+    expect(src).toContain('destroyPolicy: "refuse-unsafe"')
+  })
+})

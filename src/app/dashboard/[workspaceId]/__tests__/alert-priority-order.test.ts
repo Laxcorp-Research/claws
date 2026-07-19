@@ -16,6 +16,7 @@ const EXPECTED: Record<string, number> = {
   "heartbeat-missed": 4,
   "activity-silence": 4,
   "state-sync-near-cap": 5,
+  "hibernation-refused": 6,
   "state-sync-stale": 6,
   "tools-expired": 7,
   "mcp-session-dead": 8,
@@ -75,6 +76,16 @@ describe("Dashboard AlertStack priority total order (Batch E)", () => {
     expect(missIdx).toBeGreaterThan(-1)
     expect(silenceIdx).toBeGreaterThan(-1)
     expect(missIdx).toBeLessThan(silenceIdx)
+  })
+
+  it("DATA class: hibernation-refused shares priority 6 with state-sync-stale and is declared first", () => {
+    const refused = extractPriority(src, "hibernation-refused")!
+    const stale = extractPriority(src, "state-sync-stale")!
+    expect(refused).toBe(6)
+    expect(stale).toBe(6)
+    expect(src.indexOf('key: "hibernation-refused"')).toBeLessThan(
+      src.indexOf('key: "state-sync-stale"'),
+    )
   })
 
   it("Optimize costs CTA is wired to Costs tab", () => {
