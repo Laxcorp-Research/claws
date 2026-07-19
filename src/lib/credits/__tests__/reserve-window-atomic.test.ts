@@ -31,7 +31,7 @@ describe("reserveWindowAtomic", () => {
       windowSizeCents: 200,
     })
     expect(result).toEqual({ ok: true, remainingCents: 300, via: "eval" })
-    expect(redisIncrby).not.toHaveBeenCalled()
+    expect(redisSet).not.toHaveBeenCalled()
   })
 
   it("returns INSUFFICIENT_CREDITS via eval when script returns -1", async () => {
