@@ -15,7 +15,13 @@ import { fileURLToPath } from 'url';
 // state-sync.mjs, imported by BOTH this entrypoint and the gateway plugin's
 // /internal/sync-now route. The image copies that one file to both
 // /usr/local/bin/state-sync.mjs (here) and /opt/state-sync.mjs (the plugin).
-import { OPENCLAW_DATA_DIR, runStateSync, postActivityEvent } from './state-sync.mjs';
+import {
+  OPENCLAW_DATA_DIR,
+  runStateSync,
+  postActivityEvent,
+  rebuildAllSessionsIndexesFromDisk,
+  retainOrphanSessionsEnabled,
+} from './state-sync.mjs';
 
 const CREDIT_MODE = process.env.CLAWS_CREDIT_MODE === 'true';
 const GATEWAY_PORT = process.env.PORT || '18789';
@@ -298,6 +304,29 @@ async function waitForProxyHealth() {
   return false;
 }
 
+/**
+ * -9: POST spawn-status ActivityLog (proxy healthy / failed) via internal activity route.
+ * Uses TASK_START / ERROR (activity allowlist); SYSTEM is not container-writable.
+ */
+export async function emitProxySpawnStatus(healthy) {
+  const status = healthy ? 'healthy' : 'failed';
+  await postActivityEvent({
+    type: healthy ? 'TASK_START' : 'ERROR',
+    timestamp: new Date().toISOString(),
+    agentId: null,
+    runId: null,
+    sessionKey: null,
+    channelId: null,
+    action: `Credit proxy spawn ${status}`,
+    detail: `CLAWS_CREDIT_MODE proxy health=${status}`,
+    metadata: {
+      eventKind: 'proxy_spawn_status',
+      proxyHealthy: healthy,
+      status,
+    },
+  });
+}
+
 // ─── Gateway Management ─────────────────────────────────
 
 function spawnGateway() {
@@ -324,12 +353,33 @@ function spawnGateway() {
 
 async function main() {
   console.log(`[process-manager] Starting (credit_mode=${CREDIT_MODE})`);
+  console.log(
+    `[process-manager] CLAWS_RETAIN_ORPHAN_SESSIONS=${retainOrphanSessionsEnabled() ? 'true' : 'false'}`,
+  );
 
   await restoreStateFromPlatform();
+
+  // Finding E runtime half: reconstruct sessions.json when missing/empty.
+  try {
+    rebuildAllSessionsIndexesFromDisk(OPENCLAW_DATA_DIR);
+  } catch (err) {
+    console.error(
+      `[process-manager] rebuild-index failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   if (CREDIT_MODE) {
     spawnProxy();
     const healthy = await waitForProxyHealth();
+    try {
+      await emitProxySpawnStatus(healthy);
+    } catch (err) {
+      console.error(
+        `[process-manager] proxy spawn ActivityLog failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     if (!healthy) {
       console.error('[process-manager] Proxy unhealthy, starting gateway anyway');
     }
@@ -373,4 +423,6 @@ export const __test__ = {
   syncFailureTracker,
   syncState,
   isDirectEntrypoint,
+  emitProxySpawnStatus,
+  waitForProxyHealth,
 };

@@ -99,10 +99,25 @@ export function loadLiveSessionIds(sessionsDir) {
 }
 
 /**
+ * CLAWS_RETAIN_ORPHAN_SESSIONS (default true): keep not-in-index *.jsonl in the
+ * sync bundle (finding E / -9). Set "false" to restore pre--9 drop-orphan hygiene.
+ */
+export function retainOrphanSessionsEnabled() {
+  return process.env.CLAWS_RETAIN_ORPHAN_SESSIONS !== "false"
+}
+
+/** Skip orphan retention for files larger than this (bytes). */
+export const ORPHAN_RETAIN_MAX_BYTES = 5 * 1024 * 1024
+
+/**
  * Bundle-hygiene gate for a single file under agents/<agent>/sessions/.
  * liveIds === null → fail-open (include everything, including reset files).
+ *
+ * When indexed + retain orphans (default): include not-in-index uuid.jsonl
+ * (caller still size-guards via ORPHAN_RETAIN_MAX_BYTES). Always drop reset leftovers.
  */
-export function shouldIncludeSessionArtifact(fileName, liveIds) {
+export function shouldIncludeSessionArtifact(fileName, liveIds, opts = {}) {
+  const retainOrphans = opts.retainOrphans ?? retainOrphanSessionsEnabled()
   if (fileName === "sessions.json") return true
   // Indexed agents: always drop reset leftovers.
   if (liveIds !== null && fileName.includes(".jsonl.reset.")) return false
@@ -117,7 +132,122 @@ export function shouldIncludeSessionArtifact(fileName, liveIds) {
 
   const m = fileName.match(UUID_RE)
   if (!m) return true // unrecognized name — keep rather than drop live data
-  return liveIds.has(m[1])
+  if (liveIds.has(m[1])) return true
+  // Not in index: retain orphans (default) or drop (pre--9 / flag=false).
+  return retainOrphans
+}
+
+/**
+ * Session-key main detection (mirrors snapshot-conversations rules).
+ */
+export function isMainSessionKey(sessionKey) {
+  if (typeof sessionKey !== "string" || sessionKey.length === 0) return false
+  if (sessionKey.endsWith(":main")) return true
+  const parts = sessionKey.split(":")
+  return parts.length === 3 && parts[2] === "main"
+}
+
+/**
+ * Finding E runtime half: if sessions.json is missing/empty but plain *.jsonl
+ * files exist, reconstruct the index. Main = newest mtime among uuid.jsonl;
+ * others keyed as agent:<agentId>:session:<uuid>. Idempotent when index present.
+ *
+ * @returns {{ rebuilt: boolean, agentId?: string, mainUuid?: string, count?: number, reason: string }}
+ */
+export function rebuildSessionsIndexFromDisk(sessionsDir, agentId) {
+  const indexPath = path.join(sessionsDir, "sessions.json")
+  let existingKeys = 0
+  if (fs.existsSync(indexPath)) {
+    try {
+      const raw = fs.readFileSync(indexPath, "utf8")
+      const obj = JSON.parse(raw)
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+        existingKeys = Object.keys(obj).length
+      }
+    } catch {
+      existingKeys = 0
+    }
+  }
+
+  if (existingKeys > 0) {
+    return { rebuilt: false, reason: "index-present", count: existingKeys }
+  }
+
+  let entries
+  try {
+    entries = fs.readdirSync(sessionsDir, { withFileTypes: true })
+  } catch {
+    return { rebuilt: false, reason: "sessions-dir-unreadable" }
+  }
+
+  /** @type {{ uuid: string, mtimeMs: number, size: number }[]} */
+  const jsonls = []
+  for (const ent of entries) {
+    if (!ent.isFile()) continue
+    if (!ent.name.endsWith(".jsonl")) continue
+    if (ent.name.includes("trajectory") || ent.name.includes(".jsonl.")) continue
+    const m = ent.name.match(UUID_RE)
+    if (!m) continue
+    try {
+      const st = fs.statSync(path.join(sessionsDir, ent.name))
+      jsonls.push({ uuid: m[1].toLowerCase(), mtimeMs: st.mtimeMs, size: st.size })
+    } catch {
+      // skip
+    }
+  }
+
+  if (jsonls.length === 0) {
+    return { rebuilt: false, reason: "no-jsonl", agentId }
+  }
+
+  jsonls.sort((a, b) => b.mtimeMs - a.mtimeMs || b.size - a.size)
+  const main = jsonls[0]
+  /** @type {Record<string, string>} */
+  const index = {}
+  index[`agent:${agentId}:main`] = main.uuid
+  for (const row of jsonls.slice(1)) {
+    index[`agent:${agentId}:session:${row.uuid}`] = row.uuid
+  }
+
+  fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), "utf8")
+  console.log(
+    `[state-sync] rebuild-index agent=${agentId} main=${main.uuid} count=${jsonls.length} reason=missing-or-empty-index`,
+  )
+  return {
+    rebuilt: true,
+    reason: "reconstructed",
+    agentId,
+    mainUuid: main.uuid,
+    count: jsonls.length,
+  }
+}
+
+/**
+ * Walk agents/<id>/sessions and rebuild missing/empty indexes. Boot-script entry.
+ */
+export function rebuildAllSessionsIndexesFromDisk(dataDir = OPENCLAW_DATA_DIR) {
+  const agentsRoot = path.join(dataDir, "agents")
+  const results = []
+  let entries
+  try {
+    entries = fs.readdirSync(agentsRoot, { withFileTypes: true })
+  } catch {
+    console.log("[state-sync] rebuild-index no-op (no agents dir)")
+    return { results, rebuiltCount: 0 }
+  }
+
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue
+    const sessionsDir = path.join(agentsRoot, ent.name, "sessions")
+    if (!fs.existsSync(sessionsDir)) continue
+    results.push(rebuildSessionsIndexFromDisk(sessionsDir, ent.name))
+  }
+
+  const rebuiltCount = results.filter((r) => r.rebuilt).length
+  if (rebuiltCount === 0) {
+    console.log("[state-sync] rebuild-index no-op (indexes present or no jsonl)")
+  }
+  return { results, rebuiltCount }
 }
 
 function agentSessionsDirFromRelative(relativePath) {
@@ -163,6 +293,28 @@ export function bundleRuntimeState(dataDir = OPENCLAW_DATA_DIR) {
           const sessionsDir = path.join(dataDir, sess.sessionsPrefix)
           const liveIds = liveIdsFor(sessionsDir, sess.agentId)
           if (!shouldIncludeSessionArtifact(sess.fileName, liveIds)) continue
+          // Size-guard retained orphans (in-index files keep prior unlimited path).
+          if (
+            liveIds !== null &&
+            retainOrphanSessionsEnabled() &&
+            sess.fileName.endsWith(".jsonl") &&
+            !sess.fileName.includes(".jsonl.")
+          ) {
+            const m = sess.fileName.match(UUID_RE)
+            if (m && !liveIds.has(m[1])) {
+              try {
+                const st = fs.statSync(fullPath)
+                if (st.size > ORPHAN_RETAIN_MAX_BYTES) {
+                  console.warn(
+                    `[state-sync] skip orphan >${ORPHAN_RETAIN_MAX_BYTES}B: ${relativePath} (${st.size}B)`,
+                  )
+                  continue
+                }
+              } catch {
+                continue
+              }
+            }
+          }
         }
         try {
           const content = fs.readFileSync(fullPath)
