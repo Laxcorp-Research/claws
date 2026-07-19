@@ -2,15 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const redisEval = vi.fn()
 const redisGet = vi.fn()
-const redisIncrby = vi.fn()
-const redisExpire = vi.fn()
+const redisSet = vi.fn()
 
 vi.mock("@/lib/redis", () => ({
   redis: {
     eval: (...args: unknown[]) => redisEval(...args),
     get: (...args: unknown[]) => redisGet(...args),
-    incrby: (...args: unknown[]) => redisIncrby(...args),
-    expire: (...args: unknown[]) => redisExpire(...args),
+    set: (...args: unknown[]) => redisSet(...args),
   },
 }))
 
@@ -33,7 +31,7 @@ describe("reserveWindowAtomic", () => {
       windowSizeCents: 200,
     })
     expect(result).toEqual({ ok: true, remainingCents: 300, via: "eval" })
-    expect(redisIncrby).not.toHaveBeenCalled()
+    expect(redisSet).not.toHaveBeenCalled()
   })
 
   it("returns INSUFFICIENT_CREDITS via eval when script returns -1", async () => {
@@ -50,12 +48,11 @@ describe("reserveWindowAtomic", () => {
     })
   })
 
-  it("falls back to GET+INCRBY when EVAL throws (staging 500 root cause)", async () => {
+  it("falls back to GET+SET when EVAL throws (staging 500 root cause)", async () => {
     redisEval.mockRejectedValueOnce(new Error("ERR unknown command 'EVAL'"))
     redisGet.mockResolvedValueOnce("500") // balance
     redisGet.mockResolvedValueOnce("0") // reservations
-    redisIncrby.mockResolvedValueOnce(200)
-    redisExpire.mockResolvedValueOnce(1)
+    redisSet.mockResolvedValueOnce("OK")
 
     const result = await reserveWindowAtomic({
       balanceKey: "credit:balance:u1",
@@ -63,8 +60,7 @@ describe("reserveWindowAtomic", () => {
       windowSizeCents: 200,
     })
     expect(result).toEqual({ ok: true, remainingCents: 300, via: "fallback" })
-    expect(redisIncrby).toHaveBeenCalledWith("credit:reservations:u1", 200)
-    expect(redisExpire).toHaveBeenCalledWith("credit:reservations:u1", 600)
+    expect(redisSet).toHaveBeenCalledWith("credit:reservations:u1", "200", { ex: 600 })
   })
 
   it("fallback returns INSUFFICIENT when available < cost", async () => {
@@ -82,7 +78,7 @@ describe("reserveWindowAtomic", () => {
       reason: "INSUFFICIENT_CREDITS",
       via: "fallback",
     })
-    expect(redisIncrby).not.toHaveBeenCalled()
+    expect(redisSet).not.toHaveBeenCalled()
   })
 
   it("MUTATION: reserve-window route must call reserveWindowAtomic (drop → fail)", async () => {

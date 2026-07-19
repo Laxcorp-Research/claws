@@ -34,16 +34,21 @@ async function reserveViaFallback(
   reservationsKey: string,
   cost: number,
 ): Promise<ReserveAtomicResult> {
+  // Prefer SET over INCRBY: a botched EVAL / wrong Redis type on the
+  // reservations key makes INCRBY throw WRONGTYPE while GET still works
+  // (reconcile path). SET overwrites cleanly.
   const balanceRaw = await redis.get(balanceKey)
   const reservationsRaw = await redis.get(reservationsKey)
-  const balance = parseInt(String(balanceRaw ?? "0"), 10) || 0
-  const reservations = parseInt(String(reservationsRaw ?? "0"), 10) || 0
-  const available = balance - reservations
+  const balance = Number.parseInt(String(balanceRaw ?? "0"), 10)
+  const reservations = Number.parseInt(String(reservationsRaw ?? "0"), 10)
+  const bal = Number.isFinite(balance) ? balance : 0
+  const resv = Number.isFinite(reservations) ? reservations : 0
+  const available = bal - resv
   if (available < cost) {
     return { ok: false, reason: "INSUFFICIENT_CREDITS", via: "fallback" }
   }
-  await redis.incrby(reservationsKey, cost)
-  await redis.expire(reservationsKey, 600)
+  const next = resv + cost
+  await redis.set(reservationsKey, next.toString(), { ex: 600 })
   return { ok: true, remainingCents: available - cost, via: "fallback" }
 }
 
@@ -67,10 +72,18 @@ export async function reserveWindowAtomic(args: {
     }
     return { ok: true, remainingCents: remaining, via: "eval" }
   } catch (err) {
-    log.warn("reserve-window EVAL failed; using GET+INCRBY fallback", {
+    log.warn("reserve-window EVAL failed; using GET+SET fallback", {
       error: err instanceof Error ? err.message : String(err),
       balanceKey,
     })
-    return reserveViaFallback(balanceKey, reservationsKey, windowSizeCents)
+    try {
+      return await reserveViaFallback(balanceKey, reservationsKey, windowSizeCents)
+    } catch (fallbackErr) {
+      log.error("reserve-window fallback failed", {
+        error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+        balanceKey,
+      })
+      throw fallbackErr
+    }
   }
 }
