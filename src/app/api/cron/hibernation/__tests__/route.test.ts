@@ -116,3 +116,41 @@ describe("hibernation cron — budget guard", () => {
     expect(mockHibernate).not.toHaveBeenCalled()
   })
 })
+
+describe("hibernation cron — warmIdle honesty", () => {
+  it("null lastChannelMessageAt WARM claw is NOT hibernated (predicate excludes null)", async () => {
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([]) // runningIdle
+      .mockResolvedValueOnce([]) // warmIdle — empty because null never matches
+      .mockResolvedValueOnce([]) // wake
+      .mockResolvedValueOnce([]) // stuck
+
+    const res = await callCron()
+    expect(res.status).toBe(200)
+    expect(mockHibernate).not.toHaveBeenCalled()
+
+    const warmCall = (prismaMock.containerState.findMany as ReturnType<typeof vi.fn>).mock
+      .calls[1][0]
+    expect(warmCall.where.containerPhase).toBe("WARM")
+    expect(warmCall.where.lastChannelMessageAt).toEqual({ lt: expect.any(Date) })
+    // nextHeartbeat OR is top-level; lastChannelMessageAt must be lt-only (no null).
+    expect(warmCall.where).toHaveProperty("OR")
+    expect(JSON.stringify(warmCall.where.lastChannelMessageAt)).not.toContain("null")
+    expect(JSON.stringify(warmCall.where)).not.toMatch(
+      /"lastChannelMessageAt":null/,
+    )
+  })
+
+  it("25h-old lastChannelMessageAt WARM claw IS hibernated", async () => {
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([]) // runningIdle
+      .mockResolvedValueOnce([candidate("warm-25h")]) // warmIdle
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    mockHibernate.mockResolvedValue(undefined)
+    const res = await callCron()
+    expect(res.status).toBe(200)
+    expect(mockHibernate).toHaveBeenCalledWith("warm-25h", expect.any(Object))
+  })
+})

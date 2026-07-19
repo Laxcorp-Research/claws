@@ -24,6 +24,10 @@ import { log } from "@/lib/logger";
 import type { ActivityType } from "@/generated/prisma/client";
 import { getToolBySlug } from "@/data/tool-catalog";
 import { MAX_API_COST_PER_EVENT } from "@/lib/activity-cost-display";
+import {
+  isExternalChannelInbound,
+  touchLastChannelMessageAt,
+} from "@/lib/hibernation/channel-inbound";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -403,6 +407,18 @@ export async function POST(
           workspaceId,
           error: markErr instanceof Error ? markErr.message : String(markErr),
         });
+      }
+      // warmIdle honesty: stamp lastChannelMessageAt on external-channel inbound
+      // (CHANNEL_IDS + webchat). Lands here — claws-activity-reporter → this route.
+      if (isExternalChannelInbound(ev.type, ev.channelId)) {
+        try {
+          await touchLastChannelMessageAt(workspaceId, ev.timestamp);
+        } catch (touchErr) {
+          log.error("activity: failed to stamp lastChannelMessageAt", {
+            workspaceId,
+            error: touchErr instanceof Error ? touchErr.message : String(touchErr),
+          });
+        }
       }
       processed++;
     } catch (err) {

@@ -449,6 +449,71 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
     });
   });
 
+  describe("lastChannelMessageAt writer (warmIdle honesty)", () => {
+    it("stamps lastChannelMessageAt on Telegram MESSAGE_RECEIVED inbound", async () => {
+      defaultMocks();
+      ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+        count: 1,
+      } as never);
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_RECEIVED",
+              channelId: "telegram:1227037949",
+              timestamp: "2026-07-19T08:15:00.000Z",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
+        where: { workspaceId: WORKSPACE_ID },
+        data: { lastChannelMessageAt: new Date("2026-07-19T08:15:00.000Z") },
+      });
+    });
+
+    it("stamps lastChannelMessageAt on webchat MESSAGE_RECEIVED inbound", async () => {
+      defaultMocks();
+      ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+        count: 1,
+      } as never);
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_RECEIVED",
+              channelId: "webchat",
+              timestamp: "2026-07-19T09:00:00.000Z",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
+        where: { workspaceId: WORKSPACE_ID },
+        data: { lastChannelMessageAt: new Date("2026-07-19T09:00:00.000Z") },
+      });
+    });
+
+    it("does not stamp on HEARTBEAT or MESSAGE_SENT", async () => {
+      defaultMocks();
+      ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+        count: 1,
+      } as never);
+      await callRoute(
+        {
+          events: [
+            makeEvent({ type: "HEARTBEAT", channelId: "telegram" }),
+            makeEvent({ type: "MESSAGE_SENT", channelId: "telegram" }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(prismaMock.containerState.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   // ─── Response shape ───────────────────────────────────────────────────
 
   describe("response", () => {
