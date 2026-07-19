@@ -13,6 +13,7 @@ const EXPECTED: Record<string, number> = {
   "credits-exhausted": 1,
   "spend-limit": 2,
   "trial-expired": 3,
+  "heartbeat-missed": 4,
   "activity-silence": 4,
   "state-sync-near-cap": 5,
   "state-sync-stale": 6,
@@ -50,6 +51,7 @@ describe("Dashboard AlertStack priority total order (Batch E)", () => {
 
   it("MUTATION: adjacent slots stay ordered (swap any adjacent pair → fail)", () => {
     const spendLimit = extractPriority(src, "spend-limit")!
+    const heartbeatMissed = extractPriority(src, "heartbeat-missed")!
     const silence = extractPriority(src, "activity-silence")!
     const nearCap = extractPriority(src, "state-sync-near-cap")!
     const toolsExpired = extractPriority(src, "tools-expired")!
@@ -57,11 +59,22 @@ describe("Dashboard AlertStack priority total order (Batch E)", () => {
     const spendWarning = extractPriority(src, "spend-warning")!
     const trialActive = extractPriority(src, "trial-active")!
     expect(spendLimit).toBeLessThan(silence)
+    // Ops-gap class: heartbeat-missed shares priority 4 with activity-silence
+    expect(heartbeatMissed).toBe(4)
+    expect(silence).toBe(4)
     expect(silence).toBeLessThan(nearCap)
     // Amended: functional degrade above money-soft/info
     expect(toolsExpired).toBeLessThan(mcpDead)
     expect(mcpDead).toBeLessThan(spendWarning)
     expect(spendWarning).toBeLessThan(trialActive)
+  })
+
+  it("ops-gap: heartbeat-missed is declared before activity-silence in source (inline winner)", () => {
+    const missIdx = src.indexOf('key: "heartbeat-missed"')
+    const silenceIdx = src.indexOf('key: "activity-silence"')
+    expect(missIdx).toBeGreaterThan(-1)
+    expect(silenceIdx).toBeGreaterThan(-1)
+    expect(missIdx).toBeLessThan(silenceIdx)
   })
 
   it("Optimize costs CTA is wired to Costs tab", () => {

@@ -53,7 +53,12 @@ import {
 } from './channel-config';
 import { getComposioUserId } from '@/lib/composio';
 import { probeMcpEndpoint } from './mcp-longtail';
-import { CronExpressionParser } from 'cron-parser';
+import {
+  calculateNextHeartbeat,
+  computeNextHeartbeatAt,
+  extractCronExpression,
+  extractHeartbeatIntervalMsFromOpenclawJson,
+} from '@/lib/hibernation/next-heartbeat';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -305,6 +310,17 @@ export async function deployToCloud(workspaceId: string): Promise<{
     //     The hibernation threshold is 10 min idle, well above the ~60s
     //     window, so no practical impact on hibernation decisions.
     const channelsActive = hasChannels(workspace);
+    // Lifecycle P2: persist interval ms + rolling wake hint (cron OR now+interval).
+    const heartbeatIntervalMs = extractHeartbeatIntervalMsFromOpenclawJson(
+      generated['openclaw.json'],
+    );
+    const cronExprs =
+      generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null;
+    const nextHeartbeatAt = computeNextHeartbeatAt({
+      now: new Date(),
+      heartbeatCronExpressions: cronExprs,
+      heartbeatIntervalMs,
+    });
     await prisma.containerState.upsert({
       where: { workspaceId },
       update: {
@@ -313,8 +329,9 @@ export async function deployToCloud(workspaceId: string): Promise<{
         hibernatedAt: null,
         wakeRequestedAt: null,
         hasActiveChannels: channelsActive,
-        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
-        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+        nextHeartbeatAt,
+        heartbeatInterval: heartbeatIntervalMs,
+        heartbeatCronExpressions: cronExprs,
         // PR-2: a fresh container makes any prior teardown's incomplete-sync
         // marker moot — clear it so a stale flag never lingers across deploys.
         lastSyncIncompleteAt: null,
@@ -325,8 +342,9 @@ export async function deployToCloud(workspaceId: string): Promise<{
         containerPhase: channelsActive ? 'WARM' : 'RUNNING',
         lastActiveAt: new Date(),
         hasActiveChannels: channelsActive,
-        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
-        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+        nextHeartbeatAt,
+        heartbeatInterval: heartbeatIntervalMs,
+        heartbeatCronExpressions: cronExprs,
       },
     });
 
@@ -1071,59 +1089,9 @@ function hasChannels(workspace: { channelConfigEncrypted?: string | null }): boo
   }
 }
 
-export function calculateNextHeartbeat(cronJobsJson: string | null | undefined): Date | null {
-  if (!cronJobsJson || cronJobsJson === '[]') return null;
-  try {
-    const jobs = JSON.parse(cronJobsJson);
-    if (!Array.isArray(jobs) || jobs.length === 0) return null;
-    let earliest: Date | null = null;
-    for (const job of jobs) {
-      const cronExpr = extractCronExpression(job);
-      if (!cronExpr) continue;
-      try {
-        const tz = extractCronTimezone(job);
-        const next = CronExpressionParser.parse(cronExpr, tz ? { tz } : {}).next().toDate();
-        if (!earliest || next < earliest) earliest = next;
-      } catch {
-        // Invalid cron expression — skip
-      }
-    }
-    return earliest;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Pulls the cron expression string out of a job entry. Handles the
- * verified OpenClaw shape `{ schedule: { kind: 'cron', expr } }` plus a
- * couple of legacy/string fallbacks defensively. Non-cron schedule kinds
- * (`every`, `at`) intentionally return null because they aren't cron-parseable.
- */
-export function extractCronExpression(job: unknown): string | null {
-  if (!job || typeof job !== 'object') return null;
-  const obj = job as { schedule?: unknown; cron?: unknown };
-  if (obj.schedule && typeof obj.schedule === 'object') {
-    const sched = obj.schedule as { kind?: unknown; expr?: unknown };
-    if (sched.kind === 'cron' && typeof sched.expr === 'string' && sched.expr.length > 0) {
-      return sched.expr;
-    }
-    return null;
-  }
-  if (typeof obj.schedule === 'string' && obj.schedule.length > 0) return obj.schedule;
-  if (typeof obj.cron === 'string' && obj.cron.length > 0) return obj.cron;
-  return null;
-}
-
-function extractCronTimezone(job: unknown): string | null {
-  if (!job || typeof job !== 'object') return null;
-  const obj = job as { schedule?: unknown };
-  if (obj.schedule && typeof obj.schedule === 'object') {
-    const sched = obj.schedule as { tz?: unknown };
-    if (typeof sched.tz === 'string' && sched.tz.length > 0) return sched.tz;
-  }
-  return null;
-}
+// Heartbeat schedule helpers live in hibernation/next-heartbeat; re-exported
+// above via the import block for the historical deployer import path.
+export { calculateNextHeartbeat, extractCronExpression };
 
 // ---------------------------------------------------------------------------
 // Helpers

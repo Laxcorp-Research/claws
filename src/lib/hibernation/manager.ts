@@ -1,6 +1,20 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { deployToCloud, syncThenDestroy, type SyncThenDestroyOptions } from "@/lib/openclaw/deployer"
+import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
+
+function intervalMsFromFrequency(frequency: string | null | undefined): number | null {
+  switch (frequency) {
+    case "hourly":
+      return 60 * 60 * 1000
+    case "every_6h":
+      return 6 * 60 * 60 * 1000
+    case "every_12h":
+      return 12 * 60 * 60 * 1000
+    default:
+      return null
+  }
+}
 
 export async function hibernateWorkspace(
   workspaceId: string,
@@ -42,12 +56,38 @@ export async function hibernateWorkspace(
     // so hibernation is never blocked by a slow/unreachable container.
     await syncThenDestroy(workspaceId, syncOpts)
 
+    // Lifecycle P2: recompute wake hint at hibernate so cron claws keep a
+    // next fire and interval claws finally get now+interval (auto-wake).
+    // Pre-P2 rows may lack heartbeatInterval — derive from orchestrator frequency.
+    const hibernatedAt = new Date()
+    let heartbeatIntervalMs = workspace.containerState?.heartbeatInterval ?? null
+    if (heartbeatIntervalMs == null) {
+      const orch = await prisma.agent.findFirst({
+        where: { workspaceId, role: "ORCHESTRATOR" },
+        select: { heartbeatFrequency: true },
+      })
+      heartbeatIntervalMs = intervalMsFromFrequency(orch?.heartbeatFrequency)
+      if (heartbeatIntervalMs != null) {
+        // Persist so subsequent rolls don't re-derive.
+        await prisma.containerState.update({
+          where: { workspaceId },
+          data: { heartbeatInterval: heartbeatIntervalMs },
+        })
+      }
+    }
+    const nextHeartbeatAt = computeNextHeartbeatAt({
+      now: hibernatedAt,
+      heartbeatCronExpressions: workspace.containerState?.heartbeatCronExpressions,
+      heartbeatIntervalMs,
+    })
+
     await prisma.$transaction([
       prisma.containerState.update({
         where: { workspaceId },
         data: {
           containerPhase: "HIBERNATED",
-          hibernatedAt: new Date(),
+          hibernatedAt,
+          nextHeartbeatAt,
         },
       }),
       prisma.workspace.update({

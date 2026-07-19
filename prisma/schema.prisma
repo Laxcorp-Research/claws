@@ -231,6 +231,9 @@ model Workspace {
   mcpSessionLastError         String?
   activitySilenceDetectedAt   DateTime?
   stateSyncStaleDetectedAt    DateTime?
+  // Lifecycle P2: Watchtower missed-window flag (cron heartbeat). Distinct
+  // from activitySilenceDetectedAt. Banner feeds AlertStack ops-gap slot (4).
+  heartbeatMissedAt           DateTime?
 
   // ─── PR1: per-workspace subscription state ──────────────────
   // Part of the billing-model overhaul (PR1-9 sequence). This PR only

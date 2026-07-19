@@ -40,7 +40,12 @@ function makeWs(overrides: Partial<Record<string, unknown>> = {}) {
     gatewayToken: "enc:tok",
     activitySilenceDetectedAt: null,
     stateSyncStaleDetectedAt: null,
-    containerState: { runtimeStateUpdatedAt: new Date() },
+    heartbeatMissedAt: null,
+    containerState: {
+      runtimeStateUpdatedAt: new Date(),
+      containerPhase: "RUNNING",
+      heartbeatCronExpressions: null,
+    },
     deployments: [{ completedAt: new Date(Date.now() - 20 * 60 * 1000) }],
     ...overrides,
   };
@@ -898,6 +903,47 @@ describe("GET end-to-end", () => {
     expect(update.data.healthStatus).toBe("HEALTHY");
     // PR-4: every write now records the probe reason.
     expect(update.data.lastHealthReason).toBe("no-container");
+  });
+
+  it("sets heartbeatMissedAt + ERROR ActivityLog when cron window missed (Watchtower)", async () => {
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+    ]);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T08:15:00.000Z"));
+    try {
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+        makeWs({
+          id: "ws-miss",
+          heartbeatMissedAt: null,
+          containerState: {
+            runtimeStateUpdatedAt: new Date(),
+            containerPhase: "RUNNING",
+            heartbeatCronExpressions: cron,
+          },
+        }),
+      ]);
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+
+      const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(update.data.heartbeatMissedAt).toBeInstanceOf(Date);
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actionType: "ERROR",
+            action: "Heartbeat missed",
+          }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sets activitySilenceDetectedAt for healthy heartbeat-enabled workspace with stale activity", async () => {
