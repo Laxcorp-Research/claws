@@ -243,6 +243,12 @@ describe('generateWorkspace', () => {
     expect(config.agents.list).toHaveLength(3);
   });
 
+  it('Lifecycle P6: openclaw.json tools.deny includes dir_list (mutation: drop merge → fail)', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']) as { tools?: { deny?: string[] } };
+    expect(config.tools?.deny).toContain('dir_list');
+  });
+
   it('round-trips route-written channel config into the 2026.5.22-6 runtime channel schema', async () => {
     const routeWrittenPlaintext = JSON.stringify({
       telegram: { botToken: '123456789:telegram-token', allowFrom: ['424242'] },
