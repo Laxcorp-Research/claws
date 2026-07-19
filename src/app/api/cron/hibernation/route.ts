@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { hibernateWorkspace, wakeWorkspace } from "@/lib/hibernation/manager"
+import { runningIdleWhere, warmIdleWhere } from "@/lib/hibernation/predicates"
 
 export const maxDuration = 55
 
@@ -35,29 +36,15 @@ export async function GET(req: NextRequest) {
   let syncSkippedForBudget = 0
 
   // ─── HIBERNATE CANDIDATES ────────────────────────────
-
-  const idleCutoff = new Date(now.getTime() - 10 * 60 * 1000)
-  const futureWindow = new Date(now.getTime() + 15 * 60 * 1000)
-  const channelIdleCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  // Predicates shared with /api/internal/hibernation/candidates (parity).
 
   const runningIdle = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "RUNNING",
-      hasActiveChannels: false,
-      lastActiveAt: { lt: idleCutoff },
-      OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
-    },
+    where: runningIdleWhere(now),
     include: { workspace: { select: { id: true, containerId: true } } },
   })
 
   const warmIdle = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "WARM",
-      OR: [{ lastChannelMessageAt: { lt: channelIdleCutoff } }, { lastChannelMessageAt: null }],
-      AND: {
-        OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
-      },
-    },
+    where: warmIdleWhere(now),
     include: { workspace: { select: { id: true, containerId: true } } },
   })
 
