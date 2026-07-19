@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
       via: result.via,
     })
   } catch (err) {
-    log.error("reserve-window: reserve failed", {
-      userId,
-      error: err instanceof Error ? err.message : String(err),
-    })
+    const detail = err instanceof Error ? err.message : String(err)
+    log.error("reserve-window: reserve failed", { userId, error: detail })
+    // Include detail so staging ops can diagnose without Vercel log dig
+    // (still a 503 — proxy treats !ok as fail and degrades/closes).
     return apiError(
       "REDIS_UNAVAILABLE",
-      "Credit reservation temporarily unavailable",
+      `Credit reservation temporarily unavailable: ${detail.slice(0, 180)}`,
       503,
     )
   }
