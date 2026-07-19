@@ -222,7 +222,9 @@ describe("bundle hygiene — live-set filter (PR-2 -8)", () => {
     fs.writeFileSync(path.join(root, "workspace-main", "MEMORY.md"), "# mem")
   }
 
-  it("MUTATION-anchored: ships live trio + sessions.json; excludes orphan + reset", () => {
+  it("MUTATION-anchored: ships live trio + sessions.json; -9 retains orphan jsonl; still drops reset", () => {
+    const prev = process.env.CLAWS_RETAIN_ORPHAN_SESSIONS
+    delete process.env.CLAWS_RETAIN_ORPHAN_SESSIONS
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-hygiene-"))
     try {
       writeSessionsTree(dir)
@@ -235,13 +237,31 @@ describe("bundle hygiene — live-set filter (PR-2 -8)", () => {
         expect(keys).toContain(`agents/main/sessions/${id}.trajectory.jsonl`)
         expect(keys).toContain(`agents/main/sessions/${id}.trajectory-path.json`)
       }
-      // Dropping the live-set gate (always include) fails these:
-      expect(keys).not.toContain(`agents/main/sessions/${ORPHAN}.jsonl`)
-      expect(keys).not.toContain(`agents/main/sessions/${ORPHAN}.trajectory.jsonl`)
+      // -9 default retain: orphan jsonl kept; reset leftovers still dropped.
+      expect(keys).toContain(`agents/main/sessions/${ORPHAN}.jsonl`)
       expect(keys.some((k: string) => k.includes(".jsonl.reset."))).toBe(false)
       expect(keys).toContain("workspace-main/MEMORY.md")
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
+      if (prev === undefined) delete process.env.CLAWS_RETAIN_ORPHAN_SESSIONS
+      else process.env.CLAWS_RETAIN_ORPHAN_SESSIONS = prev
+    }
+  })
+
+  it("flag=false: excludes orphan jsonl (pre--9 hygiene)", async () => {
+    process.env.CLAWS_RETAIN_ORPHAN_SESSIONS = "false"
+    vi.resetModules()
+    mod = await import("../../container/state-sync.mjs")
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-hygiene-drop-"))
+    try {
+      writeSessionsTree(dir)
+      const { files } = mod.bundleRuntimeState(dir)
+      expect(Object.keys(files)).not.toContain(`agents/main/sessions/${ORPHAN}.jsonl`)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+      delete process.env.CLAWS_RETAIN_ORPHAN_SESSIONS
+      vi.resetModules()
+      mod = await import("../../container/state-sync.mjs")
     }
   })
 

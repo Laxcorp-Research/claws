@@ -7,6 +7,8 @@
 
 import http from 'http';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // ─── Config ─────────────────────────────────────────────
 
@@ -19,7 +21,21 @@ const METERING_SECRET = process.env.CLAWS_METERING_SECRET;
 const WORKSPACE_ID = process.env.CLAWS_WORKSPACE_ID;
 const USER_ID = process.env.CLAWS_USER_ID;
 
-if (!MASTER_KEY || !METERING_ENDPOINT || !METERING_SECRET || !WORKSPACE_ID || !USER_ID) {
+function isDirectEntrypoint() {
+  try {
+    const thisFile = fileURLToPath(import.meta.url);
+    const invoked = process.argv[1] && path.resolve(process.argv[1]);
+    return Boolean(invoked) && thisFile === invoked;
+  } catch {
+    return true;
+  }
+}
+
+// Only exit-on-missing-env when running as the container entrypoint (not unit tests).
+if (
+  isDirectEntrypoint() &&
+  (!MASTER_KEY || !METERING_ENDPOINT || !METERING_SECRET || !WORKSPACE_ID || !USER_ID)
+) {
   console.error('[credit-proxy] Missing required env vars');
   process.exit(1);
 }
@@ -172,12 +188,18 @@ class UsageReporter {
     if (this.pending.length >= 20) this.flush();
   }
 
-  async flush() {
-    if (this.pending.length === 0) return;
+  /**
+   * Flush up to 50 pending records. -9 observability:
+   * SUCCESS → log batch size + status; FAILURE → status + requeue depth.
+   * @param {{ fetchImpl?: typeof fetch, label?: string }} [opts]
+   */
+  async flush({ fetchImpl = fetch, label = 'flush' } = {}) {
+    if (this.pending.length === 0) return { flushed: 0, ok: true };
     const batch = this.pending.splice(0, 50);
+    const batchSize = batch.length;
 
     try {
-      const res = await fetch(`${METERING_ENDPOINT}/report-batch`, {
+      const res = await fetchImpl(`${METERING_ENDPOINT}/report-batch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -190,17 +212,41 @@ class UsageReporter {
       if (res.ok) {
         this.dropped = 0;
         creditWindow.clearDegradationState();
-      } else {
-        this.pending.unshift(...batch);
+        console.log(
+          `[credit-proxy] report-batch ok n=${batchSize} status=${res.status} label=${label}`,
+        );
+        return { flushed: batchSize, ok: true, status: res.status };
       }
-    } catch {
       this.pending.unshift(...batch);
+      console.error(
+        `[credit-proxy] report-batch failed status=${res.status} requeueDepth=${this.pending.length} label=${label}`,
+      );
+      return { flushed: 0, ok: false, status: res.status, requeueDepth: this.pending.length };
+    } catch (err) {
+      this.pending.unshift(...batch);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[credit-proxy] report-batch failed error=${msg} requeueDepth=${this.pending.length} label=${label}`,
+      );
+      return { flushed: 0, ok: false, error: msg, requeueDepth: this.pending.length };
     }
   }
 
   async shutdown() {
     clearInterval(this.flushInterval);
-    try { await this.flush(); } catch {}
+    const pendingBefore = this.pending.length;
+    try {
+      const result = await this.flush({ label: 'SIGTERM' });
+      console.log(
+        `[credit-proxy] SIGTERM flush pendingBefore=${pendingBefore} flushed=${result.flushed ?? 0}`,
+      );
+    } catch (err) {
+      console.error(
+        `[credit-proxy] SIGTERM flush error pendingBefore=${pendingBefore} error=${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 }
 
@@ -476,14 +522,6 @@ async function forwardToAnthropic(req, res, body) {
   }
 }
 
-// ─── Start Server ───────────────────────────────────────
-
-server.listen(PORT, HOST, () => {
-  console.log(`[credit-proxy] Listening on ${HOST}:${PORT}`);
-  console.log(`[credit-proxy] Workspace: ${WORKSPACE_ID}`);
-  console.log(`[credit-proxy] Metering: ${METERING_ENDPOINT}`);
-});
-
 // ─── Graceful Shutdown ──────────────────────────────────
 
 async function shutdown(signal) {
@@ -503,24 +541,40 @@ async function shutdown(signal) {
   setTimeout(() => process.exit(0), 5000);
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+export const __test__ = {
+  UsageReporter,
+  isDirectEntrypoint,
+  shutdown,
+};
 
-// ─── Self-Health Monitoring ─────────────────────────────
+// ─── Start Server (entrypoint only — vitest imports must not listen) ───
 
-setInterval(() => {
-  const mem = process.memoryUsage();
-  if (mem.heapUsed > 50 * 1024 * 1024) {
-    console.error(`[credit-proxy] Memory leak detected (${Math.round(mem.heapUsed / 1024 / 1024)}MB), exiting for restart`);
-    shutdown('MEMORY_LIMIT').catch(() => process.exit(1));
-  }
-}, 30_000);
+if (isDirectEntrypoint()) {
+  server.listen(PORT, HOST, () => {
+    console.log(`[credit-proxy] Listening on ${HOST}:${PORT}`);
+    console.log(`[credit-proxy] Workspace: ${WORKSPACE_ID}`);
+    console.log(`[credit-proxy] Metering: ${METERING_ENDPOINT}`);
+  });
 
-process.on('uncaughtException', (err) => {
-  console.error('[credit-proxy] Uncaught exception:', err);
-  shutdown('UNCAUGHT_EXCEPTION').catch(() => process.exit(1));
-});
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
-process.on('unhandledRejection', (reason) => {
-  console.error('[credit-proxy] Unhandled rejection:', reason);
-});
+  setInterval(() => {
+    const mem = process.memoryUsage();
+    if (mem.heapUsed > 50 * 1024 * 1024) {
+      console.error(
+        `[credit-proxy] Memory leak detected (${Math.round(mem.heapUsed / 1024 / 1024)}MB), exiting for restart`,
+      );
+      shutdown('MEMORY_LIMIT').catch(() => process.exit(1));
+    }
+  }, 30_000);
+
+  process.on('uncaughtException', (err) => {
+    console.error('[credit-proxy] Uncaught exception:', err);
+    shutdown('UNCAUGHT_EXCEPTION').catch(() => process.exit(1));
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    console.error('[credit-proxy] Unhandled rejection:', reason);
+  });
+}
