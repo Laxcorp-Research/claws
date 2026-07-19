@@ -38,10 +38,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     const result = await syncThenDestroy(workspaceId, {
       destroyPolicy: force ? "force" : "destroy-anyway",
     })
+    // destroy-anyway / force always destroy; surface syncWarning when sync failed.
     return apiSuccess({
-      stopped: result.destroyed,
-      status: result.destroyed ? "STOPPED" : undefined,
-      syncWarning: result.destroyed ? result.syncWarning ?? null : null,
+      stopped: true,
+      status: "STOPPED",
+      syncWarning: result.destroyed ? (result.syncWarning ?? null) : null,
       force,
     })
   } catch (err: unknown) {
