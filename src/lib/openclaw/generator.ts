@@ -34,6 +34,7 @@ import {
   resolveToolRouterSession,
   mergeMcpDenyIntoAgentTools,
 } from '@/lib/openclaw/mcp-longtail';
+import { mergeDirListDenyIntoTools } from '@/lib/openclaw/dir-list-deny';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
@@ -559,6 +560,14 @@ function generateOpenClawConfig(
       },
     };
   }
+
+  // Lifecycle P6: deny dir_list-class file tools until paired nodes exist.
+  // Honest tool-policy error instead of upstream "unknown node: gateway" boot noise.
+  config.tools = mergeDirListDenyIntoTools(
+    typeof config.tools === 'object' && config.tools && !Array.isArray(config.tools)
+      ? (config.tools as Record<string, unknown>)
+      : undefined,
+  );
 
   // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
   // non-null when CLAWS_MCP_LONGTAIL_ENABLED=true AND the workspace has
