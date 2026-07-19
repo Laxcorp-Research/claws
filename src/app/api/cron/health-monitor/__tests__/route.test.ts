@@ -114,6 +114,8 @@ function mockProbeFetch(opts: { adminRpc: Response | (() => never); healthz?: Re
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET;
   vi.restoreAllMocks();
+  // P4 stranded adopter sibling pass — default empty (no stranded deploys).
+  ;(prismaMock.deployment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 });
 
 // ─── Auth gate ─────────────────────────────────────────────────────────

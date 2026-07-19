@@ -8,6 +8,7 @@ import {
   HEARTBEAT_MISS_GRACE_MS,
   lastExpectedCronFire,
 } from "@/lib/hibernation/next-heartbeat"
+import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
 
 // PR-3 — Health Monitor cron.
 //
@@ -587,6 +588,16 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // Lifecycle P4: stranded GENERATING/PROVISIONING adopter (sibling cadence).
+  let strandedAdopted = 0
+  try {
+    const stranded = await adoptStrandedDeployments(startedAt)
+    strandedAdopted = stranded.adopted
+    errors.push(...stranded.errors)
+  } catch (err) {
+    errors.push(`stranded-adopter: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   const durationMs = Date.now() - startedAt
   log.info("health-monitor: pass complete", {
     workspacesProbed: candidates.length,
@@ -596,6 +607,7 @@ export async function GET(req: NextRequest) {
     escalatedUnhealthy,
     escalatedError,
     reclassified,
+    strandedAdopted,
     errorCount: errors.length,
     durationMs,
   })
@@ -610,6 +622,7 @@ export async function GET(req: NextRequest) {
       escalatedUnhealthy,
       escalatedError,
       reclassified,
+      strandedAdopted,
       errorCount: errors.length,
       durationMs,
     },
