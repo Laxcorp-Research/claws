@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { deployToCloud, syncThenDestroy, type SyncThenDestroyOptions } from "@/lib/openclaw/deployer"
 import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
+import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
 
 function intervalMsFromFrequency(frequency: string | null | undefined): number | null {
   switch (frequency) {
@@ -16,13 +17,19 @@ function intervalMsFromFrequency(frequency: string | null | undefined): number |
   }
 }
 
+export type HibernateResult =
+  | { hibernated: true }
+  | { hibernated: false; refused: true; reason: string }
+
 export async function hibernateWorkspace(
   workspaceId: string,
   // PR-2: forwarded to syncThenDestroy. The hibernation cron passes a tighter
   // syncTimeoutMs (10s, matching the container SIGTERM window) and sets
   // skipSync when it's low on its 55s ceiling (budget guard).
+  // Lifecycle P3: destroyPolicy is forced to refuse-unsafe — auto-hibernate
+  // NEVER destroys unsynced/stale state (skipSync → refuse, not bare destroy).
   syncOpts: SyncThenDestroyOptions = {},
-): Promise<void> {
+): Promise<HibernateResult> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     include: { containerState: true },
@@ -30,35 +37,52 @@ export async function hibernateWorkspace(
 
   if (!workspace) {
     log.warn("Cannot hibernate: workspace not found", { workspaceId })
-    return
+    return { hibernated: false, refused: true, reason: "workspace-not-found" }
   }
 
   if (!workspace.containerId) {
     log.warn("Cannot hibernate: no container/service ID", { workspaceId })
-    return
-  }
-
-  const stateAge = workspace.containerState?.runtimeStateUpdatedAt
-    ? Date.now() - workspace.containerState.runtimeStateUpdatedAt.getTime()
-    : Infinity
-
-  if (stateAge > 10 * 60 * 1000) {
-    log.warn("Runtime state snapshot is stale, hibernating anyway", {
-      workspaceId,
-      stateAgeMinutes: Math.round(stateAge / 60000),
-    })
+    return { hibernated: false, refused: true, reason: "no-container" }
   }
 
   try {
-    // PR-2: confirmed pre-destroy sync (10s budget on the cron path; skipSync
-    // when the cron is low on its 55s ceiling). syncThenDestroy never throws on
-    // a sync failure — it records an incomplete-sync marker and destroys anyway,
-    // so hibernation is never blocked by a slow/unreachable container.
-    await syncThenDestroy(workspaceId, syncOpts)
+    // Lifecycle P3: refuse-unsafe — sync fail / stale / skipSync keeps RUNNING/WARM.
+    const teardown = await syncThenDestroy(workspaceId, {
+      ...syncOpts,
+      destroyPolicy: "refuse-unsafe",
+    })
 
-    // Lifecycle P2: recompute wake hint at hibernate so cron claws keep a
-    // next fire and interval claws finally get now+interval (auto-wake).
-    // Pre-P2 rows may lack heartbeatInterval — derive from orchestrator frequency.
+    if (!teardown.destroyed) {
+      const reason = teardown.reason
+      log.warn("Hibernation refused: state not safely synced", { workspaceId, reason })
+      try {
+        await prisma.activityLog.create({
+          data: {
+            workspaceId,
+            action: HIBERNATION_REFUSED_ACTION,
+            detail: `Auto-hibernate refused (${reason}). Container kept RUNNING/WARM.`,
+            actionType: "ERROR",
+            timestamp: new Date(),
+            metadata: JSON.stringify({
+              eventKind: "hibernation_refused",
+              reason,
+            }),
+          },
+        })
+        await prisma.workspace.update({
+          where: { id: workspaceId },
+          data: { hibernationRefusedAt: new Date() },
+        })
+      } catch (markErr) {
+        log.error("Failed to record hibernation refusal", {
+          workspaceId,
+          error: String(markErr),
+        })
+      }
+      return { hibernated: false, refused: true, reason }
+    }
+
+    // Lifecycle P2: recompute wake hint at hibernate.
     const hibernatedAt = new Date()
     let heartbeatIntervalMs = workspace.containerState?.heartbeatInterval ?? null
     if (heartbeatIntervalMs == null) {
@@ -68,7 +92,6 @@ export async function hibernateWorkspace(
       })
       heartbeatIntervalMs = intervalMsFromFrequency(orch?.heartbeatFrequency)
       if (heartbeatIntervalMs != null) {
-        // Persist so subsequent rolls don't re-derive.
         await prisma.containerState.update({
           where: { workspaceId },
           data: { heartbeatInterval: heartbeatIntervalMs },
@@ -80,6 +103,10 @@ export async function hibernateWorkspace(
       heartbeatCronExpressions: workspace.containerState?.heartbeatCronExpressions,
       heartbeatIntervalMs,
     })
+
+    const stateAge = workspace.containerState?.runtimeStateUpdatedAt
+      ? Date.now() - workspace.containerState.runtimeStateUpdatedAt.getTime()
+      : Infinity
 
     await prisma.$transaction([
       prisma.containerState.update({
@@ -97,6 +124,7 @@ export async function hibernateWorkspace(
           containerId: null,
           containerPort: null,
           hostPort: null,
+          hibernationRefusedAt: null,
         },
       }),
     ])
@@ -106,8 +134,10 @@ export async function hibernateWorkspace(
       hasStateSnapshot: !!workspace.containerState?.runtimeStateSnapshot,
       stateAgeMinutes: stateAge === Infinity ? null : Math.round(stateAge / 60000),
     })
+    return { hibernated: true }
   } catch (err) {
     log.error("Hibernate failed", { workspaceId, error: String(err) })
+    return { hibernated: false, refused: true, reason: "hibernate-error" }
   }
 }
 

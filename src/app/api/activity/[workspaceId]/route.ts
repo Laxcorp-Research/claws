@@ -472,6 +472,7 @@ export async function GET(
       activitySilenceDetectedAt: workspace!.activitySilenceDetectedAt ? workspace!.activitySilenceDetectedAt.toISOString() : null,
       stateSyncStaleDetectedAt: workspace!.stateSyncStaleDetectedAt ? workspace!.stateSyncStaleDetectedAt.toISOString() : null,
       heartbeatMissedAt: workspace!.heartbeatMissedAt ? workspace!.heartbeatMissedAt.toISOString() : null,
+      hibernationRefusedAt: workspace!.hibernationRefusedAt ? workspace!.hibernationRefusedAt.toISOString() : null,
       stateSyncNearCapActive,
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,

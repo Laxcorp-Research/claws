@@ -59,6 +59,7 @@ import {
   extractCronExpression,
   extractHeartbeatIntervalMsFromOpenclawJson,
 } from '@/lib/hibernation/next-heartbeat';
+import { isRuntimeStateStale } from '@/lib/hibernation/stale-destroy';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -555,16 +556,30 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
   ]);
 }
 
+/**
+ * Lifecycle P3 destroy policy:
+ * - destroy-anyway (default): user Stop / exhaustion — sync fail → destroy + marker
+ * - refuse-unsafe: auto-hibernate — sync fail OR stale snapshot → keep container
+ * - force: ops override — destroy regardless of sync/stale
+ */
+export type DestroyPolicy = 'destroy-anyway' | 'refuse-unsafe' | 'force';
+
 export interface SyncThenDestroyOptions {
   /** Upper bound for the /internal/sync-now call. Default DEFAULT_SYNC_TIMEOUT_MS (~18s). */
   syncTimeoutMs?: number;
   /**
-   * Budget-guard / explicit bare path: skip the sync entirely and go straight
-   * to destroyContainer. The hibernation cron sets this when it is low on its
-   * 55s ceiling so an in-flight sync can't be killed mid-write.
+   * Budget-guard / explicit bare path: skip the sync entirely.
+   * With destroy-anyway/force → bare destroyContainer.
+   * With refuse-unsafe → REFUSE (auto-hibernate never destroys unsynced state).
    */
   skipSync?: boolean;
+  /** Default destroy-anyway (user Stop / exhaustion). Hibernate passes refuse-unsafe. */
+  destroyPolicy?: DestroyPolicy;
 }
+
+export type SyncThenDestroyResult =
+  | { destroyed: true; syncWarning?: string }
+  | { destroyed: false; refused: true; reason: string };
 
 type SyncNowOutcome = { synced: true } | { synced: false; reason: string };
 
@@ -634,32 +649,45 @@ async function trySyncNow(containerHost: string, timeoutMs: number): Promise<Syn
 }
 
 /**
- * Confirmed-sync teardown: flushes + persists the container's runtime state via
- * POST /internal/sync-now BEFORE destroying it, so "your history is saved" is a
- * guarantee rather than best-effort. ALWAYS destroys — on any sync failure
- * (non-200, timeout, unreachable container, or the SYNC_BEFORE_DESTROY
- * kill-switch being off) it records an incomplete-sync marker on ContainerState
- * and proceeds to destroyContainer anyway. It NEVER traps the container.
+ * Confirmed-sync teardown: flushes + persists runtime state via POST
+ * /internal/sync-now BEFORE destroy when possible.
  *
- * Gated by SYNC_BEFORE_DESTROY (default ON; set to "false" for an instant
- * rollback to bare destroyContainer behaviour), following the
- * HIBERNATION_ENABLED convention.
+ * Lifecycle P3 destroyPolicy:
+ * - destroy-anyway (default): sync fail → marker + destroy (user Stop / exhaustion)
+ * - refuse-unsafe: sync fail OR runtimeStateUpdatedAt older than
+ *   STALE_DESTROY_MAX_AGE_MIN (default 30) → keep container (auto-hibernate)
+ * - force: ops override — destroy regardless
  *
- * Callers: the Stop route (default ~18s budget) and hibernate (10s + a
- * cron-loop budget guard via skipSync). Bare destroyContainer stays on the
- * fast/non-throwing paths (Dodo webhook, credit exhaustion).
+ * Gated by SYNC_BEFORE_DESTROY (default ON; "false" → bare destroy for
+ * destroy-anyway/force; refuse-unsafe still refuses bare skip).
  */
 export async function syncThenDestroy(
   workspaceId: string,
   opts: SyncThenDestroyOptions = {},
-): Promise<void> {
-  const { syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS, skipSync = false } = opts;
+): Promise<SyncThenDestroyResult> {
+  const {
+    syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS,
+    skipSync = false,
+    destroyPolicy = 'destroy-anyway',
+  } = opts;
 
-  // Kill-switch (default ON). Off → behave exactly like bare destroyContainer.
+  // Kill-switch / skipSync.
   const enabled = process.env.SYNC_BEFORE_DESTROY !== 'false';
   if (!enabled || skipSync) {
+    if (destroyPolicy === 'refuse-unsafe') {
+      log.warn('syncThenDestroy: refuse-unsafe — skipSync/kill-switch will not destroy', {
+        workspaceId,
+        skipSync,
+        syncBeforeDestroy: enabled,
+      });
+      return {
+        destroyed: false,
+        refused: true,
+        reason: skipSync ? 'skip-sync-budget' : 'sync-disabled',
+      };
+    }
     await destroyContainer(workspaceId);
-    return;
+    return { destroyed: true };
   }
 
   const workspace = await prisma.workspace.findUniqueOrThrow({
@@ -667,37 +695,67 @@ export async function syncThenDestroy(
     include: { containerState: { select: { runtimeStateUpdatedAt: true } } },
   });
 
-  // Nothing to sync to: already torn down, never deployed, or simulation mode
-  // (no containerHost). Skip the network call and just destroy — idempotent.
+  // Nothing to sync to: already torn down, never deployed, or simulation mode.
   if (!workspace.containerId || !workspace.containerHost) {
     await destroyContainer(workspaceId);
-    return;
+    return { destroyed: true };
   }
 
   const outcome = await trySyncNow(workspace.containerHost, syncTimeoutMs);
 
   if (outcome.synced) {
-    // Confirmed persist (or vacuously empty): clear any prior incomplete marker.
-    // updateMany (not update) so a missing ContainerState row is a no-op, never a throw.
     await prisma.containerState.updateMany({
       where: { workspaceId },
       data: { lastSyncIncompleteAt: null, lastSyncIncompleteReason: null },
     });
     log.info('syncThenDestroy: pre-destroy sync confirmed', { workspaceId });
   } else {
-    // Destroy anyway, but record that this teardown's snapshot may be stale.
     await prisma.containerState.updateMany({
       where: { workspaceId },
       data: { lastSyncIncompleteAt: new Date(), lastSyncIncompleteReason: outcome.reason },
     });
-    log.warn('syncThenDestroy: pre-destroy sync NOT confirmed — destroying anyway', {
+    log.warn('syncThenDestroy: pre-destroy sync NOT confirmed', {
       workspaceId,
       reason: outcome.reason,
+      destroyPolicy,
       lastRuntimeStateUpdatedAt: workspace.containerState?.runtimeStateUpdatedAt ?? null,
     });
+
+    if (destroyPolicy === 'refuse-unsafe') {
+      return { destroyed: false, refused: true, reason: `sync-failed:${outcome.reason}` };
+    }
+  }
+
+  // Re-read snapshot freshness after sync (sync may have just updated it).
+  const freshState = await prisma.containerState.findUnique({
+    where: { workspaceId },
+    select: { runtimeStateUpdatedAt: true },
+  });
+  const stale = isRuntimeStateStale(freshState?.runtimeStateUpdatedAt ?? null);
+
+  if (stale && destroyPolicy === 'refuse-unsafe') {
+    log.warn('syncThenDestroy: refuse-unsafe — runtime state stale beyond threshold', {
+      workspaceId,
+      runtimeStateUpdatedAt: freshState?.runtimeStateUpdatedAt ?? null,
+    });
+    return { destroyed: false, refused: true, reason: 'stale-snapshot' };
   }
 
   await destroyContainer(workspaceId);
+
+  if (!outcome.synced) {
+    return {
+      destroyed: true,
+      syncWarning: `Pre-destroy sync failed (${outcome.reason}); container stopped with possibly stale snapshot.`,
+    };
+  }
+  if (stale && destroyPolicy !== 'force') {
+    return {
+      destroyed: true,
+      syncWarning: 'Runtime state snapshot was older than the stale threshold at stop.',
+    };
+  }
+  return { destroyed: true };
 }
 
 export async function restartContainer(workspaceId: string): Promise<void> {
