@@ -147,8 +147,55 @@ describe("hibernation cron — P2.3 wake geometry", () => {
 
     const wakeWhere = (prismaMock.containerState.findMany as ReturnType<typeof vi.fn>).mock
       .calls[2][0].where
-    expect(wakeWhere.nextHeartbeatAt).toEqual({ not: null })
+    expect(wakeWhere).toEqual({
+      containerPhase: "HIBERNATED",
+      nextHeartbeatAt: { not: null },
+    })
     expect(JSON.stringify(wakeWhere)).not.toContain('"gt"')
+
+    expect(json.data.wakeEligibility).toEqual([
+      expect.objectContaining({
+        workspaceId: "past-due",
+        nextHeartbeatAt: "2026-07-20T12:00:00.000Z",
+        eligible: true,
+        pastDue: true,
+        leadMs: expect.any(Number),
+        deadline: expect.any(String),
+      }),
+    ])
+    expect(json.data.wakeLead.minLeadMs).toBe(8 * 60 * 1000)
+
+    vi.useRealTimers()
+  })
+
+  it("eligibility observability lists ineligible candidates (not silent skip)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-20T15:50:00.000Z"))
+
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          workspaceId: "early",
+          nextHeartbeatAt: new Date("2026-07-20T16:00:00.000Z"),
+          avgWakeDurationMs: 44_448,
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    const res = await callCron()
+    const json = await res.json()
+    expect(json.data.woke).toBe(0)
+    expect(json.data.wakeEligibility).toHaveLength(1)
+    expect(json.data.wakeEligibility[0]).toMatchObject({
+      workspaceId: "early",
+      eligible: false,
+      pastDue: false,
+      deadline: "2026-07-20T15:52:00.000Z",
+      leadMs: 8 * 60 * 1000,
+    })
+    expect(mockWake).not.toHaveBeenCalled()
 
     vi.useRealTimers()
   })
