@@ -10,6 +10,7 @@ interface TrustBadgeProps {
 
 const TRUST_CONFIG: Record<TrustTier, {
   label: string
+  title: string
   Icon: typeof Star
   bg: string
   text: string
@@ -17,6 +18,7 @@ const TRUST_CONFIG: Record<TrustTier, {
 }> = {
   OFFICIAL: {
     label: "Official",
+    title: "Official — built and maintained by the Claws team",
     Icon: Star,
     bg: "#FFF8E7",
     text: "#8A6D00",
@@ -24,13 +26,15 @@ const TRUST_CONFIG: Record<TrustTier, {
   },
   VERIFIED: {
     label: "Verified",
+    title: "Verified — passed automated checks and deeper review",
     Icon: ShieldCheck,
     bg: "#EDFFF3",
     text: "#0D6B32",
     border: "#B8FFCF",
   },
   SCANNED: {
-    label: "Scanned",
+    label: "Auto-scanned — automated checks passed",
+    title: "Auto-scanned — automated checks passed (regex + AI review). Not a deeper runtime vetting result.",
     Icon: Shield,
     bg: "#EEF5FF",
     text: "#1A5BBF",
@@ -38,6 +42,7 @@ const TRUST_CONFIG: Record<TrustTier, {
   },
   UNREVIEWED: {
     label: "Unreviewed",
+    title: "Unreviewed — awaiting human review; not listed publicly",
     Icon: Circle,
     bg: "#F5F5F5",
     text: "#777777",
@@ -52,6 +57,7 @@ export function TrustBadge({ tier, className = "" }: TrustBadgeProps) {
   return (
     <span
       className={`inline-flex items-center gap-[3px] rounded-[4px] px-2 py-[2px] text-[10px] font-semibold leading-tight ${className}`}
+      title={config.title}
       style={{
         backgroundColor: config.bg,
         color: config.text,
@@ -61,5 +67,15 @@ export function TrustBadge({ tier, className = "" }: TrustBadgeProps) {
       <Icon size={10} aria-hidden="true" />
       {config.label}
     </span>
+  )
+}
+
+/** Short legend for store surfaces explaining Auto-scanned honesty. */
+export function TrustBadgeLegend({ className = "" }: { className?: string }) {
+  return (
+    <p className={`text-[11px] text-[var(--tx3)] leading-snug ${className}`}>
+      <span className="font-medium text-[var(--tx2)]">Trust badges:</span>{" "}
+      Official = Claws team. Auto-scanned = automated checks passed. Unreviewed items stay in the review queue and are not listed.
+    </p>
   )
 }

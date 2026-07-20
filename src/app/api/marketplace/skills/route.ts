@@ -9,6 +9,7 @@ import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 import { sanitizeText, sanitizeMarkdown } from "@/lib/security/sanitize"
 import { log } from "@/lib/logger"
 import { searchSkills } from "@/lib/marketplace/search"
+import { publicListingWhere } from "@/lib/marketplace/public-visibility"
 
 export const maxDuration = 30
 
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     const section = searchParams.get("section") || undefined
 
     const where: Prisma.MarketplaceSkillWhereInput = {
-      isPublished: true,
+      ...publicListingWhere(),
     }
 
     if (category) {
@@ -228,8 +229,8 @@ export async function POST(request: NextRequest) {
         price: isFree ? null : (price ?? null),
         trustTier: "UNREVIEWED",
         reviewStatus: "PENDING",
-        isPublished: true,
-        publishedAt: new Date(),
+        isPublished: false,
+        publishedAt: null,
         version: 1,
         autoScanPassed: scanResult.passed,
         autoScanReport: scanResult.findings.length > 0 ? JSON.stringify(scanResult.findings) : null,
@@ -243,7 +244,7 @@ export async function POST(request: NextRequest) {
       data: { totalSkills: { increment: 1 } },
     })
 
-    log.info("Skill published; Layer 2 sandbox queue not configured", {
+    log.info("Skill submitted for manual review; not listed until approved", {
       category: "marketplace",
       skillId: skill.id,
       skillSlug: skill.slug,
@@ -254,7 +255,8 @@ export async function POST(request: NextRequest) {
     return apiSuccess({
       skillId: skill.id,
       slug: skill.slug,
-      isPublished: true,
+      isPublished: false,
+      reviewStatus: "PENDING",
       scanResult: {
         passed: scanResult.passed,
         hasCritical: scanResult.hasCritical,

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import { isPubliclyListable, publicListingWhere } from "@/lib/marketplace/public-visibility"
 
 interface SnapshotAgent {
   name: string
@@ -52,6 +53,7 @@ export async function GET(
   })
 
   if (!template) return ERRORS.NOT_FOUND("template")
+  if (!isPubliclyListable(template)) return ERRORS.NOT_FOUND("template")
 
   let agents: SnapshotAgent[] = []
   let tools: { required: SnapshotTool[]; recommended: SnapshotTool[] } = { required: [], recommended: [] }
@@ -92,9 +94,9 @@ export async function GET(
 
   let similar = await prisma.clawTemplate.findMany({
     where: {
+      ...publicListingWhere(),
       category: template.category,
       id: { not: template.id },
-      isPublished: true,
       ...priceTierWhere,
     },
     select: {
@@ -116,9 +118,9 @@ export async function GET(
     const existingIds = [template.id, ...similar.map((s) => s.id)]
     const backfill = await prisma.clawTemplate.findMany({
       where: {
+        ...publicListingWhere(),
         category: template.category,
         id: { notIn: existingIds },
-        isPublished: true,
       },
       select: {
         id: true,

@@ -11,6 +11,7 @@ import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 import { log } from "@/lib/logger"
 import { searchTemplates } from "@/lib/marketplace/search"
 import { formatMarketplaceTemplateRow } from "@/lib/marketplace/format-marketplace-template"
+import { publicListingWhere } from "@/lib/marketplace/public-visibility"
 
 export const maxDuration = 30
 
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     const section = searchParams.get("section") || undefined
 
     const where: Prisma.ClawTemplateWhereInput = {
-      isPublished: true,
+      ...publicListingWhere(),
     }
 
     if (category) {
@@ -328,7 +329,7 @@ export async function POST(request: NextRequest) {
         creatorId: creatorProfile.id,
         trustTier: "UNREVIEWED",
         reviewStatus: "PENDING",
-        isPublished: true,
+        isPublished: false,
         agentCount: workspace.agents.length,
         workspaceSnapshot,
         version: 1,
@@ -353,7 +354,8 @@ export async function POST(request: NextRequest) {
     return apiSuccess({
       templateId: template.id,
       slug: template.slug,
-      isPublished: true,
+      isPublished: false,
+      reviewStatus: "PENDING",
       scanResult: {
         passed: scanResult.passed,
         hasWarnings: scanResult.hasWarnings,

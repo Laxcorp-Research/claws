@@ -21,6 +21,8 @@ const skillPaid = {
   isPublished: true,
   isFree: false,
   price: 19,
+  trustTier: "SCANNED",
+  reviewStatus: "APPROVED",
 }
 
 const skillFree = {
@@ -29,6 +31,8 @@ const skillFree = {
   isPublished: true,
   isFree: true,
   price: 0,
+  trustTier: "OFFICIAL",
+  reviewStatus: "APPROVED",
 }
 
 const workspace = {

@@ -4,6 +4,7 @@ import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
 import { getResend } from '@/lib/resend'
+import { resolveCommunityApprovedTrustTier } from '@/lib/marketplace/public-visibility'
 
 export async function POST(
   request: NextRequest,
@@ -35,11 +36,14 @@ export async function POST(
       return apiError('INVALID_STATE', 'Template is not pending review', 400)
     }
 
+    const trustTier = resolveCommunityApprovedTrustTier()
+
     const updated = await prisma.clawTemplate.update({
       where: { id },
       data: {
         reviewStatus: 'APPROVED',
-        trustTier: 'VERIFIED',
+        trustTier,
+        isPublished: true,
         reviewedAt: new Date(),
       },
     })
@@ -61,7 +65,7 @@ export async function POST(
               </p>
               <p style="font-size: 14px; color: #555; line-height: 1.6;">
                 Your template <strong>"${template.name}"</strong> has been reviewed and approved.
-                It is now listed as <strong>Verified</strong> in the marketplace.
+                It is now listed in the marketplace.
               </p>
               <p style="font-size: 14px; margin-top: 20px;">
                 <a href="https://app.buildclaws.ai/store/${template.slug}"

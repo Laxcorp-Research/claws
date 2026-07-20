@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { Prisma, type TrustTier, type ClawCategory } from "@/generated/prisma/client"
 import { formatMarketplaceTemplateRow } from "@/lib/marketplace/format-marketplace-template"
+import { publicListingSql, publicListingWhere } from "@/lib/marketplace/public-visibility"
 
 const TIER_ORDER: TrustTier[] = ["UNREVIEWED", "SCANNED", "VERIFIED", "OFFICIAL"]
 
@@ -58,7 +59,7 @@ function templateWhereFromFilters(params: {
   isFree?: boolean
 }): Prisma.ClawTemplateWhereInput {
   const { category, trustTier, section, isFree } = params
-  const where: Prisma.ClawTemplateWhereInput = { isPublished: true }
+  const where: Prisma.ClawTemplateWhereInput = { ...publicListingWhere() }
 
   if (category) {
     where.category = category as ClawCategory
@@ -93,7 +94,7 @@ export async function searchTemplates(params: TemplateListParams & { search: str
     return listTemplates({ category, trustTier, section, isFree, sort, cursor, limit })
   }
 
-  const conditions: string[] = [`t."isPublished" = true`, `t."searchVector" @@ to_tsquery('english', $1)`]
+  const conditions: string[] = [publicListingSql("t"), `t."searchVector" @@ to_tsquery('english', $1)`]
   const queryParams: unknown[] = [tsQuery]
   let paramIndex = 2
 
@@ -285,7 +286,7 @@ function skillWhereFromFilters(params: {
   isFree?: boolean
 }): Prisma.MarketplaceSkillWhereInput {
   const { category, trustTier, section, isFree } = params
-  const where: Prisma.MarketplaceSkillWhereInput = { isPublished: true }
+  const where: Prisma.MarketplaceSkillWhereInput = { ...publicListingWhere() }
 
   if (category) {
     where.category = category
@@ -321,7 +322,7 @@ export async function searchSkills(
     return listSkills({ category, trustTier, section, isFree, sort, cursor, limit })
   }
 
-  const conditions: string[] = [`s."isPublished" = true`, `s."searchVector" @@ to_tsquery('english', $1)`]
+  const conditions: string[] = [publicListingSql("s"), `s."searchVector" @@ to_tsquery('english', $1)`]
   const queryParams: unknown[] = [tsQuery]
   let paramIndex = 2
 

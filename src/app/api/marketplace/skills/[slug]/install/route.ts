@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
 import { log } from "@/lib/logger"
+import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
 
 export async function POST(
   request: NextRequest,
@@ -23,7 +24,7 @@ export async function POST(
   const skill = await prisma.marketplaceSkill.findUnique({
     where: { slug },
   })
-  if (!skill || !skill.isPublished) return ERRORS.NOT_FOUND("skill")
+  if (!skill || !isPubliclyListable(skill)) return ERRORS.NOT_FOUND("skill")
 
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
