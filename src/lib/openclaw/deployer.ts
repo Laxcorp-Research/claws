@@ -53,7 +53,13 @@ import {
 } from './channel-config';
 import { getComposioUserId } from '@/lib/composio';
 import { probeMcpEndpoint } from './mcp-longtail';
-import { CronExpressionParser } from 'cron-parser';
+import {
+  calculateNextHeartbeat,
+  computeNextHeartbeatAt,
+  extractCronExpression,
+  extractHeartbeatIntervalMsFromOpenclawJson,
+} from '@/lib/hibernation/next-heartbeat';
+import { isRuntimeStateStale } from '@/lib/hibernation/stale-destroy';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,9 +79,30 @@ const CONTAINER_PAYLOAD_SAFETY_CEILING = 30_000;
 // src/app/api/cron/hibernation/route.ts.
 const DEFAULT_SYNC_TIMEOUT_MS = 18_000;
 
-function isMissingRailwayServiceError(err: unknown): boolean {
+/**
+ * Missing Railway service (404 / not found) — safe to adopt-by-name or fresh-create.
+ * BEFORE P4: only this shape fell through; NotAuthorized rethrew forever.
+ */
+export function isMissingRailwayServiceError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /(?:service|deployment).*not\s+found|not\s+found.*(?:service|deployment)|404/i.test(message);
+}
+
+/**
+ * Lifecycle P4: orphan-class errors on an EXISTING service id during redeploy.
+ * Includes missing-service AND NotAuthorized (stale ACL / deleted service
+ * still referenced by our stored containerId). Fresh createService auth
+ * outages are NOT orphan — they must fail loud (no infinite provision loop).
+ */
+export function isOrphanRailwayServiceError(err: unknown): boolean {
+  if (isMissingRailwayServiceError(err)) return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /NotAuthorized|not\s*authorized|unauthorized/i.test(message);
+}
+
+function isRailwayAuthOutageError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /NotAuthorized|not\s*authorized|unauthorized|401/i.test(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +332,17 @@ export async function deployToCloud(workspaceId: string): Promise<{
     //     The hibernation threshold is 10 min idle, well above the ~60s
     //     window, so no practical impact on hibernation decisions.
     const channelsActive = hasChannels(workspace);
+    // Lifecycle P2: persist interval ms + rolling wake hint (cron OR now+interval).
+    const heartbeatIntervalMs = extractHeartbeatIntervalMsFromOpenclawJson(
+      generated['openclaw.json'],
+    );
+    const cronExprs =
+      generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null;
+    const nextHeartbeatAt = computeNextHeartbeatAt({
+      now: new Date(),
+      heartbeatCronExpressions: cronExprs,
+      heartbeatIntervalMs,
+    });
     await prisma.containerState.upsert({
       where: { workspaceId },
       update: {
@@ -313,8 +351,9 @@ export async function deployToCloud(workspaceId: string): Promise<{
         hibernatedAt: null,
         wakeRequestedAt: null,
         hasActiveChannels: channelsActive,
-        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
-        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+        nextHeartbeatAt,
+        heartbeatInterval: heartbeatIntervalMs,
+        heartbeatCronExpressions: cronExprs,
         // PR-2: a fresh container makes any prior teardown's incomplete-sync
         // marker moot — clear it so a stale flag never lingers across deploys.
         lastSyncIncompleteAt: null,
@@ -325,8 +364,9 @@ export async function deployToCloud(workspaceId: string): Promise<{
         containerPhase: channelsActive ? 'WARM' : 'RUNNING',
         lastActiveAt: new Date(),
         hasActiveChannels: channelsActive,
-        nextHeartbeatAt: calculateNextHeartbeat(generated['cron/jobs.json']),
-        heartbeatCronExpressions: generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null,
+        nextHeartbeatAt,
+        heartbeatInterval: heartbeatIntervalMs,
+        heartbeatCronExpressions: cronExprs,
       },
     });
 
@@ -356,7 +396,8 @@ export async function deployToCloud(workspaceId: string): Promise<{
           oldServiceId: workspace.containerId,
           error: redeployErr instanceof Error ? redeployErr.message : String(redeployErr),
         });
-        if (!isMissingRailwayServiceError(redeployErr)) {
+        // P4: NotAuthorized on existing service → orphan fall-through (was rethrow).
+        if (!isOrphanRailwayServiceError(redeployErr)) {
           throw redeployErr;
         }
 
@@ -375,13 +416,29 @@ export async function deployToCloud(workspaceId: string): Promise<{
             where: { id: workspaceId },
             data: { containerId: null, containerName: null, containerHost: null },
           });
-          result = await createService({ name: serviceName, envVars, image });
+          try {
+            result = await createService({ name: serviceName, envVars, image });
+          } catch (freshErr) {
+            // Guard: auth outage on NEW provision fails loud — do not loop.
+            if (isRailwayAuthOutageError(freshErr)) {
+              throw new Error(
+                `Railway auth outage on fresh provision after orphan clear: ${
+                  freshErr instanceof Error ? freshErr.message : String(freshErr)
+                }`,
+              );
+            }
+            throw freshErr;
+          }
         }
       }
     } else {
       try {
         result = await createService({ name: serviceName, envVars, image });
       } catch (err: unknown) {
+        // Fresh provision NotAuthorized → fail loud (no orphan clear/retry loop).
+        if (isRailwayAuthOutageError(err) && !String(err).includes('already exists')) {
+          throw err;
+        }
         const msg = err instanceof Error ? err.message : '';
         if (msg.includes('already exists')) {
           log.warn('Service already exists, looking it up by name', { serviceName, workspaceId });
@@ -537,16 +594,30 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
   ]);
 }
 
+/**
+ * Lifecycle P3 destroy policy:
+ * - destroy-anyway (default): user Stop / exhaustion — sync fail → destroy + marker
+ * - refuse-unsafe: auto-hibernate — sync fail OR stale snapshot → keep container
+ * - force: ops override — destroy regardless of sync/stale
+ */
+export type DestroyPolicy = 'destroy-anyway' | 'refuse-unsafe' | 'force';
+
 export interface SyncThenDestroyOptions {
   /** Upper bound for the /internal/sync-now call. Default DEFAULT_SYNC_TIMEOUT_MS (~18s). */
   syncTimeoutMs?: number;
   /**
-   * Budget-guard / explicit bare path: skip the sync entirely and go straight
-   * to destroyContainer. The hibernation cron sets this when it is low on its
-   * 55s ceiling so an in-flight sync can't be killed mid-write.
+   * Budget-guard / explicit bare path: skip the sync entirely.
+   * With destroy-anyway/force → bare destroyContainer.
+   * With refuse-unsafe → REFUSE (auto-hibernate never destroys unsynced state).
    */
   skipSync?: boolean;
+  /** Default destroy-anyway (user Stop / exhaustion). Hibernate passes refuse-unsafe. */
+  destroyPolicy?: DestroyPolicy;
 }
+
+export type SyncThenDestroyResult =
+  | { destroyed: true; syncWarning?: string }
+  | { destroyed: false; refused: true; reason: string };
 
 type SyncNowOutcome = { synced: true } | { synced: false; reason: string };
 
@@ -616,32 +687,45 @@ async function trySyncNow(containerHost: string, timeoutMs: number): Promise<Syn
 }
 
 /**
- * Confirmed-sync teardown: flushes + persists the container's runtime state via
- * POST /internal/sync-now BEFORE destroying it, so "your history is saved" is a
- * guarantee rather than best-effort. ALWAYS destroys — on any sync failure
- * (non-200, timeout, unreachable container, or the SYNC_BEFORE_DESTROY
- * kill-switch being off) it records an incomplete-sync marker on ContainerState
- * and proceeds to destroyContainer anyway. It NEVER traps the container.
+ * Confirmed-sync teardown: flushes + persists runtime state via POST
+ * /internal/sync-now BEFORE destroy when possible.
  *
- * Gated by SYNC_BEFORE_DESTROY (default ON; set to "false" for an instant
- * rollback to bare destroyContainer behaviour), following the
- * HIBERNATION_ENABLED convention.
+ * Lifecycle P3 destroyPolicy:
+ * - destroy-anyway (default): sync fail → marker + destroy (user Stop / exhaustion)
+ * - refuse-unsafe: sync fail OR runtimeStateUpdatedAt older than
+ *   STALE_DESTROY_MAX_AGE_MIN (default 30) → keep container (auto-hibernate)
+ * - force: ops override — destroy regardless
  *
- * Callers: the Stop route (default ~18s budget) and hibernate (10s + a
- * cron-loop budget guard via skipSync). Bare destroyContainer stays on the
- * fast/non-throwing paths (Dodo webhook, credit exhaustion).
+ * Gated by SYNC_BEFORE_DESTROY (default ON; "false" → bare destroy for
+ * destroy-anyway/force; refuse-unsafe still refuses bare skip).
  */
 export async function syncThenDestroy(
   workspaceId: string,
   opts: SyncThenDestroyOptions = {},
-): Promise<void> {
-  const { syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS, skipSync = false } = opts;
+): Promise<SyncThenDestroyResult> {
+  const {
+    syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS,
+    skipSync = false,
+    destroyPolicy = 'destroy-anyway',
+  } = opts;
 
-  // Kill-switch (default ON). Off → behave exactly like bare destroyContainer.
+  // Kill-switch / skipSync.
   const enabled = process.env.SYNC_BEFORE_DESTROY !== 'false';
   if (!enabled || skipSync) {
+    if (destroyPolicy === 'refuse-unsafe') {
+      log.warn('syncThenDestroy: refuse-unsafe — skipSync/kill-switch will not destroy', {
+        workspaceId,
+        skipSync,
+        syncBeforeDestroy: enabled,
+      });
+      return {
+        destroyed: false,
+        refused: true,
+        reason: skipSync ? 'skip-sync-budget' : 'sync-disabled',
+      };
+    }
     await destroyContainer(workspaceId);
-    return;
+    return { destroyed: true };
   }
 
   const workspace = await prisma.workspace.findUniqueOrThrow({
@@ -649,37 +733,67 @@ export async function syncThenDestroy(
     include: { containerState: { select: { runtimeStateUpdatedAt: true } } },
   });
 
-  // Nothing to sync to: already torn down, never deployed, or simulation mode
-  // (no containerHost). Skip the network call and just destroy — idempotent.
+  // Nothing to sync to: already torn down, never deployed, or simulation mode.
   if (!workspace.containerId || !workspace.containerHost) {
     await destroyContainer(workspaceId);
-    return;
+    return { destroyed: true };
   }
 
   const outcome = await trySyncNow(workspace.containerHost, syncTimeoutMs);
 
   if (outcome.synced) {
-    // Confirmed persist (or vacuously empty): clear any prior incomplete marker.
-    // updateMany (not update) so a missing ContainerState row is a no-op, never a throw.
     await prisma.containerState.updateMany({
       where: { workspaceId },
       data: { lastSyncIncompleteAt: null, lastSyncIncompleteReason: null },
     });
     log.info('syncThenDestroy: pre-destroy sync confirmed', { workspaceId });
   } else {
-    // Destroy anyway, but record that this teardown's snapshot may be stale.
     await prisma.containerState.updateMany({
       where: { workspaceId },
       data: { lastSyncIncompleteAt: new Date(), lastSyncIncompleteReason: outcome.reason },
     });
-    log.warn('syncThenDestroy: pre-destroy sync NOT confirmed — destroying anyway', {
+    log.warn('syncThenDestroy: pre-destroy sync NOT confirmed', {
       workspaceId,
       reason: outcome.reason,
+      destroyPolicy,
       lastRuntimeStateUpdatedAt: workspace.containerState?.runtimeStateUpdatedAt ?? null,
     });
+
+    if (destroyPolicy === 'refuse-unsafe') {
+      return { destroyed: false, refused: true, reason: `sync-failed:${outcome.reason}` };
+    }
+  }
+
+  // Re-read snapshot freshness after sync (sync may have just updated it).
+  const freshState = await prisma.containerState.findUnique({
+    where: { workspaceId },
+    select: { runtimeStateUpdatedAt: true },
+  });
+  const stale = isRuntimeStateStale(freshState?.runtimeStateUpdatedAt ?? null);
+
+  if (stale && destroyPolicy === 'refuse-unsafe') {
+    log.warn('syncThenDestroy: refuse-unsafe — runtime state stale beyond threshold', {
+      workspaceId,
+      runtimeStateUpdatedAt: freshState?.runtimeStateUpdatedAt ?? null,
+    });
+    return { destroyed: false, refused: true, reason: 'stale-snapshot' };
   }
 
   await destroyContainer(workspaceId);
+
+  if (!outcome.synced) {
+    return {
+      destroyed: true,
+      syncWarning: `Pre-destroy sync failed (${outcome.reason}); container stopped with possibly stale snapshot.`,
+    };
+  }
+  if (stale && destroyPolicy !== 'force') {
+    return {
+      destroyed: true,
+      syncWarning: 'Runtime state snapshot was older than the stale threshold at stop.',
+    };
+  }
+  return { destroyed: true };
 }
 
 export async function restartContainer(workspaceId: string): Promise<void> {
@@ -1071,59 +1185,9 @@ function hasChannels(workspace: { channelConfigEncrypted?: string | null }): boo
   }
 }
 
-export function calculateNextHeartbeat(cronJobsJson: string | null | undefined): Date | null {
-  if (!cronJobsJson || cronJobsJson === '[]') return null;
-  try {
-    const jobs = JSON.parse(cronJobsJson);
-    if (!Array.isArray(jobs) || jobs.length === 0) return null;
-    let earliest: Date | null = null;
-    for (const job of jobs) {
-      const cronExpr = extractCronExpression(job);
-      if (!cronExpr) continue;
-      try {
-        const tz = extractCronTimezone(job);
-        const next = CronExpressionParser.parse(cronExpr, tz ? { tz } : {}).next().toDate();
-        if (!earliest || next < earliest) earliest = next;
-      } catch {
-        // Invalid cron expression — skip
-      }
-    }
-    return earliest;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Pulls the cron expression string out of a job entry. Handles the
- * verified OpenClaw shape `{ schedule: { kind: 'cron', expr } }` plus a
- * couple of legacy/string fallbacks defensively. Non-cron schedule kinds
- * (`every`, `at`) intentionally return null because they aren't cron-parseable.
- */
-export function extractCronExpression(job: unknown): string | null {
-  if (!job || typeof job !== 'object') return null;
-  const obj = job as { schedule?: unknown; cron?: unknown };
-  if (obj.schedule && typeof obj.schedule === 'object') {
-    const sched = obj.schedule as { kind?: unknown; expr?: unknown };
-    if (sched.kind === 'cron' && typeof sched.expr === 'string' && sched.expr.length > 0) {
-      return sched.expr;
-    }
-    return null;
-  }
-  if (typeof obj.schedule === 'string' && obj.schedule.length > 0) return obj.schedule;
-  if (typeof obj.cron === 'string' && obj.cron.length > 0) return obj.cron;
-  return null;
-}
-
-function extractCronTimezone(job: unknown): string | null {
-  if (!job || typeof job !== 'object') return null;
-  const obj = job as { schedule?: unknown };
-  if (obj.schedule && typeof obj.schedule === 'object') {
-    const sched = obj.schedule as { tz?: unknown };
-    if (typeof sched.tz === 'string' && sched.tz.length > 0) return sched.tz;
-  }
-  return null;
-}
+// Heartbeat schedule helpers live in hibernation/next-heartbeat; re-exported
+// above via the import block for the historical deployer import path.
+export { calculateNextHeartbeat, extractCronExpression };
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -40,7 +40,12 @@ function makeWs(overrides: Partial<Record<string, unknown>> = {}) {
     gatewayToken: "enc:tok",
     activitySilenceDetectedAt: null,
     stateSyncStaleDetectedAt: null,
-    containerState: { runtimeStateUpdatedAt: new Date() },
+    heartbeatMissedAt: null,
+    containerState: {
+      runtimeStateUpdatedAt: new Date(),
+      containerPhase: "RUNNING",
+      heartbeatCronExpressions: null,
+    },
     deployments: [{ completedAt: new Date(Date.now() - 20 * 60 * 1000) }],
     ...overrides,
   };
@@ -109,6 +114,8 @@ function mockProbeFetch(opts: { adminRpc: Response | (() => never); healthz?: Re
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET;
   vi.restoreAllMocks();
+  // P4 stranded adopter sibling pass — default empty (no stranded deploys).
+  ;(prismaMock.deployment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 });
 
 // ─── Auth gate ─────────────────────────────────────────────────────────
@@ -898,6 +905,101 @@ describe("GET end-to-end", () => {
     expect(update.data.healthStatus).toBe("HEALTHY");
     // PR-4: every write now records the probe reason.
     expect(update.data.lastHealthReason).toBe("no-container");
+  });
+
+  it("sets heartbeatMissedAt + ERROR ActivityLog when cron window missed (Watchtower)", async () => {
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+    ]);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T08:15:00.000Z"));
+    try {
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          return Promise.resolve([
+            makeWs({
+              id: "ws-miss",
+              heartbeatMissedAt: null,
+              containerState: {
+                runtimeStateUpdatedAt: new Date(),
+                containerPhase: "RUNNING",
+                heartbeatCronExpressions: cron,
+              },
+            }),
+          ]);
+        },
+      );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+
+      const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(update.data.heartbeatMissedAt).toBeInstanceOf(Date);
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actionType: "ERROR",
+            action: "Heartbeat missed",
+          }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("P2.1 missed-wake: HIBERNATED past nextHeartbeatAt + no boot → flag + ERROR", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T08:20:00.000Z"));
+    try {
+      const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z");
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") {
+            return Promise.resolve([
+              {
+                id: "ws-fixture-july",
+                status: "HIBERNATED",
+                heartbeatMissedAt: null,
+                containerState: { nextHeartbeatAt },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.missedWakeFlagged).toBe(1);
+
+      expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "ws-fixture-july" },
+          data: { heartbeatMissedAt: expect.any(Date) },
+        }),
+      );
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actionType: "ERROR",
+            action: "Heartbeat missed",
+            metadata: expect.stringContaining("heartbeat_missed_wake"),
+          }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sets activitySilenceDetectedAt for healthy heartbeat-enabled workspace with stale activity", async () => {

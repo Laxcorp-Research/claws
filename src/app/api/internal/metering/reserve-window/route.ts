@@ -6,6 +6,8 @@ import {
   METERING_SECRET_HEADER,
   proxyReserveWindowBodySchema,
 } from "@/lib/credits/proxy-metering-payload"
+import { reserveWindowAtomic } from "@/lib/credits/reserve-window-atomic"
+import { log } from "@/lib/logger"
 
 function verifyMeteringSecret(req: NextRequest): boolean {
   const secret = req.headers.get(METERING_SECRET_HEADER)?.trim()
@@ -48,35 +50,36 @@ export async function POST(req: NextRequest) {
         await redis.set(balanceKey, account.balanceCents.toString())
       }
     }
-  } catch {
-    // Proceed to lua; if Redis is fully down the proxy degrades open.
+  } catch (err) {
+    log.warn("reserve-window: redis seed failed; continuing to reserve", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 
-  const luaScript = `
-    local balance = tonumber(redis.call('GET', KEYS[1]) or '0')
-    local reservations = tonumber(redis.call('GET', KEYS[2]) or '0')
-    local cost = tonumber(ARGV[1])
-    local available = balance - reservations
-
-    if available >= cost then
-      redis.call('INCRBY', KEYS[2], cost)
-      redis.call('EXPIRE', KEYS[2], 600)
-      return available - cost
-    else
-      return -1
-    end
-  `
-
-  const remaining = (await redis.eval(
-    luaScript,
-    [balanceKey, reservationsKey],
-    [windowSizeCents.toString()],
-  )) as number
-
-  if (remaining < 0) {
-    // Envelope: { success, data: { allowed, reason } } — proxy reads data.data.allowed
-    return apiSuccess({ allowed: false, reason: "INSUFFICIENT_CREDITS" })
+  try {
+    const result = await reserveWindowAtomic({
+      balanceKey,
+      reservationsKey,
+      windowSizeCents,
+    })
+    if (!result.ok) {
+      return apiSuccess({ allowed: false, reason: result.reason })
+    }
+    return apiSuccess({
+      allowed: true,
+      remainingCents: result.remainingCents,
+      via: result.via,
+    })
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    log.error("reserve-window: reserve failed", { userId, error: detail })
+    // Include detail so staging ops can diagnose without Vercel log dig
+    // (still a 503 — proxy treats !ok as fail and degrades/closes).
+    return apiError(
+      "REDIS_UNAVAILABLE",
+      `Credit reservation temporarily unavailable: ${detail.slice(0, 180)}`,
+      503,
+    )
   }
-
-  return apiSuccess({ allowed: true, remainingCents: remaining })
 }

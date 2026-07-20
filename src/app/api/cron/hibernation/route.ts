@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { hibernateWorkspace, wakeWorkspace } from "@/lib/hibernation/manager"
+import { runningIdleWhere, warmIdleWhere } from "@/lib/hibernation/predicates"
 
 export const maxDuration = 55
 
@@ -30,34 +31,21 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   const startedAt = Date.now()
   let hibernated = 0
+  let refused = 0
   let woke = 0
   let errors = 0
   let syncSkippedForBudget = 0
 
   // ─── HIBERNATE CANDIDATES ────────────────────────────
-
-  const idleCutoff = new Date(now.getTime() - 10 * 60 * 1000)
-  const futureWindow = new Date(now.getTime() + 15 * 60 * 1000)
-  const channelIdleCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  // Predicates shared with /api/internal/hibernation/candidates (parity).
 
   const runningIdle = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "RUNNING",
-      hasActiveChannels: false,
-      lastActiveAt: { lt: idleCutoff },
-      OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
-    },
+    where: runningIdleWhere(now),
     include: { workspace: { select: { id: true, containerId: true } } },
   })
 
   const warmIdle = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "WARM",
-      OR: [{ lastChannelMessageAt: { lt: channelIdleCutoff } }, { lastChannelMessageAt: null }],
-      AND: {
-        OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
-      },
-    },
+    where: warmIdleWhere(now),
     include: { workspace: { select: { id: true, containerId: true } } },
   })
 
@@ -72,11 +60,13 @@ export async function GET(req: NextRequest) {
     const skipSync = Date.now() - startedAt > SYNC_BUDGET_CUTOFF_MS
     if (skipSync) syncSkippedForBudget++
     try {
-      await hibernateWorkspace(candidate.workspaceId, {
+      // P3: skipSync under refuse-unsafe refuses (never bare-destroys).
+      const result = await hibernateWorkspace(candidate.workspaceId, {
         syncTimeoutMs: HIBERNATE_SYNC_TIMEOUT_MS,
         skipSync,
       })
-      hibernated++
+      if (result.hibernated) hibernated++
+      else refused++
     } catch (err) {
       errors++
       log.error("Hibernation cron: hibernate failed", {
@@ -164,5 +154,8 @@ export async function GET(req: NextRequest) {
     syncSkippedForBudget,
   })
 
-  return Response.json({ success: true, data: { hibernated, woke, errors, syncSkippedForBudget } })
+  return Response.json({
+    success: true,
+    data: { hibernated, refused, woke, errors, syncSkippedForBudget },
+  })
 }

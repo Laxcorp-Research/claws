@@ -24,6 +24,14 @@ import { log } from "@/lib/logger";
 import type { ActivityType } from "@/generated/prisma/client";
 import { getToolBySlug } from "@/data/tool-catalog";
 import { MAX_API_COST_PER_EVENT } from "@/lib/activity-cost-display";
+import {
+  isExternalChannelInbound,
+  touchLastChannelMessageAt,
+} from "@/lib/hibernation/channel-inbound";
+import {
+  computeNextHeartbeatAt,
+  isHeartbeatShapedActivity,
+} from "@/lib/hibernation/next-heartbeat";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -403,6 +411,59 @@ export async function POST(
           workspaceId,
           error: markErr instanceof Error ? markErr.message : String(markErr),
         });
+      }
+      // warmIdle honesty: stamp lastChannelMessageAt on external-channel inbound
+      // (CHANNEL_IDS + webchat). Lands here — claws-activity-reporter → this route.
+      if (isExternalChannelInbound(ev.type, ev.channelId)) {
+        try {
+          await touchLastChannelMessageAt(workspaceId, ev.timestamp);
+        } catch (touchErr) {
+          log.error("activity: failed to stamp lastChannelMessageAt", {
+            workspaceId,
+            error: touchErr instanceof Error ? touchErr.message : String(touchErr),
+          });
+        }
+      }
+      // Lifecycle P2.1: roll nextHeartbeatAt on heartbeat-shaped activity —
+      // typed HEARTBEAT, overlay_boot, or TASK_START with OpenClaw poll marker.
+      // Clears Watchtower / missed-wake flag when any of those land.
+      if (
+        isHeartbeatShapedActivity({
+          type: ev.type,
+          metadata: ev.metadata,
+          action: ev.action,
+          detail: ev.detail,
+        })
+      ) {
+        try {
+          const state = await prisma.containerState.findUnique({
+            where: { workspaceId },
+            select: {
+              heartbeatCronExpressions: true,
+              heartbeatInterval: true,
+            },
+          });
+          if (state) {
+            const nextHeartbeatAt = computeNextHeartbeatAt({
+              now: ev.timestamp,
+              heartbeatCronExpressions: state.heartbeatCronExpressions,
+              heartbeatIntervalMs: state.heartbeatInterval,
+            });
+            await prisma.containerState.update({
+              where: { workspaceId },
+              data: { nextHeartbeatAt },
+            });
+          }
+          await prisma.workspace.updateMany({
+            where: { id: workspaceId, heartbeatMissedAt: { not: null } },
+            data: { heartbeatMissedAt: null },
+          });
+        } catch (rollErr) {
+          log.error("activity: failed to roll nextHeartbeatAt", {
+            workspaceId,
+            error: rollErr instanceof Error ? rollErr.message : String(rollErr),
+          });
+        }
       }
       processed++;
     } catch (err) {

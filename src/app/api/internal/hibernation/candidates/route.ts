@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { apiSuccess, apiError } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
+import { runningIdleWhere, warmIdleWhere } from "@/lib/hibernation/predicates"
 
 function verifyAgentSecret(req: NextRequest): boolean {
   const auth = req.headers.get("Authorization")
@@ -13,31 +14,14 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date()
-  const idleCutoff = new Date(now.getTime() - 10 * 60 * 1000)
-  const futureWindow = new Date(now.getTime() + 15 * 60 * 1000)
-  const channelIdleCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000)
 
   const runningCandidates = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "RUNNING",
-      hasActiveChannels: false,
-      lastActiveAt: { lt: idleCutoff },
-      OR: [
-        { nextHeartbeatAt: null },
-        { nextHeartbeatAt: { gt: futureWindow } },
-      ],
-    },
+    where: runningIdleWhere(now),
     include: { workspace: { select: { id: true, containerId: true, status: true } } },
   })
 
   const warmCandidates = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "WARM",
-      OR: [
-        { lastChannelMessageAt: { lt: channelIdleCutoff } },
-        { lastChannelMessageAt: null },
-      ],
-    },
+    where: warmIdleWhere(now),
     include: { workspace: { select: { id: true, containerId: true, status: true } } },
   })
 

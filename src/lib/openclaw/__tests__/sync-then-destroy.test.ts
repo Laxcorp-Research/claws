@@ -53,15 +53,26 @@ function stubTransactionToInvokeOps() {
 }
 
 function mockWorkspace(
-  overrides: { containerId?: string | null; containerHost?: string | null } = {},
+  overrides: {
+    containerId?: string | null
+    containerHost?: string | null
+    runtimeStateUpdatedAt?: Date | null
+  } = {},
 ) {
-  const { containerId = "svc-abc", containerHost = "claw-ws-1.up.railway.app" } = overrides
+  const {
+    containerId = "svc-abc",
+    containerHost = "claw-ws-1.up.railway.app",
+    runtimeStateUpdatedAt = new Date(),
+  } = overrides
   ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
     id: "ws-1",
     containerId,
     containerHost,
-    containerState: { runtimeStateUpdatedAt: new Date("2026-06-20T00:00:00.000Z") },
+    containerState: { runtimeStateUpdatedAt },
   })
+  ;(prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+    runtimeStateUpdatedAt,
+  } as never)
 }
 
 // Minimal Response stand-in (the helper reads only .status and .json()).
@@ -163,7 +174,8 @@ describe("syncThenDestroy — never-trap invariant (always destroys, records mar
     mockWorkspace()
     fetchOk(502, { ok: false, status: "rejected" })
 
-    await expect(syncThenDestroy("ws-1")).resolves.toBeUndefined()
+    const result = await syncThenDestroy("ws-1")
+    expect(result).toEqual(expect.objectContaining({ destroyed: true }))
 
     expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -279,6 +291,79 @@ describe("syncThenDestroy — SYNC_BEFORE_DESTROY kill-switch", () => {
       ([arg]) => arg?.data && "lastSyncIncompleteReason" in arg.data,
     )
     expect(markerWrites).toHaveLength(0)
+    expectDestroyed()
+  })
+})
+
+describe("syncThenDestroy — Lifecycle P3 refuse-unsafe (auto-hibernate)", () => {
+  it("sync-fail → container kept (not destroyed) + refused reason", async () => {
+    mockWorkspace()
+    fetchOk(503, { ok: false, status: "error" })
+
+    const result = await syncThenDestroy("ws-1", { destroyPolicy: "refuse-unsafe" })
+
+    expect(result).toEqual({
+      destroyed: false,
+      refused: true,
+      reason: "sync-failed:error",
+    })
+    expect(mockDeleteService).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).not.toHaveBeenCalled()
+  })
+
+  it("MUTATION: destroy-anyway restored on hibernate path would fail this (default still destroys)", async () => {
+    mockWorkspace()
+    fetchOk(503, { ok: false, status: "error" })
+    const destroyAnyway = await syncThenDestroy("ws-1") // default
+    expect(destroyAnyway.destroyed).toBe(true)
+    expectDestroyed()
+  })
+
+  it("stale-beyond-threshold refused even when sync confirms", async () => {
+    const staleAt = new Date(Date.now() - 60 * 60 * 1000) // 60m > default 30m
+    mockWorkspace({ runtimeStateUpdatedAt: staleAt })
+    fetchOk(200, { ok: true, persisted: true, count: 1, fileCount: 1 })
+
+    const result = await syncThenDestroy("ws-1", { destroyPolicy: "refuse-unsafe" })
+
+    expect(result).toEqual({
+      destroyed: false,
+      refused: true,
+      reason: "stale-snapshot",
+    })
+    expect(mockDeleteService).not.toHaveBeenCalled()
+  })
+
+  it("FORCE path destroys despite sync-fail", async () => {
+    mockWorkspace()
+    fetchOk(503, { ok: false, status: "error" })
+
+    const result = await syncThenDestroy("ws-1", { destroyPolicy: "force" })
+
+    expect(result.destroyed).toBe(true)
+    expectDestroyed()
+  })
+
+  it("healthy path (sync ok + fresh snapshot) destroys under refuse-unsafe", async () => {
+    mockWorkspace({ runtimeStateUpdatedAt: new Date() })
+    fetchOk(200, { ok: true, persisted: true, count: 1, fileCount: 1 })
+
+    const result = await syncThenDestroy("ws-1", { destroyPolicy: "refuse-unsafe" })
+
+    expect(result).toEqual({ destroyed: true })
+    expectDestroyed()
+  })
+
+  it("user-Stop (destroy-anyway) proceeds with syncWarning on sync-fail", async () => {
+    mockWorkspace()
+    fetchOk(503, { ok: false, status: "error" })
+
+    const result = await syncThenDestroy("ws-1", { destroyPolicy: "destroy-anyway" })
+
+    expect(result.destroyed).toBe(true)
+    if (result.destroyed) {
+      expect(result.syncWarning).toMatch(/sync failed/i)
+    }
     expectDestroyed()
   })
 })
