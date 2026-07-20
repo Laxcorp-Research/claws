@@ -1237,6 +1237,10 @@ model ContainerState {
   heartbeatCronExpressions  String?        @db.Text
 
   hasActiveChannels         Boolean        @default(false)
+  /// First time channels became active on this row; preserved across redeploy.
+  /// P1.1 warmIdle: null lastChannelMessageAt + channelsConnectedAt >24h ago
+  /// may hibernate (P5 wakes on inbound). Fresh connect stays protected.
+  channelsConnectedAt       DateTime?
   lastChannelMessageAt      DateTime?
 
   activeMinutesToday        Int            @default(0)

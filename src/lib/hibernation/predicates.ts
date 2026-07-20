@@ -20,17 +20,36 @@ export function runningIdleWhere(now: Date) {
 }
 
 /**
- * Prisma `where` for WARM channel-idle.
- * INVARIANT: lastChannelMessageAt must be NON-NULL and older than 24h.
- * Prisma `{ lt: cutoff }` excludes null — null WARM claws must NEVER match
- * (mutation: restore a null-match OR branch on the stamp → fail).
+ * Prisma `where` for WARM channel-idle (P1.1).
+ *
+ * Matches when either:
+ *   (A) lastChannelMessageAt is NON-NULL and older than 24h, OR
+ *   (B) lastChannelMessageAt is null AND channelsConnectedAt older than 24h
+ *       (never-messaged but channel configured long enough — safe with P5
+ *       wake-on-channel).
+ *
+ * MUTATION: null stamp + fresh channelsConnectedAt must NOT match.
  */
 export function warmIdleWhere(now: Date) {
   const channelIdleCutoff = new Date(now.getTime() - CHANNEL_IDLE_MS)
   const futureWindow = new Date(now.getTime() + HEARTBEAT_FUTURE_MS)
   return {
     containerPhase: "WARM" as const,
-    lastChannelMessageAt: { lt: channelIdleCutoff },
-    OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
+    AND: [
+      {
+        OR: [
+          { lastChannelMessageAt: { lt: channelIdleCutoff } },
+          {
+            AND: [
+              { lastChannelMessageAt: null },
+              { channelsConnectedAt: { lt: channelIdleCutoff } },
+            ],
+          },
+        ],
+      },
+      {
+        OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
+      },
+    ],
   }
 }
