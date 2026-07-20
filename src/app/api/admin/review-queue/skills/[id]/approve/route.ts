@@ -4,7 +4,10 @@ import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
 import { getResend } from '@/lib/resend'
-import { resolveCommunityApprovedTrustTier } from '@/lib/marketplace/public-visibility'
+import {
+  assertVerifiedMintAllowed,
+  resolveCommunityApprovedTrustTier,
+} from '@/lib/marketplace/public-visibility'
 
 export async function POST(
   request: NextRequest,
@@ -36,10 +39,15 @@ export async function POST(
       return apiError('INVALID_STATE', 'Skill is not pending review', 400)
     }
 
-    // While sandbox vetting is absent, VERIFIED is unmintable — always SCANNED.
+    // While sandbox vetting is absent, resolveCommunityApprovedTrustTier returns SCANNED only.
+    // Explicit reject if anything tries to mint VERIFIED before sandbox is configured.
     const newTier = resolveCommunityApprovedTrustTier(skill.sandboxPassed)
     if (newTier === 'VERIFIED') {
-      return apiError('VERIFIED_UNMINTABLE', 'Verified tier requires sandbox vetting', 400)
+      try {
+        assertVerifiedMintAllowed()
+      } catch {
+        return apiError('VERIFIED_UNMINTABLE', 'Verified tier requires sandbox vetting', 400)
+      }
     }
 
     const updated = await prisma.marketplaceSkill.update({

@@ -98,6 +98,7 @@ describe("VERIFIED mint block while sandbox absent (Arc 1)", () => {
     expect(templateApprove).not.toMatch(/trustTier:\s*['"]VERIFIED['"]/)
     expect(skillApprove).toContain("resolveCommunityApprovedTrustTier")
     expect(templateApprove).toContain("resolveCommunityApprovedTrustTier")
+    expect(skillApprove).toContain("assertVerifiedMintAllowed")
     expect(skillApprove).toContain("VERIFIED_UNMINTABLE")
   })
 

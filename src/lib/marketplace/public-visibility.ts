@@ -3,7 +3,8 @@ import type { ReviewStatus, TrustTier } from "@/generated/prisma/client"
 /**
  * Layer-2 sandbox vetting is not configured. While false, VERIFIED must not be minted.
  */
-export const SANDBOX_VETTING_ENABLED = false
+/** Typed as boolean so TS does not collapse the VERIFIED branch as dead. */
+export const SANDBOX_VETTING_ENABLED: boolean = false
 
 export type PublicVisibilityFields = {
   isPublished: boolean
@@ -40,14 +41,13 @@ export function publicListingSql(alias: "t" | "s"): string {
 /**
  * Trust tier after human admin approve.
  * VERIFIED is unmintable while sandbox vetting is absent — always SCANNED.
+ * When SANDBOX_VETTING_ENABLED lands, sandboxPassed→VERIFIED becomes available.
  */
 export function resolveCommunityApprovedTrustTier(
-  _sandboxPassed?: boolean | null,
-): "SCANNED" {
-  void _sandboxPassed
-  if (SANDBOX_VETTING_ENABLED) {
-    // Reserved for when Layer-2 sandbox lands; not reachable today.
-    throw new Error("SANDBOX_VETTING_ENABLED path not implemented")
+  sandboxPassed?: boolean | null,
+): "SCANNED" | "VERIFIED" {
+  if (SANDBOX_VETTING_ENABLED && sandboxPassed) {
+    return "VERIFIED"
   }
   return "SCANNED"
 }
