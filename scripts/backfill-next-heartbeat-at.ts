@@ -41,7 +41,27 @@ export interface BackfillResult {
   skipped: number
 }
 
-type BackfillDb = Pick<PrismaClient, "containerState">
+/** Narrow DB surface so unit tests can inject a stub without full Prisma delegates. */
+export interface BackfillDb {
+  containerState: {
+    findMany: (args: {
+      where: unknown
+      select: unknown
+    }) => Promise<
+      Array<{
+        workspaceId: string
+        nextHeartbeatAt: Date | null
+        heartbeatCronExpressions: string | null
+        heartbeatInterval: number | null
+        workspace: { status: string; name: string }
+      }>
+    >
+    update: (args: {
+      where: { workspaceId: string }
+      data: { nextHeartbeatAt: Date }
+    }) => Promise<unknown>
+  }
+}
 
 export async function planAndMaybeApply(
   db: BackfillDb,
@@ -161,7 +181,7 @@ async function main(): Promise<void> {
   const adapter = new PrismaPg({ connectionString })
   const prisma = new PrismaClient({ adapter })
   try {
-    await planAndMaybeApply(prisma, { confirm })
+    await planAndMaybeApply(prisma as unknown as BackfillDb, { confirm })
   } finally {
     await prisma.$disconnect()
   }
