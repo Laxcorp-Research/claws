@@ -121,6 +121,39 @@ describe("hibernation cron — budget guard", () => {
   })
 })
 
+describe("hibernation cron — P2.3 wake geometry", () => {
+  it("past-due hint wakes (no gt:now upper cutoff)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-20T12:10:00.000Z"))
+
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([]) // runningIdle
+      .mockResolvedValueOnce([]) // warmIdle
+      .mockResolvedValueOnce([
+        {
+          workspaceId: "past-due",
+          nextHeartbeatAt: new Date("2026-07-20T12:00:00.000Z"),
+          avgWakeDurationMs: 44_448,
+        },
+      ])
+      .mockResolvedValueOnce([]) // stuck
+
+    mockWake.mockResolvedValue(undefined)
+    const res = await callCron()
+    expect(res.status).toBe(200)
+    expect(mockWake).toHaveBeenCalledWith("past-due")
+    const json = await res.json()
+    expect(json.data.woke).toBe(1)
+
+    const wakeWhere = (prismaMock.containerState.findMany as ReturnType<typeof vi.fn>).mock
+      .calls[2][0].where
+    expect(wakeWhere.nextHeartbeatAt).toEqual({ not: null })
+    expect(JSON.stringify(wakeWhere)).not.toContain('"gt"')
+
+    vi.useRealTimers()
+  })
+})
+
 describe("hibernation cron — warmIdle honesty (P1.1)", () => {
   it("null stamp + fresh channelsConnectedAt is protected (predicate requires connected>24h)", async () => {
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)

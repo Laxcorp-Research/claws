@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { hibernateWorkspace, wakeWorkspace } from "@/lib/hibernation/manager"
 import { runningIdleWhere, warmIdleWhere } from "@/lib/hibernation/predicates"
+import { isWakeEligible } from "@/lib/hibernation/wake-geometry"
 
 export const maxDuration = 55
 
@@ -76,14 +77,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ─── WAKE CANDIDATES ─────────────────────────────────
-
-  const maxLookAhead = new Date(now.getTime() + 10 * 60 * 1000)
+  // ─── WAKE CANDIDATES (P2.3 geometry) ─────────────────
+  // No upper cutoff: past-due hints stay eligible (late wake beats never).
+  // Lead floor ≥ cron cadence + avgWake + buffer (never the old 2m clamp).
 
   const wakeCandidates = await prisma.containerState.findMany({
     where: {
       containerPhase: "HIBERNATED",
-      nextHeartbeatAt: { lte: maxLookAhead, gt: now },
+      nextHeartbeatAt: { not: null },
     },
     select: {
       workspaceId: true,
@@ -93,23 +94,27 @@ export async function GET(req: NextRequest) {
   })
 
   for (const candidate of wakeCandidates) {
-    const leadTime = candidate.avgWakeDurationMs
-      ? Math.min(600_000, Math.max(120_000, candidate.avgWakeDurationMs * 2))
-      : 5 * 60 * 1000
+    const hint = candidate.nextHeartbeatAt
+    if (!hint) continue
+    if (
+      !isWakeEligible({
+        now,
+        nextHeartbeatAt: hint,
+        avgWakeDurationMs: candidate.avgWakeDurationMs,
+      })
+    ) {
+      continue
+    }
 
-    const wakeDeadline = new Date(candidate.nextHeartbeatAt!.getTime() - leadTime)
-
-    if (now >= wakeDeadline) {
-      try {
-        await wakeWorkspace(candidate.workspaceId)
-        woke++
-      } catch (err) {
-        errors++
-        log.error("Hibernation cron: wake failed", {
-          workspaceId: candidate.workspaceId,
-          error: String(err),
-        })
-      }
+    try {
+      await wakeWorkspace(candidate.workspaceId)
+      woke++
+    } catch (err) {
+      errors++
+      log.error("Hibernation cron: wake failed", {
+        workspaceId: candidate.workspaceId,
+        error: String(err),
+      })
     }
   }
 

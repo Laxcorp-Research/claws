@@ -137,6 +137,18 @@ describe("decideHeartbeatMissed — Watchtower window", () => {
     expect(result).toBeUndefined()
   })
 
+  it("P2.3: grace-edge (exactly expected+grace) flags for RUNNING/WARM", () => {
+    const nowMs = new Date("2026-07-20T08:10:00.000Z").getTime()
+    const result = decideHeartbeatMissed({
+      containerPhase: "WARM",
+      heartbeatCronExpressions: cron,
+      hasHeartbeatEvidenceInWindow: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
   it("clears when evidence present after grace", () => {
     const nowMs = new Date("2026-07-20T08:15:00.000Z").getTime()
     const result = decideHeartbeatMissed({
@@ -251,6 +263,19 @@ describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
       nowMs,
     })
     expect(result).toBeUndefined()
+  })
+
+  it("P2.3: grace-edge (exactly expected+grace) flags", () => {
+    const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z")
+    const nowMs = new Date("2026-07-20T08:10:00.000Z").getTime() // == expected+10m
+    const result = decideMissedWake({
+      workspaceStatus: "HIBERNATED",
+      nextHeartbeatAt,
+      hasBootSinceExpected: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeInstanceOf(Date)
   })
 
   it("clears when boot evidence exists after expected", () => {
