@@ -26,6 +26,15 @@ describe("computeWakeLeadMs", () => {
     expect(lead).toBeGreaterThanOrEqual(8 * 60 * 1000)
   })
 
+  it("≥8m floor holds with env absent (no env-gate required)", () => {
+    for (const k of ENV_KEYS) delete process.env[k]
+    const lead = computeWakeLeadMs(44_448)
+    expect(lead).toBe(DEFAULT_WAKE_MIN_LEAD_MS)
+    expect(lead).toBe(8 * 60 * 1000)
+    // MUTATION: restore old 2m default → this assertion fails.
+    expect(lead).toBeGreaterThan(2 * 60 * 1000)
+  })
+
   it("grows with cadence + avg + buffer above the floor", () => {
     process.env.HIBERNATION_CRON_CADENCE_MS = String(5 * 60 * 1000)
     process.env.HIBERNATION_WAKE_BUFFER_MS = String(60 * 1000)
@@ -87,6 +96,7 @@ describe("isWakeEligible — no upper cutoff", () => {
     expect(cronSrc).not.toMatch(/nextHeartbeatAt:\s*\{\s*lte:\s*maxLookAhead/)
     expect(cronSrc).not.toMatch(/gt:\s*now/)
     expect(cronSrc).toContain("isWakeEligible")
-    expect(cronSrc).toContain("nextHeartbeatAt: { not: null }")
+    expect(cronSrc).toContain("wakeHibernatedWhere")
+    expect(cronSrc).toContain("wakeEligibility")
   })
 })

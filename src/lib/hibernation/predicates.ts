@@ -1,6 +1,10 @@
 /**
  * Shared hibernation candidate predicates — cron route and agent candidates
  * API MUST stay in lockstep (parity invariant).
+ *
+ * Wake eligibility (lead / past-due) is NOT expressed in Prisma `where` (lead
+ * depends on per-row avgWakeDurationMs). Both callers MUST post-filter with
+ * `isWakeEligible` from wake-geometry — never inline the old 2m clamp or `gt: now`.
  */
 
 export const RUNNING_IDLE_MS = 10 * 60 * 1000
@@ -51,5 +55,17 @@ export function warmIdleWhere(now: Date) {
         OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
       },
     ],
+  }
+}
+
+/**
+ * Prisma `where` for HIBERNATED claws that may be wake-eligible.
+ * Post-filter every row with `isWakeEligible` (wake-geometry).
+ * MUTATION: restoring `nextHeartbeatAt: { gt: now }` here → past-due never wakes.
+ */
+export function wakeHibernatedWhere() {
+  return {
+    containerPhase: "HIBERNATED" as const,
+    nextHeartbeatAt: { not: null },
   }
 }
