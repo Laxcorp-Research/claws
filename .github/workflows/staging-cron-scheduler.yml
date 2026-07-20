@@ -13,6 +13,11 @@ name: Staging cron scheduler
 #     (GH Actions minimum schedule granularity is 5 minutes + delay jitter)
 #   - /api/cron/health-monitor: vercel `*/2 * * * *` → Actions `*/5 * * * *`
 #     (same 5-minute floor; grouped with the other sub-5-min routes)
+#
+# STAGING LIMITATION (heartbeat live-proof): natural `schedule` ticks are sparse
+# and jittered; wake-lead windows for nextHeartbeatAt often need
+# `workflow_dispatch` assist. Production uses Vercel cron (true minutely).
+# Pattern: dispatch-assist on staging; do not treat GH jitter as a product bug.
 
 on:
   schedule:
