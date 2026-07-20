@@ -18,6 +18,11 @@ const USER_FACING_FILES = [
   "src/app/setup/[workspaceId]/step/[n]/page.tsx",
   "src/app/publish/template/page.tsx",
   "src/app/publish/skill/page.tsx",
+  "src/app/store/page.tsx",
+  "src/app/store/skills/[slug]/page.tsx",
+  "src/app/store/[slug]/page.tsx",
+  "src/components/marketplace/trust-badge.tsx",
+  "src/components/builder/marketplace-skills-modal.tsx",
   "src/data/tool-catalog.ts",
 ] as const
 
@@ -27,6 +32,8 @@ const BANNED: Array<{ name: string; pattern: RegExp }> = [
   { name: "gateway", pattern: /\bgateway\b/i },
   { name: "snapshot", pattern: /\bsnapshot\b/i },
   { name: "sandbox-queue", pattern: /sandbox[-\s]?queue/i },
+  // Marketplace honesty: no user-facing "sandbox" vetting claims while L2 is absent.
+  { name: "sandbox", pattern: /\bsandbox\b/i },
 ]
 
 function stripCommentsAndImports(src: string): string {

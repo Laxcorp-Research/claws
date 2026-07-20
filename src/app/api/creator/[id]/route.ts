@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
+import { publicListingWhere } from "@/lib/marketplace/public-visibility"
 
 export async function GET(
   _request: NextRequest,
@@ -14,7 +15,7 @@ export async function GET(
   if (!profile || !profile.isActive) return ERRORS.NOT_FOUND("creator")
 
   const templates = await prisma.clawTemplate.findMany({
-    where: { creatorId: id, isPublished: true },
+    where: { creatorId: id, ...publicListingWhere() },
     select: {
       id: true,
       name: true,
@@ -31,7 +32,7 @@ export async function GET(
   })
 
   const skills = await prisma.marketplaceSkill.findMany({
-    where: { creatorId: id, isPublished: true },
+    where: { creatorId: id, ...publicListingWhere() },
     select: {
       id: true,
       slug: true,

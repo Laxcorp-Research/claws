@@ -5,6 +5,7 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { createClawCheckout, createPlatformSubscription, createCommunityCheckout } from "@/lib/dodo-payments"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
+import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
 
 export async function POST(req: NextRequest) {
   const sessionUser = await getSessionUser()
@@ -52,7 +53,7 @@ async function handleFreeTemplate(
   if (!templateId) return ERRORS.VALIDATION("templateId required")
 
   const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
-  if (!template) return ERRORS.NOT_FOUND("Template")
+  if (!template || !isPubliclyListable(template)) return ERRORS.NOT_FOUND("Template")
   if (!template.isFree) return apiError("NOT_FREE", "This template is not free", 400)
 
   const { workspaceId } = await createWorkspaceFromTemplate({
@@ -71,7 +72,7 @@ async function handleClawPurchase(
   if (!templateId) return ERRORS.VALIDATION("templateId required")
 
   const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
-  if (!template) return ERRORS.NOT_FOUND("Template")
+  if (!template || !isPubliclyListable(template)) return ERRORS.NOT_FOUND("Template")
 
   const existingPurchase = await prisma.purchase.findFirst({
     where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
@@ -125,7 +126,7 @@ async function handleCommunityPurchase(
   if (!templateId) return ERRORS.VALIDATION("templateId required")
 
   const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
-  if (!template) return ERRORS.NOT_FOUND("Template")
+  if (!template || !isPubliclyListable(template)) return ERRORS.NOT_FOUND("Template")
   if (!template.creatorId) return apiError("NOT_COMMUNITY", "This is not a community template", 400)
   if (template.isFree) return apiError("USE_FREE_FLOW", "Use the free_template checkout type for free templates", 400)
   if (template.price < 19) return apiError("PRICE_TOO_LOW", "Community template price must be at least $19", 400)

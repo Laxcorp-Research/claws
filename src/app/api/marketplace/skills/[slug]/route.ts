@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
 
 export async function GET(
   _request: NextRequest,
@@ -37,6 +38,7 @@ export async function GET(
   })
 
   if (!skill) return ERRORS.NOT_FOUND("skill")
+  if (!isPubliclyListable(skill)) return ERRORS.NOT_FOUND("skill")
 
   const formattedReviews = skill.reviews.map((r) => ({
     id: r.id,

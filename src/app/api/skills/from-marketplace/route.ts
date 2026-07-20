@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS, apiError } from "@/lib/api/response"
 import type { SkillCategory } from "@/generated/prisma/client"
+import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
 
 const CATEGORY_MAP: Record<string, SkillCategory> = {
   core: "CORE",
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
       where: { id: marketplaceSkillId },
     })
     if (!mpSkill) return ERRORS.NOT_FOUND("Marketplace skill")
+    if (!isPubliclyListable(mpSkill)) return ERRORS.NOT_FOUND("Marketplace skill")
 
     let skill = await prisma.skill.findUnique({ where: { slug: mpSkill.slug } })
 

@@ -350,7 +350,7 @@ function PublishContent() {
             </div>
             <p className="text-[11px] text-[var(--tx3)] flex items-center gap-1">
               <Info size={12} aria-hidden="true" />
-              Your template will be listed as &quot;Unreviewed&quot; immediately. We&apos;ll review it for &quot;Verified&quot; status.
+              Your template is submitted for manual review. It will not appear in the marketplace until approved.
             </p>
           </div>
         )}
@@ -361,7 +361,7 @@ function PublishContent() {
             <div className="text-center py-6">
               <Check size={32} className="mx-auto mb-3 text-[var(--ok)]" aria-hidden="true" />
               <h2 className="text-[18px] font-semibold text-[var(--tx)]">Template Published!</h2>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">Listed as Unreviewed. We&apos;ll review it soon.</p>
+              <p className="text-[12px] text-[var(--tx2)] mt-1">Submitted for manual review. Not listed until approved.</p>
               <div className="flex justify-center gap-2 mt-4">
                 {publishedSlug && <Link href={`/store/${publishedSlug}`}><Button variant="outline">View in Marketplace</Button></Link>}
                 <Link href="/settings?tab=creator"><Button variant="outline">Creator Dashboard</Button></Link>

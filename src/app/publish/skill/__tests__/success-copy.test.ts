@@ -14,10 +14,13 @@ describe("Skill publish success copy (Batch G)", () => {
 
   it("uses honest submitted-for-manual-review copy", () => {
     expect(page).toContain("Submitted for manual review")
+    expect(page).toContain("Not listed until approved")
   })
 
-  it("MUTATION: old sandbox-queued claim must not return", () => {
+  it("MUTATION: old sandbox-queued / immediate-list claim must not return", () => {
     expect(page).not.toMatch(/Sandbox test and manual review queued/i)
     expect(page).not.toMatch(/sandbox.*(queued|queue)/i)
+    expect(page).not.toMatch(/listed immediately/i)
+    expect(page).not.toMatch(/\bsandbox\b/i)
   })
 })
