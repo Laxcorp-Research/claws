@@ -78,6 +78,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
 
   const saved = readConfig(updated.channelConfigEncrypted)
 
+  // P1.1: first-time channel connect stamps channelsConnectedAt (fresh
+  // null-message claws stay protected from warmIdle for 24h).
+  if (hasConfiguredChannels(saved)) {
+    await prisma.containerState.updateMany({
+      where: { workspaceId, channelsConnectedAt: null },
+      data: {
+        hasActiveChannels: true,
+        channelsConnectedAt: new Date(),
+      },
+    })
+  }
+
   // P5: if the claw is already asleep and Telegram was just saved, arm the
   // platform webhook so the next inbound can wake it.
   if (payload.channel === "telegram" && workspace!.status === "HIBERNATED") {
@@ -120,6 +132,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ w
   })
 
   const saved = readConfig(updated.channelConfigEncrypted)
+
+  if (!hasConfiguredChannels(saved)) {
+    await prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: {
+        hasActiveChannels: false,
+        channelsConnectedAt: null,
+      },
+    })
+  }
+
   return apiSuccess({
     channels: maskChannelConfig(saved),
     configuredChannelIds: configuredChannelIds(saved),

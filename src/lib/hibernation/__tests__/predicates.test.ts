@@ -3,44 +3,49 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { CHANNEL_IDLE_MS, warmIdleWhere, runningIdleWhere } from "@/lib/hibernation/predicates"
 
-describe("warmIdleWhere — null never matches", () => {
-  it("requires lastChannelMessageAt < cutoff (Prisma lt excludes null)", () => {
+describe("warmIdleWhere — P1.1", () => {
+  it("matches stamped idle OR (null stamp + channelsConnectedAt older than 24h)", () => {
     const now = new Date("2026-07-19T12:00:00.000Z")
     const where = warmIdleWhere(now)
     expect(where.containerPhase).toBe("WARM")
-    expect(where.lastChannelMessageAt).toEqual({
-      lt: new Date(now.getTime() - CHANNEL_IDLE_MS),
-    })
-    // Must NOT include a null-match OR on lastChannelMessageAt.
-    expect(where).not.toHaveProperty("AND")
-    expect(JSON.stringify(where.lastChannelMessageAt)).not.toContain("null")
+    const idleOr = where.AND[0]!.OR
+    expect(idleOr).toEqual([
+      { lastChannelMessageAt: { lt: new Date(now.getTime() - CHANNEL_IDLE_MS) } },
+      {
+        AND: [
+          { lastChannelMessageAt: null },
+          { channelsConnectedAt: { lt: new Date(now.getTime() - CHANNEL_IDLE_MS) } },
+        ],
+      },
+    ])
   })
 
   it("25h-old timestamp is older than the 24h cutoff", () => {
     const now = new Date("2026-07-19T12:00:00.000Z")
-    const cutoff = (warmIdleWhere(now).lastChannelMessageAt as { lt: Date }).lt
+    const cutoff = new Date(now.getTime() - CHANNEL_IDLE_MS)
     const twentyFiveHoursAgo = new Date(now.getTime() - 25 * 60 * 60 * 1000)
     expect(twentyFiveHoursAgo.getTime()).toBeLessThan(cutoff.getTime())
   })
 
-  it("MUTATION: restoring null-match would reintroduce the warmIdle bug", () => {
+  it("MUTATION: null-with-fresh-connection must stay protected", () => {
     const src = readFileSync(join(__dirname, "../predicates.ts"), "utf8")
-    // Strip comments so the mutation doc line cannot false-positive.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
-    expect(code).toContain("lastChannelMessageAt: { lt: channelIdleCutoff }")
-    expect(code).not.toMatch(/lastChannelMessageAt:\s*null/)
-    // Simulate the pre-fix predicate shape — must NOT equal shipped where.
+    // Must require channelsConnectedAt < cutoff alongside null stamp.
+    expect(code).toContain("channelsConnectedAt: { lt: channelIdleCutoff }")
+    expect(code).toContain("lastChannelMessageAt: null")
+    // Simulate buggy "null alone matches" — must NOT equal shipped where.
     const now = new Date()
     const shipped = warmIdleWhere(now)
-    const buggy = {
-      ...shipped,
+    const buggyNullAlone = {
+      containerPhase: "WARM" as const,
       OR: [
         { lastChannelMessageAt: { lt: new Date() } },
         { lastChannelMessageAt: null },
       ],
     }
-    expect(JSON.stringify(buggy)).toContain('"lastChannelMessageAt":null')
-    expect(JSON.stringify(shipped.lastChannelMessageAt)).not.toContain("null")
+    expect(JSON.stringify(buggyNullAlone)).toContain('"lastChannelMessageAt":null')
+    expect(JSON.stringify(shipped)).toContain("channelsConnectedAt")
+    expect(JSON.stringify(shipped.AND[0])).toContain("channelsConnectedAt")
   })
 })
 

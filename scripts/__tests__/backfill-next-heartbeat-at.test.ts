@@ -1,19 +1,10 @@
-import { gzipSync } from "node:zlib"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import {
-  cronJobsJsonFromExprs,
-  extractCronExprsFromHeartbeatMd,
+  deriveScheduleFromOrchestrator,
   planAndMaybeApply,
-  recoverCronJobsJsonFromSnapshot,
 } from "../backfill-next-heartbeat-at"
-
-function makeGzipSnapshot(files: Record<string, string>): Uint8Array {
-  const encoded: Record<string, string> = {}
-  for (const [path, content] of Object.entries(files)) {
-    encoded[path] = Buffer.from(content, "utf8").toString("base64")
-  }
-  return gzipSync(JSON.stringify({ files: encoded, totalSize: 1 }))
-}
 
 function makeDb(
   states: Array<{
@@ -21,8 +12,18 @@ function makeDb(
     nextHeartbeatAt: Date | null
     heartbeatCronExpressions: string | null
     heartbeatInterval: number | null
-    runtimeStateSnapshot: Uint8Array | null
-    workspace: { status: string; name: string }
+    workspace: {
+      status: string
+      name: string
+      timezone: string | null
+      agents: Array<{
+        name: string
+        agentSlug: string | null
+        heartbeatFrequency: string | null
+        heartbeatTime: string | null
+        heartbeatMd: string | null
+      }>
+    }
   }>,
 ) {
   const update = vi.fn().mockResolvedValue({})
@@ -34,47 +35,64 @@ function makeDb(
   }
 }
 
-describe("HEARTBEAT.md cron recovery", () => {
-  it("parses cron lines from HEARTBEAT.md", () => {
-    const md = `- cron: "0 8 * * *"
+const FIXTURE_MD = `- cron: "0 8 * * *"
   task: daily_trend_scan
 - cron: "0 12,16,20 * * *"
-  task: content_cycle`
-    expect(extractCronExprsFromHeartbeatMd(md)).toEqual([
-      "0 8 * * *",
-      "0 12,16,20 * * *",
-    ])
-    const json = cronJobsJsonFromExprs(extractCronExprsFromHeartbeatMd(md))
-    expect(json).toContain("0 8 * * *")
+  task: content_cycle
+- cron: "0 21 * * *"
+  task: daily_analytics`
+
+describe("deriveScheduleFromOrchestrator", () => {
+  it("fixture-shaped MD schedule → jobs include 08:00Z cron with OpenClaw id", () => {
+    const derived = deriveScheduleFromOrchestrator({
+      orchestrator: {
+        name: "Twitter Commander",
+        agentSlug: "twitter-commander",
+        heartbeatFrequency: null,
+        heartbeatTime: null,
+        heartbeatMd: FIXTURE_MD,
+      },
+      timezone: "UTC",
+    })
+    expect(derived.source).toBe("agent-schedule")
+    expect(derived.cronJson).toContain("0 8 * * *")
+    expect(derived.cronJson).toContain('"id"')
+    expect(derived.cronJson).toContain("session:agent:twitter-commander:main")
+    expect(derived.intervalMs).toBeNull()
   })
 
-  it("recovers from snapshot HEARTBEAT.md when jobs.json absent", () => {
-    const gzip = makeGzipSnapshot({
-      "workspace-twitter-commander/HEARTBEAT.md": `- cron: "0 8 * * *"
-  task: daily_trend_scan`,
+  it("Builder daily frequency wins over MD lines", () => {
+    const derived = deriveScheduleFromOrchestrator({
+      orchestrator: {
+        name: "Twitter Commander",
+        agentSlug: "twitter-commander",
+        heartbeatFrequency: "daily",
+        heartbeatTime: "08:00",
+        heartbeatMd: FIXTURE_MD,
+      },
+      timezone: "UTC",
     })
-    const recovered = recoverCronJobsJsonFromSnapshot(gzip)
-    expect(recovered?.source).toBe("snapshot-heartbeat-md")
-    expect(recovered?.json).toContain("0 8 * * *")
-  })
-
-  it("prefers cron/jobs.json over HEARTBEAT.md", () => {
-    const jobs = JSON.stringify([
-      { schedule: { kind: "cron", expr: "3 21 * * *", tz: "UTC" } },
-    ])
-    const gzip = makeGzipSnapshot({
-      "cron/jobs.json": jobs,
-      "workspace-x/HEARTBEAT.md": `- cron: "0 8 * * *"`,
-    })
-    const recovered = recoverCronJobsJsonFromSnapshot(gzip)
-    expect(recovered?.source).toBe("snapshot-jobs")
-    expect(recovered?.json).toContain("3 21 * * *")
+    expect(derived.source).toBe("agent-schedule")
+    const jobs = JSON.parse(derived.cronJson!) as Array<{ schedule: { expr: string } }>
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.schedule.expr).toBe("0 8 * * *")
   })
 })
 
 describe("backfill-next-heartbeat-at", () => {
   const cron = JSON.stringify([
-    { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+    {
+      id: "heartbeat-x-daily",
+      name: "orchestrator-heartbeat-daily",
+      schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" },
+      agentId: "x",
+      sessionTarget: "session:agent:x:main",
+      wakeMode: "now",
+      payload: { kind: "agentTurn", message: "Heartbeat." },
+      enabled: true,
+      deleteAfterRun: false,
+      description: "x",
+    },
   ])
   const now = new Date("2026-07-20T12:00:00.000Z")
 
@@ -85,8 +103,12 @@ describe("backfill-next-heartbeat-at", () => {
         nextHeartbeatAt: null,
         heartbeatCronExpressions: cron,
         heartbeatInterval: null,
-        runtimeStateSnapshot: null,
-        workspace: { status: "HIBERNATED", name: "db" },
+        workspace: {
+          status: "HIBERNATED",
+          name: "db",
+          timezone: "UTC",
+          agents: [],
+        },
       },
     ])
     const result = await planAndMaybeApply(db, {
@@ -101,39 +123,45 @@ describe("backfill-next-heartbeat-at", () => {
     )
   })
 
-  it("hydrates fixture from snapshot HEARTBEAT.md → ~08:00Z", async () => {
-    const gzip = makeGzipSnapshot({
-      "workspace-twitter-commander/HEARTBEAT.md": `- cron: "0 8 * * *"
-  task: daily_trend_scan
-- cron: "0 12,16,20 * * *"
-  task: content_cycle
-- cron: "0 21 * * *"
-  task: daily_analytics`,
-    })
+  it("fixture-shaped agent schedule → nextHeartbeatAt = tomorrow 08:00Z", async () => {
     const db = makeDb([
       {
         workspaceId: "cmr3fo19r000404jlze8o7dm8",
         nextHeartbeatAt: null,
         heartbeatCronExpressions: null,
         heartbeatInterval: null,
-        runtimeStateSnapshot: gzip,
-        workspace: { status: "HIBERNATED", name: "fixture" },
+        workspace: {
+          status: "HIBERNATED",
+          name: "fixture",
+          timezone: "UTC",
+          agents: [
+            {
+              name: "Twitter Commander",
+              agentSlug: "twitter-commander",
+              heartbeatFrequency: null,
+              heartbeatTime: null,
+              heartbeatMd: FIXTURE_MD,
+            },
+          ],
+        },
       },
     ])
     const result = await planAndMaybeApply(db, {
       confirm: true,
-      now: new Date("2026-07-20T05:00:00.000Z"),
+      // After the day's last MD cron (21:00Z) → next fire is tomorrow 08:00Z
+      // (wake lead is applied by hibernation cron, not stored on the hint).
+      now: new Date("2026-07-20T22:00:00.000Z"),
       log: () => {},
     })
     expect(result.updated).toBe(1)
-    expect(result.rows[0]!.scheduleSource).toBe("snapshot-heartbeat-md")
+    expect(result.rows[0]!.scheduleSource).toBe("agent-schedule")
     expect(result.rows[0]!.nextHeartbeatAt!.toISOString()).toBe(
-      "2026-07-20T08:00:00.000Z",
+      "2026-07-21T08:00:00.000Z",
     )
     expect(db.containerState.update).toHaveBeenCalledWith({
       where: { workspaceId: "cmr3fo19r000404jlze8o7dm8" },
       data: expect.objectContaining({
-        nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
+        nextHeartbeatAt: new Date("2026-07-21T08:00:00.000Z"),
         heartbeatCronExpressions: expect.stringContaining("0 8 * * *"),
       }),
     })
@@ -147,13 +175,29 @@ describe("backfill-next-heartbeat-at", () => {
         nextHeartbeatAt: armed,
         heartbeatCronExpressions: cron,
         heartbeatInterval: null,
-        runtimeStateSnapshot: null,
-        workspace: { status: "HIBERNATED", name: "armed" },
+        workspace: {
+          status: "HIBERNATED",
+          name: "armed",
+          timezone: "UTC",
+          agents: [],
+        },
       },
     ])
     const first = await planAndMaybeApply(db, { confirm: true, now, log: () => {} })
     expect(first.skipped).toBe(1)
     expect(first.updated).toBe(0)
     expect(db.containerState.update).not.toHaveBeenCalled()
+  })
+
+  it("MUTATION: #337 snapshot HEARTBEAT.md hydrate must stay removed", () => {
+    const src = readFileSync(
+      join(process.cwd(), "scripts/backfill-next-heartbeat-at.ts"),
+      "utf8",
+    )
+    expect(src).not.toContain("recoverCronJobsJsonFromSnapshot")
+    expect(src).not.toContain("snapshot-heartbeat-md")
+    expect(src).not.toContain("gunzipSync")
+    expect(src).toContain("deriveScheduleFromOrchestrator")
+    expect(src).toContain("resolveHeartbeatSchedule")
   })
 })

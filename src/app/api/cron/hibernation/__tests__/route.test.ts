@@ -121,11 +121,11 @@ describe("hibernation cron — budget guard", () => {
   })
 })
 
-describe("hibernation cron — warmIdle honesty", () => {
-  it("null lastChannelMessageAt WARM claw is NOT hibernated (predicate excludes null)", async () => {
+describe("hibernation cron — warmIdle honesty (P1.1)", () => {
+  it("null stamp + fresh channelsConnectedAt is protected (predicate requires connected>24h)", async () => {
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([]) // runningIdle
-      .mockResolvedValueOnce([]) // warmIdle — empty because null never matches
+      .mockResolvedValueOnce([]) // warmIdle — empty for fresh-null
       .mockResolvedValueOnce([]) // wake
       .mockResolvedValueOnce([]) // stuck
 
@@ -136,13 +136,11 @@ describe("hibernation cron — warmIdle honesty", () => {
     const warmCall = (prismaMock.containerState.findMany as ReturnType<typeof vi.fn>).mock
       .calls[1][0]
     expect(warmCall.where.containerPhase).toBe("WARM")
-    expect(warmCall.where.lastChannelMessageAt).toEqual({ lt: expect.any(Date) })
-    // nextHeartbeat OR is top-level; lastChannelMessageAt must be lt-only (no null).
-    expect(warmCall.where).toHaveProperty("OR")
-    expect(JSON.stringify(warmCall.where.lastChannelMessageAt)).not.toContain("null")
-    expect(JSON.stringify(warmCall.where)).not.toMatch(
-      /"lastChannelMessageAt":null/,
-    )
+    expect(warmCall.where.AND).toBeDefined()
+    expect(JSON.stringify(warmCall.where)).toContain("channelsConnectedAt")
+    // Null alone is insufficient — must be paired with channelsConnectedAt < cutoff.
+    expect(JSON.stringify(warmCall.where.AND)).toContain('"lastChannelMessageAt":null')
+    expect(JSON.stringify(warmCall.where.AND)).toContain("channelsConnectedAt")
   })
 
   it("25h-old lastChannelMessageAt WARM claw IS hibernated", async () => {

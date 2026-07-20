@@ -1138,7 +1138,7 @@ describe('generateWorkspace', () => {
       expect(cronJobs).toEqual([]);
     });
 
-    it('null frequency: no heartbeat in openclaw.json and no cron job', async () => {
+    it('null frequency + checklist-only MD: no heartbeat interval and no cron job', async () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         withOrchestratorHeartbeat(null, null)
       );
@@ -1147,6 +1147,48 @@ describe('generateWorkspace', () => {
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       expect(config.agents.defaults.heartbeat).toBeUndefined();
       expect(cronJobs).toEqual([]);
+    });
+
+    it('MUTATION-anchored: null frequency + HEARTBEAT.md cron lines → jobs.json heartbeat', async () => {
+      // Fixture shape (Twitter/X Growth Machine): schedule lives in MD only.
+      // Dropping MD→jobs emission leaves cron/jobs.json=[] and deploy cols null.
+      const ws = withOrchestratorHeartbeat(null, null);
+      const orch = ws.agents.find((a) => a.role === 'ORCHESTRATOR')! as Record<string, unknown>;
+      orch.heartbeatMd = `- cron: "0 8 * * *"
+  task: daily_trend_scan
+- cron: "0 12,16,20 * * *"
+  task: content_cycle
+- cron: "0 21 * * *"
+  task: daily_analytics`;
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      const cronJobs = JSON.parse(result['cron/jobs.json']) as Array<{
+        id?: string
+        name?: string
+        schedule?: { kind?: string; expr?: string; tz?: string }
+        sessionTarget?: string
+        agentId?: string
+      }>;
+
+      expect(config.agents.defaults.heartbeat).toBeUndefined();
+      expect(cronJobs.length).toBeGreaterThanOrEqual(3);
+      const exprs = cronJobs.map((j) => j.schedule?.expr);
+      expect(exprs).toContain('0 8 * * *');
+      expect(exprs).toContain('0 12,16,20 * * *');
+      expect(exprs).toContain('0 21 * * *');
+      for (const job of cronJobs) {
+        expect(typeof job.id).toBe('string');
+        expect(String(job.id).length).toBeGreaterThan(0);
+        expect(job.name).toMatch(/^orchestrator-heartbeat-/);
+        expect(job.schedule?.kind).toBe('cron');
+        expect(job.sessionTarget).toBe('session:agent:test-commander:main');
+        expect(job.agentId).toBe('test-commander');
+      }
+      // HEARTBEAT.md stays prose (unchanged checklist), not emptied.
+      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+      expect(result.workspaces[orchKey!]['HEARTBEAT.md']).toContain('cron: "0 8 * * *"');
     });
   });
 
