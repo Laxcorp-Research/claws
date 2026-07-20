@@ -424,9 +424,17 @@ export async function POST(
           });
         }
       }
-      // Lifecycle P2: roll nextHeartbeatAt on heartbeat-shaped activity (HEARTBEAT
-      // cron fire or overlay_boot). Clears Watchtower miss flag when HEARTBEAT lands.
-      if (isHeartbeatShapedActivity({ type: ev.type, metadata: ev.metadata })) {
+      // Lifecycle P2.1: roll nextHeartbeatAt on heartbeat-shaped activity —
+      // typed HEARTBEAT, overlay_boot, or TASK_START with OpenClaw poll marker.
+      // Clears Watchtower / missed-wake flag when any of those land.
+      if (
+        isHeartbeatShapedActivity({
+          type: ev.type,
+          metadata: ev.metadata,
+          action: ev.action,
+          detail: ev.detail,
+        })
+      ) {
         try {
           const state = await prisma.containerState.findUnique({
             where: { workspaceId },
@@ -446,12 +454,10 @@ export async function POST(
               data: { nextHeartbeatAt },
             });
           }
-          if (ev.type === "HEARTBEAT") {
-            await prisma.workspace.updateMany({
-              where: { id: workspaceId, heartbeatMissedAt: { not: null } },
-              data: { heartbeatMissedAt: null },
-            });
-          }
+          await prisma.workspace.updateMany({
+            where: { id: workspaceId, heartbeatMissedAt: { not: null } },
+            data: { heartbeatMissedAt: null },
+          });
         } catch (rollErr) {
           log.error("activity: failed to roll nextHeartbeatAt", {
             workspaceId,

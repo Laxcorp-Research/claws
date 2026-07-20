@@ -4,10 +4,12 @@ import { join } from "node:path"
 import {
   computeNextHeartbeatAt,
   decideHeartbeatMissed,
+  decideMissedWake,
   extractHeartbeatIntervalMsFromOpenclawJson,
   HEARTBEAT_MISS_GRACE_MS,
   isHeartbeatShapedActivity,
   lastExpectedCronFire,
+  OPENCLAW_HEARTBEAT_POLL_MARKER,
   parseHeartbeatEveryToMs,
 } from "@/lib/hibernation/next-heartbeat"
 
@@ -86,6 +88,19 @@ describe("computeNextHeartbeatAt — rolling hint", () => {
     )
     expect(src).toContain("computeNextHeartbeatAt")
     expect(src).toContain("nextHeartbeatAt")
+  })
+
+  it("MUTATION: Watchtower evidence must use poll-marker OR (not HEARTBEAT-only)", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/cron/health-monitor/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain("heartbeatEvidenceOrClause")
+    expect(src).toContain("decideMissedWake")
+    // HEARTBEAT-only where would miss OpenClaw poll TASK_START evidence.
+    expect(src).not.toMatch(
+      /actionType:\s*"HEARTBEAT",\s*\n\s*timestamp:/,
+    )
   })
 })
 
@@ -182,5 +197,102 @@ describe("isHeartbeatShapedActivity", () => {
       }),
     ).toBe(true)
     expect(isHeartbeatShapedActivity({ type: "MESSAGE_RECEIVED" })).toBe(false)
+  })
+
+  it("matches TASK_START with OpenClaw heartbeat poll marker (action or detail)", () => {
+    expect(
+      isHeartbeatShapedActivity({
+        type: "TASK_START",
+        action: `Task started: ${OPENCLAW_HEARTBEAT_POLL_MARKER} daily check`,
+      }),
+    ).toBe(true)
+    expect(
+      isHeartbeatShapedActivity({
+        type: "TASK_START",
+        detail: `${OPENCLAW_HEARTBEAT_POLL_MARKER}\nfull prompt`,
+      }),
+    ).toBe(true)
+  })
+
+  it("MUTATION: HEARTBEAT-only predicate would miss poll-marker TASK_START", () => {
+    const poll = {
+      type: "TASK_START",
+      action: `Task started: ${OPENCLAW_HEARTBEAT_POLL_MARKER}`,
+    }
+    expect(isHeartbeatShapedActivity(poll)).toBe(true)
+    // HEARTBEAT-only (pre-P2.1) would reject this — lock that gap closed.
+    expect(poll.type === "HEARTBEAT").toBe(false)
+  })
+})
+
+describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
+  it("fires on July fixture shape (HIBERNATED + past hint + no boot)", () => {
+    // Fixture: armed for 08:00Z, still HIBERNATED at 08:20Z, never woke.
+    const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z")
+    const nowMs = new Date("2026-07-20T08:20:00.000Z").getTime()
+    const result = decideMissedWake({
+      workspaceStatus: "HIBERNATED",
+      nextHeartbeatAt,
+      hasBootSinceExpected: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
+  it("does not fire inside grace after nextHeartbeatAt", () => {
+    const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z")
+    const nowMs = new Date("2026-07-20T08:05:00.000Z").getTime()
+    const result = decideMissedWake({
+      workspaceStatus: "HIBERNATED",
+      nextHeartbeatAt,
+      hasBootSinceExpected: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeUndefined()
+  })
+
+  it("clears when boot evidence exists after expected", () => {
+    const result = decideMissedWake({
+      workspaceStatus: "HIBERNATED",
+      nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
+      hasBootSinceExpected: true,
+      currentFlag: new Date("2026-07-20T08:12:00.000Z"),
+      nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
+    })
+    expect(result).toBeNull()
+  })
+
+  it("ignores non-HIBERNATED statuses", () => {
+    const result = decideMissedWake({
+      workspaceStatus: "RUNNING",
+      nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
+      hasBootSinceExpected: false,
+      currentFlag: null,
+      nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
+    })
+    expect(result).toBeUndefined()
+  })
+})
+
+describe("backfill plan idempotency", () => {
+  it("same now → same nextHeartbeatAt (idempotent)", () => {
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+    ])
+    const now = new Date("2026-07-20T12:00:00.000Z")
+    const a = computeNextHeartbeatAt({
+      now,
+      heartbeatCronExpressions: cron,
+      heartbeatIntervalMs: null,
+    })
+    const b = computeNextHeartbeatAt({
+      now,
+      heartbeatCronExpressions: cron,
+      heartbeatIntervalMs: null,
+    })
+    expect(a!.toISOString()).toBe(b!.toISOString())
+    expect(a!.toISOString()).toBe("2026-07-21T08:00:00.000Z")
   })
 })

@@ -914,17 +914,22 @@ describe("GET end-to-end", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-20T08:15:00.000Z"));
     try {
-      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
-        makeWs({
-          id: "ws-miss",
-          heartbeatMissedAt: null,
-          containerState: {
-            runtimeStateUpdatedAt: new Date(),
-            containerPhase: "RUNNING",
-            heartbeatCronExpressions: cron,
-          },
-        }),
-      ]);
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          return Promise.resolve([
+            makeWs({
+              id: "ws-miss",
+              heartbeatMissedAt: null,
+              containerState: {
+                runtimeStateUpdatedAt: new Date(),
+                containerPhase: "RUNNING",
+                heartbeatCronExpressions: cron,
+              },
+            }),
+          ]);
+        },
+      );
       (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
       (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
@@ -940,6 +945,55 @@ describe("GET end-to-end", () => {
           data: expect.objectContaining({
             actionType: "ERROR",
             action: "Heartbeat missed",
+          }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("P2.1 missed-wake: HIBERNATED past nextHeartbeatAt + no boot → flag + ERROR", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T08:20:00.000Z"));
+    try {
+      const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z");
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") {
+            return Promise.resolve([
+              {
+                id: "ws-fixture-july",
+                status: "HIBERNATED",
+                heartbeatMissedAt: null,
+                containerState: { nextHeartbeatAt },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.missedWakeFlagged).toBe(1);
+
+      expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "ws-fixture-july" },
+          data: { heartbeatMissedAt: expect.any(Date) },
+        }),
+      );
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actionType: "ERROR",
+            action: "Heartbeat missed",
+            metadata: expect.stringContaining("heartbeat_missed_wake"),
           }),
         }),
       );

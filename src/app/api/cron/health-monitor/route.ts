@@ -5,8 +5,11 @@ import { decrypt } from "@/lib/encryption"
 import type { WorkspaceStatus, HealthStatus } from "@/generated/prisma/client"
 import {
   decideHeartbeatMissed,
+  decideMissedWake,
   HEARTBEAT_MISS_GRACE_MS,
+  heartbeatEvidenceOrClause,
   lastExpectedCronFire,
+  OPENCLAW_HEARTBEAT_POLL_MARKER,
 } from "@/lib/hibernation/next-heartbeat"
 import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
 
@@ -503,8 +506,8 @@ export async function GET(req: NextRequest) {
         const evidence = await prisma.activityLog.findFirst({
           where: {
             workspaceId: ws.id,
-            actionType: "HEARTBEAT",
             timestamp: { gte: expected, lte: windowEnd },
+            OR: heartbeatEvidenceOrClause(),
           },
           select: { id: true },
         })
@@ -528,13 +531,14 @@ export async function GET(req: NextRequest) {
             data: {
               workspaceId: ws.id,
               action: "Heartbeat missed",
-              detail: `No HEARTBEAT evidence in [${expected.toISOString()}, ${new Date(expected.getTime() + HEARTBEAT_MISS_GRACE_MS).toISOString()}]`,
+              detail: `No HEARTBEAT/poll-marker evidence in [${expected.toISOString()}, ${new Date(expected.getTime() + HEARTBEAT_MISS_GRACE_MS).toISOString()}]`,
               actionType: "ERROR",
               timestamp: new Date(startedAt),
               metadata: JSON.stringify({
                 eventKind: "heartbeat_missed",
                 expectedAt: expected.toISOString(),
                 graceMs: HEARTBEAT_MISS_GRACE_MS,
+                pollMarker: OPENCLAW_HEARTBEAT_POLL_MARKER,
               }),
             },
           })
@@ -588,6 +592,100 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // Lifecycle P2.1: missed-wake for HIBERNATED claws (fixture July shape).
+  // Distinct from RUNNING/WARM Watchtower — hibernated claws are not probed above.
+  let missedWakeFlagged = 0
+  const graceCutoff = new Date(startedAt - HEARTBEAT_MISS_GRACE_MS)
+  try {
+    const hibernatedArmed = await prisma.workspace.findMany({
+      where: {
+        status: "HIBERNATED",
+        containerState: {
+          nextHeartbeatAt: { lt: graceCutoff },
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        heartbeatMissedAt: true,
+        containerState: {
+          select: { nextHeartbeatAt: true },
+        },
+      },
+    })
+
+    for (const ws of hibernatedArmed) {
+      const nextAt = ws.containerState?.nextHeartbeatAt ?? null
+      if (!nextAt) continue
+
+      let hasBoot = false
+      try {
+        const boot = await prisma.activityLog.findFirst({
+          where: {
+            workspaceId: ws.id,
+            timestamp: { gte: nextAt },
+            OR: [
+              ...heartbeatEvidenceOrClause(),
+              {
+                actionType: "TASK_START",
+                metadata: { contains: "overlay_boot" },
+              },
+            ],
+          },
+          select: { id: true },
+        })
+        hasBoot = boot !== null
+      } catch (err) {
+        errors.push(`${ws.id}: missed-wake boot lookup failed ${String(err)}`)
+        continue
+      }
+
+      const heartbeatMissedAt = decideMissedWake({
+        workspaceStatus: ws.status,
+        nextHeartbeatAt: nextAt,
+        hasBootSinceExpected: hasBoot,
+        currentFlag: ws.heartbeatMissedAt,
+        nowMs: startedAt,
+      })
+
+      if (heartbeatMissedAt === undefined) continue
+
+      try {
+        await prisma.workspace.update({
+          where: { id: ws.id },
+          data: { heartbeatMissedAt },
+        })
+      } catch (err) {
+        errors.push(`${ws.id}: missed-wake update failed ${String(err)}`)
+        continue
+      }
+
+      if (heartbeatMissedAt instanceof Date && ws.heartbeatMissedAt === null) {
+        missedWakeFlagged++
+        try {
+          await prisma.activityLog.create({
+            data: {
+              workspaceId: ws.id,
+              action: "Heartbeat missed",
+              detail: `Missed wake: HIBERNATED past nextHeartbeatAt=${nextAt.toISOString()} with no boot since`,
+              actionType: "ERROR",
+              timestamp: new Date(startedAt),
+              metadata: JSON.stringify({
+                eventKind: "heartbeat_missed_wake",
+                nextHeartbeatAt: nextAt.toISOString(),
+                graceMs: HEARTBEAT_MISS_GRACE_MS,
+              }),
+            },
+          })
+        } catch (err) {
+          errors.push(`${ws.id}: missed-wake ActivityLog failed ${String(err)}`)
+        }
+      }
+    }
+  } catch (err) {
+    errors.push(`missed-wake pass: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   // Lifecycle P4: stranded GENERATING/PROVISIONING adopter (sibling cadence).
   let strandedAdopted = 0
   try {
@@ -607,6 +705,7 @@ export async function GET(req: NextRequest) {
     escalatedUnhealthy,
     escalatedError,
     reclassified,
+    missedWakeFlagged,
     strandedAdopted,
     errorCount: errors.length,
     durationMs,
@@ -622,6 +721,7 @@ export async function GET(req: NextRequest) {
       escalatedUnhealthy,
       escalatedError,
       reclassified,
+      missedWakeFlagged,
       strandedAdopted,
       errorCount: errors.length,
       durationMs,
@@ -636,6 +736,7 @@ export const __internal = {
   decideActivitySilence,
   decideStateSyncStale,
   decideHeartbeatMissed,
+  decideMissedWake,
   heartbeatIntervalMs,
   UNHEALTHY_THRESHOLD,
   ERROR_THRESHOLD,
