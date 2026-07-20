@@ -601,7 +601,8 @@ export async function GET(req: NextRequest) {
       where: {
         status: "HIBERNATED",
         containerState: {
-          nextHeartbeatAt: { lt: graceCutoff },
+          // P2.3: ≤ so grace-edge (exactly now−grace) is eligible for the detector.
+          nextHeartbeatAt: { lte: graceCutoff },
         },
       },
       select: {

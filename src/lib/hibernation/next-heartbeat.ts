@@ -185,9 +185,9 @@ export function lastExpectedCronFire(
  * Watchtower miss decision (distinct from activity-silence).
  * Returns Date to set, null to clear, undefined for no-op.
  *
- * Window: [expected, expected+grace]. Miss when now > expected+grace and
- * no HEARTBEAT evidence in that window. MUTATION: grace=0 → false-positive
- * when evidence arrives slightly after expected.
+ * Window: [expected, expected+grace]. Miss when now ≥ expected+grace and
+ * no HEARTBEAT evidence in that window (P2.3: ≤ boundary so grace-edge flags).
+ * MUTATION: grace=0 → false-positive when evidence arrives slightly after expected.
  */
 export function decideHeartbeatMissed(args: {
   containerPhase: string
@@ -212,7 +212,8 @@ export function decideHeartbeatMissed(args: {
   const windowEnd = expected.getTime() + graceMs
   const age = args.nowMs - expected.getTime()
   if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
-  if (args.nowMs <= windowEnd) return clearIfSet
+  // P2.3: strict `<` — at exactly expected+grace the miss flags.
+  if (args.nowMs < windowEnd) return clearIfSet
   if (args.hasHeartbeatEvidenceInWindow) return clearIfSet
 
   return args.currentFlag ?? new Date(args.nowMs)
@@ -252,8 +253,8 @@ export function decideMissedWake(args: {
   const expectedMs = args.nextHeartbeatAt.getTime()
   const age = args.nowMs - expectedMs
   if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
-  // nextHeartbeatAt < now − grace  ⇒  expected is more than grace in the past
-  if (expectedMs >= args.nowMs - graceMs) return clearIfSet
+  // P2.3: miss when expected ≤ now − grace (grace-edge inclusive).
+  if (expectedMs > args.nowMs - graceMs) return clearIfSet
   if (args.hasBootSinceExpected) return clearIfSet
 
   return args.currentFlag ?? new Date(args.nowMs)
