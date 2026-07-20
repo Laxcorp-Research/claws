@@ -74,7 +74,7 @@ export async function onCreditsExhausted(userId: string) {
                 <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">Hey ${user.name || "there"},</div>
                 <div style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.6;">
                   Your ${grantedLabel} starter credits have been used up.
-                  ${user.workspaces.length > 0 ? `We've paused ${user.workspaces.length} running Claw${user.workspaces.length > 1 ? "s" : ""}.` : ""}
+                  ${user.workspaces.length > 0 ? `We've stopped ${user.workspaces.length} running Claw${user.workspaces.length > 1 ? "s" : ""}.` : ""}
                   Add your own API key or subscribe to keep your Claws running.
                 </div>
                 <a href="https://app.buildclaws.ai/settings/api-keys" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;margin-right:8px;">
