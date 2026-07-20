@@ -160,8 +160,11 @@ describe("ConversationsSection", () => {
 
     render(<ConversationsSection workspaceId="ws-1" status="WAKING" />)
 
-    const banner = await screen.findByTestId("conversations-readonly-banner")
-    expect(banner.textContent).toBe("Waking · showing saved history as of 2026-07-11T12:41:00Z")
+    // Wait for fetch→asOf; banner mounts immediately with placeholder copy.
+    const banner = await screen.findByText(
+      "Waking · showing saved history as of 2026-07-11T12:41:00Z",
+    )
+    expect(banner).toBeTruthy()
   })
 
   it("STOPPED with no saved history shows empty copy", async () => {
