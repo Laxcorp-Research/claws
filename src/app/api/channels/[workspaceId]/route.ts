@@ -77,6 +77,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   })
 
   const saved = readConfig(updated.channelConfigEncrypted)
+
+  // P5: if the claw is already asleep and Telegram was just saved, arm the
+  // platform webhook so the next inbound can wake it.
+  if (payload.channel === "telegram" && workspace!.status === "HIBERNATED") {
+    try {
+      const { armTelegramWakeWebhook } = await import("@/lib/hibernation/wake-on-channel")
+      await armTelegramWakeWebhook(workspaceId)
+    } catch {
+      // non-fatal — hibernate path also arms
+    }
+  }
+
   return apiSuccess({
     channels: maskChannelConfig(saved),
     configuredChannelIds: configuredChannelIds(saved),

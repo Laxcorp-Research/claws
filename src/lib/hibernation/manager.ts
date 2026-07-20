@@ -129,6 +129,17 @@ export async function hibernateWorkspace(
       }),
     ])
 
+    // P5: arm Telegram wake-on-channel webhook so inbound isn't a dead-drop.
+    try {
+      const { armTelegramWakeWebhook } = await import("@/lib/hibernation/wake-on-channel")
+      await armTelegramWakeWebhook(workspaceId)
+    } catch (armErr) {
+      log.warn("Hibernate: telegram wake webhook arm failed", {
+        workspaceId,
+        error: armErr instanceof Error ? armErr.message : String(armErr),
+      })
+    }
+
     log.info("Workspace hibernated", {
       workspaceId,
       hasStateSnapshot: !!workspace.containerState?.runtimeStateSnapshot,

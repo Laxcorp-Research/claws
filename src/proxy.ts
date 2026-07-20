@@ -34,12 +34,16 @@ function isExcludedFromCors(pathname: string): boolean {
   return (
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/dodo-payments/webhook") ||
+    pathname.startsWith("/api/webhooks/telegram/") ||
     pathname.startsWith("/api/axiom")
   );
 }
 
 function isWebhook(pathname: string): boolean {
-  return pathname.startsWith("/api/dodo-payments/webhook");
+  return (
+    pathname.startsWith("/api/dodo-payments/webhook") ||
+    pathname.startsWith("/api/webhooks/telegram/")
+  );
 }
 
 function getMatchingOrigin(requestOrigin: string | null): string {

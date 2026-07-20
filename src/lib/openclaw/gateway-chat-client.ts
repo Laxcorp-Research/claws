@@ -80,6 +80,11 @@ export interface SendChatMessageParams {
   sessionKey: string
   message: string
   idempotencyKey: string
+  /**
+   * When true, gateway delivers the agent reply on the channel session
+   * (Telegram wake-on-channel). Dashboard webchat keeps the default false.
+   */
+  deliver?: boolean
   /** Injectable for tests; default resolves globalThis.WebSocket LAZILY. */
   socketFactory?: ChatSocketFactory
   /** Injectable fetch for the pairing admin-RPC call (tests). */
@@ -353,7 +358,7 @@ export async function sendChatMessage(params: SendChatMessageParams): Promise<Se
         sessionKey: params.sessionKey,
         message: params.message,
         idempotencyKey: params.idempotencyKey,
-        deliver: false,
+        deliver: params.deliver === true,
       },
       remaining,
     )
