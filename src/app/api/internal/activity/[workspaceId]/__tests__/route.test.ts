@@ -489,6 +489,47 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       ).mock.calls[0][0].data.nextHeartbeatAt as Date;
       expect(next.toISOString()).toBe("2026-07-21T08:00:00.000Z");
     });
+
+    it("rolls nextHeartbeatAt on TASK_START with OpenClaw poll marker", async () => {
+      defaultMocks();
+      ;(prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        heartbeatCronExpressions: JSON.stringify([
+          { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+        ]),
+        heartbeatInterval: null,
+      } as never);
+      ;(prismaMock.containerState.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      ;(prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+        count: 0,
+      } as never);
+
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "TASK_START",
+              action: "Task started: [OpenClaw heartbeat poll] daily",
+              timestamp: "2026-07-20T08:00:05.000Z",
+              channelId: null,
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      expect(prismaMock.containerState.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { workspaceId: WORKSPACE_ID },
+          data: expect.objectContaining({
+            nextHeartbeatAt: expect.any(Date),
+          }),
+        }),
+      );
+      const next = (
+        prismaMock.containerState.update as ReturnType<typeof vi.fn>
+      ).mock.calls[0][0].data.nextHeartbeatAt as Date;
+      expect(next.toISOString()).toBe("2026-07-21T08:00:00.000Z");
+    });
   });
 
   describe("lastChannelMessageAt writer (warmIdle honesty)", () => {

@@ -218,13 +218,86 @@ export function decideHeartbeatMissed(args: {
   return args.currentFlag ?? new Date(args.nowMs)
 }
 
+/**
+ * Marker OpenClaw embeds in TASK_START action/detail for cron heartbeat polls.
+ * Typed `actionType: HEARTBEAT` is a future overlay (-10) contract; until then
+ * detectors + rollers treat this marker as heartbeat evidence.
+ */
+export const OPENCLAW_HEARTBEAT_POLL_MARKER = "[OpenClaw heartbeat poll]"
+
+export function matchesHeartbeatPollMarker(
+  text: string | null | undefined,
+): boolean {
+  return typeof text === "string" && text.includes(OPENCLAW_HEARTBEAT_POLL_MARKER)
+}
+
+/**
+ * Missed-wake: HIBERNATED claw whose nextHeartbeatAt is past grace with no boot
+ * since that hint. Catches the fixture failure (armed wake never fired).
+ * Returns Date to set, null to clear, undefined for no-op.
+ */
+export function decideMissedWake(args: {
+  workspaceStatus: string
+  nextHeartbeatAt: Date | null
+  hasBootSinceExpected: boolean
+  currentFlag: Date | null
+  nowMs: number
+  graceMs?: number
+}): Date | null | undefined {
+  const clearIfSet = args.currentFlag ? null : undefined
+  if (args.workspaceStatus !== "HIBERNATED") return clearIfSet
+  if (!args.nextHeartbeatAt) return clearIfSet
+
+  const graceMs = args.graceMs ?? HEARTBEAT_MISS_GRACE_MS
+  const expectedMs = args.nextHeartbeatAt.getTime()
+  const age = args.nowMs - expectedMs
+  if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
+  // nextHeartbeatAt < now − grace  ⇒  expected is more than grace in the past
+  if (expectedMs >= args.nowMs - graceMs) return clearIfSet
+  if (args.hasBootSinceExpected) return clearIfSet
+
+  return args.currentFlag ?? new Date(args.nowMs)
+}
+
 export function isHeartbeatShapedActivity(event: {
   type: string
   metadata?: Record<string, unknown>
+  action?: string | null
+  detail?: string | null
 }): boolean {
   if (event.type === "HEARTBEAT") return true
   if (event.type === "TASK_START" && event.metadata?.eventKind === "overlay_boot") {
     return true
   }
+  if (
+    event.type === "TASK_START" &&
+    (matchesHeartbeatPollMarker(event.action) ||
+      matchesHeartbeatPollMarker(event.detail))
+  ) {
+    return true
+  }
   return false
+}
+
+/** Prisma OR fragment: HEARTBEAT typed event OR poll-marker TASK_START. */
+export function heartbeatEvidenceOrClause(): Array<
+  | { actionType: "HEARTBEAT" }
+  | {
+      actionType: "TASK_START"
+      OR: Array<
+        | { action: { contains: string } }
+        | { detail: { contains: string } }
+      >
+    }
+> {
+  return [
+    { actionType: "HEARTBEAT" },
+    {
+      actionType: "TASK_START",
+      OR: [
+        { action: { contains: OPENCLAW_HEARTBEAT_POLL_MARKER } },
+        { detail: { contains: OPENCLAW_HEARTBEAT_POLL_MARKER } },
+      ],
+    },
+  ]
 }
