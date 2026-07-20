@@ -5,20 +5,21 @@
  * claws that have a cron and/or interval schedule, regardless of workspace
  * status (HIBERNATED fixture included).
  *
+ * When DB schedule columns are null, recovers cron exprs from the gzip
+ * runtime snapshot (prefer cron/jobs.json; else HEARTBEAT.md `cron: "..."` lines)
+ * and persists heartbeatCronExpressions on apply.
+ *
  * USAGE
  *   Dry-run (DEFAULT):
  *     npx dotenv -e .env.staging -- npx tsx scripts/backfill-next-heartbeat-at.ts
  *   Apply:
- *     # bash:
  *     CONFIRM_BACKFILL=yes npx dotenv -e .env.staging -- npx tsx scripts/backfill-next-heartbeat-at.ts
- *     # PowerShell:
- *     $env:CONFIRM_BACKFILL="yes"; npx dotenv -e .env.staging -- npx tsx scripts/backfill-next-heartbeat-at.ts; Remove-Item Env:CONFIRM_BACKFILL
  *
  * SAFETY
  *   - Defaults to DRY-RUN.
- *   - Idempotent: re-running with the same wall clock yields the same hint
- *     (computeNextHeartbeatAt is pure given `now`).
+ *   - Idempotent: same wall clock → same hint; already-armed rows skipped.
  */
+import { gunzipSync } from "node:zlib"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "../src/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
@@ -30,6 +31,8 @@ export interface BackfillRow {
   workspaceName: string
   priorNextHeartbeatAt: Date | null
   nextHeartbeatAt: Date | null
+  scheduleSource: "db" | "snapshot-jobs" | "snapshot-heartbeat-md" | "none"
+  hydratedCronExpressions?: string
   skippedReason?: string
 }
 
@@ -41,26 +44,91 @@ export interface BackfillResult {
   skipped: number
 }
 
+export type BackfillStateRow = {
+  workspaceId: string
+  nextHeartbeatAt: Date | null
+  heartbeatCronExpressions: string | null
+  heartbeatInterval: number | null
+  runtimeStateSnapshot: Uint8Array | null
+  workspace: { status: string; name: string }
+}
+
 /** Narrow DB surface so unit tests can inject a stub without full Prisma delegates. */
 export interface BackfillDb {
   containerState: {
     findMany: (args: {
-      where: unknown
+      where?: unknown
       select: unknown
-    }) => Promise<
-      Array<{
-        workspaceId: string
-        nextHeartbeatAt: Date | null
-        heartbeatCronExpressions: string | null
-        heartbeatInterval: number | null
-        workspace: { status: string; name: string }
-      }>
-    >
+    }) => Promise<BackfillStateRow[]>
     update: (args: {
       where: { workspaceId: string }
-      data: { nextHeartbeatAt: Date }
+      data: {
+        nextHeartbeatAt: Date
+        heartbeatCronExpressions?: string
+      }
     }) => Promise<unknown>
   }
+}
+
+export function extractCronExprsFromHeartbeatMd(text: string): string[] {
+  return [...text.matchAll(/cron:\s*"([^"]+)"/g)]
+    .map((m) => m[1])
+    .filter((e): e is string => typeof e === "string" && e.length > 0)
+}
+
+export function cronJobsJsonFromExprs(exprs: string[]): string | null {
+  const unique = [...new Set(exprs)]
+  if (unique.length === 0) return null
+  return JSON.stringify(
+    unique.map((expr) => ({
+      schedule: { kind: "cron", expr, tz: "UTC" },
+    })),
+  )
+}
+
+/**
+ * Recover OpenClaw-shaped cron jobs JSON from a gzip runtime snapshot.
+ * Prefer cron/jobs.json; else union cron lines from all HEARTBEAT.md files.
+ */
+export function recoverCronJobsJsonFromSnapshot(
+  gzipBytes: Uint8Array | Buffer,
+): { json: string; source: "snapshot-jobs" | "snapshot-heartbeat-md" } | null {
+  try {
+    const parsed = JSON.parse(gunzipSync(Buffer.from(gzipBytes)).toString("utf8")) as {
+      files?: Record<string, string>
+    }
+    const files = parsed.files ?? {}
+
+    const jobsKey = Object.keys(files).find(
+      (p) => p === "cron/jobs.json" || p.endsWith("/cron/jobs.json"),
+    )
+    if (jobsKey) {
+      const raw = Buffer.from(files[jobsKey]!, "base64").toString("utf8")
+      if (raw.trim().length > 0 && raw.trim() !== "[]") {
+        return { json: raw, source: "snapshot-jobs" }
+      }
+    }
+
+    const exprs: string[] = []
+    for (const path of Object.keys(files)) {
+      if (!path.endsWith("HEARTBEAT.md")) continue
+      const raw = Buffer.from(files[path]!, "base64").toString("utf8")
+      exprs.push(...extractCronExprsFromHeartbeatMd(raw))
+    }
+    const json = cronJobsJsonFromExprs(exprs)
+    if (!json) return null
+    return { json, source: "snapshot-heartbeat-md" }
+  } catch {
+    return null
+  }
+}
+
+function hasDbCron(cron: string | null | undefined): boolean {
+  return typeof cron === "string" && cron.length > 0 && cron !== "[]"
+}
+
+function hasDbInterval(interval: number | null | undefined): boolean {
+  return typeof interval === "number" && Number.isFinite(interval) && interval > 0
 }
 
 export async function planAndMaybeApply(
@@ -70,18 +138,14 @@ export async function planAndMaybeApply(
   const log = opts.log ?? console.log
   const now = opts.now ?? new Date()
 
+  // All ContainerState rows — schedule may live only in the snapshot.
   const states = await db.containerState.findMany({
-    where: {
-      OR: [
-        { heartbeatCronExpressions: { not: null } },
-        { heartbeatInterval: { not: null } },
-      ],
-    },
     select: {
       workspaceId: true,
       nextHeartbeatAt: true,
       heartbeatCronExpressions: true,
       heartbeatInterval: true,
+      runtimeStateSnapshot: true,
       workspace: { select: { status: true, name: true } },
     },
   })
@@ -91,14 +155,26 @@ export async function planAndMaybeApply(
   let skipped = 0
 
   for (const state of states) {
-    const hasCron =
-      typeof state.heartbeatCronExpressions === "string" &&
-      state.heartbeatCronExpressions.length > 0 &&
-      state.heartbeatCronExpressions !== "[]"
-    const hasInterval =
-      typeof state.heartbeatInterval === "number" && state.heartbeatInterval > 0
+    let cronExprs = state.heartbeatCronExpressions
+    let scheduleSource: BackfillRow["scheduleSource"] = hasDbCron(cronExprs)
+      ? "db"
+      : hasDbInterval(state.heartbeatInterval)
+        ? "db"
+        : "none"
+    let hydratedCron: string | undefined
 
-    if (!hasCron && !hasInterval) {
+    if (!hasDbCron(cronExprs) && !hasDbInterval(state.heartbeatInterval)) {
+      if (state.runtimeStateSnapshot) {
+        const recovered = recoverCronJobsJsonFromSnapshot(state.runtimeStateSnapshot)
+        if (recovered) {
+          cronExprs = recovered.json
+          scheduleSource = recovered.source
+          hydratedCron = recovered.json
+        }
+      }
+    }
+
+    if (!hasDbCron(cronExprs) && !hasDbInterval(state.heartbeatInterval) && !hydratedCron) {
       skipped++
       rows.push({
         workspaceId: state.workspaceId,
@@ -106,14 +182,15 @@ export async function planAndMaybeApply(
         workspaceName: state.workspace.name,
         priorNextHeartbeatAt: state.nextHeartbeatAt,
         nextHeartbeatAt: null,
-        skippedReason: "no-parseable-schedule",
+        scheduleSource: "none",
+        skippedReason: "no-schedule",
       })
       continue
     }
 
     const nextHeartbeatAt = computeNextHeartbeatAt({
       now,
-      heartbeatCronExpressions: state.heartbeatCronExpressions,
+      heartbeatCronExpressions: cronExprs,
       heartbeatIntervalMs: state.heartbeatInterval,
     })
 
@@ -125,14 +202,18 @@ export async function planAndMaybeApply(
         workspaceName: state.workspace.name,
         priorNextHeartbeatAt: state.nextHeartbeatAt,
         nextHeartbeatAt: null,
+        scheduleSource,
+        hydratedCronExpressions: hydratedCron,
         skippedReason: "compute-null",
       })
       continue
     }
 
-    const unchanged =
+    const hintUnchanged =
       state.nextHeartbeatAt !== null &&
       state.nextHeartbeatAt.getTime() === nextHeartbeatAt.getTime()
+    const needsCronPersist = Boolean(hydratedCron) && !hasDbCron(state.heartbeatCronExpressions)
+    const unchanged = hintUnchanged && !needsCronPersist
 
     rows.push({
       workspaceId: state.workspaceId,
@@ -140,6 +221,8 @@ export async function planAndMaybeApply(
       workspaceName: state.workspace.name,
       priorNextHeartbeatAt: state.nextHeartbeatAt,
       nextHeartbeatAt,
+      scheduleSource,
+      hydratedCronExpressions: hydratedCron,
       skippedReason: unchanged ? "already-armed" : undefined,
     })
 
@@ -151,7 +234,12 @@ export async function planAndMaybeApply(
     if (opts.confirm) {
       await db.containerState.update({
         where: { workspaceId: state.workspaceId },
-        data: { nextHeartbeatAt },
+        data: {
+          nextHeartbeatAt,
+          ...(needsCronPersist && hydratedCron
+            ? { heartbeatCronExpressions: hydratedCron }
+            : {}),
+        },
       })
     }
     updated++
@@ -161,11 +249,12 @@ export async function planAndMaybeApply(
   log(`backfill-next-heartbeat-at: mode=${mode} now=${now.toISOString()}`)
   log(`  candidates=${states.length} wouldUpdate/updated=${updated} skipped=${skipped}`)
   for (const row of rows) {
+    if (row.skippedReason === "no-schedule") continue
     const prior = row.priorNextHeartbeatAt?.toISOString() ?? "null"
     const next = row.nextHeartbeatAt?.toISOString() ?? "null"
     const tag = row.skippedReason ? ` [${row.skippedReason}]` : ""
     log(
-      `  ${row.workspaceId} status=${row.workspaceStatus} name=${JSON.stringify(row.workspaceName)} prior=${prior} next=${next}${tag}`,
+      `  ${row.workspaceId} status=${row.workspaceStatus} name=${JSON.stringify(row.workspaceName)} source=${row.scheduleSource} prior=${prior} next=${next}${tag}`,
     )
   }
 
