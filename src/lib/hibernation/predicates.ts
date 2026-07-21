@@ -35,8 +35,12 @@ function imminentExemptCutoff(now: Date): Date {
 }
 
 /**
- * Shared nextHeartbeatAt guard: null OR strictly beyond the imminent window.
- * Claws with a hint in (now, now+exempt] — or past-due — do not match.
+ * SLEEP-ONLY nextHeartbeatAt guard: null OR strictly beyond the imminent window.
+ * Claws with a hint in (now, now+exempt] — or past-due — do not match *hibernate*.
+ *
+ * MUST NOT be applied to wakeHibernatedWhere — sleep and wake are opposite intents:
+ * imminent / past-due claws are exactly who wake must consider.
+ * MUTATION: spreading this into wakeHibernatedWhere → wake-window tests fail.
  */
 function nextHeartbeatNotImminent(now: Date) {
   const exemptUntil = imminentExemptCutoff(now)
@@ -98,7 +102,12 @@ export function warmIdleWhere(now: Date) {
 /**
  * Prisma `where` for HIBERNATED claws that may be wake-eligible.
  * Post-filter every row with `isWakeEligible` (wake-geometry).
+ *
+ * Intentionally has NO imminent-beat exemption — wake must INCLUDE imminent
+ * and past-due claws (opposite of runningIdle/warmIdle sleep predicates).
+ *
  * MUTATION: restoring `nextHeartbeatAt: { gt: now }` here → past-due never wakes.
+ * MUTATION: adding nextHeartbeatNotImminent / gt:exemptUntil here → wake-window fails.
  */
 export function wakeHibernatedWhere() {
   return {

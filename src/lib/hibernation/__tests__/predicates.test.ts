@@ -7,6 +7,7 @@ import {
   resolveImminentExemptMs,
   warmIdleWhere,
   runningIdleWhere,
+  wakeHibernatedWhere,
 } from "@/lib/hibernation/predicates"
 
 afterEach(() => {
@@ -99,7 +100,7 @@ describe("imminent-beat exemption (HEARTBEAT_IMMINENT_EXEMPT_MS)", () => {
     expect(appointment.getTime()).toBeLessThanOrEqual(exemptUntil.getTime())
   })
 
-  it("MUTATION: drop exemption → imminent claws would match", () => {
+  it("MUTATION: drop exemption from sleep → imminent claws would match", () => {
     const src = readFileSync(
       join(process.cwd(), "src/lib/hibernation/predicates.ts"),
       "utf8",
@@ -107,10 +108,56 @@ describe("imminent-beat exemption (HEARTBEAT_IMMINENT_EXEMPT_MS)", () => {
     expect(src).toContain("HEARTBEAT_IMMINENT_EXEMPT_MS")
     expect(src).toContain("nextHeartbeatNotImminent")
     expect(src).toContain("resolveImminentExemptMs")
-    // Both predicates must call the shared guard.
+    // Both SLEEP predicates must call the shared guard.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
     expect(code).toMatch(/runningIdleWhere[\s\S]*nextHeartbeatNotImminent/)
     expect(code).toMatch(/warmIdleWhere[\s\S]*nextHeartbeatNotImminent/)
+  })
+
+  it("wakeHibernatedWhere includes imminent claws (no sleep exemption)", () => {
+    const where = wakeHibernatedWhere()
+    expect(where).toEqual({
+      containerPhase: "HIBERNATED",
+      nextHeartbeatAt: { not: null },
+    })
+    // No gt:exemptUntil / OR-null sleep shape on wake.
+    expect(JSON.stringify(where)).not.toContain('"gt"')
+    expect(where).not.toHaveProperty("OR")
+    expect(where).not.toHaveProperty("AND")
+  })
+
+  it("MUTATION: apply sleep exemption to wake → wake-window test fails", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/hibernation/predicates.ts"),
+      "utf8",
+    )
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
+    // wakeHibernatedWhere body must not call nextHeartbeatNotImminent.
+    const wakeFn = code.match(
+      /export function wakeHibernatedWhere\(\)[\s\S]*?(?=export |$)/,
+    )?.[0]
+    expect(wakeFn).toBeTruthy()
+    expect(wakeFn).not.toContain("nextHeartbeatNotImminent")
+    expect(wakeFn).not.toContain("imminentExemptCutoff")
+    expect(wakeFn).not.toContain("resolveImminentExemptMs")
+
+    // Simulate the buggy cross-wire: sleep guard on wake excludes imminent.
+    const now = new Date("2026-07-21T11:55:00.000Z")
+    const exemptUntil = new Date(now.getTime() + 15 * 60 * 1000)
+    const appointment = new Date("2026-07-21T12:00:00.000Z")
+    const buggyWakeWhere = {
+      containerPhase: "HIBERNATED" as const,
+      nextHeartbeatAt: { not: null },
+      OR: [
+        { nextHeartbeatAt: null },
+        { nextHeartbeatAt: { gt: exemptUntil } },
+      ],
+    }
+    // Imminent appointment would NOT match buggy wake (wrong intent).
+    expect(appointment.getTime()).toBeLessThanOrEqual(exemptUntil.getTime())
+    expect(JSON.stringify(buggyWakeWhere)).toContain('"gt"')
+    // Shipped wake must stay free of that filter.
+    expect(JSON.stringify(wakeHibernatedWhere())).not.toContain('"gt"')
   })
 })
 
