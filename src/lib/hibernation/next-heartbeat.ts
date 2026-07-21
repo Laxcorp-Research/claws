@@ -236,6 +236,9 @@ export function matchesHeartbeatPollMarker(
  * Missed-wake: HIBERNATED claw whose nextHeartbeatAt is past grace with no boot
  * since that hint. Catches the fixture failure (armed wake never fired).
  * Returns Date to set, null to clear, undefined for no-op.
+ *
+ * Sticky miss: boot proves wake fired (do not newly flag) but must NOT clear
+ * an existing heartbeatMissedAt — only beat evidence clears (activity roller).
  */
 export function decideMissedWake(args: {
   workspaceStatus: string
@@ -255,7 +258,10 @@ export function decideMissedWake(args: {
   if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
   // P2.3: miss when expected ≤ now − grace (grace-edge inclusive).
   if (expectedMs > args.nowMs - graceMs) return clearIfSet
-  if (args.hasBootSinceExpected) return clearIfSet
+  if (args.hasBootSinceExpected) {
+    // Wake landed — skip new miss flag; keep sticky existing flag.
+    return undefined
+  }
 
   return args.currentFlag ?? new Date(args.nowMs)
 }
@@ -270,6 +276,28 @@ export function isHeartbeatShapedActivity(event: {
   if (event.type === "TASK_START" && event.metadata?.eventKind === "overlay_boot") {
     return true
   }
+  if (
+    event.type === "TASK_START" &&
+    (matchesHeartbeatPollMarker(event.action) ||
+      matchesHeartbeatPollMarker(event.detail))
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Beat evidence that may clear sticky heartbeatMissedAt.
+ * HEARTBEAT typed or OpenClaw poll-marker — NEVER overlay_boot / wake alone.
+ * MUTATION: treating overlay_boot as beat evidence → clear-on-boot → fail.
+ */
+export function isHeartbeatBeatEvidence(event: {
+  type: string
+  metadata?: Record<string, unknown>
+  action?: string | null
+  detail?: string | null
+}): boolean {
+  if (event.type === "HEARTBEAT") return true
   if (
     event.type === "TASK_START" &&
     (matchesHeartbeatPollMarker(event.action) ||

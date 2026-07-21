@@ -9,17 +9,53 @@
 
 export const RUNNING_IDLE_MS = 10 * 60 * 1000
 export const CHANNEL_IDLE_MS = 24 * 60 * 60 * 1000
-export const HEARTBEAT_FUTURE_MS = 15 * 60 * 1000
+
+/** Default: never hibernate a claw whose nextHeartbeatAt is within 15m. */
+export const DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS = 15 * 60 * 1000
+
+/** @deprecated alias — use HEARTBEAT_IMMINENT_EXEMPT_MS / resolveImminentExemptMs() */
+export const HEARTBEAT_FUTURE_MS = DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS
+
+/**
+ * Env-tunable imminent-beat exemption (ms). Floor holds env-less at 15m.
+ * MUTATION: restoring a 0 default → imminent claws match hibernate predicates.
+ */
+export function resolveImminentExemptMs(): number {
+  const raw = process.env.HEARTBEAT_IMMINENT_EXEMPT_MS
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS
+  }
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS
+  return Math.floor(n)
+}
+
+function imminentExemptCutoff(now: Date): Date {
+  return new Date(now.getTime() + resolveImminentExemptMs())
+}
+
+/**
+ * Shared nextHeartbeatAt guard: null OR strictly beyond the imminent window.
+ * Claws with a hint in (now, now+exempt] — or past-due — do not match.
+ */
+function nextHeartbeatNotImminent(now: Date) {
+  const exemptUntil = imminentExemptCutoff(now)
+  return {
+    OR: [
+      { nextHeartbeatAt: null },
+      { nextHeartbeatAt: { gt: exemptUntil } },
+    ],
+  }
+}
 
 /** Prisma `where` for RUNNING idle (no channels, 10m lastActiveAt). */
 export function runningIdleWhere(now: Date) {
   const idleCutoff = new Date(now.getTime() - RUNNING_IDLE_MS)
-  const futureWindow = new Date(now.getTime() + HEARTBEAT_FUTURE_MS)
   return {
     containerPhase: "RUNNING" as const,
     hasActiveChannels: false,
     lastActiveAt: { lt: idleCutoff },
-    OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
+    ...nextHeartbeatNotImminent(now),
   }
 }
 
@@ -32,11 +68,14 @@ export function runningIdleWhere(now: Date) {
  *       (never-messaged but channel configured long enough — safe with P5
  *       wake-on-channel).
  *
+ * Imminent-beat exemption: never sleep a claw about to keep an appointment
+ * (kills the 08:08 class when the next hint is still within the window).
+ *
  * MUTATION: null stamp + fresh channelsConnectedAt must NOT match.
+ * MUTATION: drop nextHeartbeatNotImminent → imminent claws hibernate.
  */
 export function warmIdleWhere(now: Date) {
   const channelIdleCutoff = new Date(now.getTime() - CHANNEL_IDLE_MS)
-  const futureWindow = new Date(now.getTime() + HEARTBEAT_FUTURE_MS)
   return {
     containerPhase: "WARM" as const,
     AND: [
@@ -51,9 +90,7 @@ export function warmIdleWhere(now: Date) {
           },
         ],
       },
-      {
-        OR: [{ nextHeartbeatAt: null }, { nextHeartbeatAt: { gt: futureWindow } }],
-      },
+      nextHeartbeatNotImminent(now),
     ],
   }
 }
