@@ -1,7 +1,17 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { CHANNEL_IDLE_MS, warmIdleWhere, runningIdleWhere } from "@/lib/hibernation/predicates"
+import {
+  CHANNEL_IDLE_MS,
+  DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS,
+  resolveImminentExemptMs,
+  warmIdleWhere,
+  runningIdleWhere,
+} from "@/lib/hibernation/predicates"
+
+afterEach(() => {
+  delete process.env.HEARTBEAT_IMMINENT_EXEMPT_MS
+})
 
 describe("warmIdleWhere — P1.1", () => {
   it("matches stamped idle OR (null stamp + channelsConnectedAt older than 24h)", () => {
@@ -55,6 +65,52 @@ describe("runningIdleWhere", () => {
     expect(where.hasActiveChannels).toBe(false)
     expect(where.containerPhase).toBe("RUNNING")
     expect(where.lastActiveAt).toHaveProperty("lt")
+  })
+})
+
+describe("imminent-beat exemption (HEARTBEAT_IMMINENT_EXEMPT_MS)", () => {
+  it("defaults to 15m env-less", () => {
+    delete process.env.HEARTBEAT_IMMINENT_EXEMPT_MS
+    expect(resolveImminentExemptMs()).toBe(DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS)
+    expect(resolveImminentExemptMs()).toBe(15 * 60 * 1000)
+  })
+
+  it("imminent claw survives both predicates (hint inside exempt window)", () => {
+    const now = new Date("2026-07-21T11:55:00.000Z")
+    const exemptUntil = new Date(now.getTime() + 15 * 60 * 1000) // 12:10
+    const appointment = new Date("2026-07-21T12:00:00.000Z") // inside window
+
+    const running = runningIdleWhere(now)
+    const warm = warmIdleWhere(now)
+
+    // Predicate requires nextHeartbeatAt > exemptUntil OR null.
+    const runningOr = running.OR as Array<{ nextHeartbeatAt?: unknown }>
+    const warmOr = warm.AND[1]!.OR as Array<{ nextHeartbeatAt?: unknown }>
+    expect(runningOr).toEqual([
+      { nextHeartbeatAt: null },
+      { nextHeartbeatAt: { gt: exemptUntil } },
+    ])
+    expect(warmOr).toEqual([
+      { nextHeartbeatAt: null },
+      { nextHeartbeatAt: { gt: exemptUntil } },
+    ])
+
+    // Appointment is NOT > exemptUntil → would not match hibernate query.
+    expect(appointment.getTime()).toBeLessThanOrEqual(exemptUntil.getTime())
+  })
+
+  it("MUTATION: drop exemption → imminent claws would match", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/hibernation/predicates.ts"),
+      "utf8",
+    )
+    expect(src).toContain("HEARTBEAT_IMMINENT_EXEMPT_MS")
+    expect(src).toContain("nextHeartbeatNotImminent")
+    expect(src).toContain("resolveImminentExemptMs")
+    // Both predicates must call the shared guard.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
+    expect(code).toMatch(/runningIdleWhere[\s\S]*nextHeartbeatNotImminent/)
+    expect(code).toMatch(/warmIdleWhere[\s\S]*nextHeartbeatNotImminent/)
   })
 })
 

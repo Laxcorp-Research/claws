@@ -530,6 +530,74 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       ).mock.calls[0][0].data.nextHeartbeatAt as Date;
       expect(next.toISOString()).toBe("2026-07-21T08:00:00.000Z");
     });
+
+    it("sticky miss: overlay_boot does not clear heartbeatMissedAt", async () => {
+      defaultMocks();
+      ;(prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        heartbeatCronExpressions: JSON.stringify([
+          { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+        ]),
+        heartbeatInterval: null,
+      } as never);
+      ;(prismaMock.containerState.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      ;(prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+        count: 1,
+      } as never);
+
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "TASK_START",
+              action: "Claws overlay boot",
+              metadata: { eventKind: "overlay_boot" },
+              timestamp: "2026-07-21T08:07:09.000Z",
+              channelId: null,
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      // May roll nextHeartbeatAt, but must NOT clear sticky miss.
+      expect(prismaMock.workspace.updateMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { heartbeatMissedAt: null },
+        }),
+      );
+    });
+
+    it("sticky miss: beat evidence clears heartbeatMissedAt", async () => {
+      defaultMocks();
+      ;(prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        heartbeatCronExpressions: JSON.stringify([
+          { schedule: { kind: "cron", expr: "0 12 * * *", tz: "UTC" } },
+        ]),
+        heartbeatInterval: null,
+      } as never);
+      ;(prismaMock.containerState.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      ;(prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+        count: 1,
+      } as never);
+
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "HEARTBEAT",
+              timestamp: "2026-07-21T12:00:05.000Z",
+              channelId: null,
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      expect(prismaMock.workspace.updateMany).toHaveBeenCalledWith({
+        where: { id: WORKSPACE_ID, heartbeatMissedAt: { not: null } },
+        data: { heartbeatMissedAt: null },
+      });
+    });
   });
 
   describe("lastChannelMessageAt writer (warmIdle honesty)", () => {

@@ -30,6 +30,7 @@ import {
 } from "@/lib/hibernation/channel-inbound";
 import {
   computeNextHeartbeatAt,
+  isHeartbeatBeatEvidence,
   isHeartbeatShapedActivity,
 } from "@/lib/hibernation/next-heartbeat";
 
@@ -426,15 +427,14 @@ export async function POST(
       }
       // Lifecycle P2.1: roll nextHeartbeatAt on heartbeat-shaped activity —
       // typed HEARTBEAT, overlay_boot, or TASK_START with OpenClaw poll marker.
-      // Clears Watchtower / missed-wake flag when any of those land.
-      if (
-        isHeartbeatShapedActivity({
-          type: ev.type,
-          metadata: ev.metadata,
-          action: ev.action,
-          detail: ev.detail,
-        })
-      ) {
+      // Sticky miss: clear heartbeatMissedAt ONLY on beat evidence (not boot).
+      const shaped = {
+        type: ev.type,
+        metadata: ev.metadata,
+        action: ev.action,
+        detail: ev.detail,
+      }
+      if (isHeartbeatShapedActivity(shaped)) {
         try {
           const state = await prisma.containerState.findUnique({
             where: { workspaceId },
@@ -454,10 +454,12 @@ export async function POST(
               data: { nextHeartbeatAt },
             });
           }
-          await prisma.workspace.updateMany({
-            where: { id: workspaceId, heartbeatMissedAt: { not: null } },
-            data: { heartbeatMissedAt: null },
-          });
+          if (isHeartbeatBeatEvidence(shaped)) {
+            await prisma.workspace.updateMany({
+              where: { id: workspaceId, heartbeatMissedAt: { not: null } },
+              data: { heartbeatMissedAt: null },
+            });
+          }
         } catch (rollErr) {
           log.error("activity: failed to roll nextHeartbeatAt", {
             workspaceId,
