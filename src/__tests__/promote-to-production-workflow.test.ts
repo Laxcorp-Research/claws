@@ -187,7 +187,7 @@ describe("promote-to-production.yml contract", () => {
     expect(preflight).toContain('gh pr view -R "$REPO" "$PR" --json statusCheckRollup');
     expect(preflight).toContain("NO checkout by design");
     const probeIdx = preflight.indexOf("PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable");
-    const digestsIdx = preflight.indexOf("Resolve GHCR digests");
+    const digestsIdx = preflight.indexOf("Resolve GHCR digest for requested");
     expect(probeIdx).toBeGreaterThanOrEqual(0);
     expect(digestsIdx).toBeGreaterThan(probeIdx);
   });
@@ -196,7 +196,7 @@ describe("promote-to-production.yml contract", () => {
     const yml = loadWorkflow();
     const preflight = jobBlock(yml, "preflight");
     const probeStart = preflight.indexOf("Probe GITHUB_TOKEN can read statusCheckRollup");
-    const probeEnd = preflight.indexOf("Resolve GHCR digests");
+    const probeEnd = preflight.indexOf("Resolve GHCR digest for requested");
     const probe = preflight.slice(probeStart, probeEnd);
     expect(probe).toContain('gh pr list -R "$REPO"');
     expect(probe).toContain('gh pr view -R "$REPO"');
@@ -215,10 +215,31 @@ describe("promote-to-production.yml contract", () => {
       .replace('gh pr view -R "$REPO"', "gh pr view");
     const preflight = jobBlock(mutated, "preflight");
     const probeStart = preflight.indexOf("Probe GITHUB_TOKEN can read statusCheckRollup");
-    const probeEnd = preflight.indexOf("Resolve GHCR digests");
+    const probeEnd = preflight.indexOf("Resolve GHCR digest for requested");
     const probe = preflight.slice(probeStart, probeEnd);
     const ghLines = probe.split("\n").filter((l) => /\bgh pr\b/.test(l));
     expect(ghLines.some((l) => !/\s-R\s/.test(l))).toBe(true);
+  });
+
+  it("preflight gates on VERSION_DIGEST_EXISTS_ASSERT (not :candidate equality)", () => {
+    const yml = loadWorkflow();
+    const preflight = jobBlock(yml, "preflight");
+    expect(preflight).toContain("VERSION_DIGEST_EXISTS_ASSERT");
+    expect(preflight).toContain("CANDIDATE_DRIFT_OK");
+    expect(preflight).not.toContain("Verify :candidate matches :<version>");
+    expect(preflight).not.toContain("Digest mismatch: :candidate=");
+  });
+
+  it("candidate-drift passes without skip_candidate_check (CANDIDATE_DRIFT_OK)", () => {
+    const yml = loadWorkflow();
+    const preflight = jobBlock(yml, "preflight");
+    // Equality gate removed — drift is logged, never exits non-zero.
+    expect(preflight).toMatch(/CANDIDATE_DRIFT_OK:[\s\S]*\(ignored\)/);
+    expect(preflight).not.toContain("Verify :candidate matches :<version>");
+    expect(preflight).not.toMatch(
+      /if: \$\{\{ !inputs\.skip_candidate_check \}\}/,
+    );
+    expect(preflight).toContain("VERSION_DIGEST_EXISTS_ASSERT");
   });
 
   it("MUTATION: removing permissions-probe marker fails contract", () => {

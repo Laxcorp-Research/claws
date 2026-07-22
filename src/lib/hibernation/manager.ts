@@ -115,6 +115,9 @@ export async function hibernateWorkspace(
       ? Date.now() - workspace.containerState.runtimeStateUpdatedAt.getTime()
       : Infinity
 
+    // Do not force-clear containerId/containerHost here. destroyContainer
+    // already nulls them when the Railway service is gone; when delete fails
+    // and the service survives, those fields stay so wake can reuse the domain.
     await prisma.$transaction([
       prisma.containerState.update({
         where: { workspaceId },
@@ -128,7 +131,6 @@ export async function hibernateWorkspace(
         where: { id: workspaceId },
         data: {
           status: "HIBERNATED",
-          containerId: null,
           containerPort: null,
           hostPort: null,
           hibernationRefusedAt: null,

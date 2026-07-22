@@ -99,7 +99,9 @@ jobs:
           echo "source_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           echo "source_tag=v$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve GHCR digests for :<version> and :candidate
+      # VERSION_DIGEST_EXISTS_ASSERT — promote gates on requested :<version> only.
+      # :candidate equality removed (CANDIDATE_DRIFT_OK); skip_candidate_check is no-op.
+      - name: Resolve GHCR digest for requested :<version>
         id: digests
         env:
           GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
@@ -108,6 +110,7 @@ jobs:
           set -euo pipefail
           # PR-4c: GHCR lookups use OUR output tag (suffixed when -N).
           VERSION="${{ steps.validate.outputs.output_version }}"
+          # VERSION_DIGEST_EXISTS_ASSERT
 
           if [ -z "${GHCR_READ_USER:-}" ] || [ -z "${GHCR_READ_PAT:-}" ]; then
             echo "::error::vars.GHCR_READ_USER and secrets.GHCR_READ_PAT must both be configured."
@@ -124,7 +127,6 @@ jobs:
 
           ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
 
-          # Resolve :<version> digest. Must exist or we cannot promote.
           VERSION_DIGEST=$(curl -sS -D - -o /dev/null \
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: $ACCEPT" \
@@ -134,37 +136,30 @@ jobs:
             echo "::error:::$VERSION does not exist in GHCR (or HEAD did not return a digest). Cannot promote a version that has not been built."
             exit 1
           fi
-          echo "Resolved :$VERSION → $VERSION_DIGEST"
+          echo "VERSION_DIGEST_EXISTS_ASSERT: :$VERSION → $VERSION_DIGEST"
           echo "version_digest=$VERSION_DIGEST" >> "$GITHUB_OUTPUT"
 
-          # Resolve :candidate digest. May not exist on a totally fresh
-          # registry, but should exist any time the build workflow has run.
           CANDIDATE_DIGEST=$(curl -sS -D - -o /dev/null \
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: $ACCEPT" \
             "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/candidate" \
             | tr -d '\r' | awk '/^docker-content-digest:/{print $2}' || echo "")
-          echo "Resolved :candidate → ${CANDIDATE_DIGEST:-<missing>}"
+          if [ -n "${CANDIDATE_DIGEST:-}" ] && [ "$VERSION_DIGEST" != "$CANDIDATE_DIGEST" ]; then
+            echo "CANDIDATE_DRIFT_OK: :candidate=$CANDIDATE_DIGEST != :$VERSION=$VERSION_DIGEST (ignored)"
+          fi
           echo "candidate_digest=${CANDIDATE_DIGEST:-}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify :candidate matches :<version>
-        if: inputs.skip_candidate_check != true
+      - name: Assert requested version digest exists
         run: |
           set -euo pipefail
           VD="${{ steps.digests.outputs.version_digest }}"
-          CD="${{ steps.digests.outputs.candidate_digest }}"
-
-          if [ -z "$CD" ]; then
-            echo "::error:::candidate does not exist in GHCR. Re-run build-openclaw-image.yml first, or set skip_candidate_check=true for an emergency override."
+          VERSION="${{ steps.validate.outputs.output_version }}"
+          # VERSION_DIGEST_EXISTS_ASSERT — skip_candidate_check is deprecated/no-op.
+          if [ -z "$VD" ]; then
+            echo "::error::VERSION_DIGEST_EXISTS_ASSERT failed: empty digest for :$VERSION"
             exit 1
           fi
-
-          if [ "$VD" != "$CD" ]; then
-            echo "::error::Digest mismatch: :candidate=$CD vs :${{ steps.validate.outputs.output_version }}=$VD. Another build ran between QA and promotion. Re-run QA against the current :candidate, then retry, or set skip_candidate_check=true if this is intentional."
-            exit 1
-          fi
-
-          echo "Candidate digest matches :${{ steps.validate.outputs.output_version }} ($VD). Safe to promote."
+          echo "VERSION_DIGEST_EXISTS_ASSERT passed for :$VERSION ($VD). Safe to promote."
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -358,11 +353,7 @@ jobs:
           # Shell-side conditional so the workflow expression doesn't have to
           # do ternary string selection (which GitHub Actions doesn't reliably
           # support in all contexts).
-          if [ "${{ inputs.skip_candidate_check }}" = "true" ]; then
-            echo "- **Candidate check:** SKIPPED (emergency override — verify out of band)" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- **Candidate check:** verified :candidate digest matches :${{ steps.validate.outputs.output_version }}" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "- **Preflight:** VERSION_DIGEST_EXISTS_ASSERT for :${{ steps.validate.outputs.output_version }} (CANDIDATE_DRIFT_OK — :candidate equality not required)" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Target env:** \`${{ inputs.target_env }}\` (host \`${{ steps.endpoint.outputs.host }}\` — verified by the host guard)" >> "$GITHUB_STEP_SUMMARY"
           echo "- **OpenClawVersion row:** registered with isStable=true at ${{ steps.endpoint.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

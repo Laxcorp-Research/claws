@@ -14,6 +14,10 @@ import { NetworkError } from "@/components/shared/network-error"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { compareOpenClawVersions } from "@/lib/openclaw/version-order"
+import {
+  isNeverPromotableVersion,
+  neverPromotableReason,
+} from "@/lib/openclaw/version-hygiene"
 
 interface VersionItem {
   id: string
@@ -294,6 +298,14 @@ export default function AdminVersionsPage() {
                       Security Patch
                     </span>
                   )}
+                  {isNeverPromotableVersion(v.version) && (
+                    <span
+                      className="bg-[var(--bg2)] text-[var(--tx3)] text-[10px] font-medium px-[6px] py-[1px] rounded-full"
+                      title={neverPromotableReason(v.version) ?? "Never promotable"}
+                    >
+                      Never promotable
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-[4px]">
                   <button
@@ -303,7 +315,7 @@ export default function AdminVersionsPage() {
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
-                  {!v.isStable && (
+                  {!v.isStable && !isNeverPromotableVersion(v.version) && (
                     <Button
                       size="sm"
                       variant="primary"

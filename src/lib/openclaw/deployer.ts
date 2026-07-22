@@ -566,11 +566,26 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
+  // When Railway delete fails for a reason other than "already gone", the
+  // service may still be alive — keep containerHost so hibernate/wake can
+  // reuse the domain (DOMAIN_REUSE / service-survives).
+  let serviceGone = !(isRailwayConfigured() && workspace.containerId);
   if (isRailwayConfigured() && workspace.containerId) {
     try {
       await deleteService(workspace.containerId);
-    } catch {
-      log.warn('Failed to delete Railway service — may already be removed', { workspaceId });
+      serviceGone = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/not found|404|does not exist/i.test(msg)) {
+        serviceGone = true;
+        log.warn('Failed to delete Railway service — may already be removed', { workspaceId });
+      } else {
+        serviceGone = false;
+        log.warn('Failed to delete Railway service — service may survive; keeping containerHost', {
+          workspaceId,
+          error: msg,
+        });
+      }
     }
   }
 
@@ -592,9 +607,10 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
       where: { id: workspaceId },
       data: {
         status: 'STOPPED',
-        containerId: null,
-        containerName: null,
-        containerHost: null,
+        containerId: serviceGone ? null : workspace.containerId,
+        containerName: serviceGone ? null : workspace.containerName,
+        // Keep host when service survives so domain reuse on wake still works.
+        containerHost: serviceGone ? null : workspace.containerHost,
         hostPort: null,
         healthStatus: 'UNKNOWN',
       },
