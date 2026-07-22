@@ -351,6 +351,9 @@ export async function deployToCloud(workspaceId: string): Promise<{
         hibernatedAt: null,
         wakeRequestedAt: null,
         hasActiveChannels: channelsActive,
+        // Clear connect stamp when channels leave; first-connect stamp is
+        // set below via updateMany (preserves age across redeploy).
+        ...(channelsActive ? {} : { channelsConnectedAt: null }),
         nextHeartbeatAt,
         heartbeatInterval: heartbeatIntervalMs,
         heartbeatCronExpressions: cronExprs,
@@ -364,11 +367,20 @@ export async function deployToCloud(workspaceId: string): Promise<{
         containerPhase: channelsActive ? 'WARM' : 'RUNNING',
         lastActiveAt: new Date(),
         hasActiveChannels: channelsActive,
+        channelsConnectedAt: channelsActive ? new Date() : null,
         nextHeartbeatAt,
         heartbeatInterval: heartbeatIntervalMs,
         heartbeatCronExpressions: cronExprs,
       },
     });
+    // P1.1: stamp channelsConnectedAt only when still null (redeploy must
+    // not reset the 24h warmIdle clock).
+    if (channelsActive) {
+      await prisma.containerState.updateMany({
+        where: { workspaceId, channelsConnectedAt: null },
+        data: { channelsConnectedAt: new Date() },
+      });
+    }
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'PROVISIONING');
     const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);

@@ -185,9 +185,9 @@ export function lastExpectedCronFire(
  * Watchtower miss decision (distinct from activity-silence).
  * Returns Date to set, null to clear, undefined for no-op.
  *
- * Window: [expected, expected+grace]. Miss when now > expected+grace and
- * no HEARTBEAT evidence in that window. MUTATION: grace=0 → false-positive
- * when evidence arrives slightly after expected.
+ * Window: [expected, expected+grace]. Miss when now ≥ expected+grace and
+ * no HEARTBEAT evidence in that window (P2.3: ≤ boundary so grace-edge flags).
+ * MUTATION: grace=0 → false-positive when evidence arrives slightly after expected.
  */
 export function decideHeartbeatMissed(args: {
   containerPhase: string
@@ -212,7 +212,8 @@ export function decideHeartbeatMissed(args: {
   const windowEnd = expected.getTime() + graceMs
   const age = args.nowMs - expected.getTime()
   if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
-  if (args.nowMs <= windowEnd) return clearIfSet
+  // P2.3: strict `<` — at exactly expected+grace the miss flags.
+  if (args.nowMs < windowEnd) return clearIfSet
   if (args.hasHeartbeatEvidenceInWindow) return clearIfSet
 
   return args.currentFlag ?? new Date(args.nowMs)
@@ -235,6 +236,9 @@ export function matchesHeartbeatPollMarker(
  * Missed-wake: HIBERNATED claw whose nextHeartbeatAt is past grace with no boot
  * since that hint. Catches the fixture failure (armed wake never fired).
  * Returns Date to set, null to clear, undefined for no-op.
+ *
+ * Sticky miss: boot proves wake fired (do not newly flag) but must NOT clear
+ * an existing heartbeatMissedAt — only beat evidence clears (activity roller).
  */
 export function decideMissedWake(args: {
   workspaceStatus: string
@@ -252,9 +256,12 @@ export function decideMissedWake(args: {
   const expectedMs = args.nextHeartbeatAt.getTime()
   const age = args.nowMs - expectedMs
   if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
-  // nextHeartbeatAt < now − grace  ⇒  expected is more than grace in the past
-  if (expectedMs >= args.nowMs - graceMs) return clearIfSet
-  if (args.hasBootSinceExpected) return clearIfSet
+  // P2.3: miss when expected ≤ now − grace (grace-edge inclusive).
+  if (expectedMs > args.nowMs - graceMs) return clearIfSet
+  if (args.hasBootSinceExpected) {
+    // Wake landed — skip new miss flag; keep sticky existing flag.
+    return undefined
+  }
 
   return args.currentFlag ?? new Date(args.nowMs)
 }
@@ -269,6 +276,28 @@ export function isHeartbeatShapedActivity(event: {
   if (event.type === "TASK_START" && event.metadata?.eventKind === "overlay_boot") {
     return true
   }
+  if (
+    event.type === "TASK_START" &&
+    (matchesHeartbeatPollMarker(event.action) ||
+      matchesHeartbeatPollMarker(event.detail))
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Beat evidence that may clear sticky heartbeatMissedAt.
+ * HEARTBEAT typed or OpenClaw poll-marker — NEVER overlay_boot / wake alone.
+ * MUTATION: treating overlay_boot as beat evidence → clear-on-boot → fail.
+ */
+export function isHeartbeatBeatEvidence(event: {
+  type: string
+  metadata?: Record<string, unknown>
+  action?: string | null
+  detail?: string | null
+}): boolean {
+  if (event.type === "HEARTBEAT") return true
   if (
     event.type === "TASK_START" &&
     (matchesHeartbeatPollMarker(event.action) ||

@@ -12,7 +12,7 @@ import { CategoryTiles, TEMPLATE_CATEGORIES, SKILL_CATEGORIES } from "@/componen
 import { MarketplaceTabs } from "@/components/marketplace/marketplace-tabs"
 import { MarketplaceFilters } from "@/components/marketplace/marketplace-filters"
 import { SkillCard } from "@/components/marketplace/skill-card"
-import { TrustBadge } from "@/components/marketplace/trust-badge"
+import { TrustBadge, TrustBadgeLegend } from "@/components/marketplace/trust-badge"
 import { useMarketplace } from "@/hooks/use-marketplace"
 import type { SortOption, MarketplaceTemplate, MarketplaceSkill, MarketplaceFilters as Filters } from "@/types/marketplace"
 
@@ -323,6 +323,7 @@ function StoreContent() {
         </div>
 
         <MarketplaceTabs active={activeTab} onTabChange={handleTabChange} />
+        <TrustBadgeLegend className="mt-2 mb-3" />
 
         {/* Total count - always rendered to prevent layout shift */}
         {!isSearchActive && (

@@ -308,7 +308,7 @@ function PublishSkillContent() {
             <div className="text-center py-6">
               <Check size={32} className="mx-auto mb-3 text-[var(--ok)]" aria-hidden="true" />
               <h2 className="text-[18px] font-semibold text-[var(--tx)]">Skill Published!</h2>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">Auto-scan passed. Listed as Unreviewed. Submitted for manual review.</p>
+              <p className="text-[12px] text-[var(--tx2)] mt-1">Auto-scan passed. Submitted for manual review. Not listed until approved.</p>
               <div className="flex justify-center gap-2 mt-4">
                 {publishedSlug && <Link href={`/store/skills/${publishedSlug}`}><Button variant="outline">View in Marketplace</Button></Link>}
                 <Link href="/settings?tab=creator"><Button variant="outline">Creator Dashboard</Button></Link>
@@ -361,7 +361,7 @@ function PublishSkillContent() {
               </div>
               <div className="flex items-start gap-2 p-3 rounded-[12px] bg-[var(--bg2)]">
                 <Shield size={14} className="text-[var(--tx3)] shrink-0 mt-[2px]" aria-hidden="true" />
-                <p className="text-[11px] text-[var(--tx3)]">Your skill will be auto-scanned for security. If it passes, it&apos;ll be listed immediately as &quot;Unreviewed.&quot;</p>
+                <p className="text-[11px] text-[var(--tx3)]">Your skill will be auto-scanned for security, then queued for manual review. It will not appear in the marketplace until approved.</p>
               </div>
               <Button className="w-full" onClick={handlePublish} loading={isPublishing}>
                 <Send size={14} className="mr-1" aria-hidden="true" /> Publish Skill

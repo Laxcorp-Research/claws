@@ -2,7 +2,19 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { hibernateWorkspace, wakeWorkspace } from "@/lib/hibernation/manager"
-import { runningIdleWhere, warmIdleWhere } from "@/lib/hibernation/predicates"
+import {
+  runningIdleWhere,
+  warmIdleWhere,
+  wakeHibernatedWhere,
+} from "@/lib/hibernation/predicates"
+import {
+  DEFAULT_HIBERNATION_CRON_CADENCE_MS,
+  DEFAULT_WAKE_BUFFER_MS,
+  DEFAULT_WAKE_MIN_LEAD_MS,
+  describeWakeEligibility,
+  isWakeEligible,
+  type WakeEligibilityLine,
+} from "@/lib/hibernation/wake-geometry"
 
 export const maxDuration = 55
 
@@ -76,15 +88,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ─── WAKE CANDIDATES ─────────────────────────────────
-
-  const maxLookAhead = new Date(now.getTime() + 10 * 60 * 1000)
+  // ─── WAKE CANDIDATES (P2.3 geometry) ─────────────────
+  // Shared where + isWakeEligible helper (parity with candidates API).
+  // No upper cutoff: past-due hints stay eligible (late wake beats never).
 
   const wakeCandidates = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "HIBERNATED",
-      nextHeartbeatAt: { lte: maxLookAhead, gt: now },
-    },
+    where: wakeHibernatedWhere(),
     select: {
       workspaceId: true,
       nextHeartbeatAt: true,
@@ -92,24 +101,40 @@ export async function GET(req: NextRequest) {
     },
   })
 
+  const wakeEligibility: WakeEligibilityLine[] = []
+
   for (const candidate of wakeCandidates) {
-    const leadTime = candidate.avgWakeDurationMs
-      ? Math.min(600_000, Math.max(120_000, candidate.avgWakeDurationMs * 2))
-      : 5 * 60 * 1000
+    const hint = candidate.nextHeartbeatAt
+    if (!hint) continue
 
-    const wakeDeadline = new Date(candidate.nextHeartbeatAt!.getTime() - leadTime)
+    const line = describeWakeEligibility({
+      workspaceId: candidate.workspaceId,
+      now,
+      nextHeartbeatAt: hint,
+      avgWakeDurationMs: candidate.avgWakeDurationMs,
+    })
+    wakeEligibility.push(line)
+    log.info("Hibernation wake eligibility", line)
 
-    if (now >= wakeDeadline) {
-      try {
-        await wakeWorkspace(candidate.workspaceId)
-        woke++
-      } catch (err) {
-        errors++
-        log.error("Hibernation cron: wake failed", {
-          workspaceId: candidate.workspaceId,
-          error: String(err),
-        })
-      }
+    if (
+      !isWakeEligible({
+        now,
+        nextHeartbeatAt: hint,
+        avgWakeDurationMs: candidate.avgWakeDurationMs,
+      })
+    ) {
+      continue
+    }
+
+    try {
+      await wakeWorkspace(candidate.workspaceId)
+      woke++
+    } catch (err) {
+      errors++
+      log.error("Hibernation cron: wake failed", {
+        workspaceId: candidate.workspaceId,
+        error: String(err),
+      })
     }
   }
 
@@ -152,10 +177,31 @@ export async function GET(req: NextRequest) {
     errors,
     stuckRetried: stuckWaking.length,
     syncSkippedForBudget,
+    wakeCandidatesConsidered: wakeEligibility.length,
   })
 
   return Response.json({
     success: true,
-    data: { hibernated, refused, woke, errors, syncSkippedForBudget },
+    data: {
+      hibernated,
+      refused,
+      woke,
+      errors,
+      syncSkippedForBudget,
+      wakeEligibility,
+      wakeLead: {
+        minLeadMs: DEFAULT_WAKE_MIN_LEAD_MS,
+        cronCadenceMs: DEFAULT_HIBERNATION_CRON_CADENCE_MS,
+        bufferMs: DEFAULT_WAKE_BUFFER_MS,
+        env: {
+          HIBERNATION_WAKE_MIN_LEAD_MS:
+            process.env.HIBERNATION_WAKE_MIN_LEAD_MS ?? null,
+          HIBERNATION_CRON_CADENCE_MS:
+            process.env.HIBERNATION_CRON_CADENCE_MS ?? null,
+          HIBERNATION_WAKE_BUFFER_MS:
+            process.env.HIBERNATION_WAKE_BUFFER_MS ?? null,
+        },
+      },
+    },
   })
 }

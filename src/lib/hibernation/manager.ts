@@ -2,7 +2,14 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { deployToCloud, syncThenDestroy, type SyncThenDestroyOptions } from "@/lib/openclaw/deployer"
 import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
+import { isPastDueHint } from "@/lib/hibernation/wake-geometry"
 import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
+
+// P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot — when a claw
+// wakes past a due heartbeat hint, the container overlay should fire one
+// immediate HEARTBEAT poll after boot so the missed wall-clock beat is not
+// only "honest-miss + rolled" on the platform. File against openclaw-runtime
+// -10; platform late-wake semantics below only set heartbeatMissedAt + roll.
 
 function intervalMsFromFrequency(frequency: string | null | undefined): number | null {
   switch (frequency) {
@@ -129,6 +136,17 @@ export async function hibernateWorkspace(
       }),
     ])
 
+    // P5: arm Telegram wake-on-channel webhook so inbound isn't a dead-drop.
+    try {
+      const { armTelegramWakeWebhook } = await import("@/lib/hibernation/wake-on-channel")
+      await armTelegramWakeWebhook(workspaceId)
+    } catch (armErr) {
+      log.warn("Hibernate: telegram wake webhook arm failed", {
+        workspaceId,
+        error: armErr instanceof Error ? armErr.message : String(armErr),
+      })
+    }
+
     log.info("Workspace hibernated", {
       workspaceId,
       hasStateSnapshot: !!workspace.containerState?.runtimeStateSnapshot,
@@ -158,6 +176,10 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
   }
 
   const wakeStart = Date.now()
+  const wakeRequestedAt = new Date()
+  const hintAtWake = workspace.containerState?.nextHeartbeatAt ?? null
+  const pastDue =
+    hintAtWake !== null ? isPastDueHint(wakeRequestedAt, hintAtWake) : false
 
   try {
     await prisma.$transaction([
@@ -169,7 +191,7 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
         where: { workspaceId },
         data: {
           containerPhase: "WAKING",
-          wakeRequestedAt: new Date(),
+          wakeRequestedAt,
         },
       }),
     ])
@@ -181,23 +203,46 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
       where: { workspaceId },
     })
 
-    await prisma.containerState.update({
-      where: { workspaceId },
-      data: {
-        lastWakeDurationMs: wakeDuration,
-        avgWakeDurationMs: existingState?.avgWakeDurationMs
-          ? Math.round(existingState.avgWakeDurationMs * 0.7 + wakeDuration * 0.3)
-          : wakeDuration,
-        hibernatedAt: null,
-        wakeRequestedAt: null,
-        lastActiveAt: new Date(),
-      },
-    })
+    // P2.3 late-wake: past-due hint → honest miss + roll to next future fire
+    // so the claw is never stranded on a hint that can no longer match `gt: now`.
+    const rolledHint = pastDue
+      ? computeNextHeartbeatAt({
+          now: wakeRequestedAt,
+          heartbeatCronExpressions: existingState?.heartbeatCronExpressions,
+          heartbeatIntervalMs: existingState?.heartbeatInterval,
+        })
+      : undefined
+
+    await prisma.$transaction([
+      prisma.containerState.update({
+        where: { workspaceId },
+        data: {
+          lastWakeDurationMs: wakeDuration,
+          avgWakeDurationMs: existingState?.avgWakeDurationMs
+            ? Math.round(existingState.avgWakeDurationMs * 0.7 + wakeDuration * 0.3)
+            : wakeDuration,
+          hibernatedAt: null,
+          wakeRequestedAt: null,
+          lastActiveAt: new Date(),
+          ...(rolledHint !== undefined ? { nextHeartbeatAt: rolledHint } : {}),
+        },
+      }),
+      ...(pastDue
+        ? [
+            prisma.workspace.update({
+              where: { id: workspaceId },
+              data: { heartbeatMissedAt: wakeRequestedAt },
+            }),
+          ]
+        : []),
+    ])
 
     log.info("Workspace woke", {
       workspaceId,
       wakeDurationMs: wakeDuration,
       hadStateSnapshot: !!workspace.containerState?.runtimeStateSnapshot,
+      lateWake: pastDue,
+      rolledNextHeartbeatAt: rolledHint?.toISOString() ?? null,
     })
   } catch (err) {
     log.error("Wake failed", { workspaceId, error: String(err) })

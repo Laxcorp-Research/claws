@@ -52,6 +52,7 @@ export async function POST(
       data: {
         reviewStatus: 'REJECTED',
         rejectionReason: reason.trim(),
+        isPublished: false,
         reviewedAt: new Date(),
       },
     })

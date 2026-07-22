@@ -42,6 +42,7 @@ import {
   parseChannelConfigBlob,
   type ChannelConfigMap,
 } from '@/lib/openclaw/channel-config';
+import { buildCronJobsFromHeartbeatMd } from '@/lib/openclaw/heartbeat-md-cron';
 import { getApiKeySource } from '@/lib/credits/api-key-source';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import type { ApiKeySource } from '@/generated/prisma/client';
@@ -177,7 +178,7 @@ function resolveModel(dbModel: string): string {
  * Converts agent name to a valid OpenClaw agent ID.
  * OpenClaw normalizes agent IDs to lowercase alphanumeric + hyphens.
  */
-function toAgentId(name: string): string {
+export function toAgentId(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -280,8 +281,10 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 
   // 4. Resolve heartbeat once. Interval frequencies feed the openclaw.json
   //    `agents.defaults.heartbeat` field; time-of-day frequencies feed
-  //    cron/jobs.json. Computed up front so both downstream generators stay
-  //    in sync (no risk of one path forgetting to call buildHeartbeatSchedule).
+  //    cron/jobs.json. When Builder frequency is unset/off, template schedules
+  //    embedded as HEARTBEAT.md `cron: "..."` lines become machine truth via
+  //    cron/jobs.json (OpenClaw -9 cron store reads jobs.json only — MD is
+  //    prose the agent reads when a job fires). See resolveHeartbeatSchedule.
   //
   // PR-2b #8 + #9: orchestrator's slugified agent id is threaded into the
   // cron emit so the emitted job carries `id` (required by OpenClaw cron
@@ -296,11 +299,12 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // generator.ts:252), so any future drift between the stored slug and
   // the slug emitted into openclaw.json's agents.list is impossible.
   const orchestratorAgentSlug = toAgentId(orchestrator.name);
-  const heartbeat = buildHeartbeatSchedule(
+  const heartbeat = resolveHeartbeatSchedule(
     orchestrator.heartbeatFrequency,
     orchestrator.heartbeatTime,
     workspaceWithChannels.timezone,
     orchestratorAgentSlug,
+    orchestrator.heartbeatMd,
   );
 
   const composioApiKeyForMcp = process.env.COMPOSIO_API_KEY?.trim();
@@ -1126,11 +1130,22 @@ function generateCronJobs(
     ...activeWorkers.map((worker) => toAgentId(worker.name)),
   ]);
 
-  // Time-of-day heartbeat (daily/weekday) is emitted here as a cron job.
-  // Pure interval heartbeats live in agents.defaults.heartbeat and are
-  // handled by the gateway's built-in heartbeat runner instead.
+  // Time-of-day heartbeat (daily/weekday) OR HEARTBEAT.md schedule lines
+  // (when frequency is off) are emitted here as cron jobs. Pure interval
+  // heartbeats live in agents.defaults.heartbeat and are handled by the
+  // gateway's built-in heartbeat runner instead.
+  //
+  // OpenClaw -9 cron store (upstream src/cron/persisted-shape.ts): jobs with
+  // missing/empty id are dropped before they reach the scheduler
+  // (`getInvalidPersistedCronJobReason` → "missing-id"). Interval path does
+  // not use jobs.json — it reads agents.defaults.heartbeat.every.
   if (heartbeat?.cronJob) {
     jobs.push(heartbeat.cronJob);
+  }
+  if (heartbeat?.mdCronJobs?.length) {
+    for (const job of heartbeat.mdCronJobs) {
+      jobs.push(job);
+    }
   }
 
   // Add any workspace-specific scheduled tasks from the template.
@@ -2216,7 +2231,42 @@ export type HeartbeatCronJob = {
 export type HeartbeatScheduleResult = {
   intervalConfig?: { every: string };
   cronJob?: HeartbeatCronJob;
+  /** From HEARTBEAT.md `cron:` lines when Builder frequency is off/unset. */
+  mdCronJobs?: HeartbeatCronJob[];
 };
+
+/**
+ * Single schedule resolver for generator + backfill.
+ * Prefer Builder frequency (interval or daily/weekday cron). Else emit
+ * OpenClaw-shaped jobs from HEARTBEAT.md schedule lines. HEARTBEAT.md file
+ * content is unchanged — this only materializes machine config.
+ */
+export function resolveHeartbeatSchedule(
+  frequency: string | null | undefined,
+  time: string | null | undefined,
+  timezone: string | null | undefined,
+  orchestratorAgentSlug: string,
+  heartbeatMd: string | null | undefined,
+): HeartbeatScheduleResult | null {
+  // Explicit "off" disables all machine schedules (including MD cron lines).
+  if (frequency === 'off') return null;
+
+  const fromFrequency = buildHeartbeatSchedule(
+    frequency,
+    time,
+    timezone,
+    orchestratorAgentSlug,
+  );
+  if (fromFrequency) return fromFrequency;
+
+  const mdCronJobs = buildCronJobsFromHeartbeatMd({
+    heartbeatMd,
+    orchestratorAgentSlug,
+    timezone,
+  });
+  if (mdCronJobs.length === 0) return null;
+  return { mdCronJobs };
+}
 
 /**
  * Translates the Builder UI's heartbeat selection (frequency + optional

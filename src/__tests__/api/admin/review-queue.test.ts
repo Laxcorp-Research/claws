@@ -99,9 +99,9 @@ describe('Admin Review Queue API', () => {
   });
 
   describe('POST /api/admin/review-queue/templates/[id]/approve', () => {
-    it('approves a pending template and sets VERIFIED tier', async () => {
+    it('approves a pending template, publishes, and sets SCANNED tier (VERIFIED unmintable)', async () => {
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
-      const updatedTemplate = { ...MOCK_TEMPLATE, reviewStatus: 'APPROVED', trustTier: 'VERIFIED' };
+      const updatedTemplate = { ...MOCK_TEMPLATE, reviewStatus: 'APPROVED', trustTier: 'SCANNED', isPublished: true };
       (prismaMock.clawTemplate.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedTemplate);
 
       const req = createMockRequest('http://localhost:3000/api/admin/review-queue/templates/tpl-1/approve', { method: 'POST' });
@@ -110,7 +110,12 @@ describe('Admin Review Queue API', () => {
 
       expect(res.status).toBe(200);
       expect(json.data.reviewStatus).toBe('APPROVED');
-      expect(json.data.trustTier).toBe('VERIFIED');
+      expect(json.data.trustTier).toBe('SCANNED');
+      expect(prismaMock.clawTemplate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ trustTier: 'SCANNED', isPublished: true }),
+        }),
+      );
     });
 
     it('returns 400 for already-approved template', async () => {
@@ -132,9 +137,9 @@ describe('Admin Review Queue API', () => {
   });
 
   describe('POST /api/admin/review-queue/templates/[id]/reject', () => {
-    it('rejects a pending template with reason', async () => {
+    it('rejects a pending template with reason and delists', async () => {
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
-      const updated = { ...MOCK_TEMPLATE, reviewStatus: 'REJECTED', rejectionReason: 'Low quality' };
+      const updated = { ...MOCK_TEMPLATE, reviewStatus: 'REJECTED', rejectionReason: 'Low quality', isPublished: false };
       (prismaMock.clawTemplate.update as ReturnType<typeof vi.fn>).mockResolvedValue(updated);
 
       const req = createMockRequest('http://localhost:3000/api/admin/review-queue/templates/tpl-1/reject', {
@@ -146,6 +151,11 @@ describe('Admin Review Queue API', () => {
 
       expect(res.status).toBe(200);
       expect(json.data.reviewStatus).toBe('REJECTED');
+      expect(prismaMock.clawTemplate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ isPublished: false }),
+        }),
+      );
     });
 
     it('returns 400 when reason is missing', async () => {
@@ -169,9 +179,9 @@ describe('Admin Review Queue API', () => {
   });
 
   describe('POST /api/admin/review-queue/skills/[id]/approve', () => {
-    it('sets VERIFIED tier when sandboxPassed is true', async () => {
+    it('sets SCANNED (not VERIFIED) even when sandboxPassed is true — VERIFIED unmintable', async () => {
       (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_SKILL);
-      const updated = { ...MOCK_SKILL, reviewStatus: 'APPROVED', trustTier: 'VERIFIED' };
+      const updated = { ...MOCK_SKILL, reviewStatus: 'APPROVED', trustTier: 'SCANNED', isPublished: true };
       (prismaMock.marketplaceSkill.update as ReturnType<typeof vi.fn>).mockResolvedValue(updated);
 
       const req = createMockRequest('http://localhost:3000/api/admin/review-queue/skills/skill-1/approve', { method: 'POST' });
@@ -179,13 +189,18 @@ describe('Admin Review Queue API', () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.data.trustTier).toBe('VERIFIED');
+      expect(json.data.trustTier).toBe('SCANNED');
+      expect(prismaMock.marketplaceSkill.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ trustTier: 'SCANNED', isPublished: true }),
+        }),
+      );
     });
 
     it('sets SCANNED tier when sandboxPassed is false', async () => {
       const skillNoSandbox = { ...MOCK_SKILL, sandboxPassed: false };
       (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(skillNoSandbox);
-      const updated = { ...skillNoSandbox, reviewStatus: 'APPROVED', trustTier: 'SCANNED' };
+      const updated = { ...skillNoSandbox, reviewStatus: 'APPROVED', trustTier: 'SCANNED', isPublished: true };
       (prismaMock.marketplaceSkill.update as ReturnType<typeof vi.fn>).mockResolvedValue(updated);
 
       const req = createMockRequest('http://localhost:3000/api/admin/review-queue/skills/skill-1/approve', { method: 'POST' });

@@ -7,6 +7,7 @@ import {
   decideMissedWake,
   extractHeartbeatIntervalMsFromOpenclawJson,
   HEARTBEAT_MISS_GRACE_MS,
+  isHeartbeatBeatEvidence,
   isHeartbeatShapedActivity,
   lastExpectedCronFire,
   OPENCLAW_HEARTBEAT_POLL_MARKER,
@@ -137,6 +138,18 @@ describe("decideHeartbeatMissed — Watchtower window", () => {
     expect(result).toBeUndefined()
   })
 
+  it("P2.3: grace-edge (exactly expected+grace) flags for RUNNING/WARM", () => {
+    const nowMs = new Date("2026-07-20T08:10:00.000Z").getTime()
+    const result = decideHeartbeatMissed({
+      containerPhase: "WARM",
+      heartbeatCronExpressions: cron,
+      hasHeartbeatEvidenceInWindow: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
   it("clears when evidence present after grace", () => {
     const nowMs = new Date("2026-07-20T08:15:00.000Z").getTime()
     const result = decideHeartbeatMissed({
@@ -199,6 +212,22 @@ describe("isHeartbeatShapedActivity", () => {
     expect(isHeartbeatShapedActivity({ type: "MESSAGE_RECEIVED" })).toBe(false)
   })
 
+  it("isHeartbeatBeatEvidence excludes overlay_boot (sticky miss)", () => {
+    expect(isHeartbeatBeatEvidence({ type: "HEARTBEAT" })).toBe(true)
+    expect(
+      isHeartbeatBeatEvidence({
+        type: "TASK_START",
+        metadata: { eventKind: "overlay_boot" },
+      }),
+    ).toBe(false)
+    expect(
+      isHeartbeatBeatEvidence({
+        type: "TASK_START",
+        action: "Task started: [OpenClaw heartbeat poll] daily",
+      }),
+    ).toBe(true)
+  })
+
   it("matches TASK_START with OpenClaw heartbeat poll marker (action or detail)", () => {
     expect(
       isHeartbeatShapedActivity({
@@ -253,15 +282,41 @@ describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
     expect(result).toBeUndefined()
   })
 
-  it("clears when boot evidence exists after expected", () => {
+  it("P2.3: grace-edge (exactly expected+grace) flags", () => {
+    const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z")
+    const nowMs = new Date("2026-07-20T08:10:00.000Z").getTime() // == expected+10m
+    const result = decideMissedWake({
+      workspaceStatus: "HIBERNATED",
+      nextHeartbeatAt,
+      hasBootSinceExpected: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
+  it("sticky miss: boot does not clear an existing heartbeatMissedAt", () => {
+    const flag = new Date("2026-07-20T08:12:00.000Z")
     const result = decideMissedWake({
       workspaceStatus: "HIBERNATED",
       nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
       hasBootSinceExpected: true,
-      currentFlag: new Date("2026-07-20T08:12:00.000Z"),
+      currentFlag: flag,
       nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
     })
-    expect(result).toBeNull()
+    // No-op — keep sticky flag (beat evidence clears via activity roller only).
+    expect(result).toBeUndefined()
+  })
+
+  it("boot without existing flag → no new missed-wake flag", () => {
+    const result = decideMissedWake({
+      workspaceStatus: "HIBERNATED",
+      nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
+      hasBootSinceExpected: true,
+      currentFlag: null,
+      nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
+    })
+    expect(result).toBeUndefined()
   })
 
   it("ignores non-HIBERNATED statuses", () => {

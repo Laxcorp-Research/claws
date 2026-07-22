@@ -1,7 +1,12 @@
 import { NextRequest } from "next/server"
 import { apiSuccess, apiError } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
-import { runningIdleWhere, warmIdleWhere } from "@/lib/hibernation/predicates"
+import {
+  runningIdleWhere,
+  warmIdleWhere,
+  wakeHibernatedWhere,
+} from "@/lib/hibernation/predicates"
+import { isWakeEligible } from "@/lib/hibernation/wake-geometry"
 
 function verifyAgentSecret(req: NextRequest): boolean {
   const auth = req.headers.get("Authorization")
@@ -32,21 +37,22 @@ export async function GET(req: NextRequest) {
       containerId: s.workspace.containerId!,
     }))
 
+  // P2.3: same where + isWakeEligible helper as /api/cron/hibernation.
+  // MUTATION: restoring upper-cutoff gt-now / inline 2m avg*2 clamp → dual-path drift.
   const wakeCandidates = await prisma.containerState.findMany({
-    where: {
-      containerPhase: "HIBERNATED",
-      nextHeartbeatAt: { lte: new Date(now.getTime() + 10 * 60 * 1000), gt: now },
-    },
+    where: wakeHibernatedWhere(),
     include: { workspace: { select: { id: true } } },
   })
 
   const toWake = wakeCandidates
     .filter((s) => {
-      const leadTime = s.avgWakeDurationMs
-        ? Math.min(600_000, Math.max(120_000, s.avgWakeDurationMs * 2))
-        : 5 * 60 * 1000
-      const wakeDeadline = new Date(s.nextHeartbeatAt!.getTime() - leadTime)
-      return now >= wakeDeadline
+      const hint = s.nextHeartbeatAt
+      if (!hint) return false
+      return isWakeEligible({
+        now,
+        nextHeartbeatAt: hint,
+        avgWakeDurationMs: s.avgWakeDurationMs,
+      })
     })
     .map((s) => ({
       workspaceId: s.workspaceId,

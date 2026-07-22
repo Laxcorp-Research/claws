@@ -34,6 +34,26 @@ describe("onCreditsExhausted", () => {
     mockSend.mockResolvedValue({ id: "em-1" })
   })
 
+  it("email copy says stopped (not paused) when claws were taken down", async () => {
+    ;(prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-copy",
+      email: "copy@example.com",
+      name: "Copy",
+      apiKeySource: "PLATFORM_CREDIT",
+      workspaces: [{ id: "ws-1", apiKeySourceOverride: null }],
+      creditAccount: { initialGrantCents: 5000 },
+    })
+    ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    })
+
+    await onCreditsExhausted("user-copy")
+
+    const html = (mockSend.mock.calls[0][0] as { html: string }).html
+    expect(html).toContain("We've stopped 1 running Claw.")
+    expect(html).not.toContain("We've paused")
+  })
+
   it("emails the amount the user was ACTUALLY granted, not a hardcoded value", async () => {
     // Legacy account granted the old $25 (2500c). The email must say $25.00,
     // proving the copy is sourced dynamically and won't misreport for the

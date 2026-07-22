@@ -121,11 +121,91 @@ describe("hibernation cron — budget guard", () => {
   })
 })
 
-describe("hibernation cron — warmIdle honesty", () => {
-  it("null lastChannelMessageAt WARM claw is NOT hibernated (predicate excludes null)", async () => {
+describe("hibernation cron — P2.3 wake geometry", () => {
+  it("past-due hint wakes (no gt:now upper cutoff)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-20T12:10:00.000Z"))
+
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([]) // runningIdle
-      .mockResolvedValueOnce([]) // warmIdle — empty because null never matches
+      .mockResolvedValueOnce([]) // warmIdle
+      .mockResolvedValueOnce([
+        {
+          workspaceId: "past-due",
+          nextHeartbeatAt: new Date("2026-07-20T12:00:00.000Z"),
+          avgWakeDurationMs: 44_448,
+        },
+      ])
+      .mockResolvedValueOnce([]) // stuck
+
+    mockWake.mockResolvedValue(undefined)
+    const res = await callCron()
+    expect(res.status).toBe(200)
+    expect(mockWake).toHaveBeenCalledWith("past-due")
+    const json = await res.json()
+    expect(json.data.woke).toBe(1)
+
+    const wakeWhere = (prismaMock.containerState.findMany as ReturnType<typeof vi.fn>).mock
+      .calls[2][0].where
+    expect(wakeWhere).toEqual({
+      containerPhase: "HIBERNATED",
+      nextHeartbeatAt: { not: null },
+    })
+    expect(JSON.stringify(wakeWhere)).not.toContain('"gt"')
+
+    expect(json.data.wakeEligibility).toEqual([
+      expect.objectContaining({
+        workspaceId: "past-due",
+        nextHeartbeatAt: "2026-07-20T12:00:00.000Z",
+        eligible: true,
+        pastDue: true,
+        leadMs: expect.any(Number),
+        deadline: expect.any(String),
+      }),
+    ])
+    expect(json.data.wakeLead.minLeadMs).toBe(8 * 60 * 1000)
+
+    vi.useRealTimers()
+  })
+
+  it("eligibility observability lists ineligible candidates (not silent skip)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-20T15:50:00.000Z"))
+
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          workspaceId: "early",
+          nextHeartbeatAt: new Date("2026-07-20T16:00:00.000Z"),
+          avgWakeDurationMs: 44_448,
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    const res = await callCron()
+    const json = await res.json()
+    expect(json.data.woke).toBe(0)
+    expect(json.data.wakeEligibility).toHaveLength(1)
+    expect(json.data.wakeEligibility[0]).toMatchObject({
+      workspaceId: "early",
+      eligible: false,
+      pastDue: false,
+      deadline: "2026-07-20T15:52:00.000Z",
+      leadMs: 8 * 60 * 1000,
+    })
+    expect(mockWake).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+})
+
+describe("hibernation cron — warmIdle honesty (P1.1)", () => {
+  it("null stamp + fresh channelsConnectedAt is protected (predicate requires connected>24h)", async () => {
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([]) // runningIdle
+      .mockResolvedValueOnce([]) // warmIdle — empty for fresh-null
       .mockResolvedValueOnce([]) // wake
       .mockResolvedValueOnce([]) // stuck
 
@@ -136,13 +216,11 @@ describe("hibernation cron — warmIdle honesty", () => {
     const warmCall = (prismaMock.containerState.findMany as ReturnType<typeof vi.fn>).mock
       .calls[1][0]
     expect(warmCall.where.containerPhase).toBe("WARM")
-    expect(warmCall.where.lastChannelMessageAt).toEqual({ lt: expect.any(Date) })
-    // nextHeartbeat OR is top-level; lastChannelMessageAt must be lt-only (no null).
-    expect(warmCall.where).toHaveProperty("OR")
-    expect(JSON.stringify(warmCall.where.lastChannelMessageAt)).not.toContain("null")
-    expect(JSON.stringify(warmCall.where)).not.toMatch(
-      /"lastChannelMessageAt":null/,
-    )
+    expect(warmCall.where.AND).toBeDefined()
+    expect(JSON.stringify(warmCall.where)).toContain("channelsConnectedAt")
+    // Null alone is insufficient — must be paired with channelsConnectedAt < cutoff.
+    expect(JSON.stringify(warmCall.where.AND)).toContain('"lastChannelMessageAt":null')
+    expect(JSON.stringify(warmCall.where.AND)).toContain("channelsConnectedAt")
   })
 
   it("25h-old lastChannelMessageAt WARM claw IS hibernated", async () => {

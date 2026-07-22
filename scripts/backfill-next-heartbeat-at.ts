@@ -1,13 +1,11 @@
 /**
  * scripts/backfill-next-heartbeat-at.ts
  *
- * Lifecycle P2.1 — one-time arm of ContainerState.nextHeartbeatAt for ALL
- * claws that have a cron and/or interval schedule, regardless of workspace
- * status (HIBERNATED fixture included).
- *
- * When DB schedule columns are null, recovers cron exprs from the gzip
- * runtime snapshot (prefer cron/jobs.json; else HEARTBEAT.md `cron: "..."` lines)
- * and persists heartbeatCronExpressions on apply.
+ * Lifecycle P2.2 — re-derive ContainerState heartbeat columns + nextHeartbeatAt
+ * from the workspace's orchestrator schedule (Builder frequency/time OR
+ * HEARTBEAT.md cron lines on the Agent row / template install). Single source
+ * with the generator — NOT from gzip snapshot HEARTBEAT.md (removed #337
+ * hydrate; that bandaid wrote cols the generator never emitted).
  *
  * USAGE
  *   Dry-run (DEFAULT):
@@ -19,11 +17,14 @@
  *   - Defaults to DRY-RUN.
  *   - Idempotent: same wall clock → same hint; already-armed rows skipped.
  */
-import { gunzipSync } from "node:zlib"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "../src/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { computeNextHeartbeatAt } from "../src/lib/hibernation/next-heartbeat"
+import {
+  computeNextHeartbeatAt,
+  parseHeartbeatEveryToMs,
+} from "../src/lib/hibernation/next-heartbeat"
+import { resolveHeartbeatSchedule, toAgentId } from "../src/lib/openclaw/generator"
 
 export interface BackfillRow {
   workspaceId: string
@@ -31,8 +32,9 @@ export interface BackfillRow {
   workspaceName: string
   priorNextHeartbeatAt: Date | null
   nextHeartbeatAt: Date | null
-  scheduleSource: "db" | "snapshot-jobs" | "snapshot-heartbeat-md" | "none"
+  scheduleSource: "db" | "agent-schedule" | "none"
   hydratedCronExpressions?: string
+  hydratedIntervalMs?: number | null
   skippedReason?: string
 }
 
@@ -44,13 +46,25 @@ export interface BackfillResult {
   skipped: number
 }
 
+export type BackfillOrchestrator = {
+  name: string
+  agentSlug: string | null
+  heartbeatFrequency: string | null
+  heartbeatTime: string | null
+  heartbeatMd: string | null
+}
+
 export type BackfillStateRow = {
   workspaceId: string
   nextHeartbeatAt: Date | null
   heartbeatCronExpressions: string | null
   heartbeatInterval: number | null
-  runtimeStateSnapshot: Uint8Array | null
-  workspace: { status: string; name: string }
+  workspace: {
+    status: string
+    name: string
+    timezone: string | null
+    agents: BackfillOrchestrator[]
+  }
 }
 
 /** Narrow DB surface so unit tests can inject a stub without full Prisma delegates. */
@@ -64,62 +78,10 @@ export interface BackfillDb {
       where: { workspaceId: string }
       data: {
         nextHeartbeatAt: Date
-        heartbeatCronExpressions?: string
+        heartbeatCronExpressions?: string | null
+        heartbeatInterval?: number | null
       }
     }) => Promise<unknown>
-  }
-}
-
-export function extractCronExprsFromHeartbeatMd(text: string): string[] {
-  return [...text.matchAll(/cron:\s*"([^"]+)"/g)]
-    .map((m) => m[1])
-    .filter((e): e is string => typeof e === "string" && e.length > 0)
-}
-
-export function cronJobsJsonFromExprs(exprs: string[]): string | null {
-  const unique = [...new Set(exprs)]
-  if (unique.length === 0) return null
-  return JSON.stringify(
-    unique.map((expr) => ({
-      schedule: { kind: "cron", expr, tz: "UTC" },
-    })),
-  )
-}
-
-/**
- * Recover OpenClaw-shaped cron jobs JSON from a gzip runtime snapshot.
- * Prefer cron/jobs.json; else union cron lines from all HEARTBEAT.md files.
- */
-export function recoverCronJobsJsonFromSnapshot(
-  gzipBytes: Uint8Array | Buffer,
-): { json: string; source: "snapshot-jobs" | "snapshot-heartbeat-md" } | null {
-  try {
-    const parsed = JSON.parse(gunzipSync(Buffer.from(gzipBytes)).toString("utf8")) as {
-      files?: Record<string, string>
-    }
-    const files = parsed.files ?? {}
-
-    const jobsKey = Object.keys(files).find(
-      (p) => p === "cron/jobs.json" || p.endsWith("/cron/jobs.json"),
-    )
-    if (jobsKey) {
-      const raw = Buffer.from(files[jobsKey]!, "base64").toString("utf8")
-      if (raw.trim().length > 0 && raw.trim() !== "[]") {
-        return { json: raw, source: "snapshot-jobs" }
-      }
-    }
-
-    const exprs: string[] = []
-    for (const path of Object.keys(files)) {
-      if (!path.endsWith("HEARTBEAT.md")) continue
-      const raw = Buffer.from(files[path]!, "base64").toString("utf8")
-      exprs.push(...extractCronExprsFromHeartbeatMd(raw))
-    }
-    const json = cronJobsJsonFromExprs(exprs)
-    if (!json) return null
-    return { json, source: "snapshot-heartbeat-md" }
-  } catch {
-    return null
   }
 }
 
@@ -131,6 +93,52 @@ function hasDbInterval(interval: number | null | undefined): boolean {
   return typeof interval === "number" && Number.isFinite(interval) && interval > 0
 }
 
+/**
+ * Derive cron JSON + interval ms from orchestrator Agent schedule fields.
+ * Same resolver the generator uses at deploy time.
+ */
+export function deriveScheduleFromOrchestrator(args: {
+  orchestrator: BackfillOrchestrator | undefined
+  timezone: string | null
+}): {
+  cronJson: string | null
+  intervalMs: number | null
+  source: "agent-schedule" | "none"
+} {
+  const orch = args.orchestrator
+  if (!orch) {
+    return { cronJson: null, intervalMs: null, source: "none" }
+  }
+  const slug =
+    (orch.agentSlug && orch.agentSlug.trim().length > 0
+      ? orch.agentSlug.trim()
+      : null) ?? toAgentId(orch.name)
+  const resolved = resolveHeartbeatSchedule(
+    orch.heartbeatFrequency,
+    orch.heartbeatTime,
+    args.timezone,
+    slug,
+    orch.heartbeatMd,
+  )
+  if (!resolved) {
+    return { cronJson: null, intervalMs: null, source: "none" }
+  }
+
+  const jobs = [
+    ...(resolved.cronJob ? [resolved.cronJob] : []),
+    ...(resolved.mdCronJobs ?? []),
+  ]
+  const cronJson = jobs.length > 0 ? JSON.stringify(jobs) : null
+  const intervalMs = resolved.intervalConfig?.every
+    ? parseHeartbeatEveryToMs(resolved.intervalConfig.every)
+    : null
+
+  if (!cronJson && !intervalMs) {
+    return { cronJson: null, intervalMs: null, source: "none" }
+  }
+  return { cronJson, intervalMs, source: "agent-schedule" }
+}
+
 export async function planAndMaybeApply(
   db: BackfillDb,
   opts: { confirm: boolean; now?: Date; log?: (msg: string) => void },
@@ -138,15 +146,30 @@ export async function planAndMaybeApply(
   const log = opts.log ?? console.log
   const now = opts.now ?? new Date()
 
-  // All ContainerState rows — schedule may live only in the snapshot.
   const states = await db.containerState.findMany({
     select: {
       workspaceId: true,
       nextHeartbeatAt: true,
       heartbeatCronExpressions: true,
       heartbeatInterval: true,
-      runtimeStateSnapshot: true,
-      workspace: { select: { status: true, name: true } },
+      workspace: {
+        select: {
+          status: true,
+          name: true,
+          timezone: true,
+          agents: {
+            where: { role: "ORCHESTRATOR" },
+            select: {
+              name: true,
+              agentSlug: true,
+              heartbeatFrequency: true,
+              heartbeatTime: true,
+              heartbeatMd: true,
+            },
+            take: 1,
+          },
+        },
+      },
     },
   })
 
@@ -156,25 +179,27 @@ export async function planAndMaybeApply(
 
   for (const state of states) {
     let cronExprs = state.heartbeatCronExpressions
-    let scheduleSource: BackfillRow["scheduleSource"] = hasDbCron(cronExprs)
-      ? "db"
-      : hasDbInterval(state.heartbeatInterval)
-        ? "db"
-        : "none"
+    let intervalMs = state.heartbeatInterval
+    let scheduleSource: BackfillRow["scheduleSource"] =
+      hasDbCron(cronExprs) || hasDbInterval(intervalMs) ? "db" : "none"
     let hydratedCron: string | undefined
+    let hydratedInterval: number | null | undefined
 
-    if (!hasDbCron(cronExprs) && !hasDbInterval(state.heartbeatInterval)) {
-      if (state.runtimeStateSnapshot) {
-        const recovered = recoverCronJobsJsonFromSnapshot(state.runtimeStateSnapshot)
-        if (recovered) {
-          cronExprs = recovered.json
-          scheduleSource = recovered.source
-          hydratedCron = recovered.json
-        }
+    if (!hasDbCron(cronExprs) && !hasDbInterval(intervalMs)) {
+      const derived = deriveScheduleFromOrchestrator({
+        orchestrator: state.workspace.agents[0],
+        timezone: state.workspace.timezone,
+      })
+      if (derived.source === "agent-schedule") {
+        cronExprs = derived.cronJson
+        intervalMs = derived.intervalMs
+        scheduleSource = "agent-schedule"
+        hydratedCron = derived.cronJson ?? undefined
+        hydratedInterval = derived.intervalMs
       }
     }
 
-    if (!hasDbCron(cronExprs) && !hasDbInterval(state.heartbeatInterval) && !hydratedCron) {
+    if (!hasDbCron(cronExprs) && !hasDbInterval(intervalMs)) {
       skipped++
       rows.push({
         workspaceId: state.workspaceId,
@@ -191,7 +216,7 @@ export async function planAndMaybeApply(
     const nextHeartbeatAt = computeNextHeartbeatAt({
       now,
       heartbeatCronExpressions: cronExprs,
-      heartbeatIntervalMs: state.heartbeatInterval,
+      heartbeatIntervalMs: intervalMs,
     })
 
     if (!nextHeartbeatAt) {
@@ -204,6 +229,7 @@ export async function planAndMaybeApply(
         nextHeartbeatAt: null,
         scheduleSource,
         hydratedCronExpressions: hydratedCron,
+        hydratedIntervalMs: hydratedInterval,
         skippedReason: "compute-null",
       })
       continue
@@ -212,8 +238,11 @@ export async function planAndMaybeApply(
     const hintUnchanged =
       state.nextHeartbeatAt !== null &&
       state.nextHeartbeatAt.getTime() === nextHeartbeatAt.getTime()
-    const needsCronPersist = Boolean(hydratedCron) && !hasDbCron(state.heartbeatCronExpressions)
-    const unchanged = hintUnchanged && !needsCronPersist
+    const needsCronPersist =
+      Boolean(hydratedCron) && !hasDbCron(state.heartbeatCronExpressions)
+    const needsIntervalPersist =
+      hydratedInterval != null && !hasDbInterval(state.heartbeatInterval)
+    const unchanged = hintUnchanged && !needsCronPersist && !needsIntervalPersist
 
     rows.push({
       workspaceId: state.workspaceId,
@@ -223,6 +252,7 @@ export async function planAndMaybeApply(
       nextHeartbeatAt,
       scheduleSource,
       hydratedCronExpressions: hydratedCron,
+      hydratedIntervalMs: hydratedInterval,
       skippedReason: unchanged ? "already-armed" : undefined,
     })
 
@@ -238,6 +268,9 @@ export async function planAndMaybeApply(
           nextHeartbeatAt,
           ...(needsCronPersist && hydratedCron
             ? { heartbeatCronExpressions: hydratedCron }
+            : {}),
+          ...(needsIntervalPersist && hydratedInterval != null
+            ? { heartbeatInterval: hydratedInterval }
             : {}),
         },
       })
