@@ -137,7 +137,10 @@ jobs:
             --jq '[.statusCheckRollup[]? | select(.name != null and .name != "")] | length')
           echo "permissions-probe OK: statusCheckRollup readable on PR #$PR (named checks=$COUNT)"
 
-      - name: Resolve GHCR digests for :<version> and :candidate
+      # PREFLIGHT: requested VERSION digest must exist in GHCR.
+      # Do NOT require :candidate equality — raw-upstream builds no longer move
+      # :candidate, so candidate drift must not block promote (no skip flag needed).
+      - name: Resolve GHCR digest for requested :<version>
         id: digests
         env:
           GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
@@ -145,6 +148,7 @@ jobs:
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
+          # VERSION_DIGEST_EXISTS_ASSERT
           if [ -z "${GHCR_READ_USER:-}" ] || [ -z "${GHCR_READ_PAT:-}" ]; then
             echo "::error::vars.GHCR_READ_USER and secrets.GHCR_READ_PAT must both be configured."
             exit 1
@@ -169,34 +173,31 @@ jobs:
             echo "::error:::$VERSION does not exist in GHCR. Cannot promote."
             exit 1
           fi
-          echo "Resolved :$VERSION → $VERSION_DIGEST"
+          echo "VERSION_DIGEST_EXISTS_ASSERT: :$VERSION → $VERSION_DIGEST"
           echo "version_digest=$VERSION_DIGEST" >> "$GITHUB_OUTPUT"
-
+          # Informational only — never gates promote (CANDIDATE_DRIFT_OK).
           CANDIDATE_DIGEST=$(curl -sS -D - -o /dev/null \
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: $ACCEPT" \
             "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/candidate" \
             | tr -d '\r' | awk '/^docker-content-digest:/{print $2}' || echo "")
-          echo "Resolved :candidate → ${CANDIDATE_DIGEST:-<missing>}"
+          if [ -n "${CANDIDATE_DIGEST:-}" ] && [ "$VERSION_DIGEST" != "$CANDIDATE_DIGEST" ]; then
+            echo "CANDIDATE_DRIFT_OK: :candidate=$CANDIDATE_DIGEST != :$VERSION=$VERSION_DIGEST (ignored)"
+          fi
           echo "candidate_digest=${CANDIDATE_DIGEST:-}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify :candidate matches :<version>
-        if: ${{ !inputs.skip_candidate_check }}
+      - name: Assert requested version digest exists
         env:
           VERSION: ${{ needs.gate.outputs.version }}
           VD: ${{ steps.digests.outputs.version_digest }}
-          CD: ${{ steps.digests.outputs.candidate_digest }}
         run: |
           set -euo pipefail
-          if [ -z "${CD:-}" ]; then
-            echo "::error:::candidate missing. Re-run build-openclaw-image.yml or set skip_candidate_check=true."
+          # VERSION_DIGEST_EXISTS_ASSERT — skip_candidate_check is deprecated/no-op.
+          if [ -z "${VD:-}" ]; then
+            echo "::error::VERSION_DIGEST_EXISTS_ASSERT failed: empty digest for :$VERSION"
             exit 1
           fi
-          if [ "$VD" != "$CD" ]; then
-            echo "::error::Digest mismatch: :candidate=$CD vs :$VERSION=$VD."
-            exit 1
-          fi
-          echo "Candidate digest matches :$VERSION ($VD)."
+          echo "VERSION_DIGEST_EXISTS_ASSERT passed for :$VERSION ($VD)."
 
       # Staging-proven gate: public GET /api/versions/stable on staging (already
       # exists; no new secret). Promote-to-prod requires the version to already
