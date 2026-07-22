@@ -364,21 +364,8 @@ export async function createService(config: {
     },
   );
 
-  const domainData = await railwayGql<{
-    serviceDomainCreate: { domain: string };
-  }>(
-    `mutation($input: ServiceDomainCreateInput!) {
-      serviceDomainCreate(input: $input) { domain }
-    }`,
-    {
-      input: {
-        serviceId,
-        environmentId: RAILWAY_ENVIRONMENT_ID,
-      },
-    },
-  );
-
-  const domain = domainData.serviceDomainCreate.domain;
+  // DOMAIN_REUSE_QUERY_FIRST — never unconditional serviceDomainCreate.
+  const domain = await ensureServiceDomain(serviceId);
 
   await railwayGql(
     `mutation($serviceId: String!, $environmentId: String!) {
@@ -430,6 +417,35 @@ async function queryServiceDomain(serviceId: string): Promise<string | null> {
   }
 }
 
+/**
+ * DOMAIN_REUSE_QUERY_FIRST: reuse an existing Railway service domain when
+ * present; only call serviceDomainCreate when none exists.
+ * MUTATION: unconditional create (skip query) → domain-reuse contract fails.
+ */
+async function ensureServiceDomain(serviceId: string): Promise<string> {
+  const existing = await queryServiceDomain(serviceId);
+  if (existing) {
+    log.info('Reusing existing Railway service domain', { serviceId, domain: existing });
+    return existing;
+  }
+
+  const domainData = await railwayGql<{
+    serviceDomainCreate: { domain: string };
+  }>(
+    `mutation($input: ServiceDomainCreateInput!) {
+      serviceDomainCreate(input: $input) { domain }
+    }`,
+    {
+      input: {
+        serviceId,
+        environmentId: RAILWAY_ENVIRONMENT_ID,
+      },
+    },
+  );
+
+  return domainData.serviceDomainCreate.domain;
+}
+
 export async function updateAndRedeployService(
   serviceId: string,
   envVars: Record<string, string>,
@@ -474,21 +490,8 @@ export async function updateAndRedeployService(
     },
   );
 
-  let domain = '';
-  try {
-    const domainData = await railwayGql<{
-      serviceDomainCreate: { domain: string };
-    }>(
-      `mutation($input: ServiceDomainCreateInput!) {
-        serviceDomainCreate(input: $input) { domain }
-      }`,
-      { input: { serviceId, environmentId: RAILWAY_ENVIRONMENT_ID } },
-    );
-    domain = domainData.serviceDomainCreate.domain;
-  } catch {
-    // Domain already exists -- query Railway for the actual domain
-    domain = await queryServiceDomain(serviceId) ?? '';
-  }
+  // DOMAIN_REUSE_QUERY_FIRST — same path as createService.
+  const domain = await ensureServiceDomain(serviceId);
 
   await railwayGql(
     `mutation($serviceId: String!, $environmentId: String!) {
