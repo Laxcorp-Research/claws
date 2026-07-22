@@ -5,7 +5,8 @@ import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
 import { IMPLEMENTED_SLUGS, hasValidator, validateToolKey, type ValidationResult } from "@/lib/tools/validators"
 
-export const maxDuration = 55
+// before: 55 — after: 300 (belt with staging cron scheduler routes)
+export const maxDuration = 300
 
 const CONNECTION_HEALTH_BATCH_LIMIT = 50
 const MCP_SESSION_HEALTH_BATCH_LIMIT = 25

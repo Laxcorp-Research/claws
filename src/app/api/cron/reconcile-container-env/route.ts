@@ -21,7 +21,8 @@ import { healWorkspace } from "@/lib/openclaw/heal-workspace"
 // rotation + summary accumulator + a no-op loop body. PR-8a/C/B fills in the
 // per-workspace comparison; PR-8a/C/C adds the transient-window exclusions.
 
-export const maxDuration = 55
+// before: 55 — after: 300 (belt with hibernation / health-monitor cron routes)
+export const maxDuration = 300
 
 // Per-tick processing cap (contract §6). Bounds Railway reads + tick duration;
 // the oldest-first ordering (lastEnvReconcileAt ASC NULLS FIRST) + the
@@ -31,7 +32,7 @@ export const maxDuration = 55
 // At */5 cadence with cap=10 = 120 workspaces/hr throughput
 // (vs */15 × 20 = 80/hr — higher cadence + smaller batch is net better).
 // Bounds against: (a) Railway read timeouts (10s × cap), (b) heal triggers
-// (~2-3s × cap). Worst case 40-50s comfortably under maxDuration=55s.
+// (~2-3s × cap). Worst case 40-50s comfortably under maxDuration=300s.
 const RECONCILE_MAX_PER_RUN = 10
 
 const TICK_LOCK_KEY = "reconcile:env:tick"
