@@ -66,4 +66,12 @@ describe("admin/versions Latest badge is derived from newest releasedAt (GH #5)"
     expect(flex.textContent).toContain("2026.5.22-2")
     expect(flex.textContent).not.toContain("2.5.0")
   })
+
+  it("labels 2.5.0 as Never promotable and hides Promote on that row", async () => {
+    render(<AdminVersionsPage />)
+
+    const neverBadges = await screen.findAllByText("Never promotable")
+    expect(neverBadges.length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText("Promote to Stable")).toBeNull()
+  })
 })

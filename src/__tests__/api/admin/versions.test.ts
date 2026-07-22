@@ -15,6 +15,11 @@ vi.mock('resend', () => ({
   },
 }));
 
+const mockLookupGhcrManifest = vi.fn();
+vi.mock('@/lib/ghcr/manifest', () => ({
+  lookupGhcrManifest: (...args: unknown[]) => mockLookupGhcrManifest(...args),
+}));
+
 process.env.ADMIN_EMAILS = 'admin@test.com';
 
 const ADMIN_USER = { id: 'admin-1', email: 'admin@test.com', name: 'Admin' };
@@ -61,6 +66,10 @@ describe('Version Management API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSessionUser.mockResolvedValue(ADMIN_USER);
+    mockLookupGhcrManifest.mockResolvedValue({
+      exists: true,
+      digest: 'sha256:abc',
+    });
   });
 
   describe('GET /api/versions/stable (public)', () => {
@@ -175,6 +184,40 @@ describe('Version Management API', () => {
       const req = createMockRequest('http://localhost:3000/api/admin/versions/ver-1/promote', { method: 'POST' });
       const res = await promoteVersion(req, { params: Promise.resolve({ id: 'ver-1' }) });
       expect(res.status).toBe(400);
+    });
+
+    it('rejects never-promotable raw-calendar / seed relic (guard absent → would promote junk)', async () => {
+      const junk = {
+        ...MOCK_VERSION_LATEST,
+        id: 'ver-junk',
+        version: '2026.7.1',
+        dockerImage: 'ghcr.io/laxcorp-research/openclaw-runtime:2026.7.1',
+      };
+      (prismaMock.openClawVersion.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(junk);
+
+      const req = createMockRequest('http://localhost:3000/api/admin/versions/ver-junk/promote', {
+        method: 'POST',
+      });
+      const res = await promoteVersion(req, { params: Promise.resolve({ id: 'ver-junk' }) });
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error?.message).toMatch(/raw-calendar|never promotable/i);
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects promote when GHCR manifest is missing', async () => {
+      mockLookupGhcrManifest.mockResolvedValue({ exists: false, digest: null });
+      (prismaMock.openClawVersion.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+        MOCK_VERSION_LATEST,
+      );
+
+      const req = createMockRequest('http://localhost:3000/api/admin/versions/ver-2/promote', {
+        method: 'POST',
+      });
+      const res = await promoteVersion(req, { params: Promise.resolve({ id: 'ver-2' }) });
+      expect(res.status).toBe(400);
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
     });
   });
 

@@ -14,10 +14,11 @@ name: Build OpenClaw Runtime Image
 #   3. Unsafe `|| git clone main` fallback: removed. If the v-prefixed tag clone
 #      fails the job fails loudly instead of silently shipping unpinned HEAD.
 #
-# Tagging policy (PR-1, "candidate" pattern):
+# Tagging policy:
 #   - :base-<version>  immutable per-version base image (upstream OpenClaw)
 #   - :<version>       immutable per-version extended image (with our overlay)
-#   - :candidate       MOVING pointer to the newest auto-built extended image
+#   - :candidate       NOT moved here (STOP_MOVING_CANDIDATE_ASSERT) — promote
+#                      gates on the requested :<version> digest only
 #   - :latest          NOT moved here. Only the manual
 #                      promote-openclaw-image.yml workflow rewrites :latest,
 #                      so production deploys never advance without a human gate.
@@ -396,15 +397,17 @@ jobs:
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.upstream_version }}
             # -8 emission-version: bake overlay SHA into container env for boot telemetry.
             CLAWS_OVERLAY_SHA=${{ steps.overlay.outputs.sha }}
-          # PR-1: auto-build pushes :<version> (immutable) and :candidate
-          # (moving). NEVER :latest — only promote-openclaw-image.yml
-          # rewrites :latest, gated by manual review.
+          # Auto-build pushes immutable :<version> only.
+          # Do NOT move :candidate — promote preflight gates on the requested
+          # version digest, not :candidate equality (raw-calendar builds were
+          # drifting the pointer and blocking promote).
+          # NEVER :latest — only promote-openclaw-image.yml rewrites :latest.
           # PR-4c: output tags carry the SUFFIXED output_version so a
           # container/-only rebuild lands on a NEW immutable tag
           # (e.g. :2026.5.22-1) without overwriting :<upstream-version>.
+          # STOP_MOVING_CANDIDATE_ASSERT
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.output_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:candidate
           # PR-2b #7: bake the overlay source SHA into the image as a
           # Docker label. The skip-check on the next run reads this back
           # via GHCR manifest/config blob lookup to decide whether to
@@ -493,14 +496,14 @@ jobs:
       - name: Summary
         if: steps.check.outputs.skip != 'true'
         run: |
-          echo "### OpenClaw Runtime Image Built (candidate)" >> $GITHUB_STEP_SUMMARY
+          echo "### OpenClaw Runtime Image Built" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Output version (our tag):** \`${{ steps.detect.outputs.output_version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Upstream version:** \`${{ steps.detect.outputs.upstream_version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Upstream tag:** \`${{ steps.detect.outputs.upstream_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Base image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.detect.outputs.upstream_version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Immutable tag:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.detect.outputs.output_version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Candidate pointer:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:candidate\` (NOT :latest)" >> $GITHUB_STEP_SUMMARY
+          echo "- **:candidate pointer:** NOT updated (STOP_MOVING_CANDIDATE_ASSERT)" >> $GITHUB_STEP_SUMMARY
           echo "- **Digest:** \`${{ steps.build_extended.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Extensions:** ${{ env.EXTENSIONS }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Includes overlay:** process-manager.mjs, credit-proxy.mjs" >> $GITHUB_STEP_SUMMARY
