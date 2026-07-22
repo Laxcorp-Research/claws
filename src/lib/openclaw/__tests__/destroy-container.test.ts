@@ -112,13 +112,45 @@ describe("destroyContainer", () => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "ws-1",
       containerId: "svc-abc",
+      containerHost: "claw-ws-1.up.railway.app",
     })
     ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
     mockDeleteService.mockRejectedValueOnce(new Error("Service not found"))
 
     await expect(destroyContainer("ws-1")).resolves.toBeUndefined()
-    expect(prismaMock.workspace.update).toHaveBeenCalled()
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          containerId: null,
+          containerHost: null,
+        }),
+      }),
+    )
     expect(prismaMock.containerState.updateMany).toHaveBeenCalled()
+  })
+
+  it("keeps containerHost (and containerId) when delete fails and service may survive", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "ws-1",
+      containerId: "svc-alive",
+      containerName: "claw-ws-1",
+      containerHost: "claw-ws-1.up.railway.app",
+    })
+    ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
+    mockDeleteService.mockRejectedValueOnce(new Error("Railway API 503 unavailable"))
+
+    await destroyContainer("ws-1")
+
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "STOPPED",
+          containerId: "svc-alive",
+          containerName: "claw-ws-1",
+          containerHost: "claw-ws-1.up.railway.app",
+        }),
+      }),
+    )
   })
 
   it("does not throw when ContainerState row does not exist (never-deployed workspace)", async () => {
