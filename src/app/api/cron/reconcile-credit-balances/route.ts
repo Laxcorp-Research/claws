@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db"
 import { redis } from "@/lib/redis"
 import { log } from "@/lib/logger"
 
-export const maxDuration = 30
+// before: 30 — after: 300 (belt with staging cron scheduler routes)
+export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization")

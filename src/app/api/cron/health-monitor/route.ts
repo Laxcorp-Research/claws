@@ -54,7 +54,8 @@ import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
 // The decision flow is explicit (no early returns) so the structured
 // log at the bottom always records the full before→after transition.
 
-export const maxDuration = 55
+// before: 55 — after: 300 (belt with hibernation / reconcile cron routes)
+export const maxDuration = 300
 
 // Debounce thresholds. Mutation tests in
 //   src/app/api/cron/health-monitor/__tests__/route.test.ts

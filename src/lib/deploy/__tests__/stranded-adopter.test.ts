@@ -96,6 +96,53 @@ describe("adoptStrandedDeployments", () => {
     )
   })
 
+  it("killed-mid-wake shape (WAKING + GENERATING past max age) is adopted for retry", async () => {
+    // Mid-flight-504 / killed-mid-wake: workspace stuck WAKING, deploy left
+    // GENERATING beyond STRANDED_DEPLOY_MAX_AGE_MIN — P4 watchdog adopts.
+    const nowMs = Date.UTC(2026, 6, 22, 16, 15, 0)
+    const startedAt = new Date(nowMs - 12 * 60 * 1000) // > default 10m
+    ;(prismaMock.deployment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "dep-midwake",
+        workspaceId: "ws-midwake",
+        status: "GENERATING",
+        startedAt,
+        workspace: {
+          id: "ws-midwake",
+          status: "WAKING",
+          containerId: null,
+          containerState: { containerPhase: "WAKING" },
+        },
+      },
+    ] as never)
+
+    const result = await adoptStrandedDeployments(nowMs)
+    expect(result.adopted).toBe(1)
+    expect(prismaMock.deployment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ["GENERATING", "PROVISIONING"] },
+          startedAt: { lt: new Date(nowMs - 10 * 60 * 1000) },
+        }),
+      }),
+    )
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "ws-midwake" },
+        data: { status: "HIBERNATED" },
+      }),
+    )
+    expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: "ws-midwake" },
+        data: expect.objectContaining({
+          containerPhase: "HIBERNATED",
+          wakeRequestedAt: null,
+        }),
+      }),
+    )
+  })
+
   it("MUTATION: health-monitor must call adoptStrandedDeployments (skip → fail)", () => {
     const src = readFileSync(
       join(process.cwd(), "src/app/api/cron/health-monitor/route.ts"),
