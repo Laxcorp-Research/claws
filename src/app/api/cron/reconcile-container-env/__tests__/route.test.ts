@@ -160,9 +160,9 @@ describe("reconcile-container-env cron — PR-8a/C/A skeleton", () => {
 
   // PR-8c invariant lock: the per-tick cap is 10. At */5 cadence this bounds the
   // worst-case tick (read timeouts + heal triggers, ~cap × a few s) under
-  // maxDuration=55s. Asserted via the actual scope-query `take` so it can't drift
+  // maxDuration=300s. Asserted via the actual scope-query `take` so it can't drift
   // even if the constant is renamed/reorganized. Defends against a future bump.
-  it("RECONCILE_MAX_PER_RUN is 10 (bounded for */5 cadence + maxDuration=55s)", async () => {
+  it("RECONCILE_MAX_PER_RUN is 10 (bounded for */5 cadence + maxDuration=300s)", async () => {
     await GET(req("Bearer test-cron-secret"))
     const args = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(args.take).toBe(10)

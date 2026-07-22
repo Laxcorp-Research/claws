@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { hibernateWorkspace, wakeWorkspace } from "@/lib/hibernation/manager"
@@ -16,19 +16,52 @@ import {
   type WakeEligibilityLine,
 } from "@/lib/hibernation/wake-geometry"
 
-export const maxDuration = 55
+// before: 55 — Vercel FUNCTION_INVOCATION_TIMEOUT when wakes awaited inline.
+// after: 300 — belt for sleep-side syncThenDestroy + after() wake fan-out headroom.
+export const maxDuration = 300
 
-// PR-2 (syncThenDestroy budget guard): hibernate routes through
-// syncThenDestroy, which adds a bounded pre-destroy /internal/sync-now call.
-// On this cron we use a 10s sync budget (matches the container's SIGTERM sync
-// window in process-manager.mjs). To avoid a sync being killed mid-write by
-// the 55s function cap, we stop starting NEW syncs once too little of the
-// budget remains and bare-destroy the rest (they get re-attempted with sync on
-// the next 2-min pass). The margin covers the Railway deleteService + DB writes
-// that follow each sync.
+// Sleep side stays INLINE (budget-guarded). Each hibernate awaits syncThenDestroy
+// with a 10s sync budget; skipSync flips near the function ceiling so a sync
+// cannot be killed mid-write. Wakes (deployToCloud) are the long pole and run
+// via after() per-workspace so the tick HTTP response returns in seconds.
 const HIBERNATE_SYNC_TIMEOUT_MS = 10_000
 const SYNC_DELETE_MARGIN_MS = 8_000
-const SYNC_BUDGET_CUTOFF_MS = maxDuration * 1000 - HIBERNATE_SYNC_TIMEOUT_MS - SYNC_DELETE_MARGIN_MS
+const SYNC_BUDGET_CUTOFF_MS =
+  maxDuration * 1000 - HIBERNATE_SYNC_TIMEOUT_MS - SYNC_DELETE_MARGIN_MS
+
+/**
+ * Schedule one wake in after(); failures are logged per-workspace and never
+ * reject sibling wakes. MUTATION: awaiting wakeWorkspace in the tick body →
+ * duration / isolation tests fail.
+ */
+function scheduleWake(workspaceId: string, reason: "eligible" | "stuck"): void {
+  after(async () => {
+    try {
+      await wakeWorkspace(workspaceId)
+      log.info("Hibernation cron: wake completed (after)", { workspaceId, reason })
+    } catch (err) {
+      log.error("Hibernation cron: wake failed (after)", {
+        workspaceId,
+        reason,
+        error: String(err),
+      })
+      if (reason === "stuck") {
+        await prisma
+          .$transaction([
+            prisma.workspace.update({
+              where: { id: workspaceId },
+              data: { status: "HIBERNATED" },
+            }),
+            prisma.containerState.update({
+              where: { workspaceId },
+              data: { containerPhase: "HIBERNATED", wakeRequestedAt: null },
+            }),
+          ])
+          .catch(() => {})
+      }
+    }
+  })
+}
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization")
@@ -48,7 +81,7 @@ export async function GET(req: NextRequest) {
   let errors = 0
   let syncSkippedForBudget = 0
 
-  // ─── HIBERNATE CANDIDATES ────────────────────────────
+  // ─── HIBERNATE CANDIDATES (inline, budget-guarded) ───
   // Predicates shared with /api/internal/hibernation/candidates (parity).
 
   const runningIdle = await prisma.containerState.findMany({
@@ -66,13 +99,9 @@ export async function GET(req: NextRequest) {
   )
 
   for (const candidate of hibernateCandidates) {
-    // Budget guard: once too little of the 55s ceiling remains, stop starting
-    // new syncs and bare-destroy the rest (skipSync) so a sync can't be killed
-    // mid-write. elapsed only grows, so this is monotonic.
     const skipSync = Date.now() - startedAt > SYNC_BUDGET_CUTOFF_MS
     if (skipSync) syncSkippedForBudget++
     try {
-      // P3: skipSync under refuse-unsafe refuses (never bare-destroys).
       const result = await hibernateWorkspace(candidate.workspaceId, {
         syncTimeoutMs: HIBERNATE_SYNC_TIMEOUT_MS,
         skipSync,
@@ -88,9 +117,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ─── WAKE CANDIDATES (P2.3 geometry) ─────────────────
-  // Shared where + isWakeEligible helper (parity with candidates API).
-  // No upper cutoff: past-due hints stay eligible (late wake beats never).
+  // ─── WAKE CANDIDATES (P2.3 geometry) — decide inline, execute in after() ─
 
   const wakeCandidates = await prisma.containerState.findMany({
     where: wakeHibernatedWhere(),
@@ -126,19 +153,12 @@ export async function GET(req: NextRequest) {
       continue
     }
 
-    try {
-      await wakeWorkspace(candidate.workspaceId)
-      woke++
-    } catch (err) {
-      errors++
-      log.error("Hibernation cron: wake failed", {
-        workspaceId: candidate.workspaceId,
-        error: String(err),
-      })
-    }
+    // WAKE_AFTER_FANOUT_ASSERT — do not await wakeWorkspace here.
+    scheduleWake(candidate.workspaceId, "eligible")
+    woke++
   }
 
-  // ─── STUCK WAKING RECOVERY ───────────────────────────
+  // ─── STUCK WAKING RECOVERY (also after()) ────────────
 
   const stuckThreshold = new Date(now.getTime() - 5 * 60 * 1000)
   const stuckWaking = await prisma.containerState.findMany({
@@ -150,27 +170,12 @@ export async function GET(req: NextRequest) {
   })
 
   for (const stuck of stuckWaking) {
-    try {
-      log.warn("Retrying stuck wake", { workspaceId: stuck.workspaceId })
-      await wakeWorkspace(stuck.workspaceId)
-      woke++
-    } catch {
-      errors++
-      await prisma
-        .$transaction([
-          prisma.workspace.update({
-            where: { id: stuck.workspaceId },
-            data: { status: "HIBERNATED" },
-          }),
-          prisma.containerState.update({
-            where: { workspaceId: stuck.workspaceId },
-            data: { containerPhase: "HIBERNATED", wakeRequestedAt: null },
-          }),
-        ])
-        .catch(() => {})
-    }
+    log.warn("Retrying stuck wake (scheduled after)", { workspaceId: stuck.workspaceId })
+    scheduleWake(stuck.workspaceId, "stuck")
+    woke++
   }
 
+  const durationMs = Date.now() - startedAt
   log.info("Hibernation cron complete", {
     hibernated,
     woke,
@@ -178,6 +183,8 @@ export async function GET(req: NextRequest) {
     stuckRetried: stuckWaking.length,
     syncSkippedForBudget,
     wakeCandidatesConsidered: wakeEligibility.length,
+    durationMs,
+    wakeExecution: "after-fanout",
   })
 
   return Response.json({
@@ -189,6 +196,8 @@ export async function GET(req: NextRequest) {
       errors,
       syncSkippedForBudget,
       wakeEligibility,
+      durationMs,
+      wakeExecution: "after-fanout",
       wakeLead: {
         minLeadMs: DEFAULT_WAKE_MIN_LEAD_MS,
         cronCadenceMs: DEFAULT_HIBERNATION_CRON_CADENCE_MS,
