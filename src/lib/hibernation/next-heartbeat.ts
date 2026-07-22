@@ -197,24 +197,29 @@ export function decideHeartbeatMissed(args: {
   nowMs: number
   graceMs?: number
 }): Date | null | undefined {
-  const clearIfSet = args.currentFlag ? null : undefined
+  // Sticky miss: clear ONLY on beat evidence in-window. Every other early exit
+  // is a no-op (undefined) — never clearIfSet during grace / wrong phase / etc.
+  // MUTATION: restoring clearIfSet on in-grace → late-wake sticky wiped at 16:01.
   if (args.containerPhase !== "RUNNING" && args.containerPhase !== "WARM") {
-    return clearIfSet
+    return undefined
   }
 
   const expected = lastExpectedCronFire(
     args.heartbeatCronExpressions,
     new Date(args.nowMs),
   )
-  if (!expected) return clearIfSet
+  if (!expected) return undefined
 
   const graceMs = args.graceMs ?? HEARTBEAT_MISS_GRACE_MS
   const windowEnd = expected.getTime() + graceMs
   const age = args.nowMs - expected.getTime()
-  if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
+  if (age > HEARTBEAT_MISS_MAX_AGE_MS) return undefined
   // P2.3: strict `<` — at exactly expected+grace the miss flags.
-  if (args.nowMs < windowEnd) return clearIfSet
-  if (args.hasHeartbeatEvidenceInWindow) return clearIfSet
+  if (args.nowMs < windowEnd) return undefined
+  // Beat evidence in the Watchtower window → clear sticky / no new flag.
+  if (args.hasHeartbeatEvidenceInWindow) {
+    return args.currentFlag ? null : undefined
+  }
 
   return args.currentFlag ?? new Date(args.nowMs)
 }
@@ -248,16 +253,17 @@ export function decideMissedWake(args: {
   nowMs: number
   graceMs?: number
 }): Date | null | undefined {
-  const clearIfSet = args.currentFlag ? null : undefined
-  if (args.workspaceStatus !== "HIBERNATED") return clearIfSet
-  if (!args.nextHeartbeatAt) return clearIfSet
+  // Sticky miss: this detector never clears (activity roller + beat evidence only).
+  // MUTATION: clearIfSet on non-HIBERNATED / in-grace → wipe late-wake sticky.
+  if (args.workspaceStatus !== "HIBERNATED") return undefined
+  if (!args.nextHeartbeatAt) return undefined
 
   const graceMs = args.graceMs ?? HEARTBEAT_MISS_GRACE_MS
   const expectedMs = args.nextHeartbeatAt.getTime()
   const age = args.nowMs - expectedMs
-  if (age > HEARTBEAT_MISS_MAX_AGE_MS) return clearIfSet
+  if (age > HEARTBEAT_MISS_MAX_AGE_MS) return undefined
   // P2.3: miss when expected ≤ now − grace (grace-edge inclusive).
-  if (expectedMs > args.nowMs - graceMs) return clearIfSet
+  if (expectedMs > args.nowMs - graceMs) return undefined
   if (args.hasBootSinceExpected) {
     // Wake landed — skip new miss flag; keep sticky existing flag.
     return undefined

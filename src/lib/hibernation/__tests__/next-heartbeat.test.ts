@@ -138,6 +138,21 @@ describe("decideHeartbeatMissed — Watchtower window", () => {
     expect(result).toBeUndefined()
   })
 
+  it("sticky miss: in-grace MUST NOT clear late-wake flag (16:01 class)", () => {
+    // Late-wake set sticky at 08:01; health-monitor still inside 08:00+10m grace.
+    const sticky = new Date("2026-07-20T08:01:00.000Z")
+    const nowMs = new Date("2026-07-20T08:05:00.000Z").getTime()
+    const result = decideHeartbeatMissed({
+      containerPhase: "RUNNING",
+      heartbeatCronExpressions: cron,
+      hasHeartbeatEvidenceInWindow: false,
+      currentFlag: sticky,
+      nowMs,
+    })
+    // MUTATION: return clearIfSet (null) here → fixture missed=null after pastDue wake.
+    expect(result).toBeUndefined()
+  })
+
   it("P2.3: grace-edge (exactly expected+grace) flags for RUNNING/WARM", () => {
     const nowMs = new Date("2026-07-20T08:10:00.000Z").getTime()
     const result = decideHeartbeatMissed({
@@ -328,6 +343,27 @@ describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
       nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
     })
     expect(result).toBeUndefined()
+  })
+
+  it("sticky miss: non-HIBERNATED / in-grace never clearIfSet", () => {
+    const sticky = new Date("2026-07-20T08:01:00.000Z")
+    const running = decideMissedWake({
+      workspaceStatus: "RUNNING",
+      nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
+      hasBootSinceExpected: false,
+      currentFlag: sticky,
+      nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
+    })
+    expect(running).toBeUndefined()
+
+    const inGrace = decideMissedWake({
+      workspaceStatus: "HIBERNATED",
+      nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
+      hasBootSinceExpected: false,
+      currentFlag: sticky,
+      nowMs: new Date("2026-07-20T08:05:00.000Z").getTime(),
+    })
+    expect(inGrace).toBeUndefined()
   })
 })
 
