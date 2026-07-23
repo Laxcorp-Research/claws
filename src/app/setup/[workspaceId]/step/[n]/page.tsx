@@ -1275,7 +1275,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           },
           {
             message: `Swapped ${oldTool.name} → ${newTool.name}`,
-            undo: () => patchToolRequirement("swap", newTool.slug, oldTool.slug),
+            undo: async () => {
+              await patchToolRequirement("swap", newTool.slug, oldTool.slug)
+              showSnackbar({ message: "Tool restored — reconnect required", variant: "success" })
+            },
           },
           showSnackbar,
         )

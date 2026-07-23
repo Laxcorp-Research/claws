@@ -200,7 +200,8 @@ export function ApiKeyManager() {
             status={credit.status}
           />
 
-          {credit.status === "ACTIVE" && hasValidAnthropicKey && (
+          {(credit.status === "ACTIVE" || credit.status === "EXHAUSTED") &&
+            hasValidAnthropicKey && (
             <div className="mb-3.5">
               <Button variant="outline" size="sm" className="text-[11px]" onClick={() => setSwitchConfirmOpen(true)}>
                 Switch to my key

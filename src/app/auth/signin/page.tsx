@@ -20,6 +20,7 @@ function SignInContent() {
   const [email, setEmail] = useState("")
   const [emailError, setEmailError] = useState<string | null>(null)
   const [magicLinkSent, setMagicLinkSent] = useState(false)
+  const [magicLinkError, setMagicLinkError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -45,9 +46,14 @@ function SignInContent() {
       return
     }
     setEmailError(null)
+    setMagicLinkError(null)
     setLoading(true)
-    await signIn("email", { email, callbackUrl: callbackUrl || "/my-claws", redirect: false })
+    const result = await signIn("email", { email, callbackUrl: callbackUrl || "/my-claws", redirect: false })
     setLoading(false)
+    if (result?.error) {
+      setMagicLinkError("Could not send magic link. Check the email and try again.")
+      return
+    }
     setMagicLinkSent(true)
   }
 
@@ -102,6 +108,11 @@ function SignInContent() {
             />
             {emailError && (
               <p className="text-[11px] text-[var(--err)] mt-1 mb-1 text-left">{emailError}</p>
+            )}
+            {magicLinkError && (
+              <AlertBanner variant="error">
+                <span>{magicLinkError}</span>
+              </AlertBanner>
             )}
             <Button
               variant="primary"

@@ -20,8 +20,19 @@ describe("PricingPage Batch A / A4 — marketplace sole source", () => {
   it("renders free/paid names from marketplace API", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(() =>
-        Promise.resolve({
+      vi.fn((input: RequestInfo | URL) => {
+        const href = String(input)
+        if (href.includes("/api/tools/catalog-count")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                data: { count: 1234, label: "1200+" },
+              }),
+          })
+        }
+        return Promise.resolve({
           ok: true,
           json: () =>
             Promise.resolve({
@@ -35,8 +46,8 @@ describe("PricingPage Batch A / A4 — marketplace sole source", () => {
                 nextCursor: null,
               },
             }),
-        }),
-      ) as unknown as typeof fetch,
+        })
+      }) as unknown as typeof fetch,
     )
 
     render(<PricingPage />)
@@ -46,6 +57,7 @@ describe("PricingPage Batch A / A4 — marketplace sole source", () => {
     expect(screen.getByText(/Biz Beta/)).toBeTruthy()
     expect(screen.getByText(/Vert Gamma/)).toBeTruthy()
     expect(screen.getByText("1 templates, free forever")).toBeTruthy()
+    expect(screen.getByText("1200+ tool integrations")).toBeTruthy()
   })
 
   it("shows honest error when marketplace fetch fails", async () => {

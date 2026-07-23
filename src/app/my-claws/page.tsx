@@ -16,6 +16,11 @@ import { Bot, Search, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
+import {
+  MY_CLAWS_FILTERS,
+  workspaceMatchesFilter,
+  type WorkspaceFilterStatus,
+} from "@/lib/my-claws/workspace-filters"
 
 interface ApiWorkspace {
   id: string
@@ -56,7 +61,7 @@ function toWorkspaceItem(w: ApiWorkspace): WorkspaceItem {
   }
 }
 
-const FILTERS = ["All", "Running", "Paused", "Error", "Draft", "Setup"]
+const FILTERS = [...MY_CLAWS_FILTERS]
 
 export default function MyClawsPage() {
   const router = useRouter()
@@ -236,7 +241,9 @@ export default function MyClawsPage() {
     if (!workspaces) return null
     let result = workspaces
     if (activeFilter !== "All") {
-      result = result.filter((w) => w.status.toLowerCase() === activeFilter.toLowerCase())
+      result = result.filter((w) =>
+        workspaceMatchesFilter(w.status as WorkspaceFilterStatus, activeFilter as typeof MY_CLAWS_FILTERS[number]),
+      )
     }
     if (search.trim()) {
       const q = search.toLowerCase()

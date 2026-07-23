@@ -305,6 +305,7 @@ describe("Tool customization PR-3", () => {
     expect(removeBlock).toContain("mutateWithFeedback")
     expect(swapBlock).toContain("mutateWithFeedback")
     expect(swapBlock).toContain('"swap"')
+    expect(swapBlock).toContain("Tool restored — reconnect required")
     // MUTATION: plain-add POST must not be the swap path.
     expect(swapBlock).not.toMatch(/method:\s*"POST"/)
   })
@@ -386,6 +387,133 @@ describe("Tool customization PR-3", () => {
       expect(lastPatchBody).toEqual({ op: "restore", slug: "twitter-api" }),
     )
     // MUTATION: skip re-hydrate → restore PATCH never fires (already asserted).
+  })
+
+  it("swap undo shows reconnect copy and does not POST/create connection", async () => {
+    const fetchCalls: Array<{ href: string; method?: string }> = []
+    const connections = [
+      {
+        id: "conn-tavily",
+        toolSlug: "tavily",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString(),
+      },
+    ]
+
+    global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const href = String(url)
+      const method = init?.method
+      fetchCalls.push({ href, method })
+
+      if (href.includes("/tool-requirements/dependents")) {
+        return jsonResponse({
+          success: true,
+          data: { hits: [], labels: [], honestLimitCopy: "", coverage: "none" },
+        })
+      }
+      if (href.includes("/tool-requirements") && init?.method === "PATCH") {
+        lastPatchBody = JSON.parse(String(init.body ?? "{}")) as {
+          op?: string
+          slug?: string
+          replaceWith?: string
+        }
+        if (lastPatchBody.op === "swap") {
+          const from = lastPatchBody.slug!
+          const to = lastPatchBody.replaceWith!
+          const catalogName =
+            to === "serp_api" ? "SerpAPI" : to === "tavily" ? "Tavily" : to
+          recommended = recommended.map((t) =>
+            t.slug === from
+              ? {
+                  ...t,
+                  slug: to,
+                  name: catalogName,
+                  alternatives: [from, ...(t.alternatives ?? []).filter((a) => a !== to)],
+                }
+              : t,
+          )
+          toolsList = [...required, ...recommended]
+        }
+        return jsonResponse({
+          success: true,
+          data: {
+            tools: toolsList,
+            required,
+            recommended,
+            removedFromTemplate,
+            source: "workspace",
+          },
+        })
+      }
+      if (href.includes("/tool-requirements")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            tools: toolsList,
+            required,
+            recommended,
+            removedFromTemplate,
+            source: "workspace",
+          },
+        })
+      }
+      if (href.includes("/api/tools/ws-1/browse")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            tools: [
+              {
+                slug: "serp_api",
+                name: "SerpAPI",
+                category: "SEARCH",
+                connectionType: "API_KEY",
+                credentialFields: [{ name: "SERPAPI_API_KEY", label: "Key", required: true }],
+                description: "search",
+              },
+            ],
+            categories: ["SEARCH"],
+          },
+        })
+      }
+      if (href.includes("/api/workspaces/ws-1")) {
+        return jsonResponse({
+          success: true,
+          data: { id: "ws-1", status: "DRAFT", clawTemplate: { slug: "twitter-growth-machine" } },
+        })
+      }
+      if (href.includes("/api/tools/ws-1")) {
+        return jsonResponse({
+          success: true,
+          data: { connections, customConnections: [], composioOAuthAvailable: true },
+        })
+      }
+      if (href.includes("/api/deploy/")) {
+        return jsonResponse({
+          success: true,
+          data: { workspaceStatus: "DRAFT", drift: { isStale: false, changedAreas: [] } },
+        })
+      }
+      return jsonResponse({ success: true, data: {} })
+    })
+
+    renderPage()
+    expect(await screen.findByText("Tavily (Web Search)")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Swap" }))
+    expect(await screen.findByTestId("browse-tools-swap")).toBeDefined()
+    fireEvent.click(screen.getAllByRole("button", { name: "Select" })[0])
+    await waitFor(() => expect(lastPatchBody?.op).toBe("swap"))
+    expect(await screen.findByTestId("snackbar")).toBeDefined()
+
+    const callsBeforeUndo = fetchCalls.length
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+    await waitFor(() =>
+      expect(screen.getByText("Tool restored — reconnect required")).toBeDefined(),
+    )
+
+    const undoCalls = fetchCalls.slice(callsBeforeUndo)
+    expect(undoCalls.some((c) => c.method === "POST")).toBe(false)
+    expect(undoCalls.some((c) => c.method === "DELETE")).toBe(false)
+    expect(undoCalls.some((c) => c.href.includes("/tool-requirements") && c.method === "PATCH")).toBe(true)
   })
 
   it("Done label is Back to Builder (navigation, not commit)", async () => {
