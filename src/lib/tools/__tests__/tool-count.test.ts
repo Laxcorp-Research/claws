@@ -4,8 +4,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import {
   TOOL_COUNT_MARKETING_FLOOR,
   formatToolCountFloorLabel,
-  getToolIntegrationCount,
-} from "@/lib/tools/tool-count"
+} from "@/lib/tools/tool-count-label"
+import { getToolIntegrationCount } from "@/lib/tools/tool-count"
 
 vi.mock("@/data/tool-catalog", () => ({
   ALL_TOOLS: [{ slug: "a" }, { slug: "b" }, { slug: "c" }],
@@ -18,20 +18,21 @@ vi.mock("@/lib/composio-catalog", () => ({
 import { getComposioCatalogTools } from "@/lib/composio-catalog"
 
 describe("formatToolCountFloorLabel", () => {
-  it("floors to hundreds with + suffix", () => {
-    expect(formatToolCountFloorLabel(1150)).toBe("1100+")
-    expect(formatToolCountFloorLabel(1234)).toBe("1200+")
-    expect(formatToolCountFloorLabel(1199)).toBe("1100+")
+  it("floors to hundreds with locale + suffix (1,100+ style)", () => {
+    expect(formatToolCountFloorLabel(1150)).toBe("1,100+")
+    expect(formatToolCountFloorLabel(1234)).toBe("1,200+")
+    expect(formatToolCountFloorLabel(1199)).toBe("1,100+")
   })
 
   it("never returns below marketing floor", () => {
-    expect(formatToolCountFloorLabel(500)).toBe(`${TOOL_COUNT_MARKETING_FLOOR}+`)
-    expect(formatToolCountFloorLabel(0)).toBe(`${TOOL_COUNT_MARKETING_FLOOR}+`)
+    expect(formatToolCountFloorLabel(500)).toBe("1,100+")
+    expect(formatToolCountFloorLabel(0)).toBe("1,100+")
+    expect(TOOL_COUNT_MARKETING_FLOOR).toBe(1100)
   })
 
   it("exact hundreds pass through at or above floor", () => {
-    expect(formatToolCountFloorLabel(1100)).toBe("1100+")
-    expect(formatToolCountFloorLabel(1500)).toBe("1500+")
+    expect(formatToolCountFloorLabel(1100)).toBe("1,100+")
+    expect(formatToolCountFloorLabel(1500)).toBe("1,500+")
   })
 })
 

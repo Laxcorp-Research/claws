@@ -10,7 +10,7 @@ import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import {
   TOOL_COUNT_MARKETING_FLOOR,
   formatToolCountFloorLabel,
-} from "@/lib/tools/tool-count"
+} from "@/lib/tools/tool-count-label"
 
 type PricingTemplate = {
   name: string
