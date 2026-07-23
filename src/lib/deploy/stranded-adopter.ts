@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
+import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
 
 /** Env: STRANDED_DEPLOY_MAX_AGE_MIN (default 10). */
 export const DEFAULT_STRANDED_DEPLOY_MAX_AGE_MIN = 10
@@ -12,20 +13,56 @@ export function strandedDeployMaxAgeMs(): number {
   return minutes * 60 * 1000
 }
 
-export const STRANDED_DEPLOY_ERROR =
-  "Deployment stranded: stuck in GENERATING/PROVISIONING beyond max age — marked FAILED for retry"
+/**
+ * DeploymentStatus enum (prisma) — terminal vs in-flight.
+ * There is no STARTING_GATEWAY in the schema; gateway boot uses STARTING.
+ *
+ * Terminal: COMPLETED | FAILED | ROLLED_BACK
+ * Non-terminal (adoptable past age): everything else.
+ */
+export const TERMINAL_DEPLOYMENT_STATUSES = [
+  "COMPLETED",
+  "FAILED",
+  "ROLLED_BACK",
+] as const
+
+export const NON_TERMINAL_DEPLOYMENT_STATUSES = [
+  "PENDING",
+  "GENERATING",
+  "PROVISIONING",
+  "CONFIGURING",
+  "STARTING",
+  "HEALTH_CHECK",
+  "WAITING_CHANNELS",
+] as const
+
+export type NonTerminalDeploymentStatus =
+  (typeof NON_TERMINAL_DEPLOYMENT_STATUSES)[number]
+
+/** Honest per-phase error — mutation: drop HEALTH_CHECK from NON_TERMINAL → fail. */
+export function strandedDeployErrorMessage(status: string): string {
+  return `Deployment stranded: stuck in ${status} beyond max age — marked FAILED for retry`
+}
+
+/** @deprecated Prefer strandedDeployErrorMessage(phase). Kept for older call sites. */
+export const STRANDED_DEPLOY_ERROR = strandedDeployErrorMessage("GENERATING/PROVISIONING")
 
 /**
  * Resolve workspace status after a stranded deploy is adopted.
- * Wake path → HIBERNATED (retriable). Fresh DEPLOYING → STOPPED if a prior
- * container existed, else DRAFT.
+ * Wake / already-hibernated → HIBERNATED (retriable). Fresh DEPLOYING →
+ * STOPPED if a prior container existed, else DRAFT.
  */
 export function resolvePreDeployWorkspaceStatus(args: {
   workspaceStatus: string
   containerPhase: string | null | undefined
   hadContainerId: boolean
 }): { status: "HIBERNATED" | "STOPPED" | "DRAFT"; containerPhase: "HIBERNATED" | "STOPPED" } {
-  if (args.workspaceStatus === "WAKING" || args.containerPhase === "WAKING") {
+  if (
+    args.workspaceStatus === "WAKING" ||
+    args.containerPhase === "WAKING" ||
+    args.workspaceStatus === "HIBERNATED" ||
+    args.containerPhase === "HIBERNATED"
+  ) {
     return { status: "HIBERNATED", containerPhase: "HIBERNATED" }
   }
   if (args.hadContainerId) {
@@ -34,10 +71,23 @@ export function resolvePreDeployWorkspaceStatus(args: {
   return { status: "DRAFT", containerPhase: "STOPPED" }
 }
 
+export function isWakeOriginStrand(args: {
+  workspaceStatus: string
+  containerPhase: string | null | undefined
+}): boolean {
+  return (
+    args.workspaceStatus === "WAKING" ||
+    args.containerPhase === "WAKING" ||
+    args.workspaceStatus === "HIBERNATED" ||
+    args.containerPhase === "HIBERNATED"
+  )
+}
+
 /**
- * Lifecycle P4 watchdog: adopt deployments stuck in GENERATING/PROVISIONING
- * beyond STRANDED_DEPLOY_MAX_AGE_MIN. Marks Deployment FAILED and converges
- * workspace to a retriable pre-deploy status.
+ * Lifecycle P4.1 watchdog: adopt deployments stuck in ANY non-terminal
+ * phase beyond STRANDED_DEPLOY_MAX_AGE_MIN. Marks Deployment FAILED with a
+ * per-phase error, converges workspace to a retriable status, and re-arms
+ * nextHeartbeatAt for wake-origin strands so the schedule survives the crash.
  */
 export async function adoptStrandedDeployments(
   nowMs: number = Date.now(),
@@ -45,7 +95,7 @@ export async function adoptStrandedDeployments(
   const cutoff = new Date(nowMs - strandedDeployMaxAgeMs())
   const stranded = await prisma.deployment.findMany({
     where: {
-      status: { in: ["GENERATING", "PROVISIONING"] },
+      status: { in: [...NON_TERMINAL_DEPLOYMENT_STATUSES] },
       startedAt: { lt: cutoff },
       completedAt: null,
     },
@@ -59,7 +109,13 @@ export async function adoptStrandedDeployments(
           id: true,
           status: true,
           containerId: true,
-          containerState: { select: { containerPhase: true } },
+          containerState: {
+            select: {
+              containerPhase: true,
+              heartbeatCronExpressions: true,
+              heartbeatInterval: true,
+            },
+          },
         },
       },
     },
@@ -68,6 +124,7 @@ export async function adoptStrandedDeployments(
 
   let adopted = 0
   const errors: string[] = []
+  const now = new Date(nowMs)
 
   for (const dep of stranded) {
     try {
@@ -77,13 +134,27 @@ export async function adoptStrandedDeployments(
         hadContainerId: Boolean(dep.workspace.containerId),
       })
 
+      const wakeOrigin = isWakeOriginStrand({
+        workspaceStatus: dep.workspace.status,
+        containerPhase: dep.workspace.containerState?.containerPhase,
+      })
+
+      const rearmedHint = wakeOrigin
+        ? computeNextHeartbeatAt({
+            now,
+            heartbeatCronExpressions:
+              dep.workspace.containerState?.heartbeatCronExpressions,
+            heartbeatIntervalMs: dep.workspace.containerState?.heartbeatInterval,
+          })
+        : undefined
+
       await prisma.$transaction([
         prisma.deployment.update({
           where: { id: dep.id },
           data: {
             status: "FAILED",
-            errorMessage: STRANDED_DEPLOY_ERROR,
-            completedAt: new Date(nowMs),
+            errorMessage: strandedDeployErrorMessage(dep.status),
+            completedAt: now,
           },
         }),
         prisma.workspace.update({
@@ -95,6 +166,7 @@ export async function adoptStrandedDeployments(
           data: {
             containerPhase: restored.containerPhase,
             wakeRequestedAt: null,
+            ...(rearmedHint ? { nextHeartbeatAt: rearmedHint } : {}),
           },
         }),
       ])
@@ -105,6 +177,8 @@ export async function adoptStrandedDeployments(
         workspaceId: dep.workspaceId,
         priorDeployStatus: dep.status,
         restoredWorkspaceStatus: restored.status,
+        wakeOrigin,
+        rearmedNextHeartbeatAt: rearmedHint ? rearmedHint.toISOString() : null,
         startedAt: dep.startedAt.toISOString(),
       })
     } catch (err) {
