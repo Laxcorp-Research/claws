@@ -1,9 +1,14 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FilterPills } from "@/components/ui/filter-pills"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import type { SortOption } from "@/types/marketplace"
 
 const TEMPLATE_CATEGORIES = [
@@ -52,46 +57,35 @@ interface MarketplaceFiltersProps {
 }
 
 function SortDropdown({ value, onChange }: { value: SortOption; onChange: (v: SortOption) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
   const label = SORT_OPTIONS.find(o => o.value === value)?.label ?? "Popular"
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [])
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--tx2)] border border-[var(--bd)] rounded-[8px] px-3 py-[5px] hover:border-[var(--bd2)] bg-[var(--bg)] cursor-pointer"
-        aria-label="Sort results"
-        aria-expanded={open}
-      >
-        Sort: {label}
-        <ChevronDown className="w-3 h-3" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 bg-[var(--bg)] border border-[var(--bd)] rounded-[8px] shadow-modal py-1 z-50 min-w-[160px]">
-          {SORT_OPTIONS.map(option => (
-            <button
-              key={option.value}
-              onClick={() => { onChange(option.value); setOpen(false) }}
-              className={cn(
-                "w-full text-left px-3 py-[6px] text-[11px] hover:bg-[var(--bg2)] cursor-pointer",
-                value === option.value ? "font-semibold text-[var(--tx)]" : "text-[var(--tx2)]"
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--tx2)] border border-[var(--bd)] rounded-[8px] px-3 py-[5px] hover:border-[var(--bd2)] bg-[var(--bg)] cursor-pointer"
+          aria-label="Sort results"
+        >
+          Sort: {label}
+          <ChevronDown className="w-3 h-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" side="bottom" sideOffset={4} collisionPadding={8} className="min-w-[160px]">
+        {SORT_OPTIONS.map(option => (
+          <DropdownMenuItem
+            key={option.value}
+            onSelect={() => onChange(option.value)}
+            className={cn(
+              "px-3 py-[6px] text-[11px]",
+              value === option.value ? "font-semibold text-[var(--tx)]" : "text-[var(--tx2)]",
+            )}
+          >
+            {option.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

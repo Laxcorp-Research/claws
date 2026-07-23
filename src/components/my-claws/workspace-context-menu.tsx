@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, type ComponentType } from "react"
 import { useRouter } from "next/navigation"
 import {
   MoreHorizontal,
@@ -14,6 +14,13 @@ import {
   Trash2,
 } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
@@ -41,10 +48,9 @@ export function WorkspaceContextMenu({
   onDelete,
   onStopped,
 }: WorkspaceContextMenuProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [open, setOpen] = useState(false)
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
   const [stopping, setStopping] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const snackbar = useSnackbarOptional()
 
@@ -72,22 +78,6 @@ export function WorkspaceContextMenu({
     }
   }
 
-  useEffect(() => {
-    if (!isOpen) return
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setIsOpen(false)
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setIsOpen(false)
-    }
-    document.addEventListener("mousedown", handleClick)
-    document.addEventListener("keydown", handleKey)
-    return () => {
-      document.removeEventListener("mousedown", handleClick)
-      document.removeEventListener("keydown", handleKey)
-    }
-  }, [isOpen])
-
   const isRunning = status === "RUNNING"
   const isPaused = status === "PAUSED"
   const isStopped = status === "STOPPED"
@@ -101,66 +91,123 @@ export function WorkspaceContextMenu({
   const isPublishReady = hasOrch && hasCritic && hasWorker && agentRoles.length >= 3
 
   function act(fn: () => void) {
-    setIsOpen(false)
+    setOpen(false)
     fn()
   }
 
   return (
-    <div className="relative" ref={menuRef}>
-      <button
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setIsOpen(!isOpen) }}
-        className="p-[6px] rounded-[6px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
-        aria-label="Workspace options"
-      >
-        <MoreHorizontal className="w-[16px] h-[16px] text-[var(--tx3)]" />
-      </button>
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+            }}
+            className="p-[6px] rounded-[6px] hover:bg-[var(--bg2)] transition-colors cursor-pointer border-none bg-transparent"
+            aria-label="Workspace options"
+          >
+            <MoreHorizontal className="w-[16px] h-[16px] text-[var(--tx3)]" />
+          </button>
+        </DropdownMenuTrigger>
 
-      {isOpen && (
-        <div className="absolute right-0 top-[calc(100%+4px)] w-[200px] bg-[var(--bg)] border border-[var(--bd)] rounded-[8px] shadow-modal py-[4px] z-50" role="menu">
-          <Item icon={PenLine} label="Open in Builder" onClick={() => act(() => router.push(`/builder/${workspaceId}`))} />
+        <DropdownMenuContent
+          align="end"
+          side="bottom"
+          sideOffset={4}
+          collisionPadding={8}
+          className="w-[200px]"
+          onClick={(e) => e.stopPropagation()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          <MenuItem
+            icon={PenLine}
+            label="Open in Builder"
+            onSelect={() => act(() => router.push(`/builder/${workspaceId}`))}
+          />
           {hasDeployment && (
-            <Item icon={LayoutDashboard} label="Open Dashboard" onClick={() => act(() => router.push(`/dashboard/${workspaceId}`))} />
+            <MenuItem
+              icon={LayoutDashboard}
+              label="Open Dashboard"
+              onSelect={() => act(() => router.push(`/dashboard/${workspaceId}`))}
+            />
           )}
           {(isDraft || isSetup) && (
-            <Item icon={Rocket} label={isSetup ? "Continue Setup" : "Setup & Deploy"} onClick={() => act(() => router.push(`/setup/${workspaceId}/step/1`))} />
+            <MenuItem
+              icon={Rocket}
+              label={isSetup ? "Continue Setup" : "Setup & Deploy"}
+              onSelect={() => act(() => router.push(`/setup/${workspaceId}/step/1`))}
+            />
           )}
 
-          <Divider />
-          <Item icon={PenLine} label="Rename" onClick={() => act(() => onRename(workspaceId, workspaceName))} />
-          <Item icon={Copy} label="Duplicate" onClick={() => act(() => onDuplicate(workspaceId))} />
+          <DropdownMenuSeparator />
+          <MenuItem
+            icon={PenLine}
+            label="Rename"
+            onSelect={() => act(() => onRename(workspaceId, workspaceName))}
+          />
+          <MenuItem
+            icon={Copy}
+            label="Duplicate"
+            onSelect={() => act(() => onDuplicate(workspaceId))}
+          />
 
-          <Divider />
+          <DropdownMenuSeparator />
           {isCreatorEnrolled ? (
             isPublishReady ? (
-              <Item icon={Upload} label="Publish as Template" onClick={() => act(() => router.push(`/publish/template?workspaceId=${workspaceId}`))} />
+              <MenuItem
+                icon={Upload}
+                label="Publish as Template"
+                onSelect={() => act(() => router.push(`/publish/template?workspaceId=${workspaceId}`))}
+              />
             ) : (
-              <Item icon={Upload} label="Publish as Template" disabled hint="Need Orchestrator + Worker + Critic" onClick={() => {}} />
+              <MenuItem
+                icon={Upload}
+                label="Publish as Template"
+                disabled
+                hint="Need Orchestrator + Worker + Critic"
+                onSelect={() => {}}
+              />
             )
           ) : (
-            <Item icon={Upload} label="Become a Creator" hint="Publish templates on the marketplace" onClick={() => act(() => router.push("/settings?tab=creator"))} />
+            <MenuItem
+              icon={Upload}
+              label="Become a Creator"
+              hint="Publish templates on the marketplace"
+              onSelect={() => act(() => router.push("/settings?tab=creator"))}
+            />
           )}
 
           {isRunning && (
             <>
-              <Divider />
-              <Item icon={Square} label="Stop" onClick={() => act(() => setStopConfirmOpen(true))} />
+              <DropdownMenuSeparator />
+              <MenuItem
+                icon={Square}
+                label="Stop"
+                onSelect={() => act(() => setStopConfirmOpen(true))}
+              />
             </>
           )}
           {isStopped && (
             <>
-              <Divider />
-              <Item
+              <DropdownMenuSeparator />
+              <MenuItem
                 icon={RotateCcw}
                 label="Open to redeploy"
-                onClick={() => act(() => router.push(`/dashboard/${workspaceId}`))}
+                onSelect={() => act(() => router.push(`/dashboard/${workspaceId}`))}
               />
             </>
           )}
 
-          <Divider />
-          <Item icon={Trash2} label="Delete" danger onClick={() => act(() => onDelete(workspaceId, workspaceName))} />
-        </div>
-      )}
+          <DropdownMenuSeparator />
+          <MenuItem
+            icon={Trash2}
+            label="Delete"
+            danger
+            onSelect={() => act(() => onDelete(workspaceId, workspaceName))}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <ConfirmDialog
         open={stopConfirmOpen}
@@ -172,38 +219,40 @@ export function WorkspaceContextMenu({
         cancelLabel="Keep running"
         loading={stopping}
       />
-    </div>
+    </>
   )
 }
 
-function Item({ icon: Icon, label, onClick, danger, disabled, hint }: {
-  icon: React.ComponentType<{ className?: string }>
+function MenuItem({
+  icon: Icon,
+  label,
+  onSelect,
+  danger,
+  disabled,
+  hint,
+}: {
+  icon: ComponentType<{ className?: string }>
   label: string
-  onClick: () => void
+  onSelect: () => void
   danger?: boolean
   disabled?: boolean
   hint?: string
 }) {
   return (
-    <button
-      onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!disabled) onClick() }}
+    <DropdownMenuItem
       disabled={disabled}
-      role="menuitem"
-      className={`w-full text-left px-[12px] py-[6px] text-[12px] flex items-center gap-[8px] transition-colors border-none bg-transparent cursor-pointer ${
-        disabled ? "opacity-40 cursor-not-allowed text-[var(--tx3)]"
-          : danger ? "text-[var(--err)] hover:bg-[var(--errbg)]"
-          : "text-[var(--tx2)] hover:bg-[var(--bg2)]"
-      }`}
+      danger={danger}
+      onSelect={(e) => {
+        e.preventDefault()
+        if (!disabled) onSelect()
+      }}
+      className={hint ? "items-start" : undefined}
     >
-      <Icon className="w-[14px] h-[14px] flex-shrink-0" />
+      <Icon className="w-[14px] h-[14px] flex-shrink-0 mt-[1px]" />
       <div className="flex-1 min-w-0">
         <span>{label}</span>
         {hint && <div className="text-[10px] text-[var(--tx3)] mt-[1px] leading-tight">{hint}</div>}
       </div>
-    </button>
+    </DropdownMenuItem>
   )
-}
-
-function Divider() {
-  return <div className="border-t border-[var(--bd)] my-[4px]" />
 }

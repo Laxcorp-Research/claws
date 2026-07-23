@@ -3,9 +3,13 @@
  * Batch B: Stop patches local row status; snackbar "Claw stopped".
  * MUTATION: omit onStopped → list stays Running → fail.
  */
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { WorkspaceContextMenu } from "@/components/my-claws/workspace-context-menu"
+import {
+  installRadixPointerPolyfills,
+  openWorkspaceOptionsMenu,
+} from "./radix-menu-test-utils"
 
 const show = vi.fn()
 vi.mock("next/navigation", () => ({
@@ -14,6 +18,10 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/shared/snackbar", () => ({
   useSnackbarOptional: () => ({ show }),
 }))
+
+beforeAll(() => {
+  installRadixPointerPolyfills()
+})
 
 afterEach(() => {
   cleanup()
@@ -49,7 +57,7 @@ describe("WorkspaceContextMenu Stop reconcile (Batch B)", () => {
       />,
     )
 
-    fireEvent.click(screen.getByLabelText("Workspace options"))
+    openWorkspaceOptionsMenu()
     fireEvent.click(await screen.findByRole("menuitem", { name: "Stop" }))
     fireEvent.click(await screen.findByRole("button", { name: "Stop" }))
 
@@ -86,7 +94,7 @@ describe("WorkspaceContextMenu Stop reconcile (Batch B)", () => {
       />,
     )
 
-    fireEvent.click(screen.getByLabelText("Workspace options"))
+    openWorkspaceOptionsMenu()
     fireEvent.click(await screen.findByRole("menuitem", { name: "Stop" }))
     fireEvent.click(await screen.findByRole("button", { name: "Stop" }))
     await waitFor(() => {
