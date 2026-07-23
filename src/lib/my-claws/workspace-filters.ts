@@ -6,6 +6,7 @@ export const MY_CLAWS_FILTERS = [
   "Draft",
   "Setup",
   "Sleeping",
+  "Stopped",
 ] as const
 
 export type MyClawsFilter = (typeof MY_CLAWS_FILTERS)[number]
