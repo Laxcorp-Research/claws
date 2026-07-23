@@ -1,11 +1,13 @@
 "use client"
 
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { useBuilderStore, type AgentNodeData, type ConnectionEdgeData } from "@/stores/builder-store"
 import { MarkdownEditor } from "./markdown-editor"
 import { SkillPicker } from "./skill-picker"
 import { CustomSelect } from "./custom-select"
 import { HelpTooltip } from "@/components/ui/help-tooltip"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { AI_MODELS } from "@/lib/models"
@@ -77,6 +79,8 @@ function ConnectionPanel() {
 export function PropertiesPanel() {
   const { nodes, edges, selectedAgentId, selectedEdgeId, updateAgentProperty, deleteAgent, addConnection, removeConnection: removeConn, updateConnection } = useBuilderStore()
   const snackbar = useSnackbarOptional()
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   if (selectedEdgeId) {
     return <ConnectionPanel />
@@ -97,6 +101,9 @@ export function PropertiesPanel() {
   const isOrch = agent.role === "ORCHESTRATOR"
   const isCritic = agent.role === "CRITIC"
   const canDelete = !isOrch && !isCritic
+  const connectionCount = edges.filter(
+    (e) => e.source === selectedAgentId || e.target === selectedAgentId,
+  ).length
   const otherAgents = nodes.filter((n) => n.id !== selectedAgentId)
 
   const incomingEdge = edges.find(e => e.target === selectedAgentId)
@@ -152,6 +159,19 @@ export function PropertiesPanel() {
       addConnection({ source: selectedAgentId, target: newTargetId })
     }
     updateAgentProperty(selectedAgentId, "outputsTo", newTargetId || undefined)
+  }
+
+  function handleDeleteConfirm() {
+    if (!selectedAgentId) return
+    setDeleting(true)
+    void mutateWithFeedback(
+      async () => {
+        deleteAgent(selectedAgentId)
+        setDeleteConfirmOpen(false)
+      },
+      { message: "Agent removed", errorMessage: "Could not remove agent" },
+      (opts) => snackbar?.show(opts),
+    ).finally(() => setDeleting(false))
   }
 
   return (
@@ -264,20 +284,24 @@ export function PropertiesPanel() {
       )}
 
       {canDelete && (
-        <button
-          onClick={() => {
-            void mutateWithFeedback(
-              async () => {
-                deleteAgent(selectedAgentId!)
-              },
-              { message: "Agent removed", errorMessage: "Could not remove agent" },
-              (opts) => snackbar?.show(opts),
-            )
-          }}
-          className="w-full mt-3 py-1.5 text-[10px] text-[var(--err)] border border-[var(--err)] rounded-[6px] hover:bg-[var(--errbg)] transition-colors cursor-pointer bg-transparent"
-        >
-          Remove agent
-        </button>
+        <>
+          <button
+            onClick={() => setDeleteConfirmOpen(true)}
+            className="w-full mt-3 py-1.5 text-[10px] text-[var(--err)] border border-[var(--err)] rounded-[6px] hover:bg-[var(--errbg)] transition-colors cursor-pointer bg-transparent"
+          >
+            Remove agent
+          </button>
+          <ConfirmDialog
+            open={deleteConfirmOpen}
+            onClose={() => setDeleteConfirmOpen(false)}
+            onConfirm={handleDeleteConfirm}
+            title={`Remove ${agent.name}?`}
+            description={`This removes ${agent.name} and ${connectionCount} connection${connectionCount === 1 ? "" : "s"}. There is no undo — restore from Version History if needed.`}
+            confirmLabel="Remove agent"
+            cancelLabel="Cancel"
+            loading={deleting}
+          />
+        </>
       )}
     </div>
   )

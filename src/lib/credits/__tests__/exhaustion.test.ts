@@ -32,6 +32,16 @@ describe("onCreditsExhausted", () => {
     mockDestroyContainer.mockReset()
     mockSend.mockReset()
     mockSend.mockResolvedValue({ id: "em-1" })
+    ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (ops: unknown) => {
+        if (Array.isArray(ops)) return Promise.all(ops as Promise<unknown>[])
+        return undefined
+      },
+    )
+    ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
+    ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    })
   })
 
   it("email copy says stopped (not paused) when claws were taken down", async () => {
@@ -52,6 +62,14 @@ describe("onCreditsExhausted", () => {
     const html = (mockSend.mock.calls[0][0] as { html: string }).html
     expect(html).toContain("We've stopped 1 running Claw.")
     expect(html).not.toContain("We've paused")
+    expect(html).toContain("https://app.buildclaws.ai/settings?tab=api-keys")
+    expect(html).not.toContain("/settings/api-keys")
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "ws-1" },
+        data: { status: "HIBERNATED" },
+      }),
+    )
   })
 
   it("emails the amount the user was ACTUALLY granted, not a hardcoded value", async () => {

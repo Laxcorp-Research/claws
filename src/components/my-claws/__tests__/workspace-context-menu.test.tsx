@@ -3,7 +3,7 @@
 // Locks in the STOPPED branch added in the PR #52 follow-up:
 //   - STOPPED shows "Open Dashboard" (pre-follow-up: hidden because
 //     hasDeployment didn't include STOPPED)
-//   - STOPPED shows "Redeploy" and clicking it routes to /dashboard/[id]
+//   - STOPPED shows "Open to redeploy" and clicking it routes to /dashboard/[id]
 //     (the dashboard page owns the /cloud confirmation dialog from PR #52)
 //   - STOPPED does NOT show Stop or the (now-removed) Resume items
 //   - PAUSED no longer shows the Resume item (dead code after PR #52)
@@ -55,9 +55,9 @@ describe("WorkspaceContextMenu — STOPPED branch (PR #52 follow-up)", () => {
     expect(screen.getByText("Open Dashboard")).toBeDefined()
   })
 
-  it("renders 'Redeploy' item for STOPPED workspaces, and click routes to /dashboard/[id]", () => {
+  it("renders 'Open to redeploy' item for STOPPED workspaces, and click routes to /dashboard/[id]", () => {
     openMenu("STOPPED")
-    const redeploy = screen.getByText("Redeploy")
+    const redeploy = screen.getByText("Open to redeploy")
     expect(redeploy).toBeDefined()
     fireEvent.click(redeploy)
     expect(mockPush).toHaveBeenCalledWith("/dashboard/ws-1")
@@ -94,9 +94,9 @@ describe("WorkspaceContextMenu — RUNNING branch (Pause renamed to Stop)", () =
     expect(screen.queryByText("Pause")).toBeNull()
   })
 
-  it("does NOT render Redeploy for RUNNING workspaces", () => {
+  it("does NOT render Open to redeploy for RUNNING workspaces", () => {
     openMenu("RUNNING")
-    expect(screen.queryByText("Redeploy")).toBeNull()
+    expect(screen.queryByText("Open to redeploy")).toBeNull()
   })
 
   it("renders 'Open Dashboard' for RUNNING workspaces", () => {

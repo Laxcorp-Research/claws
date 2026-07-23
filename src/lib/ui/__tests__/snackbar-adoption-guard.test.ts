@@ -71,7 +71,7 @@ describe("PR-4 Snackbar adoption guard", () => {
     {
       file: "src/components/builder/properties-panel.tsx",
       // Local store delete — snackbar wraps the call (message lock).
-      handlers: ["Agent removed"],
+      handlers: ["handleDeleteConfirm"],
     },
     {
       file: "src/components/builder/version-history-panel.tsx",

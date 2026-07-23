@@ -42,19 +42,22 @@ export async function onCreditsExhausted(userId: string) {
       })
     }
 
-    // TODO: containerPhase='HIBERNATED' set here is inconsistent with
-    // destroyContainer's containerPhase='STOPPED' (applied inside
-    // syncThenDestroy). Result: this branch leaves Workspace.status='STOPPED'
-    // but ContainerState.containerPhase='HIBERNATED', a semantic mismatch
-    // that predates the STOPPED/HIBERNATED distinction. To be resolved
-    // in the billing-overhaul PR9: under the per-Claw subscription
-    // model, credit exhaustion NO LONGER destroys containers
-    // (subscription-funded), so this entire if-branch and the
-    // syncThenDestroy call above both disappear.
-    await prisma.containerState.updateMany({
-      where: { workspaceId: ws.id },
-      data: { containerPhase: "HIBERNATED", hibernatedAt: new Date() },
-    })
+    // Converge to HIBERNATED (workspace + phase) so Wake works after BYOK recovery.
+    // syncThenDestroy leaves STOPPED; overwriting both closes the wake dead-end.
+    await prisma.$transaction([
+      prisma.workspace.update({
+        where: { id: ws.id },
+        data: { status: "HIBERNATED" },
+      }),
+      prisma.containerState.updateMany({
+        where: { workspaceId: ws.id },
+        data: {
+          containerPhase: "HIBERNATED",
+          hibernatedAt: new Date(),
+          wakeRequestedAt: null,
+        },
+      }),
+    ])
   }
 
   try {
@@ -77,10 +80,10 @@ export async function onCreditsExhausted(userId: string) {
                   ${user.workspaces.length > 0 ? `We've stopped ${user.workspaces.length} running Claw${user.workspaces.length > 1 ? "s" : ""}.` : ""}
                   Add your own API key or subscribe to keep your Claws running.
                 </div>
-                <a href="https://app.buildclaws.ai/settings/api-keys" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;margin-right:8px;">
+                <a href="https://app.buildclaws.ai/settings?tab=api-keys" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;margin-right:8px;">
                   Add API Key
                 </a>
-                <a href="https://app.buildclaws.ai/settings/billing" style="display:inline-block;padding:10px 32px;background-color:#FFFFFF;color:#0A0A0B;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;border:1px solid #EFEFEF;">
+                <a href="https://app.buildclaws.ai/settings?tab=billing" style="display:inline-block;padding:10px 32px;background-color:#FFFFFF;color:#0A0A0B;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;border:1px solid #EFEFEF;">
                   Subscribe
                 </a>
               </td>
