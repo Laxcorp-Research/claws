@@ -29,6 +29,7 @@ beforeEach(() => {
   ;(prismaMock.userApiKey.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'k1', provider: 'ANTHROPIC', isValid: true })
   ;(prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
   ;(prismaMock.creditAccount.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 })
+  ;(prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 })
   ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 'w1' }, { id: 'w2' }])
 })
 

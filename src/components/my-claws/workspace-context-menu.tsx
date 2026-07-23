@@ -151,7 +151,7 @@ export function WorkspaceContextMenu({
               <Divider />
               <Item
                 icon={RotateCcw}
-                label="Redeploy"
+                label="Open to redeploy"
                 onClick={() => act(() => router.push(`/dashboard/${workspaceId}`))}
               />
             </>

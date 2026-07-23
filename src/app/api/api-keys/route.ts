@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { encrypt, generateKeyHint } from "@/lib/encryption"
 import { requestReconcileForUser } from "@/lib/openclaw/request-reconcile"
+import { convertUserToByok } from "@/lib/credits/byok-recovery"
 
 // PR-8b/C: headroom for after()'s fire-and-forget reconcile (E1 add/update BYOK
 // key → reconcile the user's RUNNING containers). Gated by ENV_RECONCILE_MODE
@@ -23,6 +24,27 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
   })
   return apiSuccess(keys)
+}
+
+/**
+ * After saving a valid Anthropic key while credits are EXHAUSTED, auto-flip to
+ * BYOK so the next Wake emits the user key (not CLAWS_MASTER). ACTIVE credit
+ * users keep PLATFORM_CREDIT until they explicitly Switch.
+ */
+async function maybeRecoverByokAfterAnthropicSave(userId: string): Promise<void> {
+  const account = await prisma.creditAccount.findUnique({
+    where: { userId },
+    select: { status: true },
+  })
+  if (account?.status !== "EXHAUSTED") return
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { apiKeySource: true },
+  })
+  if (dbUser?.apiKeySource === "USER_OWN_KEY") return
+
+  await convertUserToByok(userId)
 }
 
 export async function POST(req: NextRequest) {
@@ -47,6 +69,9 @@ export async function POST(req: NextRequest) {
       data: { encryptedKey: encrypt(apiKey), keyHint: generateKeyHint(apiKey), label: label || existing.label, isValid: true, lastError: null },
       select: { id: true, provider: true, keyHint: true, label: true, isValid: true, createdAt: true },
     })
+    if (provider === "ANTHROPIC") {
+      await maybeRecoverByokAfterAnthropicSave(user.id)
+    }
     after(() => requestReconcileForUser(user.id))
     return apiSuccess(updated)
   }
@@ -55,6 +80,9 @@ export async function POST(req: NextRequest) {
     data: { userId: user.id, provider, encryptedKey: encrypt(apiKey), keyHint: generateKeyHint(apiKey), label: label || null },
     select: { id: true, provider: true, keyHint: true, label: true, isValid: true, createdAt: true },
   })
+  if (provider === "ANTHROPIC") {
+    await maybeRecoverByokAfterAnthropicSave(user.id)
+  }
   after(() => requestReconcileForUser(user.id))
   return apiSuccess(created, 201)
 }

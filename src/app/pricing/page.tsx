@@ -7,6 +7,10 @@ import { PageShell } from "@/components/shared/page-shell"
 import { TextLink } from "@/components/ui/text-link"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import {
+  TOOL_COUNT_MARKETING_FLOOR,
+  formatToolCountFloorLabel,
+} from "@/lib/tools/tool-count"
 
 type PricingTemplate = {
   name: string
@@ -29,16 +33,15 @@ const PAID_TIER_META = [
   },
 ] as const
 
-const FEATURES = [
+const STATIC_FEATURES = [
   "Cloud hosting (2Gi RAM, managed)",
   "All channels (Telegram, Slack, Discord, WhatsApp)",
-  "500+ tool integrations",
   "Visual builder",
   "Real-time monitoring dashboard",
   "Auto-restart + health checks",
   "Template updates",
   "Priority email support",
-]
+] as const
 
 /**
  * Batch A / A4: marketplace API is the sole catalog source for /pricing.
@@ -48,6 +51,38 @@ export default function PricingPage() {
   const [templates, setTemplates] = useState<PricingTemplate[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [toolCountLabel, setToolCountLabel] = useState(
+    formatToolCountFloorLabel(TOOL_COUNT_MARKETING_FLOOR),
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadToolCount() {
+      try {
+        const res = await fetch("/api/tools/catalog-count")
+        const json = await res.json()
+        if (!cancelled && res.ok && json.success && typeof json.data?.label === "string") {
+          setToolCountLabel(json.data.label)
+        }
+      } catch {
+        /* keep fallback label */
+      }
+    }
+    void loadToolCount()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const features = useMemo(
+    () => [
+      STATIC_FEATURES[0],
+      STATIC_FEATURES[1],
+      `${toolCountLabel} tool integrations`,
+      ...STATIC_FEATURES.slice(2),
+    ],
+    [toolCountLabel],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -148,7 +183,7 @@ export default function PricingPage() {
           <div className="text-[32px] font-bold text-[var(--tx)]">$79</div>
           <p className="text-[13px] text-[var(--tx2)]">per month, per running Claw</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-left text-[12px] text-[var(--tx2)] mt-4">
-            {FEATURES.map((feature) => (
+            {features.map((feature) => (
               <span key={feature} className="flex items-center gap-2">
                 <Check className="w-3.5 h-3.5 text-[var(--ok)] flex-shrink-0" />
                 {feature}
