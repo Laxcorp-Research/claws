@@ -78,3 +78,24 @@ When sub-PRs build on each other, **re-run earlier mutations against the final
 tree** at the end of the arc — this catches *silent weakening*, where a later
 change inadvertently makes an earlier guard vacuous (the mutation no longer fails
 a test that used to catch it).
+
+## Rule 20 — `next build` before pushing route changes
+
+Any PR that touches `**/route.ts` (App Router handlers) or changes the set of
+exported HTTP methods / path segments under `src/app/api/**` **must** run a
+local `next build` (or `npm run build`) and paste the success line into the PR
+body before push.
+
+Why: Vitest and `tsc --noEmit` do not exercise Next's route-module graph,
+dynamic segment validation, or the production bundler. Several past regressions
+(missing exports, illegal client imports into route handlers, broken
+`params: Promise<>` signatures under Next 16) only failed at `next build` or on
+the Vercel build — after the unit suite was already green.
+
+Minimum gate for such PRs:
+
+1. Relevant unit / Playwright suite green.
+2. `npx tsc --noEmit` (or the repo's typecheck script) green.
+3. `npm run build` green — paste the final `✓ Compiled successfully` (or
+   equivalent) line in the PR description.
+4. Linter diagnostics clean on every file in the diff.

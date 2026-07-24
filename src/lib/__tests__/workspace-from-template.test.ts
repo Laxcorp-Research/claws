@@ -45,7 +45,14 @@ function setupMocks() {
     async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
   );
   (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
-  (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+  // name-suffix count (often 0) then completeOnboardingAfterFirstWorkspace (1).
+  (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockImplementation(
+    async () => {
+      const calls = (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mock.calls.length
+      // After create, the completion helper sees 1 workspace.
+      return calls <= 1 ? 0 : 1
+    },
+  );
   (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-1', name: 'Test Claw' });
   (prismaMock.agent.create as ReturnType<typeof vi.fn>)
     .mockResolvedValueOnce({ id: 'agent-orch' })
@@ -54,6 +61,7 @@ function setupMocks() {
   (prismaMock.agentConnection.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
   (prismaMock.templateInstall.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'install-1' });
   (prismaMock.clawTemplate.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 }
 
 describe('createWorkspaceFromTemplate', () => {
@@ -70,6 +78,10 @@ describe('createWorkspaceFromTemplate', () => {
     expect(prismaMock.clawTemplate.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { installCount: { increment: 1 } } }),
     );
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { onboardingCompleted: true },
+    });
   });
 
   it('seeds toolRequirements from snapshot.tools (MUTATION: skip copy → fail)', async () => {
@@ -153,11 +165,14 @@ describe('createWorkspaceFromTemplate', () => {
       async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
     );
     (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(noConnTemplate);
-    (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (prismaMock.workspace.count as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
     (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-solo', name: 'Test Claw' });
     (prismaMock.agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'agent-solo' });
     (prismaMock.templateInstall.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (prismaMock.clawTemplate.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
     const result = await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
     expect(result.workspaceId).toBe('ws-solo');
