@@ -11,6 +11,7 @@ import { OnboardingJwtRefresh } from "@/components/onboarding/onboarding-jwt-ref
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { TextLink } from "@/components/ui/text-link"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { mapWorkspaceStatus } from "@/lib/utils"
 import {
@@ -260,9 +261,12 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
                       className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-transparent hover:bg-[var(--bg2)] cursor-pointer text-left"
                       onClick={() => router.push(workspaceContinueHref(w))}
                     >
-                      <span className="text-[12px] font-medium text-[var(--tx)] truncate">
+                      <TruncateWithTooltip
+                        className="text-[12px] font-medium text-[var(--tx)] min-w-0"
+                        as="span"
+                      >
                         {w.name}
-                      </span>
+                      </TruncateWithTooltip>
                       <StatusBadge status={mapWorkspaceStatus(w.status)} />
                     </button>
                   </li>
