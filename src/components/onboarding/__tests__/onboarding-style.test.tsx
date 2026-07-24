@@ -4,6 +4,12 @@ import { join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import { cleanup, render, screen } from "@testing-library/react"
 import { OnboardingClient } from "@/components/onboarding/onboarding-client"
+import type { TrackerState } from "@/lib/onboarding/tracker-state"
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/onboarding",
+}))
 
 vi.mock("next-auth/react", () => ({
   useSession: () => ({
@@ -17,13 +23,23 @@ vi.mock("@/components/shared/snackbar", () => ({
   useSnackbarOptional: () => ({ show: vi.fn(), dismiss: vi.fn() }),
 }))
 
+const emptyState: TrackerState = {
+  s1Done: false,
+  s2Done: false,
+  s3Done: false,
+  allDone: false,
+  connectedProviders: [],
+  workspaceCount: 0,
+  showAnthropicTemplateHint: false,
+  deployedWorkspaceId: null,
+}
+
 describe("onboarding / wizard TextLink identity (PR-3)", () => {
   it("Skip onboarding uses DS TextLink forward (not raw accent button)", () => {
-    render(<OnboardingClient hasApiKey={false} />)
+    render(<OnboardingClient mode="gate" state={emptyState} workspaces={[]} />)
     const skip = screen.getByRole("button", { name: /Skip onboarding/ })
     expect(skip.textContent).toContain("→")
     expect(skip.className).not.toMatch(/ac-text/)
-    // Source tripwire: no accent-colored skip button in the client.
     const src = readFileSync(
       join(process.cwd(), "src/components/onboarding/onboarding-client.tsx"),
       "utf8",
@@ -40,7 +56,6 @@ describe("onboarding / wizard TextLink identity (PR-3)", () => {
       "utf8",
     )
     expect(src).toMatch(/direction="back"[\s\S]*Back to (Builder|My Claws)/)
-    // No ad-hoc accent/raw back button in the wizard chrome block.
     expect(src).not.toMatch(
       /onClick=\{exitWizard\}\s*\n\s*className="text-\[11px\] text-\[var\(--tx2\)\]/,
     )

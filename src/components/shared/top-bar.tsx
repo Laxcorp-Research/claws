@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { useState, useEffect } from "react"
-import { User, Key, CreditCard, Lock, Store, Upload, Wrench, Shield, LogOut, type LucideIcon } from "lucide-react"
+import { Compass, User, Key, CreditCard, Lock, Store, Upload, Wrench, Shield, LogOut, type LucideIcon } from "lucide-react"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import {
   DropdownMenu,
@@ -134,6 +134,7 @@ export function TopBar() {
             </div>
 
             <div className="py-1">
+              <MenuLink href="/onboarding" icon={Compass} label="Getting started" />
               <MenuLink href="/settings?tab=account" icon={User} label="Account" />
               <MenuLink href="/settings?tab=api-keys" icon={Key} label="API Keys" />
               <MenuLink href="/settings?tab=billing" icon={CreditCard} label="Billing" />
