@@ -3093,12 +3093,13 @@ export default function SetupStepPage() {
     <>
       <div className="max-w-4xl mx-auto px-4 pt-4">
         <div className="flex items-center mb-[24px]">
-          <button
+          <TextLink
+            direction="back"
             onClick={exitWizard}
-            className="text-[11px] text-[var(--tx2)] hover:text-[var(--tx)] cursor-pointer bg-transparent border-none flex-shrink-0 transition-colors mr-[16px] leading-none"
+            className="flex-shrink-0 mr-[16px] leading-none"
           >
-            {isFromBuilder ? "← Back to Builder" : "← Back to My Claws"}
-          </button>
+            {isFromBuilder ? "Back to Builder" : "Back to My Claws"}
+          </TextLink>
           {showWizardChrome && (
             <>
               <div className="flex-1 flex justify-center items-center">
