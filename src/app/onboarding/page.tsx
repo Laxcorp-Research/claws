@@ -2,32 +2,30 @@ import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { loadOnboardingGate } from "@/lib/auth/onboarding-gate"
+import { loadGettingStartedTracker } from "@/lib/onboarding/load-tracker"
 import { OnboardingClient } from "@/components/onboarding/onboarding-client"
-import { OnboardingSessionSync } from "@/components/onboarding/onboarding-session-sync"
-import { PageShell } from "@/components/shared/page-shell"
 
 export default async function OnboardingPage() {
   const session = await getServerSession(authOptions)
   const gate = await loadOnboardingGate(session?.user?.id)
 
-  if (gate.redirectTo === "/auth/signin") {
+  if (gate.redirectTo === "/auth/signin" || !session?.user?.id) {
     redirect("/auth/signin")
   }
 
-  // DB-complete + possibly stale-false JWT: do NOT server-redirect to /my-claws
-  // (proxy would bounce back → loop). Sync the JWT client-side first.
-  if (gate.redirectTo === "/my-claws") {
-    return (
-      <PageShell background="secondary">
-        <OnboardingSessionSync target="/my-claws" />
-      </PageShell>
-    )
+  const tracker = await loadGettingStartedTracker(session.user.id)
+  if (!tracker) {
+    redirect("/auth/signin")
   }
 
+  // Gate incomplete → tracker in gate mode (Skip visible).
+  // DB-complete → revisit mode (no redirect away). Proxy allowlists /onboarding
+  // so a stale-false JWT cannot bounce-loop; OnboardingJwtRefresh re-issues cookie.
   return (
     <OnboardingClient
-      hasApiKey={gate.hasApiKey}
-      showAnthropicTemplateHint={gate.showAnthropicTemplateHint}
+      mode={tracker.mode}
+      state={tracker.state}
+      workspaces={tracker.workspaces}
     />
   )
 }

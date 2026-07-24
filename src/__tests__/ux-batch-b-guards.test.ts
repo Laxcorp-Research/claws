@@ -64,14 +64,18 @@ describe("Batch B recurrence guards", () => {
     expect(encodeBlock).toContain("onboardingCompleted")
   })
 
-  it("onboarding page uses server-side DB gate (stale-cookie escape)", () => {
+  it("onboarding page is revisitable from DB truth (stale-cookie escape via allowlist + JWT refresh)", () => {
     const page = read("src/app/onboarding/page.tsx")
     expect(page).toContain("loadOnboardingGate")
-    // Must sync JWT before leaving — server redirect to /my-claws loops with proxy.
-    expect(page).toContain("OnboardingSessionSync")
+    expect(page).toContain("loadGettingStartedTracker")
+    // v2: completed users render tracker (no redirect away / no SessionSync bounce).
+    expect(page).not.toContain("OnboardingSessionSync")
     expect(page).not.toMatch(/redirect\(\s*["']\/my-claws["']\s*\)/)
     const gate = read("src/lib/auth/onboarding-gate.ts")
-    expect(gate).toContain('redirectTo: "/my-claws"')
+    expect(gate).toContain('"revisit"')
+    expect(gate).not.toContain('redirectTo: "/my-claws"')
+    const client = read("src/components/onboarding/onboarding-client.tsx")
+    expect(client).toContain("OnboardingJwtRefresh")
   })
 
   it("workspace create completes onboarding server-side", () => {

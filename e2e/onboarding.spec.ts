@@ -1,52 +1,58 @@
 import { test, expect } from '@playwright/test';
-import { signInAsOnboardingUser } from './helpers/auth';
+import { signInAsOnboardingUser, signInAsTestUser } from './helpers/auth';
 
-test.describe('Fresh-signup onboarding journey (blocking)', () => {
-  test('incomplete user lands on /onboarding; My Claws stays gated', async ({ page }) => {
+test.describe('Getting started tracker (blocking)', () => {
+  test('fresh flag-false user: grey tracker; step-3 snackbar; create → revisit S2 green → step-3 routes to setup', async ({
+    page,
+  }) => {
     await signInAsOnboardingUser(page, '/onboarding');
 
     await expect(page).toHaveURL(/\/onboarding/);
-    await expect(page.getByRole('heading', { name: 'Welcome to Claws' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Getting started' })).toBeVisible();
 
-    // Nav link exists but edge guard bounces incomplete users back.
-    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'My Claws' }).click();
-    await page.waitForTimeout(800);
-    await expect(page).toHaveURL(/\/onboarding/);
-  });
+    // Step 3 before any claw → snackbar + step-2 emphasis.
+    await page.getByRole('button', { name: /Connect tools & deploy/ }).click();
+    await expect(page.getByText(/Create a Claw first/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-emphasized="true"]')).toContainText('Pick your first Claw');
 
-  test('Create custom Claw → builder; DB flag true; exactly one My Claw 1', async ({ page }) => {
-    await signInAsOnboardingUser(page, '/onboarding');
-
-    // Wait until session hydrates (CTAs disabled while status===loading).
+    // Create custom Claw → builder (idempotent create + completion from PR-1).
     await expect(page.getByRole('button', { name: 'Create custom Claw' })).toBeEnabled({
       timeout: 15_000,
     });
     await page.getByRole('button', { name: 'Create custom Claw' }).click();
     await page.waitForURL(/\/builder\//, { timeout: 30_000 });
-    expect(page.url()).toMatch(/\/builder\//);
 
-    // Session cookie should now clear the gate for subsequent navigations.
-    await page.goto('/my-claws');
-    await page.waitForURL('**/my-claws', { timeout: 15_000 });
-    expect(page.url()).toContain('/my-claws');
-
-    // Use page.request so the session cookie from the browser context is sent.
-    const res = await page.request.get('/api/workspaces');
-    expect(res.ok()).toBe(true);
-    const json = await res.json();
-    const rows = (json.data ?? []) as Array<{ name: string; status: string }>;
-    const myClaw1 = rows.filter((w) => w.name === 'My Claw 1');
-    expect(myClaw1.length).toBe(1);
-  });
-
-  test('Skip onboarding → /my-claws', async ({ page }) => {
-    await signInAsOnboardingUser(page, '/onboarding');
-
-    await expect(page.getByRole('button', { name: /Skip onboarding/ })).toBeEnabled({
+    // Revisit tracker — S2 green, step-3 continues into wizard (single workspace).
+    await page.goto('/onboarding');
+    await expect(page.getByRole('heading', { name: /Getting started|You're all set/ })).toBeVisible({
       timeout: 15_000,
     });
-    await page.getByRole('button', { name: /Skip onboarding/ }).click();
-    await page.waitForURL('**/my-claws', { timeout: 30_000 });
-    expect(page.url()).toContain('/my-claws');
+    await expect(page.getByText(/Claw created/)).toBeVisible();
+
+    // Single DRAFT workspace → direct-route to builder (SETUP_INCOMPLETE → wizard).
+    await page.getByRole('button', { name: /Continue setup/ }).click();
+    await page.waitForURL(/\/builder\//, { timeout: 15_000 });
+    expect(page.url()).toMatch(/\/builder\//);
+  });
+
+  test('completed user: menu Getting started → revisit tracker (no redirect away)', async ({
+    page,
+  }) => {
+    await signInAsTestUser(page);
+    await page.goto('/my-claws');
+    await page.waitForURL('**/my-claws', { timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'User menu' }).click();
+    await page.getByRole('menuitem', { name: /Getting started/ }).click();
+
+    await expect(page).toHaveURL(/\/onboarding/);
+    await expect(
+      page.getByRole('heading', { name: /Getting started|You're all set/ }),
+    ).toBeVisible({ timeout: 15_000 });
+    // Stay on tracker — not bounced to /my-claws.
+    await page.waitForTimeout(800);
+    await expect(page).toHaveURL(/\/onboarding/);
+    // Skip is gate-only.
+    await expect(page.getByRole('button', { name: /Skip onboarding/ })).toHaveCount(0);
   });
 });
