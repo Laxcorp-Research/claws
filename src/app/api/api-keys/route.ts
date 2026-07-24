@@ -5,6 +5,8 @@ import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { encrypt, generateKeyHint } from "@/lib/encryption"
 import { requestReconcileForUser } from "@/lib/openclaw/request-reconcile"
 import { convertUserToByok } from "@/lib/credits/byok-recovery"
+import { validateApiKey } from "@/lib/api-key-validation"
+import { SUPPORTED_PROVIDERS, isSupportedProvider } from "@/lib/supported-providers"
 
 // PR-8b/C: headroom for after()'s fire-and-forget reconcile (E1 add/update BYOK
 // key → reconcile the user's RUNNING containers). Gated by ENV_RECONCILE_MODE
@@ -56,8 +58,15 @@ export async function POST(req: NextRequest) {
 
   if (!provider || !apiKey) return ERRORS.VALIDATION("provider and apiKey are required")
 
-  const validProviders = ["ANTHROPIC", "OPENAI", "GOOGLE", "OPENROUTER", "OLLAMA"]
-  if (!validProviders.includes(provider)) return ERRORS.VALIDATION(`Invalid provider. Must be one of: ${validProviders.join(", ")}`)
+  if (!isSupportedProvider(provider)) {
+    return ERRORS.VALIDATION(`Invalid provider. Must be one of: ${SUPPORTED_PROVIDERS.join(", ")}`)
+  }
+
+  // Live validate before store (parity with workspace override route).
+  const validation = await validateApiKey(provider, apiKey)
+  if (!validation.valid) {
+    return ERRORS.VALIDATION(validation.error || `Invalid ${provider} API key.`)
+  }
 
   const existing = await prisma.userApiKey.findUnique({
     where: { userId_provider: { userId: user.id, provider } },

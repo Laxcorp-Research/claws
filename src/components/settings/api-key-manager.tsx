@@ -25,7 +25,6 @@ const PROVIDERS = [
   { key: "ANTHROPIC", name: "Anthropic (Claude)", shortName: "Anthropic", placeholder: "sk-ant-api03-...", helpUrl: "https://console.anthropic.com/settings/keys" },
   { key: "OPENAI", name: "OpenAI (GPT)", shortName: "OpenAI", placeholder: "sk-proj-...", helpUrl: "https://platform.openai.com/api-keys" },
   { key: "GOOGLE", name: "Google (Gemini)", shortName: "Google", placeholder: "AIza...", helpUrl: "https://aistudio.google.com/apikey" },
-  { key: "OPENROUTER", name: "OpenRouter", shortName: "OpenRouter", placeholder: "sk-or-v1-...", helpUrl: "https://openrouter.ai/keys" },
 ] as const
 
 export function ApiKeyManager() {
@@ -219,7 +218,7 @@ export function ApiKeyManager() {
             : "AI model API keys"}
       </h2>
       <p className="text-[11px] text-[var(--tx2)] mb-[4px]">
-        These power all your Claws. Each Claw&apos;s agents can use a different model - configure that in the builder or during setup.
+        We support Anthropic, OpenAI, and Google. These power all your Claws. Each Claw&apos;s agents can use a different model - configure that in the builder or during setup.
       </p>
       <p className="text-[11px] text-[var(--tx3)] mb-[12px]">
         Individual Claws can override with different keys in their setup wizard if you want to track usage separately.

@@ -66,6 +66,16 @@ describe("OnboardingClient Batch B CTAs", () => {
     expect(screen.queryByText("Add Anthropic key")).toBeNull()
   })
 
+  it("shows Anthropic template honesty hint when another provider key exists", () => {
+    render(<OnboardingClient hasApiKey={true} showAnthropicTemplateHint />)
+    expect(
+      screen.getByText(
+        /Templates are engineered for Claude models — add an Anthropic key/,
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText("Add Anthropic key")).toBeTruthy()
+  })
+
   it("Create custom Claw POSTs workspace then hard-navigates to builder", async () => {
     render(<OnboardingClient hasApiKey={false} />)
     fireEvent.click(screen.getByText("Create custom Claw"))

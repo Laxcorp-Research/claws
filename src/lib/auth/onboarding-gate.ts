@@ -3,7 +3,12 @@ import { prisma } from "@/lib/db"
 export type OnboardingGate =
   | { redirectTo: "/auth/signin" }
   | { redirectTo: "/my-claws" }
-  | { redirectTo: null; hasApiKey: boolean }
+  | {
+      redirectTo: null
+      hasApiKey: boolean
+      /** True when user has a non-Anthropic key but no Anthropic key (template honesty). */
+      showAnthropicTemplateHint: boolean
+    }
 
 /**
  * Server-side onboarding gate. Reads the DB flag (not the JWT) so a
@@ -16,7 +21,7 @@ export async function loadOnboardingGate(userId: string | undefined): Promise<On
     where: { id: userId },
     select: {
       onboardingCompleted: true,
-      _count: { select: { apiKeys: true } },
+      apiKeys: { select: { provider: true } },
     },
   })
 
@@ -27,5 +32,10 @@ export async function loadOnboardingGate(userId: string | undefined): Promise<On
     return { redirectTo: "/my-claws" }
   }
 
-  return { redirectTo: null, hasApiKey: user._count.apiKeys > 0 }
+  const providers = user.apiKeys.map((k) => k.provider)
+  const hasApiKey = providers.length > 0
+  const hasAnthropic = providers.includes("ANTHROPIC")
+  const showAnthropicTemplateHint = hasApiKey && !hasAnthropic
+
+  return { redirectTo: null, hasApiKey, showAnthropicTemplateHint }
 }

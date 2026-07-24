@@ -19,7 +19,7 @@ describe("loadOnboardingGate", () => {
   it("redirects DB-complete users to /my-claws (stale-cookie escape)", async () => {
     ;(prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       onboardingCompleted: true,
-      _count: { apiKeys: 0 },
+      apiKeys: [],
     })
     await expect(loadOnboardingGate("u1")).resolves.toEqual({
       redirectTo: "/my-claws",
@@ -29,11 +29,24 @@ describe("loadOnboardingGate", () => {
   it("keeps incomplete users on onboarding and reports api-key presence", async () => {
     ;(prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       onboardingCompleted: false,
-      _count: { apiKeys: 1 },
+      apiKeys: [{ provider: "ANTHROPIC" }],
     })
     await expect(loadOnboardingGate("u1")).resolves.toEqual({
       redirectTo: null,
       hasApiKey: true,
+      showAnthropicTemplateHint: false,
+    })
+  })
+
+  it("flags Anthropic template hint when only a non-Anthropic key exists", async () => {
+    ;(prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      onboardingCompleted: false,
+      apiKeys: [{ provider: "OPENAI" }],
+    })
+    await expect(loadOnboardingGate("u1")).resolves.toEqual({
+      redirectTo: null,
+      hasApiKey: true,
+      showAnthropicTemplateHint: true,
     })
   })
 
