@@ -3,6 +3,10 @@
  *
  * S3 ("has deployed") uses DeploymentStatus.COMPLETED — not Workspace.status —
  * so a claw that is STOPPED/PAUSED after a successful deploy still counts.
+ *
+ * S1v2 (D-v REFRAME): credit balanceCents > 0 OR any UserApiKey.
+ * Edge: balance hits 0 with no key → S1v2 regresses to not-done — accepted
+ * (nav item reappearing is an actionable nudge, not a bug).
  */
 
 export type TrackerWorkspaceStatus =
@@ -25,23 +29,27 @@ export interface TrackerWorkspace {
 
 export interface TrackerInputs {
   providers: string[]
-  workspaces: TrackerWorkspace[]
-  /** True when any workspace owned by the user has ≥1 ToolConnection row. */
-  hasToolConnection: boolean
   /**
-   * MUTATION: changing this to require Workspace.status===RUNNING breaks the
-   * once-deployed-now-stopped matrix case.
+   * Same surface as wizard Step1: CreditAccount.balanceCents from
+   * GET /api/credits/balance (null when no account row).
    */
+  balanceCents: number | null
+  workspaces: TrackerWorkspace[]
+  hasToolConnection: boolean
   hasCompletedDeployment: boolean
 }
 
+export type S1DoneVia = "credits" | "key" | "both" | null
+
 export interface TrackerState {
   s1Done: boolean
+  s1DoneVia: S1DoneVia
   s2Done: boolean
   s3Done: boolean
   allDone: boolean
   connectedProviders: string[]
   workspaceCount: number
+  balanceCents: number
   showAnthropicTemplateHint: boolean
   deployedWorkspaceId: string | null
 }
@@ -56,7 +64,28 @@ export function providerDisplayName(provider: string): string {
   return PROVIDER_LABELS[provider] ?? provider
 }
 
-/** S3 predicate: tools connected somewhere AND at least one COMPLETED deployment. */
+/** S1v2: balance > 0 OR any UserApiKey. */
+export function isStep1Complete(input: {
+  balanceCents: number | null
+  providers: string[]
+}): boolean {
+  const hasCredits = (input.balanceCents ?? 0) > 0
+  const hasKey = input.providers.length > 0
+  return hasCredits || hasKey
+}
+
+export function resolveS1DoneVia(input: {
+  balanceCents: number | null
+  providers: string[]
+}): S1DoneVia {
+  const hasCredits = (input.balanceCents ?? 0) > 0
+  const hasKey = input.providers.length > 0
+  if (hasCredits && hasKey) return "both"
+  if (hasKey) return "key"
+  if (hasCredits) return "credits"
+  return null
+}
+
 export function isStep3Complete(input: {
   hasToolConnection: boolean
   hasCompletedDeployment: boolean
@@ -64,8 +93,28 @@ export function isStep3Complete(input: {
   return input.hasToolConnection && input.hasCompletedDeployment
 }
 
+/**
+ * Top-bar "Getting started" visibility — incomplete tracker only.
+ * MUTATION: always return true → visibility test fails.
+ * Menu entry is unconditional (separate predicate).
+ */
+export function shouldShowGettingStartedNav(state: {
+  s1Done: boolean
+  s2Done: boolean
+  s3Done: boolean
+}): boolean {
+  return !(state.s1Done && state.s2Done && state.s3Done)
+}
+
 export function deriveTrackerState(input: TrackerInputs): TrackerState {
-  const s1Done = input.providers.length > 0
+  const s1Done = isStep1Complete({
+    balanceCents: input.balanceCents,
+    providers: input.providers,
+  })
+  const s1DoneVia = resolveS1DoneVia({
+    balanceCents: input.balanceCents,
+    providers: input.providers,
+  })
   const s2Done = input.workspaces.length > 0
   const s3Done = isStep3Complete({
     hasToolConnection: input.hasToolConnection,
@@ -79,23 +128,24 @@ export function deriveTrackerState(input: TrackerInputs): TrackerState {
 
   return {
     s1Done,
+    s1DoneVia,
     s2Done,
     s3Done,
     allDone: s1Done && s2Done && s3Done,
     connectedProviders: input.providers.map(providerDisplayName),
     workspaceCount: input.workspaces.length,
-    showAnthropicTemplateHint: s1Done && !hasAnthropic,
+    balanceCents: input.balanceCents ?? 0,
+    // Template honesty only when keys exist without Anthropic (credits don't imply Anthropic key).
+    showAnthropicTemplateHint: input.providers.length > 0 && !hasAnthropic,
     deployedWorkspaceId: deployed?.id ?? null,
   }
 }
 
 export type Step3Action =
   | { type: "need-claw" }
-  | { type: "direct"; href: string }
   | { type: "picker"; workspaces: TrackerWorkspace[] }
   | { type: "dashboard"; href: string }
 
-/** Route a workspace into setup / builder / dashboard per product rules. */
 export function workspaceContinueHref(workspace: TrackerWorkspace): string {
   if (workspace.status === "SETUP_INCOMPLETE") {
     return `/setup/${workspace.id}/step/1`
@@ -107,8 +157,8 @@ export function workspaceContinueHref(workspace: TrackerWorkspace): string {
 }
 
 /**
- * Step-3 click branching.
- * MUTATION: drop the need-claw branch → snackbar branching test fails.
+ * Step-3 click branching (v2.1): picker ALWAYS when S2 done (even n=1).
+ * MUTATION: restore direct-route for n===1 → branching test fails.
  */
 export function resolveStep3Action(args: {
   s2Done: boolean
@@ -119,9 +169,6 @@ export function resolveStep3Action(args: {
   if (!args.s2Done) return { type: "need-claw" }
   if (args.s3Done && args.deployedWorkspaceId) {
     return { type: "dashboard", href: `/dashboard/${args.deployedWorkspaceId}` }
-  }
-  if (args.workspaces.length === 1) {
-    return { type: "direct", href: workspaceContinueHref(args.workspaces[0]) }
   }
   return { type: "picker", workspaces: args.workspaces }
 }

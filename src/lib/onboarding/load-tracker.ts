@@ -12,21 +12,30 @@ export type GettingStartedPayload = {
   workspaces: TrackerWorkspace[]
 }
 
+export type OnboardingStateSteps = {
+  s1: boolean
+  s2: boolean
+  s3: boolean
+}
+
 /**
- * Cheapest reads for the live tracker:
- * - User.onboardingCompleted + apiKeys.provider
- * - Workspace list (id/name/status)
- * - exists ToolConnection via workspace join
- * - exists Deployment status=COMPLETED via workspace join
+ * Shared cheap reads for tracker page + GET /api/onboarding/state.
+ * Balance = CreditAccount.balanceCents (same as /api/credits/balance / wizard banner).
  */
-export async function loadGettingStartedTracker(
-  userId: string,
-): Promise<GettingStartedPayload | null> {
+export async function loadTrackerInputs(userId: string): Promise<{
+  onboardingCompleted: boolean
+  providers: string[]
+  balanceCents: number | null
+  workspaces: TrackerWorkspace[]
+  hasToolConnection: boolean
+  hasCompletedDeployment: boolean
+} | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       onboardingCompleted: true,
       apiKeys: { select: { provider: true } },
+      creditAccount: { select: { balanceCents: true } },
       workspaces: {
         select: {
           id: true,
@@ -53,18 +62,43 @@ export async function loadGettingStartedTracker(
     hasCompletedDeployment: w.deployments.length > 0,
   }))
 
-  const hasToolConnection = user.workspaces.some((w) => w.toolConnections.length > 0)
-  const hasCompletedDeployment = workspaces.some((w) => w.hasCompletedDeployment)
-  const providers = user.apiKeys.map((k) => k.provider)
+  return {
+    onboardingCompleted: user.onboardingCompleted === true,
+    providers: user.apiKeys.map((k) => k.provider),
+    balanceCents: user.creditAccount?.balanceCents ?? null,
+    workspaces,
+    hasToolConnection: user.workspaces.some((w) => w.toolConnections.length > 0),
+    hasCompletedDeployment: workspaces.some((w) => w.hasCompletedDeployment),
+  }
+}
+
+export async function loadGettingStartedTracker(
+  userId: string,
+): Promise<GettingStartedPayload | null> {
+  const raw = await loadTrackerInputs(userId)
+  if (!raw) return null
 
   return {
-    mode: user.onboardingCompleted === true ? "revisit" : "gate",
+    mode: raw.onboardingCompleted ? "revisit" : "gate",
     state: deriveTrackerState({
-      providers,
-      workspaces,
-      hasToolConnection,
-      hasCompletedDeployment,
+      providers: raw.providers,
+      balanceCents: raw.balanceCents,
+      workspaces: raw.workspaces,
+      hasToolConnection: raw.hasToolConnection,
+      hasCompletedDeployment: raw.hasCompletedDeployment,
     }),
-    workspaces,
+    workspaces: raw.workspaces,
+  }
+}
+
+export async function loadOnboardingStateSteps(
+  userId: string,
+): Promise<OnboardingStateSteps | null> {
+  const tracker = await loadGettingStartedTracker(userId)
+  if (!tracker) return null
+  return {
+    s1: tracker.state.s1Done,
+    s2: tracker.state.s2Done,
+    s3: tracker.state.s3Done,
   }
 }

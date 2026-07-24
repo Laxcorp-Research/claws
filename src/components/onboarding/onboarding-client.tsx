@@ -14,6 +14,8 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { mapWorkspaceStatus } from "@/lib/utils"
+import { formatCreditDollars } from "@/lib/credits/constants"
+import { invalidateOnboardingStateCache } from "@/hooks/use-onboarding-state"
 import {
   resolveStep3Action,
   workspaceContinueHref,
@@ -57,6 +59,7 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
       throw new Error(data?.error?.message || "Could not complete onboarding")
     }
     await update({ onboardingCompleted: true }).catch(() => null)
+    invalidateOnboardingStateCache()
   }
 
   const handleSkip = async () => {
@@ -132,7 +135,7 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
       window.setTimeout(() => setEmphasizeStep2(false), 1600)
       return
     }
-    if (action.type === "direct" || action.type === "dashboard") {
+    if (action.type === "dashboard") {
       router.push(action.href)
       return
     }
@@ -144,6 +147,59 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
     ? "Your keys, Claws, and first deploy are in place. Revisit anytime from the menu."
     : "Track the essentials to get your first AI agent team running."
 
+  const step1Actions = (() => {
+    if (!state.s1Done) {
+      return (
+        <>
+          <Link href="/settings?tab=api-keys">
+            <Button variant="primary" size="sm">Add Anthropic key</Button>
+          </Link>
+          <Link href="/settings?tab=api-keys">
+            <Button variant="outline" size="sm">Add OpenAI key</Button>
+          </Link>
+        </>
+      )
+    }
+
+    if (state.s1DoneVia === "credits") {
+      return (
+        <>
+          <p className="text-[11px] text-[var(--tx2)] w-full text-left">
+            Powered by Claws Starter Credits — {formatCreditDollars(state.balanceCents)} remaining
+          </p>
+          <TextLink href="/settings?tab=api-keys" direction="forward">
+            Add your own key
+          </TextLink>
+        </>
+      )
+    }
+
+    // key or both — key state wins the label; credits may append
+    const keyLabel =
+      state.connectedProviders.length === 1
+        ? `${state.connectedProviders[0]} key connected`
+        : `${state.connectedProviders.join(", ")} keys connected`
+
+    return (
+      <>
+        {state.showAnthropicTemplateHint && (
+          <p className="text-[11px] text-[var(--tx2)] text-left mb-1 max-w-md w-full">
+            {ANTHROPIC_TEMPLATE_HINT}
+          </p>
+        )}
+        <p className="text-[11px] text-[var(--tx2)] w-full text-left">{keyLabel}</p>
+        {state.s1DoneVia === "both" && (
+          <p className="text-[11px] text-[var(--tx3)] w-full text-left">
+            Also {formatCreditDollars(state.balanceCents)} in Starter Credits
+          </p>
+        )}
+        <TextLink href="/settings?tab=api-keys" direction="forward">
+          Manage keys
+        </TextLink>
+      </>
+    )
+  })()
+
   return (
     <PageShell background="secondary">
       <OnboardingJwtRefresh enabled={mode === "revisit"} />
@@ -154,45 +210,16 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
         <div className="flex flex-col gap-3 mb-4">
           <OnboardingStep
             number={1}
-            title="Add your AI model key"
-            description="Your agents need an AI model to think. We support Anthropic, OpenAI, and Google."
-            completed={state.s1Done}
-            actions={
-              !state.s1Done ? (
-                <>
-                  <Link href="/settings?tab=api-keys">
-                    <Button variant="primary" size="sm">Add Anthropic key</Button>
-                  </Link>
-                  <Link href="/settings?tab=api-keys">
-                    <Button variant="outline" size="sm">Add OpenAI key</Button>
-                  </Link>
-                </>
-              ) : state.showAnthropicTemplateHint ? (
-                <>
-                  <p className="text-[11px] text-[var(--tx2)] text-left mb-1 max-w-md w-full">
-                    {ANTHROPIC_TEMPLATE_HINT}
-                  </p>
-                  <p className="text-[11px] text-[var(--tx2)] w-full text-left">
-                    Connected: {state.connectedProviders.join(", ")}
-                  </p>
-                  <Link href="/settings?tab=api-keys">
-                    <Button variant="primary" size="sm">Add Anthropic key</Button>
-                  </Link>
-                  <TextLink href="/settings?tab=api-keys" direction="forward">
-                    Manage keys
-                  </TextLink>
-                </>
-              ) : (
-                <>
-                  <p className="text-[11px] text-[var(--tx2)] w-full text-left">
-                    Connected: {state.connectedProviders.join(", ")}
-                  </p>
-                  <TextLink href="/settings?tab=api-keys" direction="forward">
-                    Manage keys
-                  </TextLink>
-                </>
-              )
+            title="Power your agents"
+            description={
+              state.s1Done
+                ? state.s1DoneVia === "credits"
+                  ? "Starter credits are active — add your own key anytime."
+                  : "Your agents have an AI model key."
+                : "Your agents need an AI model to think. Starter credits cover Claude models — or add your own key."
             }
+            completed={state.s1Done}
+            actions={step1Actions}
           />
 
           <OnboardingStep
@@ -224,9 +251,9 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
                       ? "1 Claw created"
                       : `${state.workspaceCount} Claws created`}
                   </p>
-                  <TextLink href="/my-claws" direction="forward">
-                    My Claws
-                  </TextLink>
+                  <Link href="/my-claws">
+                    <Button variant="primary" size="sm">Go to My Claws</Button>
+                  </Link>
                 </>
               )
             }
@@ -235,7 +262,7 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
           <OnboardingStep
             number={3}
             title="Connect tools & deploy"
-            description="Open a Claw's setup wizard to connect tools and deploy. Once deployed, it stays checked even if the Claw is later stopped."
+            description="Open a Claw's setup wizard to connect tools and deploy."
             completed={state.s3Done}
             actions={
               state.s3Done && state.deployedWorkspaceId ? (
@@ -247,31 +274,36 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
                 </TextLink>
               ) : (
                 <Button variant="primary" size="sm" onClick={handleStep3}>
-                  {state.s2Done ? "Continue setup" : "Connect tools & deploy"}
+                  Set up & deploy
                 </Button>
               )
             }
           >
-            {pickerOpen && !state.s3Done && workspaces.length > 1 && (
-              <ul className="border border-[var(--bd)] rounded-xl overflow-hidden text-left">
-                {workspaces.map((w) => (
-                  <li key={w.id} className="border-b border-[var(--bd)] last:border-b-0">
-                    <button
-                      type="button"
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-transparent hover:bg-[var(--bg2)] cursor-pointer text-left"
-                      onClick={() => router.push(workspaceContinueHref(w))}
-                    >
-                      <TruncateWithTooltip
-                        className="text-[12px] font-medium text-[var(--tx)] min-w-0"
-                        as="span"
+            {pickerOpen && !state.s3Done && workspaces.length > 0 && (
+              <div className="text-left">
+                <p className="text-[11px] font-medium text-[var(--tx2)] mb-1.5">
+                  Choose a Claw to set up
+                </p>
+                <ul className="border border-[var(--bd)] rounded-xl overflow-hidden">
+                  {workspaces.map((w) => (
+                    <li key={w.id} className="border-b border-[var(--bd)] last:border-b-0">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-transparent hover:bg-[var(--bg2)] cursor-pointer text-left"
+                        onClick={() => router.push(workspaceContinueHref(w))}
                       >
-                        {w.name}
-                      </TruncateWithTooltip>
-                      <StatusBadge status={mapWorkspaceStatus(w.status)} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        <TruncateWithTooltip
+                          className="text-[12px] font-medium text-[var(--tx)] min-w-0"
+                          as="span"
+                        >
+                          {w.name}
+                        </TruncateWithTooltip>
+                        <StatusBadge status={mapWorkspaceStatus(w.status)} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </OnboardingStep>
         </div>

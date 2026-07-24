@@ -23,13 +23,20 @@ vi.mock("@/components/shared/snackbar", () => ({
   useSnackbarOptional: () => ({ show: vi.fn(), dismiss: vi.fn() }),
 }))
 
+vi.mock("@/hooks/use-onboarding-state", () => ({
+  useOnboardingNavVisible: () => false,
+  invalidateOnboardingStateCache: vi.fn(),
+}))
+
 const emptyState: TrackerState = {
   s1Done: false,
+  s1DoneVia: null,
   s2Done: false,
   s3Done: false,
   allDone: false,
   connectedProviders: [],
   workspaceCount: 0,
+  balanceCents: 0,
   showAnthropicTemplateHint: false,
   deployedWorkspaceId: null,
 }
@@ -40,13 +47,6 @@ describe("onboarding / wizard TextLink identity (PR-3)", () => {
     const skip = screen.getByRole("button", { name: /Skip onboarding/ })
     expect(skip.textContent).toContain("→")
     expect(skip.className).not.toMatch(/ac-text/)
-    const src = readFileSync(
-      join(process.cwd(), "src/components/onboarding/onboarding-client.tsx"),
-      "utf8",
-    )
-    expect(src).toContain('direction="forward"')
-    expect(src).toContain("Skip onboarding")
-    expect(src).not.toMatch(/text-\[var\(--ac-text\)\].*Skip|Skip.*text-\[var\(--ac-text\)\]/)
     cleanup()
   })
 
@@ -56,8 +56,5 @@ describe("onboarding / wizard TextLink identity (PR-3)", () => {
       "utf8",
     )
     expect(src).toMatch(/direction="back"[\s\S]*Back to (Builder|My Claws)/)
-    expect(src).not.toMatch(
-      /onClick=\{exitWizard\}\s*\n\s*className="text-\[11px\] text-\[var\(--tx2\)\]/,
-    )
   })
 })

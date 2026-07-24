@@ -10,9 +10,10 @@ describe("provider honesty copy alignment", () => {
     expect(SUPPORTED_PROVIDERS_COPY).toBe(ALIGNED)
   })
 
-  it("onboarding, pricing, settings, and setup use the aligned string", () => {
+  it("pricing, settings, and setup use the aligned string", () => {
+    // Onboarding step-1 copy was reframed for credit mode (v2.1 D-v) — no longer
+    // required to carry this exact marketing string.
     const roots = [
-      "src/components/onboarding/onboarding-client.tsx",
       "src/app/pricing/page.tsx",
       "src/components/settings/api-key-manager.tsx",
       "src/app/setup/[workspaceId]/step/[n]/page.tsx",
