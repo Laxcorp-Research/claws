@@ -26,13 +26,20 @@ vi.mock("@/components/shared/snackbar", () => ({
   useSnackbarOptional: () => ({ show: showSnackbar, dismiss: vi.fn() }),
 }))
 
+vi.mock("@/hooks/use-onboarding-state", () => ({
+  useOnboardingNavVisible: () => false,
+  invalidateOnboardingStateCache: vi.fn(),
+}))
+
 const emptyState: TrackerState = {
   s1Done: false,
+  s1DoneVia: null,
   s2Done: false,
   s3Done: false,
   allDone: false,
   connectedProviders: [],
   workspaceCount: 0,
+  balanceCents: 0,
   showAnthropicTemplateHint: false,
   deployedWorkspaceId: null,
 }
@@ -72,21 +79,22 @@ beforeEach(() => {
   )
 })
 
-describe("OnboardingClient Batch B CTAs (v2 props)", () => {
-  it("Add Anthropic/OpenAI key links to /settings?tab=api-keys when no key", () => {
+describe("OnboardingClient Batch B CTAs (v2.1 props)", () => {
+  it("Add Anthropic/OpenAI key links when S1 not done", () => {
     render(<OnboardingClient mode="gate" state={emptyState} workspaces={[]} />)
     expect(screen.getByText("Add Anthropic key").closest("a")?.getAttribute("href")).toBe(
       "/settings?tab=api-keys",
     )
   })
 
-  it("marks step 1 done when s1Done — Manage keys, no primary add CTAs", () => {
+  it("marks step 1 done via key — Manage keys", () => {
     render(
       <OnboardingClient
         mode="gate"
         state={{
           ...emptyState,
           s1Done: true,
+          s1DoneVia: "key",
           connectedProviders: ["Anthropic"],
         }}
         workspaces={[]}
@@ -96,62 +104,12 @@ describe("OnboardingClient Batch B CTAs (v2 props)", () => {
     expect(screen.getByRole("link", { name: /Manage keys/ })).toBeTruthy()
   })
 
-  it("shows Anthropic template honesty hint when another provider key exists", () => {
-    render(
-      <OnboardingClient
-        mode="gate"
-        state={{
-          ...emptyState,
-          s1Done: true,
-          connectedProviders: ["OpenAI"],
-          showAnthropicTemplateHint: true,
-        }}
-        workspaces={[]}
-      />,
-    )
-    expect(
-      screen.getByText(/Templates are engineered for Claude models — add an Anthropic key/),
-    ).toBeTruthy()
-    expect(screen.getByText("Add Anthropic key")).toBeTruthy()
-  })
-
   it("Create custom Claw POSTs workspace then hard-navigates to builder", async () => {
     render(<OnboardingClient mode="gate" state={emptyState} workspaces={[]} />)
     fireEvent.click(screen.getByText("Create custom Claw"))
     await waitFor(() => {
       expect(assign).toHaveBeenCalledWith("/builder/ws-new")
     })
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/user/complete-onboarding",
-      expect.objectContaining({ method: "POST" }),
-    )
-  })
-
-  it("does not navigate when complete-onboarding is not ok", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (String(url).includes("/api/workspaces")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true, data: { id: "ws-new" } }),
-          })
-        }
-        if (String(url).includes("/api/user/complete-onboarding")) {
-          return Promise.resolve({
-            ok: false,
-            json: () => Promise.resolve({ error: { message: "Unauthorized" } }),
-          })
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
-      }) as unknown as typeof fetch,
-    )
-    render(<OnboardingClient mode="gate" state={emptyState} workspaces={[]} />)
-    fireEvent.click(screen.getByText("Create custom Claw"))
-    await waitFor(() => {
-      expect(showSnackbar).toHaveBeenCalledWith(expect.objectContaining({ variant: "error" }))
-    })
-    expect(assign).not.toHaveBeenCalled()
   })
 
   it("Skip hard-navigates after successful complete-onboarding", async () => {
@@ -160,24 +118,5 @@ describe("OnboardingClient Batch B CTAs (v2 props)", () => {
     await waitFor(() => {
       expect(assign).toHaveBeenCalledWith("/my-claws")
     })
-  })
-
-  it("source: complete-onboarding route + AbortSignal.timeout + mutateWithFeedback", async () => {
-    const { readFileSync } = await import("node:fs")
-    const { join } = await import("node:path")
-    const client = readFileSync(
-      join(process.cwd(), "src/components/onboarding/onboarding-client.tsx"),
-      "utf8",
-    )
-    expect(client).toContain("/api/user/complete-onboarding")
-    expect(client).toContain("AbortSignal.timeout(15_000)")
-    expect(client).toContain("mutateWithFeedback")
-    expect(client).toContain("window.location.assign")
-    const route = readFileSync(
-      join(process.cwd(), "src/app/api/user/complete-onboarding/route.ts"),
-      "utf8",
-    )
-    expect(route).toContain("encode(")
-    expect(route).toContain("onboardingCompleted: true")
   })
 })

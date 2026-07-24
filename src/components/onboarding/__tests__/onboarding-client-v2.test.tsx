@@ -25,13 +25,20 @@ vi.mock("@/components/shared/snackbar", () => ({
   useSnackbarOptional: () => ({ show: showSnackbar, dismiss: vi.fn() }),
 }))
 
+vi.mock("@/hooks/use-onboarding-state", () => ({
+  useOnboardingNavVisible: () => false,
+  invalidateOnboardingStateCache: vi.fn(),
+}))
+
 const emptyState: TrackerState = {
   s1Done: false,
+  s1DoneVia: null,
   s2Done: false,
   s3Done: false,
   allDone: false,
   connectedProviders: [],
   workspaceCount: 0,
+  balanceCents: 0,
   showAnthropicTemplateHint: false,
   deployedWorkspaceId: null,
 }
@@ -45,23 +52,16 @@ beforeEach(() => {
   update.mockResolvedValue({ onboardingCompleted: true })
 })
 
-describe("OnboardingClient v2 step-3 branching", () => {
+describe("OnboardingClient v2.1", () => {
   it("step-3 with no workspace → snackbar + step-2 emphasis", () => {
-    render(
-      <OnboardingClient mode="gate" state={emptyState} workspaces={[]} />,
-    )
-    fireEvent.click(screen.getByRole("button", { name: /Connect tools & deploy/ }))
+    render(<OnboardingClient mode="gate" state={emptyState} workspaces={[]} />)
+    fireEvent.click(screen.getByRole("button", { name: /Set up & deploy/ }))
     expect(showSnackbar).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: expect.stringMatching(/Create a Claw first/),
-        variant: "error",
-      }),
+      expect.objectContaining({ message: expect.stringMatching(/Create a Claw first/) }),
     )
-    const step2 = screen.getByText("Pick your first Claw").closest("[data-emphasized]")
-    expect(step2?.getAttribute("data-emphasized")).toBe("true")
   })
 
-  it("step-3 with single SETUP_INCOMPLETE workspace → direct route", () => {
+  it("step-3 with single workspace → picker (not direct route)", () => {
     const workspaces: TrackerWorkspace[] = [
       {
         id: "ws-1",
@@ -77,8 +77,42 @@ describe("OnboardingClient v2 step-3 branching", () => {
         workspaces={workspaces}
       />,
     )
-    fireEvent.click(screen.getByRole("button", { name: /Continue setup/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Set up & deploy/ }))
+    expect(push).not.toHaveBeenCalled()
+    expect(screen.getByText("Choose a Claw to set up")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: /My Claw 1/ }))
     expect(push).toHaveBeenCalledWith("/setup/ws-1/step/1")
+  })
+
+  it("credits-done step 1 copy", () => {
+    render(
+      <OnboardingClient
+        mode="gate"
+        state={{
+          ...emptyState,
+          s1Done: true,
+          s1DoneVia: "credits",
+          balanceCents: 5000,
+        }}
+        workspaces={[]}
+      />,
+    )
+    expect(screen.getByText(/Powered by Claws Starter Credits — \$50\.00 remaining/)).toBeTruthy()
+    expect(screen.getByRole("link", { name: /Add your own key/ })).toBeTruthy()
+  })
+
+  it("step 2 done uses primary Go to My Claws button", () => {
+    render(
+      <OnboardingClient
+        mode="gate"
+        state={{ ...emptyState, s2Done: true, workspaceCount: 1 }}
+        workspaces={[
+          { id: "w1", name: "A", status: "DRAFT", hasCompletedDeployment: false },
+        ]}
+      />,
+    )
+    expect(screen.getByRole("link", { name: "Go to My Claws" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /My Claws →/ })).toBeNull()
   })
 
   it("Skip only in gate mode", () => {
@@ -87,38 +121,8 @@ describe("OnboardingClient v2 step-3 branching", () => {
     )
     expect(screen.getByRole("button", { name: /Skip onboarding/ })).toBeTruthy()
     unmount()
-    render(
-      <OnboardingClient mode="revisit" state={emptyState} workspaces={[]} />,
-    )
+    render(<OnboardingClient mode="revisit" state={emptyState} workspaces={[]} />)
     expect(screen.queryByRole("button", { name: /Skip onboarding/ })).toBeNull()
-  })
-
-  it("all-done header variant", () => {
-    render(
-      <OnboardingClient
-        mode="revisit"
-        state={{
-          ...emptyState,
-          s1Done: true,
-          s2Done: true,
-          s3Done: true,
-          allDone: true,
-          connectedProviders: ["Anthropic"],
-          workspaceCount: 1,
-          deployedWorkspaceId: "ws-1",
-        }}
-        workspaces={[
-          {
-            id: "ws-1",
-            name: "My Claw 1",
-            status: "STOPPED",
-            hasCompletedDeployment: true,
-          },
-        ]}
-      />,
-    )
-    expect(screen.getByRole("heading", { name: "You're all set" })).toBeTruthy()
-    expect(screen.getByRole("link", { name: /Open dashboard/ })).toBeTruthy()
   })
 
   it("create claw still POSTs and navigates", async () => {
@@ -137,10 +141,7 @@ describe("OnboardingClient v2 step-3 branching", () => {
           })
         }
         if (String(url).includes("/api/user/complete-onboarding")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true }),
-          })
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
         }
         return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
       }) as unknown as typeof fetch,

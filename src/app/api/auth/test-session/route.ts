@@ -58,6 +58,21 @@ export async function GET(req: NextRequest) {
     await prisma.workspace.deleteMany({
       where: { userId: testUser.id, name: 'My Claw 1', status: 'DRAFT' },
     });
+    // v2.1: seed starter credits — grantStarterCredits is gated on email
+    // verification / fingerprints and does not run for this fixture user.
+    // Explicit CreditAccount upsert matches product "signup with credits".
+    await prisma.creditAccount.upsert({
+      where: { userId: testUser.id },
+      update: { balanceCents: 5000, status: 'ACTIVE' },
+      create: {
+        userId: testUser.id,
+        balanceCents: 5000,
+        initialGrantCents: 5000,
+        status: 'ACTIVE',
+        grantFingerprint: `e2e-onboarding-${testUser.id}`,
+        ipAtGrant: '127.0.0.1',
+      },
+    });
   }
 
   const token = await encode({

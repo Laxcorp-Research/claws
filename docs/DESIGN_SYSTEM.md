@@ -136,3 +136,15 @@
 | `error` | Instant mutation failed (non-2xx / thrown); no Undo; state must not be updated as success |
 
 Use `mutateWithFeedback` (`src/lib/ui/mutate-with-feedback.ts`) so tool-customization ops cannot skip feedback.
+
+### AI Gradient Accent
+
+- Purpose: onboarding affordance ONLY — the top-bar "Getting started" nav label while the tracker is incomplete.
+- Tokens (CSS variables on `:root` / `.dark`):
+  - `--ai-grad-1: #3B82F6` (deeper blue, near `--ac-text`)
+  - `--ai-grad-2: #5BA1F5` (brand `--ac`)
+  - `--ai-grad-3: #93C5FD` (light sky, harmonious with `--acbg`)
+- Application: `background-image: linear-gradient(90deg, var(--ai-grad-1), var(--ai-grad-2), var(--ai-grad-3), var(--ai-grad-2), var(--ai-grad-1))`; `background-size: 200% 100%`; `-webkit-background-clip: text` / `background-clip: text`; `-webkit-text-fill-color: transparent`; color fallback `var(--ac-text)`.
+- Motion: slow shimmer — `background-position` animates over **~6s** `ease-in-out` `infinite` `alternate`. Class: `ai-gradient-accent`.
+- `prefers-reduced-motion: reduce`: static gradient (no animation).
+- Explicit carve-out from the "blue = text links only" color law, restricted to this single affordance. Do not reuse on buttons, body copy, or other nav items.

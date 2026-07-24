@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { useState, useEffect } from "react"
 import { Compass, User, Key, CreditCard, Lock, Store, Upload, Wrench, Shield, LogOut, type LucideIcon } from "lucide-react"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
+import { useOnboardingNavVisible } from "@/hooks/use-onboarding-state"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +20,8 @@ interface NavItem {
   label: string
   href: string
   external?: boolean
+  /** DS AI Gradient Accent — Getting started only. */
+  aiAccent?: boolean
 }
 
 const publicNavItems: NavItem[] = [
@@ -38,6 +41,8 @@ export function TopBar() {
   const pathname = usePathname()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  // Client TopBar: nav visibility from cached /api/onboarding/state (not per-nav DB).
+  const showGettingStartedNav = useOnboardingNavVisible(!!session)
 
   useEffect(() => {
     if (!session) return
@@ -52,9 +57,15 @@ export function TopBar() {
   }, [session])
 
   const baseNavItems = session ? authNavItems : publicNavItems
-  const navItems = isAdmin
-    ? [...baseNavItems, { label: "Admin", href: "/admin/reviews" }]
+  const withGettingStarted: NavItem[] = session && showGettingStartedNav
+    ? [
+        ...baseNavItems,
+        { label: "Getting started", href: "/onboarding", aiAccent: true },
+      ]
     : baseNavItems
+  const navItems = isAdmin
+    ? [...withGettingStarted, { label: "Admin", href: "/admin/reviews" }]
+    : withGettingStarted
 
   function MenuLink({ href, icon: Icon, label }: { href: string; icon: LucideIcon; label: string }) {
     return (
@@ -83,9 +94,11 @@ export function TopBar() {
             const isActive = pathname === item.href || pathname?.startsWith(item.href + "/")
             const classes = cn(
               "text-[13px] font-medium transition-colors",
-              isActive
-                ? "text-[var(--tx)]"
-                : "text-[var(--tx3)] hover:text-[var(--tx)]"
+              item.aiAccent
+                ? "ai-gradient-accent"
+                : isActive
+                  ? "text-[var(--tx)]"
+                  : "text-[var(--tx3)] hover:text-[var(--tx)]",
             )
 
             if (item.external) {
@@ -134,6 +147,7 @@ export function TopBar() {
             </div>
 
             <div className="py-1">
+              {/* Menu entry ALWAYS visible — independent of tracker completeness. */}
               <MenuLink href="/onboarding" icon={Compass} label="Getting started" />
               <MenuLink href="/settings?tab=account" icon={User} label="Account" />
               <MenuLink href="/settings?tab=api-keys" icon={Key} label="API Keys" />
