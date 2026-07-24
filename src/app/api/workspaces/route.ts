@@ -3,6 +3,12 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { DEFAULT_MODEL } from "@/lib/models"
+import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboarding"
+
+const workspaceDetailInclude = {
+  agents: { orderBy: { createdAt: "asc" as const } },
+  connections: true,
+}
 
 export async function GET() {
   const user = await getSessionUser()
@@ -30,6 +36,27 @@ export async function POST(req: NextRequest) {
 
   if (!name || typeof name !== "string" || name.length > 64) {
     return ERRORS.VALIDATION("Name is required and must be under 64 characters")
+  }
+
+  // Idempotent onboarding create: reuse an existing DRAFT "My Claw 1" so
+  // stuck-click retries never fan out orphan rows.
+  if (!templateId && name === "My Claw 1") {
+    const existingDraft = await prisma.workspace.findFirst({
+      where: { userId: user.id, name: "My Claw 1", status: "DRAFT" },
+      select: { id: true },
+    })
+    if (existingDraft) {
+      // Reuse path: orphans may already exist (count > 1), so force-complete.
+      await prisma.user.updateMany({
+        where: { id: user.id, onboardingCompleted: false },
+        data: { onboardingCompleted: true },
+      })
+      const full = await prisma.workspace.findUnique({
+        where: { id: existingDraft.id },
+        include: workspaceDetailInclude,
+      })
+      return apiSuccess(full, 200)
+    }
   }
 
   const MAX_WORKSPACES = 20
@@ -92,12 +119,15 @@ export async function POST(req: NextRequest) {
         data: { workspaceId: ws.id, version: 1, snapshot: template.workspaceSnapshot, trigger: "TEMPLATE_LOAD", label: `Original template: ${template.name}` },
       })
 
+      // MUTATION: remove this call → first-workspace journey leaves flag false.
+      await completeOnboardingAfterFirstWorkspace(tx, user.id)
+
       return ws
     })
 
     const full = await prisma.workspace.findUnique({
       where: { id: workspace.id },
-      include: { agents: { orderBy: { createdAt: "asc" } }, connections: true },
+      include: workspaceDetailInclude,
     })
     return apiSuccess(full, 201)
   }
@@ -126,12 +156,14 @@ export async function POST(req: NextRequest) {
     await tx.agentConnection.create({
       data: { workspaceId: ws.id, sourceAgentId: orch.id, targetAgentId: critic.id, condition: "ON_COMPLETE", label: "On complete" },
     })
+    // MUTATION: remove this call → first-workspace journey leaves flag false.
+    await completeOnboardingAfterFirstWorkspace(tx, user.id)
     return ws
   })
 
   const full = await prisma.workspace.findUnique({
     where: { id: workspace.id },
-    include: { agents: { orderBy: { createdAt: "asc" } }, connections: true },
+    include: workspaceDetailInclude,
   })
   return apiSuccess(full, 201)
 }

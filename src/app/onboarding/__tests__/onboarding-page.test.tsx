@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import OnboardingPage from "@/app/onboarding/page"
+import { OnboardingClient } from "@/components/onboarding/onboarding-client"
 
 const replace = vi.fn()
 const push = vi.fn()
-const update = vi.fn().mockResolvedValue({})
+const update = vi.fn()
+const showSnackbar = vi.fn()
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push, prefetch: vi.fn() }),
@@ -20,32 +21,44 @@ vi.mock("next-auth/react", () => ({
   }),
 }))
 
+vi.mock("@/components/shared/snackbar", () => ({
+  useSnackbarOptional: () => ({ show: showSnackbar, dismiss: vi.fn() }),
+}))
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   replace.mockReset()
   push.mockReset()
+  update.mockReset()
+  showSnackbar.mockReset()
 })
 
 beforeEach(() => {
+  update.mockResolvedValue({ onboardingCompleted: true })
   vi.stubGlobal(
     "fetch",
-    vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ success: true, data: { id: "ws-new" } }),
-      }),
-    ) as unknown as typeof fetch,
+    vi.fn((url: string) => {
+      if (String(url).includes("/api/workspaces")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { id: "ws-new" } }),
+        })
+      }
+      if (String(url).includes("/api/user/profile")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { user: { id: "u1" } } }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    }) as unknown as typeof fetch,
   )
 })
 
-describe("OnboardingPage Batch B CTAs", () => {
-  it("Add Anthropic/OpenAI key links to /settings?tab=api-keys", () => {
-    render(<OnboardingPage />)
-    const links = screen.getAllByRole("link").filter((a) =>
-      (a as HTMLAnchorElement).href.includes("/settings?tab=api-keys"),
-    )
-    expect(links.length).toBeGreaterThanOrEqual(2)
+describe("OnboardingClient Batch B CTAs", () => {
+  it("Add Anthropic/OpenAI key links to /settings?tab=api-keys when no key", () => {
+    render(<OnboardingClient hasApiKey={false} />)
     expect(screen.getByText("Add Anthropic key").closest("a")?.getAttribute("href")).toBe(
       "/settings?tab=api-keys",
     )
@@ -54,8 +67,14 @@ describe("OnboardingPage Batch B CTAs", () => {
     )
   })
 
-  it("Create custom Claw POSTs workspace then navigates to builder (My Claws pattern)", async () => {
-    render(<OnboardingPage />)
+  it("marks step 1 done when hasApiKey is true (no add-key CTAs)", () => {
+    render(<OnboardingClient hasApiKey={true} />)
+    expect(screen.queryByText("Add Anthropic key")).toBeNull()
+    expect(screen.queryByText("Add OpenAI key")).toBeNull()
+  })
+
+  it("Create custom Claw POSTs workspace then navigates to builder", async () => {
+    render(<OnboardingClient hasApiKey={false} />)
     fireEvent.click(screen.getByText("Create custom Claw"))
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith("/builder/ws-new")
@@ -64,5 +83,68 @@ describe("OnboardingPage Batch B CTAs", () => {
       "/api/workspaces",
       expect.objectContaining({ method: "POST" }),
     )
+    expect(update).toHaveBeenCalledWith({ onboardingCompleted: true })
+  })
+
+  it("does not navigate when profile PATCH is not ok", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (String(url).includes("/api/workspaces")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: true, data: { id: "ws-new" } }),
+          })
+        }
+        if (String(url).includes("/api/user/profile")) {
+          return Promise.resolve({
+            ok: false,
+            json: () => Promise.resolve({ error: { message: "Unauthorized" } }),
+          })
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+      }) as unknown as typeof fetch,
+    )
+    render(<OnboardingClient hasApiKey={false} />)
+    fireEvent.click(screen.getByText("Create custom Claw"))
+    await waitFor(() => {
+      expect(showSnackbar).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "error" }),
+      )
+    })
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it("does not navigate when session update() returns null (silent failure)", async () => {
+    update.mockResolvedValue(null)
+    render(<OnboardingClient hasApiKey={false} />)
+    fireEvent.click(screen.getByText("Skip onboarding →"))
+    await waitFor(() => {
+      expect(showSnackbar).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "error" }),
+      )
+    })
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it("Skip navigates only after successful markComplete", async () => {
+    render(<OnboardingClient hasApiKey={false} />)
+    fireEvent.click(screen.getByText("Skip onboarding →"))
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith("/my-claws")
+    })
+    expect(update).toHaveBeenCalledWith({ onboardingCompleted: true })
+  })
+
+  it("source: create POST uses AbortSignal.timeout + mutateWithFeedback", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(
+      join(process.cwd(), "src/components/onboarding/onboarding-client.tsx"),
+      "utf8",
+    )
+    expect(src).toContain("AbortSignal.timeout(15_000)")
+    expect(src).toContain("mutateWithFeedback")
+    expect(src).not.toMatch(/text-\[12px\] text-\[var\(--err\)\]/)
   })
 })

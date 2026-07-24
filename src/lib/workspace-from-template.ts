@@ -1,5 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/db"
+import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboarding"
 import { cloneToolsForWorkspaceSeed } from "@/lib/tools/workspace-tool-requirements"
 
 interface SnapshotAgent {
@@ -146,6 +147,9 @@ export async function createWorkspaceFromTemplate(
       where: { id: template.id },
       data: { installCount: { increment: 1 } },
     })
+
+    // MUTATION: remove this call → first template install leaves flag false.
+    await completeOnboardingAfterFirstWorkspace(tx, userId)
 
     return { workspaceId: workspace.id, workspaceName: workspace.name }
   })
