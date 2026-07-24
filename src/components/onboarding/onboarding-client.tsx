@@ -7,6 +7,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { OnboardingStep } from "@/components/onboarding/onboarding-step"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
+import { TextLink } from "@/components/ui/text-link"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 
 interface OnboardingClientProps {
@@ -178,14 +179,13 @@ export function OnboardingClient({
           />
         </div>
 
-        <button
-          type="button"
+        <TextLink
+          direction="forward"
           onClick={handleSkip}
           disabled={isSkipping || isCreating || status === "loading"}
-          className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline cursor-pointer transition-colors bg-transparent border-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isSkipping ? "Leaving..." : "Skip onboarding →"}
-        </button>
+          {isSkipping ? "Leaving..." : "Skip onboarding"}
+        </TextLink>
       </div>
     </PageShell>
   )
