@@ -14,10 +14,10 @@ test.describe('Fresh-signup onboarding journey (blocking)', () => {
     await expect(page).toHaveURL(/\/onboarding/);
   });
 
-  test('Create custom Claw → builder; DB flag true; exactly one My Claw 1', async ({ page, request }) => {
+  test('Create custom Claw → builder; DB flag true; exactly one My Claw 1', async ({ page }) => {
     await signInAsOnboardingUser(page, '/onboarding');
 
-    // Wait until session hydrates (CTAs disabled until authenticated).
+    // Wait until session hydrates (CTAs disabled while status===loading).
     await expect(page.getByRole('button', { name: 'Create custom Claw' })).toBeEnabled({
       timeout: 15_000,
     });
@@ -30,8 +30,8 @@ test.describe('Fresh-signup onboarding journey (blocking)', () => {
     await page.waitForURL('**/my-claws', { timeout: 15_000 });
     expect(page.url()).toContain('/my-claws');
 
-    // API: exactly one DRAFT "My Claw 1" for this user (idempotent create).
-    const res = await request.get('/api/workspaces');
+    // Use page.request so the session cookie from the browser context is sent.
+    const res = await page.request.get('/api/workspaces');
     expect(res.ok()).toBe(true);
     const json = await res.json();
     const rows = (json.data ?? []) as Array<{ name: string; status: string }>;
