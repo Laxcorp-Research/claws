@@ -12,9 +12,20 @@ import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 interface OnboardingClientProps {
   /** Server-derived: true when the user already has at least one UserApiKey. */
   hasApiKey: boolean
+  /**
+   * D-iii COPY-HONESTY: user has another provider key but no Anthropic key.
+   * Templates are engineered for Claude — no remap assist.
+   */
+  showAnthropicTemplateHint?: boolean
 }
 
-export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
+const ANTHROPIC_TEMPLATE_HINT =
+  "Templates are engineered for Claude models — add an Anthropic key, or switch individual agents' models in the builder."
+
+export function OnboardingClient({
+  hasApiKey,
+  showAnthropicTemplateHint = false,
+}: OnboardingClientProps) {
   const { update, status } = useSession()
   const snackbar = useSnackbarOptional()
   const showSnackbar = useCallback(
@@ -117,7 +128,7 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
             description="Your agents need an AI model to think. We support Anthropic, OpenAI, and Google."
             completed={hasApiKey}
             actions={
-              hasApiKey ? undefined : (
+              !hasApiKey ? (
                 <>
                   <Link href="/settings?tab=api-keys">
                     <Button variant="primary" size="sm">Add Anthropic key</Button>
@@ -126,7 +137,16 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
                     <Button variant="outline" size="sm">Add OpenAI key</Button>
                   </Link>
                 </>
-              )
+              ) : showAnthropicTemplateHint ? (
+                <>
+                  <p className="text-[11px] text-[var(--tx2)] text-left mb-1 max-w-md">
+                    {ANTHROPIC_TEMPLATE_HINT}
+                  </p>
+                  <Link href="/settings?tab=api-keys">
+                    <Button variant="primary" size="sm">Add Anthropic key</Button>
+                  </Link>
+                </>
+              ) : undefined
             }
           />
           <OnboardingStep

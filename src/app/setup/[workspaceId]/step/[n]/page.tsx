@@ -191,22 +191,18 @@ const PROVIDER_NAMES: Record<string, string> = {
   ANTHROPIC: "Anthropic (Claude)",
   OPENAI: "OpenAI (GPT)",
   GOOGLE: "Google (Gemini)",
-  OPENROUTER: "OpenRouter",
-  OLLAMA: "Ollama (Local)",
 }
 
 const PROVIDER_HELP: Record<string, string> = {
   ANTHROPIC: "https://console.anthropic.com/settings/keys",
   OPENAI: "https://platform.openai.com/api-keys",
   GOOGLE: "https://aistudio.google.com/apikey",
-  OPENROUTER: "https://openrouter.ai/keys",
 }
 
 const PROVIDER_PLACEHOLDER: Record<string, string> = {
   ANTHROPIC: "sk-ant-api03-...",
   OPENAI: "sk-...",
   GOOGLE: "AIza...",
-  OPENROUTER: "sk-or-...",
 }
 
 function getRequiredProviders(agents: AgentRow[]): string[] {
@@ -216,7 +212,7 @@ function getRequiredProviders(agents: AgentRow[]): string[] {
     if (m.startsWith("anthropic/")) providers.add("ANTHROPIC")
     else if (m.startsWith("openai/")) providers.add("OPENAI")
     else if (m.startsWith("google/")) providers.add("GOOGLE")
-    else if (m.startsWith("openrouter/")) providers.add("OPENROUTER")
+    // OPENROUTER / OLLAMA deliberately not surfaced (D1 provider honesty).
   }
   if (providers.size === 0) providers.add("ANTHROPIC")
   return Array.from(providers)
@@ -333,7 +329,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       <p className="text-xs text-[var(--tx2)] mb-3.5">
         {creditMode
           ? "Your agents are powered by Claws Starter Credits. Choose which models each agent should use below."
-          : "Your agents need API keys to think. Configure keys for each provider your agents use."}
+          : "Your agents need API keys to think. We support Anthropic, OpenAI, and Google. Configure keys for each provider your agents use."}
       </p>
 
       {creditMode && <StarterCreditBanner balanceCents={creditBalanceCents} />}

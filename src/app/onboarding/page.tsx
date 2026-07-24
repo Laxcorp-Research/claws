@@ -24,5 +24,10 @@ export default async function OnboardingPage() {
     )
   }
 
-  return <OnboardingClient hasApiKey={gate.hasApiKey} />
+  return (
+    <OnboardingClient
+      hasApiKey={gate.hasApiKey}
+      showAnthropicTemplateHint={gate.showAnthropicTemplateHint}
+    />
+  )
 }

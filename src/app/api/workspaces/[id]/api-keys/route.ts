@@ -5,8 +5,13 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { encrypt, generateKeyHint } from "@/lib/encryption"
 import { validateApiKey } from "@/lib/api-key-validation"
+import {
+  SUPPORTED_PROVIDERS,
+  isSupportedProvider,
+  type SupportedProvider,
+} from "@/lib/supported-providers"
 
-const ALL_PROVIDERS = ["ANTHROPIC", "OPENAI", "GOOGLE", "OPENROUTER", "OLLAMA"] as const
+const ALL_PROVIDERS = SUPPORTED_PROVIDERS
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { provider, apiKey } = body as { provider?: string; apiKey?: string }
 
   if (!provider || !apiKey) return ERRORS.VALIDATION("provider and apiKey are required")
-  if (!ALL_PROVIDERS.includes(provider as typeof ALL_PROVIDERS[number])) {
+  if (!isSupportedProvider(provider)) {
     return ERRORS.VALIDATION(`Invalid provider. Must be one of: ${ALL_PROVIDERS.join(", ")}`)
   }
 
@@ -71,12 +76,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const encryptedKey = encrypt(apiKey)
   const keyHint = generateKeyHint(apiKey)
+  const typedProvider: SupportedProvider = provider
 
   await prisma.workspaceApiKey.upsert({
-    where: { workspaceId_provider: { workspaceId: id, provider: provider as "ANTHROPIC" | "OPENAI" | "GOOGLE" | "OPENROUTER" | "OLLAMA" } },
+    where: { workspaceId_provider: { workspaceId: id, provider: typedProvider } },
     create: {
       workspaceId: id,
-      provider: provider as "ANTHROPIC" | "OPENAI" | "GOOGLE" | "OPENROUTER" | "OLLAMA",
+      provider: typedProvider,
       encryptedKey,
       keyHint,
       isValid: true,
@@ -106,8 +112,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { provider } = body as { provider?: string }
   if (!provider) return ERRORS.VALIDATION("provider is required")
 
+  if (!isSupportedProvider(provider)) {
+    return ERRORS.VALIDATION(`Invalid provider. Must be one of: ${ALL_PROVIDERS.join(", ")}`)
+  }
+
   await prisma.workspaceApiKey.deleteMany({
-    where: { workspaceId: id, provider: provider as "ANTHROPIC" | "OPENAI" | "GOOGLE" | "OPENROUTER" | "OLLAMA" },
+    where: { workspaceId: id, provider },
   })
 
   return apiSuccess({ provider, removed: true })
