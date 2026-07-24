@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
 import { PageShell } from "@/components/shared/page-shell"
@@ -16,8 +15,7 @@ interface OnboardingClientProps {
 }
 
 export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
-  const router = useRouter()
-  const { update } = useSession()
+  const { update, status } = useSession()
   const snackbar = useSnackbarOptional()
   const showSnackbar = useCallback(
     (options: Parameters<NonNullable<typeof snackbar>["show"]>[0]) => {
@@ -28,23 +26,20 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
   const [isCreating, setIsCreating] = useState(false)
   const [isSkipping, setIsSkipping] = useState(false)
 
+  /**
+   * Persist DB flag + re-issue JWT via dedicated route (authoritative).
+   * Also call useSession().update so client state matches before hard-nav.
+   */
   const markComplete = async (): Promise<void> => {
-    const res = await fetch("/api/user/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ onboardingCompleted: true }),
-    })
+    const res = await fetch("/api/user/complete-onboarding", { method: "POST" })
     if (!res.ok) {
       const data = (await res.json().catch(() => null)) as {
         error?: { message?: string }
       } | null
       throw new Error(data?.error?.message || "Could not complete onboarding")
     }
-    // next-auth update() returns null on silent CLIENT_FETCH_ERROR — treat as failure.
-    const session = await update({ onboardingCompleted: true })
-    if (!session) {
-      throw new Error("Could not refresh session. Try again.")
-    }
+    // Best-effort client sync; cookie was already Set-Cookie'd by the route.
+    await update({ onboardingCompleted: true }).catch(() => null)
   }
 
   const handleSkip = async () => {
@@ -54,7 +49,7 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
       await mutateWithFeedback(
         async () => {
           await markComplete()
-          router.push("/my-claws")
+          window.location.assign("/my-claws")
         },
         {
           message: "Onboarding skipped",
@@ -63,13 +58,12 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
         showSnackbar,
       )
     } catch {
-      /* snackbar already shown; do not navigate into a known bounce */
+      /* snackbar already shown */
     } finally {
       setIsSkipping(false)
     }
   }
 
-  /** Match My Claws "+ Create custom Claw": POST /api/workspaces → /builder/{id}. */
   const handleCreateCustomClaw = async () => {
     if (isCreating || isSkipping) return
     setIsCreating(true)
@@ -93,7 +87,7 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
           const workspaceId = data?.data?.id || data?.id
           if (!workspaceId) throw new Error("No workspace ID returned")
           await markComplete()
-          router.push(`/builder/${workspaceId}`)
+          window.location.assign(`/builder/${workspaceId}`)
         },
         {
           message: "Claw created",
@@ -102,7 +96,7 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
         showSnackbar,
       )
     } catch {
-      /* snackbar already shown; stay on page */
+      /* snackbar already shown */
     } finally {
       setIsCreating(false)
     }
@@ -148,7 +142,7 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
                   variant="outline"
                   size="sm"
                   loading={isCreating}
-                  disabled={isCreating || isSkipping}
+                  disabled={isCreating || isSkipping || status === "loading"}
                   onClick={handleCreateCustomClaw}
                 >
                   {isCreating ? "Creating..." : "Create custom Claw"}
@@ -167,7 +161,7 @@ export function OnboardingClient({ hasApiKey }: OnboardingClientProps) {
         <button
           type="button"
           onClick={handleSkip}
-          disabled={isSkipping || isCreating}
+          disabled={isSkipping || isCreating || status === "loading"}
           className="text-[11px] text-[var(--ac-text)] hover:text-[var(--tx)] hover:underline cursor-pointer transition-colors bg-transparent border-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSkipping ? "Leaving..." : "Skip onboarding →"}

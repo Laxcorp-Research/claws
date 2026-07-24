@@ -67,7 +67,9 @@ describe("Batch B recurrence guards", () => {
   it("onboarding page uses server-side DB gate (stale-cookie escape)", () => {
     const page = read("src/app/onboarding/page.tsx")
     expect(page).toContain("loadOnboardingGate")
-    expect(page).toContain("redirect")
+    // Must sync JWT before leaving — server redirect to /my-claws loops with proxy.
+    expect(page).toContain("OnboardingSessionSync")
+    expect(page).not.toMatch(/redirect\(\s*["']\/my-claws["']\s*\)/)
     const gate = read("src/lib/auth/onboarding-gate.ts")
     expect(gate).toContain('redirectTo: "/my-claws"')
   })

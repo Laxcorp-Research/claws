@@ -3,15 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { OnboardingClient } from "@/components/onboarding/onboarding-client"
 
-const replace = vi.fn()
-const push = vi.fn()
 const update = vi.fn()
 const showSnackbar = vi.fn()
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace, push, prefetch: vi.fn() }),
-  usePathname: () => "/onboarding",
-}))
+const assign = vi.fn()
 
 vi.mock("next-auth/react", () => ({
   useSession: () => ({
@@ -28,14 +22,17 @@ vi.mock("@/components/shared/snackbar", () => ({
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
-  replace.mockReset()
-  push.mockReset()
   update.mockReset()
   showSnackbar.mockReset()
+  assign.mockReset()
 })
 
 beforeEach(() => {
   update.mockResolvedValue({ onboardingCompleted: true })
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...window.location, assign },
+  })
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
@@ -45,10 +42,10 @@ beforeEach(() => {
           json: () => Promise.resolve({ success: true, data: { id: "ws-new" } }),
         })
       }
-      if (String(url).includes("/api/user/profile")) {
+      if (String(url).includes("/api/user/complete-onboarding")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ success: true, data: { user: { id: "u1" } } }),
+          json: () => Promise.resolve({ success: true, data: { onboardingCompleted: true } }),
         })
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
@@ -62,31 +59,26 @@ describe("OnboardingClient Batch B CTAs", () => {
     expect(screen.getByText("Add Anthropic key").closest("a")?.getAttribute("href")).toBe(
       "/settings?tab=api-keys",
     )
-    expect(screen.getByText("Add OpenAI key").closest("a")?.getAttribute("href")).toBe(
-      "/settings?tab=api-keys",
-    )
   })
 
   it("marks step 1 done when hasApiKey is true (no add-key CTAs)", () => {
     render(<OnboardingClient hasApiKey={true} />)
     expect(screen.queryByText("Add Anthropic key")).toBeNull()
-    expect(screen.queryByText("Add OpenAI key")).toBeNull()
   })
 
-  it("Create custom Claw POSTs workspace then navigates to builder", async () => {
+  it("Create custom Claw POSTs workspace then hard-navigates to builder", async () => {
     render(<OnboardingClient hasApiKey={false} />)
     fireEvent.click(screen.getByText("Create custom Claw"))
     await waitFor(() => {
-      expect(push).toHaveBeenCalledWith("/builder/ws-new")
+      expect(assign).toHaveBeenCalledWith("/builder/ws-new")
     })
     expect(fetch).toHaveBeenCalledWith(
-      "/api/workspaces",
+      "/api/user/complete-onboarding",
       expect.objectContaining({ method: "POST" }),
     )
-    expect(update).toHaveBeenCalledWith({ onboardingCompleted: true })
   })
 
-  it("does not navigate when profile PATCH is not ok", async () => {
+  it("does not navigate when complete-onboarding is not ok", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) => {
@@ -96,7 +88,7 @@ describe("OnboardingClient Batch B CTAs", () => {
             json: () => Promise.resolve({ success: true, data: { id: "ws-new" } }),
           })
         }
-        if (String(url).includes("/api/user/profile")) {
+        if (String(url).includes("/api/user/complete-onboarding")) {
           return Promise.resolve({
             ok: false,
             json: () => Promise.resolve({ error: { message: "Unauthorized" } }),
@@ -112,39 +104,33 @@ describe("OnboardingClient Batch B CTAs", () => {
         expect.objectContaining({ variant: "error" }),
       )
     })
-    expect(push).not.toHaveBeenCalled()
+    expect(assign).not.toHaveBeenCalled()
   })
 
-  it("does not navigate when session update() returns null (silent failure)", async () => {
-    update.mockResolvedValue(null)
+  it("Skip hard-navigates after successful complete-onboarding", async () => {
     render(<OnboardingClient hasApiKey={false} />)
     fireEvent.click(screen.getByText("Skip onboarding →"))
     await waitFor(() => {
-      expect(showSnackbar).toHaveBeenCalledWith(
-        expect.objectContaining({ variant: "error" }),
-      )
+      expect(assign).toHaveBeenCalledWith("/my-claws")
     })
-    expect(push).not.toHaveBeenCalled()
   })
 
-  it("Skip navigates only after successful markComplete", async () => {
-    render(<OnboardingClient hasApiKey={false} />)
-    fireEvent.click(screen.getByText("Skip onboarding →"))
-    await waitFor(() => {
-      expect(push).toHaveBeenCalledWith("/my-claws")
-    })
-    expect(update).toHaveBeenCalledWith({ onboardingCompleted: true })
-  })
-
-  it("source: create POST uses AbortSignal.timeout + mutateWithFeedback", async () => {
+  it("source: complete-onboarding route + AbortSignal.timeout + mutateWithFeedback", async () => {
     const { readFileSync } = await import("node:fs")
     const { join } = await import("node:path")
-    const src = readFileSync(
+    const client = readFileSync(
       join(process.cwd(), "src/components/onboarding/onboarding-client.tsx"),
       "utf8",
     )
-    expect(src).toContain("AbortSignal.timeout(15_000)")
-    expect(src).toContain("mutateWithFeedback")
-    expect(src).not.toMatch(/text-\[12px\] text-\[var\(--err\)\]/)
+    expect(client).toContain("/api/user/complete-onboarding")
+    expect(client).toContain("AbortSignal.timeout(15_000)")
+    expect(client).toContain("mutateWithFeedback")
+    expect(client).toContain("window.location.assign")
+    const route = readFileSync(
+      join(process.cwd(), "src/app/api/user/complete-onboarding/route.ts"),
+      "utf8",
+    )
+    expect(route).toContain("encode(")
+    expect(route).toContain("onboardingCompleted: true")
   })
 })

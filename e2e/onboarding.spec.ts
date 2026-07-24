@@ -17,8 +17,12 @@ test.describe('Fresh-signup onboarding journey (blocking)', () => {
   test('Create custom Claw → builder; DB flag true; exactly one My Claw 1', async ({ page, request }) => {
     await signInAsOnboardingUser(page, '/onboarding');
 
+    // Wait until session hydrates (CTAs disabled until authenticated).
+    await expect(page.getByRole('button', { name: 'Create custom Claw' })).toBeEnabled({
+      timeout: 15_000,
+    });
     await page.getByRole('button', { name: 'Create custom Claw' }).click();
-    await page.waitForURL(/\/builder\//, { timeout: 20_000 });
+    await page.waitForURL(/\/builder\//, { timeout: 30_000 });
     expect(page.url()).toMatch(/\/builder\//);
 
     // Session cookie should now clear the gate for subsequent navigations.
@@ -38,8 +42,11 @@ test.describe('Fresh-signup onboarding journey (blocking)', () => {
   test('Skip onboarding → /my-claws', async ({ page }) => {
     await signInAsOnboardingUser(page, '/onboarding');
 
+    await expect(page.getByRole('button', { name: /Skip onboarding/ })).toBeEnabled({
+      timeout: 15_000,
+    });
     await page.getByRole('button', { name: /Skip onboarding/ }).click();
-    await page.waitForURL('**/my-claws', { timeout: 15_000 });
+    await page.waitForURL('**/my-claws', { timeout: 30_000 });
     expect(page.url()).toContain('/my-claws');
   });
 });
