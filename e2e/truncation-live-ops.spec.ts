@@ -94,8 +94,9 @@ async function expectTileTooltip(page: Page, fullName: string) {
   expect(clipped).toBe(true);
 
   const trigger = tile.locator('h3 [data-tooltip-trigger]').first();
+  // Long Live Ops names must truncate → tip present (measuring-span detector).
+  await expect(trigger).toBeVisible({ timeout: 5_000 });
   await trigger.hover();
-  // Hover remasure must show tip even if data-truncated was stale false.
   await expect(page.getByRole('tooltip')).toContainText(fullName, { timeout: 5_000 });
   await page.mouse.move(0, 0);
   await expect(page.getByRole('tooltip')).toHaveCount(0, { timeout: 5_000 });

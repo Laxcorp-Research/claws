@@ -7,23 +7,24 @@
 - Purpose: accessible hover/focus disclosure for clipped or contextual text. **Platform rule:** every tooltip surface must use this DS component — no native DOM `title=` for any styled hover copy; no hand-rolled absolute/portal tip divs. Component `title` **props** (Modal / EmptyState / SectionHeader / ConfirmDialog) remain legal — those are not DOM hover tips.
 - Engine: **Radix Tooltip** (`@radix-ui/react-tooltip`) in `src/components/ui/tooltip.tsx` only.
   - **Portal to `document.body` is mandatory** (`TooltipPrimitive.Portal`).
-  - **Collision detection is mandatory:** `avoidCollisions`, `collisionPadding={8}`, `sideOffset={6}` (flip + shift).
-  - **`collisionBoundary` = `document.documentElement` (viewport)** — mandatory. Do not leave unset: Radix default `[]` treats overflow scroll ancestors as the flip boundary (builder agent sidebar bug — mid-list tips flipped to `side=bottom` and overlapped sibling rows while viewport had room above).
-  - **Arrow is part of the contract:** `TooltipPrimitive.Arrow` `width={10}` `height={5}`, `fill-[var(--tx)]`, collision-aware on every placed side. Radix hides the arrow when `centerOffset≠0` (wide `w-full` truncation triggers); DS forces `!visible` so the arrow never disappears. Pair with viewport `collisionBoundary` so tips do not squat on sibling rows.
-  - **Align law:** `align="start"` for truncation / full-width text triggers; `align="center"` for icon / badge / short affordance triggers.
-- Trigger: wraps content; **`data-tooltip-trigger` marker REQUIRED** on every trigger (geometry + runtime nets key on it). Radix wires `aria-describedby` while open.
+  - **Collision detection is mandatory:** `avoidCollisions`, `collisionPadding={8}`, `sideOffset={0}` (flip + shift). Radix offset = `sideOffset + arrowHeight` — with `sideOffset={0}` and arrow `height={5}`, the arrow fills the gap and **abuts the content box** (0–1px).
+  - **`collisionBoundary` = `document.documentElement` (viewport)** — mandatory. Do not leave unset: Radix default `[]` treats overflow scroll ancestors as the flip boundary.
+  - **Arrow is part of the contract:** `TooltipPrimitive.Arrow` `width={10}` `height={5}`, `fill-[var(--tx)]`. Native Radix hide-when-`centerOffset≠0` is retained (do **not** force-visibility — that painted degenerate placement and opened a visual gap). Content exposes `data-arrow-hidden` / `data-arrow-visible` for probes.
+  - **Align law:** `align="center"` when the trigger sizes to text or is an icon/badge; `align="start"` only for intentionally wide full-bleed triggers.
+- Trigger: wraps content; **`data-tooltip-trigger` marker REQUIRED**; default sizing `inline-block w-max max-w-full` (anchor = content, not unconditional `w-full`).
 - Behavior: opens on hover/focus after `300ms` (Radix); closes on leave/blur/`Escape`. Touch uses Radix default (press-and-hold).
 - Tooltip body: `bg-[var(--tx)]`, white text, `text-[10px]`, `leading-[1.4]`, `px-[8px]`, `py-[5px]`, `rounded-[4px]`, `shadow-modal`, max width caller-controlled (default `220`, TruncatedText uses `400`).
-- **Geometry guard REQUIRED for any new tooltip surface:** Playwright `expectTooltipAnchored` in `e2e/helpers/tooltip-geometry.ts` (nearest-edge ≤ 12px + full viewport containment + arrow visible on both flip sides). One line per site.
+- **Geometry guard REQUIRED for any new tooltip surface:** Playwright `expectTooltipAnchored` in `e2e/helpers/tooltip-geometry.ts` (adjacency + viewport containment + arrow contact ≤1px on the trigger-facing side). Runtime net: `e2e/tooltip-runtime-net.spec.ts`.
 - **Grep-guard:** `src/components/ui/__tests__/tooltip-grep-guard.test.ts` — no `@radix-ui/react-tooltip` imports outside the DS file; no hand-rolled portal tip shells; no new DOM `title=` attrs (allowlist empty).
-- **Review checklist:** new hover label ⇒ DS Tooltip + `data-tooltip-trigger` marker + `expectTooltipAnchored` (arrow visible on both flip sides); no new DOM `title=`. Runtime net: `e2e/tooltip-runtime-net.spec.ts`.
+- **Review checklist:** new hover label ⇒ DS Tooltip + `data-tooltip-trigger` + `expectTooltipAnchored`; TruncatedText tips only when truncated; no new DOM `title=`.
 
 ### TruncatedText
 
-- Purpose: single-line ellipsis with DS Tooltip (always-on hover — `#293` / SS2: do not gate on overflow detection).
-- Element: inline/block span with `overflow-hidden`, `text-overflow: ellipsis`, `white-space: nowrap`, `min-w-0`.
-- Overflow detection still sets `data-truncated` for diagnostics; tip is **unconditional** (`disabled={false}`).
-- Tooltip content: exact full text.
+- Purpose: single-line ellipsis with DS Tooltip **only when text is truncated**.
+- **Policy (closes #293 always-on):** tip renders after the first client measure, and only if a hidden measuring span’s natural width exceeds the container content-box width by >1px. Fitting (fully visible) names never tip.
+- **History:** `#293` / SS2 forced always-on tips because detection read Chromium’s ellipsized-node reporting (`scrollWidth === clientWidth` while ellipsis still painted). Detection now uses an ephemeral measuring span (`aria-hidden`, `visibility:hidden`, `white-space:nowrap`, inherits font — created, measured, removed) that never gets ellipsized, so that failure mode is gone.
+- Element: inline/block with `overflow-hidden`, `text-overflow: ellipsis`, `white-space: nowrap`, `min-w-0`. Trigger sizes to content (`w-max max-w-full`), bounded by the container.
+- `data-truncated` reflects the measuring-span detector. Tooltip content: exact full text.
 
 ### Select
 
