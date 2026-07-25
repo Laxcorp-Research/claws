@@ -22,7 +22,7 @@
 
 - Purpose: single-line ellipsis with DS Tooltip **only when text is truncated**.
 - **Policy (closes #293 always-on):** tip renders after the first client measure, and only if a hidden measuring span’s natural width exceeds the container content-box width by >1px. Fitting (fully visible) names never tip.
-- **History:** `#293` / SS2 forced always-on tips because detection read Chromium’s ellipsized-node reporting (`scrollWidth === clientWidth` while ellipsis still painted). The measuring span (`aria-hidden`, `visibility:hidden`, `white-space:nowrap`, inherits font) never gets ellipsized, so that failure mode is gone.
+- **History:** `#293` / SS2 forced always-on tips because detection read Chromium’s ellipsized-node reporting (`scrollWidth === clientWidth` while ellipsis still painted). Detection now uses an ephemeral measuring span (`aria-hidden`, `visibility:hidden`, `white-space:nowrap`, inherits font — created, measured, removed) that never gets ellipsized, so that failure mode is gone.
 - Element: inline/block with `overflow-hidden`, `text-overflow: ellipsis`, `white-space: nowrap`, `min-w-0`. Trigger sizes to content (`w-max max-w-full`), bounded by the container.
 - `data-truncated` reflects the measuring-span detector. Tooltip content: exact full text.
 

@@ -137,7 +137,7 @@ test.describe("tooltip runtime net (closing)", () => {
       .locator("[data-tooltip-trigger]")
       .first()
     await expectTooltipAnchored(page, forceBottom, {
-      content: /Force-bottom/,
+      content: /Force-bottom tip/,
       expectedSide: "bottom",
       allowHiddenWhenUnpointable: true,
     })

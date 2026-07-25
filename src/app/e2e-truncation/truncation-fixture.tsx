@@ -113,7 +113,7 @@ export function TruncationFixture() {
         data-testid="force-bottom-fixture"
       >
         <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">
-          Force-bottom tip near viewport top edge that must truncate
+          Force-bottom tip near viewport top edge that must ellipsize
         </TruncatedText>
       </div>
     </main>

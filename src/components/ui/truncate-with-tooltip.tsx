@@ -13,8 +13,9 @@ interface TruncatedTextProps {
 const TRUNCATION_TOLERANCE_PX = 1
 
 /**
- * Compare natural text width (hidden measuring span — never ellipsized) to the
- * container content-box width. Tolerance 1px.
+ * Ephemeral measuring span (never ellipsized) vs container content-box width.
+ * Tolerance 1px. Span is created, measured, and removed — not kept in the React
+ * tree (a permanent sibling duplicated visible text and broke getByText suites).
  *
  * HISTORY: #293 / SS2 forced always-on tips because detection read Chromium's
  * ellipsized-node metrics (`scrollWidth === clientWidth` while ellipsis painted).
@@ -25,19 +26,44 @@ const TRUNCATION_TOLERANCE_PX = 1
  * force always-true → no-tip-on-fitting specs fail.
  */
 export function measureTruncation(
-  measureEl: HTMLElement,
+  text: string,
   containerEl: HTMLElement,
+  fontSourceEl: HTMLElement,
 ): boolean {
   const cs = getComputedStyle(containerEl)
   const padX =
     (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0)
   const contentBoxWidth = containerEl.clientWidth - padX
   if (contentBoxWidth <= 0) return false
-  const naturalWidth = measureEl.offsetWidth
+
+  const fontCs = getComputedStyle(fontSourceEl)
+  const measure = document.createElement("span")
+  measure.setAttribute("aria-hidden", "true")
+  measure.style.cssText = [
+    "position:absolute",
+    "left:-99999px",
+    "top:0",
+    "visibility:hidden",
+    "pointer-events:none",
+    "white-space:nowrap",
+    "height:auto",
+    "width:auto",
+    "max-width:none",
+    "min-width:0",
+    "overflow:visible",
+    "text-overflow:clip",
+    `font:${fontCs.font}`,
+    `letter-spacing:${fontCs.letterSpacing}`,
+    `text-transform:${fontCs.textTransform}`,
+  ].join(";")
+  measure.textContent = text
+  document.body.appendChild(measure)
+  const naturalWidth = measure.offsetWidth
+  document.body.removeChild(measure)
   return naturalWidth > contentBoxWidth + TRUNCATION_TOLERANCE_PX
 }
 
-/** @deprecated Use measureTruncation — kept for call-site greps during migration. */
+/** @deprecated Prefer measureTruncation(text, container, fontSource). */
 export function isTextTruncated(el: HTMLElement): boolean {
   if (el.clientWidth <= 0) return false
   if (Math.ceil(el.scrollWidth) - Math.floor(el.clientWidth) > 0) return true
@@ -50,28 +76,27 @@ export function TruncatedText({
   as: Tag = "span",
 }: TruncatedTextProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const measureRef = useRef<HTMLSpanElement>(null)
   const textRef = useRef<HTMLElement>(null)
   // SSR-safe: no tip until first client measure completes.
   const [measured, setMeasured] = useState(false)
   const [isOverflowing, setIsOverflowing] = useState(false)
 
   const checkOverflow = useCallback(() => {
-    const measure = measureRef.current
     const wrap = wrapRef.current
-    if (!measure || !wrap) return
+    const textEl = textRef.current
+    if (!wrap || !textEl) return
     if (wrap.clientWidth === 0) {
       setIsOverflowing(false)
       setMeasured(true)
       return
     }
-    setIsOverflowing(measureTruncation(measure, wrap))
+    setIsOverflowing(measureTruncation(children, wrap, textEl))
     setMeasured(true)
-  }, [])
+  }, [children])
 
   useLayoutEffect(() => {
     checkOverflow()
-  }, [checkOverflow, children])
+  }, [checkOverflow])
 
   useEffect(() => {
     let raf = 0
@@ -105,7 +130,7 @@ export function TruncatedText({
       window.removeEventListener("resize", schedule)
       fonts?.removeEventListener?.("loadingdone", onFonts)
     }
-  }, [checkOverflow, children])
+  }, [checkOverflow])
 
   const textClassName = cn(
     "block max-w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
@@ -127,16 +152,6 @@ export function TruncatedText({
 
   return (
     <div ref={wrapRef} className="relative block w-full min-w-0 max-w-full">
-      {/* Hidden measuring span — natural width, never ellipsized. */}
-      <span
-        ref={measureRef}
-        aria-hidden
-        className="pointer-events-none absolute left-0 top-0 whitespace-nowrap"
-        style={{ visibility: "hidden", height: "auto", width: "auto", maxWidth: "none" }}
-      >
-        <span className={cn(className, "whitespace-nowrap")}>{children}</span>
-      </span>
-
       {showTip ? (
         <Tooltip
           content={children}

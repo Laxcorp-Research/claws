@@ -27,42 +27,64 @@ function openTip(el: Element) {
 
 describe("measureTruncation", () => {
   it("returns true when natural width exceeds container content-box by >1px", () => {
-    const measure = { offsetWidth: 120 } as HTMLElement
-    const container = {
-      clientWidth: 100,
-      // getComputedStyle mocked below
-    } as HTMLElement
-    vi.spyOn(window, "getComputedStyle").mockReturnValue({
-      paddingLeft: "0px",
-      paddingRight: "0px",
-    } as CSSStyleDeclaration)
-    expect(measureTruncation(measure, container)).toBe(true)
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    Object.defineProperty(container, "clientWidth", { configurable: true, value: 40 })
+    const fontSource = document.createElement("span")
+    document.body.appendChild(fontSource)
+
+    // jsdom reports 0 for layout — stub the ephemeral measure span width.
+    const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.getAttribute("aria-hidden") === "true" ? 120 : 0
+      },
+    })
+    try {
+      expect(measureTruncation("A very long label that will not fit", container, fontSource)).toBe(
+        true,
+      )
+    } finally {
+      if (orig) Object.defineProperty(HTMLElement.prototype, "offsetWidth", orig)
+      document.body.removeChild(container)
+      document.body.removeChild(fontSource)
+    }
   })
 
   it("returns false when text fits (within 1px tolerance)", () => {
-    const measure = { offsetWidth: 100 } as HTMLElement
-    const container = { clientWidth: 100 } as HTMLElement
-    vi.spyOn(window, "getComputedStyle").mockReturnValue({
-      paddingLeft: "0px",
-      paddingRight: "0px",
-    } as CSSStyleDeclaration)
-    expect(measureTruncation(measure, container)).toBe(false)
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    Object.defineProperty(container, "clientWidth", { configurable: true, value: 400 })
+    const fontSource = document.createElement("span")
+    document.body.appendChild(fontSource)
+
+    const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.getAttribute("aria-hidden") === "true" ? 40 : 0
+      },
+    })
+    try {
+      expect(measureTruncation("Hi", container, fontSource)).toBe(false)
+    } finally {
+      if (orig) Object.defineProperty(HTMLElement.prototype, "offsetWidth", orig)
+      document.body.removeChild(container)
+      document.body.removeChild(fontSource)
+    }
   })
 })
 
 describe("TruncatedText policy (post-#293)", () => {
   it("tips when measuring span reports truncation", async () => {
-    // Force measure: measuring span wider than wrap.
+    const appendSpy = vi.spyOn(document.body, "appendChild")
+    // Force measure path: stub offsetWidth on ephemeral spans appended to body.
     const origOffset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")
-    const origClient = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth")
     Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
       configurable: true,
       get(this: HTMLElement) {
-        if (this.getAttribute("aria-hidden") === "true" || this.closest?.("[aria-hidden='true']")) {
-          return 200
-        }
-        // Inner measure span child
-        if (this.parentElement?.getAttribute("aria-hidden") === "true") return 200
+        if (this.getAttribute("aria-hidden") === "true") return 200
         return 80
       },
     })
@@ -83,9 +105,11 @@ describe("TruncatedText policy (post-#293)", () => {
       })
 
       await waitFor(() => {
-        const el = document.querySelector("[data-truncated='true']")
-        expect(el?.textContent).toContain("Trend & Topic Scanner That Truncates")
+        expect(document.querySelector("[data-truncated='true']")).toBeTruthy()
       })
+      expect(appendSpy).toHaveBeenCalled()
+      // Single visible text node before tip opens (no permanent measuring sibling).
+      expect(screen.getAllByText("Trend & Topic Scanner That Truncates")).toHaveLength(1)
 
       const trigger = document.querySelector("[data-tooltip-trigger]")
       expect(trigger).toBeTruthy()
@@ -94,8 +118,7 @@ describe("TruncatedText policy (post-#293)", () => {
       expect((await screen.findByRole("tooltip")).textContent).toContain("Trend & Topic Scanner")
     } finally {
       if (origOffset) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origOffset)
-      else delete (HTMLElement.prototype as unknown as { offsetWidth?: unknown }).offsetWidth
-      if (origClient) Object.defineProperty(HTMLElement.prototype, "clientWidth", origClient)
+      appendSpy.mockRestore()
     }
   })
 
@@ -118,13 +141,11 @@ describe("TruncatedText policy (post-#293)", () => {
     })
 
     await waitFor(() => {
-      const el = document.querySelector("[data-truncated='false']")
-      expect(el?.textContent).toContain("Short name")
+      expect(document.querySelector("[data-truncated='false']")).toBeTruthy()
     })
     expect(document.querySelector("[data-tooltip-trigger]")).toBeNull()
-    const visible = document.querySelector("[data-truncated='false']")
-    expect(visible).toBeTruthy()
-    openTip(visible!)
+    expect(screen.getAllByText("Short name")).toHaveLength(1)
+    openTip(screen.getByText("Short name"))
     await new Promise((resolve) => setTimeout(resolve, 360))
     expect(screen.queryByRole("tooltip")).toBeNull()
   })
@@ -135,7 +156,6 @@ describe("TruncatedText policy (post-#293)", () => {
     expect(src).toContain("showTip")
     expect(src).not.toContain("ALWAYS_TIP_ASSERT")
     expect(src).not.toContain("disabled={false}")
-    // Trigger sizes to content, not unconditional w-full on the Tooltip wrapper default path.
     expect(src).toContain('triggerClassName="inline-block w-max max-w-full min-w-0"')
   })
 })
@@ -177,7 +197,7 @@ describe("Tooltip Radix engine", () => {
     expect(screen.getByRole("tooltip")).toBeTruthy()
   })
 
-  it("engine source: sideOffset=0, no !visible, align default center", () => {
+  it("engine source: sideOffset=0, no force-visibility class, align default center", () => {
     const src = readFileSync(resolve(__dirname, "../tooltip.tsx"), "utf8")
     expect(src).toContain("sideOffset={0}")
     expect(src).not.toMatch(/className="[^"]*!visible[^"]*"/)
