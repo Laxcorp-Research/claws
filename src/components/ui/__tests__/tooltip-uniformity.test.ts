@@ -39,15 +39,16 @@ const MIGRATED_SITES: Array<{ file: string; mustImport: string; forbiddenTitle: 
 ]
 
 describe("tooltip uniformity (PR-A)", () => {
-  it("DS Tooltip uses viewport collisionBoundary + 10×5 arrow", () => {
+  it("DS Tooltip uses viewport collisionBoundary + 10×5 arrow + sideOffset 0", () => {
     const src = read("src/components/ui/tooltip.tsx")
     expect(src).toContain("document.documentElement")
     expect(src).toContain("collisionBoundary={collisionBoundary}")
-    expect(src).toContain("width={10}")
-    expect(src).toContain("height={5}")
-    // MUTATION: revert to 8×4 or strip collisionBoundary → fail.
-    expect(src).not.toMatch(/width=\{8\}/)
-    expect(src).not.toMatch(/height=\{4\}/)
+    expect(src).toContain("sideOffset={0}")
+    expect(src).toContain("TOOLTIP_ARROW_WIDTH")
+    expect(src).toContain("TOOLTIP_ARROW_HEIGHT")
+    expect(src).not.toMatch(/className="[^"]*!visible[^"]*"/)
+    // MUTATION: restore sideOffset={6} or force-visibility class → fail.
+    expect(src).not.toContain("sideOffset={6}")
   })
 
   it("each migrated site uses DS tip and has no DOM title= residual", () => {

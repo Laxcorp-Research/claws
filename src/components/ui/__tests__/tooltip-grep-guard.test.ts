@@ -174,14 +174,14 @@ describe("tooltip class-kill grep-guard", () => {
     const src = readFileSync(join(ROOT, DS_TOOLTIP), "utf8")
     expect(src).toContain("TooltipPrimitive.Portal")
     expect(src).toMatch(/avoidCollisions(?:\s*=\s*\{?\s*true\s*\}?)?/)
-    expect(src).toContain("sideOffset={6}")
+    expect(src).toContain("sideOffset={0}")
     expect(src).toContain("collisionPadding={8}")
     expect(src).toContain("document.documentElement")
     expect(src).toContain("TooltipPrimitive.Arrow")
-    expect(src).toContain("width={10}")
-    expect(src).toContain("height={5}")
-    // Force-visible: Radix hides arrow when centerOffset≠0 on wide triggers.
-    expect(src).toContain("!visible")
-    // MUTATION: strip Portal / avoidCollisions / !visible → this fails.
+    expect(src).toContain("width={TOOLTIP_ARROW_WIDTH}")
+    expect(src).toContain("height={TOOLTIP_ARROW_HEIGHT}")
+    // Closing round: no force-visibility class on Arrow (degenerate placement gap).
+    expect(src).not.toMatch(/className="[^"]*!visible[^"]*"/)
+    // MUTATION: strip Portal / avoidCollisions / Arrow → this fails.
   })
 })

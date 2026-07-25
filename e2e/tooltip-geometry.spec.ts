@@ -133,6 +133,8 @@ test.describe("tooltip geometry (class-kill)", () => {
       .first()
     await expectTooltipAnchored(page, trigger, {
       content: /Right-edge collision/,
+      // Edge shift may leave arrow unpointable — native hide is OK with attribute.
+      allowHiddenWhenUnpointable: true,
     })
   })
 })

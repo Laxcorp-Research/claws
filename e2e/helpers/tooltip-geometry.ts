@@ -9,25 +9,46 @@ export function nearestEdgeDistance(a: Box, b: Box): number {
   return Math.hypot(dx, dy)
 }
 
+/** Shared-edge gap along one axis (0 if overlapping or touching). */
+function axisGap(a0: number, a1: number, b0: number, b1: number): number {
+  if (a1 < b0) return b0 - a1
+  if (b1 < a0) return a0 - b1
+  return 0
+}
+
 /**
- * Assert tip is Radix-anchored AND arrow is VISIBLE (nonzero rendered box,
- * visibility ≠ hidden). Covers Item-0 flip-side defect: arrow present-in-DOM
- * but visibility:hidden after shift still fails.
+ * Assert tip is Radix-anchored AND arrow is VISIBLE with contact:
+ * - nonzero rendered box, visibility ≠ hidden
+ * - arrow abuts content box on the trigger-facing side (≤1px)
+ * - arrow lies on the trigger-facing side of the tip
  *
- * MUTATION: strip `<Arrow>` from DS → fails. force side=bottom + strip → fails.
+ * MUTATION: strip `<Arrow>` → fails. restore w-full trigger → contact fails.
  */
 export async function expectTooltipArrowVisible(
   tip: Locator,
-  opts?: { expectedSide?: "top" | "bottom" | "left" | "right" },
+  opts?: {
+    expectedSide?: "top" | "bottom" | "left" | "right"
+    /** When true, allow Radix hide-on-unpointable (`data-arrow-hidden=true`). */
+    allowHiddenWhenUnpointable?: boolean
+  },
 ): Promise<void> {
   const inRadix = await tip.evaluate(
     (el) => el.closest("[data-radix-popper-content-wrapper]") !== null,
   )
   expect(inRadix, "tooltip must live under [data-radix-popper-content-wrapper]").toBe(true)
 
+  const side =
+    opts?.expectedSide ??
+    ((await tip.getAttribute("data-side")) as "top" | "bottom" | "left" | "right" | null)
   if (opts?.expectedSide) {
-    const side = await tip.getAttribute("data-side")
     expect(side, `expected data-side=${opts.expectedSide}`).toBe(opts.expectedSide)
+  }
+
+  const arrowHidden = (await tip.getAttribute("data-arrow-hidden")) === "true"
+  if (opts?.allowHiddenWhenUnpointable && arrowHidden) {
+    // Forced-edge: arrow may hide only when Radix marks unpointable.
+    expect(await tip.getAttribute("data-arrow-hidden")).toBe("true")
+    return
   }
 
   const arrow = tip.locator("svg").first()
@@ -39,6 +60,8 @@ export async function expectTooltipArrowVisible(
     return {
       visibility: cs.visibility,
       opacity: Number(cs.opacity),
+      x: r.x,
+      y: r.y,
       width: r.width,
       height: r.height,
     }
@@ -47,15 +70,51 @@ export async function expectTooltipArrowVisible(
   expect(metrics.opacity, "arrow opacity").toBeGreaterThan(0)
   expect(metrics.width, "arrow rendered width").toBeGreaterThan(0)
   expect(metrics.height, "arrow rendered height").toBeGreaterThan(0)
+
+  const tipBox = await tip.boundingBox()
+  expect(tipBox, "tooltip content box").toBeTruthy()
+
+  // Arrow-abuts-box (≤1px) on the trigger-facing side.
+  const contactGap =
+    side === "top"
+      ? axisGap(tipBox!.y, tipBox!.y + tipBox!.height, metrics.y, metrics.y + metrics.height)
+      : side === "bottom"
+        ? axisGap(tipBox!.y, tipBox!.y + tipBox!.height, metrics.y, metrics.y + metrics.height)
+        : side === "left"
+          ? axisGap(tipBox!.x, tipBox!.x + tipBox!.width, metrics.x, metrics.x + metrics.width)
+          : axisGap(tipBox!.x, tipBox!.x + tipBox!.width, metrics.x, metrics.x + metrics.width)
+
+  expect(
+    contactGap,
+    `arrow↔content contact gap ${contactGap}px exceeds 1px (side=${side})`,
+  ).toBeLessThanOrEqual(1)
+
+  // Arrow on the trigger-facing side of the tip.
+  if (side === "top") {
+    expect(metrics.y + metrics.height / 2, "arrow below tip for side=top").toBeGreaterThanOrEqual(
+      tipBox!.y + tipBox!.height - 1,
+    )
+  } else if (side === "bottom") {
+    expect(metrics.y + metrics.height / 2, "arrow above tip for side=bottom").toBeLessThanOrEqual(
+      tipBox!.y + 1,
+    )
+  } else if (side === "left") {
+    expect(metrics.x + metrics.width / 2, "arrow right of tip for side=left").toBeGreaterThanOrEqual(
+      tipBox!.x + tipBox!.width - 1,
+    )
+  } else if (side === "right") {
+    expect(metrics.x + metrics.width / 2, "arrow left of tip for side=right").toBeLessThanOrEqual(
+      tipBox!.x + 1,
+    )
+  }
+
+  expect(await tip.getAttribute("data-arrow-visible")).toBe("true")
+  expect(await tip.getAttribute("data-arrow-hidden")).toBe("false")
 }
 
 /**
  * Hover trigger → tip visible → nearest-edge ≤ 12px (any side; flip legal)
- * AND tip fully inside the viewport AND arrow visible on whichever side Radix chose.
- *
- * MUTATION: portal into a transformed ancestor or sideOffset={0} with a
- * large intentional miss → adjacency fails. avoidCollisions={false} near
- * a viewport edge → containment fails. strip Arrow → arrow-visible fails.
+ * AND tip fully inside the viewport AND arrow contact on the facing side.
  */
 export async function expectTooltipAnchored(
   page: Page,
@@ -64,6 +123,7 @@ export async function expectTooltipAnchored(
     content?: string | RegExp
     maxGapPx?: number
     expectedSide?: "top" | "bottom" | "left" | "right"
+    allowHiddenWhenUnpointable?: boolean
   },
 ): Promise<void> {
   const maxGap = opts?.maxGapPx ?? 12
@@ -88,19 +148,25 @@ export async function expectTooltipAnchored(
 
   const vp = page.viewportSize()
   expect(vp, "viewport size").toBeTruthy()
-  // Allow sub-pixel rounding at edges.
   expect(tipBox!.x).toBeGreaterThanOrEqual(-0.5)
   expect(tipBox!.y).toBeGreaterThanOrEqual(-0.5)
   expect(tipBox!.x + tipBox!.width).toBeLessThanOrEqual(vp!.width + 0.5)
   expect(tipBox!.y + tipBox!.height).toBeLessThanOrEqual(vp!.height + 0.5)
 
-  await expectTooltipArrowVisible(tip, { expectedSide: opts?.expectedSide })
+  await expectTooltipArrowVisible(tip, {
+    expectedSide: opts?.expectedSide,
+    allowHiddenWhenUnpointable: opts?.allowHiddenWhenUnpointable,
+  })
 }
 
-/**
- * Count [role=tooltip] nodes that are NOT under a Radix popper wrapper.
- * Used by the runtime CI net — must stay 0 while tips are open.
- */
+/** Hover a surface and assert NO role=tooltip appears. */
+export async function expectNoTooltip(page: Page, target: Locator): Promise<void> {
+  await expect(target).toBeVisible()
+  await target.hover()
+  await page.waitForTimeout(400)
+  await expect(page.getByRole("tooltip")).toHaveCount(0)
+}
+
 export async function countRogueTooltipNodes(page: Page): Promise<number> {
   return page.evaluate(() => {
     const tips = Array.from(document.querySelectorAll('[role="tooltip"]'))
@@ -109,10 +175,6 @@ export async function countRogueTooltipNodes(page: Page): Promise<number> {
   })
 }
 
-/**
- * Floating hover-label shells (fixed/absolute + high z + pointer-events-none)
- * that are NOT Radix popper content — must stay 0.
- */
 export async function countRogueFloatingHoverNodes(page: Page): Promise<number> {
   return page.evaluate(() => {
     const all = Array.from(document.querySelectorAll("body *"))
@@ -124,7 +186,6 @@ export async function countRogueFloatingHoverNodes(page: Page): Promise<number> 
       if (style.position !== "fixed" && style.position !== "absolute") continue
       const z = Number(style.zIndex)
       if (!Number.isFinite(z) || z < 50) continue
-      // Tip-sized text bubble heuristic (exclude full-screen overlays).
       const r = el.getBoundingClientRect()
       if (r.width <= 0 || r.height <= 0) continue
       if (r.width > 480 || r.height > 200) continue

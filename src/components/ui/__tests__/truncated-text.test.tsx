@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
+import { TruncatedText, measureTruncation } from "@/components/ui/truncate-with-tooltip"
 import { Tooltip } from "@/components/ui/tooltip"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 
 afterEach(() => {
   cleanup()
@@ -18,48 +20,123 @@ beforeEach(() => {
   vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
 })
 
-function mockWidth(scrollWidth: number, clientWidth: number) {
-  Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => scrollWidth })
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => clientWidth })
-  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => clientWidth })
-}
-
 /** Radix Tooltip opens on pointermove (mouse), not mouseenter. */
 function openTip(el: Element) {
   fireEvent.pointerMove(el, { pointerType: "mouse" })
 }
 
-describe("TruncatedText", () => {
-  it("ALWAYS tips on hover — even when scrollWidth false-negatives (SS2)", async () => {
-    // Chromium ellipsis with scrollWidth === clientWidth must still tip.
-    mockWidth(80, 80)
-    await act(async () => {
-      render(<TruncatedText>Trend & Topic Scanner</TruncatedText>)
+describe("measureTruncation", () => {
+  it("returns true when natural width exceeds container content-box by >1px", () => {
+    const measure = { offsetWidth: 120 } as HTMLElement
+    const container = {
+      clientWidth: 100,
+      // getComputedStyle mocked below
+    } as HTMLElement
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      paddingLeft: "0px",
+      paddingRight: "0px",
+    } as CSSStyleDeclaration)
+    expect(measureTruncation(measure, container)).toBe(true)
+  })
+
+  it("returns false when text fits (within 1px tolerance)", () => {
+    const measure = { offsetWidth: 100 } as HTMLElement
+    const container = { clientWidth: 100 } as HTMLElement
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      paddingLeft: "0px",
+      paddingRight: "0px",
+    } as CSSStyleDeclaration)
+    expect(measureTruncation(measure, container)).toBe(false)
+  })
+})
+
+describe("TruncatedText policy (post-#293)", () => {
+  it("tips when measuring span reports truncation", async () => {
+    // Force measure: measuring span wider than wrap.
+    const origOffset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")
+    const origClient = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth")
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.getAttribute("aria-hidden") === "true" || this.closest?.("[aria-hidden='true']")) {
+          return 200
+        }
+        // Inner measure span child
+        if (this.parentElement?.getAttribute("aria-hidden") === "true") return 200
+        return 80
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 80
+      },
     })
 
-    openTip(screen.getByText("Trend & Topic Scanner").parentElement!)
-    await new Promise((resolve) => setTimeout(resolve, 360))
-    expect((await screen.findByRole("tooltip")).textContent).toContain("Trend & Topic Scanner")
+    try {
+      await act(async () => {
+        render(
+          <div style={{ width: 80 }}>
+            <TruncatedText>Trend & Topic Scanner That Truncates</TruncatedText>
+          </div>,
+        )
+      })
+
+      await waitFor(() => {
+        const el = document.querySelector("[data-truncated='true']")
+        expect(el?.textContent).toContain("Trend & Topic Scanner That Truncates")
+      })
+
+      const trigger = document.querySelector("[data-tooltip-trigger]")
+      expect(trigger).toBeTruthy()
+      openTip(trigger!)
+      await new Promise((resolve) => setTimeout(resolve, 360))
+      expect((await screen.findByRole("tooltip")).textContent).toContain("Trend & Topic Scanner")
+    } finally {
+      if (origOffset) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origOffset)
+      else delete (HTMLElement.prototype as unknown as { offsetWidth?: unknown }).offsetWidth
+      if (origClient) Object.defineProperty(HTMLElement.prototype, "clientWidth", origClient)
+    }
   })
 
-  it("tips for short names too (always-on TruncatedText contract)", async () => {
-    mockWidth(80, 120)
-    render(<TruncatedText>Short name</TruncatedText>)
+  it("does NOT tip when text fits the container", async () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get() {
+        return 40
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 200
+      },
+    })
 
-    openTip(screen.getByText("Short name").parentElement!)
+    await act(async () => {
+      render(<TruncatedText>Short name</TruncatedText>)
+    })
+
+    await waitFor(() => {
+      const el = document.querySelector("[data-truncated='false']")
+      expect(el?.textContent).toContain("Short name")
+    })
+    expect(document.querySelector("[data-tooltip-trigger]")).toBeNull()
+    const visible = document.querySelector("[data-truncated='false']")
+    expect(visible).toBeTruthy()
+    openTip(visible!)
     await new Promise((resolve) => setTimeout(resolve, 360))
-    expect((await screen.findByRole("tooltip")).textContent).toContain("Short name")
+    expect(screen.queryByRole("tooltip")).toBeNull()
   })
 
-  it("MUTATION-anchored: ALWAYS_TIP_ASSERT present; disabled={false} on Tooltip", async () => {
-    const { readFileSync } = await import("node:fs")
-    const { resolve } = await import("node:path")
+  it("MUTATION-anchored: tip gated on measured truncation (no ALWAYS_TIP / disabled=false)", () => {
     const src = readFileSync(resolve(__dirname, "../truncate-with-tooltip.tsx"), "utf8")
-    expect(src).toContain("ALWAYS_TIP_ASSERT")
-    expect(src).toContain("disabled={false}")
-    // MUTATION: reintroduce overflow-gated disabled={...} → this fails.
-    expect(src).not.toMatch(/disabled=\{[^}]*isOverflowing/)
-    expect(src).not.toMatch(/disabled=\{isDisabledForTooltip\}/)
+    expect(src).toContain("measureTruncation")
+    expect(src).toContain("showTip")
+    expect(src).not.toContain("ALWAYS_TIP_ASSERT")
+    expect(src).not.toContain("disabled={false}")
+    // Trigger sizes to content, not unconditional w-full on the Tooltip wrapper default path.
+    expect(src).toContain('triggerClassName="inline-block w-max max-w-full min-w-0"')
   })
 })
 
@@ -77,11 +154,10 @@ describe("Tooltip Radix engine", () => {
     openTip(triggerWrap)
     const tip = await screen.findByRole("tooltip")
     expect(tip.textContent).toContain("hi")
-    // Portal: tip is not inside the trigger wrapper.
     expect(triggerWrap.contains(tip)).toBe(false)
   })
 
-  it("does not kill an open tip when disabled() later false-negatives", async () => {
+  it("does not kill an open tip when disabled() later flips true", async () => {
     let disabled = false
     const { rerender } = render(
       <Tooltip content="Engagement Strategist" maxWidth={300} delay={0} disabled={() => disabled}>
@@ -92,22 +168,20 @@ describe("Tooltip Radix engine", () => {
     openTip(screen.getByText("Engagement Strat...").parentElement!)
     expect(await screen.findByRole("tooltip")).toBeTruthy()
 
-    // Simulate Chromium remasure flipping to "not truncated" after open.
     disabled = true
     rerender(
       <Tooltip content="Engagement Strategist" maxWidth={300} delay={0} disabled={() => disabled}>
         <span>Engagement Strat...</span>
       </Tooltip>,
     )
-    // Tip must stay — open state must not re-gate on disabled() after open.
     expect(screen.getByRole("tooltip")).toBeTruthy()
   })
 
-  it("engine source uses align default start (wide TruncatedText anchors)", async () => {
-    const { readFileSync } = await import("node:fs")
-    const { resolve } = await import("node:path")
+  it("engine source: sideOffset=0, no !visible, align default center", () => {
     const src = readFileSync(resolve(__dirname, "../tooltip.tsx"), "utf8")
-    expect(src).toMatch(/align\s*=\s*"start"/)
+    expect(src).toContain("sideOffset={0}")
+    expect(src).not.toMatch(/className="[^"]*!visible[^"]*"/)
+    expect(src).toMatch(/align\s*=\s*"center"/)
     expect(src).toMatch(/from\s+["']@radix-ui\/react-tooltip["']/)
   })
 })

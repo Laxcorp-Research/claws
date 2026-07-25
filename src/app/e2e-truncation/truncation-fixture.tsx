@@ -7,6 +7,15 @@ import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 export const LONG_AGENT_NAME = "Extremely Long Strategic Research Agent Name That Must Ellipsize"
 const LONG_SESSION_KEY = "agent:twitter-commander:subagent:151eda19-a0c9-49de-969d-ed39d16fe21c"
 
+/** Short names that fit in the sidebar column — must NOT tip. */
+const FITTING_SIDEBAR_NAMES = ["Engagement Strategist", "Content Writer", "Trend Scout"] as const
+
+/** Long names that ellipsize in the same column — must tip. */
+const TRUNCATED_SIDEBAR_NAMES = [
+  "Extremely Long Engagement Strategist Name That Must Tip",
+  "Content Writer With An Absurdly Long Display Label",
+] as const
+
 export function TruncationFixture() {
   return (
     <main className="mx-auto flex min-h-screen max-w-[720px] flex-col items-center justify-start p-6 pt-24">
@@ -37,6 +46,18 @@ export function TruncationFixture() {
         </div>
       </div>
 
+      {/* Side-by-side: fitting vs truncated in identical column width. */}
+      <div className="mt-6 w-[220px] space-y-2" data-testid="policy-pair-fixture">
+        <div data-testid="fitting-text-fixture" className="rounded-[6px] border border-[var(--bd)] px-2 py-1.5">
+          <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">Short fit</TruncatedText>
+        </div>
+        <div data-testid="truncated-text-fixture" className="rounded-[6px] border border-[var(--bd)] px-2 py-1.5">
+          <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">
+            This truncated label is intentionally longer than the two-twenty column
+          </TruncatedText>
+        </div>
+      </div>
+
       {/* Near-right viewport edge — collision must flip/shift; tip stays on-screen. */}
       <div
         className="fixed top-24 right-2 w-[160px]"
@@ -59,24 +80,26 @@ export function TruncationFixture() {
         </div>
       </div>
 
-      {/* Item-0 repro: overflow-y-auto sidebar list. Viewport collisionBoundary must
-          keep tips on side=top when viewport has room — not flip against this clip. */}
+      {/* Builder-like list: fitting names (no tip) + truncated names (tip + top preferred). */}
       <div
-        className="mt-6 h-[120px] w-[220px] overflow-y-auto rounded-[10px] border border-[var(--bd)] p-2"
+        className="mt-6 h-[160px] w-[220px] overflow-y-auto rounded-[10px] border border-[var(--bd)] p-2"
         data-testid="sidebar-overflow-fixture"
       >
         <div className="space-y-[3px]">
-          {[
-            "Engagement Strategist",
-            "Content Writer",
-            "Trend & Topic Scanner",
-            "Social Content Reviewer",
-            "Audience Growth Engine",
-          ].map((name) => (
+          {FITTING_SIDEBAR_NAMES.map((name) => (
             <div
               key={name}
               className="flex items-center gap-1.5 py-1.5 px-2 rounded-[6px]"
-              data-testid={`sidebar-row-${name.replace(/\s+/g, "-").toLowerCase()}`}
+              data-testid={`sidebar-fitting-${name.replace(/\s+/g, "-").toLowerCase()}`}
+            >
+              <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">{name}</TruncatedText>
+            </div>
+          ))}
+          {TRUNCATED_SIDEBAR_NAMES.map((name, i) => (
+            <div
+              key={name}
+              className="flex items-center gap-1.5 py-1.5 px-2 rounded-[6px]"
+              data-testid={`sidebar-truncated-row-${i}`}
             >
               <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">{name}</TruncatedText>
             </div>
@@ -84,13 +107,13 @@ export function TruncationFixture() {
         </div>
       </div>
 
-      {/* Force side=bottom near top viewport edge for arrow-visibility net. */}
+      {/* Force side=bottom near top viewport edge. */}
       <div
         className="fixed top-2 left-1/2 w-[200px] -translate-x-1/2"
         data-testid="force-bottom-fixture"
       >
         <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">
-          Force-bottom tip near viewport top edge
+          Force-bottom tip near viewport top edge that must truncate
         </TruncatedText>
       </div>
     </main>
