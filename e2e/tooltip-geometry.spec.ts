@@ -23,16 +23,27 @@ test.describe("tooltip geometry (class-kill)", () => {
     await page.getByRole("button", { name: "Create custom Claw" }).click()
     await page.waitForURL(/\/builder\//, { timeout: 60_000 })
 
+    // Default "My Claw N" fits the picker cell — no tip under the measuring-span
+    // policy. Rename to a long label so TruncateWithTooltip actually mounts.
+    const wsId = page.url().match(/\/builder\/([^/?#]+)/)?.[1]
+    expect(wsId, "builder workspace id").toBeTruthy()
+    const longName =
+      "Extremely Long Custom Claw Name That Must Ellipsize In The Picker Row"
+    const rename = await page.request.patch(`/api/workspaces/${wsId}`, {
+      data: { name: longName },
+    })
+    expect(rename.ok()).toBeTruthy()
+
     await page.goto("/onboarding")
     await expect(page.getByText(/Claw created/)).toBeVisible({ timeout: 15_000 })
     await page.getByRole("button", { name: /Set up & deploy/ }).click()
     await expect(page.getByText("Choose a Claw to set up")).toBeVisible()
 
-    // Trigger = DS Tooltip wrapper around the claw name (full-width flex cell).
-    const row = page.locator("ul").getByRole("button").filter({ hasText: /My Claw/ }).first()
+    const row = page.locator("ul").getByRole("button").filter({ hasText: /Extremely Long Custom/ }).first()
     await expect(row).toBeVisible()
     const trigger = row.locator("[data-tooltip-trigger]").first()
-    await expectTooltipAnchored(page, trigger, { content: /My Claw/ })
+    await expect(trigger).toBeVisible({ timeout: 10_000 })
+    await expectTooltipAnchored(page, trigger, { content: /Extremely Long Custom Claw/ })
   })
 
   test("dashboard Live Ops TruncatedText is anchored", async ({ page }) => {
