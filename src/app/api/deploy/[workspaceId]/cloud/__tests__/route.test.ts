@@ -1,4 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Prisma } from '@/generated/prisma/client';
 import { prismaMock } from '@/test/helpers/mock-prisma';
 import { createMockRequest } from '@/test/helpers/mock-request';
@@ -13,6 +15,11 @@ vi.mock('@/lib/api/ownership', () => ({ verifyWorkspaceOwnership: (...args: unkn
 
 const mockDeployToCloud = vi.fn();
 vi.mock('@/lib/openclaw/deployer', () => ({ deployToCloud: (...args: unknown[]) => mockDeployToCloud(...args) }));
+
+const mockEvaluateToolPrereqs = vi.fn();
+vi.mock('@/lib/tools/deploy-tool-prerequisites', () => ({
+  evaluateWorkspaceDeployToolPrerequisites: (...args: unknown[]) => mockEvaluateToolPrereqs(...args),
+}));
 
 vi.mock('@/lib/logger', () => ({
   log: { deployEvent: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -63,6 +70,16 @@ function mockEligibleUser(overrides: Partial<EligibilityUser> = {}) {
 }
 
 describe('POST /api/deploy/[workspaceId]/cloud', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEvaluateToolPrereqs.mockResolvedValue({
+      satisfied: true,
+      missingSlugs: [],
+      missingLabels: [],
+      unverifiedCount: 0,
+    });
+  });
+
   it('returns 401 when not authenticated', async () => {
     mockGetSessionUser.mockResolvedValue(null);
     const res = await callRoute('ws-1');
@@ -183,5 +200,75 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error.code).toBe('DEPLOY_FAILED');
+  });
+
+  it('satisfied required tools → proceeds to deployToCloud', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
+    mockEligibleUser();
+    mockEvaluateToolPrereqs.mockResolvedValue({
+      satisfied: true,
+      missingSlugs: [],
+      missingLabels: [],
+      unverifiedCount: 0,
+    });
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(201);
+    expect(mockEvaluateToolPrereqs).toHaveBeenCalledWith('ws-1');
+    expect(mockDeployToCloud).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('missing required tools → 400 naming the tools (before eligibility side effects)', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
+    mockEligibleUser();
+    mockEvaluateToolPrereqs.mockResolvedValue({
+      satisfied: false,
+      missingSlugs: ['tavily'],
+      missingLabels: ['Tavily'],
+      unverifiedCount: 0,
+    });
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.code).toBe('REQUIRED_TOOLS_MISSING');
+    expect(json.error.message).toContain('Tavily');
+    expect(mockDeployToCloud).not.toHaveBeenCalled();
+    expect(prismaMock.user.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('credentialed PENDING-unverified → proceeds', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
+    mockEligibleUser();
+    mockEvaluateToolPrereqs.mockResolvedValue({
+      satisfied: true,
+      missingSlugs: [],
+      missingLabels: [],
+      unverifiedCount: 1,
+    });
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(201);
+    expect(mockDeployToCloud).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('MUTATION source lock: route must call evaluateWorkspaceDeployToolPrerequisites (bypass → fail)', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'src/app/api/deploy/[workspaceId]/cloud/route.ts'),
+      'utf8',
+    );
+    expect(src).toContain('evaluateWorkspaceDeployToolPrerequisites');
+    expect(src).toContain('REQUIRED_TOOLS_MISSING');
+    // Gate must run before eligibility / trial stamp / deployToCloud (call sites).
+    const gateIdx = src.indexOf('await evaluateWorkspaceDeployToolPrerequisites');
+    const eligibilityIdx = src.indexOf('checkDeployEligibility(user)');
+    const deployIdx = src.indexOf('await deployToCloud');
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(eligibilityIdx);
+    expect(gateIdx).toBeLessThan(deployIdx);
   });
 });
