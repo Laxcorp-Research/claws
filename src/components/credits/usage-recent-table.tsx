@@ -1,7 +1,7 @@
 "use client"
 
 import type { CreditUsageRecord } from "@/hooks/use-credit-usage"
-import { timeAgo } from "@/lib/utils"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 interface UsageRecentTableProps {
   records: CreditUsageRecord[]
@@ -15,11 +15,6 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return n.toLocaleString()
-}
-
-function shortId(id: string): string {
-  if (id.length <= 10) return id
-  return `…${id.slice(-8)}`
 }
 
 export function UsageRecentTable({ records }: UsageRecentTableProps) {
@@ -48,17 +43,13 @@ export function UsageRecentTable({ records }: UsageRecentTableProps) {
           <tbody>
             {records.map((r) => (
               <tr key={r.id} className="border-t border-[var(--bd)]">
-                <td
-                  className="px-[12px] py-[6px] text-[var(--tx2)] whitespace-nowrap"
-                  title={new Date(r.createdAt).toLocaleString()}
-                >
-                  {timeAgo(r.createdAt)}
+                <td className="px-[12px] py-[6px] text-[var(--tx2)] max-w-[110px]">
+                  <TruncatedText className="whitespace-nowrap">
+                    {new Date(r.createdAt).toLocaleString()}
+                  </TruncatedText>
                 </td>
-                <td
-                  className="px-[12px] py-[6px] text-[var(--tx2)] font-mono text-[11px]"
-                  title={r.workspaceId}
-                >
-                  {shortId(r.workspaceId)}
+                <td className="px-[12px] py-[6px] text-[var(--tx2)] font-mono text-[11px] max-w-[140px]">
+                  <TruncatedText>{r.workspaceId}</TruncatedText>
                 </td>
                 <td className="px-[12px] py-[6px]">
                   <div className="text-[var(--tx)]">{r.model}</div>

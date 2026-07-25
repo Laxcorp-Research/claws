@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { TrustBadge } from "./trust-badge"
 import type { TrustTier } from "@/types/marketplace"
+import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 
 interface SkillCardProps {
   skill: {
@@ -25,14 +26,14 @@ export function SkillCard({ skill, hideTrustBadge }: SkillCardProps) {
       href={`/store/skills/${skill.slug}`}
       className="block border border-[var(--bd)] rounded-[12px] px-[14px] py-3 hover:border-[var(--bd2)] transition-[border-color] duration-150 cursor-pointer"
     >
-      <div className="flex justify-between items-center">
-        <span className="text-[13px] font-semibold text-[var(--tx)]">
-          {skill.name}
-        </span>
+      <div className="flex justify-between items-center gap-2">
+        <div className="min-w-0 flex-1 text-[13px] font-semibold text-[var(--tx)]">
+          <TruncateWithTooltip>{skill.name}</TruncateWithTooltip>
+        </div>
         {!hideTrustBadge && <TrustBadge tier={skill.trustTier} />}
       </div>
 
-      {/* truncate-allowlist: multi-line skill description (line-clamp-2) */}
+      {/* truncate-allowlist: multi-line skill description (line-clamp-2) — unfit for TruncatedText */}
       <p className="text-[11px] text-[var(--tx2)] mt-1 line-clamp-2">
         {skill.description}
       </p>
