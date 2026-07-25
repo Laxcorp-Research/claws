@@ -213,7 +213,8 @@ describe("Tool customization UI (Manage Tools)", () => {
     fireEvent.click(rowRemove)
 
     expect(await screen.findByRole("heading", { name: /Remove Twitter\/X API/ })).toBeDefined()
-    expect(screen.getByText("Trend Scout (mentioned in SOUL/AGENTS)")).toBeDefined()
+    // Dependents load async; confirm is disabled until then — assert after resolve.
+    expect(await screen.findByText("Trend Scout (mentioned in SOUL/AGENTS)")).toBeDefined()
     const checkbox = screen.getByLabelText(/Also disconnect and delete saved credentials/) as HTMLInputElement
     expect(checkbox.checked).toBe(true)
 
@@ -221,7 +222,9 @@ describe("Tool customization UI (Manage Tools)", () => {
     fireEvent.click(checkbox)
     expect(checkbox.checked).toBe(false)
     const confirmButtons = screen.getAllByRole("button", { name: "Remove" })
-    fireEvent.click(confirmButtons[confirmButtons.length - 1])
+    const confirm = confirmButtons[confirmButtons.length - 1]
+    expect((confirm as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(confirm)
 
     await waitFor(() => expect(lastPatchBody).toEqual({ op: "remove", slug: "twitter-api" }))
     // MUTATION: if confirm always disconnects, this fails.
