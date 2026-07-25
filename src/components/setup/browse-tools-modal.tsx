@@ -232,19 +232,19 @@ export function BrowseToolsModal({
       ? "Loading catalog…"
       : `Browse ${tools.length} tools available to connect.`
 
-  // Suggested header is NOT inside the virtualized row window. Gating it on
-  // `startIndex === 0` + post-browse load raced CI: `browse-tools-swap` mounts
-  // during the skeleton, so findByTestId resolved before any row (and label)
-  // existed. Render from swap props as soon as the modal opens; hide only when
-  // a filter removes every suggested slug after the catalog is ready.
+  // Suggested header is NOT inside the virtualized row window (old startIndex===0
+  // gate raced CI). Mount browse-tools-swap / browse-tools testids only after the
+  // catalog finishes loading so findByTestId waits for Select rows + Suggested.
   const firstSuggestedSlug =
     isSwap && suggestedSlugs.length > 0
       ? filtered.find((t) => suggestedSet.has(t.slug))?.slug
       : undefined
-  const showSuggestedHeader =
-    isSwap &&
-    suggestedSlugs.length > 0 &&
-    (browseLoading || Boolean(firstSuggestedSlug))
+  const showSuggestedHeader = !browseLoading && Boolean(firstSuggestedSlug)
+  const listTestId = browseLoading
+    ? undefined
+    : isSwap
+      ? "browse-tools-swap"
+      : "browse-tools"
 
   return (
     <>
@@ -282,7 +282,7 @@ export function BrowseToolsModal({
             className="border border-[var(--bd)] rounded-xl overflow-hidden overflow-y-auto"
             style={{ maxHeight: LIST_HEIGHT }}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-            data-testid={isSwap ? "browse-tools-swap" : "browse-tools"}
+            data-testid={listTestId}
           >
             {showSuggestedHeader && (
               <div

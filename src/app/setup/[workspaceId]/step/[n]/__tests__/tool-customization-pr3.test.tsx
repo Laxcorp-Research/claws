@@ -343,6 +343,9 @@ describe("Tool customization PR-3", () => {
     )
     expect(modalSrc).toContain('data-testid="swap-suggested-label"')
     expect(modalSrc).toContain("showSuggestedHeader")
+    expect(modalSrc).toContain("listTestId")
+    // list testid must wait for catalog (browseLoading → undefined).
+    expect(modalSrc).toMatch(/browseLoading\s*\?\s*undefined/)
     // Re-introducing the race: label only when startIndex===0 inside the row map.
     expect(modalSrc).not.toMatch(
       /showSuggestedLabel\s*=\s*isSuggested\s*&&\s*tool\.slug\s*===\s*firstSuggestedSlug\s*&&\s*startIndex\s*===\s*0/,
@@ -353,16 +356,15 @@ describe("Tool customization PR-3", () => {
     renderPage()
     expect(await screen.findByText("Tavily (Web Search)")).toBeDefined()
     fireEvent.click(screen.getByRole("button", { name: "Swap" }))
+    // browse-tools-swap mounts only after catalog load (not during skeleton).
     expect(await screen.findByTestId("browse-tools-swap")).toBeDefined()
-    // Suggested header is a non-virtualized surface (not startIndex-gated).
-    // Sync getByTestId must pass even if browse catalog is still loading.
     expect(screen.getByTestId("swap-suggested-label")).toBeDefined()
     expect(screen.getByTestId("swap-suggested-label").textContent).toMatch(/Suggested/i)
     expect(
       screen.getByText("Your agents adapt automatically via generated skill instructions."),
     ).toBeDefined()
     // Suggested pin from alternatives[] (serp_api).
-    const selectButtons = screen.getAllByRole("button", { name: "Select" })
+    const selectButtons = await screen.findAllByRole("button", { name: "Select" })
     expect(selectButtons.length).toBeGreaterThan(0)
     // Click SerpAPI select (first suggested after current excluded).
     const serpRow = screen.getByText("SerpAPI").closest("div")?.parentElement
