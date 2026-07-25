@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 import { createMockRequest } from "@/test/helpers/mock-request"
 
@@ -15,6 +17,12 @@ vi.mock("@/lib/api/ownership", () => ({
 const mockRedeployWorkspace = vi.fn()
 vi.mock("@/lib/openclaw/deployer", () => ({
   redeployWorkspace: (...args: unknown[]) => mockRedeployWorkspace(...args),
+}))
+
+const mockEvaluateToolPrereqs = vi.fn()
+vi.mock("@/lib/tools/deploy-tool-prerequisites", () => ({
+  evaluateWorkspaceDeployToolPrerequisites: (...args: unknown[]) =>
+    mockEvaluateToolPrereqs(...args),
 }))
 
 import { POST } from "@/app/api/deploy/[workspaceId]/redeploy/route"
@@ -45,6 +53,13 @@ describe("POST /api/deploy/[workspaceId]/redeploy", () => {
     mockGetSessionUser.mockReset()
     mockVerifyOwnership.mockReset()
     mockRedeployWorkspace.mockReset()
+    mockEvaluateToolPrereqs.mockReset()
+    mockEvaluateToolPrereqs.mockResolvedValue({
+      satisfied: true,
+      missingSlugs: [],
+      missingLabels: [],
+      unverifiedCount: 0,
+    })
   })
 
   it("returns 401 when not authenticated", async () => {
@@ -104,5 +119,31 @@ describe("POST /api/deploy/[workspaceId]/redeploy", () => {
 
     expect(res.status).toBe(200)
     expect(mockRedeployWorkspace).toHaveBeenCalledWith("ws-1")
+  })
+
+  it("missing required tools → 400 naming the tools (before redeploy)", async () => {
+    mockOwnedWorkspace({ containerId: "svc-1", status: "RUNNING" })
+    mockEvaluateToolPrereqs.mockResolvedValue({
+      satisfied: false,
+      missingSlugs: ["tavily"],
+      missingLabels: ["Tavily"],
+      unverifiedCount: 0,
+    })
+
+    const res = await callRoute()
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error.code).toBe("REQUIRED_TOOLS_MISSING")
+    expect(json.error.message).toContain("Tavily")
+    expect(mockRedeployWorkspace).not.toHaveBeenCalled()
+  })
+
+  it("MUTATION source lock: redeploy must call evaluateWorkspaceDeployToolPrerequisites", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/deploy/[workspaceId]/redeploy/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain("evaluateWorkspaceDeployToolPrerequisites")
+    expect(src).toContain("REQUIRED_TOOLS_MISSING")
   })
 })

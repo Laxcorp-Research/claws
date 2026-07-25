@@ -5,6 +5,8 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
 import { log } from "@/lib/logger"
+import { evaluateWorkspaceDeployToolPrerequisites } from "@/lib/tools/deploy-tool-prerequisites"
+import { missingRequiredToolsBannerTitle } from "@/lib/tools/required-tools"
 
 export const maxDuration = 300
 
@@ -18,6 +20,17 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   if (workspace?.status === "RUNNING" && workspace.containerId) return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
+
+  // Finding F server parity (#282): same requiredToolsSatisfied gate as Setup
+  // Step 3 â€” before eligibility side effects / deployToCloud.
+  const toolPrereqs = await evaluateWorkspaceDeployToolPrerequisites(workspaceId)
+  if (!toolPrereqs.satisfied) {
+    return apiError(
+      "REQUIRED_TOOLS_MISSING",
+      missingRequiredToolsBannerTitle(toolPrereqs.missingLabels),
+      400,
+    )
+  }
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: sessionUser.id },
@@ -82,6 +95,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       error: err instanceof Error ? err.message : "Unknown",
     })
     const msg = err instanceof Error ? err.message : "Deployment failed"
-    return apiError("DEPLOY_FAILED", msg.length > 300 ? `${msg.substring(0, 300)}…` : msg, 500)
+    return apiError("DEPLOY_FAILED", msg.length > 300 ? `${msg.substring(0, 300)}â€¦` : msg, 500)
   }
 }

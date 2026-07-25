@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
 
   // Seed Redis from the durable ledger when the cache key is missing so
   // credit-proxy canSpend does not fail-closed (or degrade) on a cold cache.
+  // Warm-but-wrong: any Redis↔DB mismatch (ε = 0¢) re-seeds from DB before Lua.
   try {
     const cached = await redis.get(balanceKey)
     if (cached === null) {
@@ -48,6 +49,25 @@ export async function POST(req: NextRequest) {
       })
       if (account && account.status === "ACTIVE") {
         await redis.set(balanceKey, account.balanceCents.toString())
+      }
+    } else {
+      const account = await prisma.creditAccount.findUnique({
+        where: { userId },
+        select: { balanceCents: true, status: true },
+      })
+      if (account && account.status === "ACTIVE") {
+        const cachedRaw = typeof cached === "string" ? cached : String(cached)
+        const redisCents = Number.parseInt(cachedRaw, 10)
+        const dbCents = account.balanceCents
+        // ε = 0¢ — any mismatch (incl. non-numeric Redis) re-seeds from DB.
+        if (!Number.isFinite(redisCents) || redisCents !== dbCents) {
+          log.warn("reserve-window: balance divergence; re-seeding Redis from DB", {
+            userId,
+            dbCents,
+            redisCents: Number.isFinite(redisCents) ? redisCents : cachedRaw,
+          })
+          await redis.set(balanceKey, dbCents.toString())
+        }
       }
     }
   } catch (err) {
