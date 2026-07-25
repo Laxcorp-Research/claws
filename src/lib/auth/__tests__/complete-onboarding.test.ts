@@ -7,7 +7,8 @@ describe("completeOnboardingAfterFirstWorkspace", () => {
       workspace: { count: vi.fn().mockResolvedValue(1) },
       user: { update: vi.fn().mockResolvedValue({}) },
     }
-    await completeOnboardingAfterFirstWorkspace(tx, "user-1")
+    const isFirst = await completeOnboardingAfterFirstWorkspace(tx, "user-1")
+    expect(isFirst).toBe(true)
     expect(tx.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { onboardingCompleted: true },
@@ -19,7 +20,8 @@ describe("completeOnboardingAfterFirstWorkspace", () => {
       workspace: { count: vi.fn().mockResolvedValue(2) },
       user: { update: vi.fn().mockResolvedValue({}) },
     }
-    await completeOnboardingAfterFirstWorkspace(tx, "user-1")
+    const isFirst = await completeOnboardingAfterFirstWorkspace(tx, "user-1")
+    expect(isFirst).toBe(false)
     expect(tx.user.update).not.toHaveBeenCalled()
   })
 

@@ -2,6 +2,14 @@ import type { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/db"
 import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboarding"
 import { cloneToolsForWorkspaceSeed } from "@/lib/tools/workspace-tool-requirements"
+import { log } from "@/lib/logger"
+
+interface SnapshotSkill {
+  slug?: string
+  skillSlug?: string
+  name?: string
+  configOverrides?: string | null
+}
 
 interface SnapshotAgent {
   agentSlug: string
@@ -18,6 +26,8 @@ interface SnapshotAgent {
   positionX?: number
   positionY?: number
   reportsTo?: string
+  /** Publish snapshot shape: { slug, name, configOverrides } — APPLY at install (D-AS). */
+  skills?: SnapshotSkill[]
 }
 
 interface SnapshotConnection {
@@ -40,15 +50,26 @@ interface CreateWorkspaceOptions {
 interface WorkspaceResult {
   workspaceId: string
   workspaceName: string
+  /** Same transaction signal as onboardingCompleted (count === 1). */
+  isFirstWorkspace: boolean
 }
 
 type AgentRole = "ORCHESTRATOR" | "WORKER" | "CRITIC"
 type ConnectionCondition = "ON_COMPLETE" | "ON_APPROVAL" | "ON_REJECTION" | "ON_SCHEDULE" | "ON_HUMAN_APPROVE" | "CUSTOM"
 
+function snapshotSkillSlug(entry: SnapshotSkill): string | null {
+  if (typeof entry.slug === "string" && entry.slug.trim()) return entry.slug.trim()
+  if (typeof entry.skillSlug === "string" && entry.skillSlug.trim()) {
+    return entry.skillSlug.trim()
+  }
+  return null
+}
+
 /**
  * Creates a Workspace + Agents + AgentConnections from a ClawTemplate snapshot.
  * Also creates a TemplateInstall record and increments ClawTemplate.installCount.
  * Copies snapshot.tools → workspace.toolRequirements (template JSON untouched).
+ * Materializes agents[].skills → AgentSkill rows (D-AS; stale slugs skipped with WARN).
  *
  * Used by: checkout route (mock mode + free templates), webhook (paid templates).
  */
@@ -111,6 +132,36 @@ export async function createWorkspaceFromTemplate(
         },
       })
       slugToId[a.agentSlug] = agent.id
+
+      // D-AS: APPLY snapshot skills into AgentSkill inside this transaction.
+      // MUTATION: drop this loop → skill-match install test fails.
+      for (const skillEntry of a.skills ?? []) {
+        const skillSlug = snapshotSkillSlug(skillEntry)
+        if (!skillSlug) continue
+        const skill = await tx.skill.findUnique({
+          where: { slug: skillSlug },
+          select: { id: true },
+        })
+        if (!skill) {
+          log.warn("createWorkspaceFromTemplate: skipping stale skill slug", {
+            slug: skillSlug,
+            agentSlug: a.agentSlug,
+            templateId: template.id,
+            workspaceId: workspace.id,
+          })
+          continue
+        }
+        await tx.agentSkill.create({
+          data: {
+            agentId: agent.id,
+            skillId: skill.id,
+            configOverrides:
+              typeof skillEntry.configOverrides === "string"
+                ? skillEntry.configOverrides
+                : skillEntry.configOverrides ?? null,
+          },
+        })
+      }
     }
 
     for (const a of snapshot.agents) {
@@ -149,8 +200,21 @@ export async function createWorkspaceFromTemplate(
     })
 
     // MUTATION: remove this call → first template install leaves flag false.
-    await completeOnboardingAfterFirstWorkspace(tx, userId)
+    // isFirstWorkspace is the same count===1 signal (no second definition).
+    const isFirstWorkspace = await completeOnboardingAfterFirstWorkspace(tx, userId)
 
-    return { workspaceId: workspace.id, workspaceName: workspace.name }
+    return {
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      isFirstWorkspace,
+    }
   })
+}
+
+/** D-vi: first install → tracker; later installs → builder. */
+export function installLandingPath(
+  workspaceId: string,
+  isFirstWorkspace: boolean,
+): string {
+  return isFirstWorkspace ? "/onboarding" : `/builder/${workspaceId}`
 }

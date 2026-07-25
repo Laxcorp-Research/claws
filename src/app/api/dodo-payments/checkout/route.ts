@@ -3,7 +3,10 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { createClawCheckout, createPlatformSubscription, createCommunityCheckout } from "@/lib/dodo-payments"
-import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
+import {
+  createWorkspaceFromTemplate,
+  installLandingPath,
+} from "@/lib/workspace-from-template"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
 
@@ -56,12 +59,13 @@ async function handleFreeTemplate(
   if (!template || !isPubliclyListable(template)) return ERRORS.NOT_FOUND("Template")
   if (!template.isFree) return apiError("NOT_FREE", "This template is not free", 400)
 
-  const { workspaceId } = await createWorkspaceFromTemplate({
+  const { workspaceId, isFirstWorkspace } = await createWorkspaceFromTemplate({
     userId: user.id,
     templateId: template.id,
   })
 
-  return apiSuccess({ redirectUrl: `/builder/${workspaceId}` })
+  // D-vi: first install → /onboarding; later → /builder/{id}
+  return apiSuccess({ redirectUrl: installLandingPath(workspaceId, isFirstWorkspace) })
 }
 
 async function handleClawPurchase(
@@ -78,11 +82,11 @@ async function handleClawPurchase(
     where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
   })
   if (existingPurchase) {
-    const { workspaceId } = await createWorkspaceFromTemplate({
+    const { workspaceId, isFirstWorkspace } = await createWorkspaceFromTemplate({
       userId: user.id,
       templateId: template.id,
     })
-    return apiSuccess({ redirectUrl: `/builder/${workspaceId}` })
+    return apiSuccess({ redirectUrl: installLandingPath(workspaceId, isFirstWorkspace) })
   }
 
   const result = await createClawCheckout({
@@ -97,7 +101,7 @@ async function handleClawPurchase(
   })
 
   if (result.mockMode) {
-    const { workspaceId } = await createWorkspaceFromTemplate({
+    const { workspaceId, isFirstWorkspace } = await createWorkspaceFromTemplate({
       userId: user.id,
       templateId: template.id,
     })
@@ -111,7 +115,10 @@ async function handleClawPurchase(
         status: "COMPLETED",
       },
     })
-    return apiSuccess({ mockMode: true, redirectUrl: `/builder/${workspaceId}` })
+    return apiSuccess({
+      mockMode: true,
+      redirectUrl: installLandingPath(workspaceId, isFirstWorkspace),
+    })
   }
 
   if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
@@ -135,11 +142,11 @@ async function handleCommunityPurchase(
     where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
   })
   if (existingPurchase) {
-    const { workspaceId } = await createWorkspaceFromTemplate({
+    const { workspaceId, isFirstWorkspace } = await createWorkspaceFromTemplate({
       userId: user.id,
       templateId: template.id,
     })
-    return apiSuccess({ redirectUrl: `/builder/${workspaceId}` })
+    return apiSuccess({ redirectUrl: installLandingPath(workspaceId, isFirstWorkspace) })
   }
 
   const result = await createCommunityCheckout({
@@ -154,7 +161,7 @@ async function handleCommunityPurchase(
   })
 
   if (result.mockMode) {
-    const { workspaceId } = await createWorkspaceFromTemplate({
+    const { workspaceId, isFirstWorkspace } = await createWorkspaceFromTemplate({
       userId: user.id,
       templateId: template.id,
     })
@@ -180,7 +187,10 @@ async function handleCommunityPurchase(
       dodoPaymentId: `mock_sale_${Date.now()}`,
     })
 
-    return apiSuccess({ mockMode: true, redirectUrl: `/builder/${workspaceId}` })
+    return apiSuccess({
+      mockMode: true,
+      redirectUrl: installLandingPath(workspaceId, isFirstWorkspace),
+    })
   }
 
   if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)

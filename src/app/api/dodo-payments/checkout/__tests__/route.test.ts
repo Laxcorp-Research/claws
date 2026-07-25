@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { prismaMock } from '@/test/helpers/mock-prisma';
 import { createMockRequest } from '@/test/helpers/mock-request';
 
@@ -17,9 +19,15 @@ vi.mock('@/lib/dodo-payments', () => ({
 }));
 
 const mockCreateWorkspace = vi.fn();
-vi.mock('@/lib/workspace-from-template', () => ({
-  createWorkspaceFromTemplate: (...args: unknown[]) => mockCreateWorkspace(...args),
-}));
+vi.mock('@/lib/workspace-from-template', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/workspace-from-template')>(
+    '@/lib/workspace-from-template',
+  );
+  return {
+    ...actual,
+    createWorkspaceFromTemplate: (...args: unknown[]) => mockCreateWorkspace(...args),
+  };
+});
 
 import { POST } from '@/app/api/dodo-payments/checkout/route';
 
@@ -57,16 +65,40 @@ describe('POST /api/dodo-payments/checkout', () => {
   });
 
   describe('free_template', () => {
-    it('creates workspace directly without Dodo checkout', async () => {
+    it('first-install → redirectUrl /onboarding (D-vi)', async () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_FREE_TEMPLATE);
-      mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-free', workspaceName: 'Free Claw' });
+      mockCreateWorkspace.mockResolvedValue({
+        workspaceId: 'ws-free',
+        workspaceName: 'Free Claw',
+        isFirstWorkspace: true,
+      });
 
       const res = await callCheckout({ type: 'free_template', templateId: 'tpl-free' });
       const json = await res.json();
       expect(res.status).toBe(200);
-      expect(json.data.redirectUrl).toContain('/builder/ws-free');
+      expect(json.data.redirectUrl).toBe('/onboarding');
+      expect(mockCreateWorkspace).toHaveBeenCalledWith({ userId: 'user-1', templateId: 'tpl-free' });
+    });
+
+    it('second-install → redirectUrl /builder/{id} (D-vi)', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...MOCK_USER,
+        workspaces: [{ id: 'ws-existing' }],
+      });
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_FREE_TEMPLATE);
+      mockCreateWorkspace.mockResolvedValue({
+        workspaceId: 'ws-new',
+        workspaceName: 'Free Claw 2',
+        isFirstWorkspace: false,
+      });
+
+      const res = await callCheckout({ type: 'free_template', templateId: 'tpl-free' });
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json.data.redirectUrl).toBe('/builder/ws-new');
       expect(mockCreateWorkspace).toHaveBeenCalledWith({ userId: 'user-1', templateId: 'tpl-free' });
     });
 
@@ -74,12 +106,16 @@ describe('POST /api/dodo-payments/checkout', () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_FREE_TEMPLATE);
-      mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-new', workspaceName: 'Free Claw 2' });
+      mockCreateWorkspace.mockResolvedValue({
+        workspaceId: 'ws-new',
+        workspaceName: 'Free Claw 2',
+        isFirstWorkspace: false,
+      });
 
       const res = await callCheckout({ type: 'free_template', templateId: 'tpl-free' });
       const json = await res.json();
       expect(res.status).toBe(200);
-      expect(json.data.redirectUrl).toContain('/builder/ws-new');
+      expect(json.data.redirectUrl).toBe('/builder/ws-new');
       expect(mockCreateWorkspace).toHaveBeenCalledWith({ userId: 'user-1', templateId: 'tpl-free' });
     });
 
@@ -113,13 +149,17 @@ describe('POST /api/dodo-payments/checkout', () => {
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       mockCreateClawCheckout.mockResolvedValue({ checkoutUrl: null, mockMode: true });
-      mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-mock', workspaceName: 'Test' });
+      mockCreateWorkspace.mockResolvedValue({
+        workspaceId: 'ws-mock',
+        workspaceName: 'Test',
+        isFirstWorkspace: true,
+      });
       (prismaMock.purchase.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'purch-mock' });
 
       const res = await callCheckout({ type: 'claw_purchase', templateId: 'tpl-1' });
       const json = await res.json();
       expect(json.data.mockMode).toBe(true);
-      expect(json.data.redirectUrl).toContain('/builder/ws-mock');
+      expect(json.data.redirectUrl).toBe('/onboarding');
     });
 
     it('creates new workspace without checkout when already purchased', async () => {
@@ -128,12 +168,16 @@ describe('POST /api/dodo-payments/checkout', () => {
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'existing' });
-      mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-reinstall', workspaceName: 'Test' });
+      mockCreateWorkspace.mockResolvedValue({
+        workspaceId: 'ws-reinstall',
+        workspaceName: 'Test',
+        isFirstWorkspace: false,
+      });
 
       const res = await callCheckout({ type: 'claw_purchase', templateId: 'tpl-1' });
       const json = await res.json();
       expect(res.status).toBe(200);
-      expect(json.data.redirectUrl).toContain('/builder/ws-reinstall');
+      expect(json.data.redirectUrl).toBe('/builder/ws-reinstall');
       expect(mockCreateClawCheckout).not.toHaveBeenCalled();
     });
 
@@ -165,14 +209,18 @@ describe('POST /api/dodo-payments/checkout', () => {
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_COMMUNITY_TEMPLATE);
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       mockCreateCommunityCheckout.mockResolvedValue({ checkoutUrl: null, mockMode: true });
-      mockCreateWorkspace.mockResolvedValue({ workspaceId: 'ws-comm', workspaceName: 'Community' });
+      mockCreateWorkspace.mockResolvedValue({
+        workspaceId: 'ws-comm',
+        workspaceName: 'Community',
+        isFirstWorkspace: true,
+      });
       (prismaMock.purchase.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p-comm' });
       (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'sale-1' });
 
       const res = await callCheckout({ type: 'community_purchase', templateId: 'tpl-comm' });
       const json = await res.json();
       expect(json.data.mockMode).toBe(true);
-      expect(json.data.redirectUrl).toContain('/builder/ws-comm');
+      expect(json.data.redirectUrl).toBe('/onboarding');
 
       const saleCall = (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(saleCall.data.creatorId).toBe('creator-1');
@@ -238,6 +286,17 @@ describe('POST /api/dodo-payments/checkout', () => {
       const res = await callCheckout({ type: 'claw_platform' });
       expect(res.status).toBe(400);
     });
+  });
+
+  it('MUTATION source lock: checkout must use installLandingPath (hardcode /builder → fail)', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'src/app/api/dodo-payments/checkout/route.ts'),
+      'utf8',
+    );
+    expect(src).toContain('installLandingPath');
+    expect(src).toContain('isFirstWorkspace');
+    // Immediate-install success paths must not hardcode /builder/.
+    expect(src).not.toMatch(/redirectUrl:\s*`\/builder\/\$\{workspaceId\}`/);
   });
 
   describe('error handling', () => {
