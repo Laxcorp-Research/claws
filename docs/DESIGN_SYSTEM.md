@@ -4,16 +4,19 @@
 
 ### Tooltip
 
-- Purpose: accessible hover/focus disclosure for clipped or contextual text. **Platform rule:** every tooltip surface must use this DS component — no native `title=` for styled hover labels, no hand-rolled absolute/portal tip divs.
+- Purpose: accessible hover/focus disclosure for clipped or contextual text. **Platform rule:** every tooltip surface must use this DS component — no native DOM `title=` for any styled hover copy; no hand-rolled absolute/portal tip divs. Component `title` **props** (Modal / EmptyState / SectionHeader / ConfirmDialog) remain legal — those are not DOM hover tips.
 - Engine: **Radix Tooltip** (`@radix-ui/react-tooltip`) in `src/components/ui/tooltip.tsx` only.
   - **Portal to `document.body` is mandatory** (`TooltipPrimitive.Portal`).
-  - **Collision detection is mandatory** (`avoidCollisions`, `collisionPadding={8}`, `sideOffset={6}` — flip + shift).
-  - Default `align="start"` so full-width TruncatedText triggers anchor to the text edge (not the center of a wide flex cell).
-- Trigger: wraps content; Radix wires `aria-describedby` while open.
+  - **Collision detection is mandatory:** `avoidCollisions`, `collisionPadding={8}`, `sideOffset={6}` (flip + shift).
+  - **`collisionBoundary` = `document.documentElement` (viewport)** — mandatory. Do not leave unset: Radix default `[]` treats overflow scroll ancestors as the flip boundary (builder agent sidebar bug — mid-list tips flipped to `side=bottom` and overlapped sibling rows while viewport had room above).
+  - **Arrow is part of the contract:** `TooltipPrimitive.Arrow` `width={10}` `height={5}`, `fill-[var(--tx)]`, collision-aware on every placed side. Invisible arrow (`visibility:hidden` after shift) is a defect — fix boundary/geometry, do not ship tip-without-arrow UX.
+  - **Align law:** `align="start"` for truncation / full-width text triggers; `align="center"` for icon / badge / short affordance triggers.
+- Trigger: wraps content; **`data-tooltip-trigger` marker REQUIRED** on every trigger (geometry + runtime nets key on it). Radix wires `aria-describedby` while open.
 - Behavior: opens on hover/focus after `300ms` (Radix); closes on leave/blur/`Escape`. Touch uses Radix default (press-and-hold).
 - Tooltip body: `bg-[var(--tx)]`, white text, `text-[10px]`, `leading-[1.4]`, `px-[8px]`, `py-[5px]`, `rounded-[4px]`, `shadow-modal`, max width caller-controlled (default `220`, TruncatedText uses `400`).
-- **Geometry guard REQUIRED for any new tooltip surface:** Playwright `expectTooltipAnchored` in `e2e/helpers/tooltip-geometry.ts` (nearest-edge ≤ 12px + full viewport containment). One line per site.
-- **Grep-guard:** `src/components/ui/__tests__/tooltip-grep-guard.test.ts` — no `@radix-ui/react-tooltip` imports outside the DS file; no hand-rolled portal tip shells.
+- **Geometry guard REQUIRED for any new tooltip surface:** Playwright `expectTooltipAnchored` in `e2e/helpers/tooltip-geometry.ts` (nearest-edge ≤ 12px + full viewport containment + arrow visible on both flip sides). One line per site.
+- **Grep-guard:** `src/components/ui/__tests__/tooltip-grep-guard.test.ts` — no `@radix-ui/react-tooltip` imports outside the DS file; no hand-rolled portal tip shells; no new DOM `title=` attrs (allowlist empty).
+- **Review checklist:** new hover label ⇒ DS Tooltip + `data-tooltip-trigger` + `expectTooltipAnchored`; no new DOM `title=`.
 
 ### TruncatedText
 

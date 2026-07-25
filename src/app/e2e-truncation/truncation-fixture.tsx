@@ -58,6 +58,41 @@ export function TruncationFixture() {
           </TruncatedText>
         </div>
       </div>
+
+      {/* Item-0 repro: overflow-y-auto sidebar list. Viewport collisionBoundary must
+          keep tips on side=top when viewport has room — not flip against this clip. */}
+      <div
+        className="mt-6 h-[120px] w-[220px] overflow-y-auto rounded-[10px] border border-[var(--bd)] p-2"
+        data-testid="sidebar-overflow-fixture"
+      >
+        <div className="space-y-[3px]">
+          {[
+            "Engagement Strategist",
+            "Content Writer",
+            "Trend & Topic Scanner",
+            "Social Content Reviewer",
+            "Audience Growth Engine",
+          ].map((name) => (
+            <div
+              key={name}
+              className="flex items-center gap-1.5 py-1.5 px-2 rounded-[6px]"
+              data-testid={`sidebar-row-${name.replace(/\s+/g, "-").toLowerCase()}`}
+            >
+              <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">{name}</TruncatedText>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Force side=bottom near top viewport edge for arrow-visibility net. */}
+      <div
+        className="fixed top-2 left-1/2 w-[200px] -translate-x-1/2"
+        data-testid="force-bottom-fixture"
+      >
+        <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">
+          Force-bottom tip near viewport top edge
+        </TruncatedText>
+      </div>
     </main>
   )
 }

@@ -312,13 +312,16 @@ export default function AdminVersionsPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-[4px]">
-                  <button
-                    className="p-[4px] rounded-[6px] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--bg2)] transition-colors"
-                    onClick={(e) => { e.stopPropagation(); openEdit(v) }}
-                    title="Edit version"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
+                  <Tooltip content="Edit version" align="center" triggerClassName="inline-flex w-auto">
+                    <button
+                      type="button"
+                      className="p-[4px] rounded-[6px] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--bg2)] transition-colors"
+                      onClick={(e) => { e.stopPropagation(); openEdit(v) }}
+                      aria-label="Edit version"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
                   {!v.isStable && !isNeverPromotableVersion(v.version) && (
                     <Button
                       size="sm"

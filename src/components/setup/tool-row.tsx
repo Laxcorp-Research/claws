@@ -277,15 +277,16 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
             </button>
           )}
           {onDismiss && (
-            <button
-              type="button"
-              onClick={onDismiss}
-              aria-label={`Dismiss ${name}`}
-              title="Dismiss recommended tool"
-              className="text-[12px] w-6 h-6 flex items-center justify-center rounded-md text-[var(--tx3)] hover:text-[var(--err)] hover:bg-[var(--errbg)] transition-colors"
-            >
-              ×
-            </button>
+            <Tooltip content="Dismiss recommended tool" align="center" triggerClassName="inline-flex w-auto">
+              <button
+                type="button"
+                onClick={onDismiss}
+                aria-label={`Dismiss ${name}`}
+                className="text-[12px] w-6 h-6 flex items-center justify-center rounded-md text-[var(--tx3)] hover:text-[var(--err)] hover:bg-[var(--errbg)] transition-colors"
+              >
+                ×
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>

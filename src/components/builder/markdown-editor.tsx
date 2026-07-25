@@ -5,6 +5,7 @@ import { Maximize2 } from "lucide-react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { HelpTooltip } from "@/components/ui/help-tooltip"
+import { Tooltip } from "@/components/ui/tooltip"
 
 interface MarkdownEditorProps {
   label: string
@@ -41,14 +42,20 @@ export function MarkdownEditor({ label, tooltip, value, onChange, placeholder }:
           placeholder={placeholder}
           className="w-full h-[58px] px-2 py-[5px] text-[10px] font-mono bg-[var(--bg)] text-[var(--tx)] resize-none focus:outline-none border-none"
         />
-        <button
-          onClick={handleOpen}
-          className="absolute top-[4px] right-[4px] p-[3px] rounded-[4px] bg-[var(--bg2)] hover:bg-[var(--bd)] transition-colors cursor-pointer border-none"
-          title={`Expand ${label}`}
-          type="button"
+        <Tooltip
+          content={`Expand ${label}`}
+          align="center"
+          triggerClassName="absolute top-[4px] right-[4px] inline-flex w-auto"
         >
-          <Maximize2 className="w-[12px] h-[12px] text-[var(--tx3)]" />
-        </button>
+          <button
+            onClick={handleOpen}
+            className="p-[3px] rounded-[4px] bg-[var(--bg2)] hover:bg-[var(--bd)] transition-colors cursor-pointer border-none"
+            type="button"
+            aria-label={`Expand ${label}`}
+          >
+            <Maximize2 className="w-[12px] h-[12px] text-[var(--tx3)]" />
+          </button>
+        </Tooltip>
       </div>
 
       <Modal

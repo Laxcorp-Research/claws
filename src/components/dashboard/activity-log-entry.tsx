@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ProviderChannelBadge } from "./provider-channel-badge"
+import { Tooltip } from "@/components/ui/tooltip"
 
 interface ActivityLogEntryProps {
   timestamp: string
@@ -37,32 +38,37 @@ export function ActivityLogEntry({ timestamp, agentName, agentColor, message, de
       </span>
       <div className="flex-1 min-w-0">
         {hasDetail ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            aria-expanded={expanded}
-            className={cn(
-              "text-[var(--tx2)] text-left w-full cursor-pointer hover:text-[var(--tx1)] transition-colors",
-              // truncate-allowlist: expand/collapse multi-line preview (line-clamp-2)
-              !expanded && "line-clamp-2",
-            )}
-            title={expanded ? "Click to collapse" : "Click to expand"}
+          <Tooltip
+            content={expanded ? "Click to collapse" : "Click to expand"}
+            align="center"
+            triggerClassName="block w-full"
           >
-            {/* PR-4d: explicit chevron glyph instead of implicit
-                cursor:pointer + line-clamp affordance. The user reported the
-                previous affordance wasn't discoverable enough — rows with
-                hidden detail looked identical to rows without. The chevron
-                fixes that. aria-hidden because the button's aria-expanded
-                already conveys the state to assistive tech. */}
-            <span
-              className="inline-block w-[10px] mr-1 text-[var(--tx3)] select-none"
-              aria-hidden="true"
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className={cn(
+                "text-[var(--tx2)] text-left w-full cursor-pointer hover:text-[var(--tx1)] transition-colors",
+                // truncate-allowlist: expand/collapse multi-line preview (line-clamp-2)
+                !expanded && "line-clamp-2",
+              )}
             >
-              {expanded ? "▾" : "▸"}
-            </span>
-            {message}
-            {viaBadge}
-          </button>
+              {/* PR-4d: explicit chevron glyph instead of implicit
+                  cursor:pointer + line-clamp affordance. The user reported the
+                  previous affordance wasn't discoverable enough — rows with
+                  hidden detail looked identical to rows without. The chevron
+                  fixes that. aria-hidden because the button's aria-expanded
+                  already conveys the state to assistive tech. */}
+              <span
+                className="inline-block w-[10px] mr-1 text-[var(--tx3)] select-none"
+                aria-hidden="true"
+              >
+                {expanded ? "▾" : "▸"}
+              </span>
+              {message}
+              {viaBadge}
+            </button>
+          </Tooltip>
         ) : (
           <span
             // truncate-allowlist: non-expandable multi-line preview (line-clamp-2)

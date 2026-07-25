@@ -64,11 +64,13 @@ describe("tooltip class-kill grep-guard", () => {
     expect(offenders, `rogue manual tooltips: ${offenders.join(", ")}`).toEqual([])
   })
 
-  it("DS tooltip keeps Portal + avoidCollisions (engine contract)", () => {
+  it("DS tooltip keeps Portal + avoidCollisions + viewport boundary (engine contract)", () => {
     const src = readFileSync(join(ROOT, DS_TOOLTIP), "utf8")
     expect(src).toContain("TooltipPrimitive.Portal")
     expect(src).toMatch(/avoidCollisions(?:\s*=\s*\{?\s*true\s*\}?)?/)
     expect(src).toContain("sideOffset={6}")
+    expect(src).toContain("document.documentElement")
+    expect(src).toContain("TooltipPrimitive.Arrow")
     // MUTATION: strip Portal or avoidCollisions → this fails.
   })
 })
