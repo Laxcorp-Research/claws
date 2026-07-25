@@ -104,8 +104,14 @@ export function Tooltip({
             style={{ maxWidth }}
           >
             {content}
-            {/* Arrow 10×5 (Radix default proportions) — part of DS contract. */}
-            <TooltipPrimitive.Arrow className="fill-[var(--tx)]" width={10} height={5} />
+            {/* Arrow 10×5 — part of DS contract. `!visible` overrides Radix Popper's
+                visibility:hidden when centerOffset≠0 (wide w-full TruncatedText
+                triggers + align=start). Invisible arrow = defect to the user. */}
+            <TooltipPrimitive.Arrow
+              className="fill-[var(--tx)] !visible"
+              width={10}
+              height={5}
+            />
           </TooltipPrimitive.Content>
         </TooltipPrimitive.Portal>
       </TooltipPrimitive.Root>
