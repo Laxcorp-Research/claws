@@ -336,12 +336,28 @@ describe("Tool customization PR-3", () => {
     await waitFor(() => expect(screen.getByText("Tavily (Web Search)")).toBeDefined())
   })
 
+  it("MUTATION: Suggested label must not be gated on virtualization startIndex", () => {
+    const modalSrc = readFileSync(
+      join(__dirname, "../../../../../../components/setup/browse-tools-modal.tsx"),
+      "utf8",
+    )
+    expect(modalSrc).toContain('data-testid="swap-suggested-label"')
+    expect(modalSrc).toContain("showSuggestedHeader")
+    // Re-introducing the race: label only when startIndex===0 inside the row map.
+    expect(modalSrc).not.toMatch(
+      /showSuggestedLabel\s*=\s*isSuggested\s*&&\s*tool\.slug\s*===\s*firstSuggestedSlug\s*&&\s*startIndex\s*===\s*0/,
+    )
+  })
+
   it("swap opens filtered browse with Suggested pins and replaces (carries required)", async () => {
     renderPage()
     expect(await screen.findByText("Tavily (Web Search)")).toBeDefined()
     fireEvent.click(screen.getByRole("button", { name: "Swap" }))
     expect(await screen.findByTestId("browse-tools-swap")).toBeDefined()
+    // Suggested header is a non-virtualized surface (not startIndex-gated).
+    // Sync getByTestId must pass even if browse catalog is still loading.
     expect(screen.getByTestId("swap-suggested-label")).toBeDefined()
+    expect(screen.getByTestId("swap-suggested-label").textContent).toMatch(/Suggested/i)
     expect(
       screen.getByText("Your agents adapt automatically via generated skill instructions."),
     ).toBeDefined()
