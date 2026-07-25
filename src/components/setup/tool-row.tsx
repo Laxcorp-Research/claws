@@ -5,6 +5,7 @@ import { StatusDot } from "@/components/ui/status-dot"
 import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react"
 import type { ToolAuthMode } from "@/data/tool-catalog"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
+import { Tooltip } from "@/components/ui/tooltip"
 
 export type ToolRowStatus =
   | "connected"
@@ -166,22 +167,30 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
               {/* PR #5: two Test-button modes on CONNECTED rows.
                   Enabled   → onTest passed, no testDisabledReason.
                   Disabled  → testDisabledReason passed (Asana-class toolkit
-                              per GH #41). Tooltip via native `title` attr. */}
+                              per GH #41). Tip via DS Tooltip (span wrapper
+                              so disabled button still receives hover). */}
               {onTest && !testDisabledReason && (
                 <button onClick={onTest} disabled={isTesting} className={cn("text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx2)] transition-colors", isTesting ? "opacity-50" : "hover:border-[var(--bd2)]")}>
                   {isTesting ? <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Testing...</span> : "Test"}
                 </button>
               )}
               {testDisabledReason && (
-                <button
-                  type="button"
-                  disabled
-                  title={testDisabledReason}
-                  aria-label={testDisabledReason}
-                  className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx3)] opacity-50 cursor-not-allowed"
+                <Tooltip
+                  content={testDisabledReason}
+                  align="center"
+                  triggerClassName="inline-flex w-auto"
                 >
-                  Test
-                </button>
+                  <span className="inline-flex">
+                    <button
+                      type="button"
+                      disabled
+                      aria-label={testDisabledReason}
+                      className="text-[10px] px-2.5 py-[3px] rounded-md border border-[var(--bd)] text-[var(--tx3)] opacity-50 cursor-not-allowed"
+                    >
+                      Test
+                    </button>
+                  </span>
+                </Tooltip>
               )}
               {/* OAuth + connected + onRevoke present: render Revoke (outline danger).
                   Non-OAuth or no onRevoke: fall back to the pre-existing Disconnect text button. */}

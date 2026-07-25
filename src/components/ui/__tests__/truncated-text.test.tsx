@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { Tooltip } from "@/components/ui/tooltip"
@@ -24,6 +24,11 @@ function mockWidth(scrollWidth: number, clientWidth: number) {
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => clientWidth })
 }
 
+/** Radix Tooltip opens on pointermove (mouse), not mouseenter. */
+function openTip(el: Element) {
+  fireEvent.pointerMove(el, { pointerType: "mouse" })
+}
+
 describe("TruncatedText", () => {
   it("ALWAYS tips on hover — even when scrollWidth false-negatives (SS2)", async () => {
     // Chromium ellipsis with scrollWidth === clientWidth must still tip.
@@ -32,7 +37,7 @@ describe("TruncatedText", () => {
       render(<TruncatedText>Trend & Topic Scanner</TruncatedText>)
     })
 
-    fireEvent.mouseEnter(screen.getByText("Trend & Topic Scanner").parentElement!)
+    openTip(screen.getByText("Trend & Topic Scanner").parentElement!)
     await new Promise((resolve) => setTimeout(resolve, 360))
     expect((await screen.findByRole("tooltip")).textContent).toContain("Trend & Topic Scanner")
   })
@@ -41,7 +46,7 @@ describe("TruncatedText", () => {
     mockWidth(80, 120)
     render(<TruncatedText>Short name</TruncatedText>)
 
-    fireEvent.mouseEnter(screen.getByText("Short name").parentElement!)
+    openTip(screen.getByText("Short name").parentElement!)
     await new Promise((resolve) => setTimeout(resolve, 360))
     expect((await screen.findByRole("tooltip")).textContent).toContain("Short name")
   })
@@ -58,20 +63,8 @@ describe("TruncatedText", () => {
   })
 })
 
-describe("Tooltip measured-width positioning", () => {
-  it("centers bubble on trigger via left=center + translateX(-50%)", async () => {
-    const triggerRect = {
-      left: 200,
-      width: 40,
-      top: 100,
-      bottom: 120,
-      right: 240,
-      height: 20,
-      x: 200,
-      y: 100,
-      toJSON: () => ({}),
-    }
-
+describe("Tooltip Radix engine", () => {
+  it("portals tip with role=tooltip on hover", async () => {
     await act(async () => {
       render(
         <Tooltip content="hi" maxWidth={300} delay={0}>
@@ -81,14 +74,11 @@ describe("Tooltip measured-width positioning", () => {
     })
 
     const triggerWrap = screen.getByText("trigger").parentElement!
-    vi.spyOn(triggerWrap, "getBoundingClientRect").mockReturnValue(triggerRect as DOMRect)
-
-    fireEvent.mouseEnter(triggerWrap)
+    openTip(triggerWrap)
     const tip = await screen.findByRole("tooltip")
-    const left = Number.parseFloat((tip as HTMLElement).style.left || "0")
-    const transform = (tip as HTMLElement).style.transform
-    expect(left).toBe(220)
-    expect(transform).toContain("translate(-50%")
+    expect(tip.textContent).toContain("hi")
+    // Portal: tip is not inside the trigger wrapper.
+    expect(triggerWrap.contains(tip)).toBe(false)
   })
 
   it("does not kill an open tip when disabled() later false-negatives", async () => {
@@ -99,7 +89,7 @@ describe("Tooltip measured-width positioning", () => {
       </Tooltip>,
     )
 
-    fireEvent.mouseEnter(screen.getByText("Engagement Strat...").parentElement!)
+    openTip(screen.getByText("Engagement Strat...").parentElement!)
     expect(await screen.findByRole("tooltip")).toBeTruthy()
 
     // Simulate Chromium remasure flipping to "not truncated" after open.
@@ -109,7 +99,15 @@ describe("Tooltip measured-width positioning", () => {
         <span>Engagement Strat...</span>
       </Tooltip>,
     )
-    // Tip must stay — useLayoutEffect must not re-gate on disabled().
+    // Tip must stay — open state must not re-gate on disabled() after open.
     expect(screen.getByRole("tooltip")).toBeTruthy()
+  })
+
+  it("engine source uses align default start (wide TruncatedText anchors)", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { resolve } = await import("node:path")
+    const src = readFileSync(resolve(__dirname, "../tooltip.tsx"), "utf8")
+    expect(src).toMatch(/align\s*=\s*"start"/)
+    expect(src).toMatch(/from\s+["']@radix-ui\/react-tooltip["']/)
   })
 })

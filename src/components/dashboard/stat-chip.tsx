@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
+import { Tooltip } from "@/components/ui/tooltip"
 
 export type StatChipTone = "ok" | "warn" | "err" | "unknown"
 
@@ -20,10 +21,9 @@ interface StatChipProps {
 }
 
 export function StatChip({ label, value, dotTone, title, ariaLabel }: StatChipProps) {
-  return (
+  const chip = (
     <div
       className="inline-flex min-h-[28px] items-center gap-[6px] rounded-[999px] border border-[var(--bd)] bg-[var(--bg)] px-[9px] py-[5px]"
-      title={title}
       aria-label={ariaLabel}
     >
       {dotTone && <span className={cn("h-[7px] w-[7px] flex-none rounded-full", dotClass[dotTone])} aria-hidden="true" />}
@@ -32,5 +32,13 @@ export function StatChip({ label, value, dotTone, title, ariaLabel }: StatChipPr
       </span>
       <span className="flex-none text-[11px] font-semibold text-[var(--tx)]">{value}</span>
     </div>
+  )
+
+  if (!title) return chip
+
+  return (
+    <Tooltip content={title} align="center" triggerClassName="inline-flex w-auto">
+      {chip}
+    </Tooltip>
   )
 }

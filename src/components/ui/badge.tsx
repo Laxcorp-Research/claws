@@ -1,9 +1,13 @@
+"use client"
+
 import { cn } from "@/lib/utils"
 import type { ReactNode } from "react"
+import { Tooltip } from "./tooltip"
 
 interface BadgeProps {
   children: ReactNode
   variant?: "neutral" | "warning" | "info" | "success" | "error"
+  /** When set, shows a DS Tooltip on hover (replaces native title=). */
   title?: string
   className?: string
 }
@@ -17,9 +21,8 @@ const variantClasses = {
 } as const
 
 export function Badge({ children, variant = "neutral", title, className }: BadgeProps) {
-  return (
+  const badge = (
     <span
-      title={title}
       className={cn(
         "inline-flex items-center text-[10px] font-medium px-2 py-[2px] rounded-md border leading-tight",
         variantClasses[variant],
@@ -28,5 +31,13 @@ export function Badge({ children, variant = "neutral", title, className }: Badge
     >
       {children}
     </span>
+  )
+
+  if (!title) return badge
+
+  return (
+    <Tooltip content={title} align="center" triggerClassName="inline-flex w-auto shrink-0">
+      {badge}
+    </Tooltip>
   )
 }

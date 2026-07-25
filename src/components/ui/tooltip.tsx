@@ -1,18 +1,33 @@
 "use client"
 
-import { cloneElement, isValidElement, useId, useState, useRef, useCallback, useEffect, useLayoutEffect, type ReactNode, type ReactElement } from "react"
-import { createPortal } from "react-dom"
+import * as React from "react"
+import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
+
+/**
+ * DS Tooltip — Radix Tooltip primitive.
+ * Portal to body + collision detection (flip/shift) are mandatory.
+ * Do NOT import @radix-ui/react-tooltip outside this file (grep-guard).
+ *
+ * MUTATION: strip Portal or set avoidCollisions={false} → geometry e2e fails.
+ */
+
+export const TooltipProvider = TooltipPrimitive.Provider
 
 interface TooltipProps {
   content: string
-  children: ReactNode
+  children: React.ReactNode
   delay?: number
   maxWidth?: number
-  side?: "top" | "bottom"
+  side?: "top" | "bottom" | "left" | "right"
+  /**
+   * Prefer `start` for TruncatedText / full-width triggers so the bubble
+   * anchors to the text edge, not the center of a wide flex cell.
+   */
+  align?: "start" | "center" | "end"
   /**
    * When true, never show the tooltip (still renders a width-stable trigger).
-   * Pass a function to re-evaluate on every enter (TruncatedText hover remasure).
+   * Pass a function to re-evaluate on every open attempt (TruncatedText hover remasure).
    */
   disabled?: boolean | (() => boolean)
   /** Extra classes on the trigger wrapper — keep width-stable for TruncatedText. */
@@ -25,155 +40,64 @@ export function Tooltip({
   delay = 300,
   maxWidth = 220,
   side = "top",
+  align = "start",
   disabled = false,
   triggerClassName,
 }: TooltipProps) {
-  const [show, setShow] = useState(false)
-  const [pos, setPos] = useState({
-    top: 0,
-    left: 0,
-    actualSide: side as "top" | "bottom",
-    caretLeft: 0,
-    shiftX: 0,
-  })
-  const tooltipId = useId()
-  const triggerRef = useRef<HTMLDivElement>(null)
-  const bubbleRef = useRef<HTMLDivElement>(null)
-  const showTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const hideTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [open, setOpen] = React.useState(false)
 
-  const updatePosition = useCallback(() => {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    const gap = 6
-    const pad = 8
-
-    let top = rect.top - gap
-    let actualSide: "top" | "bottom" = side
-
-    if (side === "top" && rect.top < 60) {
-      top = rect.bottom + gap
-      actualSide = "bottom"
-    }
-
-    const triggerCenter = rect.left + rect.width / 2
-    // Center with translateX(-50%). Clamp using MEASURED bubble width when available.
-    // MUTATION: left = triggerCenter - maxWidth/2 (no translateX -50%) → e2e bbox fails.
-    const measured = bubbleRef.current?.offsetWidth ?? 0
-    let shiftX = 0
-    if (measured > 0) {
-      const visualLeft = triggerCenter - measured / 2
-      const visualRight = triggerCenter + measured / 2
-      if (visualLeft < pad) shiftX = pad - visualLeft
-      else if (visualRight > window.innerWidth - pad) shiftX = window.innerWidth - pad - visualRight
-    }
-
-    setPos({
-      top,
-      left: triggerCenter + shiftX,
-      actualSide,
-      caretLeft: measured > 0 ? measured / 2 - shiftX : 12,
-      shiftX,
-    })
-  }, [side])
-
-  const isDisabled = useCallback(() => {
+  const isDisabled = React.useCallback(() => {
     return typeof disabled === "function" ? disabled() : Boolean(disabled)
   }, [disabled])
 
-  const handleEnter = useCallback(() => {
-    // Evaluate disabled at enter time so TruncatedText can remasure live
-    // (stale boolean disabled left SS2 Trend & Topic tip dead).
-    if (isDisabled()) return
-    clearTimeout(hideTimeout.current)
-    showTimeout.current = setTimeout(() => {
-      updatePosition()
-      setShow(true)
-    }, delay)
-  }, [delay, isDisabled, updatePosition])
+  const handleOpenChange = React.useCallback(
+    (next: boolean) => {
+      // Evaluate disabled at open time so TruncatedText can remasure live
+      // (stale boolean disabled left SS2 Trend & Topic tip dead).
+      if (next && isDisabled()) return
+      setOpen(next)
+    },
+    [isDisabled],
+  )
 
-  const handleLeave = useCallback(() => {
-    clearTimeout(showTimeout.current)
-    hideTimeout.current = setTimeout(() => setShow(false), 100)
-  }, [])
-
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === "Escape") {
-      clearTimeout(showTimeout.current)
-      setShow(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(showTimeout.current)
-      clearTimeout(hideTimeout.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof disabled !== "function" && disabled) setShow(false)
+  React.useEffect(() => {
+    if (typeof disabled !== "function" && disabled) setOpen(false)
   }, [disabled])
 
-  // Re-measure after paint so clamping uses real bubble width.
-  // Do NOT re-run disabled() here — a second Chromium false-negative would
-  // immediately hide a tip that already passed the enter check (SS2 kill).
-  useLayoutEffect(() => {
-    if (!show) return
-    updatePosition()
-  }, [show, content, updatePosition])
-
-  const transform =
-    pos.actualSide === "top"
-      ? "translate(-50%, -100%)"
-      : "translate(-50%, 0%)"
-
-  const child = isValidElement(children)
-    ? cloneElement(children as ReactElement<{ "aria-describedby"?: string }>, {
-        "aria-describedby": show ? tooltipId : undefined,
-      })
-    : children
-
+  // Local Provider so unit tests / isolated mounts work without app Providers.
+  // App-level TooltipProvider still supplies skipDelay across sibling tips.
   return (
-    <>
-      <div
-        ref={triggerRef}
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-        onFocus={handleEnter}
-        onBlur={handleLeave}
-        onKeyDown={handleKeyDown}
-        className={cn("block w-full min-w-0 max-w-full", triggerClassName)}
+    <TooltipPrimitive.Provider delayDuration={delay} disableHoverableContent>
+      <TooltipPrimitive.Root
+        open={open}
+        onOpenChange={handleOpenChange}
+        delayDuration={delay}
+        disableHoverableContent
       >
-        {child}
-      </div>
-      {show &&
-        typeof document !== "undefined" &&
-        createPortal(
+        <TooltipPrimitive.Trigger asChild>
           <div
-            id={tooltipId}
-            role="tooltip"
-            className="fixed z-[9999] pointer-events-none"
-            style={{ top: pos.top, left: pos.left, transform }}
+            data-tooltip-trigger
+            className={cn("block w-full min-w-0 max-w-full", triggerClassName)}
           >
-            <div
-              ref={bubbleRef}
-              className="bg-[var(--tx)] text-white text-[10px] leading-[1.4] px-[8px] py-[5px] rounded-[4px] shadow-modal w-max"
-              style={{ maxWidth }}
-            >
-              {content}
-              <div
-                className={`absolute border-[4px] border-transparent ${
-                  pos.actualSide === "top"
-                    ? "top-full border-t-[var(--tx)]"
-                    : "bottom-full border-b-[var(--tx)]"
-                }`}
-                style={{ left: pos.caretLeft, transform: "translateX(-50%)" }}
-              />
-            </div>
-          </div>,
-          document.body
-        )}
-    </>
+            {children}
+          </div>
+        </TooltipPrimitive.Trigger>
+        <TooltipPrimitive.Portal>
+          <TooltipPrimitive.Content
+            side={side}
+            align={align}
+            sideOffset={6}
+            collisionPadding={8}
+            avoidCollisions
+            role="tooltip"
+            className="z-[9999] pointer-events-none bg-[var(--tx)] text-white text-[10px] leading-[1.4] px-[8px] py-[5px] rounded-[4px] shadow-modal w-max"
+            style={{ maxWidth }}
+          >
+            {content}
+            <TooltipPrimitive.Arrow className="fill-[var(--tx)]" width={8} height={4} />
+          </TooltipPrimitive.Content>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
+    </TooltipPrimitive.Provider>
   )
 }

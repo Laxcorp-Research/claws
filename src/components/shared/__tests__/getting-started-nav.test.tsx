@@ -69,5 +69,19 @@ describe("AI gradient reduced-motion", () => {
     expect(css).toMatch(
       /prefers-reduced-motion:\s*reduce[\s\S]*\.ai-gradient-accent[\s\S]*animation:\s*none/,
     )
+    // Static render shows mid-blend, not a pale endpoint.
+    expect(css).toMatch(
+      /prefers-reduced-motion:\s*reduce[\s\S]*background-position:\s*50%\s*50%/,
+    )
+  })
+
+  it("saturated AI gradient tokens are pinned", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+    expect(css).toContain("--ai-grad-1: #2563EB")
+    expect(css).toContain("--ai-grad-2: #7C3AED")
+    expect(css).toContain("--ai-grad-3: #DB2777")
+    // Pale v2.1 endpoints must not return.
+    expect(css).not.toContain("--ai-grad-1: #3B82F6")
+    expect(css).not.toContain("--ai-grad-3: #93C5FD")
   })
 })

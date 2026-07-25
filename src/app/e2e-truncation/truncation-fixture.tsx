@@ -8,8 +8,6 @@ export const LONG_AGENT_NAME = "Extremely Long Strategic Research Agent Name Tha
 const LONG_SESSION_KEY = "agent:twitter-commander:subagent:151eda19-a0c9-49de-969d-ed39d16fe21c"
 
 export function TruncationFixture() {
-  // Center the fixtures so a maxWidth=300 tooltip is not left-edge-clamped
-  // (clamping is correct, but the bbox-center assertion needs an unclamped case).
   return (
     <main className="mx-auto flex min-h-screen max-w-[720px] flex-col items-center justify-start p-6 pt-24">
       <div className="w-[240px]" data-testid="agent-fixture">
@@ -36,6 +34,28 @@ export function TruncationFixture() {
             <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">{LONG_SESSION_KEY}</TruncatedText>
           </span>
           <ProviderChannelBadge channelId="telegram" className="flex-none" />
+        </div>
+      </div>
+
+      {/* Near-right viewport edge — collision must flip/shift; tip stays on-screen. */}
+      <div
+        className="fixed top-24 right-2 w-[160px]"
+        data-testid="right-edge-fixture"
+      >
+        <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">
+          Right-edge collision tip content that is intentionally long
+        </TruncatedText>
+      </div>
+
+      {/* Highest-risk: truncated text inside a scroll container (overflow clip parent). */}
+      <div
+        className="mt-6 h-[72px] w-[240px] overflow-y-auto rounded-[10px] border border-[var(--bd)] p-2"
+        data-testid="scroll-clip-fixture"
+      >
+        <div className="h-[120px]">
+          <TruncatedText className="text-[12px] font-medium text-[var(--tx)]">
+            Scroll-container clipped name that must still portal-tip correctly
+          </TruncatedText>
         </div>
       </div>
     </main>

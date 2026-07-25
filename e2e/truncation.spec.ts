@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expectTooltipAnchored } from './helpers/tooltip-geometry';
 
 /**
  * REAL-SURFACE RULE: primary Live Ops truncation coverage lives in
@@ -36,26 +37,14 @@ test.describe('K4.2 truncation layout (synthetic supplement)', () => {
     );
   });
 
-  test('Live Ops fixture: tooltip bbox center within 8px of trigger center', async ({ page }) => {
+  test('Live Ops fixture: tooltip adjacent to trigger and in viewport', async ({ page }) => {
     await page.goto('/e2e-truncation');
     const name = page.getByTestId('agent-fixture').getByText(LONG_AGENT_NAME);
     await expect(name).toHaveCSS('text-overflow', 'ellipsis');
     const clipped = await name.evaluate((el) => el.scrollWidth > el.clientWidth);
     expect(clipped).toBe(true);
 
-    // Hover the Tooltip trigger wrapper (width-stable parent), not just the text node.
-    const trigger = page.getByTestId('agent-fixture').locator('h3 div.block.w-full').first();
-    await trigger.hover();
-    const tip = page.getByRole('tooltip');
-    await expect(tip).toContainText(LONG_AGENT_NAME);
-
-    const tipBox = await tip.boundingBox();
-    const triggerBox = await trigger.boundingBox();
-    expect(tipBox).toBeTruthy();
-    expect(triggerBox).toBeTruthy();
-    const tipCenter = tipBox!.x + tipBox!.width / 2;
-    const triggerCenter = triggerBox!.x + triggerBox!.width / 2;
-    // MUTATION (run once): revert Tooltip to left = triggerCenter - maxWidth/2 → fails.
-    expect(Math.abs(tipCenter - triggerCenter)).toBeLessThanOrEqual(8);
+    const trigger = page.getByTestId('agent-fixture').locator('h3 [data-tooltip-trigger]').first();
+    await expectTooltipAnchored(page, trigger, { content: LONG_AGENT_NAME });
   });
 });

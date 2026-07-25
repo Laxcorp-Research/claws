@@ -93,7 +93,7 @@ async function expectTileTooltip(page: Page, fullName: string) {
   });
   expect(clipped).toBe(true);
 
-  const trigger = tile.locator('h3 div.block.w-full').first();
+  const trigger = tile.locator('h3 [data-tooltip-trigger]').first();
   await trigger.hover();
   // Hover remasure must show tip even if data-truncated was stale false.
   await expect(page.getByRole('tooltip')).toContainText(fullName, { timeout: 5_000 });

@@ -4,17 +4,23 @@
 
 ### Tooltip
 
-- Purpose: accessible hover/focus disclosure for clipped or contextual text.
-- Trigger: wraps focusable or text content, `aria-describedby` points at the tooltip while open.
-- Behavior: opens on hover or focus after `300ms`; closes on mouse leave, blur, or `Escape`.
-- Tooltip body: `bg-[var(--tx)]`, white text, `text-[10px]`, `leading-[1.4]`, `px-[8px]`, `py-[5px]`, `rounded-[4px]`, `shadow-modal`, max width `300px`.
+- Purpose: accessible hover/focus disclosure for clipped or contextual text. **Platform rule:** every tooltip surface must use this DS component — no native `title=` for styled hover labels, no hand-rolled absolute/portal tip divs.
+- Engine: **Radix Tooltip** (`@radix-ui/react-tooltip`) in `src/components/ui/tooltip.tsx` only.
+  - **Portal to `document.body` is mandatory** (`TooltipPrimitive.Portal`).
+  - **Collision detection is mandatory** (`avoidCollisions`, `collisionPadding={8}`, `sideOffset={6}` — flip + shift).
+  - Default `align="start"` so full-width TruncatedText triggers anchor to the text edge (not the center of a wide flex cell).
+- Trigger: wraps content; Radix wires `aria-describedby` while open.
+- Behavior: opens on hover/focus after `300ms` (Radix); closes on leave/blur/`Escape`. Touch uses Radix default (press-and-hold).
+- Tooltip body: `bg-[var(--tx)]`, white text, `text-[10px]`, `leading-[1.4]`, `px-[8px]`, `py-[5px]`, `rounded-[4px]`, `shadow-modal`, max width caller-controlled (default `220`, TruncatedText uses `400`).
+- **Geometry guard REQUIRED for any new tooltip surface:** Playwright `expectTooltipAnchored` in `e2e/helpers/tooltip-geometry.ts` (nearest-edge ≤ 12px + full viewport containment). One line per site.
+- **Grep-guard:** `src/components/ui/__tests__/tooltip-grep-guard.test.ts` — no `@radix-ui/react-tooltip` imports outside the DS file; no hand-rolled portal tip shells.
 
 ### TruncatedText
 
-- Purpose: single-line ellipsis with Tooltip only when text is actually truncated.
+- Purpose: single-line ellipsis with DS Tooltip (always-on hover — `#293` / SS2: do not gate on overflow detection).
 - Element: inline/block span with `overflow-hidden`, `text-overflow: ellipsis`, `white-space: nowrap`, `min-w-0`.
-- Detection: attach tooltip only when `scrollWidth > clientWidth`; recheck on resize via `ResizeObserver` and window resize fallback.
-- Tooltip content: exact full text. Do not show tooltip for non-truncated text.
+- Overflow detection still sets `data-truncated` for diagnostics; tip is **unconditional** (`disabled={false}`).
+- Tooltip content: exact full text.
 
 ### Select
 
@@ -141,10 +147,10 @@ Use `mutateWithFeedback` (`src/lib/ui/mutate-with-feedback.ts`) so tool-customiz
 
 - Purpose: onboarding affordance ONLY — the top-bar "Getting started" nav label while the tracker is incomplete.
 - Tokens (CSS variables on `:root` / `.dark`):
-  - `--ai-grad-1: #3B82F6` (deeper blue, near `--ac-text`)
-  - `--ai-grad-2: #5BA1F5` (brand `--ac`)
-  - `--ai-grad-3: #93C5FD` (light sky, harmonious with `--acbg`)
+  - `--ai-grad-1: #2563EB` (saturated blue)
+  - `--ai-grad-2: #7C3AED` (violet)
+  - `--ai-grad-3: #DB2777` (rose)
 - Application: `background-image: linear-gradient(90deg, var(--ai-grad-1), var(--ai-grad-2), var(--ai-grad-3), var(--ai-grad-2), var(--ai-grad-1))`; `background-size: 200% 100%`; `-webkit-background-clip: text` / `background-clip: text`; `-webkit-text-fill-color: transparent`; color fallback `var(--ac-text)`.
 - Motion: slow shimmer — `background-position` animates over **~6s** `ease-in-out` `infinite` `alternate`. Class: `ai-gradient-accent`.
-- `prefers-reduced-motion: reduce`: static gradient (no animation).
+- `prefers-reduced-motion: reduce`: static gradient (no animation); `background-position: 50% 50%` so the static render shows the mid-blend (not a pale endpoint).
 - Explicit carve-out from the "blue = text links only" color law, restricted to this single affordance. Do not reuse on buttons, body copy, or other nav items.

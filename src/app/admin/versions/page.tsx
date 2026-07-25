@@ -18,6 +18,7 @@ import {
   isNeverPromotableVersion,
   neverPromotableReason,
 } from "@/lib/openclaw/version-hygiene"
+import { Tooltip } from "@/components/ui/tooltip"
 
 interface VersionItem {
   id: string
@@ -299,12 +300,15 @@ export default function AdminVersionsPage() {
                     </span>
                   )}
                   {isNeverPromotableVersion(v.version) && (
-                    <span
-                      className="bg-[var(--bg2)] text-[var(--tx3)] text-[10px] font-medium px-[6px] py-[1px] rounded-full"
-                      title={neverPromotableReason(v.version) ?? "Never promotable"}
+                    <Tooltip
+                      content={neverPromotableReason(v.version) ?? "Never promotable"}
+                      align="center"
+                      triggerClassName="inline-flex w-auto"
                     >
-                      Never promotable
-                    </span>
+                      <span className="bg-[var(--bg2)] text-[var(--tx3)] text-[10px] font-medium px-[6px] py-[1px] rounded-full">
+                        Never promotable
+                      </span>
+                    </Tooltip>
                   )}
                 </div>
                 <div className="flex items-center gap-[4px]">
