@@ -1,0 +1,334 @@
+/**
+ * -10 catch-up-beat-on-boot.
+ *
+ * After gateway is ready: if the most recent heartbeat cron moment is in the
+ * past within CATCHUP_GRACE, fire ONE immediate cron.run (force) so the
+ * reporter ledgers HEARTBEAT identically to a scheduled fire. OpenClaw's
+ * enqueueRun rolls nextRunAt — no double-fire at the next wall-clock slot.
+ *
+ * Pure helpers are exported for repo-side contract tests (no live gateway).
+ */
+
+import fs from "node:fs"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
+
+/** Default 30m — covers observed ~19.5m GH late-wake with margin. */
+export const DEFAULT_CATCHUP_GRACE_MS = 30 * 60 * 1000
+
+/** Marker logged / stamped so -10 boots are distinguishable in telemetry. */
+export const CATCHUP_OVERLAY_MARKER = "catchup-v10"
+
+const HEARTBEAT_JOB_ID_PREFIX = "heartbeat-"
+const HEARTBEAT_JOB_NAME_PREFIX = "orchestrator-heartbeat-"
+
+export function catchupGraceMsFromEnv(env = process.env) {
+  const raw = env.CLAWS_HEARTBEAT_CATCHUP_GRACE_MS
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return DEFAULT_CATCHUP_GRACE_MS
+  }
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_CATCHUP_GRACE_MS
+  return Math.floor(n)
+}
+
+export function isHeartbeatCronJob(job) {
+  if (!job || typeof job !== "object") return false
+  if (job.enabled === false) return false
+  const id = typeof job.id === "string" ? job.id : ""
+  const name = typeof job.name === "string" ? job.name : ""
+  return (
+    id.startsWith(HEARTBEAT_JOB_ID_PREFIX) ||
+    name.startsWith(HEARTBEAT_JOB_NAME_PREFIX)
+  )
+}
+
+export function extractCronExpr(job) {
+  if (!job || typeof job !== "object") return null
+  const sched = job.schedule
+  if (!sched || typeof sched !== "object") return null
+  if (sched.kind !== "cron") return null
+  if (typeof sched.expr !== "string" || sched.expr.length === 0) return null
+  return { expr: sched.expr, tz: typeof sched.tz === "string" ? sched.tz : "UTC" }
+}
+
+/**
+ * Load cron-parser from the OpenClaw app tree (image) or package resolution (tests).
+ */
+export async function loadCronParser() {
+  const candidates = [
+    "/app/node_modules/cron-parser/dist/index.js",
+    "/app/node_modules/cron-parser/lib/index.js",
+    "cron-parser",
+  ]
+  for (const c of candidates) {
+    try {
+      if (c.startsWith("/") && !fs.existsSync(c)) continue
+      const mod = c.startsWith("/")
+        ? await import(pathToFileURL(c).href)
+        : await import(c)
+      if (mod?.CronExpressionParser || mod?.default?.CronExpressionParser) {
+        return mod.CronExpressionParser || mod.default.CronExpressionParser
+      }
+      if (typeof mod?.parseExpression === "function") {
+        return {
+          parse: (expr, opts) => ({
+            prev: () => mod.parseExpression(expr, opts).prev(),
+            next: () => mod.parseExpression(expr, opts).next(),
+          }),
+        }
+      }
+    } catch {
+      // try next
+    }
+  }
+  throw new Error("cron-parser unavailable for heartbeat catch-up")
+}
+
+export function readCronJobsFile(dataDir) {
+  const p = path.join(dataDir, "cron", "jobs.json")
+  if (!fs.existsSync(p)) return []
+  try {
+    const raw = fs.readFileSync(p, "utf8")
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Most recent expected fire ≤ now across heartbeat cron jobs.
+ * Returns { expectedAt, job } for the job that owns that fire (or null).
+ */
+export async function lastExpectedHeartbeatFire(jobs, now, CronExpressionParser) {
+  const Parser = CronExpressionParser || (await loadCronParser())
+  let best = null
+  for (const job of jobs) {
+    if (!isHeartbeatCronJob(job)) continue
+    const cron = extractCronExpr(job)
+    if (!cron) continue
+    try {
+      const prev = Parser.parse(cron.expr, {
+        currentDate: now,
+        tz: cron.tz,
+      })
+        .prev()
+        .toDate()
+      if (!best || prev > best.expectedAt) {
+        best = { expectedAt: prev, job }
+      }
+    } catch {
+      // skip invalid
+    }
+  }
+  return best
+}
+
+/** Next fire strictly after `from` for a single job. */
+export async function nextFireAfter(job, from, CronExpressionParser) {
+  const Parser = CronExpressionParser || (await loadCronParser())
+  const cron = extractCronExpr(job)
+  if (!cron) return null
+  try {
+    return Parser.parse(cron.expr, {
+      currentDate: from,
+      tz: cron.tz,
+    })
+      .next()
+      .toDate()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Decide whether to catch up.
+ * MUTATION: disable (always false) → contract test fails.
+ */
+export function shouldCatchUpBeat(args) {
+  if (args.enabled === false) return false
+  if (!args.expectedAt) return false
+  const age = args.nowMs - args.expectedAt.getTime()
+  if (age <= 0) return false // expected in future / exactly now → scheduler owns it
+  if (age > args.graceMs) return false
+  return true
+}
+
+export function readGatewayToken(env = process.env, dataDir) {
+  if (typeof env.OPENCLAW_GATEWAY_TOKEN === "string" && env.OPENCLAW_GATEWAY_TOKEN.length > 0) {
+    return env.OPENCLAW_GATEWAY_TOKEN
+  }
+  if (!dataDir) return null
+  try {
+    const envPath = path.join(dataDir, ".env")
+    if (!fs.existsSync(envPath)) return null
+    const text = fs.readFileSync(envPath, "utf8")
+    const m = text.match(/^OPENCLAW_GATEWAY_TOKEN=(.+)$/m)
+    return m?.[1]?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+export async function waitForGatewayHealth(args) {
+  const {
+    port,
+    token,
+    timeoutMs = 60_000,
+    pollMs = 500,
+    fetchImpl = globalThis.fetch,
+  } = args
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const res = await fetchImpl(`http://127.0.0.1:${port}/api/v1/admin/rpc`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ method: "health", params: {} }),
+      })
+      if (res.ok) {
+        const json = await res.json().catch(() => null)
+        if (json?.ok === true || json?.payload?.ok === true || res.status === 200) {
+          return true
+        }
+      }
+    } catch {
+      // not ready
+    }
+    await new Promise((r) => setTimeout(r, pollMs))
+  }
+  return false
+}
+
+export async function fireCatchupCronRun(args) {
+  const {
+    port,
+    token,
+    jobId,
+    fetchImpl = globalThis.fetch,
+  } = args
+  const res = await fetchImpl(`http://127.0.0.1:${port}/api/v1/admin/rpc`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      method: "cron.run",
+      params: { id: jobId, mode: "force" },
+    }),
+  })
+  const json = await res.json().catch(() => null)
+  return { httpStatus: res.status, body: json }
+}
+
+/**
+ * Full catch-up path. Returns a structured result for logs/tests.
+ * Does not throw — callers log failures.
+ */
+export async function runHeartbeatCatchupOnBoot(args) {
+  const {
+    dataDir,
+    port,
+    env = process.env,
+    now = new Date(),
+    fetchImpl = globalThis.fetch,
+    CronExpressionParser,
+    enabled = env.CLAWS_HEARTBEAT_CATCHUP_DISABLED !== "true",
+  } = args
+
+  const graceMs = catchupGraceMsFromEnv(env)
+  const jobs = readCronJobsFile(dataDir)
+  const last = await lastExpectedHeartbeatFire(jobs, now, CronExpressionParser)
+  const expectedAt = last?.expectedAt ?? null
+  const job = last?.job ?? null
+
+  if (
+    !shouldCatchUpBeat({
+      enabled,
+      expectedAt,
+      nowMs: now.getTime(),
+      graceMs,
+    })
+  ) {
+    return {
+      ran: false,
+      reason: !enabled
+        ? "disabled"
+        : !expectedAt
+          ? "no-expected"
+          : expectedAt.getTime() >= now.getTime()
+            ? "not-past-due"
+            : "beyond-grace",
+      marker: CATCHUP_OVERLAY_MARKER,
+      expectedAt: expectedAt?.toISOString() ?? null,
+      graceMs,
+    }
+  }
+
+  const token = readGatewayToken(env, dataDir)
+  if (!token) {
+    return {
+      ran: false,
+      reason: "no-gateway-token",
+      marker: CATCHUP_OVERLAY_MARKER,
+      expectedAt: expectedAt.toISOString(),
+      graceMs,
+    }
+  }
+
+  const healthy = await waitForGatewayHealth({
+    port,
+    token,
+    fetchImpl,
+  })
+  if (!healthy) {
+    return {
+      ran: false,
+      reason: "gateway-unhealthy",
+      marker: CATCHUP_OVERLAY_MARKER,
+      expectedAt: expectedAt.toISOString(),
+      graceMs,
+    }
+  }
+
+  const jobId = typeof job.id === "string" ? job.id : null
+  if (!jobId) {
+    return {
+      ran: false,
+      reason: "no-job-id",
+      marker: CATCHUP_OVERLAY_MARKER,
+      expectedAt: expectedAt.toISOString(),
+      graceMs,
+    }
+  }
+
+  const rpc = await fireCatchupCronRun({
+    port,
+    token,
+    jobId,
+    fetchImpl,
+  })
+
+  const nextAt = await nextFireAfter(job, now, CronExpressionParser)
+
+  return {
+    ran: rpc.httpStatus >= 200 && rpc.httpStatus < 300 && rpc.body?.ok !== false,
+    reason: "catchup-fired",
+    marker: CATCHUP_OVERLAY_MARKER,
+    expectedAt: expectedAt.toISOString(),
+    jobId,
+    graceMs,
+    nextFireAt: nextAt?.toISOString() ?? null,
+    rpc,
+    // Contract: exactly one force run; next slot is the following occurrence.
+    evidenceShape: {
+      type: "HEARTBEAT",
+      action: "Heartbeat tick",
+    },
+  }
+}
