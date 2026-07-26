@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { WorkspaceContextMenu } from "./workspace-context-menu"
+import { timeAgo } from "@/lib/utils"
 
 type WorkspaceStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking"
 
@@ -16,6 +17,8 @@ interface WorkspaceCardProps {
   lastActive?: string
   monthlyCost?: string
   source: string
+  /** ISO timestamp when sticky heartbeat miss was set (any status). */
+  heartbeatMissedAt?: string | null
   isCreatorEnrolled: boolean
   onRename: (id: string, currentName: string) => void
   onDuplicate: (id: string) => void
@@ -25,7 +28,7 @@ interface WorkspaceCardProps {
 
 export function WorkspaceCard({
   id, name, status, apiStatus, agentCount, agentRoles, lastActive, monthlyCost, source,
-  isCreatorEnrolled, onRename, onDuplicate, onDelete, onStopped,
+  heartbeatMissedAt, isCreatorEnrolled, onRename, onDuplicate, onDelete, onStopped,
 }: WorkspaceCardProps) {
   const router = useRouter()
 
@@ -76,6 +79,11 @@ export function WorkspaceCard({
               ? `${agentCount} agents · Stopped · Redeploy to restart`
               : `${agentCount} agents · ${source}`}
       </p>
+      {heartbeatMissedAt ? (
+        <p className="mt-1 text-[11px] text-[var(--tx2)]">
+          Heartbeat missed {timeAgo(heartbeatMissedAt)}
+        </p>
+      ) : null}
       <div className="flex gap-3.5 mt-1 text-[11px] text-[var(--tx2)]">
         {lastActive && <span>Last: {lastActive}</span>}
         {monthlyCost && <span>{monthlyCost} this month</span>}

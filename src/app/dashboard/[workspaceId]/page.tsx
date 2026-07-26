@@ -28,6 +28,7 @@ import { ConversationsSection } from "@/components/dashboard/conversations-secti
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrency, formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
+import { timeAgo } from "@/lib/utils"
 import { Tabs } from "@/components/ui/tabs"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { TextLink } from "@/components/ui/text-link"
@@ -674,9 +675,9 @@ export default function DashboardPage() {
   const showActivitySilence =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.activitySilenceDetectedAt)
-  const showHeartbeatMissed =
-    workspace?.status === "RUNNING" &&
-    Boolean(workspace.heartbeatMissedAt)
+  // Sticky miss is visible for ANY status (WIRE-TEST / hibernated class).
+  // MUTATION: restoring RUNNING-only gate → STOPPED sticky stays dormant.
+  const showHeartbeatMissed = Boolean(workspace?.heartbeatMissedAt)
   const showStateSyncStale =
     workspace?.status === "RUNNING" &&
     Boolean(workspace.stateSyncStaleDetectedAt)
@@ -780,21 +781,31 @@ export default function DashboardPage() {
     // Ops-gap class @ priority 4: heartbeat-missed pushed before activity-silence
     // so when both coexist the miss banner wins the inline slot.
     if (showHeartbeatMissed) {
+      const canForceRestart =
+        workspace?.status === "RUNNING" ||
+        workspace?.status === "ERROR" ||
+        workspace?.status === "HIBERNATED"
       list.push({
         key: "heartbeat-missed",
         priority: 4,
         variant: "warning",
         content: (
           <>
-            <p className="font-medium">Scheduled heartbeat missed its window — agents may have skipped a run.</p>
+            <p className="font-medium">
+              Heartbeat missed{" "}
+              {workspace?.heartbeatMissedAt
+                ? timeAgo(workspace.heartbeatMissedAt)
+                : "recently"}{" "}
+              — agents may have skipped a run.
+            </p>
             <p className="mt-0.5 opacity-80">Check Activity for the miss event, or restart to re-arm the schedule.</p>
           </>
         ),
-        actions: (
+        actions: canForceRestart ? (
           <Button variant="danger" size="xs" onClick={handleResumeAll}>
             Force restart
           </Button>
-        ),
+        ) : undefined,
       })
     }
 
