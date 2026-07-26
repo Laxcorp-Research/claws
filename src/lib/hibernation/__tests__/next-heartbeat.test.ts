@@ -5,6 +5,7 @@ import {
   computeNextHeartbeatAt,
   decideHeartbeatMissed,
   decideMissedWake,
+  decideWokeLateNeverBeat,
   extractHeartbeatIntervalMsFromOpenclawJson,
   HEARTBEAT_MISS_GRACE_MS,
   isHeartbeatBeatEvidence,
@@ -12,6 +13,7 @@ import {
   lastExpectedCronFire,
   OPENCLAW_HEARTBEAT_POLL_MARKER,
   parseHeartbeatEveryToMs,
+  WOKE_LATE_CATCHUP_GRACE_MS,
 } from "@/lib/hibernation/next-heartbeat"
 
 describe("parseHeartbeatEveryToMs / extract from openclaw.json", () => {
@@ -243,6 +245,24 @@ describe("isHeartbeatShapedActivity", () => {
     ).toBe(true)
   })
 
+  it("MUTATION: patching overlay_boot into isHeartbeatBeatEvidence must fail", () => {
+    // Tripwire: if boot were treated as beat evidence, WOKE-LATE would go blind.
+    const boot = {
+      type: "TASK_START",
+      metadata: { eventKind: "overlay_boot" },
+    }
+    expect(isHeartbeatBeatEvidence(boot)).toBe(false)
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/hibernation/next-heartbeat.ts"),
+      "utf8",
+    )
+    const fnStart = src.indexOf("export function isHeartbeatBeatEvidence")
+    const fnEnd = src.indexOf("export function heartbeatEvidenceOrClause")
+    const body = src.slice(fnStart, fnEnd)
+    expect(body).not.toMatch(/eventKind\s*===\s*["']overlay_boot["']/)
+    expect(body).not.toContain('metadata?.eventKind === "overlay_boot"')
+  })
+
   it("matches TASK_START with OpenClaw heartbeat poll marker (action or detail)", () => {
     expect(
       isHeartbeatShapedActivity({
@@ -364,6 +384,76 @@ describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
       nowMs: new Date("2026-07-20T08:05:00.000Z").getTime(),
     })
     expect(inGrace).toBeUndefined()
+  })
+})
+
+describe("decideWokeLateNeverBeat — post-cron boot without beat", () => {
+  const expectedAt = new Date("2026-07-24T08:00:00.000Z")
+  const bootAt = new Date("2026-07-24T08:20:02.000Z")
+
+  it("post-cron boot + no beat after boot+grace′ → flag", () => {
+    const nowMs = bootAt.getTime() + WOKE_LATE_CATCHUP_GRACE_MS
+    const result = decideWokeLateNeverBeat({
+      expectedAt,
+      bootAt,
+      hasBeatEvidenceByDeadline: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
+  it("post-cron boot + catch-up beat within grace′ → no flag", () => {
+    const nowMs = bootAt.getTime() + WOKE_LATE_CATCHUP_GRACE_MS
+    const result = decideWokeLateNeverBeat({
+      expectedAt,
+      bootAt,
+      hasBeatEvidenceByDeadline: true,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeUndefined()
+  })
+
+  it("still inside grace′ → no flag (do not race catch-up)", () => {
+    const nowMs = bootAt.getTime() + WOKE_LATE_CATCHUP_GRACE_MS - 1
+    const result = decideWokeLateNeverBeat({
+      expectedAt,
+      bootAt,
+      hasBeatEvidenceByDeadline: false,
+      currentFlag: null,
+      nowMs,
+    })
+    expect(result).toBeUndefined()
+  })
+
+  it("pre-cron boot → no flag (Watchtower owns in-window miss)", () => {
+    const preBoot = new Date("2026-07-24T07:58:00.000Z")
+    const result = decideWokeLateNeverBeat({
+      expectedAt,
+      bootAt: preBoot,
+      hasBeatEvidenceByDeadline: false,
+      currentFlag: null,
+      nowMs: expectedAt.getTime() + 20 * 60 * 1000,
+    })
+    expect(result).toBeUndefined()
+  })
+
+  it("sticky: existing flag → keep (return existing), never clear", () => {
+    const sticky = new Date("2026-07-24T08:25:00.000Z")
+    const result = decideWokeLateNeverBeat({
+      expectedAt,
+      bootAt,
+      hasBeatEvidenceByDeadline: false,
+      currentFlag: sticky,
+      nowMs: bootAt.getTime() + WOKE_LATE_CATCHUP_GRACE_MS,
+    })
+    expect(result).toEqual(sticky)
+  })
+
+  it("grace′ is 5 minutes (exceeds catch-up fire time)", () => {
+    expect(WOKE_LATE_CATCHUP_GRACE_MS).toBe(5 * 60 * 1000)
+    expect(WOKE_LATE_CATCHUP_GRACE_MS).toBeLessThan(HEARTBEAT_MISS_GRACE_MS)
   })
 })
 

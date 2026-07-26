@@ -959,7 +959,7 @@ describe("GET end-to-end", () => {
     try {
       const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z");
       (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
-        (args: { where?: { status?: unknown } }) => {
+        (args: { where?: { status?: unknown; containerState?: unknown } }) => {
           if (args?.where?.status === "HIBERNATED") {
             return Promise.resolve([
               {
@@ -969,6 +969,10 @@ describe("GET end-to-end", () => {
                 containerState: { nextHeartbeatAt },
               },
             ]);
+          }
+          // Woke-late cron-armed pass: empty (no double ledger with missed-wake).
+          if (args?.where && "containerState" in args.where && !("status" in args.where)) {
+            return Promise.resolve([]);
           }
           return Promise.resolve([]);
         },
@@ -981,6 +985,7 @@ describe("GET end-to-end", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.missedWakeFlagged).toBe(1);
+      expect(body.data.wokeLateNeverBeatFlagged).toBe(0);
 
       expect(prismaMock.workspace.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -988,6 +993,7 @@ describe("GET end-to-end", () => {
           data: { heartbeatMissedAt: expect.any(Date) },
         }),
       );
+      expect(prismaMock.activityLog.create).toHaveBeenCalledTimes(1);
       expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -997,6 +1003,145 @@ describe("GET end-to-end", () => {
           }),
         }),
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("WOKE-LATE: post-cron boot + no beat by boot+grace′ → flag + heartbeat_woke_late_never_beat", async () => {
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+    ]);
+    const bootAt = new Date("2026-07-24T08:20:02.000Z");
+    vi.useFakeTimers();
+    // boot + 5m grace′
+    vi.setSystemTime(new Date("2026-07-24T08:25:02.000Z"));
+    try {
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown; containerState?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (args?.where && "containerState" in args.where && !("status" in args.where)) {
+            return Promise.resolve([
+              {
+                id: "ws-woke-late",
+                heartbeatMissedAt: null,
+                containerState: { heartbeatCronExpressions: cron },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ timestamp: bootAt } as never) // boot
+        .mockResolvedValueOnce(null); // no beat
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.wokeLateNeverBeatFlagged).toBe(1);
+
+      expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "ws-woke-late" },
+          data: { heartbeatMissedAt: expect.any(Date) },
+        }),
+      );
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actionType: "ERROR",
+            metadata: expect.stringContaining("heartbeat_woke_late_never_beat"),
+          }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("WOKE-LATE: post-cron boot + catch-up beat within grace′ → no flag", async () => {
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+    ]);
+    const bootAt = new Date("2026-07-24T08:20:02.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-24T08:25:02.000Z"));
+    try {
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown; containerState?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (args?.where && "containerState" in args.where && !("status" in args.where)) {
+            return Promise.resolve([
+              {
+                id: "ws-catchup-ok",
+                heartbeatMissedAt: null,
+                containerState: { heartbeatCronExpressions: cron },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ timestamp: bootAt } as never)
+        .mockResolvedValueOnce({ id: "beat-1" } as never);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.wokeLateNeverBeatFlagged).toBe(0);
+      expect(prismaMock.activityLog.create).not.toHaveBeenCalled();
+      const wokeUpdates = (
+        prismaMock.workspace.update as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(
+        (c) => (c[0] as { where?: { id?: string } }).where?.id === "ws-catchup-ok",
+      );
+      expect(wokeUpdates).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("WOKE-LATE: pre-cron boot + in-window beat → untouched", async () => {
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
+    ]);
+    // Boot before expected — detector must ignore (boot lookup still returns it
+    // if gte expected is false... we only query gte expected, so pre-cron boot
+    // is not returned → no flag).
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T08:10:00.000Z"));
+    try {
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown; containerState?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (args?.where && "containerState" in args.where && !("status" in args.where)) {
+            return Promise.resolve([
+              {
+                id: "ws-pre-cron",
+                heartbeatMissedAt: null,
+                containerState: { heartbeatCronExpressions: cron },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      // No boot since expected (pre-cron boot excluded by gte expected query).
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.wokeLateNeverBeatFlagged).toBe(0);
+      expect(prismaMock.activityLog.create).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
