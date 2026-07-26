@@ -13,6 +13,12 @@ describe("workspaceMatchesFilter", () => {
     expect(workspaceMatchesFilter("stopped", "Sleeping")).toBe(false)
   })
 
+  it("Stopped maps to stopped badge status", () => {
+    expect(workspaceMatchesFilter("stopped", "Stopped")).toBe(true)
+    expect(workspaceMatchesFilter("hibernated", "Stopped")).toBe(false)
+    expect(workspaceMatchesFilter("running", "Stopped")).toBe(false)
+  })
+
   it("other pills match badge status lowercase", () => {
     expect(workspaceMatchesFilter("running", "Running")).toBe(true)
     expect(workspaceMatchesFilter("paused", "Paused")).toBe(true)

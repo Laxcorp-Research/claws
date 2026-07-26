@@ -38,7 +38,7 @@ describe("Batch B recurrence guards", () => {
   })
 
   it("onboarding CTAs: settings api-keys + create workspace", () => {
-    const src = read("src/app/onboarding/page.tsx")
+    const src = read("src/components/onboarding/onboarding-client.tsx")
     expect(src).toContain('/settings?tab=api-keys')
     expect(src).toContain('/api/workspaces')
     expect(src).toContain("Create custom Claw")
@@ -56,9 +56,31 @@ describe("Batch B recurrence guards", () => {
 
   it("E2E test-session JWT includes onboardingCompleted (proxy gate)", () => {
     const src = read("src/app/api/auth/test-session/route.ts")
-    expect(src).toContain("onboardingCompleted: true")
+    expect(src).toContain("onboardingCompleted")
+    expect(src).toContain("VERCEL_ENV")
+    expect(src).toContain("onboardingParam === 'false'")
     // MUTATION: omit claim from encode → E2E waitForURL(/my-claws) fails
     const encodeBlock = src.slice(src.indexOf("encode("), src.indexOf("secret:"))
     expect(encodeBlock).toContain("onboardingCompleted")
+  })
+
+  it("onboarding page is revisitable from DB truth (stale-cookie escape via allowlist + JWT refresh)", () => {
+    const page = read("src/app/onboarding/page.tsx")
+    expect(page).toContain("loadOnboardingGate")
+    expect(page).toContain("loadGettingStartedTracker")
+    // v2: completed users render tracker (no redirect away / no SessionSync bounce).
+    expect(page).not.toContain("OnboardingSessionSync")
+    expect(page).not.toMatch(/redirect\(\s*["']\/my-claws["']\s*\)/)
+    const gate = read("src/lib/auth/onboarding-gate.ts")
+    expect(gate).toContain('"revisit"')
+    expect(gate).not.toContain('redirectTo: "/my-claws"')
+    const client = read("src/components/onboarding/onboarding-client.tsx")
+    expect(client).toContain("OnboardingJwtRefresh")
+  })
+
+  it("workspace create completes onboarding server-side", () => {
+    const src = read("src/app/api/workspaces/route.ts")
+    expect(src).toContain("completeOnboardingAfterFirstWorkspace")
+    expect(src).toContain('name === "My Claw 1"')
   })
 })

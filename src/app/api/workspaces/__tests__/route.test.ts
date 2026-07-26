@@ -99,13 +99,18 @@ describe('POST /api/workspaces', () => {
   it('creates a workspace with default Orchestrator + Critic + connection', async () => {
     (prismaMock.workspace.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
     (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prismaMock.workspace.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     const mockTx = {
-      workspace: { create: vi.fn().mockResolvedValue({ id: 'ws-new', name: 'New Claw', slug: 'new-claw' }) },
+      workspace: {
+        create: vi.fn().mockResolvedValue({ id: 'ws-new', name: 'New Claw', slug: 'new-claw' }),
+        count: vi.fn().mockResolvedValue(1),
+      },
       agent: { create: vi.fn()
         .mockResolvedValueOnce({ id: 'orch-1' })
         .mockResolvedValueOnce({ id: 'critic-1' }) },
       agentConnection: { create: vi.fn().mockResolvedValue({ id: 'conn-1' }) },
+      user: { update: vi.fn().mockResolvedValue({}) },
     };
     (prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx)
@@ -130,5 +135,36 @@ describe('POST /api/workspaces', () => {
     expect(data.success).toBe(true);
     expect(mockTx.agent.create).toHaveBeenCalledTimes(2);
     expect(mockTx.agentConnection.create).toHaveBeenCalledTimes(1);
+    expect(mockTx.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-test-123' },
+      data: { onboardingCompleted: true },
+    });
+  });
+
+  it('reuses existing DRAFT My Claw 1 (idempotent onboarding create)', async () => {
+    (prismaMock.workspace.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-orphan' });
+    (prismaMock.user.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+    (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'ws-orphan',
+      name: 'My Claw 1',
+      status: 'DRAFT',
+      agents: [],
+      connections: [],
+    });
+
+    const req = createMockRequest('http://localhost:3000/api/workspaces', {
+      method: 'POST',
+      body: { name: 'My Claw 1' },
+    });
+    const res = await POST(req);
+    const { status, data } = await parseResponse(res);
+
+    expect(status).toBe(200);
+    expect(data.data.id).toBe('ws-orphan');
+    expect(prismaMock.workspace.create).not.toHaveBeenCalled();
+    expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'user-test-123', onboardingCompleted: false },
+      data: { onboardingCompleted: true },
+    });
   });
 });

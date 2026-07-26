@@ -18,6 +18,11 @@ vi.mock('@/lib/encryption', () => ({
   generateKeyHint: (v: string) => `${v.slice(0, 7)}...`,
 }))
 
+// Live validate is out of scope for the heal-chain proof; mock at the I/O boundary.
+vi.mock('@/lib/api-key-validation', () => ({
+  validateApiKey: vi.fn().mockResolvedValue({ valid: true }),
+}))
+
 // after() captures (does not run) the callback → lets us assert the response is
 // returned before the reconcile runs, then drive the callback ourselves.
 const mockAfter = vi.fn()

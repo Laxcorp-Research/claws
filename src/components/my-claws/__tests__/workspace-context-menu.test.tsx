@@ -13,15 +13,23 @@
 // (it always destroyed the container) and gated behind a ConfirmDialog. The
 // RUNNING action now reads "Stop" and fires POST /stop ONLY after confirmation.
 
-import { describe, it, expect, afterEach, vi, beforeEach } from "vitest"
+import { describe, it, expect, afterEach, vi, beforeEach, beforeAll } from "vitest"
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react"
 import { WorkspaceContextMenu } from "@/components/my-claws/workspace-context-menu"
+import {
+  installRadixPointerPolyfills,
+  openWorkspaceOptionsMenu,
+} from "./radix-menu-test-utils"
 
 const mockPush = vi.fn()
 const mockRefresh = vi.fn()
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
 }))
+
+beforeAll(() => {
+  installRadixPointerPolyfills()
+})
 
 afterEach(() => {
   cleanup()
@@ -46,91 +54,91 @@ function openMenu(status: string) {
       onDelete={vi.fn()}
     />,
   )
-  fireEvent.click(screen.getByLabelText("Workspace options"))
+  openWorkspaceOptionsMenu()
 }
 
 describe("WorkspaceContextMenu — STOPPED branch (PR #52 follow-up)", () => {
-  it("renders 'Open Dashboard' item for STOPPED workspaces", () => {
+  it("renders 'Open Dashboard' item for STOPPED workspaces", async () => {
     openMenu("STOPPED")
-    expect(screen.getByText("Open Dashboard")).toBeDefined()
+    expect(await screen.findByText("Open Dashboard")).toBeDefined()
   })
 
-  it("renders 'Open to redeploy' item for STOPPED workspaces, and click routes to /dashboard/[id]", () => {
+  it("renders 'Open to redeploy' item for STOPPED workspaces, and click routes to /dashboard/[id]", async () => {
     openMenu("STOPPED")
-    const redeploy = screen.getByText("Open to redeploy")
-    expect(redeploy).toBeDefined()
+    const redeploy = await screen.findByText("Open to redeploy")
     fireEvent.click(redeploy)
     expect(mockPush).toHaveBeenCalledWith("/dashboard/ws-1")
   })
 
-  it("does NOT render Stop or Resume for STOPPED workspaces", () => {
+  it("does NOT render Stop or Resume for STOPPED workspaces", async () => {
     openMenu("STOPPED")
-    expect(screen.queryByText("Stop")).toBeNull()
+    await screen.findByText("Open Dashboard")
+    expect(screen.queryByRole("menuitem", { name: "Stop" })).toBeNull()
     expect(screen.queryByText("Resume")).toBeNull()
   })
 })
 
 describe("WorkspaceContextMenu — PAUSED branch (Resume item removed)", () => {
-  it("does NOT render Resume for PAUSED workspaces (dead post-PR-#52)", () => {
+  it("does NOT render Resume for PAUSED workspaces (dead post-PR-#52)", async () => {
     openMenu("PAUSED")
+    await screen.findByText("Open Dashboard")
     expect(screen.queryByText("Resume")).toBeNull()
   })
 
-  it("still renders 'Open Dashboard' for PAUSED workspaces", () => {
+  it("still renders 'Open Dashboard' for PAUSED workspaces", async () => {
     openMenu("PAUSED")
-    expect(screen.getByText("Open Dashboard")).toBeDefined()
+    expect(await screen.findByText("Open Dashboard")).toBeDefined()
   })
 
-  it("does NOT render Stop for PAUSED (only RUNNING gets Stop)", () => {
+  it("does NOT render Stop for PAUSED (only RUNNING gets Stop)", async () => {
     openMenu("PAUSED")
-    expect(screen.queryByText("Stop")).toBeNull()
+    await screen.findByText("Open Dashboard")
+    expect(screen.queryByRole("menuitem", { name: "Stop" })).toBeNull()
   })
 })
 
 describe("WorkspaceContextMenu — RUNNING branch (Pause renamed to Stop)", () => {
-  it("renders 'Stop' (not 'Pause') for RUNNING workspaces", () => {
+  it("renders 'Stop' (not 'Pause') for RUNNING workspaces", async () => {
     openMenu("RUNNING")
-    expect(screen.getByText("Stop")).toBeDefined()
+    expect(await screen.findByRole("menuitem", { name: "Stop" })).toBeDefined()
     expect(screen.queryByText("Pause")).toBeNull()
   })
 
-  it("does NOT render Open to redeploy for RUNNING workspaces", () => {
+  it("does NOT render Open to redeploy for RUNNING workspaces", async () => {
     openMenu("RUNNING")
+    await screen.findByRole("menuitem", { name: "Stop" })
     expect(screen.queryByText("Open to redeploy")).toBeNull()
   })
 
-  it("renders 'Open Dashboard' for RUNNING workspaces", () => {
+  it("renders 'Open Dashboard' for RUNNING workspaces", async () => {
     openMenu("RUNNING")
-    expect(screen.getByText("Open Dashboard")).toBeDefined()
+    expect(await screen.findByText("Open Dashboard")).toBeDefined()
   })
 })
 
 describe("WorkspaceContextMenu — Stop is confirm-gated (regression: no instant destructive fire)", () => {
-  it("clicking 'Stop' opens the confirm dialog and does NOT call /stop on first click", () => {
+  it("clicking 'Stop' opens the confirm dialog and does NOT call /stop on first click", async () => {
     openMenu("RUNNING")
-    fireEvent.click(screen.getByText("Stop"))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Stop" }))
 
-    // Dialog is shown…
-    expect(screen.getByText("Stop this Claw?")).toBeDefined()
-    // …but the destructive call has NOT fired yet.
+    expect(await screen.findByText("Stop this Claw?")).toBeDefined()
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
   it("calls POST /stop only AFTER the user confirms in the dialog", async () => {
     openMenu("RUNNING")
-    fireEvent.click(screen.getByText("Stop"))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Stop" }))
     expect(global.fetch).not.toHaveBeenCalled()
 
-    // Confirm button inside the dialog.
     fireEvent.click(screen.getByRole("button", { name: "Stop" }))
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
     expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/stop", { method: "POST" })
   })
 
-  it("cancelling with 'Keep running' never calls /stop", () => {
+  it("cancelling with 'Keep running' never calls /stop", async () => {
     openMenu("RUNNING")
-    fireEvent.click(screen.getByText("Stop"))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Stop" }))
     fireEvent.click(screen.getByRole("button", { name: "Keep running" }))
 
     expect(global.fetch).not.toHaveBeenCalled()
@@ -138,18 +146,19 @@ describe("WorkspaceContextMenu — Stop is confirm-gated (regression: no instant
 })
 
 describe("WorkspaceContextMenu — pre-deploy branches (unchanged by this PR)", () => {
-  it("DRAFT renders 'Setup & Deploy'", () => {
+  it("DRAFT renders 'Setup & Deploy'", async () => {
     openMenu("DRAFT")
-    expect(screen.getByText("Setup & Deploy")).toBeDefined()
+    expect(await screen.findByText("Setup & Deploy")).toBeDefined()
   })
 
-  it("SETUP_INCOMPLETE renders 'Continue Setup'", () => {
+  it("SETUP_INCOMPLETE renders 'Continue Setup'", async () => {
     openMenu("SETUP_INCOMPLETE")
-    expect(screen.getByText("Continue Setup")).toBeDefined()
+    expect(await screen.findByText("Continue Setup")).toBeDefined()
   })
 
-  it("DRAFT does NOT render 'Open Dashboard' (no deployment yet)", () => {
+  it("DRAFT does NOT render 'Open Dashboard' (no deployment yet)", async () => {
     openMenu("DRAFT")
+    await screen.findByText("Setup & Deploy")
     expect(screen.queryByText("Open Dashboard")).toBeNull()
   })
 })

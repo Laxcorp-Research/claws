@@ -1,21 +1,50 @@
 "use client"
 
-import { cloneElement, isValidElement, useId, useState, useRef, useCallback, useEffect, useLayoutEffect, type ReactNode, type ReactElement } from "react"
-import { createPortal } from "react-dom"
+import * as React from "react"
+import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
+
+/**
+ * DS Tooltip — Radix Tooltip primitive.
+ * Portal to body + collision detection (flip/shift) are mandatory.
+ * collisionBoundary = documentElement so overflow scroll ancestors (e.g. builder
+ * agent sidebar) do NOT become the flip boundary — viewport room wins.
+ * Do NOT import @radix-ui/react-tooltip outside this file (grep-guard).
+ *
+ * Arrow contact: sideOffset={0} so Radix's `sideOffset + arrowHeight` places the
+ * content exactly arrowHeight from the trigger; arrow span sits at content edge
+ * (`[baseSide]:0`) and fills that gap — 0–1px content↔arrow abutment.
+ * Do not force-visibility on the Arrow — that painted degenerate placement
+ * (gap between arrow and content box). Native hide-when-unpointable stays.
+ *
+ * MUTATION: strip Portal / avoidCollisions / Arrow / documentElement boundary
+ * → geometry / flip-side e2e fails.
+ */
+
+export const TooltipProvider = TooltipPrimitive.Provider
+
+/** Arrow height used in Radix offset arithmetic — keep in sync with Arrow props. */
+export const TOOLTIP_ARROW_HEIGHT = 5
+export const TOOLTIP_ARROW_WIDTH = 10
 
 interface TooltipProps {
   content: string
-  children: ReactNode
+  children: React.ReactNode
   delay?: number
   maxWidth?: number
-  side?: "top" | "bottom"
+  side?: "top" | "bottom" | "left" | "right"
+  /**
+   * Prefer `center` when the trigger sizes to text (TruncateWithTooltip).
+   * Use `start` only for intentionally wide full-bleed triggers.
+   * Use `center` for icon/badge triggers.
+   */
+  align?: "start" | "center" | "end"
   /**
    * When true, never show the tooltip (still renders a width-stable trigger).
-   * Pass a function to re-evaluate on every enter (TruncatedText hover remasure).
+   * Pass a function to re-evaluate on every open attempt.
    */
   disabled?: boolean | (() => boolean)
-  /** Extra classes on the trigger wrapper — keep width-stable for TruncatedText. */
+  /** Extra classes on the trigger wrapper. */
   triggerClassName?: string
 }
 
@@ -25,155 +54,111 @@ export function Tooltip({
   delay = 300,
   maxWidth = 220,
   side = "top",
+  align = "center",
   disabled = false,
   triggerClassName,
 }: TooltipProps) {
-  const [show, setShow] = useState(false)
-  const [pos, setPos] = useState({
-    top: 0,
-    left: 0,
-    actualSide: side as "top" | "bottom",
-    caretLeft: 0,
-    shiftX: 0,
-  })
-  const tooltipId = useId()
-  const triggerRef = useRef<HTMLDivElement>(null)
-  const bubbleRef = useRef<HTMLDivElement>(null)
-  const showTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const hideTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [open, setOpen] = React.useState(false)
+  const contentRef = React.useRef<HTMLDivElement | null>(null)
 
-  const updatePosition = useCallback(() => {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    const gap = 6
-    const pad = 8
-
-    let top = rect.top - gap
-    let actualSide: "top" | "bottom" = side
-
-    if (side === "top" && rect.top < 60) {
-      top = rect.bottom + gap
-      actualSide = "bottom"
-    }
-
-    const triggerCenter = rect.left + rect.width / 2
-    // Center with translateX(-50%). Clamp using MEASURED bubble width when available.
-    // MUTATION: left = triggerCenter - maxWidth/2 (no translateX -50%) → e2e bbox fails.
-    const measured = bubbleRef.current?.offsetWidth ?? 0
-    let shiftX = 0
-    if (measured > 0) {
-      const visualLeft = triggerCenter - measured / 2
-      const visualRight = triggerCenter + measured / 2
-      if (visualLeft < pad) shiftX = pad - visualLeft
-      else if (visualRight > window.innerWidth - pad) shiftX = window.innerWidth - pad - visualRight
-    }
-
-    setPos({
-      top,
-      left: triggerCenter + shiftX,
-      actualSide,
-      caretLeft: measured > 0 ? measured / 2 - shiftX : 12,
-      shiftX,
-    })
-  }, [side])
-
-  const isDisabled = useCallback(() => {
+  const isDisabled = React.useCallback(() => {
     return typeof disabled === "function" ? disabled() : Boolean(disabled)
   }, [disabled])
 
-  const handleEnter = useCallback(() => {
-    // Evaluate disabled at enter time so TruncatedText can remasure live
-    // (stale boolean disabled left SS2 Trend & Topic tip dead).
-    if (isDisabled()) return
-    clearTimeout(hideTimeout.current)
-    showTimeout.current = setTimeout(() => {
-      updatePosition()
-      setShow(true)
-    }, delay)
-  }, [delay, isDisabled, updatePosition])
+  const handleOpenChange = React.useCallback(
+    (next: boolean) => {
+      if (next && isDisabled()) return
+      setOpen(next)
+    },
+    [isDisabled],
+  )
 
-  const handleLeave = useCallback(() => {
-    clearTimeout(showTimeout.current)
-    hideTimeout.current = setTimeout(() => setShow(false), 100)
-  }, [])
-
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === "Escape") {
-      clearTimeout(showTimeout.current)
-      setShow(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(showTimeout.current)
-      clearTimeout(hideTimeout.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof disabled !== "function" && disabled) setShow(false)
+  React.useEffect(() => {
+    if (typeof disabled !== "function" && disabled) setOpen(false)
   }, [disabled])
 
-  // Re-measure after paint so clamping uses real bubble width.
-  // Do NOT re-run disabled() here — a second Chromium false-negative would
-  // immediately hide a tip that already passed the enter check (SS2 kill).
-  useLayoutEffect(() => {
-    if (!show) return
-    updatePosition()
-  }, [show, content, updatePosition])
+  // Sync data-arrow-hidden from Radix's arrow span (visibility:hidden when
+  // centerOffset≠0). Forced-edge probes assert this attribute — not silence.
+  // Portal content mounts async — poll a few frames + observe style mutations.
+  React.useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    let obs: MutationObserver | null = null
+    let frames = 0
 
-  const transform =
-    pos.actualSide === "top"
-      ? "translate(-50%, -100%)"
-      : "translate(-50%, 0%)"
+    const sync = () => {
+      const contentEl = contentRef.current
+      if (!contentEl || cancelled) return false
+      const arrowWrap = contentEl.querySelector<HTMLElement>(":scope > span")
+      const hidden =
+        !!arrowWrap && getComputedStyle(arrowWrap).visibility === "hidden"
+      contentEl.setAttribute("data-arrow-hidden", hidden ? "true" : "false")
+      contentEl.setAttribute("data-arrow-visible", hidden ? "false" : "true")
+      if (arrowWrap && !obs) {
+        obs = new MutationObserver(sync)
+        obs.observe(arrowWrap, { attributes: true, attributeFilter: ["style"] })
+      }
+      return true
+    }
 
-  const child = isValidElement(children)
-    ? cloneElement(children as ReactElement<{ "aria-describedby"?: string }>, {
-        "aria-describedby": show ? tooltipId : undefined,
-      })
-    : children
+    const tick = () => {
+      if (cancelled) return
+      sync()
+      frames += 1
+      if (frames < 12) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+
+    return () => {
+      cancelled = true
+      obs?.disconnect()
+    }
+  }, [open, content])
+
+  // Viewport boundary — NOT clipping ancestors (sidebar overflow-y-auto).
+  const collisionBoundary =
+    typeof document !== "undefined" ? document.documentElement : undefined
 
   return (
-    <>
-      <div
-        ref={triggerRef}
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-        onFocus={handleEnter}
-        onBlur={handleLeave}
-        onKeyDown={handleKeyDown}
-        className={cn("block w-full min-w-0 max-w-full", triggerClassName)}
+    <TooltipPrimitive.Provider delayDuration={delay} disableHoverableContent>
+      <TooltipPrimitive.Root
+        open={open}
+        onOpenChange={handleOpenChange}
+        delayDuration={delay}
+        disableHoverableContent
       >
-        {child}
-      </div>
-      {show &&
-        typeof document !== "undefined" &&
-        createPortal(
+        <TooltipPrimitive.Trigger asChild>
           <div
-            id={tooltipId}
-            role="tooltip"
-            className="fixed z-[9999] pointer-events-none"
-            style={{ top: pos.top, left: pos.left, transform }}
+            data-tooltip-trigger
+            className={cn("inline-block w-max max-w-full min-w-0", triggerClassName)}
           >
-            <div
-              ref={bubbleRef}
-              className="bg-[var(--tx)] text-white text-[10px] leading-[1.4] px-[8px] py-[5px] rounded-[4px] shadow-modal w-max"
-              style={{ maxWidth }}
-            >
-              {content}
-              <div
-                className={`absolute border-[4px] border-transparent ${
-                  pos.actualSide === "top"
-                    ? "top-full border-t-[var(--tx)]"
-                    : "bottom-full border-b-[var(--tx)]"
-                }`}
-                style={{ left: pos.caretLeft, transform: "translateX(-50%)" }}
-              />
-            </div>
-          </div>,
-          document.body
-        )}
-    </>
+            {children}
+          </div>
+        </TooltipPrimitive.Trigger>
+        <TooltipPrimitive.Portal>
+          <TooltipPrimitive.Content
+            ref={contentRef}
+            side={side}
+            align={align}
+            // 0 + arrowHeight → content sits on the arrow; arrow abuts the box.
+            sideOffset={0}
+            collisionPadding={8}
+            collisionBoundary={collisionBoundary}
+            avoidCollisions
+            role="tooltip"
+            className="z-[9999] pointer-events-none bg-[var(--tx)] text-white text-[10px] leading-[1.4] px-[8px] py-[5px] rounded-[4px] shadow-modal w-max"
+            style={{ maxWidth }}
+          >
+            {content}
+            {/* Native Radix hide-on-unpointable retained — no force-visibility. */}
+            <TooltipPrimitive.Arrow
+              className="fill-[var(--tx)]"
+              width={TOOLTIP_ARROW_WIDTH}
+              height={TOOLTIP_ARROW_HEIGHT}
+            />
+          </TooltipPrimitive.Content>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
+    </TooltipPrimitive.Provider>
   )
 }

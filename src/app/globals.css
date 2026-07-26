@@ -16,6 +16,10 @@
   --bd2: #E0E0E0;
   --ac: #5BA1F5;
   --acbg: #EEF5FF;
+  /* AI Gradient Accent — onboarding nav affordance ONLY (see DESIGN_SYSTEM.md). */
+  --ai-grad-1: #2563EB;
+  --ai-grad-2: #7C3AED;
+  --ai-grad-3: #DB2777;
   /* WCAG AA: --ac (#5BA1F5) is ~2.67:1 on white — fine as a brand FILL/border/
      decorative, but fails as TEXT. --ac-text is the accessible deeper blue for
      accent TEXT on light backgrounds: #2563EB ~5.17:1 on white. Dark mode keeps
@@ -52,6 +56,9 @@
   --bd2: #3A3A3C;
   --ac: #5BA1F5;
   --acbg: #1A2A40;
+  --ai-grad-1: #2563EB;
+  --ai-grad-2: #7C3AED;
+  --ai-grad-3: #DB2777;
   /* Dark mode: accent TEXT on the near-black bg already passes AA at the light
      value (~7.41:1), so --ac-text matches --ac here — dark is visually unchanged. */
   --ac-text: #5BA1F5;
@@ -159,4 +166,35 @@ select:focus {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* AI Gradient Accent — Getting started nav only (DESIGN_SYSTEM.md). */
+@keyframes ai-gradient-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+.ai-gradient-accent {
+  background-image: linear-gradient(
+    90deg,
+    var(--ai-grad-1),
+    var(--ai-grad-2),
+    var(--ai-grad-3),
+    var(--ai-grad-2),
+    var(--ai-grad-1)
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--ac-text);
+  animation: ai-gradient-shimmer 6s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-gradient-accent {
+    animation: none;
+    /* Mid-blend of the 200% shimmer strip — not a pale endpoint. */
+    background-position: 50% 50%;
+  }
 }

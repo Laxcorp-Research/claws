@@ -39,6 +39,9 @@ const validators: Record<string, (key: string) => Promise<{ valid: boolean; erro
 
 export async function validateApiKey(provider: string, plainKey: string): Promise<{ valid: boolean; error?: string }> {
   const validator = validators[provider]
-  if (!validator) return { valid: true }
+  // MUTATION: returning { valid: true } here → "rejects provider with no validator" fails.
+  if (!validator) {
+    return { valid: false, error: `Unsupported provider: ${provider}` }
+  }
   return validator(plainKey)
 }

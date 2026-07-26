@@ -4,10 +4,16 @@ import { encode } from 'next-auth/jwt';
 
 /**
  * TEST ONLY - creates a JWT session cookie for E2E testing.
- * Only available when E2E_TEST_MODE=true.
+ * Only available when E2E_TEST_MODE=true AND not on Vercel production.
  * DO NOT enable in production.
  */
 export async function GET(req: NextRequest) {
+  // Defense in depth: refuse unconditionally on Vercel production,
+  // even if E2E_TEST_MODE were accidentally set.
+  if (process.env.VERCEL_ENV === 'production') {
+    return NextResponse.json({ error: 'Not available' }, { status: 404 });
+  }
+
   if (process.env.E2E_TEST_MODE !== 'true') {
     return NextResponse.json({ error: 'Not available' }, { status: 404 });
   }
@@ -15,30 +21,66 @@ export async function GET(req: NextRequest) {
   const redirect = req.nextUrl.searchParams.get('redirect') || '/my-claws';
   const role = req.nextUrl.searchParams.get('role');
   const isAdmin = role === 'admin';
-  const email = isAdmin ? 'e2e-admin@buildclaws.ai' : 'e2e-test@buildclaws.ai';
-  const name = isAdmin ? 'E2E Admin User' : 'E2E Test User';
+  // Explicit false mode for the fresh-signup onboarding journey.
+  // Default remains true so existing E2E helpers keep clearing the gate.
+  const onboardingParam = req.nextUrl.searchParams.get('onboardingCompleted');
+  const onboardingCompleted = onboardingParam === 'false' ? false : true;
+  const email = isAdmin
+    ? 'e2e-admin@buildclaws.ai'
+    : onboardingCompleted
+      ? 'e2e-test@buildclaws.ai'
+      : 'e2e-onboarding@buildclaws.ai';
+  const name = isAdmin
+    ? 'E2E Admin User'
+    : onboardingCompleted
+      ? 'E2E Test User'
+      : 'E2E Onboarding User';
 
-  // Batch B: E2E users must clear the shown-once onboarding gate. This route
-  // encodes the JWT directly (skips Auth.js jwt callback), so the claim must
-  // be on the cookie — otherwise proxy redirects /my-claws → /onboarding and
-  // Playwright waitForURL('**/my-claws') times out.
+  // Batch B: completed-mode users must clear the shown-once onboarding gate.
+  // This route encodes the JWT directly (skips Auth.js jwt callback), so the
+  // claim must be on the cookie — otherwise proxy redirects /my-claws →
+  // /onboarding and Playwright waitForURL('**/my-claws') times out.
+  // Incomplete-mode users keep the flag false for the fresh-signup journey.
   const testUser = await prisma.user.upsert({
     where: { email },
-    update: { onboardingCompleted: true },
+    update: { onboardingCompleted },
     create: {
       email,
       name,
       hasActiveSubscription: true,
-      onboardingCompleted: true,
+      onboardingCompleted,
     },
   });
+
+  // Fresh-signup journey: wipe prior DRAFT "My Claw 1" rows so the create
+  // assertion can check for exactly one workspace after the click.
+  if (!onboardingCompleted) {
+    await prisma.workspace.deleteMany({
+      where: { userId: testUser.id, name: 'My Claw 1', status: 'DRAFT' },
+    });
+    // v2.1: seed starter credits — grantStarterCredits is gated on email
+    // verification / fingerprints and does not run for this fixture user.
+    // Explicit CreditAccount upsert matches product "signup with credits".
+    await prisma.creditAccount.upsert({
+      where: { userId: testUser.id },
+      update: { balanceCents: 5000, status: 'ACTIVE' },
+      create: {
+        userId: testUser.id,
+        balanceCents: 5000,
+        initialGrantCents: 5000,
+        status: 'ACTIVE',
+        grantFingerprint: `e2e-onboarding-${testUser.id}`,
+        ipAtGrant: '127.0.0.1',
+      },
+    });
+  }
 
   const token = await encode({
     token: {
       sub: testUser.id,
       email: testUser.email,
       name: testUser.name,
-      onboardingCompleted: true,
+      onboardingCompleted,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
     },

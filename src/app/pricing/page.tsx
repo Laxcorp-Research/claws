@@ -158,7 +158,7 @@ export default function PricingPage() {
     {
       num: "3",
       label: "AI model costs",
-      text: "You bring your own API keys (Anthropic, OpenAI, Google). Pay your provider directly. Typical: $30–90/mo.",
+      text: "You bring your own API keys (Anthropic, OpenAI, and Google). Pay your provider directly. Typical: $30–90/mo.",
     },
     {
       num: "4",

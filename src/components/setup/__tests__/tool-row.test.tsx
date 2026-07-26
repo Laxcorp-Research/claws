@@ -226,7 +226,7 @@ describe("ToolRow — Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () 
     expect(onTest).toHaveBeenCalledTimes(1)
   })
 
-  it("renders a disabled Test button with tooltip when testDisabledReason is supplied", () => {
+  it("renders a disabled Test button with tooltip when testDisabledReason is supplied", async () => {
     // Guards GH #41 — Asana rows get a clear "not yet" tooltip rather
     // than a working Test button that would 400 at the server.
     const onTest = vi.fn()
@@ -243,7 +243,13 @@ describe("ToolRow — Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () 
     )
     const btn = screen.getByRole("button", { name: /Test not yet supported for this tool/i })
     expect((btn as HTMLButtonElement).disabled).toBe(true)
-    expect(btn.getAttribute("title")).toBe("Test not yet supported for this tool")
+    // DS Tooltip (not native title=) — content available on hover.
+    expect(btn.getAttribute("title")).toBeNull()
+    // Radix opens on pointermove (mouse); trigger is the Tooltip wrapper div.
+    const trigger = btn.closest("[data-state]") ?? btn.parentElement!.parentElement!
+    fireEvent.pointerMove(trigger, { pointerType: "mouse" })
+    const tip = await screen.findByRole("tooltip")
+    expect(tip.textContent).toContain("Test not yet supported for this tool")
     fireEvent.click(btn)
     // Disabled button must not fire onTest even if the user clicks.
     expect(onTest).not.toHaveBeenCalled()

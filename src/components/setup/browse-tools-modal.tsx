@@ -232,12 +232,19 @@ export function BrowseToolsModal({
       ? "Loading catalog…"
       : `Browse ${tools.length} tools available to connect.`
 
-  // Virtualization: when Suggested pins exist, render a non-virtualized Suggested
-  // header by flattening — first suggested slug in visible window gets a label.
+  // Suggested header is NOT inside the virtualized row window (old startIndex===0
+  // gate raced CI). Mount browse-tools-swap / browse-tools testids only after the
+  // catalog finishes loading so findByTestId waits for Select rows + Suggested.
   const firstSuggestedSlug =
     isSwap && suggestedSlugs.length > 0
       ? filtered.find((t) => suggestedSet.has(t.slug))?.slug
       : undefined
+  const showSuggestedHeader = !browseLoading && Boolean(firstSuggestedSlug)
+  const listTestId = browseLoading
+    ? undefined
+    : isSwap
+      ? "browse-tools-swap"
+      : "browse-tools"
 
   return (
     <>
@@ -275,8 +282,16 @@ export function BrowseToolsModal({
             className="border border-[var(--bd)] rounded-xl overflow-hidden overflow-y-auto"
             style={{ maxHeight: LIST_HEIGHT }}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-            data-testid={isSwap ? "browse-tools-swap" : "browse-tools"}
+            data-testid={listTestId}
           >
+            {showSuggestedHeader && (
+              <div
+                className="px-3.5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-[var(--tx3)]"
+                data-testid="swap-suggested-label"
+              >
+                Suggested
+              </div>
+            )}
             {browseLoading && (
               <div className="px-3.5 py-3">
                 <LoadingSkeleton variant="card" count={4} />
@@ -298,17 +313,8 @@ export function BrowseToolsModal({
                 const customOauthBlocked = tool.authMode === "custom-oauth-required"
                 const comingSoonReason = tool.comingSoonReason ?? "Requires a Claws-owned OAuth app before connection is available."
                 const isSuggested = isSwap && suggestedSet.has(tool.slug)
-                const showSuggestedLabel = isSuggested && tool.slug === firstSuggestedSlug && startIndex === 0
                 return (
                   <div key={tool.slug}>
-                    {showSuggestedLabel && (
-                      <div
-                        className="px-3.5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.04em] text-[var(--tx3)]"
-                        data-testid="swap-suggested-label"
-                      >
-                        Suggested
-                      </div>
-                    )}
                     <div
                       className="flex items-center gap-3 px-3.5 py-3 border-b border-[var(--bd)] last:border-b-0"
                       style={{ minHeight: ROW_HEIGHT }}

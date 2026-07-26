@@ -2,6 +2,7 @@
 
 import { Shield, ShieldCheck, Star, Circle } from "lucide-react"
 import type { TrustTier } from "@/types/marketplace"
+import { Tooltip } from "@/components/ui/tooltip"
 
 interface TrustBadgeProps {
   tier: TrustTier
@@ -55,18 +56,19 @@ export function TrustBadge({ tier, className = "" }: TrustBadgeProps) {
   const { Icon } = config
 
   return (
-    <span
-      className={`inline-flex items-center gap-[3px] rounded-[4px] px-2 py-[2px] text-[10px] font-semibold leading-tight ${className}`}
-      title={config.title}
-      style={{
-        backgroundColor: config.bg,
-        color: config.text,
-        border: `1px solid ${config.border}`,
-      }}
-    >
-      <Icon size={10} aria-hidden="true" />
-      {config.label}
-    </span>
+    <Tooltip content={config.title} align="center" triggerClassName="inline-flex w-auto">
+      <span
+        className={`inline-flex items-center gap-[3px] rounded-[4px] px-2 py-[2px] text-[10px] font-semibold leading-tight ${className}`}
+        style={{
+          backgroundColor: config.bg,
+          color: config.text,
+          border: `1px solid ${config.border}`,
+        }}
+      >
+        <Icon size={10} aria-hidden="true" />
+        {config.label}
+      </span>
+    </Tooltip>
   )
 }
 

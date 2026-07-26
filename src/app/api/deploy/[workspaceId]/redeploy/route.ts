@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
+import { evaluateWorkspaceDeployToolPrerequisites } from "@/lib/tools/deploy-tool-prerequisites"
+import { missingRequiredToolsBannerTitle } from "@/lib/tools/required-tools"
 
 export const maxDuration = 300
 
@@ -41,6 +43,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
     return apiError(
       "NO_SERVICE",
       `Workspace has no deployed service in ${workspace.status} state. Use the deploy flow for this state.`,
+      400,
+    )
+  }
+
+  // Finding F server parity (#282): same gate as cloud deploy, before eligibility.
+  const toolPrereqs = await evaluateWorkspaceDeployToolPrerequisites(workspaceId)
+  if (!toolPrereqs.satisfied) {
+    return apiError(
+      "REQUIRED_TOOLS_MISSING",
+      missingRequiredToolsBannerTitle(toolPrereqs.missingLabels),
       400,
     )
   }

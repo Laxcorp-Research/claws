@@ -20,6 +20,11 @@ vi.mock('@/lib/encryption', () => ({
   generateKeyHint: vi.fn((val: string) => `${val.slice(0, 7)}...${val.slice(-4)}`),
 }));
 
+const mockValidateApiKey = vi.fn();
+vi.mock('@/lib/api-key-validation', () => ({
+  validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
+}));
+
 // PR-8b/C: after() captures (does not run) the fire-and-forget callback so we can
 // assert the response is returned WITHOUT waiting on the reconcile, then invoke
 // the captured callback to verify requestReconcileForUser(userId) fires.
@@ -39,6 +44,8 @@ beforeEach(() => {
   mockAfter.mockClear();
   mockRequestReconcile.mockReset();
   mockRequestReconcile.mockResolvedValue(undefined);
+  mockValidateApiKey.mockReset();
+  mockValidateApiKey.mockResolvedValue({ valid: true });
 });
 
 describe('GET /api/api-keys', () => {
@@ -157,6 +164,41 @@ describe('POST /api/api-keys', () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
+  });
+
+  it('rejects OPENROUTER with 400', async () => {
+    const req = createMockRequest('http://localhost:3000/api/api-keys', {
+      method: 'POST',
+      body: { provider: 'OPENROUTER', apiKey: 'sk-or-test' },
+    });
+    const res = await POST(req);
+    const { status } = await parseResponse(res);
+    expect(status).toBe(400);
+    expect(prismaMock.userApiKey.create).not.toHaveBeenCalled();
+    expect(mockValidateApiKey).not.toHaveBeenCalled();
+  });
+
+  it('rejects OLLAMA with 400', async () => {
+    const req = createMockRequest('http://localhost:3000/api/api-keys', {
+      method: 'POST',
+      body: { provider: 'OLLAMA', apiKey: 'local' },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects invalid key before storing (live validate)', async () => {
+    mockValidateApiKey.mockResolvedValueOnce({ valid: false, error: 'Invalid API key' });
+    const req = createMockRequest('http://localhost:3000/api/api-keys', {
+      method: 'POST',
+      body: { provider: 'ANTHROPIC', apiKey: 'sk-ant-bad' },
+    });
+    const res = await POST(req);
+    const { status, data } = await parseResponse(res);
+    expect(status).toBe(400);
+    expect(data.error.message).toMatch(/Invalid API key/i);
+    expect(prismaMock.userApiKey.create).not.toHaveBeenCalled();
+    expect(prismaMock.userApiKey.update).not.toHaveBeenCalled();
   });
 
   // PR-8b/C (E1): adding/updating a key schedules a fire-and-forget reconcile.

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   if (!provider) return ERRORS.VALIDATION("provider is required")
 
-  const validProviders = ["ANTHROPIC", "OPENAI", "GOOGLE", "OPENROUTER", "OLLAMA"] as const
+  const validProviders = ["ANTHROPIC", "OPENAI", "GOOGLE"] as const
   type ValidProvider = typeof validProviders[number]
   if (!validProviders.includes(provider as ValidProvider)) return ERRORS.VALIDATION("Invalid provider")
 

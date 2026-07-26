@@ -230,7 +230,12 @@ describe("BrowseToolsModal — connected-state reflection", () => {
     await waitFor(() => expect(screen.getByText("Twitter/X")).toBeDefined())
     const badge = screen.getByText("Coming Soon")
     expect(badge).toBeDefined()
-    expect(badge.getAttribute("title")).toContain("OAuth app registration in progress")
+    // DS Tooltip replaces native title= on Coming Soon badges.
+    expect(badge.getAttribute("title")).toBeNull()
+    const trigger = badge.closest("[data-state]") ?? badge.parentElement!
+    fireEvent.pointerMove(trigger, { pointerType: "mouse" })
+    const tip = await screen.findByRole("tooltip")
+    expect(tip.textContent ?? "").toContain("OAuth app registration in progress")
     expect(screen.queryByRole("button", { name: "Connect with OAuth" })).toBeNull()
   })
 

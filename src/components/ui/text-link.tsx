@@ -10,9 +10,19 @@ interface TextLinkProps {
   className?: string
   target?: string
   rel?: string
+  disabled?: boolean
 }
 
-export function TextLink({ href, onClick, direction, children, className, target, rel }: TextLinkProps) {
+export function TextLink({
+  href,
+  onClick,
+  direction,
+  children,
+  className,
+  target,
+  rel,
+  disabled = false,
+}: TextLinkProps) {
   const content = (
     <>
       {direction === "back" && "← "}
@@ -20,11 +30,24 @@ export function TextLink({ href, onClick, direction, children, className, target
       {direction === "forward" && " →"}
     </>
   )
-  const classes = cn("text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] transition-colors", className)
+  const classes = cn(
+    "text-[11px] text-[var(--tx2)] cursor-pointer hover:text-[var(--tx)] transition-colors",
+    disabled && "opacity-50 cursor-not-allowed hover:text-[var(--tx2)]",
+    className,
+  )
 
-  if (href) {
+  if (href && !disabled) {
     return <Link href={href} target={target} rel={rel} className={classes}>{content}</Link>
   }
 
-  return <button type="button" onClick={onClick} className={cn(classes, "border-none bg-transparent p-0")}>{content}</button>
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={cn(classes, "border-none bg-transparent p-0")}
+    >
+      {content}
+    </button>
+  )
 }

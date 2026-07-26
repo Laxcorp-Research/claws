@@ -1,4 +1,13 @@
-import { vi } from 'vitest';
+import { vi } from 'vitest'
+
+// Radix Tooltip / Popper use ResizeObserver (absent in jsdom).
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}
 
 process.env.ENCRYPTION_MASTER_KEY = 'a'.repeat(64);
 process.env.ENCRYPTION_KEY_VERSION = 'v1';
