@@ -34,6 +34,7 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
     ;(prismaMock.containerState.update as ReturnType<typeof vi.fn>).mockResolvedValue(
       {} as never,
     )
+    ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
     ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (ops: Promise<unknown>[]) => Promise.all(ops),
     )
@@ -78,6 +79,15 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
         }),
       }),
     )
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actionType: "ERROR",
+          action: "Heartbeat missed",
+          metadata: expect.stringContaining("heartbeat_late_wake"),
+        }),
+      }),
+    )
 
     vi.useRealTimers()
   })
@@ -91,6 +101,7 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
     expect(src).toContain("heartbeatMissedAt")
     expect(src).toContain("isPastDueHint")
     expect(src).toContain("rolledHint")
+    expect(src).toContain("heartbeat_late_wake")
   })
 
   it("future hint → does not set miss or roll", async () => {

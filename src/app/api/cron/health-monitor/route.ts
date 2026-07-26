@@ -6,10 +6,13 @@ import type { WorkspaceStatus, HealthStatus } from "@/generated/prisma/client"
 import {
   decideHeartbeatMissed,
   decideMissedWake,
+  decideWokeLateNeverBeat,
   HEARTBEAT_MISS_GRACE_MS,
+  HEARTBEAT_MISS_MAX_AGE_MS,
   heartbeatEvidenceOrClause,
   lastExpectedCronFire,
   OPENCLAW_HEARTBEAT_POLL_MARKER,
+  WOKE_LATE_CATCHUP_GRACE_MS,
 } from "@/lib/hibernation/next-heartbeat"
 import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
 
@@ -688,6 +691,121 @@ export async function GET(req: NextRequest) {
     errors.push(`missed-wake pass: ${err instanceof Error ? err.message : String(err)}`)
   }
 
+  // Lifecycle: WOKE-LATE-NEVER-BEAT — post-cron boot without beat by boot+grace′.
+  // Distinct from missed-wake (no boot) and Watchtower (RUNNING evidence window).
+  let wokeLateNeverBeatFlagged = 0
+  try {
+    const cronArmed = await prisma.workspace.findMany({
+      where: {
+        containerState: {
+          heartbeatCronExpressions: { not: null },
+        },
+      },
+      select: {
+        id: true,
+        heartbeatMissedAt: true,
+        containerState: {
+          select: { heartbeatCronExpressions: true },
+        },
+      },
+    })
+
+    const horizonStart = new Date(startedAt - HEARTBEAT_MISS_MAX_AGE_MS)
+
+    for (const ws of cronArmed) {
+      const cronExprs = ws.containerState?.heartbeatCronExpressions
+      if (!cronExprs || cronExprs === "[]") continue
+
+      const expected = lastExpectedCronFire(cronExprs, new Date(startedAt))
+      if (!expected) continue
+      if (expected.getTime() < horizonStart.getTime()) continue
+
+      let bootAt: Date | null = null
+      try {
+        const boot = await prisma.activityLog.findFirst({
+          where: {
+            workspaceId: ws.id,
+            timestamp: { gte: expected },
+            actionType: "TASK_START",
+            metadata: { contains: "overlay_boot" },
+          },
+          orderBy: { timestamp: "asc" },
+          select: { timestamp: true },
+        })
+        bootAt = boot?.timestamp ?? null
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late boot lookup failed ${String(err)}`)
+        continue
+      }
+      if (!bootAt) continue
+
+      const graceMs = WOKE_LATE_CATCHUP_GRACE_MS
+      const deadline = new Date(bootAt.getTime() + graceMs)
+      let hasBeatByDeadline = false
+      try {
+        const beat = await prisma.activityLog.findFirst({
+          where: {
+            workspaceId: ws.id,
+            timestamp: { gte: expected, lte: deadline },
+            OR: heartbeatEvidenceOrClause(),
+          },
+          select: { id: true },
+        })
+        hasBeatByDeadline = beat !== null
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late beat lookup failed ${String(err)}`)
+        continue
+      }
+
+      const heartbeatMissedAt = decideWokeLateNeverBeat({
+        expectedAt: expected,
+        bootAt,
+        hasBeatEvidenceByDeadline: hasBeatByDeadline,
+        currentFlag: ws.heartbeatMissedAt,
+        nowMs: startedAt,
+        graceMs,
+      })
+
+      if (heartbeatMissedAt === undefined) continue
+      if (ws.heartbeatMissedAt !== null) continue
+
+      try {
+        await prisma.workspace.update({
+          where: { id: ws.id },
+          data: { heartbeatMissedAt },
+        })
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late update failed ${String(err)}`)
+        continue
+      }
+
+      wokeLateNeverBeatFlagged++
+      try {
+        await prisma.activityLog.create({
+          data: {
+            workspaceId: ws.id,
+            action: "Heartbeat missed",
+            detail: `Woke late never beat: expected=${expected.toISOString()} boot=${bootAt.toISOString()} deadline=${deadline.toISOString()}`,
+            actionType: "ERROR",
+            timestamp: new Date(startedAt),
+            metadata: JSON.stringify({
+              eventKind: "heartbeat_woke_late_never_beat",
+              expectedAt: expected.toISOString(),
+              bootAt: bootAt.toISOString(),
+              graceMs,
+            }),
+          },
+        })
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late ActivityLog failed ${String(err)}`)
+      }
+    }
+  } catch (err) {
+    errors.push(
+      `woke-late pass: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
   // Lifecycle P4: stranded GENERATING/PROVISIONING adopter (sibling cadence).
   let strandedAdopted = 0
   try {
@@ -708,6 +826,7 @@ export async function GET(req: NextRequest) {
     escalatedError,
     reclassified,
     missedWakeFlagged,
+    wokeLateNeverBeatFlagged,
     strandedAdopted,
     errorCount: errors.length,
     durationMs,
@@ -724,6 +843,7 @@ export async function GET(req: NextRequest) {
       escalatedError,
       reclassified,
       missedWakeFlagged,
+      wokeLateNeverBeatFlagged,
       strandedAdopted,
       errorCount: errors.length,
       durationMs,
@@ -739,10 +859,12 @@ export const __internal = {
   decideStateSyncStale,
   decideHeartbeatMissed,
   decideMissedWake,
+  decideWokeLateNeverBeat,
   heartbeatIntervalMs,
   UNHEALTHY_THRESHOLD,
   ERROR_THRESHOLD,
   ACTIVITY_SILENCE_MIN_THRESHOLD_MS,
   STATE_SYNC_STALE_THRESHOLD_MS,
   HEARTBEAT_MISS_GRACE_MS,
+  WOKE_LATE_CATCHUP_GRACE_MS,
 }
