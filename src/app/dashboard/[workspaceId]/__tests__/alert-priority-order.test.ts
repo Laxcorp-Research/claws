@@ -78,6 +78,16 @@ describe("Dashboard AlertStack priority total order (Batch E)", () => {
     expect(missIdx).toBeLessThan(silenceIdx)
   })
 
+  it("sticky visibility: heartbeat-missed is NOT RUNNING-only (WIRE-TEST / hibernated class)", () => {
+    // MUTATION: restoring `status === "RUNNING" &&` on showHeartbeatMissed → fail.
+    const gate = src.match(
+      /const showHeartbeatMissed\s*=\s*([\s\S]*?)(?=\n\s*const show)/,
+    )
+    expect(gate?.[1]).toBeTruthy()
+    expect(gate![1]).not.toMatch(/status\s*===\s*["']RUNNING["']/)
+    expect(gate![1]).toContain("heartbeatMissedAt")
+  })
+
   it("DATA class: hibernation-refused shares priority 6 with state-sync-stale and is declared first", () => {
     const refused = extractPriority(src, "hibernation-refused")!
     const stale = extractPriority(src, "state-sync-stale")!
