@@ -22,6 +22,10 @@ import {
   rebuildAllSessionsIndexesFromDisk,
   retainOrphanSessionsEnabled,
 } from './state-sync.mjs';
+import {
+  CATCHUP_OVERLAY_MARKER,
+  runHeartbeatCatchupOnBoot,
+} from './heartbeat-catchup.mjs';
 
 const CREDIT_MODE = process.env.CLAWS_CREDIT_MODE === 'true';
 const GATEWAY_PORT = process.env.PORT || '18789';
@@ -387,6 +391,33 @@ async function main() {
 
   spawnGateway();
 
+  // -10 catch-up-beat: after gateway accepts admin RPC, fire one missed
+  // heartbeat job if the last cron moment is within CATCHUP_GRACE.
+  // Non-blocking — never delays state-sync / steady-state loops.
+  void runHeartbeatCatchupOnBoot({
+    dataDir: OPENCLAW_DATA_DIR,
+    port: GATEWAY_PORT,
+  })
+    .then((result) => {
+      console.log(
+        `[process-manager] heartbeat catch-up (${CATCHUP_OVERLAY_MARKER}):`,
+        JSON.stringify({
+          ran: result.ran,
+          reason: result.reason,
+          expectedAt: result.expectedAt,
+          jobId: result.jobId ?? null,
+          nextFireAt: result.nextFireAt ?? null,
+        }),
+      );
+    })
+    .catch((err) => {
+      console.error(
+        `[process-manager] heartbeat catch-up failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    });
+
   // PR2 (2026-04-28): initial sync delay reduced 2min → 30sec. With state
   // sync now universal (not credit-mode-gated), the faster first snapshot
   // shortens the loss window if a container crashes early in its life.
@@ -425,4 +456,5 @@ export const __test__ = {
   isDirectEntrypoint,
   emitProxySpawnStatus,
   waitForProxyHealth,
+  runHeartbeatCatchupOnBoot,
 };
