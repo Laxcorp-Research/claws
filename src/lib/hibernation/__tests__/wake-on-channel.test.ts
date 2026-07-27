@@ -123,7 +123,13 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
         chatDeviceKeyEncrypted: null,
       })
 
-    sendChat.mockResolvedValue({ ok: true, runId: "r1", status: "started", paired: true })
+    sendChat.mockResolvedValue({
+      ok: true,
+      runId: "r1",
+      status: "started",
+      paired: true,
+      replyText: "Agent status: all green",
+    })
 
     const secret = telegramWebhookSecretToken(WS, BOT)
     const result = await handleTelegramWakeOnChannel(
@@ -133,7 +139,7 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
     await Promise.all(afterJobs)
 
     expect(result).toEqual({ ok: true, handled: "ack_and_wake" })
-    expect(sendMessage).toHaveBeenCalledWith({
+    expect(sendMessage).toHaveBeenNthCalledWith(1, {
       botToken: BOT,
       chatId: 1227037949,
       text: WAKE_ON_CHANNEL_ACK,
@@ -143,10 +149,17 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
     expect(sendChat).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionKey: "telegram:1227037949",
-        deliver: true,
+        deliver: false,
+        awaitReplyMs: 90_000,
         message: "hello from tg",
       }),
     )
+    // Platform delivers agent reply on origin Telegram (same Bot API as ack).
+    expect(sendMessage).toHaveBeenNthCalledWith(2, {
+      botToken: BOT,
+      chatId: 1227037949,
+      text: "Agent status: all green",
+    })
   })
 
   it("MUTATION: drop wakeWorkspace → contract fails", async () => {
@@ -157,6 +170,21 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
     expect(src).toContain("deps.wakeWorkspace")
     expect(src).toContain("WAKE_ON_CHANNEL_ACK")
     expect(src).toContain('after(() =>')
+    expect(src).toContain("resolveWakeReplyDelivery")
+    expect(src).toContain("platform_telegram")
+    expect(src).toContain("deliver: false")
+  })
+
+  it("MUTATION: strip origin-tagging / platform reply send → contract fails", async () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/hibernation/wake-on-channel.ts"),
+      "utf8",
+    )
+    expect(src).toContain("wakeInjectSessionKey")
+    expect(src).toContain("awaitReplyMs")
+    expect(src).toContain("result.replyText")
+    expect(src).toMatch(/deliver:\s*false/)
+    expect(src).not.toMatch(/deliver:\s*true[,}]/)
   })
 
   it("RUNNING inbound → wake NOT called (path untouched)", async () => {

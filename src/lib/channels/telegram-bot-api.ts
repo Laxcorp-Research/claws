@@ -38,20 +38,41 @@ async function telegramCall(
   return { ok: Boolean(json.ok), description: json.description }
 }
 
+/** Telegram Bot API hard limit for sendMessage text. */
+export const TELEGRAM_MAX_MESSAGE_CHARS = 4096
+
+/** Split long agent replies so platform delivery does not silently fail. */
+export function chunkTelegramText(
+  text: string,
+  maxChars: number = TELEGRAM_MAX_MESSAGE_CHARS,
+): string[] {
+  if (text.length === 0) return [""]
+  if (text.length <= maxChars) return [text]
+  const chunks: string[] = []
+  for (let i = 0; i < text.length; i += maxChars) {
+    chunks.push(text.slice(i, i + maxChars))
+  }
+  return chunks
+}
+
 export async function telegramSendMessage(args: {
   botToken: string
   chatId: string | number
   text: string
 }): Promise<boolean> {
   try {
-    const result = await telegramCall(args.botToken, "sendMessage", {
-      chat_id: args.chatId,
-      text: args.text,
-    })
-    if (!result.ok) {
-      log.warn("telegram sendMessage failed", { description: result.description })
+    const chunks = chunkTelegramText(args.text)
+    for (const chunk of chunks) {
+      const result = await telegramCall(args.botToken, "sendMessage", {
+        chat_id: args.chatId,
+        text: chunk,
+      })
+      if (!result.ok) {
+        log.warn("telegram sendMessage failed", { description: result.description })
+        return false
+      }
     }
-    return result.ok
+    return true
   } catch (err) {
     log.warn("telegram sendMessage error", {
       error: err instanceof Error ? err.message : String(err),
