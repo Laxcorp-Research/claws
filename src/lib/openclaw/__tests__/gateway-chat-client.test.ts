@@ -35,6 +35,8 @@ interface MockGatewayOptions {
   ackStatus?: string
   /** Collect chat.send frames for assertions. */
   sends?: Array<Record<string, unknown>>
+  /** When set, emit chat state=final after chat.send ack (awaitReplyMs path). */
+  replyText?: string
 }
 
 class MockSocket implements ChatSocket {
@@ -109,12 +111,32 @@ class MockSocket implements ChatSocket {
     }
     if (frame.method === "chat.send") {
       this.opts.sends?.push(frame.params)
+      const runId = String(frame.params.idempotencyKey)
       this.emit("message", {
         data: JSON.stringify({
           type: "res", id: frame.id, ok: true,
-          payload: { runId: frame.params.idempotencyKey, status: this.opts.ackStatus ?? "started" },
+          payload: { runId, status: this.opts.ackStatus ?? "started" },
         }),
       })
+      if (typeof this.opts.replyText === "string") {
+        queueMicrotask(() => {
+          this.emit("message", {
+            data: JSON.stringify({
+              type: "event",
+              event: "chat",
+              payload: {
+                runId,
+                sessionKey: frame.params.sessionKey,
+                state: "final",
+                message: {
+                  role: "assistant",
+                  content: [{ type: "text", text: this.opts.replyText }],
+                },
+              },
+            }),
+          })
+        })
+      }
     }
   }
 
@@ -130,6 +152,7 @@ function mockGateway(opts: Partial<MockGatewayOptions> = {}) {
     mode: opts.mode ?? "normal",
     ackStatus: opts.ackStatus,
     sends: opts.sends ?? [],
+    replyText: opts.replyText,
   }
   const sockets: MockSocket[] = []
   const factory: ChatSocketFactory = () => {
@@ -265,6 +288,30 @@ describe("gateway-chat-client", () => {
     const gw = mockGateway({ paired: new Set([identity.deviceId]), ackStatus: "ok" })
     const result = await sendChatMessage(baseParams(gw))
     expect(result).toMatchObject({ ok: true, status: "ok" })
+  })
+
+  it("awaitReplyMs collects chat state=final assistant text (wake platform delivery)", async () => {
+    const gw = mockGateway({
+      paired: new Set([identity.deviceId]),
+      replyText: "hello from agent on telegram",
+    })
+    const result = await sendChatMessage({
+      ...baseParams(gw),
+      sessionKey: "telegram:1227037949",
+      deliver: false,
+      awaitReplyMs: 5_000,
+    })
+    expect(result).toEqual({
+      ok: true,
+      runId: "idem-1",
+      status: "started",
+      paired: false,
+      replyText: "hello from agent on telegram",
+    })
+    expect(gw.state.sends![0]).toMatchObject({
+      sessionKey: "telegram:1227037949",
+      deliver: false,
+    })
   })
 
   it("never resolves the native WebSocket when a factory is injected (CI is Node 20)", async () => {
