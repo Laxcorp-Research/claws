@@ -178,6 +178,10 @@ function mockFetch(opts: {
   activitySilenceDetectedAt?: string | null;
   stateSyncStaleDetectedAt?: string | null;
   stateSyncNearCapActive?: boolean;
+  apiKeySource?: string;
+  trialUsed?: boolean;
+  trialEndsAt?: string | null;
+  hasActiveSubscription?: boolean;
 } = {}) {
   const payloadOptions = {
     mcpSessionHealthStatus: opts.mcpSessionHealthStatus ?? null,
@@ -188,13 +192,27 @@ function mockFetch(opts: {
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url.includes("/api/activity/ws-1")) {
-      return { ok: true, json: async () => activityPayload(payloadOptions) } as Response
+      const payload = activityPayload(payloadOptions)
+      if (opts.apiKeySource) {
+        payload.data.workspace.apiKeySource = opts.apiKeySource
+      }
+      return { ok: true, json: async () => payload } as Response
     }
     if (url.includes("/api/deploy/ws-1/status?drift=1")) {
       return { ok: true, json: async () => ({ success: true, data: { drift: { isStale: false, changedAreas: [] } } }) } as Response
     }
     if (url.includes("/api/user/billing")) {
-      return { ok: true, json: async () => ({ success: true, data: { trialUsed: false, trialEndsAt: null, hasActiveSubscription: true } }) } as Response
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            trialUsed: opts.trialUsed ?? false,
+            trialEndsAt: opts.trialEndsAt ?? null,
+            hasActiveSubscription: opts.hasActiveSubscription ?? true,
+          },
+        }),
+      } as Response
     }
     return { ok: true, json: async () => ({ success: true }) } as Response
   })
@@ -229,6 +247,22 @@ describe("DashboardPage MCP session banner", () => {
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled())
     expect(screen.queryByText("Long-tail tools disconnected — redeploy to restore")).toBeNull()
+  })
+
+  it("shows trial-active banner for PLATFORM_CREDIT users (credit mode does not hide trial)", async () => {
+    const trialEndsAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+    mockFetch({
+      mcpSessionHealthStatus: "HEALTHY",
+      apiKeySource: "PLATFORM_CREDIT",
+      trialUsed: true,
+      trialEndsAt,
+      hasActiveSubscription: false,
+    })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText(/Free trial — \d+ days? remaining/)).toBeDefined()
+    expect(screen.getByText("Subscribe to keep your Claws running after the trial ends.")).toBeDefined()
   })
 
   it("renders the activity silence warning and reuses the Force-restart action", async () => {

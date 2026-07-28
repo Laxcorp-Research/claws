@@ -122,15 +122,17 @@ export function BillingDashboard() {
     ? "Available"
     : trialActive
       ? "Active"
-      : "Used"
+      : "Ended"
 
   const trialTrend = !data.trialUsed
-    ? "3 days on first deploy"
+    ? "3-day platform trial on first deploy"
     : trialActive
-      ? `Expires ${formatDate(data.trialEndsAt)}`
-      : data.trialStartedAt
-        ? `Started ${formatDate(data.trialStartedAt)}`
-        : "Trial used"
+      ? `Ends ${formatDate(data.trialEndsAt)} · $79/mo after`
+      : data.hasActiveSubscription
+        ? "Subscribed — trial complete"
+        : data.trialStartedAt
+          ? `Ended · started ${formatDate(data.trialStartedAt)}`
+          : "Trial ended — subscribe to redeploy"
 
   return (
     <div>

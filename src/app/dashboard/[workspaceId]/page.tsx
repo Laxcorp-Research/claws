@@ -37,7 +37,6 @@ import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
-import { isCreditUser } from "@/lib/credits/api-key-source"
 import { extractVersionFromImage, isNewerVersion } from "@/lib/openclaw/version-order"
 import type { ApiKeySource } from "@/generated/prisma/client"
 import type { ChannelId, ChannelLiveState, ChannelStatusMap } from "@/lib/openclaw/channel-config"
@@ -1016,9 +1015,9 @@ export default function DashboardPage() {
       }
     }
 
-    const creditUser = isCreditUser(workspace?.apiKeySource)
-
-    if (!creditUser && trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
+    // Trial banners apply to credit users too — starter credits ≠ platform trial.
+    // MUTATION: restoring `!creditUser &&` hides truth for PLATFORM_CREDIT.
+    if (trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
       const trialEnd = trialInfo.trialEndsAt ? new Date(trialInfo.trialEndsAt) : null
       const now = new Date()
       const trialActive = trialEnd && trialEnd > now
@@ -1033,7 +1032,7 @@ export default function DashboardPage() {
           icon: <Clock className="w-4 h-4" />,
           content: (
             <>
-              <p className="font-medium">Free trial - {daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</p>
+              <p className="font-medium">Free trial — {daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</p>
               <p className="mt-0.5 opacity-80">Subscribe to keep your Claws running after the trial ends.</p>
             </>
           ),
@@ -1052,7 +1051,7 @@ export default function DashboardPage() {
           content: (
             <>
               <p className="font-medium">Your trial has ended</p>
-              <p className="mt-0.5 opacity-80">Subscribe to resume your Claws. Your data and configuration are preserved.</p>
+              <p className="mt-0.5 opacity-80">Subscribe to redeploy your Claws. Workspace configuration is kept.</p>
             </>
           ),
           actions: (
