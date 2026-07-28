@@ -803,4 +803,64 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       expect(prismaMock.toolConnection.update).not.toHaveBeenCalled();
     });
   });
+
+  describe("thinking-signature poison DETECT+LEDGER", () => {
+    it("ledgers thinking_signature_poison once on MESSAGE_SENT cron failure", async () => {
+      defaultMocks();
+      ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_SENT",
+              action:
+                'Sent to telegram: Cron job failed: Invalid `signature` in `thinking` block',
+              detail: "Invalid `signature` in `thinking` block",
+              sessionKey: "agent:twitter-commander:main",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      expect(res.status).toBe(200);
+      const systemCreates = (
+        prismaMock.activityLog.create as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(
+        (c) => c[0]?.data?.actionType === "SYSTEM",
+      );
+      expect(systemCreates.length).toBe(1);
+      expect(systemCreates[0][0].data.metadata).toContain("thinking_signature_poison");
+      expect(systemCreates[0][0].data.metadata).toContain('"needsImageHeal":true');
+      expect(systemCreates[0][0].data.metadata).toContain('"platformRotated":false');
+    });
+
+    it("dedup: prior heal in window → no second SYSTEM ledger", async () => {
+      defaultMocks();
+      ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "prior-heal",
+      });
+
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_SENT",
+              detail: "Invalid `signature` in `thinking` block",
+              sessionKey: "agent:twitter-commander:main",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      const systemCreates = (
+        prismaMock.activityLog.create as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(
+        (c) => c[0]?.data?.actionType === "SYSTEM",
+      );
+      expect(systemCreates.length).toBe(0);
+    });
+  });
 });

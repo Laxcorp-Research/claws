@@ -33,6 +33,11 @@ import {
   isHeartbeatBeatEvidence,
   isHeartbeatShapedActivity,
 } from "@/lib/hibernation/next-heartbeat";
+import {
+  decideThinkingSignatureHeal,
+  THINKING_SIGNATURE_HEAL_DEDUP_MS,
+  THINKING_SIGNATURE_POISON_EVENT_KIND,
+} from "@/lib/trial/thinking-signature-heal";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -226,6 +231,75 @@ function toolConnectionToolkitSlug(toolSlug: string): string {
   return (getToolBySlug(toolSlug)?.composioToolkitId ?? toolSlug).toLowerCase();
 }
 
+/**
+ * DETECT + LEDGER for Anthropic thinking-signature poison (cry-forever crons).
+ * Platform cannot rotate live sessions while RUNNING/WARM — ledger flags
+ * needsImageHeal for the -11 overlay half. Dedup per sessionKey / 24h.
+ */
+export async function ledgerThinkingSignaturePoison(
+  workspaceId: string,
+  event: ValidatedEvent,
+): Promise<void> {
+  const metaError =
+    typeof event.metadata.error === "string" ? event.metadata.error : null;
+  const detectInput = {
+    type: event.type,
+    action: event.action,
+    detail: event.detail,
+    metadataError: metaError,
+    sessionKey: event.sessionKey,
+  };
+  if (decideThinkingSignatureHeal({ event: detectInput, priorHealInWindow: false }).kind === "skip") {
+    return;
+  }
+
+  const since = new Date(Date.now() - THINKING_SIGNATURE_HEAL_DEDUP_MS);
+  const prior = await prisma.activityLog.findFirst({
+    where: {
+      workspaceId,
+      actionType: "SYSTEM",
+      timestamp: { gte: since },
+      AND: [
+        { metadata: { contains: `"eventKind":"${THINKING_SIGNATURE_POISON_EVENT_KIND}"` } },
+        ...(event.sessionKey
+          ? [{ metadata: { contains: event.sessionKey } }]
+          : []),
+      ],
+    },
+    select: { id: true },
+  });
+
+  const decision = decideThinkingSignatureHeal({
+    event: detectInput,
+    priorHealInWindow: Boolean(prior),
+  });
+  if (decision.kind !== "ledger") return;
+
+  await prisma.activityLog.create({
+    data: {
+      workspaceId,
+      agentSlug: event.agentId,
+      action: "Thinking signature poison detected",
+      detail:
+        "Cron/LLM rejected for invalid thinking signature. Platform cannot rotate live sessions — flagged for -11 image self-heal (strip/retry).",
+      actionType: "SYSTEM",
+      timestamp: new Date(),
+      metadata: JSON.stringify({
+        eventKind: THINKING_SIGNATURE_POISON_EVENT_KIND,
+        sessionKey: decision.sessionKey,
+        needsImageHeal: true,
+        platformRotated: false,
+        sourceActionType: event.type,
+        sourceAction: event.action,
+      }),
+    },
+  });
+  log.info("thinking_signature_poison ledgered", {
+    workspaceId,
+    sessionKey: decision.sessionKey,
+  });
+}
+
 async function markNoActiveComposioConnection(
   workspaceId: string,
   event: ValidatedEvent,
@@ -413,6 +487,14 @@ export async function POST(
           error: markErr instanceof Error ? markErr.message : String(markErr),
         });
       }
+      try {
+        await ledgerThinkingSignaturePoison(workspaceId, ev);
+      } catch (healErr) {
+        log.error("activity: failed to ledger thinking-signature poison", {
+          workspaceId,
+          error: healErr instanceof Error ? healErr.message : String(healErr),
+        });
+      }
       // warmIdle honesty: stamp lastChannelMessageAt on external-channel inbound
       // (CHANNEL_IDS + webchat). Lands here — claws-activity-reporter → this route.
       if (isExternalChannelInbound(ev.type, ev.channelId)) {
@@ -500,4 +582,5 @@ export const __internal = {
   resolveApiCostFromMetadata,
   resolveEventAgentId,
   agentIdFromSessionKey,
+  ledgerThinkingSignaturePoison,
 };
