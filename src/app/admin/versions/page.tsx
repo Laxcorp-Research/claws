@@ -13,10 +13,10 @@ import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
 import { NetworkError } from "@/components/shared/network-error"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
-import { compareOpenClawVersions } from "@/lib/openclaw/version-order"
 import {
   isNeverPromotableVersion,
   neverPromotableReason,
+  selectLatestVersionId,
 } from "@/lib/openclaw/version-hygiene"
 import { Tooltip } from "@/components/ui/tooltip"
 
@@ -140,15 +140,25 @@ export default function AdminVersionsPage() {
   }
 
   async function handlePromote(id: string) {
+    const target = versions.find((v) => v.id === id)
+    const versionLabel = target?.version ?? id
     setActionLoading(id)
     try {
       await mutateWithFeedback(
         async () => {
           const res = await fetch(`/api/admin/versions/${id}/promote`, { method: "POST" })
-          if (!res.ok) throw new Error("Could not promote version")
+          const json = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string }
+          }
+          if (!res.ok) {
+            // Surface API detail — do not swallow into a generic catch string.
+            // MUTATION: `throw new Error("Could not promote version")` alone → honesty test fails.
+            throw new Error(json.error?.message || "Could not promote version")
+          }
+          // Refetch before any success verdict snackbar (mutateWithFeedback shows after op).
           await fetchVersions()
         },
-        { message: "Version promoted", errorMessage: "Could not promote version" },
+        { message: `v${versionLabel} is now Stable` },
         (opts) => snackbar?.show(opts),
       )
     } catch (error) {
@@ -220,21 +230,10 @@ export default function AdminVersionsPage() {
 
   // GH #5: derive "Latest" from data instead of the stored isLatest flag, which
   // drifts on prod (the seed sets it on v2.5.0 and the stable/promote path never
-  // updates it). Latest != Stable: the highest version gets "Latest"; the
-  // isStable row gets "Stable"; they can differ. (deployer.resolveDeployImage
+  // updates it). Latest != Stable: the highest *promotable* version gets
+  // "Latest"; never-promotable junk is excluded. (deployer.resolveDeployImage
   // reads isStable, never isLatest.)
-  //
-  // Ordering is by VERSION (compareOpenClawVersions), not releasedAt: a -N
-  // overlay hotfix rebuilt after a higher base (e.g. 2026.5.22-4 rebuilt after
-  // 2026.6.6) gets a later releasedAt but is NOT the latest version — the
-  // version comparator ranks it correctly. Shared with the version-update
-  // banner / per-workspace update guard so "newest" means the same thing
-  // everywhere.
-  const latestVersionId = versions.length
-    ? versions.reduce((newest, v) =>
-        compareOpenClawVersions(v.version, newest.version) > 0 ? v : newest,
-      ).id
-    : null
+  const latestVersionId = selectLatestVersionId(versions)
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-4">
@@ -327,6 +326,7 @@ export default function AdminVersionsPage() {
                       size="sm"
                       variant="primary"
                       loading={actionLoading === v.id}
+                      disabled={actionLoading !== null}
                       onClick={(e) => { e.stopPropagation(); handlePromote(v.id) }}
                     >
                       Promote to Stable

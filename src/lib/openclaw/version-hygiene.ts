@@ -8,8 +8,26 @@
  * MUTATION: dropping the bare-calendar check → promotable-junk tests fail.
  */
 
+import { compareOpenClawVersions } from "@/lib/openclaw/version-order"
+
 /** Seed bootstrap row — never a real Claws runtime promote target. */
 export const SEED_RELIC_VERSION = "2.5.0"
+
+/**
+ * Latest badge id among promotable rows only.
+ * Never-promotable junk (seed relic / bare calendar) must not win "Latest"
+ * even when compareOpenClawVersions ranks them highest.
+ * MUTATION: drop the !isNeverPromotableVersion filter → badge tests fail.
+ */
+export function selectLatestVersionId(
+  versions: ReadonlyArray<{ id: string; version: string }>,
+): string | null {
+  const eligible = versions.filter((v) => !isNeverPromotableVersion(v.version))
+  if (eligible.length === 0) return null
+  return eligible.reduce((newest, v) =>
+    compareOpenClawVersions(v.version, newest.version) > 0 ? v : newest,
+  ).id
+}
 
 /**
  * True when this version string must not be promoted to isStable via admin or

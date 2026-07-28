@@ -74,4 +74,49 @@ describe("admin/versions Latest badge is derived from newest releasedAt (GH #5)"
     expect(neverBadges.length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText("Promote to Stable")).toBeNull()
   })
+
+  it("Latest badge skips never-promotable bare-calendar that outranks a claws rebuild", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: [
+          {
+            id: "v-bare",
+            version: "2026.7.1",
+            isStable: false,
+            isLatest: true,
+            isSecurityPatch: false,
+            dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.7.1",
+            releaseNotes: null,
+            breakingChanges: null,
+            releasedAt: "2026-07-01T00:00:00.000Z",
+            stableAt: null,
+            deploymentCount: 0,
+          },
+          {
+            id: "v-rebuild",
+            version: "2026.5.22-9",
+            isStable: true,
+            isLatest: false,
+            isSecurityPatch: false,
+            dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-9",
+            releaseNotes: null,
+            breakingChanges: null,
+            releasedAt: "2026-05-22T00:00:00.000Z",
+            stableAt: "2026-05-22T01:00:00.000Z",
+            deploymentCount: 2,
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch
+
+    render(<AdminVersionsPage />)
+
+    const badge = await screen.findByText("Latest")
+    const flex = badge.parentElement as HTMLElement
+    expect(flex.textContent).toContain("2026.5.22-9")
+    expect(flex.textContent).not.toContain("2026.7.1")
+  })
 })
