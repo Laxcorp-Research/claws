@@ -35,7 +35,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   const body = await req.json()
-  const allowed = ["name", "status", "apiSpendLimit", "costAlertThreshold", "description"]
+  const allowed = ["name", "status", "apiSpendLimit", "costAlertThreshold", "description", "criticalAlertsOptOut"]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]

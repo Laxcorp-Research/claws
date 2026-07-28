@@ -477,6 +477,8 @@ export async function GET(
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,
       costAlertThreshold: workspace!.costAlertThreshold,
+      // PR-B: critical alerts (Telegram/email) opt-out toggle.
+      criticalAlertsOptOut: workspace!.criticalAlertsOptOut,
       apiKeySource,
     },
     stats: {

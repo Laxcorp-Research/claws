@@ -15,6 +15,7 @@ import {
   WOKE_LATE_CATCHUP_GRACE_MS,
 } from "@/lib/hibernation/next-heartbeat"
 import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
+import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
 
 // PR-3 — Health Monitor cron.
 //
@@ -146,6 +147,22 @@ async function confirmGatewayLive(host: string): Promise<boolean> {
 
 // Audit-mapped probe. Pure(-ish): observable side effects are only the
 // HTTP call(s). Decision about DB writes happens in the caller.
+// PR-B: fire-and-forget critical-alert push — a delivery failure must never
+// fail (or slow down) the health-monitor pass for other workspaces.
+function pushCriticalAlert(
+  workspaceId: string,
+  alertKey: Parameters<typeof sendCriticalAlert>[0]["alertKey"],
+  detail?: string,
+): void {
+  sendCriticalAlert({ workspaceId, alertKey, detail }).catch((err) => {
+    log.error("health-monitor: sendCriticalAlert failed", {
+      workspaceId,
+      alertKey,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+}
+
 async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; httpStatus: number | null }> {
   if (!ws.containerId || !ws.containerHost || !ws.gatewayToken) {
     return { result: { kind: "failure", reason: "no-container" }, httpStatus: null }
@@ -549,6 +566,11 @@ export async function GET(req: NextRequest) {
         } catch (err) {
           errors.push(`${ws.id}: heartbeat-miss ActivityLog failed ${String(err)}`)
         }
+        pushCriticalAlert(
+          ws.id,
+          "heartbeat-missed",
+          `No HEARTBEAT/poll-marker evidence in [${expected.toISOString()}, ${new Date(expected.getTime() + HEARTBEAT_MISS_GRACE_MS).toISOString()}]`,
+        )
       }
     }
 
@@ -556,7 +578,16 @@ export async function GET(req: NextRequest) {
     else if (probe.result.kind === "degraded") degraded++
     else failed++
 
-    if (update.healthStatus === "UNHEALTHY" && before.healthStatus !== "UNHEALTHY") escalatedUnhealthy++
+    if (update.healthStatus === "UNHEALTHY" && before.healthStatus !== "UNHEALTHY") {
+      escalatedUnhealthy++
+      pushCriticalAlert(ws.id, "container-unhealthy", update.lastHealthReason ?? undefined)
+    }
+    if (
+      stateSyncStaleDetectedAt instanceof Date &&
+      ws.stateSyncStaleDetectedAt === null
+    ) {
+      pushCriticalAlert(ws.id, "state-sync-stale")
+    }
     if (update.status === "ERROR" && before.status !== "ERROR") escalatedError++
     // PR-4: count the config-drift self-heal (ERROR → RUNNING on a 4xx probe).
     const wasReclassified = before.status === "ERROR" && update.status === "RUNNING"
@@ -667,6 +698,11 @@ export async function GET(req: NextRequest) {
 
       if (heartbeatMissedAt instanceof Date && ws.heartbeatMissedAt === null) {
         missedWakeFlagged++
+        pushCriticalAlert(
+          ws.id,
+          "heartbeat-missed",
+          `Missed wake: HIBERNATED past nextHeartbeatAt=${nextAt.toISOString()} with no boot since`,
+        )
         try {
           await prisma.activityLog.create({
             data: {
@@ -780,6 +816,11 @@ export async function GET(req: NextRequest) {
       }
 
       wokeLateNeverBeatFlagged++
+      pushCriticalAlert(
+        ws.id,
+        "heartbeat-missed",
+        `Woke late never beat: expected=${expected.toISOString()} boot=${bootAt.toISOString()} deadline=${deadline.toISOString()}`,
+      )
       try {
         await prisma.activityLog.create({
           data: {
@@ -857,6 +898,7 @@ export const __internal = {
   decideUpdate,
   decideActivitySilence,
   decideStateSyncStale,
+  pushCriticalAlert,
   decideHeartbeatMissed,
   decideMissedWake,
   decideWokeLateNeverBeat,

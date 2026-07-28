@@ -33,6 +33,7 @@ import { Tabs } from "@/components/ui/tabs"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { TextLink } from "@/components/ui/text-link"
 import { Select } from "@/components/ui/select"
+import { Toggle } from "@/components/ui/toggle"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useActivityStream } from "@/hooks/use-activity-stream"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
@@ -81,6 +82,8 @@ interface WorkspaceInfo {
   /** PR-3: true while newest near-cap WARNING is unresolved (no post-warn sync below re-arm). */
   stateSyncNearCapActive?: boolean
   apiKeySource?: ApiKeySource
+  /** PR-B: opt out of critical-alert pushes (Telegram, fallback email). Default false (alerts ON). */
+  criticalAlertsOptOut?: boolean
 }
 
 interface AgentInfo {
@@ -510,6 +513,34 @@ export default function DashboardPage() {
       )
     } catch {
       /* error snackbar already shown */
+    }
+  }, [workspaceId, showSnackbar])
+
+  const [criticalAlertsSaving, setCriticalAlertsSaving] = useState(false)
+  const handleCriticalAlertsToggle = useCallback(async (nextEnabled: boolean) => {
+    const optOut = !nextEnabled
+    setCriticalAlertsSaving(true)
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/workspaces/${workspaceId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ criticalAlertsOptOut: optOut }),
+          })
+          if (!res.ok) throw new Error("Could not update alert setting")
+          setWorkspace((prev) => (prev ? { ...prev, criticalAlertsOptOut: optOut } : prev))
+        },
+        {
+          message: optOut ? "Critical alerts to Telegram turned off" : "Critical alerts to Telegram turned on",
+          errorMessage: "Could not update alert setting",
+        },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
+    } finally {
+      setCriticalAlertsSaving(false)
     }
   }, [workspaceId, showSnackbar])
 
@@ -1437,6 +1468,22 @@ export default function DashboardPage() {
                 )}
               </section>
             </div>
+            <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Alerts">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[12px] font-semibold text-[var(--tx)]">Critical alerts to Telegram</h2>
+                  <p className="mt-0.5 text-[11px] text-[var(--tx3)]">
+                    Container unhealthy, repeated cron failures, missed heartbeats, and stale sync push to your Telegram (falls back to email).
+                  </p>
+                </div>
+                <Toggle
+                  aria-label="Critical alerts to Telegram"
+                  checked={!(workspace?.criticalAlertsOptOut ?? false)}
+                  onCheckedChange={handleCriticalAlertsToggle}
+                  disabled={criticalAlertsSaving}
+                />
+              </div>
+            </section>
             <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Recent activity preview">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <h2 className="text-[12px] font-semibold text-[var(--tx)]">Recent activity</h2>
