@@ -59,6 +59,9 @@ export async function POST(req: NextRequest) {
       case "subscription.active":
         await handleSubscriptionActive(data, metadata, customerEmail)
         break
+      case "subscription.on_hold":
+        await handleSubscriptionOnHold(data, metadata, customerEmail)
+        break
       case "subscription.cancelled":
         await handleSubscriptionCancelled(data, metadata, customerEmail)
         break
@@ -205,6 +208,10 @@ async function handleSubscriptionActive(
       data: {
         hasActiveSubscription: true,
         subscriptionId: subscriptionId ?? undefined,
+        subscriptionStatus: "active",
+        // Reset GRACE-24 notify marker so a later cancel→re-expire cycle
+        // can notify again (grace always anchors on notification time).
+        trialExpiryNotifiedAt: null,
         ...(customerId ? { dodoCustomerId: customerId } : {}),
       },
       select: { id: true, hasActiveSubscription: true, subscriptionId: true },
@@ -233,12 +240,43 @@ async function handleSubscriptionCancelled(
 
   if (metadata.type === "claw_platform") {
     const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onSubscriptionCancelled")
-    await prisma.user.update({ where: { id: user.id }, data: { hasActiveSubscription: false } })
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { hasActiveSubscription: false, subscriptionStatus: "cancelled" },
+    })
   }
 
   if (metadata.type === "claw_purchase") {
     const purchase = await prisma.purchase.findFirst({ where: { subscriptionId } })
     if (purchase) await prisma.purchase.update({ where: { id: purchase.id }, data: { subscriptionStatus: "CANCELED" } })
+  }
+}
+
+/**
+ * Renewal dunning. Keep access (hasActiveSubscription=true) and stamp
+ * subscriptionStatus=on_hold so trial-expiry stop SKIPSs (be82fa9 race).
+ * ABSENT before GRACE-24 — webhook :206-:280 had no on_hold writer.
+ */
+async function handleSubscriptionOnHold(
+  data: Record<string, unknown> | undefined,
+  metadata: Record<string, string>,
+  customerEmail: string | undefined,
+) {
+  const subscriptionId = data?.subscription_id as string | undefined
+  if (metadata.type === "claw_platform") {
+    const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onSubscriptionOnHold")
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        hasActiveSubscription: true,
+        subscriptionStatus: "on_hold",
+        ...(subscriptionId ? { subscriptionId } : {}),
+      },
+    })
+    log.info("Subscription on_hold (dunning) — trial-expiry stop will skip", {
+      userId: user.id,
+      subscriptionId: subscriptionId ?? null,
+    })
   }
 }
 
@@ -249,12 +287,14 @@ async function handleSubscriptionFailed(
 ) {
   if (metadata.type === "claw_platform") {
     const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onSubscriptionFailed")
-    await prisma.user.update({ where: { id: user.id }, data: { hasActiveSubscription: false } })
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { hasActiveSubscription: false, subscriptionStatus: "failed" },
+    })
 
     if (metadata.workspaceId) {
       // Wrap in try/catch: failing the webhook (non-200) would trigger Dodo
-      // retry storms. Log and continue; the trial-expiry cron will clean up
-      // any stragglers within 24h.
+      // retry storms. Log and continue.
       try {
         await destroyContainer(metadata.workspaceId)
       } catch (err) {
@@ -277,7 +317,12 @@ async function handleSubscriptionExpired(
     const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onSubscriptionExpired")
     await prisma.user.update({
       where: { id: user.id },
-      data: { hasActiveSubscription: false, subscriptionId: null, subscriptionEndsAt: null },
+      data: {
+        hasActiveSubscription: false,
+        subscriptionId: null,
+        subscriptionEndsAt: null,
+        subscriptionStatus: "expired",
+      },
     })
   }
 }

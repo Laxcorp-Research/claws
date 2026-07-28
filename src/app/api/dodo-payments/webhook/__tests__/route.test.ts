@@ -327,8 +327,36 @@ describe('POST /api/dodo-payments/webhook', () => {
       expect(prismaMock.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'user-downgrade' },
-          data: { hasActiveSubscription: false },
+          data: { hasActiveSubscription: false, subscriptionStatus: 'failed' },
         })
+      );
+    });
+  });
+
+  describe('subscription.on_hold', () => {
+    it('keeps hasActiveSubscription true and stamps subscriptionStatus=on_hold', async () => {
+      mockUserLookup('user-dunning');
+      (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const req = createWebhookRequest({
+        type: 'subscription.on_hold',
+        data: {
+          subscription_id: 'sub_hold',
+          metadata: { type: 'claw_platform', userId: 'user-dunning' },
+        },
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      expect(prismaMock.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-dunning' },
+          data: expect.objectContaining({
+            hasActiveSubscription: true,
+            subscriptionStatus: 'on_hold',
+            subscriptionId: 'sub_hold',
+          }),
+        }),
       );
     });
   });

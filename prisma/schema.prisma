@@ -34,6 +34,13 @@ model User {
   trialUsed       Boolean   @default(false)
   trialStartedAt  DateTime?
   trialEndsAt     DateTime?
+  // GRACE-24: stamped when the expiry-notify email is sent. Stop phase
+  // anchors on this (+24h), never on trialEndsAt — so retroactive first
+  // runs notify now and stop at notify+24h.
+  trialExpiryNotifiedAt DateTime?
+  // Dodo subscription lifecycle: "active" | "on_hold" | "cancelled" |
+  // "failed" | "expired". on_hold = dunning; trial-expiry stop MUST skip.
+  subscriptionStatus String?
 
   creditAccount            CreditAccount?
   apiKeySource             ApiKeySource    @default(NONE)
