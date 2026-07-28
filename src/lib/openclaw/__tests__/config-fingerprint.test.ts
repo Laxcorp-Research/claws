@@ -351,6 +351,24 @@ describe('buildWorkspaceConfigFingerprint', () => {
     expect(after.hash).toBe(before.hash);
   });
 
+  // PR-C #10: alwaysOn is a dashboard-only hibernation-sweep opt-out. It must
+  // NEVER enter the fingerprint — it does not change anything the generator
+  // writes into the deployed container, so flipping it must not trigger a
+  // config-drift banner or redeploy prompt.
+  it('changing only alwaysOn does not change the hash (fingerprint exclusion, PR-C #10)', async () => {
+    const before = await fingerprintFor(baseWorkspace({ alwaysOn: false }));
+    const after = await fingerprintFor(baseWorkspace({ alwaysOn: true }));
+
+    expect(after.hash).toBe(before.hash);
+    expect(after.areas).toEqual(before.areas);
+  });
+
+  it('MUTATION: alwaysOn must not appear in any fingerprint area projection', async () => {
+    const fingerprint = await fingerprintFor(baseWorkspace({ alwaysOn: true }));
+    const serializedAreas = JSON.stringify(fingerprint.areas);
+    expect(serializedAreas).not.toContain('alwaysOn');
+  });
+
   it('changing only connection health metadata does not change the hash', async () => {
     const before = await fingerprintFor(baseWorkspace());
     const next = baseWorkspace();

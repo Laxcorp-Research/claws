@@ -84,6 +84,8 @@ interface WorkspaceInfo {
   apiKeySource?: ApiKeySource
   /** PR-B: opt out of critical-alert pushes (Telegram, fallback email). Default false (alerts ON). */
   criticalAlertsOptOut?: boolean
+  /** PR-C #10: never hibernate this Claw — trades hosting cost for zero cold-start latency. */
+  alwaysOn?: boolean
 }
 
 interface AgentInfo {
@@ -541,6 +543,36 @@ export default function DashboardPage() {
       /* error snackbar already shown */
     } finally {
       setCriticalAlertsSaving(false)
+    }
+  }, [workspaceId, showSnackbar])
+
+  // PR-C #10: "Always on" hibernation sweep opt-out.
+  const [alwaysOnSaving, setAlwaysOnSaving] = useState(false)
+  const handleAlwaysOnToggle = useCallback(async (nextEnabled: boolean) => {
+    setAlwaysOnSaving(true)
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/workspaces/${workspaceId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ alwaysOn: nextEnabled }),
+          })
+          if (!res.ok) throw new Error("Could not update always-on setting")
+          setWorkspace((prev) => (prev ? { ...prev, alwaysOn: nextEnabled } : prev))
+        },
+        {
+          message: nextEnabled
+            ? "Always on — this Claw will never hibernate (higher hosting cost)"
+            : "Always on turned off — this Claw can hibernate again",
+          errorMessage: "Could not update always-on setting",
+        },
+        showSnackbar,
+      )
+    } catch {
+      /* error snackbar already shown */
+    } finally {
+      setAlwaysOnSaving(false)
     }
   }, [workspaceId, showSnackbar])
 
@@ -1481,6 +1513,22 @@ export default function DashboardPage() {
                   checked={!(workspace?.criticalAlertsOptOut ?? false)}
                   onCheckedChange={handleCriticalAlertsToggle}
                   disabled={criticalAlertsSaving}
+                />
+              </div>
+            </section>
+            <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Always on">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[12px] font-semibold text-[var(--tx)]">Always on — never hibernate (higher hosting cost)</h2>
+                  <p className="mt-0.5 text-[11px] text-[var(--tx3)]">
+                    Skips the hibernation sweep entirely, so this Claw stays warm and never has a cold-start delay. You pay for hosting the whole time it&apos;s on.
+                  </p>
+                </div>
+                <Toggle
+                  aria-label="Always on — never hibernate (higher hosting cost)"
+                  checked={workspace?.alwaysOn ?? false}
+                  onCheckedChange={handleAlwaysOnToggle}
+                  disabled={alwaysOnSaving}
                 />
               </div>
             </section>

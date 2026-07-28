@@ -89,6 +89,9 @@ type WorkspaceRow = {
   gatewayToken: string | null
   activitySilenceDetectedAt: Date | null
   stateSyncStaleDetectedAt: Date | null
+  // Cry-wolf guard (PR-C #13): consecutive stale-snapshot probes seen so far.
+  // decideStateSyncStale only sets stateSyncStaleDetectedAt once this reaches 2.
+  stateSyncStaleConsecutive: number
   agents?: Array<{ heartbeatFrequency: string | null }>
   containerState?: { runtimeStateUpdatedAt: Date | null } | null
   deployments?: Array<{ completedAt: Date | null }>
@@ -323,28 +326,58 @@ export function decideActivitySilence(args: {
   return args.currentFlag ?? new Date(args.nowMs)
 }
 
+export type StateSyncStaleDecision = {
+  /** undefined = no DB write needed (value already matches currentFlag). */
+  stateSyncStaleDetectedAt: Date | null | undefined
+  /** undefined = no DB write needed (value already matches currentConsecutive). */
+  stateSyncStaleConsecutive: number | undefined
+}
+
+/**
+ * Cry-wolf guard (PR-C #13): a single stale-snapshot probe must NOT flag —
+ * mid-sync probe timing produces one-off false positives. Requires 2
+ * CONSECUTIVE stale probes before stateSyncStaleDetectedAt is set. A fresh
+ * snapshot on any probe clears both the counter and the flag immediately.
+ * MUTATION: setting the flag on the first stale probe (count>=1) → this
+ * degenerates back to the cry-wolf bug this guard exists to fix.
+ */
 export function decideStateSyncStale(args: {
   status: WorkspaceStatus
   healthStatus: HealthStatus
   runtimeStateUpdatedAt: Date | null
   latestDeploymentCompletedAt: Date | null
   currentFlag: Date | null
+  currentConsecutive: number
   nowMs: number
-}): Date | null | undefined {
-  const clearIfSet = args.currentFlag ? null : undefined
-  if (args.status !== "RUNNING") return clearIfSet
-  if (args.healthStatus !== "HEALTHY") return clearIfSet
+}): StateSyncStaleDecision {
+  const clear = (): StateSyncStaleDecision => ({
+    stateSyncStaleDetectedAt: args.currentFlag !== null ? null : undefined,
+    stateSyncStaleConsecutive: args.currentConsecutive !== 0 ? 0 : undefined,
+  })
+
+  if (args.status !== "RUNNING") return clear()
+  if (args.healthStatus !== "HEALTHY") return clear()
 
   const deployedMs = args.latestDeploymentCompletedAt?.getTime() ?? null
   if (deployedMs !== null && args.nowMs - deployedMs < STATE_SYNC_STALE_THRESHOLD_MS) {
-    return clearIfSet
+    return clear()
   }
 
   const snapshotMs = args.runtimeStateUpdatedAt?.getTime() ?? null
   const isStale = snapshotMs === null || args.nowMs - snapshotMs > STATE_SYNC_STALE_THRESHOLD_MS
-  if (!isStale) return clearIfSet
+  if (!isStale) return clear()
 
-  return args.currentFlag ?? new Date(args.nowMs)
+  const nextConsecutive = args.currentConsecutive + 1
+  const nextFlag: Date | null = nextConsecutive >= 2 ? (args.currentFlag ?? new Date(args.nowMs)) : null
+  const flagChanged =
+    nextFlag === null
+      ? args.currentFlag !== null
+      : args.currentFlag === null || nextFlag.getTime() !== args.currentFlag.getTime()
+
+  return {
+    stateSyncStaleDetectedAt: flagChanged ? nextFlag : undefined,
+    stateSyncStaleConsecutive: nextConsecutive !== args.currentConsecutive ? nextConsecutive : undefined,
+  }
 }
 
 // Pure function: takes the workspace as it is + a probe result, returns
@@ -443,6 +476,7 @@ export async function GET(req: NextRequest) {
       gatewayToken: true,
       activitySilenceDetectedAt: true,
       stateSyncStaleDetectedAt: true,
+      stateSyncStaleConsecutive: true,
       heartbeatMissedAt: true,
       containerState: {
         select: {
@@ -505,12 +539,13 @@ export async function GET(req: NextRequest) {
       currentFlag: ws.activitySilenceDetectedAt,
       nowMs: startedAt,
     })
-    const stateSyncStaleDetectedAt = decideStateSyncStale({
+    const { stateSyncStaleDetectedAt, stateSyncStaleConsecutive } = decideStateSyncStale({
       status: update.status,
       healthStatus: update.healthStatus,
       runtimeStateUpdatedAt: ws.containerState?.runtimeStateUpdatedAt ?? null,
       latestDeploymentCompletedAt: ws.deployments?.[0]?.completedAt ?? null,
       currentFlag: ws.stateSyncStaleDetectedAt,
+      currentConsecutive: ws.stateSyncStaleConsecutive,
       nowMs: startedAt,
     })
 
@@ -604,6 +639,7 @@ export async function GET(req: NextRequest) {
           ...(update.lastHealthCheck ? { lastHealthCheck: update.lastHealthCheck } : {}),
           ...(activitySilenceDetectedAt !== undefined ? { activitySilenceDetectedAt } : {}),
           ...(stateSyncStaleDetectedAt !== undefined ? { stateSyncStaleDetectedAt } : {}),
+          ...(stateSyncStaleConsecutive !== undefined ? { stateSyncStaleConsecutive } : {}),
           ...(heartbeatMissedAt !== undefined ? { heartbeatMissedAt } : {}),
         },
       })

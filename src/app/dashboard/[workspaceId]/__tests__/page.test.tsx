@@ -319,6 +319,27 @@ describe("DashboardPage MCP session banner", () => {
     expect(screen.getAllByText("Sales Claw")).toHaveLength(1)
   })
 
+  // PR-C #10: dashboard "always on" hibernation opt-out toggle.
+  it("toggling Always on PATCHes alwaysOn", async () => {
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    const alwaysOnToggle = await screen.findByRole("switch", {
+      name: "Always on — never hibernate (higher hosting cost)",
+    })
+    expect(alwaysOnToggle.getAttribute("aria-checked")).toBe("false")
+
+    fireEvent.click(alwaysOnToggle)
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/workspaces/ws-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alwaysOn: true }),
+      })
+    })
+  })
+
   it("preview View all switches to the Activity tab", async () => {
     mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
     render(<DashboardPage />)

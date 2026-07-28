@@ -40,6 +40,7 @@ function makeWs(overrides: Partial<Record<string, unknown>> = {}) {
     gatewayToken: "enc:tok",
     activitySilenceDetectedAt: null,
     stateSyncStaleDetectedAt: null,
+    stateSyncStaleConsecutive: 0,
     heartbeatMissedAt: null,
     containerState: {
       runtimeStateUpdatedAt: new Date(),
@@ -539,33 +540,65 @@ describe("decideStateSyncStale", () => {
   const now = new Date("2026-07-05T08:00:00.000Z").getTime();
   const oldDeploy = new Date(now - 30 * 60 * 1000);
 
-  it("MUTATION-anchored: flags when runtime snapshot is older than 15 minutes", () => {
+  // PR-C #13 cry-wolf guard: a lone stale probe increments the counter but
+  // must NOT set the flag yet.
+  it("MUTATION-anchored: first stale probe increments consecutive but does not flag", () => {
     const result = __internal.decideStateSyncStale({
       status: "RUNNING",
       healthStatus: "HEALTHY",
       runtimeStateUpdatedAt: new Date(now - (15 * 60 * 1000) - 1),
       latestDeploymentCompletedAt: oldDeploy,
       currentFlag: null,
+      currentConsecutive: 0,
       nowMs: now,
     });
 
-    expect(result).toEqual(new Date(now));
+    expect(result.stateSyncStaleDetectedAt).toBeUndefined();
+    expect(result.stateSyncStaleConsecutive).toBe(1);
   });
 
-  it("MUTATION-anchored: flags when ContainerState row is missing", () => {
+  // MUTATION: flagging on the FIRST stale probe (count>=1 instead of >=2)
+  // would make this assertion fail — locks in the 2-consecutive requirement.
+  it("MUTATION-anchored: second CONSECUTIVE stale probe sets the flag", () => {
     const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: new Date(now - (15 * 60 * 1000) - 1),
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: null,
+      currentConsecutive: 1,
+      nowMs: now,
+    });
+
+    expect(result.stateSyncStaleDetectedAt).toEqual(new Date(now));
+    expect(result.stateSyncStaleConsecutive).toBe(2);
+  });
+
+  it("MUTATION-anchored: flags when ContainerState row is missing, after 2 consecutive probes", () => {
+    const first = __internal.decideStateSyncStale({
       status: "RUNNING",
       healthStatus: "HEALTHY",
       runtimeStateUpdatedAt: null,
       latestDeploymentCompletedAt: oldDeploy,
       currentFlag: null,
+      currentConsecutive: 0,
       nowMs: now,
     });
+    expect(first.stateSyncStaleDetectedAt).toBeUndefined();
 
-    expect(result).toEqual(new Date(now));
+    const second = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: null,
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: null,
+      currentConsecutive: first.stateSyncStaleConsecutive ?? 0,
+      nowMs: now,
+    });
+    expect(second.stateSyncStaleDetectedAt).toEqual(new Date(now));
   });
 
-  it("sets first detection only when already flagged", () => {
+  it("keeps the original detection timestamp on a third+ consecutive stale probe", () => {
     const existing = new Date(now - 60_000);
     const result = __internal.decideStateSyncStale({
       status: "RUNNING",
@@ -573,26 +606,46 @@ describe("decideStateSyncStale", () => {
       runtimeStateUpdatedAt: new Date(now - 20 * 60 * 1000),
       latestDeploymentCompletedAt: oldDeploy,
       currentFlag: existing,
+      currentConsecutive: 2,
       nowMs: now,
     });
 
-    expect(result).toBe(existing);
+    // Flag already set and unchanged → no rewrite needed.
+    expect(result.stateSyncStaleDetectedAt).toBeUndefined();
+    expect(result.stateSyncStaleConsecutive).toBe(3);
   });
 
-  it("clears when runtime snapshot is fresh", () => {
+  it("clears both flag and consecutive count when runtime snapshot is fresh", () => {
     const result = __internal.decideStateSyncStale({
       status: "RUNNING",
       healthStatus: "HEALTHY",
       runtimeStateUpdatedAt: new Date(now - 5 * 60 * 1000),
       latestDeploymentCompletedAt: oldDeploy,
       currentFlag: new Date(now - 60_000),
+      currentConsecutive: 2,
       nowMs: now,
     });
 
-    expect(result).toBeNull();
+    expect(result.stateSyncStaleDetectedAt).toBeNull();
+    expect(result.stateSyncStaleConsecutive).toBe(0);
   });
 
-  it("PAUSED and STOPPED never flag", () => {
+  it("does not rewrite already-cleared flag/count on a fresh snapshot", () => {
+    const result = __internal.decideStateSyncStale({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      runtimeStateUpdatedAt: new Date(now - 5 * 60 * 1000),
+      latestDeploymentCompletedAt: oldDeploy,
+      currentFlag: null,
+      currentConsecutive: 0,
+      nowMs: now,
+    });
+
+    expect(result.stateSyncStaleDetectedAt).toBeUndefined();
+    expect(result.stateSyncStaleConsecutive).toBeUndefined();
+  });
+
+  it("PAUSED and STOPPED never flag and reset any in-flight consecutive count", () => {
     for (const status of ["PAUSED", "STOPPED"] as const) {
       const result = __internal.decideStateSyncStale({
         status,
@@ -600,10 +653,12 @@ describe("decideStateSyncStale", () => {
         runtimeStateUpdatedAt: null,
         latestDeploymentCompletedAt: oldDeploy,
         currentFlag: null,
+        currentConsecutive: 1,
         nowMs: now,
       });
 
-      expect(result).toBeUndefined();
+      expect(result.stateSyncStaleDetectedAt).toBeUndefined();
+      expect(result.stateSyncStaleConsecutive).toBe(0);
     }
   });
 
@@ -614,10 +669,12 @@ describe("decideStateSyncStale", () => {
       runtimeStateUpdatedAt: null,
       latestDeploymentCompletedAt: oldDeploy,
       currentFlag: null,
+      currentConsecutive: 0,
       nowMs: now,
     });
 
-    expect(result).toBeUndefined();
+    expect(result.stateSyncStaleDetectedAt).toBeUndefined();
+    expect(result.stateSyncStaleConsecutive).toBeUndefined();
   });
 
   it("workspaces deployed less than 15 minutes ago never flag", () => {
@@ -627,10 +684,12 @@ describe("decideStateSyncStale", () => {
       runtimeStateUpdatedAt: null,
       latestDeploymentCompletedAt: new Date(now - 14 * 60 * 1000),
       currentFlag: null,
+      currentConsecutive: 0,
       nowMs: now,
     });
 
-    expect(result).toBeUndefined();
+    expect(result.stateSyncStaleDetectedAt).toBeUndefined();
+    expect(result.stateSyncStaleConsecutive).toBeUndefined();
   });
 });
 
@@ -1169,13 +1228,38 @@ describe("GET end-to-end", () => {
     expect(update.data.activitySilenceDetectedAt).toBeInstanceOf(Date);
   });
 
-  it("sets stateSyncStaleDetectedAt for healthy workspace with stale runtime snapshot", async () => {
+  // PR-C #13: cry-wolf guard — the FIRST stale probe must only bump the
+  // consecutive counter, not set the flag.
+  it("increments stateSyncStaleConsecutive (no flag yet) on the first stale probe", async () => {
     (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       makeWs({
         id: "ws-stale-sync",
         containerState: { runtimeStateUpdatedAt: new Date(Date.now() - 20 * 60 * 1000) },
         deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
         stateSyncStaleDetectedAt: null,
+        stateSyncStaleConsecutive: 0,
+      }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.healthStatus).toBe("HEALTHY");
+    expect(update.data.stateSyncStaleDetectedAt).toBeUndefined();
+    expect(update.data.stateSyncStaleConsecutive).toBe(1);
+  });
+
+  it("sets stateSyncStaleDetectedAt on the SECOND consecutive stale probe", async () => {
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({
+        id: "ws-stale-sync",
+        containerState: { runtimeStateUpdatedAt: new Date(Date.now() - 20 * 60 * 1000) },
+        deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
+        stateSyncStaleDetectedAt: null,
+        stateSyncStaleConsecutive: 1,
       }),
     ]);
     (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
@@ -1187,15 +1271,17 @@ describe("GET end-to-end", () => {
     const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(update.data.healthStatus).toBe("HEALTHY");
     expect(update.data.stateSyncStaleDetectedAt).toBeInstanceOf(Date);
+    expect(update.data.stateSyncStaleConsecutive).toBe(2);
   });
 
-  it("sets stateSyncStaleDetectedAt for healthy workspace missing ContainerState row", async () => {
+  it("sets stateSyncStaleDetectedAt for healthy workspace missing ContainerState row, after 2 consecutive probes", async () => {
     (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       makeWs({
         id: "ws-missing-state",
         containerState: null,
         deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
         stateSyncStaleDetectedAt: null,
+        stateSyncStaleConsecutive: 1,
       }),
     ]);
     (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
@@ -1208,13 +1294,14 @@ describe("GET end-to-end", () => {
     expect(update.data.stateSyncStaleDetectedAt).toBeInstanceOf(Date);
   });
 
-  it("clears stateSyncStaleDetectedAt when runtime snapshot is fresh", async () => {
+  it("clears stateSyncStaleDetectedAt and stateSyncStaleConsecutive when runtime snapshot is fresh", async () => {
     (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       makeWs({
         id: "ws-sync-recovered",
         containerState: { runtimeStateUpdatedAt: new Date() },
         deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
         stateSyncStaleDetectedAt: new Date(Date.now() - 60 * 60 * 1000),
+        stateSyncStaleConsecutive: 2,
       }),
     ]);
     (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
@@ -1225,6 +1312,7 @@ describe("GET end-to-end", () => {
 
     const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(update.data.stateSyncStaleDetectedAt).toBeNull();
+    expect(update.data.stateSyncStaleConsecutive).toBe(0);
   });
 
   it("clears activitySilenceDetectedAt when newer activity appears", async () => {

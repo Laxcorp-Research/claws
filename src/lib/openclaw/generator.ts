@@ -1485,6 +1485,122 @@ function generateAgentsMd(
   }
 }
 
+type WorkflowEdge = { from: string; to: string; condition: string };
+
+/**
+ * WIRE-LITE: AgentConnection.condition → the kebab-case label used in the
+ * orchestrator's generated "## Workflow" section. Falls back to a generic
+ * kebab-cased rendering of any future enum member so an unmapped value
+ * degrades gracefully instead of throwing.
+ */
+const CONNECTION_CONDITION_LABELS: Record<string, string> = {
+  ON_COMPLETE: 'on-complete',
+  ON_APPROVAL: 'on-approval',
+  ON_REJECTION: 'on-rejection',
+  ON_SCHEDULE: 'on-schedule',
+  ON_HUMAN_APPROVE: 'on-human-approve',
+  CUSTOM: 'custom',
+};
+
+function formatConnectionCondition(condition: string): string {
+  return CONNECTION_CONDITION_LABELS[condition] ?? condition.toLowerCase().replace(/_/g, '-');
+}
+
+/**
+ * WIRE-LITE: collects every AgentConnection edge visible to the orchestrator's
+ * team. Each agent's own `outgoingConnections` (loaded once by
+ * generateWorkspace) only carries {targetAgent, condition} — the source name
+ * comes from the agent the loop is currently on.
+ */
+function collectWorkflowEdges(allAgents: AgentWithRelations[]): WorkflowEdge[] {
+  const edges: WorkflowEdge[] = [];
+  for (const agent of allAgents) {
+    for (const conn of agent.outgoingConnections) {
+      edges.push({ from: agent.name, to: conn.targetAgent.name, condition: conn.condition });
+    }
+  }
+  return edges;
+}
+
+/**
+ * Stable topological order (Kahn's algorithm) over every agent name touched
+ * by `edges`, seeded with `seedOrder` (Builder declaration order: Orchestrator,
+ * Workers, Critic) so ties — and any residual cycle the Builder canvas
+ * allowed — fall back to that order instead of Set-iteration order.
+ */
+function topoSortAgentNames(seedOrder: string[], edges: WorkflowEdge[]): string[] {
+  const nodes = Array.from(new Set([...seedOrder, ...edges.flatMap((e) => [e.from, e.to])]));
+  const indexOf = new Map(seedOrder.map((name, i) => [name, i]));
+  const bySeed = (a: string, b: string) => (indexOf.get(a) ?? Infinity) - (indexOf.get(b) ?? Infinity);
+
+  const inDegree = new Map(nodes.map((n) => [n, 0]));
+  const adjacency = new Map<string, string[]>(nodes.map((n) => [n, []]));
+  for (const edge of edges) {
+    adjacency.get(edge.from)?.push(edge.to);
+    inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+  }
+
+  const queue = nodes.filter((n) => inDegree.get(n) === 0).sort(bySeed);
+  const order: string[] = [];
+  while (queue.length > 0) {
+    const next = queue.shift()!;
+    order.push(next);
+    for (const target of (adjacency.get(next) ?? []).slice().sort(bySeed)) {
+      const remaining = (inDegree.get(target) ?? 0) - 1;
+      inDegree.set(target, remaining);
+      if (remaining === 0) {
+        queue.push(target);
+        queue.sort(bySeed);
+      }
+    }
+  }
+
+  // Cycle fallback: nodes never dequeued (in-degree never hit 0) are appended
+  // in seed order rather than silently dropped from the Workflow section.
+  if (order.length < nodes.length) {
+    const seen = new Set(order);
+    for (const n of nodes) {
+      if (!seen.has(n)) order.push(n);
+    }
+  }
+
+  return order;
+}
+
+/**
+ * WIRE-LITE: renders the "## Workflow" section from the Builder canvas's
+ * AgentConnection edges — topological order, human-readable conditions.
+ * Empty when the team has no connections wired (nothing to show).
+ * Supplements the template prose below; does NOT touch openclaw.json's
+ * `subagents.allowAgents` (that stays purely spawn-permission, unrelated to
+ * this prose guidance).
+ * MUTATION: deleting this call from generateOrchestratorAgentsMd → the
+ * generator.test.ts snapshot test for the edge-graph section fails.
+ */
+function generateWorkflowSection(allAgents: AgentWithRelations[]): string {
+  const edges = collectWorkflowEdges(allAgents);
+  if (edges.length === 0) return '';
+
+  const seedOrder = allAgents.map((a) => a.name);
+  const order = topoSortAgentNames(seedOrder, edges);
+  const rank = new Map(order.map((name, i) => [name, i]));
+  const sortedEdges = [...edges].sort((a, b) => {
+    const rankDiff = (rank.get(a.from) ?? 0) - (rank.get(b.from) ?? 0);
+    return rankDiff !== 0 ? rankDiff : (rank.get(a.to) ?? 0) - (rank.get(b.to) ?? 0);
+  });
+
+  const lines = sortedEdges.map(
+    (edge) => `- **${edge.from}** → **${edge.to}** (${formatConnectionCondition(edge.condition)})`,
+  );
+
+  return `\n## Workflow
+
+These handoffs come directly from the connections drawn on the Builder canvas (topological order):
+
+${lines.join('\n')}
+`;
+}
+
 function generateOrchestratorAgentsMd(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
@@ -1495,6 +1611,7 @@ function generateOrchestratorAgentsMd(
     .join('\n');
 
   const criticId = toAgentId(critic.name);
+  const workflowSection = generateWorkflowSection([orchestrator, ...workers, critic]);
 
   return `# Session Start Protocol
 
@@ -1511,7 +1628,7 @@ You manage the following specialized agents:
 
 ${workerList}
 - **${critic.name}** (agent ID: \`${criticId}\`): Quality reviewer - all work must pass through them
-
+${workflowSection}
 # Task Delegation - Using sessions_spawn
 
 When you need a Worker to do something, use \`sessions_spawn\` to create a subagent task:
@@ -1559,6 +1676,7 @@ When triggered by heartbeat:
 1. Read HEARTBEAT.md for scheduled tasks
 2. For each due task: decompose, spawn Workers, collect results, review via Critic
 3. If nothing needs attention: respond HEARTBEAT_OK
+4. MANDATORY final step, every heartbeat run — including the step 3 no-op case: write memory/[today's date].md summarizing what happened this run, and update memory/MEMORY.md with any long-term learnings. Do not end a heartbeat run without writing memory — it is the human's only audit trail for unattended runs.
 `;
 }
 

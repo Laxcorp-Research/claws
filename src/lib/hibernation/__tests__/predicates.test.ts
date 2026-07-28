@@ -67,6 +67,30 @@ describe("runningIdleWhere", () => {
     expect(where.containerPhase).toBe("RUNNING")
     expect(where.lastActiveAt).toHaveProperty("lt")
   })
+
+  it("excludes alwaysOn workspaces (PR-C #10)", () => {
+    const where = runningIdleWhere(new Date())
+    expect(where.workspace).toEqual({ alwaysOn: false })
+  })
+})
+
+describe("warmIdleWhere alwaysOn exemption (PR-C #10)", () => {
+  it("excludes alwaysOn workspaces", () => {
+    const where = warmIdleWhere(new Date())
+    expect(where.workspace).toEqual({ alwaysOn: false })
+  })
+
+  it("MUTATION: dropping the alwaysOn filter → alwaysOn claws would hibernate", () => {
+    const src = readFileSync(join(__dirname, "../predicates.ts"), "utf8")
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
+    expect(code).toMatch(/runningIdleWhere[\s\S]*workspace: \{ alwaysOn: false \}/)
+    expect(code).toMatch(/warmIdleWhere[\s\S]*workspace: \{ alwaysOn: false \}/)
+  })
+
+  it("wakeHibernatedWhere does NOT filter alwaysOn (wake is always the safe direction)", () => {
+    const where = wakeHibernatedWhere()
+    expect(where).not.toHaveProperty("workspace")
+  })
 })
 
 describe("imminent-beat exemption (HEARTBEAT_IMMINENT_EXEMPT_MS)", () => {
