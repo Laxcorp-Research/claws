@@ -20,6 +20,7 @@
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { prisma } from '@/lib/db';
+import { supersedePriorDeployments } from '@/lib/deploy/supersede-deployments';
 import { encrypt, decrypt, decryptAndMaybeReencrypt } from '@/lib/encryption';
 import {
   requireActivityEndpoint,
@@ -296,6 +297,9 @@ export async function deployToCloud(workspaceId: string): Promise<{
       }),
     },
   });
+
+  // Retire prior COMPLETED rows so force-update / admin counts target current only.
+  await supersedePriorDeployments(workspaceId, deployment.id);
 
   await clearDeployEvents(workspaceId).catch(() => {});
 

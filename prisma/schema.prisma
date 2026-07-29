@@ -782,6 +782,8 @@ enum DeploymentStatus {
   COMPLETED
   FAILED
   ROLLED_BACK
+  /// Prior success row retired by hibernate/replace; structurally excluded from force-update "current" selection after DISTINCT-latest.
+  SUPERSEDED
 }
 
 // ─── ACTIVITY LOGS ──────────────────────────────────────

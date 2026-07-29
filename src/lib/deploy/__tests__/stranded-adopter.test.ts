@@ -36,6 +36,7 @@ describe("DeploymentStatus census (P4.1)", () => {
       "COMPLETED",
       "FAILED",
       "ROLLED_BACK",
+      "SUPERSEDED",
     ])
     // Schema has no STARTING_GATEWAY — gateway boot uses STARTING.
     expect(NON_TERMINAL_DEPLOYMENT_STATUSES).not.toContain("STARTING_GATEWAY")

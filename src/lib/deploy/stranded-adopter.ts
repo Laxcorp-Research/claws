@@ -17,13 +17,14 @@ export function strandedDeployMaxAgeMs(): number {
  * DeploymentStatus enum (prisma) — terminal vs in-flight.
  * There is no STARTING_GATEWAY in the schema; gateway boot uses STARTING.
  *
- * Terminal: COMPLETED | FAILED | ROLLED_BACK
+ * Terminal: COMPLETED | FAILED | ROLLED_BACK | SUPERSEDED
  * Non-terminal (adoptable past age): everything else.
  */
 export const TERMINAL_DEPLOYMENT_STATUSES = [
   "COMPLETED",
   "FAILED",
   "ROLLED_BACK",
+  "SUPERSEDED",
 ] as const
 
 export const NON_TERMINAL_DEPLOYMENT_STATUSES = [
