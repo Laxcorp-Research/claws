@@ -9,6 +9,11 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  healThinkingSignatureOnce,
+  isThinkingSignatureReject,
+} from './thinking-signature-heal.mjs';
+import { postActivityEvent, OPENCLAW_DATA_DIR } from './state-sync.mjs';
 
 // ─── Config ─────────────────────────────────────────────
 
@@ -276,26 +281,111 @@ async function handleApiCall(req, res, body, parsed) {
     return;
   }
 
-  try {
-    const anthropicRes = await fetch(`${REAL_ANTHROPIC_URL}${req.url}`, {
+  const upstreamHeaders = {
+    'Content-Type': 'application/json',
+    'x-api-key': MASTER_KEY,
+    'anthropic-version': req.headers['anthropic-version'] || '2023-06-01',
+    ...(req.headers['anthropic-beta'] ? { 'anthropic-beta': req.headers['anthropic-beta'] } : {}),
+  };
+
+  async function callAnthropic(requestBodyBuf) {
+    return fetch(`${REAL_ANTHROPIC_URL}${req.url}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': MASTER_KEY,
-        'anthropic-version': req.headers['anthropic-version'] || '2023-06-01',
-        ...(req.headers['anthropic-beta'] ? { 'anthropic-beta': req.headers['anthropic-beta'] } : {}),
-      },
-      body: body,
+      headers: upstreamHeaders,
+      body: requestBodyBuf,
       signal: AbortSignal.timeout(600_000),
     });
+  }
 
+  try {
+    let anthropicRes = await callAnthropic(body);
     const contentType = anthropicRes.headers.get('Content-Type') || '';
 
     if (isStreaming && contentType.includes('text/event-stream')) {
       await handleStreamingResponse(req, res, anthropicRes, model, estimatedCost, body);
-    } else {
-      await handleBufferedResponse(req, res, anthropicRes, model, estimatedCost);
+      return;
     }
+
+    // -11: buffered path — on thinking-signature reject, strip + retry ONCE.
+    let responseBody = await anthropicRes.text();
+    let bodyJson = null;
+    try {
+      bodyJson = JSON.parse(responseBody);
+    } catch {
+      bodyJson = null;
+    }
+
+    if (
+      isThinkingSignatureReject({
+        status: anthropicRes.status,
+        bodyJson,
+        bodyText: responseBody,
+      })
+    ) {
+      const sessionKey =
+        (typeof req.headers['x-session-key'] === 'string' && req.headers['x-session-key']) ||
+        (typeof req.headers['x-agent-id'] === 'string' && req.headers['x-agent-id']) ||
+        'anthropic-default';
+      const heal = await healThinkingSignatureOnce({
+        reject: {
+          status: anthropicRes.status,
+          bodyJson,
+          bodyText: responseBody,
+        },
+        requestBody: parsed,
+        sessionKey,
+        dataDir: OPENCLAW_DATA_DIR,
+        retryFetch: async (strippedBody) => {
+          const retryRes = await callAnthropic(Buffer.from(JSON.stringify(strippedBody)));
+          const retryText = await retryRes.text();
+          let retryJson = null;
+          try {
+            retryJson = JSON.parse(retryText);
+          } catch {
+            retryJson = null;
+          }
+          return {
+            status: retryRes.status,
+            bodyText: retryText,
+            bodyJson: retryJson,
+            headers: retryRes.headers,
+          };
+        },
+        ledger: (event) => postActivityEvent(event),
+      });
+
+      if (heal.healed && heal.retry) {
+        console.log(
+          `[credit-proxy] thinking-signature heal: stripped=${heal.blocksStripped} sessionKey=${sessionKey}`,
+        );
+        anthropicRes = {
+          status: heal.retry.status,
+          headers: heal.retry.headers || {
+            get: () => 'application/json',
+          },
+        };
+        responseBody = heal.retry.bodyText;
+        // Recompute usage from healed response below via handleBufferedResponseFromText
+        await handleBufferedResponseFromText(
+          req,
+          res,
+          anthropicRes,
+          model,
+          estimatedCost,
+          responseBody,
+        );
+        return;
+      }
+    }
+
+    await handleBufferedResponseFromText(
+      req,
+      res,
+      anthropicRes,
+      model,
+      estimatedCost,
+      responseBody,
+    );
   } catch (err) {
     creditWindow.refund(estimatedCost);
     console.error('[credit-proxy] Anthropic request failed:', err.message);
@@ -395,7 +485,24 @@ async function handleStreamingResponse(req, res, anthropicRes, model, estimatedC
 
 async function handleBufferedResponse(req, res, anthropicRes, model, estimatedCost) {
   const responseBody = await anthropicRes.text();
+  await handleBufferedResponseFromText(
+    req,
+    res,
+    anthropicRes,
+    model,
+    estimatedCost,
+    responseBody,
+  );
+}
 
+async function handleBufferedResponseFromText(
+  req,
+  res,
+  anthropicRes,
+  model,
+  estimatedCost,
+  responseBody,
+) {
   let inputTokens = 0;
   let outputTokens = 0;
 
@@ -428,8 +535,13 @@ async function handleBufferedResponse(req, res, anthropicRes, model, estimatedCo
     timestamp: new Date().toISOString(),
   });
 
+  const contentType =
+    typeof anthropicRes.headers?.get === 'function'
+      ? anthropicRes.headers.get('Content-Type') || 'application/json'
+      : 'application/json';
+
   res.writeHead(anthropicRes.status, {
-    'Content-Type': anthropicRes.headers.get('Content-Type') || 'application/json',
+    'Content-Type': contentType,
   });
   res.end(responseBody);
 }
@@ -545,6 +657,9 @@ export const __test__ = {
   UsageReporter,
   isDirectEntrypoint,
   shutdown,
+  handleBufferedResponseFromText,
+  isThinkingSignatureReject,
+  healThinkingSignatureOnce,
 };
 
 // ─── Start Server (entrypoint only — vitest imports must not listen) ───
