@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
+import { supersedePriorDeployments } from "@/lib/deploy/supersede-deployments"
 import { deployToCloud, syncThenDestroy, type SyncThenDestroyOptions } from "@/lib/openclaw/deployer"
 import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
 import { isPastDueHint } from "@/lib/hibernation/wake-geometry"
@@ -137,6 +138,11 @@ export async function hibernateWorkspace(
         },
       }),
     ])
+
+    // Lifecycle closure: hibernate retires the live COMPLETED Deployment row.
+    // Wake mints a new row via deployToCloud; without this, COMPLETED zombies
+    // accumulate across hibernate/wake and inflate force-update fanout.
+    await supersedePriorDeployments(workspaceId)
 
     // P5: arm Telegram wake-on-channel webhook so inbound isn't a dead-drop.
     try {

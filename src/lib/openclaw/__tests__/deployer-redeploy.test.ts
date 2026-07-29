@@ -171,6 +171,7 @@ beforeEach(() => {
   ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
   ;(prismaMock.deployment.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "dep-1" })
   ;(prismaMock.deployment.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
+  ;(prismaMock.deployment.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 })
   ;(prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ version: 0 })
 })
 
