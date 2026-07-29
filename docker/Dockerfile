@@ -4,11 +4,13 @@ FROM ${BASE_IMAGE}
 # -8 emission-version: bake overlay source SHA (hash of docker/+container/
 # at image build) so the reporter can emit it on boot. Workflow passes
 # CLAWS_OVERLAY_SHA=steps.overlay.outputs.sha.
+# -10 catch-up-beat: heartbeat-catchup.mjs + process-manager boot hook.
 ARG CLAWS_OVERLAY_SHA=
 ENV CLAWS_OVERLAY_SHA=${CLAWS_OVERLAY_SHA}
 
 COPY container/process-manager.mjs /usr/local/bin/process-manager.mjs
 COPY container/credit-proxy.mjs /usr/local/bin/credit-proxy.mjs
+COPY container/heartbeat-catchup.mjs /usr/local/bin/heartbeat-catchup.mjs
 
 # PR-1 (sync-now): shared runtime-state sync module — ONE source file copied to
 # two runtime locations so both importers resolve a clean relative path:

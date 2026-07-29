@@ -34,6 +34,13 @@ model User {
   trialUsed       Boolean   @default(false)
   trialStartedAt  DateTime?
   trialEndsAt     DateTime?
+  // GRACE-24: stamped when the expiry-notify email is sent. Stop phase
+  // anchors on this (+24h), never on trialEndsAt — so retroactive first
+  // runs notify now and stop at notify+24h.
+  trialExpiryNotifiedAt DateTime?
+  // Dodo subscription lifecycle: "active" | "on_hold" | "cancelled" |
+  // "failed" | "expired". on_hold = dunning; trial-expiry stop MUST skip.
+  subscriptionStatus String?
 
   creditAccount            CreditAccount?
   apiKeySource             ApiKeySource    @default(NONE)
@@ -231,12 +238,29 @@ model Workspace {
   mcpSessionLastError         String?
   activitySilenceDetectedAt   DateTime?
   stateSyncStaleDetectedAt    DateTime?
+  // Cry-wolf guard (PR-C #13): consecutive stale-snapshot probes seen by the
+  // health monitor. stateSyncStaleDetectedAt is only set once this reaches 2
+  // — a single blip (e.g. mid-sync probe timing) must not banner. Reset to 0
+  // the moment a probe sees a fresh snapshot. See decideStateSyncStale in
+  // src/app/api/cron/health-monitor/route.ts.
+  stateSyncStaleConsecutive   Int       @default(0)
   // Lifecycle P2: Watchtower missed-window flag (cron heartbeat). Distinct
   // from activitySilenceDetectedAt. Banner feeds AlertStack ops-gap slot (4).
   heartbeatMissedAt           DateTime?
   // Lifecycle P3: auto-hibernate refused (sync-fail / stale snapshot).
   // Banner feeds AlertStack DATA class slot (priority 6 with state-sync-stale).
   hibernationRefusedAt        DateTime?
+  // PR-C #10: opt out of the hibernation sweep entirely (higher hosting cost,
+  // zero cold-start latency). Dashboard-only toggle — deliberately EXCLUDED
+  // from the config-fingerprint workspace projection (does not affect the
+  // generated container config, only the hibernation cron's candidate query).
+  // See src/lib/hibernation/predicates.ts (runningIdleWhere / warmIdleWhere).
+  alwaysOn                    Boolean   @default(false)
+
+  // PR-B: opt out of critical-alert pushes (Telegram, fallback email) for
+  // container-unhealthy / cron-job-failed / heartbeat-missed / state-sync-stale.
+  // Default false → alerts ON by default. See src/lib/alerts/critical-alert-push.ts.
+  criticalAlertsOptOut        Boolean   @default(false)
 
   // ─── PR1: per-workspace subscription state ──────────────────
   // Part of the billing-model overhaul (PR1-9 sequence). This PR only

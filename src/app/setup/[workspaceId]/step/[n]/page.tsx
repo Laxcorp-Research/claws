@@ -2207,22 +2207,30 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">Deploy your Claw</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
-      {creditUser ? (
-        <p className="text-[10px] text-[var(--ac-text)] font-medium mb-3.5">Powered by Claws Starter Credits — no payment needed.</p>
-      ) : eligibility?.isFirstDeploy ? (
-        <p className="text-[10px] text-[var(--ac-text)] font-medium mb-3.5">3-day free trial - no payment required. $79/mo after trial.</p>
-      ) : (
-        <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
+      {creditUser && (
+        <p className="text-[10px] text-[var(--ac-text)] font-medium mb-1">
+          Powered by Claws Starter Credits — no payment needed.
+        </p>
       )}
+      {(eligibility?.isFirstDeploy || eligibility?.reason === "trial_active") && (
+        <p className="text-[10px] text-[var(--ac-text)] font-medium mb-3.5">
+          Includes your 3-day platform trial — $79/mo after, cancel anytime
+        </p>
+      )}
+      {!creditUser &&
+        !eligibility?.isFirstDeploy &&
+        eligibility?.reason !== "trial_active" && (
+          <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
+        )}
 
-      {!creditUser && needsSub && !deploymentStatus && !waitingForActivation && (
+      {needsSub && !deploymentStatus && !waitingForActivation && (
         <AlertBanner variant="warning">
           <p className="font-medium">Your 3-day trial has ended</p>
           <p className="mt-0.5 opacity-80">Subscribe to the Claw Platform ($79/mo) to deploy and run your Claws.</p>
         </AlertBanner>
       )}
 
-      {!creditUser && waitingForActivation && !deploymentStatus && (
+      {waitingForActivation && !deploymentStatus && (
         <AlertBanner variant="info" icon={<Loader2 className="w-4 h-4 animate-spin" />}>
           <p className="font-medium">Payment received — activating your subscription</p>
           <p className="mt-0.5 opacity-80">This usually takes a few seconds. If it doesn&apos;t update, try refreshing the page.</p>
@@ -2230,17 +2238,17 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       )}
 
       {!deploymentStatus && !waitingForActivation && (
-        creditUser ? (
-          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !toolPrereqsReady}>
-            Deploy Claw
-          </Button>
-        ) : needsSub ? (
+        needsSub ? (
           <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
             Subscribe to Deploy - $79/mo
           </Button>
+        ) : creditUser ? (
+          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !toolPrereqsReady}>
+            Deploy Claw
+          </Button>
         ) : (
           <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !eligibility || !toolPrereqsReady}>
-            {eligibility?.isFirstDeploy ? "Deploy - 3-day free trial" : "Deploy"}
+            {eligibility?.isFirstDeploy ? "Deploy — 3-day trial" : "Deploy"}
           </Button>
         )
       )}

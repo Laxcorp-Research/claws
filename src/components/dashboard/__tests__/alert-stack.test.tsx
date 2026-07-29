@@ -98,9 +98,33 @@ describe("AlertStack", () => {
     expect(second).toHaveBeenCalledTimes(1)
   })
 
+  it("collapsed expander shows N more alerts; expanded shows Show less (never stale N-more)", () => {
+    render(
+      <AlertStack
+        alerts={[item("container-down", 0), item("silence", 4), item("near-cap", 5)]}
+      />,
+    )
+
+    const expander = screen.getByRole("button", { name: "2 more alerts" })
+    expect(expander.getAttribute("aria-expanded")).toBe("false")
+
+    fireEvent.click(expander)
+
+    const collapse = screen.getByRole("button", { name: "Show less" })
+    expect(collapse.getAttribute("aria-expanded")).toBe("true")
+    expect(screen.queryByRole("button", { name: /more alert/ })).toBeNull()
+    expect(screen.getByText("silence message")).toBeDefined()
+    expect(screen.getByText("near-cap message")).toBeDefined()
+
+    fireEvent.click(collapse)
+    expect(screen.getByRole("button", { name: "2 more alerts" })).toBeDefined()
+    expect(screen.queryByRole("button", { name: "Show less" })).toBeNull()
+  })
+
   it("renders no expander for a single alert", () => {
     render(<AlertStack alerts={[item("container-down", 0)]} />)
 
     expect(screen.queryByRole("button", { name: /more alert/ })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Show less" })).toBeNull()
   })
 })

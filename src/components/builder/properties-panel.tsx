@@ -58,7 +58,7 @@ function ConnectionPanel() {
       </div>
 
       <div className="mb-2.5">
-        <Label text="Condition" tooltip="When this connection activates. 'On complete' fires after the source agent finishes. 'On human approval' waits for a human to approve first." />
+        <Label text="Condition" tooltip="When this connection activates. 'On complete' fires after the source agent finishes. 'On human approval' waits for a human to approve first. These connections also generate the Workflow guidance written into the Orchestrator's AGENTS.md." />
         <CustomSelect
           value={condition}
           onChange={(val) => updateConnectionCondition(selectedEdgeId!, val)}

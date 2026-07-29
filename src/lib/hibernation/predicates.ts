@@ -5,6 +5,12 @@
  * Wake eligibility (lead / past-due) is NOT expressed in Prisma `where` (lead
  * depends on per-row avgWakeDurationMs). Both callers MUST post-filter with
  * `isWakeEligible` from wake-geometry — never inline the old 2m clamp or `gt: now`.
+ *
+ * PR-C #10: `Workspace.alwaysOn` opts a claw out of the sweep entirely — both
+ * SLEEP predicates (runningIdleWhere / warmIdleWhere) filter `alwaysOn: false`.
+ * wakeHibernatedWhere is untouched: an alwaysOn claw should never reach
+ * HIBERNATED in the first place, and even if it somehow did, waking it is the
+ * safe direction.
  */
 
 export const RUNNING_IDLE_MS = 10 * 60 * 1000
@@ -52,13 +58,17 @@ function nextHeartbeatNotImminent(now: Date) {
   }
 }
 
-/** Prisma `where` for RUNNING idle (no channels, 10m lastActiveAt). */
+/**
+ * Prisma `where` for RUNNING idle (no channels, 10m lastActiveAt).
+ * MUTATION: dropping `workspace: { alwaysOn: false }` → alwaysOn claws hibernate.
+ */
 export function runningIdleWhere(now: Date) {
   const idleCutoff = new Date(now.getTime() - RUNNING_IDLE_MS)
   return {
     containerPhase: "RUNNING" as const,
     hasActiveChannels: false,
     lastActiveAt: { lt: idleCutoff },
+    workspace: { alwaysOn: false },
     ...nextHeartbeatNotImminent(now),
   }
 }
@@ -77,11 +87,13 @@ export function runningIdleWhere(now: Date) {
  *
  * MUTATION: null stamp + fresh channelsConnectedAt must NOT match.
  * MUTATION: drop nextHeartbeatNotImminent → imminent claws hibernate.
+ * MUTATION: dropping `workspace: { alwaysOn: false }` → alwaysOn claws hibernate.
  */
 export function warmIdleWhere(now: Date) {
   const channelIdleCutoff = new Date(now.getTime() - CHANNEL_IDLE_MS)
   return {
     containerPhase: "WARM" as const,
+    workspace: { alwaysOn: false },
     AND: [
       {
         OR: [

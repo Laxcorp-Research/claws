@@ -6,12 +6,16 @@ import type { WorkspaceStatus, HealthStatus } from "@/generated/prisma/client"
 import {
   decideHeartbeatMissed,
   decideMissedWake,
+  decideWokeLateNeverBeat,
   HEARTBEAT_MISS_GRACE_MS,
+  HEARTBEAT_MISS_MAX_AGE_MS,
   heartbeatEvidenceOrClause,
   lastExpectedCronFire,
   OPENCLAW_HEARTBEAT_POLL_MARKER,
+  WOKE_LATE_CATCHUP_GRACE_MS,
 } from "@/lib/hibernation/next-heartbeat"
 import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
+import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
 
 // PR-3 — Health Monitor cron.
 //
@@ -85,6 +89,9 @@ type WorkspaceRow = {
   gatewayToken: string | null
   activitySilenceDetectedAt: Date | null
   stateSyncStaleDetectedAt: Date | null
+  // Cry-wolf guard (PR-C #13): consecutive stale-snapshot probes seen so far.
+  // decideStateSyncStale only sets stateSyncStaleDetectedAt once this reaches 2.
+  stateSyncStaleConsecutive: number
   agents?: Array<{ heartbeatFrequency: string | null }>
   containerState?: { runtimeStateUpdatedAt: Date | null } | null
   deployments?: Array<{ completedAt: Date | null }>
@@ -143,6 +150,22 @@ async function confirmGatewayLive(host: string): Promise<boolean> {
 
 // Audit-mapped probe. Pure(-ish): observable side effects are only the
 // HTTP call(s). Decision about DB writes happens in the caller.
+// PR-B: fire-and-forget critical-alert push — a delivery failure must never
+// fail (or slow down) the health-monitor pass for other workspaces.
+function pushCriticalAlert(
+  workspaceId: string,
+  alertKey: Parameters<typeof sendCriticalAlert>[0]["alertKey"],
+  detail?: string,
+): void {
+  sendCriticalAlert({ workspaceId, alertKey, detail }).catch((err) => {
+    log.error("health-monitor: sendCriticalAlert failed", {
+      workspaceId,
+      alertKey,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+}
+
 async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; httpStatus: number | null }> {
   if (!ws.containerId || !ws.containerHost || !ws.gatewayToken) {
     return { result: { kind: "failure", reason: "no-container" }, httpStatus: null }
@@ -303,28 +326,58 @@ export function decideActivitySilence(args: {
   return args.currentFlag ?? new Date(args.nowMs)
 }
 
+export type StateSyncStaleDecision = {
+  /** undefined = no DB write needed (value already matches currentFlag). */
+  stateSyncStaleDetectedAt: Date | null | undefined
+  /** undefined = no DB write needed (value already matches currentConsecutive). */
+  stateSyncStaleConsecutive: number | undefined
+}
+
+/**
+ * Cry-wolf guard (PR-C #13): a single stale-snapshot probe must NOT flag —
+ * mid-sync probe timing produces one-off false positives. Requires 2
+ * CONSECUTIVE stale probes before stateSyncStaleDetectedAt is set. A fresh
+ * snapshot on any probe clears both the counter and the flag immediately.
+ * MUTATION: setting the flag on the first stale probe (count>=1) → this
+ * degenerates back to the cry-wolf bug this guard exists to fix.
+ */
 export function decideStateSyncStale(args: {
   status: WorkspaceStatus
   healthStatus: HealthStatus
   runtimeStateUpdatedAt: Date | null
   latestDeploymentCompletedAt: Date | null
   currentFlag: Date | null
+  currentConsecutive: number
   nowMs: number
-}): Date | null | undefined {
-  const clearIfSet = args.currentFlag ? null : undefined
-  if (args.status !== "RUNNING") return clearIfSet
-  if (args.healthStatus !== "HEALTHY") return clearIfSet
+}): StateSyncStaleDecision {
+  const clear = (): StateSyncStaleDecision => ({
+    stateSyncStaleDetectedAt: args.currentFlag !== null ? null : undefined,
+    stateSyncStaleConsecutive: args.currentConsecutive !== 0 ? 0 : undefined,
+  })
+
+  if (args.status !== "RUNNING") return clear()
+  if (args.healthStatus !== "HEALTHY") return clear()
 
   const deployedMs = args.latestDeploymentCompletedAt?.getTime() ?? null
   if (deployedMs !== null && args.nowMs - deployedMs < STATE_SYNC_STALE_THRESHOLD_MS) {
-    return clearIfSet
+    return clear()
   }
 
   const snapshotMs = args.runtimeStateUpdatedAt?.getTime() ?? null
   const isStale = snapshotMs === null || args.nowMs - snapshotMs > STATE_SYNC_STALE_THRESHOLD_MS
-  if (!isStale) return clearIfSet
+  if (!isStale) return clear()
 
-  return args.currentFlag ?? new Date(args.nowMs)
+  const nextConsecutive = args.currentConsecutive + 1
+  const nextFlag: Date | null = nextConsecutive >= 2 ? (args.currentFlag ?? new Date(args.nowMs)) : null
+  const flagChanged =
+    nextFlag === null
+      ? args.currentFlag !== null
+      : args.currentFlag === null || nextFlag.getTime() !== args.currentFlag.getTime()
+
+  return {
+    stateSyncStaleDetectedAt: flagChanged ? nextFlag : undefined,
+    stateSyncStaleConsecutive: nextConsecutive !== args.currentConsecutive ? nextConsecutive : undefined,
+  }
 }
 
 // Pure function: takes the workspace as it is + a probe result, returns
@@ -423,6 +476,7 @@ export async function GET(req: NextRequest) {
       gatewayToken: true,
       activitySilenceDetectedAt: true,
       stateSyncStaleDetectedAt: true,
+      stateSyncStaleConsecutive: true,
       heartbeatMissedAt: true,
       containerState: {
         select: {
@@ -485,12 +539,13 @@ export async function GET(req: NextRequest) {
       currentFlag: ws.activitySilenceDetectedAt,
       nowMs: startedAt,
     })
-    const stateSyncStaleDetectedAt = decideStateSyncStale({
+    const { stateSyncStaleDetectedAt, stateSyncStaleConsecutive } = decideStateSyncStale({
       status: update.status,
       healthStatus: update.healthStatus,
       runtimeStateUpdatedAt: ws.containerState?.runtimeStateUpdatedAt ?? null,
       latestDeploymentCompletedAt: ws.deployments?.[0]?.completedAt ?? null,
       currentFlag: ws.stateSyncStaleDetectedAt,
+      currentConsecutive: ws.stateSyncStaleConsecutive,
       nowMs: startedAt,
     })
 
@@ -546,6 +601,11 @@ export async function GET(req: NextRequest) {
         } catch (err) {
           errors.push(`${ws.id}: heartbeat-miss ActivityLog failed ${String(err)}`)
         }
+        pushCriticalAlert(
+          ws.id,
+          "heartbeat-missed",
+          `No HEARTBEAT/poll-marker evidence in [${expected.toISOString()}, ${new Date(expected.getTime() + HEARTBEAT_MISS_GRACE_MS).toISOString()}]`,
+        )
       }
     }
 
@@ -553,7 +613,16 @@ export async function GET(req: NextRequest) {
     else if (probe.result.kind === "degraded") degraded++
     else failed++
 
-    if (update.healthStatus === "UNHEALTHY" && before.healthStatus !== "UNHEALTHY") escalatedUnhealthy++
+    if (update.healthStatus === "UNHEALTHY" && before.healthStatus !== "UNHEALTHY") {
+      escalatedUnhealthy++
+      pushCriticalAlert(ws.id, "container-unhealthy", update.lastHealthReason ?? undefined)
+    }
+    if (
+      stateSyncStaleDetectedAt instanceof Date &&
+      ws.stateSyncStaleDetectedAt === null
+    ) {
+      pushCriticalAlert(ws.id, "state-sync-stale")
+    }
     if (update.status === "ERROR" && before.status !== "ERROR") escalatedError++
     // PR-4: count the config-drift self-heal (ERROR → RUNNING on a 4xx probe).
     const wasReclassified = before.status === "ERROR" && update.status === "RUNNING"
@@ -570,6 +639,7 @@ export async function GET(req: NextRequest) {
           ...(update.lastHealthCheck ? { lastHealthCheck: update.lastHealthCheck } : {}),
           ...(activitySilenceDetectedAt !== undefined ? { activitySilenceDetectedAt } : {}),
           ...(stateSyncStaleDetectedAt !== undefined ? { stateSyncStaleDetectedAt } : {}),
+          ...(stateSyncStaleConsecutive !== undefined ? { stateSyncStaleConsecutive } : {}),
           ...(heartbeatMissedAt !== undefined ? { heartbeatMissedAt } : {}),
         },
       })
@@ -664,6 +734,11 @@ export async function GET(req: NextRequest) {
 
       if (heartbeatMissedAt instanceof Date && ws.heartbeatMissedAt === null) {
         missedWakeFlagged++
+        pushCriticalAlert(
+          ws.id,
+          "heartbeat-missed",
+          `Missed wake: HIBERNATED past nextHeartbeatAt=${nextAt.toISOString()} with no boot since`,
+        )
         try {
           await prisma.activityLog.create({
             data: {
@@ -688,6 +763,126 @@ export async function GET(req: NextRequest) {
     errors.push(`missed-wake pass: ${err instanceof Error ? err.message : String(err)}`)
   }
 
+  // Lifecycle: WOKE-LATE-NEVER-BEAT — post-cron boot without beat by boot+grace′.
+  // Distinct from missed-wake (no boot) and Watchtower (RUNNING evidence window).
+  let wokeLateNeverBeatFlagged = 0
+  try {
+    const cronArmed = await prisma.workspace.findMany({
+      where: {
+        containerState: {
+          heartbeatCronExpressions: { not: null },
+        },
+      },
+      select: {
+        id: true,
+        heartbeatMissedAt: true,
+        containerState: {
+          select: { heartbeatCronExpressions: true },
+        },
+      },
+    })
+
+    const horizonStart = new Date(startedAt - HEARTBEAT_MISS_MAX_AGE_MS)
+
+    for (const ws of cronArmed) {
+      const cronExprs = ws.containerState?.heartbeatCronExpressions
+      if (!cronExprs || cronExprs === "[]") continue
+
+      const expected = lastExpectedCronFire(cronExprs, new Date(startedAt))
+      if (!expected) continue
+      if (expected.getTime() < horizonStart.getTime()) continue
+
+      let bootAt: Date | null = null
+      try {
+        const boot = await prisma.activityLog.findFirst({
+          where: {
+            workspaceId: ws.id,
+            timestamp: { gte: expected },
+            actionType: "TASK_START",
+            metadata: { contains: "overlay_boot" },
+          },
+          orderBy: { timestamp: "asc" },
+          select: { timestamp: true },
+        })
+        bootAt = boot?.timestamp ?? null
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late boot lookup failed ${String(err)}`)
+        continue
+      }
+      if (!bootAt) continue
+
+      const graceMs = WOKE_LATE_CATCHUP_GRACE_MS
+      const deadline = new Date(bootAt.getTime() + graceMs)
+      let hasBeatByDeadline = false
+      try {
+        const beat = await prisma.activityLog.findFirst({
+          where: {
+            workspaceId: ws.id,
+            timestamp: { gte: expected, lte: deadline },
+            OR: heartbeatEvidenceOrClause(),
+          },
+          select: { id: true },
+        })
+        hasBeatByDeadline = beat !== null
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late beat lookup failed ${String(err)}`)
+        continue
+      }
+
+      const heartbeatMissedAt = decideWokeLateNeverBeat({
+        expectedAt: expected,
+        bootAt,
+        hasBeatEvidenceByDeadline: hasBeatByDeadline,
+        currentFlag: ws.heartbeatMissedAt,
+        nowMs: startedAt,
+        graceMs,
+      })
+
+      if (heartbeatMissedAt === undefined) continue
+      if (ws.heartbeatMissedAt !== null) continue
+
+      try {
+        await prisma.workspace.update({
+          where: { id: ws.id },
+          data: { heartbeatMissedAt },
+        })
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late update failed ${String(err)}`)
+        continue
+      }
+
+      wokeLateNeverBeatFlagged++
+      pushCriticalAlert(
+        ws.id,
+        "heartbeat-missed",
+        `Woke late never beat: expected=${expected.toISOString()} boot=${bootAt.toISOString()} deadline=${deadline.toISOString()}`,
+      )
+      try {
+        await prisma.activityLog.create({
+          data: {
+            workspaceId: ws.id,
+            action: "Heartbeat missed",
+            detail: `Woke late never beat: expected=${expected.toISOString()} boot=${bootAt.toISOString()} deadline=${deadline.toISOString()}`,
+            actionType: "ERROR",
+            timestamp: new Date(startedAt),
+            metadata: JSON.stringify({
+              eventKind: "heartbeat_woke_late_never_beat",
+              expectedAt: expected.toISOString(),
+              bootAt: bootAt.toISOString(),
+              graceMs,
+            }),
+          },
+        })
+      } catch (err) {
+        errors.push(`${ws.id}: woke-late ActivityLog failed ${String(err)}`)
+      }
+    }
+  } catch (err) {
+    errors.push(
+      `woke-late pass: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
   // Lifecycle P4: stranded GENERATING/PROVISIONING adopter (sibling cadence).
   let strandedAdopted = 0
   try {
@@ -708,6 +903,7 @@ export async function GET(req: NextRequest) {
     escalatedError,
     reclassified,
     missedWakeFlagged,
+    wokeLateNeverBeatFlagged,
     strandedAdopted,
     errorCount: errors.length,
     durationMs,
@@ -724,6 +920,7 @@ export async function GET(req: NextRequest) {
       escalatedError,
       reclassified,
       missedWakeFlagged,
+      wokeLateNeverBeatFlagged,
       strandedAdopted,
       errorCount: errors.length,
       durationMs,
@@ -737,12 +934,15 @@ export const __internal = {
   decideUpdate,
   decideActivitySilence,
   decideStateSyncStale,
+  pushCriticalAlert,
   decideHeartbeatMissed,
   decideMissedWake,
+  decideWokeLateNeverBeat,
   heartbeatIntervalMs,
   UNHEALTHY_THRESHOLD,
   ERROR_THRESHOLD,
   ACTIVITY_SILENCE_MIN_THRESHOLD_MS,
   STATE_SYNC_STALE_THRESHOLD_MS,
   HEARTBEAT_MISS_GRACE_MS,
+  WOKE_LATE_CATCHUP_GRACE_MS,
 }

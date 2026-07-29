@@ -70,7 +70,7 @@ export type SendChatFailureReason =
   | "transitioning" // close 1013 — container up, gateway still starting
 
 export type SendChatResult =
-  | { ok: true; runId: string; status: string; paired: boolean }
+  | { ok: true; runId: string; status: string; paired: boolean; replyText?: string | null }
   | { ok: false; reason: SendChatFailureReason; detail: string }
 
 export interface SendChatMessageParams {
@@ -81,14 +81,48 @@ export interface SendChatMessageParams {
   message: string
   idempotencyKey: string
   /**
-   * When true, gateway delivers the agent reply on the channel session
-   * (Telegram wake-on-channel). Dashboard webchat keeps the default false.
+   * When true, ask the gateway to deliver the agent reply on the channel
+   * session. Operator `chat.send` stamps webchat origin, so Telegram wake
+   * must NOT rely on this — use `awaitReplyMs` + platform Bot API instead.
    */
   deliver?: boolean
+  /**
+   * When set, hold the WS after chat.send ack until a matching chat
+   * `state:"final"` (or error/aborted) event arrives, then return replyText.
+   * Used by wake-on-channel platform Telegram delivery.
+   */
+  awaitReplyMs?: number
   /** Injectable for tests; default resolves globalThis.WebSocket LAZILY. */
   socketFactory?: ChatSocketFactory
   /** Injectable fetch for the pairing admin-RPC call (tests). */
   fetchImpl?: typeof fetch
+}
+
+/** Extract assistant plain text from a gateway chat event payload. */
+export function extractAssistantTextFromChatPayload(
+  payload: Record<string, unknown> | undefined,
+): string | null {
+  if (!payload) return null
+  const message = payload.message as
+    | { role?: unknown; content?: unknown }
+    | undefined
+  if (!message || message.role !== "assistant") return null
+  const content = message.content
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return null
+  const parts: string[] = []
+  for (const part of content) {
+    if (typeof part === "string") {
+      parts.push(part)
+      continue
+    }
+    if (part && typeof part === "object" && "text" in part) {
+      const text = (part as { text?: unknown }).text
+      if (typeof text === "string") parts.push(text)
+    }
+  }
+  const joined = parts.join("")
+  return joined.length > 0 ? joined : null
 }
 
 interface GatewayFrame {
@@ -127,6 +161,7 @@ interface ConnectAttemptResult {
 /** Live session wrapper: request/response correlation over the socket. */
 class GatewaySession {
   private pending = new Map<string, (frame: GatewayFrame) => void>()
+  private eventWaiters: Array<(frame: GatewayFrame) => void> = []
   private closed = false
 
   constructor(private socket: ChatSocket) {}
@@ -144,6 +179,7 @@ class GatewaySession {
         this.pending.delete(frame.id)
         resolve(frame)
       } else {
+        for (const waiter of [...this.eventWaiters]) waiter(frame)
         onUncorrelated?.(frame)
       }
     }) as (ev: never) => void)
@@ -164,6 +200,37 @@ class GatewaySession {
         resolve(frame)
       })
       this.socket.send(JSON.stringify({ type: "req", id, method, params }))
+    })
+  }
+
+  /**
+   * Wait for a chat event with matching runId and terminal state.
+   * Register BEFORE chat.send to avoid missing a fast final.
+   */
+  waitForChatFinal(runId: string, timeoutMs: number): Promise<string | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
+        resolve(null)
+      }, timeoutMs)
+      const waiter = (frame: GatewayFrame) => {
+        if (frame.type !== "event" || frame.event !== "chat") return
+        const payload = frame.payload ?? {}
+        if (String(payload.runId ?? "") !== runId) return
+        const state = String(payload.state ?? "")
+        if (state === "final") {
+          clearTimeout(timer)
+          this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
+          resolve(extractAssistantTextFromChatPayload(payload))
+          return
+        }
+        if (state === "error" || state === "aborted") {
+          clearTimeout(timer)
+          this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
+          resolve(null)
+        }
+      }
+      this.eventWaiters.push(waiter)
     })
   }
 
@@ -352,6 +419,15 @@ export async function sendChatMessage(params: SendChatMessageParams): Promise<Se
   const session = attempt.socket!
   try {
     const remaining = Math.max(1_000, TOTAL_BUDGET_MS - (Date.now() - startedAt))
+    const awaitReplyMs =
+      typeof params.awaitReplyMs === "number" && params.awaitReplyMs > 0
+        ? params.awaitReplyMs
+        : 0
+    // Predicted runId equals idempotencyKey (protocol §4) — arm waiter before send.
+    const predictedRunId = params.idempotencyKey
+    const replyWait =
+      awaitReplyMs > 0 ? session.waitForChatFinal(predictedRunId, awaitReplyMs) : null
+
     const ack = await session.request(
       "chat.send",
       {
@@ -364,11 +440,21 @@ export async function sendChatMessage(params: SendChatMessageParams): Promise<Se
     )
     if (ack.ok) {
       const payload = (ack.payload ?? {}) as { runId?: string; status?: string }
+      const runId = String(payload.runId ?? params.idempotencyKey)
+      let replyText: string | null | undefined
+      if (replyWait) {
+        // If gateway returned a different runId, wait on that too is rare;
+        // predicted id matches live captures. Still resolve the armed waiter.
+        replyText = runId === predictedRunId
+          ? await replyWait
+          : await session.waitForChatFinal(runId, awaitReplyMs)
+      }
       return {
         ok: true,
-        runId: String(payload.runId ?? params.idempotencyKey),
+        runId,
         status: String(payload.status ?? "started"),
         paired,
+        ...(awaitReplyMs > 0 ? { replyText: replyText ?? null } : {}),
       }
     }
     return { ok: false, reason: "unreachable", detail: `chat.send rejected: ${ack.error?.code ?? "?"} ${ack.error?.message ?? ""}` }

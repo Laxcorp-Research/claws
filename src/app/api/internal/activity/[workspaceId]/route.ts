@@ -33,6 +33,18 @@ import {
   isHeartbeatBeatEvidence,
   isHeartbeatShapedActivity,
 } from "@/lib/hibernation/next-heartbeat";
+import {
+  decideThinkingSignatureHeal,
+  THINKING_SIGNATURE_HEAL_DEDUP_MS,
+  THINKING_SIGNATURE_POISON_EVENT_KIND,
+} from "@/lib/trial/thinking-signature-heal";
+import {
+  decideCronJobFailedAlert,
+  extractCronJobName,
+  isCronJobFailedEvent,
+  CRON_JOB_FAILED_WINDOW_MS,
+} from "@/lib/alerts/cron-job-failed-detect";
+import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -226,6 +238,115 @@ function toolConnectionToolkitSlug(toolSlug: string): string {
   return (getToolBySlug(toolSlug)?.composioToolkitId ?? toolSlug).toLowerCase();
 }
 
+/**
+ * DETECT + LEDGER for Anthropic thinking-signature poison (cry-forever crons).
+ * Platform cannot rotate live sessions while RUNNING/WARM — ledger flags
+ * needsImageHeal for the -11 overlay half. Dedup per sessionKey / 24h.
+ */
+export async function ledgerThinkingSignaturePoison(
+  workspaceId: string,
+  event: ValidatedEvent,
+): Promise<void> {
+  const metaError =
+    typeof event.metadata.error === "string" ? event.metadata.error : null;
+  const detectInput = {
+    type: event.type,
+    action: event.action,
+    detail: event.detail,
+    metadataError: metaError,
+    sessionKey: event.sessionKey,
+  };
+  if (decideThinkingSignatureHeal({ event: detectInput, priorHealInWindow: false }).kind === "skip") {
+    return;
+  }
+
+  const since = new Date(Date.now() - THINKING_SIGNATURE_HEAL_DEDUP_MS);
+  const prior = await prisma.activityLog.findFirst({
+    where: {
+      workspaceId,
+      actionType: "SYSTEM",
+      timestamp: { gte: since },
+      AND: [
+        { metadata: { contains: `"eventKind":"${THINKING_SIGNATURE_POISON_EVENT_KIND}"` } },
+        ...(event.sessionKey
+          ? [{ metadata: { contains: event.sessionKey } }]
+          : []),
+      ],
+    },
+    select: { id: true },
+  });
+
+  const decision = decideThinkingSignatureHeal({
+    event: detectInput,
+    priorHealInWindow: Boolean(prior),
+  });
+  if (decision.kind !== "ledger") return;
+
+  await prisma.activityLog.create({
+    data: {
+      workspaceId,
+      agentSlug: event.agentId,
+      action: "Thinking signature poison detected",
+      detail:
+        "Cron/LLM rejected for invalid thinking signature. Platform cannot rotate live sessions — flagged for -11 image self-heal (strip/retry).",
+      actionType: "SYSTEM",
+      timestamp: new Date(),
+      metadata: JSON.stringify({
+        eventKind: THINKING_SIGNATURE_POISON_EVENT_KIND,
+        sessionKey: decision.sessionKey,
+        needsImageHeal: true,
+        platformRotated: false,
+        sourceActionType: event.type,
+        sourceAction: event.action,
+      }),
+    },
+  });
+  log.info("thinking_signature_poison ledgered", {
+    workspaceId,
+    sessionKey: decision.sessionKey,
+  });
+}
+
+/**
+ * PR-B: critical-alert push for a cron job failing repeatedly (same job
+ * name, 2+ MESSAGE_SENT failures within CRON_JOB_FAILED_WINDOW_MS —
+ * includes the row just written by this request). Fire-and-forget: a push
+ * failure must not fail the activity-wire batch.
+ */
+export async function checkCronJobFailedAndAlert(
+  workspaceId: string,
+  event: ValidatedEvent,
+): Promise<void> {
+  if (!isCronJobFailedEvent({ type: event.type, action: event.action, detail: event.detail })) {
+    return;
+  }
+  const jobName = extractCronJobName(event.action, event.detail);
+
+  const since = new Date(Date.now() - CRON_JOB_FAILED_WINDOW_MS);
+  const recentFailureCount = await prisma.activityLog.count({
+    where: {
+      workspaceId,
+      actionType: "MESSAGE_SENT",
+      timestamp: { gte: since },
+      action: { contains: jobName ? `Cron job "${jobName}"` : "Cron job " },
+    },
+  });
+
+  if (!decideCronJobFailedAlert({ recentFailureCount })) return;
+
+  sendCriticalAlert({
+    workspaceId,
+    alertKey: "cron-job-failed",
+    detail: jobName ? `Job: ${jobName}` : undefined,
+  }).catch((err) => {
+    log.error("activity: sendCriticalAlert (cron-job-failed) failed", {
+      workspaceId,
+      jobName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
+
 async function markNoActiveComposioConnection(
   workspaceId: string,
   event: ValidatedEvent,
@@ -413,6 +534,22 @@ export async function POST(
           error: markErr instanceof Error ? markErr.message : String(markErr),
         });
       }
+      try {
+        await ledgerThinkingSignaturePoison(workspaceId, ev);
+      } catch (healErr) {
+        log.error("activity: failed to ledger thinking-signature poison", {
+          workspaceId,
+          error: healErr instanceof Error ? healErr.message : String(healErr),
+        });
+      }
+      try {
+        await checkCronJobFailedAndAlert(workspaceId, ev);
+      } catch (cronErr) {
+        log.error("activity: failed to check cron-job-failed critical alert", {
+          workspaceId,
+          error: cronErr instanceof Error ? cronErr.message : String(cronErr),
+        });
+      }
       // warmIdle honesty: stamp lastChannelMessageAt on external-channel inbound
       // (CHANNEL_IDS + webchat). Lands here — claws-activity-reporter → this route.
       if (isExternalChannelInbound(ev.type, ev.channelId)) {
@@ -500,4 +637,6 @@ export const __internal = {
   resolveApiCostFromMetadata,
   resolveEventAgentId,
   agentIdFromSessionKey,
+  ledgerThinkingSignaturePoison,
+  checkCronJobFailedAndAlert,
 };

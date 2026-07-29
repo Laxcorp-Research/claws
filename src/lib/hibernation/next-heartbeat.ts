@@ -7,6 +7,13 @@ export const HEARTBEAT_MISS_GRACE_MS = 10 * 60 * 1000
 export const HEARTBEAT_MISS_MAX_AGE_MS = 48 * 60 * 60 * 1000
 
 /**
+ * Grace′ after overlay_boot before WOKE-LATE-NEVER-BEAT flags.
+ * Must exceed -10 catch-up fire latency so a successful catch-up beat
+ * lands before the detector races it (Phase A: catch-up ≪ 5m).
+ */
+export const WOKE_LATE_CATCHUP_GRACE_MS = 5 * 60 * 1000
+
+/**
  * Pulls the cron expression string out of a job entry. Handles the
  * verified OpenClaw shape `{ schedule: { kind: 'cron', expr } }` plus a
  * couple of legacy/string fallbacks defensively. Non-cron schedule kinds
@@ -269,6 +276,45 @@ export function decideMissedWake(args: {
     return undefined
   }
 
+  return args.currentFlag ?? new Date(args.nowMs)
+}
+
+/**
+ * WOKE-LATE-NEVER-BEAT: post-cron overlay_boot existed, but no beat evidence
+ * arrived by boot+grace′. Closes the Phase A blind spot where missed-wake
+ * no-ops on boot and Watchtower often misses a short RUNNING window.
+ *
+ * Returns Date to set, undefined for no-op. Never clears (activity roller).
+ * MUTATION: treating overlay_boot as beat evidence → silent 07-24 class → fail.
+ */
+export function decideWokeLateNeverBeat(args: {
+  expectedAt: Date | null
+  /** First overlay_boot at or after expected (post-cron wake). */
+  bootAt: Date | null
+  /** True when beat evidence exists with timestamp in [expected, boot+grace′]. */
+  hasBeatEvidenceByDeadline: boolean
+  currentFlag: Date | null
+  nowMs: number
+  graceMs?: number
+}): Date | undefined {
+  if (!args.expectedAt || !args.bootAt) return undefined
+
+  const expectedMs = args.expectedAt.getTime()
+  const bootMs = args.bootAt.getTime()
+  // Pre-cron boot is Watchtower's problem, not this detector.
+  if (bootMs < expectedMs) return undefined
+
+  const age = args.nowMs - expectedMs
+  if (age < 0 || age > HEARTBEAT_MISS_MAX_AGE_MS) return undefined
+
+  const graceMs = args.graceMs ?? WOKE_LATE_CATCHUP_GRACE_MS
+  const deadlineMs = bootMs + graceMs
+  // Still inside catch-up window — do not race -10.
+  if (args.nowMs < deadlineMs) return undefined
+
+  if (args.hasBeatEvidenceByDeadline) return undefined
+
+  // Sticky: keep existing flag; only newly set when unset.
   return args.currentFlag ?? new Date(args.nowMs)
 }
 

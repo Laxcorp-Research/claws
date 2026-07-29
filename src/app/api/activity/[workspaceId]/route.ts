@@ -477,6 +477,12 @@ export async function GET(
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,
       costAlertThreshold: workspace!.costAlertThreshold,
+      // PR-B: critical alerts (Telegram/email) opt-out toggle.
+      criticalAlertsOptOut: workspace!.criticalAlertsOptOut,
+      // PR-C #10: never-hibernate toggle. Must round-trip here — this
+      // endpoint's periodic dashboard poll is what would otherwise silently
+      // revert the optimistic toggle state back to false.
+      alwaysOn: workspace!.alwaysOn,
       apiKeySource,
     },
     stats: {

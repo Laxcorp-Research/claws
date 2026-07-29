@@ -19,6 +19,11 @@ import {
   generateDeviceIdentity,
 } from "@/lib/openclaw/device-identity"
 import { sendChatMessage } from "@/lib/openclaw/gateway-chat-client"
+import {
+  resolveWakeReplyDelivery,
+  wakeInjectSessionKey,
+  WAKE_REPLY_WAIT_MS,
+} from "@/lib/hibernation/wake-reply-routing"
 import crypto from "node:crypto"
 
 /** Locked ack copy — mutation: change string → contract fails. */
@@ -253,7 +258,12 @@ async function runWakeDeliver(args: {
     })
   }
 
-  const sessionKey = `telegram:${chatId}`
+  // Origin for reply routing. Operator chat.send stamps webchat — gateway
+  // channel-deliver cannot send the reply home (RELAY-STRIPS-ORIGIN). Hold the
+  // WS for the agent final, then platform-send via the same Bot API as the ack.
+  const origin = { channel: "telegram" as const, chatId }
+  const delivery = resolveWakeReplyDelivery(origin)
+  const sessionKey = wakeInjectSessionKey(origin)
   const result = await deps.sendChat({
     wsUrl: connection.wsUrl,
     token: connection.token,
@@ -261,7 +271,8 @@ async function runWakeDeliver(args: {
     sessionKey,
     message: text,
     idempotencyKey: crypto.randomUUID(),
-    deliver: true,
+    deliver: false,
+    awaitReplyMs: delivery.mode === "platform_telegram" ? WAKE_REPLY_WAIT_MS : undefined,
   })
 
   if (!result.ok) {
@@ -275,5 +286,34 @@ async function runWakeDeliver(args: {
       chatId,
       text: WAKE_ON_CHANNEL_FAIL,
     })
+    return
+  }
+
+  if (delivery.mode === "platform_telegram") {
+    const replyText = result.replyText?.trim()
+    if (!replyText) {
+      log.warn("wake-on-channel reply missing after inject", {
+        workspaceId,
+        runId: result.runId,
+      })
+      await deps.sendMessage({
+        botToken,
+        chatId: delivery.chatId,
+        text: WAKE_ON_CHANNEL_FAIL,
+      })
+      return
+    }
+    const sent = await deps.sendMessage({
+      botToken,
+      chatId: delivery.chatId,
+      text: replyText,
+    })
+    if (!sent) {
+      log.warn("wake-on-channel platform telegram send failed", {
+        workspaceId,
+        runId: result.runId,
+        chatId: delivery.chatId,
+      })
+    }
   }
 }

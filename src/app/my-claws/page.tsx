@@ -32,6 +32,7 @@ interface ApiWorkspace {
   clawTemplate: { name: string; category: string } | null
   agents: { role: string }[]
   _count: { agents: number }
+  heartbeatMissedAt?: string | null
 }
 
 interface WorkspaceItem {
@@ -44,6 +45,7 @@ interface WorkspaceItem {
   lastActive: string | undefined
   monthlyCost: string | undefined
   source: string
+  heartbeatMissedAt: string | null
 }
 
 function toWorkspaceItem(w: ApiWorkspace): WorkspaceItem {
@@ -58,6 +60,7 @@ function toWorkspaceItem(w: ApiWorkspace): WorkspaceItem {
     lastActive: w.updatedAt ? timeAgo(w.updatedAt) : undefined,
     monthlyCost: w.currentMonthApiCost > 0 ? formatCurrency(w.currentMonthApiCost) : undefined,
     source: w.clawTemplate ? "From template" : "Custom",
+    heartbeatMissedAt: w.heartbeatMissedAt ?? null,
   }
 }
 

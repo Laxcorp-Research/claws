@@ -49,6 +49,16 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe("BillingDashboard trial copy truth", () => {
+  it("shows 3-day platform trial language when trial is available", async () => {
+    vi.stubGlobal("fetch", routeFetch({ success: true, data: { portalUrl: null } }))
+    render(<BillingDashboard />)
+    await screen.findByText("Billing summary")
+    expect(screen.getByText("3-day platform trial on first deploy")).toBeTruthy()
+    expect(screen.getByText("Available")).toBeTruthy()
+  })
+})
+
 describe("BillingDashboard Batch A / A6 — runningClaws estimate", () => {
   it("uses data.runningClaws for Est. monthly (PAUSED not billed as running)", async () => {
     const billing = {

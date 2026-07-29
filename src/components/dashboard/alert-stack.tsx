@@ -46,7 +46,9 @@ export function AlertStack({ alerts }: AlertStackProps) {
             aria-expanded={expanded}
             onClick={() => setExpanded((v) => !v)}
           >
-            {rest.length} more alert{rest.length === 1 ? "" : "s"}
+            {expanded
+              ? "Show less"
+              : `${rest.length} more alert${rest.length === 1 ? "" : "s"}`}
           </button>
           {expanded && <div>{rest.map(renderAlert)}</div>}
         </>

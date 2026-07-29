@@ -52,6 +52,7 @@ type WsOverrides = {
   deployedPausedWorkers?: string[];
   nearCapWarningAt?: Date | null;
   nearCapSnapshot?: { updatedAt: Date; compressedBytes: number } | null;
+  alwaysOn?: boolean;
 };
 
 async function callRoute(opts: WsOverrides) {
@@ -65,6 +66,7 @@ async function callRoute(opts: WsOverrides) {
     currentMonthApiCost: 0,
     apiSpendLimit: 50,
     costAlertThreshold: 0.8,
+    alwaysOn: opts.alwaysOn ?? false,
   };
   (verifyWorkspaceOwnership as ReturnType<typeof vi.fn>).mockResolvedValue({
     error: null,
@@ -195,6 +197,21 @@ describe("agentStatus derivation: precedence (PR-3 honest health)", () => {
   it("STOPPED workspace → offline", async () => {
     const data = await callRoute({ status: "STOPPED", healthStatus: "HEALTHY" });
     expect(data.agents.every((a: { status: string }) => a.status === "offline")).toBe(true);
+  });
+});
+
+// PR-C #10: alwaysOn must round-trip through this endpoint — it is what the
+// dashboard's periodic poll uses to refresh workspace state, and a dropped
+// field here would silently revert the "Always on" toggle on the next poll.
+describe("alwaysOn passthrough (PR-C #10)", () => {
+  it("returns alwaysOn: false by default", async () => {
+    const data = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY" });
+    expect(data.workspace.alwaysOn).toBe(false);
+  });
+
+  it("returns alwaysOn: true when set on the workspace", async () => {
+    const data = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY", alwaysOn: true });
+    expect(data.workspace.alwaysOn).toBe(true);
   });
 });
 

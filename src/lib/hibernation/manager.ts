@@ -235,6 +235,20 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
               where: { id: workspaceId },
               data: { heartbeatMissedAt: wakeRequestedAt },
             }),
+            prisma.activityLog.create({
+              data: {
+                workspaceId,
+                action: "Heartbeat missed",
+                detail: `Late wake: past-due nextHeartbeatAt=${hintAtWake!.toISOString()} wokeAt=${wakeRequestedAt.toISOString()}`,
+                actionType: "ERROR",
+                timestamp: wakeRequestedAt,
+                metadata: JSON.stringify({
+                  eventKind: "heartbeat_late_wake",
+                  nextHeartbeatAt: hintAtWake!.toISOString(),
+                  wokeAt: wakeRequestedAt.toISOString(),
+                }),
+              },
+            }),
           ]
         : []),
     ])
