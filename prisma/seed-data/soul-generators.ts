@@ -151,11 +151,15 @@ When reviewing a revision:
 - After 3rd revision attempt: note best version and recommend presenting with caveats`
 }
 
-export function buildConnections(orchSlug: string, workerSlugs: string[], criticSlug: string): { sourceSlug: string; targetSlug: string; condition: "ON_COMPLETE" }[] {
+/**
+ * WIRE-FULL: solid edges are ORCH→WORKER only. Review is automatic (no
+ * worker→critic rows). criticSlug kept for call-site compatibility.
+ * MUTATION: re-add worker→critic → seed-template-topology test fails.
+ */
+export function buildConnections(orchSlug: string, workerSlugs: string[], _criticSlug: string): { sourceSlug: string; targetSlug: string; condition: "ON_COMPLETE" }[] {
   const conns: { sourceSlug: string; targetSlug: string; condition: "ON_COMPLETE" }[] = []
   for (const w of workerSlugs) {
     conns.push({ sourceSlug: orchSlug, targetSlug: w, condition: "ON_COMPLETE" })
-    conns.push({ sourceSlug: w, targetSlug: criticSlug, condition: "ON_COMPLETE" })
   }
   return conns
 }

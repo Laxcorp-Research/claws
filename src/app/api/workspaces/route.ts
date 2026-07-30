@@ -76,11 +76,23 @@ export async function POST(req: NextRequest) {
     const snapshot = JSON.parse(template.workspaceSnapshot) as {
       agents: Array<{ name: string; agentSlug: string; role: string; color: string; model: string; soulMd: string; agentsMd: string; heartbeatMd?: string; heartbeatFrequency?: string | null; heartbeatTime?: string | null; positionX: number; positionY: number; qualityThreshold?: number; reportsTo?: string }>
       connections: Array<{ sourceSlug: string; targetSlug: string; condition: string; label?: string }>
+      maxRevisionRounds?: number
+      deliveryMode?: "APPROVAL_REQUIRED" | "AUTO_PROCEED"
     }
 
     const workspace = await prisma.$transaction(async (tx) => {
       const ws = await tx.workspace.create({
-        data: { userId: user.id, name, slug, status: "SETUP_INCOMPLETE", clawTemplateId: templateId },
+        data: {
+          userId: user.id,
+          name,
+          slug,
+          status: "SETUP_INCOMPLETE",
+          clawTemplateId: templateId,
+          maxRevisionRounds:
+            typeof snapshot.maxRevisionRounds === "number" ? snapshot.maxRevisionRounds : 3,
+          deliveryMode:
+            snapshot.deliveryMode === "AUTO_PROCEED" ? "AUTO_PROCEED" : "APPROVAL_REQUIRED",
+        },
       })
 
       const agentIdMap: Record<string, string> = {}
