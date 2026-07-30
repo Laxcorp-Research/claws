@@ -1,0 +1,47 @@
+# One-shot ops: Phase C WIRE-FULL fixture redeploy on staging.
+# workflow_dispatch only. Hardcoded workspace id. Delete after LIVE proof.
+name: Ops Phase C wire-full redeploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ops-phasec-wire-full-redeploy
+  cancel-in-progress: false
+
+jobs:
+  redeploy:
+    name: Redeploy staging fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Redeploy fixture
+        env:
+          DATABASE_URL: ${{ secrets.CLEANUP_DATABASE_URL_STAGING }}
+          # Vercel METERING_MASTER_SECRET is one value for preview+production.
+          METERING_MASTER_SECRET: ${{ secrets.PROD_METERING_MASTER_SECRET }}
+          ACTIVITY_PIPELINE_SECRET: ${{ secrets.ACTIVITY_PIPELINE_SECRET }}
+          ENCRYPTION_MASTER_KEY: ${{ secrets.OPS_ENCRYPTION_MASTER_KEY }}
+          RAILWAY_STAGING_TOKEN: ${{ secrets.RAILWAY_STAGING_TOKEN }}
+          AXIOM_TOKEN: local-phasec-placeholder
+        run: npx tsx scripts/ops/phasec-wire-full-redeploy.mjs
+
+      - name: Upload receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phasec-receipts
+          path: phasec-receipts.json
+          if-no-files-found: ignore
