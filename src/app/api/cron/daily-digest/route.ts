@@ -4,24 +4,18 @@ import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
 import { parseChannelConfigBlob } from "@/lib/openclaw/channel-config"
 import { telegramSendMessage } from "@/lib/channels/telegram-bot-api"
-import { resolveDeliveryTarget } from "@/lib/alerts/critical-alert-push"
 import {
   computeDigestStats,
   DAILY_DIGEST_EVENT_KIND,
   formatDailyDigestMessage,
 } from "@/lib/digest/daily-health-digest"
+import {
+  digestCandidateWhere,
+  hasConnectedTelegramForDigest,
+  parseDigestWorkspaceIdOverride,
+} from "@/lib/digest/digest-eligibility"
 
 export const maxDuration = 55
-
-/**
- * Optional comma-separated workspace ids. Empty → all non-DRAFT claws with
- * Telegram configured (staging trial typically sets the fixture id).
- */
-function digestWorkspaceFilter(): string[] | null {
-  const raw = process.env.DAILY_DIGEST_WORKSPACE_IDS?.trim()
-  if (!raw) return null
-  return raw.split(",").map((s) => s.trim()).filter(Boolean)
-}
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization")
@@ -31,13 +25,12 @@ export async function GET(req: NextRequest) {
 
   const now = new Date()
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-  const filter = digestWorkspaceFilter()
+  const overrideIds = parseDigestWorkspaceIdOverride(
+    process.env.DAILY_DIGEST_WORKSPACE_IDS,
+  )
 
   const workspaces = await prisma.workspace.findMany({
-    where: {
-      status: { not: "DRAFT" },
-      ...(filter ? { id: { in: filter } } : {}),
-    },
+    where: digestCandidateWhere(overrideIds),
     select: {
       id: true,
       name: true,
@@ -69,8 +62,15 @@ export async function GET(req: NextRequest) {
         skipped++
         continue
       }
-      const target = resolveDeliveryTarget(config, ws.user?.email ?? null)
-      if (target.channel !== "telegram") {
+      if (!hasConnectedTelegramForDigest(config, ws.user?.email ?? null)) {
+        skipped++
+        continue
+      }
+
+      // Re-resolve botToken/chatId for send (hasConnectedTelegram already gated).
+      const telegram = config.telegram
+      const chatId = telegram?.allowFrom?.[0]
+      if (!telegram?.botToken || chatId === undefined || chatId === null) {
         skipped++
         continue
       }
@@ -102,8 +102,8 @@ export async function GET(req: NextRequest) {
       })
 
       const ok = await telegramSendMessage({
-        botToken: target.botToken,
-        chatId: target.chatId,
+        botToken: telegram.botToken,
+        chatId,
         text,
       })
 
@@ -139,6 +139,7 @@ export async function GET(req: NextRequest) {
     sent,
     skipped,
     errors,
+    override: overrideIds != null,
   })
 
   return Response.json({

@@ -75,6 +75,7 @@ describe("daily-digest route contract", () => {
     expect(src).toContain("DAILY_DIGEST_EVENT_KIND")
     expect(src).toContain("telegramSendMessage")
     expect(src).toContain("CRON_SECRET")
+    expect(src).toContain("digestCandidateWhere")
     expect(DAILY_DIGEST_EVENT_KIND).toBe("daily_digest_sent")
   })
 })
