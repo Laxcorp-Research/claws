@@ -103,6 +103,33 @@ export async function GET(req: NextRequest) {
         where: { id: action.userId },
         data: { trialExpiryNotifiedAt: now },
       })
+
+      // Ledger notify phase (stop already ledgers trial_expiry_stop).
+      for (const workspaceId of action.workspaceIds) {
+        try {
+          await prisma.activityLog.create({
+            data: {
+              workspaceId,
+              action: "Trial expiry notify",
+              detail:
+                "Trial expiry notification emailed — containers keep running for 24h grace.",
+              actionType: "SYSTEM",
+              timestamp: now,
+              metadata: JSON.stringify({
+                eventKind: "trial_expiry_notify",
+                userId: action.userId,
+                email: action.email,
+              }),
+            },
+          })
+        } catch (ledgerErr) {
+          log.error("Trial-expiry cron: notify ledger failed", {
+            userId: action.userId,
+            workspaceId,
+            error: String(ledgerErr),
+          })
+        }
+      }
       notified++
     } catch (err) {
       errors++

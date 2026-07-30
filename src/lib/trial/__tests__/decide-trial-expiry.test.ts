@@ -42,6 +42,7 @@ describe("decideTrialExpiryActions (GRACE-24)", () => {
     )
     expect(plan.toNotify).toHaveLength(1)
     expect(plan.toNotify[0].clawNames).toEqual(["Growth Machine"])
+    expect(plan.toNotify[0].workspaceIds).toEqual(["ws-1"])
     expect(plan.toStop).toHaveLength(0)
   })
 

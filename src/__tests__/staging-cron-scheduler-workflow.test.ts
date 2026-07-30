@@ -85,11 +85,13 @@ describe("staging-cron-scheduler.yml contract", () => {
     expect(byPath["/api/cron/health-monitor"]).toBe("*/2 * * * *");
     expect(byPath["/api/cron/connection-health"]).toBe("0 * * * *");
     expect(byPath["/api/cron/enforce-trial-expiry"]).toBe("0 * * * *");
+    expect(byPath["/api/cron/daily-digest"]).toBe("0 6 * * *");
 
     const yml = loadWorkflow();
     expect(yml).toContain('cron: "0 0 * * *"');
     expect(yml).toContain('cron: "*/5 * * * *"');
     expect(yml).toContain('cron: "0 2 * * *"');
     expect(yml).toContain('cron: "0 * * * *"');
+    expect(yml).toContain('cron: "0 6 * * *"');
   });
 });
