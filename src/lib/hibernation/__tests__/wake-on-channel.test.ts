@@ -8,6 +8,7 @@ import {
   WAKE_ON_CHANNEL_ACK,
   WAKE_ON_CHANNEL_FAIL,
 } from "@/lib/hibernation/wake-on-channel"
+import { WAKE_ON_CHANNEL_ENTITLEMENT_DENIED } from "@/lib/trial/wake-entitlement"
 import { telegramWebhookSecretToken } from "@/lib/channels/telegram-bot-api"
 import { encrypt } from "@/lib/encryption"
 
@@ -57,7 +58,23 @@ function telegramUpdate(text = "hello from tg") {
   }
 }
 
-function mockHibernatedWorkspace() {
+const ACTIVE_TRIAL_USER = {
+  trialUsed: true,
+  trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+  trialEndsAt: new Date("2099-01-01T00:00:00.000Z"),
+  hasActiveSubscription: false,
+}
+
+const EXPIRED_TRIAL_USER = {
+  trialUsed: true,
+  trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+  trialEndsAt: new Date("2020-01-01T00:00:00.000Z"),
+  hasActiveSubscription: false,
+}
+
+function mockHibernatedWorkspace(
+  user: typeof ACTIVE_TRIAL_USER = ACTIVE_TRIAL_USER,
+) {
   const blob = encrypt(JSON.stringify({ telegram: { botToken: BOT } }))
   ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
     id: WS,
@@ -66,6 +83,7 @@ function mockHibernatedWorkspace() {
     containerHost: null,
     gatewayToken: null,
     chatDeviceKeyEncrypted: null,
+    user,
   })
   ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
   ;(prismaMock.containerState.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
@@ -115,6 +133,7 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
         containerHost: null,
         gatewayToken: null,
         chatDeviceKeyEncrypted: null,
+        user: ACTIVE_TRIAL_USER,
       })
       .mockResolvedValueOnce({
         id: WS,
@@ -207,6 +226,32 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
     expect(src).not.toMatch(/deliver:\s*true[,}]/)
   })
 
+  it("expired trial HIBERNATED → entitlement deny copy, no wake", async () => {
+    mockHibernatedWorkspace(EXPIRED_TRIAL_USER)
+    const wake = vi.fn()
+    const sendMessage = vi.fn().mockResolvedValue(true)
+    const after = vi.fn()
+    const secret = telegramWebhookSecretToken(WS, BOT)
+    const result = await handleTelegramWakeOnChannel(
+      { workspaceId: WS, update: telegramUpdate(), secretHeader: secret },
+      {
+        wakeWorkspace: wake,
+        sendMessage,
+        deleteWebhook: vi.fn(),
+        sendChat: vi.fn(),
+        after,
+      },
+    )
+    expect(result).toEqual({ ok: true, handled: "entitlement_denied" })
+    expect(wake).not.toHaveBeenCalled()
+    expect(after).not.toHaveBeenCalled()
+    expect(sendMessage).toHaveBeenCalledWith({
+      botToken: BOT,
+      chatId: 1227037949,
+      text: WAKE_ON_CHANNEL_ENTITLEMENT_DENIED,
+    })
+  })
+
   it("RUNNING inbound → wake NOT called (path untouched)", async () => {
     const wake = vi.fn()
     const sendMessage = vi.fn()
@@ -218,6 +263,7 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
       containerHost: "host",
       gatewayToken: "tok",
       chatDeviceKeyEncrypted: null,
+      user: ACTIVE_TRIAL_USER,
     })
 
     const secret = telegramWebhookSecretToken(WS, BOT)
@@ -254,6 +300,7 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
         containerHost: null,
         gatewayToken: null,
         chatDeviceKeyEncrypted: null,
+        user: ACTIVE_TRIAL_USER,
       })
       .mockResolvedValueOnce({
         id: WS,

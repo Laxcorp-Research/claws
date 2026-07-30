@@ -34,8 +34,30 @@ import { GET } from "@/app/api/cron/hibernation/route"
 const CRON_SECRET = "test-cron-secret"
 const ROUTE_SRC = join(process.cwd(), "src/app/api/cron/hibernation/route.ts")
 
+const ACTIVE_OWNER = {
+  trialUsed: true,
+  trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+  trialEndsAt: new Date("2099-01-01T00:00:00.000Z"),
+  hasActiveSubscription: false,
+}
+
 function candidate(workspaceId: string) {
   return { workspaceId, workspace: { id: workspaceId, containerId: `svc-${workspaceId}` } }
+}
+
+/** Wake-candidate row with entitlement owner (required after trial-hardening). */
+function wakeRow(
+  workspaceId: string,
+  nextHeartbeatAt: Date,
+  avgWakeDurationMs: number,
+  owner = ACTIVE_OWNER,
+) {
+  return {
+    workspaceId,
+    nextHeartbeatAt,
+    avgWakeDurationMs,
+    workspace: { user: owner },
+  }
 }
 
 async function callCron() {
@@ -159,11 +181,7 @@ describe("hibernation cron — wake after() fan-out", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
-        {
-          workspaceId: "past-due",
-          nextHeartbeatAt: new Date("2026-07-20T12:00:00.000Z"),
-          avgWakeDurationMs: 44_448,
-        },
+        wakeRow("past-due", new Date("2026-07-20T12:00:00.000Z"), 44_448),
       ])
       .mockResolvedValueOnce([])
 
@@ -193,11 +211,9 @@ describe("hibernation cron — wake after() fan-out", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-07-20T12:10:00.000Z"))
 
-    const five = Array.from({ length: 5 }, (_, i) => ({
-      workspaceId: `w${i}`,
-      nextHeartbeatAt: new Date("2026-07-20T12:00:00.000Z"),
-      avgWakeDurationMs: 60_000,
-    }))
+    const five = Array.from({ length: 5 }, (_, i) =>
+      wakeRow(`w${i}`, new Date("2026-07-20T12:00:00.000Z"), 60_000),
+    )
 
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([])
@@ -235,11 +251,9 @@ describe("hibernation cron — wake after() fan-out", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-07-20T12:10:00.000Z"))
 
-    const three = ["ok-a", "boom", "ok-b"].map((id) => ({
-      workspaceId: id,
-      nextHeartbeatAt: new Date("2026-07-20T12:00:00.000Z"),
-      avgWakeDurationMs: 40_000,
-    }))
+    const three = ["ok-a", "boom", "ok-b"].map((id) =>
+      wakeRow(id, new Date("2026-07-20T12:00:00.000Z"), 40_000),
+    )
 
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([])
@@ -272,11 +286,7 @@ describe("hibernation cron — wake after() fan-out", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
-        {
-          workspaceId: "early",
-          nextHeartbeatAt: new Date("2026-07-20T16:00:00.000Z"),
-          avgWakeDurationMs: 44_448,
-        },
+        wakeRow("early", new Date("2026-07-20T16:00:00.000Z"), 44_448),
       ])
       .mockResolvedValueOnce([])
 
@@ -291,6 +301,34 @@ describe("hibernation cron — wake after() fan-out", () => {
       deadline: "2026-07-20T15:52:00.000Z",
       leadMs: 8 * 60 * 1000,
     })
+    expect(mockAfter).not.toHaveBeenCalled()
+    expect(mockWake).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+
+  it("skips scheduleWake when owner trial expired (entitlement gate)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-20T12:10:00.000Z"))
+
+    const expiredOwner = {
+      ...ACTIVE_OWNER,
+      trialEndsAt: new Date("2020-01-01T00:00:00.000Z"),
+      hasActiveSubscription: false,
+    }
+
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        wakeRow("expired-ws", new Date("2026-07-20T12:00:00.000Z"), 40_000, expiredOwner),
+      ])
+      .mockResolvedValueOnce([])
+
+    const res = await callCron()
+    const json = await res.json()
+    expect(res.status).toBe(200)
+    expect(json.data.woke).toBe(0)
     expect(mockAfter).not.toHaveBeenCalled()
     expect(mockWake).not.toHaveBeenCalled()
 

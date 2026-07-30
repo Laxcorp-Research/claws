@@ -24,6 +24,10 @@ import {
   wakeInjectSessionKey,
   WAKE_REPLY_WAIT_MS,
 } from "@/lib/hibernation/wake-reply-routing"
+import {
+  canWakeHibernatedWorkspace,
+  WAKE_ON_CHANNEL_ENTITLEMENT_DENIED,
+} from "@/lib/trial/wake-entitlement"
 import crypto from "node:crypto"
 
 /** Locked ack copy — mutation: change string → contract fails. */
@@ -147,6 +151,14 @@ export async function handleTelegramWakeOnChannel(
       containerHost: true,
       gatewayToken: true,
       chatDeviceKeyEncrypted: true,
+      user: {
+        select: {
+          trialUsed: true,
+          trialStartedAt: true,
+          trialEndsAt: true,
+          hasActiveSubscription: true,
+        },
+      },
     },
   })
   if (!workspace) {
@@ -197,6 +209,22 @@ export async function handleTelegramWakeOnChannel(
       chatId: inbound.chatId,
     })
     return { ok: true, handled: "ack_still_waking" }
+  }
+
+  // ack_and_wake — entitlement gate before ack / WAKING flip.
+  const entitlement = canWakeHibernatedWorkspace(workspace.user)
+  if (!entitlement.allowed) {
+    const delivered = await deps.sendMessage({
+      botToken,
+      chatId: inbound.chatId,
+      text: WAKE_ON_CHANNEL_ENTITLEMENT_DENIED,
+    })
+    log.info("wake-on-channel: entitlement denied", {
+      workspaceId: args.workspaceId,
+      reason: entitlement.reason,
+      delivered,
+    })
+    return { ok: true, handled: "entitlement_denied" }
   }
 
   // ack_and_wake

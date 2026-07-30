@@ -4,6 +4,7 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { wakeWorkspace } from "@/lib/hibernation/manager"
+import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 
 export const maxDuration = 300
 
@@ -17,7 +18,17 @@ export async function POST(
 
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    include: { containerState: true },
+    include: {
+      containerState: true,
+      user: {
+        select: {
+          trialUsed: true,
+          trialStartedAt: true,
+          trialEndsAt: true,
+          hasActiveSubscription: true,
+        },
+      },
+    },
   })
 
   if (!workspace) return ERRORS.NOT_FOUND("Workspace")
@@ -25,6 +36,15 @@ export async function POST(
 
   if (workspace.status !== "HIBERNATED") {
     return apiError("INVALID_STATE", `Cannot wake workspace in ${workspace.status} state`, 400)
+  }
+
+  const entitlement = canWakeHibernatedWorkspace(workspace.user)
+  if (!entitlement.allowed) {
+    return apiError(
+      "SUBSCRIPTION_REQUIRED",
+      "Your 3-day trial has ended. Subscribe to the Claw Platform ($79/mo) to wake this Claw.",
+      402,
+    )
   }
 
   await prisma.$transaction([

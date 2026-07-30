@@ -182,23 +182,34 @@ export async function GET(req: NextRequest) {
       const stoppedNames: string[] = []
       for (const action of group.items) {
         try {
-          // P3 lifecycle-safe path (exhaustion precedent). NOT bare destroyContainer.
-          await syncThenDestroy(action.workspaceId)
-
-          await prisma.$transaction([
-            prisma.workspace.update({
-              where: { id: action.workspaceId },
-              data: { status: "HIBERNATED" },
-            }),
-            prisma.containerState.updateMany({
+          if (action.enforceMode === "status_flip") {
+            // HIBERNATED: no live container — entitlement terminal is STOPPED.
+            // Clear nextHeartbeatAt so scheduled wake cannot resurrect.
+            await prisma.$transaction([
+              prisma.workspace.update({
+                where: { id: action.workspaceId },
+                data: { status: "STOPPED" },
+              }),
+              prisma.containerState.updateMany({
+                where: { workspaceId: action.workspaceId },
+                data: {
+                  containerPhase: "STOPPED",
+                  hibernatedAt: null,
+                  wakeRequestedAt: null,
+                  nextHeartbeatAt: null,
+                },
+              }),
+            ])
+          } else {
+            // RUNNING / WAKING / PAUSED / ERROR / DEPLOYING — tear down container.
+            // syncThenDestroy → destroyContainer already writes STOPPED.
+            // Do NOT rewrite to HIBERNATED (that re-opened the wake hole).
+            await syncThenDestroy(action.workspaceId)
+            await prisma.containerState.updateMany({
               where: { workspaceId: action.workspaceId },
-              data: {
-                containerPhase: "HIBERNATED",
-                hibernatedAt: now,
-                wakeRequestedAt: null,
-              },
-            }),
-          ])
+              data: { nextHeartbeatAt: null, wakeRequestedAt: null },
+            })
+          }
 
           await prisma.activityLog.create({
             data: {
@@ -211,6 +222,7 @@ export async function GET(req: NextRequest) {
               metadata: JSON.stringify({
                 eventKind: "trial_expiry_stop",
                 userId,
+                enforceMode: action.enforceMode,
                 trialExpiryNotifiedAt: fresh.trialExpiryNotifiedAt?.toISOString() ?? null,
               }),
             },

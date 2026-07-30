@@ -5,6 +5,7 @@ import { deployToCloud, syncThenDestroy, type SyncThenDestroyOptions } from "@/l
 import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
 import { isPastDueHint } from "@/lib/hibernation/wake-geometry"
 import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
+import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 
 // P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot — when a claw
 // wakes past a due heartbeat hint, the container overlay should fire one
@@ -170,7 +171,17 @@ export async function hibernateWorkspace(
 export async function wakeWorkspace(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    include: { containerState: true },
+    include: {
+      containerState: true,
+      user: {
+        select: {
+          trialUsed: true,
+          trialStartedAt: true,
+          trialEndsAt: true,
+          hasActiveSubscription: true,
+        },
+      },
+    },
   })
 
   if (!workspace) {
@@ -180,6 +191,35 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
 
   if (workspace.status !== "HIBERNATED" && workspace.status !== "WAKING") {
     log.warn("Cannot wake: wrong status", { workspaceId, status: workspace.status })
+    return
+  }
+
+  // Defense in depth: every wake path must refuse expired+unsubscribed claws.
+  // Fail closed when owner row is missing from the join.
+  const entitlement = workspace.user
+    ? canWakeHibernatedWorkspace(workspace.user)
+    : { allowed: false as const, reason: "owner_missing", needsSubscription: true }
+  if (!entitlement.allowed) {
+    log.warn("Cannot wake: entitlement denied", {
+      workspaceId,
+      reason: entitlement.reason,
+    })
+    // Terminalize so scheduled wake stops retrying a dead entitlement.
+    await prisma.$transaction([
+      prisma.workspace.update({
+        where: { id: workspaceId },
+        data: { status: "STOPPED" },
+      }),
+      prisma.containerState.updateMany({
+        where: { workspaceId },
+        data: {
+          containerPhase: "STOPPED",
+          hibernatedAt: null,
+          wakeRequestedAt: null,
+          nextHeartbeatAt: null,
+        },
+      }),
+    ])
     return
   }
 
