@@ -141,7 +141,8 @@ export function validateTopology(args: {
   }
 }
 
-function illegalEdgeMessage(sourceRole: string, targetRole: string): string {
+/** Plain-language copy for draw-time toasts (PR-2) and deploy hard-errors. */
+export function illegalEdgeMessage(sourceRole: string, targetRole: string): string {
   if (targetRole === "CRITIC") {
     return "Review is automatic — every worker's output goes through the reviewer before it reaches you."
   }
@@ -156,3 +157,9 @@ function illegalEdgeMessage(sourceRole: string, targetRole: string): string {
   }
   return "Only Commander → Worker connections are allowed."
 }
+
+export const AUTO_PROCEED_DISABLED_COPY =
+  "Autonomous delivery needs action integrations connected — coming soon. Delivery stays on ask-before-acting."
+
+export const EDGE_LEGEND_SOLID = "Delegates (you drew this)"
+export const EDGE_LEGEND_DOTTED = "Review (automatic)"

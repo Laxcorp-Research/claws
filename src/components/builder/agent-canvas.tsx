@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
 import {
   ReactFlow,
   Background,
@@ -8,9 +8,19 @@ import {
   MiniMap,
   BackgroundVariant,
 } from "@xyflow/react"
-import type { NodeTypes, Node, Edge } from "@xyflow/react"
+import type { Connection, NodeTypes, Node, Edge, IsValidConnection } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { useBuilderStore, type AgentNodeData } from "@/stores/builder-store"
+import { useBuilderStore, type AgentNodeData, type ConnectionEdgeData } from "@/stores/builder-store"
+import {
+  deriveAutomaticPreviewEdges,
+  evaluateConnectAttempt,
+  isPreviewEdgeId,
+} from "@/lib/openclaw/builder-topology"
+import {
+  EDGE_LEGEND_DOTTED,
+  EDGE_LEGEND_SOLID,
+} from "@/lib/openclaw/validate-topology"
+import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { AgentNode } from "./agent-node"
 import { Button } from "@/components/ui/button"
 import { Bot } from "lucide-react"
@@ -25,21 +35,59 @@ export function AgentCanvas() {
     edges,
     onNodesChange,
     onEdgesChange,
-    onConnect,
+    tryConnect,
     selectAgent,
     selectEdge,
     addAgent,
   } = useBuilderStore()
+  const snackbar = useSnackbarOptional()
 
   const prefersReducedMotion = useMemo(() =>
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   , [])
+
+  const previewEdges = useMemo(
+    () => deriveAutomaticPreviewEdges(nodes),
+    [nodes],
+  )
+
+  const displayEdges = useMemo(() => {
+    const solid = edges.map((e) => ({
+      ...e,
+      animated: !prefersReducedMotion,
+      style: { stroke: "var(--bd2)", strokeWidth: 1.5, ...(e.style ?? {}) },
+    }))
+    return [...solid, ...previewEdges] as Edge<ConnectionEdgeData>[]
+  }, [edges, previewEdges, prefersReducedMotion])
+
+  const isValidConnection = useCallback<IsValidConnection>(
+    (connection) => {
+      return evaluateConnectAttempt({
+        sourceId: connection.source,
+        targetId: connection.target,
+        nodes,
+        edges,
+      }).ok
+    },
+    [nodes, edges],
+  )
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      const result = tryConnect(connection)
+      if (!result.ok) {
+        snackbar?.show({ message: result.message, variant: "info" })
+      }
+    },
+    [tryConnect, snackbar],
+  )
 
   const handleNodeClick = (_: React.MouseEvent, node: Node) => {
     selectAgent(node.id)
   }
 
   const handleEdgeClick = (_: React.MouseEvent, edge: Edge) => {
+    if (isPreviewEdgeId(edge.id)) return
     selectEdge(edge.id)
   }
 
@@ -73,14 +121,15 @@ export function AgentCanvas() {
       role="application"
       aria-label="Agent builder canvas. Use arrow keys to pan, Tab to navigate agents, Enter to select."
       aria-roledescription="visual agent builder"
-      className="h-full"
+      className="h-full relative"
     >
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={displayEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        onConnect={handleConnect}
+        isValidConnection={isValidConnection}
         onNodeClick={handleNodeClick}
         onEdgeClick={handleEdgeClick}
         onPaneClick={handlePaneClick}
@@ -113,6 +162,23 @@ export function AgentCanvas() {
           zoomable={false}
         />
       </ReactFlow>
+
+      <div
+        className="absolute bottom-[12px] left-[12px] z-10 flex flex-col gap-[6px] rounded-[6px] border border-[var(--bd)] bg-[var(--bg)] px-[10px] py-[8px] text-[10px] text-[var(--tx2)]"
+        aria-label="Connection legend"
+      >
+        <div className="flex items-center gap-[8px]">
+          <span className="inline-block h-0 w-[22px] border-t-[1.5px] border-[var(--bd2)]" aria-hidden />
+          <span>{EDGE_LEGEND_SOLID}</span>
+        </div>
+        <div className="flex items-center gap-[8px]">
+          <span
+            className="inline-block h-0 w-[22px] border-t-[1.5px] border-dashed border-[var(--bd2)]"
+            aria-hidden
+          />
+          <span>{EDGE_LEGEND_DOTTED}</span>
+        </div>
+      </div>
 
       {nodes.length > 0 && (
         <div className="sr-only" aria-label="Agent connections summary">
