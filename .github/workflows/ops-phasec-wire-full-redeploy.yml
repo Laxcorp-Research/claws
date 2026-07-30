@@ -29,7 +29,8 @@ jobs:
 
       - name: Redeploy fixture
         env:
-          DATABASE_URL: ${{ secrets.CLEANUP_DATABASE_URL_STAGING }}
+          # CLEANUP_* is inventory-only (read-restricted). Redeploy needs owner URL.
+          DATABASE_URL: ${{ secrets.OPS_STAGING_DATABASE_URL }}
           # Vercel METERING_MASTER_SECRET is one value for preview+production.
           METERING_MASTER_SECRET: ${{ secrets.PROD_METERING_MASTER_SECRET }}
           ACTIVITY_PIPELINE_SECRET: ${{ secrets.ACTIVITY_PIPELINE_SECRET }}
