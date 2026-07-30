@@ -6,6 +6,7 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
 import { evaluateWorkspaceDeployToolPrerequisites } from "@/lib/tools/deploy-tool-prerequisites"
 import { missingRequiredToolsBannerTitle } from "@/lib/tools/required-tools"
+import { evaluateWorkspaceDeployTopologyPrerequisites } from "@/lib/openclaw/deploy-topology-prerequisites"
 
 export const maxDuration = 300
 
@@ -53,6 +54,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
     return apiError(
       "REQUIRED_TOOLS_MISSING",
       missingRequiredToolsBannerTitle(toolPrereqs.missingLabels),
+      400,
+    )
+  }
+
+  // WIRE-FULL: topology hard-block (sibling to required-tools).
+  const topology = await evaluateWorkspaceDeployTopologyPrerequisites(workspaceId)
+  if (!topology.ok) {
+    return apiError(
+      "TOPOLOGY_INVALID",
+      topology.primaryMessage ?? "Fix your team connections before redeploying.",
       400,
     )
   }

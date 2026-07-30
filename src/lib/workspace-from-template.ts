@@ -55,7 +55,6 @@ interface WorkspaceResult {
 }
 
 type AgentRole = "ORCHESTRATOR" | "WORKER" | "CRITIC"
-type ConnectionCondition = "ON_COMPLETE" | "ON_APPROVAL" | "ON_REJECTION" | "ON_SCHEDULE" | "ON_HUMAN_APPROVE" | "CUSTOM"
 
 function snapshotSkillSlug(entry: SnapshotSkill): string | null {
   if (typeof entry.slug === "string" && entry.slug.trim()) return entry.slug.trim()
@@ -164,14 +163,7 @@ export async function createWorkspaceFromTemplate(
       }
     }
 
-    for (const a of snapshot.agents) {
-      if (a.reportsTo && slugToId[a.reportsTo]) {
-        await tx.agent.update({
-          where: { id: slugToId[a.agentSlug] },
-          data: { reportsTo: slugToId[a.reportsTo] },
-        })
-      }
-    }
+    // WIRE-FULL: reportsTo writers removed — derive from edges at read time.
 
     for (const c of snapshot.connections ?? []) {
       const src = slugToId[c.sourceSlug]
@@ -182,7 +174,12 @@ export async function createWorkspaceFromTemplate(
             workspaceId: workspace.id,
             sourceAgentId: src,
             targetAgentId: tgt,
-            condition: c.condition as ConnectionCondition,
+            // X2: coerce uniformly; generator ignores condition.
+            condition: "ON_COMPLETE",
+            contextNote:
+              "contextNote" in c && typeof (c as { contextNote?: unknown }).contextNote === "string"
+                ? String((c as { contextNote: string }).contextNote).slice(0, 140)
+                : null,
           },
         })
       }

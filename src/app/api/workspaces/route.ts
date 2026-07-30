@@ -99,18 +99,24 @@ export async function POST(req: NextRequest) {
         agentIdMap[a.agentSlug] = agent.id
       }
 
-      for (const a of snapshot.agents) {
-        if (a.reportsTo && agentIdMap[a.reportsTo]) {
-          await tx.agent.update({ where: { id: agentIdMap[a.agentSlug] }, data: { reportsTo: agentIdMap[a.reportsTo] } })
-        }
-      }
+      // WIRE-FULL: reportsTo writers removed — projection from edges only.
 
       for (const c of snapshot.connections) {
         const src = agentIdMap[c.sourceSlug]
         const tgt = agentIdMap[c.targetSlug]
         if (src && tgt) {
           await tx.agentConnection.create({
-            data: { workspaceId: ws.id, sourceAgentId: src, targetAgentId: tgt, condition: c.condition as "ON_COMPLETE" | "ON_APPROVAL" | "ON_REJECTION" | "ON_SCHEDULE" | "ON_HUMAN_APPROVE" | "CUSTOM", label: c.label || null },
+            data: {
+              workspaceId: ws.id,
+              sourceAgentId: src,
+              targetAgentId: tgt,
+              // X2: coerce seed conditions to ON_COMPLETE.
+              condition: "ON_COMPLETE",
+              label: c.label || null,
+              contextNote: "contextNote" in c && typeof (c as { contextNote?: unknown }).contextNote === "string"
+                ? (c as { contextNote: string }).contextNote.slice(0, 140)
+                : null,
+            },
           })
         }
       }
@@ -136,7 +142,7 @@ export async function POST(req: NextRequest) {
     const ws = await tx.workspace.create({
       data: { userId: user.id, name, slug, status: "DRAFT" },
     })
-    const orch = await tx.agent.create({
+    await tx.agent.create({
       data: {
         workspaceId: ws.id, name: "Orchestrator", agentSlug: "orchestrator", role: "ORCHESTRATOR",
         color: "#5BA1F5", model: DEFAULT_MODEL.ORCHESTRATOR,
@@ -144,7 +150,7 @@ export async function POST(req: NextRequest) {
         agentsMd: "# Team\n\nCoordinate with all workers and the critic.", positionX: 400, positionY: 50,
       },
     })
-    const critic = await tx.agent.create({
+    await tx.agent.create({
       data: {
         workspaceId: ws.id, name: "Quality Critic", agentSlug: "quality-critic", role: "CRITIC",
         color: "#8b5cf6", model: DEFAULT_MODEL.CRITIC,
@@ -153,9 +159,9 @@ export async function POST(req: NextRequest) {
         positionX: 400, positionY: 450, qualityThreshold: 8.0,
       },
     })
-    await tx.agentConnection.create({
-      data: { workspaceId: ws.id, sourceAgentId: orch.id, targetAgentId: critic.id, condition: "ON_COMPLETE", label: "On complete" },
-    })
+    // WIRE-FULL: blank create seeds orch + critic with ZERO solid edges.
+    // Deploy is hard-blocked until ≥1 ORCH→WORKER edge exists.
+    // MUTATION: re-add orch→critic agentConnection.create → blank-create test fails.
     // MUTATION: remove this call → first-workspace journey leaves flag false.
     await completeOnboardingAfterFirstWorkspace(tx, user.id)
     return ws

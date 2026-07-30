@@ -127,16 +127,11 @@ describe('createWorkspaceFromTemplate', () => {
     );
   });
 
-  it('sets reportsTo on agents that reference other agents', async () => {
+  it('does not write reportsTo (WIRE-FULL: read-only edge projection)', async () => {
     setupMocks();
     await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
 
-    expect(prismaMock.agent.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'agent-worker' },
-        data: { reportsTo: 'agent-orch' },
-      }),
-    );
+    expect(prismaMock.agent.update).not.toHaveBeenCalled();
   });
 
   it('upserts template install with compound unique key', async () => {

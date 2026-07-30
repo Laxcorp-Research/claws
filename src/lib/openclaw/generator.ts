@@ -45,6 +45,13 @@ import {
 import { buildCronJobsFromHeartbeatMd } from '@/lib/openclaw/heartbeat-md-cron';
 import { getApiKeySource } from '@/lib/credits/api-key-source';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
+import { deriveAllowAgents } from '@/lib/openclaw/derive-allow-agents';
+import {
+  WORKFLOW_FENCE_BEGIN,
+  applyWorkflowFence,
+  generateFencedWorkflowSection,
+  type WorkflowDeliveryMode,
+} from '@/lib/openclaw/workflow-language';
 import type { ApiKeySource } from '@/generated/prisma/client';
 import yaml from 'yaml';
 
@@ -125,6 +132,9 @@ export interface GeneratedWorkspace {
 
   /** Gateway auth token (stored encrypted in our DB for monitoring connections) */
   gatewayToken: string;
+
+  /** True when a stale/tampered orchestrator workflow fence was regenerated. */
+  workflowFenceCorrected?: boolean;
 }
 
 export interface AgentWorkspaceFiles {
@@ -370,7 +380,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   const openclawConfig = generateOpenClawConfig(
     workspaceWithChannels,
     orchestrator,
-    activeWorkers,
+    workers,
     critic,
     heartbeat,
     skillsEntries,
@@ -378,7 +388,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   );
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
   const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug, activeWorkers);
-  const workspaces = generateAllWorkspaceFiles(
+  const workspaceFiles = generateAllWorkspaceFiles(
     workspaceWithChannels,
     orchestrator,
     workers,
@@ -389,9 +399,10 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   return {
     'openclaw.json': JSON.stringify(openclawConfig, null, 2),
     '.env': envFile,
-    workspaces,
+    workspaces: workspaceFiles.workspaces,
     'cron/jobs.json': JSON.stringify(cronJobs, null, 2),
     gatewayToken,
+    workflowFenceCorrected: workspaceFiles.workflowFenceCorrected,
   };
 }
 
@@ -424,15 +435,21 @@ function generateOpenClawConfig(
   skillsEntries: Record<string, unknown>,
   mcpEmission: McpEmission | null,
 ) {
-  const allAgents = [orchestrator, ...workers, critic];
-  const workerIds = workers.map(w => toAgentId(w.name));
-  const criticId = toAgentId(critic.name);
+  const activeWorkers = workers.filter((worker) => !worker.isPaused);
+  const runtimeAgents = [orchestrator, ...activeWorkers, critic];
+  const allowAgentDerivation = deriveAllowAgents({
+    agents: [orchestrator, ...workers, critic],
+    edges: orchestrator.outgoingConnections.map((conn) => ({
+      sourceAgentId: orchestrator.id,
+      targetAgentId: conn.targetAgent.id,
+    })),
+  });
   const customApiSkillSlugs = Array.from(
     deriveCustomApiIdentities(workspace.customToolConnections ?? []).values(),
   ).map((identity) => identity.slug);
 
   // Build agents.list - one entry per agent in the Claw
-  const agentsList = allAgents.map(agent => {
+  const agentsList = runtimeAgents.map(agent => {
     const agentId = toAgentId(agent.name);
     const isOrchestrator = agent.role === 'ORCHESTRATOR';
 
@@ -457,7 +474,7 @@ function generateOpenClawConfig(
       // worker's list model when sessions_spawn omits agentId (self-target →
       // commander model). requireAgentId forces explicit worker selection.
       entry.subagents = {
-        allowAgents: [...workerIds, criticId],
+        allowAgents: allowAgentDerivation.allowAgents,
         requireAgentId: true,
       };
     }
@@ -520,7 +537,7 @@ function generateOpenClawConfig(
         heartbeat: heartbeatInterval,
         subagents: {
           // Increase max children for larger Claws (default is 5)
-          maxChildrenPerAgent: Math.max(5, workers.length + 1),
+          maxChildrenPerAgent: Math.max(5, activeWorkers.length + 1),
           maxSpawnDepth: 2,
         },
       },
@@ -1266,13 +1283,14 @@ function generateAllWorkspaceFiles(
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   mcpEnabled: boolean,
-): Record<string, AgentWorkspaceFiles> {
+): { workspaces: Record<string, AgentWorkspaceFiles>; workflowFenceCorrected: boolean } {
   const allAgents = [orchestrator, ...workers, critic];
   const workspaces: Record<string, AgentWorkspaceFiles> = {};
+  let workflowFenceCorrected = false;
 
   for (const agent of allAgents) {
     const agentId = toAgentId(agent.name);
-    workspaces[`workspace-${agentId}`] = generateAgentWorkspaceFiles(
+    const files = generateAgentWorkspaceFiles(
       workspace,
       agent,
       orchestrator,
@@ -1280,9 +1298,22 @@ function generateAllWorkspaceFiles(
       critic,
       mcpEnabled,
     );
+    if (agent.role === 'ORCHESTRATOR' && files.workflowFenceCorrected) {
+      workflowFenceCorrected = true;
+    }
+    workspaces[`workspace-${agentId}`] = {
+      'SOUL.md': files['SOUL.md'],
+      'AGENTS.md': files['AGENTS.md'],
+      'USER.md': files['USER.md'],
+      'IDENTITY.md': files['IDENTITY.md'],
+      'TOOLS.md': files['TOOLS.md'],
+      'HEARTBEAT.md': files['HEARTBEAT.md'],
+      'BOOT.md': files['BOOT.md'],
+      skills: files.skills,
+    };
   }
 
-  return workspaces;
+  return { workspaces, workflowFenceCorrected };
 }
 
 function generateAgentWorkspaceFiles(
@@ -1292,13 +1323,14 @@ function generateAgentWorkspaceFiles(
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   mcpEnabled: boolean,
-): AgentWorkspaceFiles {
+): AgentWorkspaceFiles & { workflowFenceCorrected?: boolean } {
   const isOrchestrator = agent.role === 'ORCHESTRATOR';
   const clawName = workspace.clawTemplate?.name ?? workspace.name;
+  const agentsMdResult = generateAgentsMd(agent, orchestrator, workers, critic, workspace);
 
   return {
     'SOUL.md': generateSoulMd(agent, clawName),
-    'AGENTS.md': generateAgentsMd(agent, orchestrator, workers, critic),
+    'AGENTS.md': agentsMdResult.text,
     'USER.md': generateUserMd(workspace),
     'IDENTITY.md': generateIdentityMd(agent),
     'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled),
@@ -1307,6 +1339,7 @@ function generateAgentWorkspaceFiles(
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
     'BOOT.md': generateBootMd(agent),
     skills: generateSkillFiles(agent, workspace),
+    workflowFenceCorrected: agentsMdResult.workflowFenceCorrected,
   };
 }
 
@@ -1464,154 +1497,97 @@ function generateAgentsMd(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
-): string {
+  workspace: WorkspaceWithRelations,
+): { text: string; workflowFenceCorrected?: boolean } {
   // If the agent has custom agentsMd from the Builder, use it
   if (agent.agentsMd?.trim()) {
-    // Inject spawn-based routing instructions for orchestrator
     if (agent.role === 'ORCHESTRATOR') {
-      return injectSpawnInstructions(agent.agentsMd, workers, critic);
+      const withSpawn = injectSpawnInstructions(agent.agentsMd, workers, critic);
+      return applyOrchestratorWorkflowFence(withSpawn, orchestrator, workers, critic, workspace);
     }
-    return agent.agentsMd;
+    return { text: agent.agentsMd };
   }
 
   switch (agent.role) {
-    case 'ORCHESTRATOR':
-      return generateOrchestratorAgentsMd(orchestrator, workers, critic);
+    case 'ORCHESTRATOR': {
+      const base = generateOrchestratorAgentsMd(orchestrator, workers, critic, workspace);
+      return applyOrchestratorWorkflowFence(base, orchestrator, workers, critic, workspace);
+    }
     case 'CRITIC':
-      return generateCriticAgentsMd(critic);
+      return { text: generateCriticAgentsMd(critic) };
     case 'WORKER':
     default:
-      return generateWorkerAgentsMd();
+      return { text: generateWorkerAgentsMd() };
   }
 }
 
-type WorkflowEdge = { from: string; to: string; condition: string };
-
 /**
- * WIRE-LITE: AgentConnection.condition → the kebab-case label used in the
- * orchestrator's generated "## Workflow" section. Falls back to a generic
- * kebab-cased rendering of any future enum member so an unmapped value
- * degrades gracefully instead of throwing.
+ * WIRE-FULL: fenced Workflow section from ORCH→WORKER edges (unpaused only).
+ * Generator ignores ConnectionCondition (X2). Critic/revision law is knob-driven.
  */
-const CONNECTION_CONDITION_LABELS: Record<string, string> = {
-  ON_COMPLETE: 'on-complete',
-  ON_APPROVAL: 'on-approval',
-  ON_REJECTION: 'on-rejection',
-  ON_SCHEDULE: 'on-schedule',
-  ON_HUMAN_APPROVE: 'on-human-approve',
-  CUSTOM: 'custom',
-};
+function buildOrchestratorWorkflowFence(
+  orchestrator: AgentWithRelations,
+  workers: AgentWithRelations[],
+  critic: AgentWithRelations,
+  workspace: WorkspaceWithRelations,
+): string {
+  const workerById = new Map(workers.map((w) => [w.id, w]));
+  const edges = orchestrator.outgoingConnections
+    .map((conn) => {
+      const worker = workerById.get(conn.targetAgent.id);
+      if (!worker || worker.role !== 'WORKER' || worker.isPaused) return null;
+      return {
+        workerDisplayName: worker.name,
+        contextNote: conn.contextNote ?? null,
+      };
+    })
+    .filter((e): e is { workerDisplayName: string; contextNote: string | null } => e !== null);
 
-function formatConnectionCondition(condition: string): string {
-  return CONNECTION_CONDITION_LABELS[condition] ?? condition.toLowerCase().replace(/_/g, '-');
-}
+  const deliveryMode: WorkflowDeliveryMode =
+    workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED';
 
-/**
- * WIRE-LITE: collects every AgentConnection edge visible to the orchestrator's
- * team. Each agent's own `outgoingConnections` (loaded once by
- * generateWorkspace) only carries {targetAgent, condition} — the source name
- * comes from the agent the loop is currently on.
- */
-function collectWorkflowEdges(allAgents: AgentWithRelations[]): WorkflowEdge[] {
-  const edges: WorkflowEdge[] = [];
-  for (const agent of allAgents) {
-    for (const conn of agent.outgoingConnections) {
-      edges.push({ from: agent.name, to: conn.targetAgent.name, condition: conn.condition });
-    }
-  }
-  return edges;
-}
-
-/**
- * Stable topological order (Kahn's algorithm) over every agent name touched
- * by `edges`, seeded with `seedOrder` (Builder declaration order: Orchestrator,
- * Workers, Critic) so ties — and any residual cycle the Builder canvas
- * allowed — fall back to that order instead of Set-iteration order.
- */
-function topoSortAgentNames(seedOrder: string[], edges: WorkflowEdge[]): string[] {
-  const nodes = Array.from(new Set([...seedOrder, ...edges.flatMap((e) => [e.from, e.to])]));
-  const indexOf = new Map(seedOrder.map((name, i) => [name, i]));
-  const bySeed = (a: string, b: string) => (indexOf.get(a) ?? Infinity) - (indexOf.get(b) ?? Infinity);
-
-  const inDegree = new Map(nodes.map((n) => [n, 0]));
-  const adjacency = new Map<string, string[]>(nodes.map((n) => [n, []]));
-  for (const edge of edges) {
-    adjacency.get(edge.from)?.push(edge.to);
-    inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
-  }
-
-  const queue = nodes.filter((n) => inDegree.get(n) === 0).sort(bySeed);
-  const order: string[] = [];
-  while (queue.length > 0) {
-    const next = queue.shift()!;
-    order.push(next);
-    for (const target of (adjacency.get(next) ?? []).slice().sort(bySeed)) {
-      const remaining = (inDegree.get(target) ?? 0) - 1;
-      inDegree.set(target, remaining);
-      if (remaining === 0) {
-        queue.push(target);
-        queue.sort(bySeed);
-      }
-    }
-  }
-
-  // Cycle fallback: nodes never dequeued (in-degree never hit 0) are appended
-  // in seed order rather than silently dropped from the Workflow section.
-  if (order.length < nodes.length) {
-    const seen = new Set(order);
-    for (const n of nodes) {
-      if (!seen.has(n)) order.push(n);
-    }
-  }
-
-  return order;
-}
-
-/**
- * WIRE-LITE: renders the "## Workflow" section from the Builder canvas's
- * AgentConnection edges — topological order, human-readable conditions.
- * Empty when the team has no connections wired (nothing to show).
- * Supplements the template prose below; does NOT touch openclaw.json's
- * `subagents.allowAgents` (that stays purely spawn-permission, unrelated to
- * this prose guidance).
- * MUTATION: deleting this call from generateOrchestratorAgentsMd → the
- * generator.test.ts snapshot test for the edge-graph section fails.
- */
-function generateWorkflowSection(allAgents: AgentWithRelations[]): string {
-  const edges = collectWorkflowEdges(allAgents);
-  if (edges.length === 0) return '';
-
-  const seedOrder = allAgents.map((a) => a.name);
-  const order = topoSortAgentNames(seedOrder, edges);
-  const rank = new Map(order.map((name, i) => [name, i]));
-  const sortedEdges = [...edges].sort((a, b) => {
-    const rankDiff = (rank.get(a.from) ?? 0) - (rank.get(b.from) ?? 0);
-    return rankDiff !== 0 ? rankDiff : (rank.get(a.to) ?? 0) - (rank.get(b.to) ?? 0);
+  return generateFencedWorkflowSection({
+    edges,
+    knobs: {
+      orchestratorDisplayName: orchestrator.name,
+      criticDisplayName: critic.name,
+      qualityThreshold: critic.qualityThreshold ?? 8,
+      maxRevisionRounds: workspace.maxRevisionRounds ?? 3,
+      deliveryMode,
+    },
   });
+}
 
-  const lines = sortedEdges.map(
-    (edge) => `- **${edge.from}** → **${edge.to}** (${formatConnectionCondition(edge.condition)})`,
-  );
-
-  return `\n## Workflow
-
-These handoffs come directly from the connections drawn on the Builder canvas (topological order):
-
-${lines.join('\n')}
-`;
+function applyOrchestratorWorkflowFence(
+  agentsMd: string,
+  orchestrator: AgentWithRelations,
+  workers: AgentWithRelations[],
+  critic: AgentWithRelations,
+  workspace: WorkspaceWithRelations,
+): { text: string; workflowFenceCorrected: boolean } {
+  // Strip any bare legacy ## Workflow block outside the fence so seeded
+  // templates that never had a fence don't double-emit after upgrade.
+  let base = agentsMd;
+  if (!base.includes(WORKFLOW_FENCE_BEGIN)) {
+    base = base.replace(/\n## Workflow\n[\s\S]*?(?=\n# |\n<!--|$)/, '\n');
+  }
+  const fence = buildOrchestratorWorkflowFence(orchestrator, workers, critic, workspace);
+  const applied = applyWorkflowFence({ agentsMd: base, fenceBody: fence });
+  return { text: applied.text, workflowFenceCorrected: applied.corrected };
 }
 
 function generateOrchestratorAgentsMd(
   orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
+  workspace: WorkspaceWithRelations,
 ): string {
   const workerList = workers
     .map(w => `- **${w.name}** (agent ID: \`${toAgentId(w.name)}\`): ${w.description || 'Specialized worker'}`)
     .join('\n');
 
   const criticId = toAgentId(critic.name);
-  const workflowSection = generateWorkflowSection([orchestrator, ...workers, critic]);
+  const rounds = workspace.maxRevisionRounds ?? 3;
 
   return `# Session Start Protocol
 
@@ -1628,7 +1604,7 @@ You manage the following specialized agents:
 
 ${workerList}
 - **${critic.name}** (agent ID: \`${criticId}\`): Quality reviewer - all work must pass through them
-${workflowSection}
+
 # Task Delegation - Using sessions_spawn
 
 When you need a Worker to do something, use \`sessions_spawn\` to create a subagent task:
@@ -1654,7 +1630,7 @@ After receiving a Worker's output:
 2. The Critic will respond with a verdict (APPROVED/REJECTED with score and feedback)
 3. If APPROVED (score ≥ ${critic.qualityThreshold ?? 8}): Present to the human
 4. If REJECTED: Spawn the Worker again with the Critic's feedback included
-5. After 3 rejection rounds: Present best attempt with a quality warning to the human
+5. After ${rounds} rejection rounds: Present best attempt with a quality warning to the human
 
 # Error Handling
 
@@ -2240,6 +2216,8 @@ type WorkspaceWithRelations = {
   containerHost?: string | null;
   /** Wins over user.apiKeySource via getApiKeySource (credit routing). */
   apiKeySourceOverride: ApiKeySource | null;
+  maxRevisionRounds?: number | null;
+  deliveryMode?: WorkflowDeliveryMode | null;
   agents: AgentWithRelations[];
   toolConnections: ToolConnectionRecord[];
   customToolConnections?: CustomToolConnectionRecord[];
@@ -2294,7 +2272,11 @@ type AgentWithRelations = {
   emoji?: string | null;
   isPaused?: boolean | null;
   skills: { skill: SkillRecord }[];
-  outgoingConnections: { targetAgent: { name: string }; condition: string }[];
+  outgoingConnections: {
+    targetAgent: { id: string; name: string; role?: string };
+    condition: string;
+    contextNote?: string | null;
+  }[];
   incomingConnections: { sourceAgent: { name: string } }[];
 };
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
+import { enforceQualityThresholdFloor } from "@/lib/openclaw/regulated-threshold-floor"
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ workspaceId: string; id: string }> }) {
   const user = await getSessionUser()
@@ -13,7 +14,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ wo
   if (error) return error === "NOT_FOUND" ? ERRORS.NOT_FOUND("Workspace") : ERRORS.FORBIDDEN()
 
   const body = await req.json()
-  const allowed = ["name", "color", "model", "fallbackModel", "soulMd", "agentsMd", "heartbeatMd", "heartbeatFrequency", "heartbeatTime", "toolsMd", "userMd", "qualityThreshold", "maxRetries", "reportsTo", "positionX", "positionY", "roleDescription", "description", "icon"]
+  // WIRE-FULL: reportsTo is a read-only projection from edges — writers removed.
+  const allowed = ["name", "color", "model", "fallbackModel", "soulMd", "agentsMd", "heartbeatMd", "heartbeatFrequency", "heartbeatTime", "toolsMd", "userMd", "qualityThreshold", "maxRetries", "positionX", "positionY", "roleDescription", "description", "icon"]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]
@@ -24,6 +26,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ wo
 
   if (updates.name) {
     updates.agentSlug = (updates.name as string).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
+  }
+
+  if (updates.qualityThreshold !== undefined) {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { clawTemplate: { select: { slug: true } } },
+    })
+    const floored = enforceQualityThresholdFloor({
+      proposed: Number(updates.qualityThreshold),
+      templateSlug: workspace?.clawTemplate?.slug,
+    })
+    updates.qualityThreshold = floored.value
   }
 
   const agent = await prisma.agent.update({ where: { id }, data: updates })
