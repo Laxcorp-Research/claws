@@ -40,6 +40,8 @@ interface WorkspaceSnapshot {
   agents: SnapshotAgent[]
   connections?: SnapshotConnection[]
   tools?: unknown
+  maxRevisionRounds?: number
+  deliveryMode?: "APPROVAL_REQUIRED" | "AUTO_PROCEED"
 }
 
 interface CreateWorkspaceOptions {
@@ -106,6 +108,10 @@ export async function createWorkspaceFromTemplate(
         status: "SETUP_INCOMPLETE",
         clawTemplateId: template.id,
         toolRequirements: toolRequirements as unknown as Prisma.InputJsonValue,
+        maxRevisionRounds:
+          typeof snapshot.maxRevisionRounds === "number" ? snapshot.maxRevisionRounds : 3,
+        deliveryMode:
+          snapshot.deliveryMode === "AUTO_PROCEED" ? "AUTO_PROCEED" : "APPROVAL_REQUIRED",
       },
     })
 

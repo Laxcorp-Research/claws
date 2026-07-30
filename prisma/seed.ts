@@ -58,6 +58,10 @@ async function main() {
   //        DELETE FROM "TemplateReview"
   //          WHERE title = 'MUTATION_TEST_SENTINEL';
   for (const template of ALL_TEMPLATES) {
+    const knobs = template.knobs ?? {
+      maxRevisionRounds: 3,
+      deliveryMode: "APPROVAL_REQUIRED" as const,
+    }
     const workspaceSnapshot = JSON.stringify({
       agents: template.agents.map((a) => ({
         name: a.name,
@@ -72,11 +76,19 @@ async function main() {
         skills: a.skills,
         positionX: a.position.x,
         positionY: a.position.y,
+        // WIRE-FULL: critics always carry an explicit threshold (default 8).
+        ...(a.role === "CRITIC"
+          ? { qualityThreshold: a.qualityThreshold ?? 8 }
+          : a.qualityThreshold != null
+            ? { qualityThreshold: a.qualityThreshold }
+            : {}),
       })),
       connections: template.connections,
       tools: template.tools,
       flowDescription: template.flowDescription,
       legalDisclaimer: template.legalDisclaimer ?? null,
+      maxRevisionRounds: knobs.maxRevisionRounds,
+      deliveryMode: knobs.deliveryMode,
     })
 
     const data = {
