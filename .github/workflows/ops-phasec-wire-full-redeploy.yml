@@ -36,6 +36,9 @@ jobs:
           ACTIVITY_PIPELINE_SECRET: ${{ secrets.ACTIVITY_PIPELINE_SECRET }}
           ENCRYPTION_MASTER_KEY: ${{ secrets.OPS_ENCRYPTION_MASTER_KEY }}
           RAILWAY_STAGING_TOKEN: ${{ secrets.RAILWAY_STAGING_TOKEN }}
+          # Private GHCR pull — without these, Railway deploy fails with registryCredentials:null
+          GHCR_USERNAME: ${{ vars.GHCR_READ_USER }}
+          GHCR_PAT: ${{ secrets.GHCR_READ_PAT }}
           AXIOM_TOKEN: local-phasec-placeholder
         run: npx tsx scripts/ops/phasec-wire-full-redeploy.mjs
 
