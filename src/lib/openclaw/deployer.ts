@@ -306,6 +306,18 @@ export async function deployToCloud(workspaceId: string): Promise<{
   try {
     await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
     const generated = await generateWorkspace(workspaceId);
+    if (generated.workflowFenceCorrected) {
+      // Ledger only when a stale/tampered fence was actually replaced.
+      await prisma.activityLog.create({
+        data: {
+          workspaceId,
+          action: 'Workflow fence regenerated',
+          actionType: 'SYSTEM',
+          detail: 'Orchestrator AGENTS.md workflow fence was corrected from canvas + knobs.',
+          metadata: JSON.stringify({ eventKind: 'workflow_fence_regenerated' }),
+        },
+      }).catch(() => {});
+    }
     const fingerprint = await buildWorkspaceConfigFingerprint(workspaceId);
     const completionData = buildDeploymentCompletionData(fingerprint, generated);
 

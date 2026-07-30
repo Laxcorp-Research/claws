@@ -124,12 +124,13 @@ describe('buildWorkspaceConfigFingerprint', () => {
     // fails and blocks a fleet-wide cry-wolf drift banner.
     const fingerprint = await fingerprintFor(baseWorkspace());
 
-    expect(CONFIG_FINGERPRINT_VERSION).toBe(3);
+    expect(CONFIG_FINGERPRINT_VERSION).toBe(4);
     expect(fingerprint.version).toBe(CONFIG_FINGERPRINT_VERSION);
     expect(fingerprint.versionFingerprints[1]?.hash).toBe('c012ea41abadfd5e4d64e06445613db358988f8c2ed471a1b1e71155fd3ee0c7');
     expect(fingerprint.versionFingerprints[2]?.hash).toBe('426dc9ac6591a231a0be32d130606dc4491ed2cd89657587648d1f1335749ef3');
     expect(fingerprint.versionFingerprints[3]?.hash).toBe('58b933ff08fc5ad3d5e9829b5753003fa72f9c37b83eebcdc2621c10aea5ff0c');
-    expect(fingerprint.hash).toBe('58b933ff08fc5ad3d5e9829b5753003fa72f9c37b83eebcdc2621c10aea5ff0c');
+    expect(fingerprint.versionFingerprints[4]?.hash).toBe('b3ebc9dc87da8f1fae1de09b92366a45cfdc1b3e7e11db2c7fa434320faad22e');
+    expect(fingerprint.hash).toBe('b3ebc9dc87da8f1fae1de09b92366a45cfdc1b3e7e11db2c7fa434320faad22e');
   });
 
   it('tool connect/disconnect changes the hash (mutation guard: dropping toolConnections from inputs fails)', async () => {
@@ -275,6 +276,38 @@ describe('buildWorkspaceConfigFingerprint', () => {
 
     expect(after.hash).not.toBe(before.hash);
     expect(after.areas.connections).not.toBe(before.areas.connections);
+  });
+
+  it('contextNote changes the v4 connections hash (WIRE-FULL)', async () => {
+    const before = await fingerprintFor(baseWorkspace());
+    const after = await fingerprintFor(baseWorkspace({
+      connections: [
+        {
+          sourceAgentId: 'agent-orch',
+          targetAgentId: 'agent-worker',
+          condition: 'ON_COMPLETE',
+          contextNote: 'deep dives only',
+        },
+      ],
+    }));
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.connections).not.toBe(before.areas.connections);
+    // v3 projection ignores contextNote — stays comparable for redeploy banner.
+    expect(after.versionFingerprints[3]?.areas.connections).toBe(
+      before.versionFingerprints[3]?.areas.connections,
+    );
+  });
+
+  it('choreography knobs change the v4 workspace hash (WIRE-FULL)', async () => {
+    const before = await fingerprintFor(baseWorkspace({ maxRevisionRounds: 3, deliveryMode: 'APPROVAL_REQUIRED' }));
+    const after = await fingerprintFor(baseWorkspace({ maxRevisionRounds: 5, deliveryMode: 'APPROVAL_REQUIRED' }));
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.areas.workspace).not.toBe(before.areas.workspace);
+    expect(after.versionFingerprints[3]?.areas.workspace).toBe(
+      before.versionFingerprints[3]?.areas.workspace,
+    );
   });
 
   it('timezone changes change the workspace area hash', async () => {

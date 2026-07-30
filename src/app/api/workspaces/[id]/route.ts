@@ -35,11 +35,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   const body = await req.json()
-  const allowed = ["name", "status", "apiSpendLimit", "costAlertThreshold", "description", "criticalAlertsOptOut", "alwaysOn"]
+  const allowed = [
+    "name",
+    "status",
+    "apiSpendLimit",
+    "costAlertThreshold",
+    "description",
+    "criticalAlertsOptOut",
+    "alwaysOn",
+    "maxRevisionRounds",
+    "deliveryMode",
+  ]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]
   }
+
+  if (updates.maxRevisionRounds !== undefined) {
+    const rounds = Number(updates.maxRevisionRounds)
+    if (!Number.isInteger(rounds) || rounds < 0 || rounds > 20) {
+      return ERRORS.VALIDATION("maxRevisionRounds must be an integer from 0 to 20")
+    }
+    updates.maxRevisionRounds = rounds
+  }
+  if (updates.deliveryMode !== undefined) {
+    if (updates.deliveryMode !== "APPROVAL_REQUIRED" && updates.deliveryMode !== "AUTO_PROCEED") {
+      return ERRORS.VALIDATION("deliveryMode must be APPROVAL_REQUIRED or AUTO_PROCEED")
+    }
+  }
+
   if (updates.name) {
     const duplicate = await prisma.workspace.findFirst({
       where: { userId: user.id, name: updates.name as string, id: { not: id } },

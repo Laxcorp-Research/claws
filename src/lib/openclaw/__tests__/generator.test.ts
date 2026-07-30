@@ -132,8 +132,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
           },
         ],
         outgoingConnections: [
-          { targetAgent: { name: 'Data Analyst' }, condition: 'ON_COMPLETE' },
-          { targetAgent: { name: 'Quality Reviewer' }, condition: 'ON_COMPLETE' },
+          { targetAgent: { id: 'agent-worker-1', name: 'Data Analyst' }, condition: 'ON_COMPLETE', contextNote: null },
         ],
         incomingConnections: [],
       },
@@ -400,271 +399,69 @@ describe('generateWorkspace', () => {
     await expect(generateWorkspace('nonexistent')).rejects.toThrow();
   });
 
-  // WIRE-LITE (PR-C #11): orchestrator AGENTS.md "## Workflow" section,
-  // generated from AgentConnection edges already loaded via
-  // outgoingConnections/incomingConnections.
-  describe('WIRE-LITE: orchestrator AGENTS.md Workflow section', () => {
+  // WIRE-FULL: fenced Workflow section from ORCH→WORKER edges + law knobs.
+  describe('WIRE-FULL: orchestrator AGENTS.md fenced Workflow section', () => {
     function orchestratorAgentsMd(result: Awaited<ReturnType<typeof generateWorkspace>>): string {
       const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
       expect(orchKey).toBeDefined();
       return result.workspaces[orchKey!]['AGENTS.md'];
     }
 
-    it('emits ## Workflow with edges in topological order and human-readable conditions (snapshot)', async () => {
+    it('emits fenced ## Workflow with unconditional delegation + law section (snapshot)', async () => {
       const result = await generateWorkspace('ws-test-1');
       const agentsMd = orchestratorAgentsMd(result);
 
-      expect(agentsMd).toContain('## Workflow');
-      const workflowSection = agentsMd.slice(
-        agentsMd.indexOf('## Workflow'),
-        agentsMd.indexOf('# Task Delegation'),
-      );
-      expect(workflowSection).toBe(
-        `## Workflow
-
-These handoffs come directly from the connections drawn on the Builder canvas (topological order):
-
-- **Test Commander** → **Data Analyst** (on-complete)
-- **Test Commander** → **Quality Reviewer** (on-complete)
-
-`,
-      );
+      expect(agentsMd).toContain('<!-- claws:workflow:begin -->');
+      expect(agentsMd).toContain('<!-- claws:workflow:end -->');
+      expect(agentsMd).toContain('Delegate work to Data Analyst.');
+      expect(agentsMd).toContain('Quality Reviewer reviews every worker output');
+      expect(agentsMd).toContain('Scores below 8 loop back for revision (max 3)');
+      // X2: no condition labels in emission.
+      expect(agentsMd).not.toContain('on-complete');
+      expect(agentsMd).not.toContain('→');
     });
 
-    it('topologically orders a chain even when Builder declaration order contradicts it', async () => {
-      const now = new Date('2026-01-01T00:00:00Z');
-      const chainWorkspace = {
-        id: 'ws-chain-1',
-        name: 'Chain Claw',
-        timezone: 'UTC',
-        userContext: null,
-        scheduledTasks: null,
-        description: null,
-        gatewayToken: null,
-        hostPort: null,
-        containerName: null,
-        apiKeySourceOverride: null,
-        clawTemplateId: null,
-        createdAt: now,
-        updatedAt: now,
-        agents: [
-          {
-            id: 'agent-orch',
-            name: 'Commander',
-            role: 'ORCHESTRATOR',
-            description: 'The orchestrator',
-            model: 'HAIKU_4_5',
-            soulMd: '',
-            agentsMd: '',
-            heartbeatMd: '',
-            heartbeatFrequency: null,
-            heartbeatTime: null,
-            qualityThreshold: 8.0,
-            emoji: null,
-            isPaused: false,
-            reportsTo: null,
-            workspaceId: 'ws-chain-1',
-            skills: [],
-            // Declared FIRST but depends on Alpha (declared second) — topo
-            // order must still place Alpha before Beta.
-            outgoingConnections: [{ targetAgent: { name: 'Alpha' }, condition: 'ON_COMPLETE' }],
-            incomingConnections: [],
-          },
-          {
-            id: 'agent-beta',
-            name: 'Beta',
-            role: 'WORKER',
-            description: 'Beta worker',
-            model: 'SONNET_4_6',
-            soulMd: '',
-            agentsMd: '',
-            heartbeatMd: '',
-            heartbeatFrequency: null,
-            heartbeatTime: null,
-            qualityThreshold: 8.0,
-            emoji: null,
-            isPaused: false,
-            reportsTo: 'agent-orch',
-            workspaceId: 'ws-chain-1',
-            skills: [],
-            outgoingConnections: [{ targetAgent: { name: 'Reviewer' }, condition: 'ON_COMPLETE' }],
-            incomingConnections: [{ sourceAgent: { name: 'Alpha' } }],
-          },
-          {
-            id: 'agent-alpha',
-            name: 'Alpha',
-            role: 'WORKER',
-            description: 'Alpha worker',
-            model: 'SONNET_4_6',
-            soulMd: '',
-            agentsMd: '',
-            heartbeatMd: '',
-            heartbeatFrequency: null,
-            heartbeatTime: null,
-            qualityThreshold: 8.0,
-            emoji: null,
-            isPaused: false,
-            reportsTo: 'agent-orch',
-            workspaceId: 'ws-chain-1',
-            skills: [],
-            outgoingConnections: [{ targetAgent: { name: 'Beta' }, condition: 'ON_APPROVAL' }],
-            incomingConnections: [{ sourceAgent: { name: 'Commander' } }],
-          },
-          {
-            id: 'agent-critic',
-            name: 'Reviewer',
-            role: 'CRITIC',
-            description: 'Reviews outputs',
-            model: 'OPUS_4_6',
-            soulMd: '',
-            agentsMd: '',
-            heartbeatMd: '',
-            heartbeatFrequency: null,
-            heartbeatTime: null,
-            qualityThreshold: 8.0,
-            emoji: null,
-            isPaused: false,
-            reportsTo: 'agent-orch',
-            workspaceId: 'ws-chain-1',
-            skills: [],
-            outgoingConnections: [],
-            incomingConnections: [{ sourceAgent: { name: 'Beta' } }],
-          },
-        ],
-        toolConnections: [],
-        customToolConnections: [],
-        channelConfig: {},
-        clawTemplate: null,
-        user: {
-          id: 'user-1',
-          name: 'Test User',
-          apiKeySource: 'USER_OWN_KEY',
-          apiKeys: [],
-        },
-      };
-      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(chainWorkspace);
-      (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-
-      const result = await generateWorkspace('ws-chain-1');
-      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('commander'));
-      expect(orchKey).toBeDefined();
-      const md = result.workspaces[orchKey!]['AGENTS.md'];
-
-      const workflowSection = md.slice(md.indexOf('## Workflow'), md.indexOf('# Task Delegation'));
-      expect(workflowSection).toBe(
-        `## Workflow
-
-These handoffs come directly from the connections drawn on the Builder canvas (topological order):
-
-- **Commander** → **Alpha** (on-complete)
-- **Alpha** → **Beta** (on-approval)
-- **Beta** → **Reviewer** (on-complete)
-
-`,
-      );
-    });
-
-    it('omits the Workflow section entirely when the team has no connections', async () => {
-      const base = {
-        id: 'ws-no-edges',
-        name: 'No Edges Claw',
-        timezone: 'UTC',
-        userContext: null,
-        scheduledTasks: null,
-        description: null,
-        gatewayToken: null,
-        hostPort: null,
-        containerName: null,
-        apiKeySourceOverride: null,
-        clawTemplateId: null,
-        createdAt: new Date('2026-01-01T00:00:00Z'),
-        updatedAt: new Date('2026-01-01T00:00:00Z'),
-        agents: [
-          {
-            id: 'agent-orch',
-            name: 'Lone Commander',
-            role: 'ORCHESTRATOR',
-            description: '',
-            model: 'HAIKU_4_5',
-            soulMd: '',
-            agentsMd: '',
-            heartbeatMd: '',
-            heartbeatFrequency: null,
-            heartbeatTime: null,
-            qualityThreshold: 8.0,
-            emoji: null,
-            isPaused: false,
-            reportsTo: null,
-            workspaceId: 'ws-no-edges',
-            skills: [],
-            outgoingConnections: [],
-            incomingConnections: [],
-          },
-          {
-            id: 'agent-worker',
-            name: 'Solo Worker',
-            role: 'WORKER',
-            description: '',
-            model: 'SONNET_4_6',
-            soulMd: '',
-            agentsMd: '',
-            heartbeatMd: '',
-            heartbeatFrequency: null,
-            heartbeatTime: null,
-            qualityThreshold: 8.0,
-            emoji: null,
-            isPaused: false,
-            reportsTo: 'agent-orch',
-            workspaceId: 'ws-no-edges',
-            skills: [],
-            outgoingConnections: [],
-            incomingConnections: [],
-          },
-          {
-            id: 'agent-critic',
-            name: 'Solo Critic',
-            role: 'CRITIC',
-            description: '',
-            model: 'OPUS_4_6',
-            soulMd: '',
-            agentsMd: '',
-            heartbeatMd: '',
-            heartbeatFrequency: null,
-            heartbeatTime: null,
-            qualityThreshold: 8.0,
-            emoji: null,
-            isPaused: false,
-            reportsTo: 'agent-orch',
-            workspaceId: 'ws-no-edges',
-            skills: [],
-            outgoingConnections: [],
-            incomingConnections: [],
-          },
-        ],
-        toolConnections: [],
-        customToolConnections: [],
-        channelConfig: {},
-        clawTemplate: null,
-        user: { id: 'user-1', name: 'Test User', apiKeySource: 'USER_OWN_KEY', apiKeys: [] },
-      };
+    it('emission identical across ConnectionCondition values (X2)', async () => {
+      const base = buildMockWorkspace();
+      const orch = (base.agents as Array<Record<string, unknown>>)[0]!;
+      orch.outgoingConnections = [
+        { targetAgent: { id: 'agent-worker-1', name: 'Data Analyst' }, condition: 'ON_APPROVAL', contextNote: null },
+      ];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(base);
-      (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      const a = await generateWorkspace('ws-test-1');
+      const mdA = orchestratorAgentsMd(a);
 
-      const result = await generateWorkspace('ws-no-edges');
-      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('lone-commander'));
-      const md = result.workspaces[orchKey!]['AGENTS.md'];
+      orch.outgoingConnections = [
+        { targetAgent: { id: 'agent-worker-1', name: 'Data Analyst' }, condition: 'ON_REJECTION', contextNote: null },
+      ];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(base);
+      const b = await generateWorkspace('ws-test-1');
+      const mdB = orchestratorAgentsMd(b);
 
-      expect(md).not.toContain('## Workflow');
+      const fence = (md: string) =>
+        md.slice(md.indexOf('<!-- claws:workflow:begin -->'), md.indexOf('<!-- claws:workflow:end -->'));
+      expect(fence(mdA)).toBe(fence(mdB));
     });
 
-    it('MUTATION: severing generateWorkflowSection from generateOrchestratorAgentsMd would drop the section', async () => {
+    it('omits paused workers from fence sentences; still emits law', async () => {
+      const base = buildMockWorkspace();
+      const worker = (base.agents as Array<Record<string, unknown>>).find((a) => a.role === 'WORKER')!;
+      worker.isPaused = true;
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(base);
+      const result = await generateWorkspace('ws-test-1');
+      const md = orchestratorAgentsMd(result);
+      expect(md).toContain('_(no worker connections)_');
+      expect(md).toContain('Quality Reviewer reviews every worker output');
+      expect(md).not.toContain('Delegate work to Data Analyst');
+    });
+
+    it('MUTATION: fence application must use applyWorkflowFence (bypass → fail)', async () => {
       const { readFileSync } = await import('node:fs');
       const { join } = await import('node:path');
       const src = readFileSync(join(process.cwd(), 'src/lib/openclaw/generator.ts'), 'utf8');
-      const fn = src.match(/function generateOrchestratorAgentsMd[\s\S]*?(?=\nfunction )/)?.[0];
-      expect(fn).toBeTruthy();
-      expect(fn).toContain('generateWorkflowSection(');
-      expect(fn).toContain('${workflowSection}');
+      expect(src).toContain('applyWorkflowFence');
+      expect(src).toContain('generateFencedWorkflowSection');
+      expect(src).toContain('deriveAllowAgents');
     });
   });
 

@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { prisma } from '@/lib/db';
 
-export const CONFIG_FINGERPRINT_VERSION = 3;
+export const CONFIG_FINGERPRINT_VERSION = 4;
 export const CONFIG_FINGERPRINT_MIN_VERSION = 1;
 
 export interface WorkspaceConfigFingerprint {
@@ -73,6 +73,7 @@ type WorkspaceFingerprintInput = {
     sourceAgentId: string;
     targetAgentId: string;
     condition: string;
+    contextNote?: string | null;
   }>;
   user: {
     name: string | null;
@@ -84,6 +85,8 @@ type WorkspaceFingerprintInput = {
     clawTemplateId?: string | null;
     name: string;
     channelConfigEncrypted?: string | null;
+    maxRevisionRounds?: number | null;
+    deliveryMode?: string | null;
   };
   agentNameById: Map<string, string>;
 };
@@ -192,16 +195,29 @@ function projectAgentsWithOptions(input: WorkspaceFingerprintInput, options: { i
 }
 
 function projectConnections(input: WorkspaceFingerprintInput) {
+  return projectConnectionsWithOptions(input, { includeContextNote: false });
+}
+
+function projectConnectionsWithOptions(
+  input: WorkspaceFingerprintInput,
+  options: { includeContextNote: boolean },
+) {
   return input.connections
     .map((connection) => ({
       from: input.agentNameById.get(connection.sourceAgentId) ?? connection.sourceAgentId,
       to: input.agentNameById.get(connection.targetAgentId) ?? connection.targetAgentId,
       condition: connection.condition,
+      ...(options.includeContextNote
+        ? { contextNote: connection.contextNote ?? null }
+        : {}),
     }))
     .sort((a, b) => (
       a.from.localeCompare(b.from) ||
       a.to.localeCompare(b.to) ||
-      a.condition.localeCompare(b.condition)
+      a.condition.localeCompare(b.condition) ||
+      (("contextNote" in a ? String(a.contextNote ?? "") : "").localeCompare(
+        "contextNote" in b ? String(b.contextNote ?? "") : "",
+      ))
     ));
 }
 
@@ -218,6 +234,13 @@ function projectKeys(input: WorkspaceFingerprintInput) {
 }
 
 function projectWorkspace(input: WorkspaceFingerprintInput) {
+  return projectWorkspaceWithOptions(input, { includeChoreographyKnobs: false });
+}
+
+function projectWorkspaceWithOptions(
+  input: WorkspaceFingerprintInput,
+  options: { includeChoreographyKnobs: boolean },
+) {
   return {
     timezone: input.workspace.timezone,
     userContext: input.workspace.userContext ?? null,
@@ -225,6 +248,12 @@ function projectWorkspace(input: WorkspaceFingerprintInput) {
     // The generator's fallback files use workspace.name only when there is no
     // template name available for the Claw name.
     fallbackWorkspaceName: input.workspace.clawTemplateId ? null : input.workspace.name,
+    ...(options.includeChoreographyKnobs
+      ? {
+          maxRevisionRounds: input.workspace.maxRevisionRounds ?? 3,
+          deliveryMode: input.workspace.deliveryMode ?? "APPROVAL_REQUIRED",
+        }
+      : {}),
   };
 }
 
@@ -259,6 +288,18 @@ const FINGERPRINT_PROJECTIONS: Record<number, FingerprintProjection> = {
     keys: projectKeys(input),
     workspace: projectWorkspace(input),
   }),
+  // WIRE-FULL: choreography knobs + per-edge contextNote.
+  4: (input) => ({
+    tools: {
+      connections: projectToolConnections(input),
+      customApis: projectCustomApis(input),
+    },
+    agents: projectAgentsWithOptions(input, { includePauseState: true }),
+    connections: projectConnectionsWithOptions(input, { includeContextNote: true }),
+    channels: { channelConfigEncrypted: fingerprintSecretBlob(input.workspace.channelConfigEncrypted) },
+    keys: projectKeys(input),
+    workspace: projectWorkspaceWithOptions(input, { includeChoreographyKnobs: true }),
+  }),
 };
 
 export const FINGERPRINT_TRANSITIONS: Record<number, Partial<Record<FingerprintArea, string>>> = {
@@ -270,6 +311,11 @@ export const FINGERPRINT_TRANSITIONS: Record<number, Partial<Record<FingerprintA
   // against the v2 projection, so a pause-only change does not banner until the
   // workspace is redeployed/re-baselined on v3.
   3: {},
+  // v4 extends connections + workspace projections (contextNote, knobs).
+  4: {
+    connections: 'edge context notes',
+    workspace: 'choreography knobs',
+  },
 };
 
 export function isKnownFingerprintVersion(version: number): boolean {
@@ -300,6 +346,8 @@ function buildInput(workspace: {
   userContext?: string | null;
   clawTemplateId?: string | null;
   channelConfigEncrypted?: string | null;
+  maxRevisionRounds?: number | null;
+  deliveryMode?: string | null;
   agents?: WorkspaceFingerprintInput['agents'];
   connections?: WorkspaceFingerprintInput['connections'];
   toolConnections?: WorkspaceFingerprintInput['toolConnections'];
@@ -319,6 +367,8 @@ function buildInput(workspace: {
       userContext: (workspace as GeneratorWorkspaceProjection).userContext ?? null,
       clawTemplateId: workspace.clawTemplateId,
       channelConfigEncrypted: workspace.channelConfigEncrypted,
+      maxRevisionRounds: workspace.maxRevisionRounds ?? 3,
+      deliveryMode: workspace.deliveryMode ?? "APPROVAL_REQUIRED",
     },
     agentNameById: new Map(agentsInput.map((agent) => [agent.id, agent.name])),
   };
