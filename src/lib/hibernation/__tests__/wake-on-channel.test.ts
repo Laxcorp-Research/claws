@@ -93,6 +93,7 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockHibernatedWorkspace()
+    ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
   })
 
   it("HIBERNATED inbound → ack + wakeWorkspace called", async () => {
@@ -144,6 +145,16 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
       chatId: 1227037949,
       text: WAKE_ON_CHANNEL_ACK,
     })
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workspaceId: WS,
+          action: "Wake ack sent",
+          actionType: "SYSTEM",
+          metadata: expect.stringContaining("wake_ack_sent"),
+        }),
+      }),
+    )
     expect(wake).toHaveBeenCalledWith(WS)
     expect(after).toHaveBeenCalled()
     expect(sendChat).toHaveBeenCalledWith(
@@ -173,6 +184,15 @@ describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
     expect(src).toContain("resolveWakeReplyDelivery")
     expect(src).toContain("platform_telegram")
     expect(src).toContain("deliver: false")
+  })
+
+  it("MUTATION: wake-ack Telegram send must ledger wake_ack_sent", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/hibernation/wake-on-channel.ts"),
+      "utf8",
+    )
+    expect(src).toContain('WAKE_ACK_SENT_EVENT_KIND = "wake_ack_sent"')
+    expect(src).toContain("ledgerWakeAckSent")
   })
 
   it("MUTATION: strip origin-tagging / platform reply send → contract fails", async () => {

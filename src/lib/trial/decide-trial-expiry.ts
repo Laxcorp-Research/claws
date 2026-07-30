@@ -33,6 +33,8 @@ export type NotifyAction = {
   email: string
   name: string | null
   clawNames: string[]
+  /** Workspace ids to ledger trial_expiry_notify (one ActivityLog row each). */
+  workspaceIds: string[]
 }
 
 export type StopAction = {
@@ -99,19 +101,16 @@ export function decideTrialExpiryActions(
     if (isSubscriptionOnHold(user)) continue
 
     if (user.trialExpiryNotifiedAt === null) {
-      const clawNames = user.workspaces
-        .filter((w) => w.status === "RUNNING")
-        .map((w) => w.name)
+      const running = user.workspaces.filter((w) => w.status === "RUNNING")
+      const ledgerWorkspaces = running.length > 0 ? running : user.workspaces
       // Still notify even with zero RUNNING claws (honesty + ledger stamp).
       toNotify.push({
         kind: "notify",
         userId: user.id,
         email: user.email,
         name: user.name,
-        clawNames:
-          clawNames.length > 0
-            ? clawNames
-            : user.workspaces.map((w) => w.name),
+        clawNames: ledgerWorkspaces.map((w) => w.name),
+        workspaceIds: ledgerWorkspaces.map((w) => w.id),
       })
       continue
     }

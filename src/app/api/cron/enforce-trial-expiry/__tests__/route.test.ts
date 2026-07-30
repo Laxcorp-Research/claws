@@ -123,7 +123,26 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
         data: { trialExpiryNotifiedAt: expect.any(Date) },
       }),
     )
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workspaceId: "ws-1",
+          action: "Trial expiry notify",
+          actionType: "SYSTEM",
+          metadata: expect.stringContaining("trial_expiry_notify"),
+        }),
+      }),
+    )
     expect(mockSyncThenDestroy).not.toHaveBeenCalled()
+  })
+
+  it("MUTATION: notify phase must ledger trial_expiry_notify (drop → fail)", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/cron/enforce-trial-expiry/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain('eventKind: "trial_expiry_notify"')
+    expect(src).toContain('eventKind: "trial_expiry_stop"')
   })
 
   it("notify idempotency: marker already set → no second email / no re-stamp", async () => {

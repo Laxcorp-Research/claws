@@ -182,12 +182,21 @@ describe("sendCriticalAlert — integration", () => {
     const call = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
     const metadata = JSON.parse(call.data.metadata)
     expect(metadata).toMatchObject({
-      eventKind: "critical_alert_push",
+      eventKind: "alert_pushed",
       alertKey: "container-unhealthy",
       channel: "skipped",
       delivered: false,
       reason: "opt-out",
     })
+  })
+
+  it("MUTATION: eventKind must be alert_pushed (legacy critical_alert_push still matched for dedup)", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/alerts/critical-alert-push.ts"),
+      "utf8",
+    )
+    expect(src).toMatch(/CRITICAL_ALERT_PUSH_EVENT_KIND\s*=\s*"alert_pushed"/)
+    expect(src).toContain("CRITICAL_ALERT_PUSH_EVENT_KIND_LEGACY")
   })
 
   it("cooldown: a prior delivered row within 12h skips and does not re-send", async () => {
