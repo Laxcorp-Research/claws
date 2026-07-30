@@ -13,6 +13,8 @@ import {
   addEdge,
 } from "@xyflow/react"
 import { DEFAULT_MODEL } from "@/lib/models"
+import { evaluateConnectAttempt } from "@/lib/openclaw/builder-topology"
+import type { ConnectAttemptResult } from "@/lib/openclaw/builder-topology"
 
 export type AgentRole = "ORCHESTRATOR" | "WORKER" | "CRITIC"
 
@@ -43,7 +45,11 @@ export interface AgentNodeData extends Record<string, unknown> {
 export interface ConnectionEdgeData extends Record<string, unknown> {
   condition: ConnectionCondition
   label: string
+  /** Optional ≤140-char note woven into the Workflow delegation sentence. */
+  contextNote?: string | null
 }
+
+export type DeliveryModeUi = "APPROVAL_REQUIRED" | "AUTO_PROCEED"
 
 export interface SkillItem {
   id: string
@@ -67,12 +73,18 @@ interface SavedState {
   workspaceName: string
   skills: SkillItem[]
   heartbeatSchedule: { frequency: string; time: string }
+  maxRevisionRounds: number
+  deliveryMode: DeliveryModeUi
 }
 
 interface BuilderState {
   workspaceId: string | null
   workspaceName: string
   workspaceStatus: string
+  /** ClawTemplate slug when installed from marketplace — drives regulated floor UI. */
+  templateSlug: string | null
+  maxRevisionRounds: number
+  deliveryMode: DeliveryModeUi
   isLoading: boolean
   loadError: number | null
 
@@ -81,6 +93,8 @@ interface BuilderState {
 
   selectedAgentId: string | null
   selectedEdgeId: string | null
+  /** Focus choreography knobs (from locked fence jump link). */
+  focusWorkflowKnobs: boolean
   leftPanelTab: "agents" | "skills"
 
   skills: SkillItem[]
@@ -101,12 +115,18 @@ interface BuilderState {
   onNodesChange: OnNodesChange<Node<AgentNodeData>>
   onEdgesChange: OnEdgesChange<Edge<ConnectionEdgeData>>
   onConnect: OnConnect
+  /** Draw-time / panel connect with toastable rejection reason. */
+  tryConnect: (connection: Connection) => ConnectAttemptResult
 
   setWorkspace: (id: string, name: string, status: string) => void
   setWorkspaceName: (name: string) => void
+  setMaxRevisionRounds: (rounds: number) => void
+  setDeliveryMode: (mode: DeliveryModeUi) => void
   setLeftPanelTab: (tab: "agents" | "skills") => void
   selectAgent: (id: string | null) => void
   selectEdge: (id: string | null) => void
+  jumpToWorkflowKnobs: () => void
+  clearFocusWorkflowKnobs: () => void
   addAgent: (opts?: { name?: string; role?: AgentRole; model?: string; soulMd?: string; agentsMd?: string }) => void
   addWorker: () => void
   removeAgent: (id: string) => void
@@ -115,10 +135,10 @@ interface BuilderState {
   updateAgentProperty: (id: string, key: string, value: unknown) => void
   toggleSkill: (agentId: string, skillId: string) => void
   setHeartbeatSchedule: (schedule: Partial<{ frequency: string; time: string }>) => void
-  addConnection: (data: { source: string; target: string; condition?: string }) => void
+  addConnection: (data: { source: string; target: string; condition?: string }) => ConnectAttemptResult
   removeConnection: (id: string) => void
   updateConnection: (edgeId: string, updates: { source?: string; target?: string }) => void
-  updateConnectionCondition: (edgeId: string, condition: string) => void
+  updateConnectionContextNote: (edgeId: string, contextNote: string) => void
   addSkill: (skill: SkillItem) => void
   revertToLastSaved: () => void
   loadFromSnapshot: (nodes: Node<AgentNodeData>[], edges: Edge<ConnectionEdgeData>[]) => void
@@ -136,14 +156,6 @@ interface BuilderState {
 
 const WORKER_COLORS = ["#8BFCAE", "#5BA1F5", "#FFB1AB", "#FFDC6E", "#FFB1AB", "#8BFCAE"]
 
-const CONDITION_LABELS: Record<string, string> = {
-  ON_COMPLETE: "On complete",
-  ON_APPROVAL: "On approval",
-  ON_REJECTION: "On rejection",
-  ON_SCHEDULE: "On schedule",
-  ON_HUMAN_APPROVE: "On human approval",
-}
-
 function getDefaultPosition(role: AgentRole, existingNodes: Node[]): { x: number; y: number } {
   const workerCount = existingNodes.filter((n) => (n.data as AgentNodeData).role === "WORKER").length
   switch (role) {
@@ -159,6 +171,8 @@ function cloneState(
   name: string,
   skills: SkillItem[] = [],
   heartbeatSchedule: { frequency: string; time: string } = { frequency: "off", time: "08:00" },
+  maxRevisionRounds = 3,
+  deliveryMode: DeliveryModeUi = "APPROVAL_REQUIRED",
 ): SavedState {
   return {
     nodes: JSON.parse(JSON.stringify(nodes)),
@@ -166,16 +180,29 @@ function cloneState(
     workspaceName: name,
     skills: JSON.parse(JSON.stringify(skills)),
     heartbeatSchedule: { ...heartbeatSchedule },
+    maxRevisionRounds,
+    deliveryMode,
   }
 }
 
-function computeIsDirty(state: { nodes: Node<AgentNodeData>[]; edges: Edge<ConnectionEdgeData>[]; workspaceName: string; skills: SkillItem[]; heartbeatSchedule: { frequency: string; time: string }; lastSavedState: SavedState | null }): boolean {
+function computeIsDirty(state: {
+  nodes: Node<AgentNodeData>[]
+  edges: Edge<ConnectionEdgeData>[]
+  workspaceName: string
+  skills: SkillItem[]
+  heartbeatSchedule: { frequency: string; time: string }
+  maxRevisionRounds: number
+  deliveryMode: DeliveryModeUi
+  lastSavedState: SavedState | null
+}): boolean {
   if (!state.lastSavedState) {
     return state.nodes.some(n => n.id.startsWith("temp-"))
   }
   const ss = state.lastSavedState
 
   if (state.workspaceName !== ss.workspaceName) return true
+  if (state.maxRevisionRounds !== (ss.maxRevisionRounds ?? 3)) return true
+  if (state.deliveryMode !== (ss.deliveryMode ?? "APPROVAL_REQUIRED")) return true
   if (state.nodes.length !== ss.nodes.length) return true
   if (state.edges.length !== ss.edges.length) return true
   if (state.skills.length !== (ss.skills?.length || 0)) return true
@@ -204,7 +231,9 @@ function computeIsDirty(state: { nodes: Node<AgentNodeData>[]; edges: Edge<Conne
     const saved = ss.edges.find(e => e.id === edge.id)
     if (!saved) return true
     if (edge.source !== saved.source || edge.target !== saved.target) return true
-    if ((edge.data as ConnectionEdgeData)?.condition !== (saved.data as ConnectionEdgeData)?.condition) return true
+    const ed = edge.data as ConnectionEdgeData
+    const sd = saved.data as ConnectionEdgeData
+    if ((ed?.contextNote ?? null) !== (sd?.contextNote ?? null)) return true
   }
 
   for (const saved of ss.edges) {
@@ -255,6 +284,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     workspaceId: null,
     workspaceName: "",
     workspaceStatus: "DRAFT",
+    templateSlug: null,
+    maxRevisionRounds: 3,
+    deliveryMode: "APPROVAL_REQUIRED",
     isLoading: false,
     loadError: null,
 
@@ -263,6 +295,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
     selectedAgentId: null,
     selectedEdgeId: null,
+    focusWorkflowKnobs: false,
     leftPanelTab: "agents",
 
     skills: [],
@@ -288,33 +321,46 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       if (!isNonDirty) recheckDirty()
     },
     onEdgesChange: (changes) => {
+      // Ignore React Flow changes targeting display-only preview edges.
+      const real = changes.filter((c) => {
+        if (!("id" in c) || typeof c.id !== "string") return true
+        return !c.id.startsWith("preview-")
+      })
+      if (real.length === 0) return
       set((s) => ({
-        edges: applyEdgeChanges(changes, s.edges) as Edge<ConnectionEdgeData>[],
+        edges: applyEdgeChanges(real, s.edges) as Edge<ConnectionEdgeData>[],
       }))
-      const isSelectionOnly = changes.every(c => c.type === "select")
+      const isSelectionOnly = real.every(c => c.type === "select")
       if (!isSelectionOnly) recheckDirty()
     },
-    onConnect: (connection: Connection) => {
+    tryConnect: (connection: Connection) => {
       const s = get()
-      if (connection.source === connection.target) return
-      if (s.edges.some(e => e.source === connection.source && e.target === connection.target)) return
-
-      const srcNode = s.nodes.find(n => n.id === connection.source)
-      const tgtNode = s.nodes.find(n => n.id === connection.target)
-      if (!srcNode || !tgtNode) return
-      const sRole = (srcNode.data as AgentNodeData).role
-      const tRole = (tgtNode.data as AgentNodeData).role
-      if (sRole === "ORCHESTRATOR" && tRole !== "WORKER") return
-      if (sRole === "WORKER" && tRole !== "CRITIC" && tRole !== "WORKER") return
-      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR" && tRole !== "WORKER") return
+      const result = evaluateConnectAttempt({
+        sourceId: connection.source,
+        targetId: connection.target,
+        nodes: s.nodes,
+        edges: s.edges,
+      })
+      if (!result.ok) return result
 
       const newEdge: Edge<ConnectionEdgeData> = {
-        id: `temp-edge-${Date.now()}`, source: connection.source, target: connection.target,
-        sourceHandle: connection.sourceHandle ?? undefined, targetHandle: connection.targetHandle ?? undefined,
-        type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
+        id: `temp-edge-${Date.now()}`,
+        source: connection.source!,
+        target: connection.target!,
+        sourceHandle: connection.sourceHandle ?? undefined,
+        targetHandle: connection.targetHandle ?? undefined,
+        type: "default",
+        data: { condition: "ON_COMPLETE", label: "Delegates", contextNote: null },
+        label: undefined,
+        animated: true,
+        style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
       }
       set((s2) => ({ edges: addEdge(newEdge, s2.edges) as Edge<ConnectionEdgeData>[] }))
       recheckDirty()
+      return { ok: true }
+    },
+    onConnect: (connection: Connection) => {
+      get().tryConnect(connection)
     },
 
     setWorkspace: (id, name, status) => set({ workspaceId: id, workspaceName: name, workspaceStatus: status }),
@@ -322,9 +368,26 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       set({ workspaceName: name })
       recheckDirty()
     },
+    setMaxRevisionRounds: (rounds) => {
+      set({ maxRevisionRounds: rounds })
+      recheckDirty()
+    },
+    setDeliveryMode: (mode) => {
+      set({ deliveryMode: mode })
+      recheckDirty()
+    },
     setLeftPanelTab: (tab) => set({ leftPanelTab: tab }),
     selectAgent: (id) => set({ selectedAgentId: id, selectedEdgeId: null }),
     selectEdge: (id) => set({ selectedEdgeId: id, selectedAgentId: null }),
+    jumpToWorkflowKnobs: () => {
+      const critic = get().nodes.find((n) => (n.data as AgentNodeData).role === "CRITIC")
+      set({
+        focusWorkflowKnobs: true,
+        selectedAgentId: critic?.id ?? null,
+        selectedEdgeId: null,
+      })
+    },
+    clearFocusWorkflowKnobs: () => set({ focusWorkflowKnobs: false }),
 
     addAgent: (opts) => {
       const s = get()
@@ -362,7 +425,11 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         newEdges.push({
           id: `temp-edge-${Date.now()}`,
           source: orchNode.id, target: tempId,
-          type: "default", data: { condition: "ON_COMPLETE", label: "On complete" }, label: "On complete", animated: true,
+          type: "default",
+          data: { condition: "ON_COMPLETE", label: "Delegates", contextNote: null },
+          label: undefined,
+          animated: true,
+          style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
         })
       }
 
@@ -429,31 +496,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       set((s) => ({ heartbeatSchedule: { ...s.heartbeatSchedule, ...schedule } }))
       recheckDirty()
     },
-    addConnection: ({ source, target, condition }) => {
-      if (source === target) return
-      const s = get()
-      if (s.edges.some(e => e.source === source && e.target === target)) return
-
-      const srcNode = s.nodes.find(n => n.id === source)
-      const tgtNode = s.nodes.find(n => n.id === target)
-      if (!srcNode || !tgtNode) return
-      const sRole = (srcNode.data as AgentNodeData).role
-      const tRole = (tgtNode.data as AgentNodeData).role
-      if (sRole === "ORCHESTRATOR" && tRole !== "WORKER") return
-      if (sRole === "WORKER" && tRole !== "CRITIC" && tRole !== "WORKER") return
-      if (sRole === "CRITIC" && tRole !== "ORCHESTRATOR" && tRole !== "WORKER") return
-
-      const cond = (condition as ConnectionCondition) || "ON_COMPLETE"
-      const label = CONDITION_LABELS[cond] || "On complete"
-      const newEdge: Edge<ConnectionEdgeData> = {
-        id: `temp-edge-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        source, target,
-        type: "default", animated: true,
-        data: { condition: cond, label },
-        label,
-      }
-      set({ edges: [...s.edges, newEdge] })
-      recheckDirty()
+    addConnection: ({ source, target }) => {
+      return get().tryConnect({ source, target, sourceHandle: null, targetHandle: null })
     },
     removeConnection: (id) => {
       set((s) => ({
@@ -470,7 +514,13 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       const newSource = updates.source || edge.source
       const newTarget = updates.target || edge.target
       if (newSource === newTarget) return
-      if (s.edges.some(e => e.id !== edgeId && e.source === newSource && e.target === newTarget)) return
+      const check = evaluateConnectAttempt({
+        sourceId: newSource,
+        targetId: newTarget,
+        nodes: s.nodes,
+        edges: s.edges.filter((e) => e.id !== edgeId),
+      })
+      if (!check.ok) return
       set((s2) => ({
         edges: s2.edges.map(e =>
           e.id === edgeId ? { ...e, ...updates } : e
@@ -478,11 +528,19 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
       }))
       recheckDirty()
     },
-    updateConnectionCondition: (edgeId, condition) => {
+    updateConnectionContextNote: (edgeId, contextNote) => {
+      const clipped = contextNote.trim().slice(0, 140)
       set((s) => ({
-        edges: s.edges.map(e =>
+        edges: s.edges.map((e) =>
           e.id === edgeId
-            ? { ...e, data: { ...(e.data as ConnectionEdgeData), condition: condition as ConnectionCondition }, label: CONDITION_LABELS[condition] || condition }
+            ? {
+                ...e,
+                data: {
+                  ...(e.data as ConnectionEdgeData),
+                  contextNote: clipped || null,
+                  condition: "ON_COMPLETE",
+                },
+              }
             : e
         ),
       }))
@@ -614,10 +672,18 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         })
 
         const edges: Edge<ConnectionEdgeData>[] = (ws.connections || []).map((c: Record<string, unknown>) => ({
-          id: c.id as string, source: c.sourceAgentId as string, target: c.targetAgentId as string,
-          label: (c.label as string) || CONDITION_LABELS[(c.condition as string) || "ON_COMPLETE"] || "On complete",
-          type: "default", animated: true,
-          data: { condition: (c.condition as ConnectionCondition) || "ON_COMPLETE", label: (c.label as string) || "" },
+          id: c.id as string,
+          source: c.sourceAgentId as string,
+          target: c.targetAgentId as string,
+          label: undefined,
+          type: "default",
+          animated: true,
+          style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
+          data: {
+            condition: "ON_COMPLETE",
+            label: "Delegates",
+            contextNote: typeof c.contextNote === "string" ? c.contextNote : null,
+          },
         }))
 
         const skillsMap = new Map<string, SkillItem>()
@@ -650,11 +716,31 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           time: savedTime || "08:00",
         }
 
+        const maxRevisionRounds = typeof ws.maxRevisionRounds === "number" ? (ws.maxRevisionRounds as number) : 3
+        const deliveryMode: DeliveryModeUi =
+          ws.deliveryMode === "AUTO_PROCEED" ? "AUTO_PROCEED" : "APPROVAL_REQUIRED"
+        const templateSlug =
+          ws.clawTemplate && typeof (ws.clawTemplate as { slug?: string }).slug === "string"
+            ? ((ws.clawTemplate as { slug: string }).slug)
+            : null
+
         set({
           nodes, edges, workspaceId, workspaceName: name, workspaceStatus: (ws.status as string) || "DRAFT",
+          templateSlug,
+          maxRevisionRounds,
+          deliveryMode,
           skills: workspaceSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
+          focusWorkflowKnobs: false,
           heartbeatSchedule,
-          lastSavedState: cloneState(nodes, edges, name, workspaceSkills, heartbeatSchedule),
+          lastSavedState: cloneState(
+            nodes,
+            edges,
+            name,
+            workspaceSkills,
+            heartbeatSchedule,
+            maxRevisionRounds,
+            deliveryMode,
+          ),
         })
 
         const draft = loadDraftFromLocal(workspaceId)
@@ -791,8 +877,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 sourceAgentId: edge.source, targetAgentId: edge.target,
-                condition: edge.data?.condition || "ON_COMPLETE",
+                condition: "ON_COMPLETE",
                 label: edge.data?.label || null,
+                contextNote: edge.data?.contextNote ?? null,
               }),
             })
             if (createRes.ok) {
@@ -800,8 +887,27 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
               const newId = created.data?.id || created.id
               if (newId) updatedEdges[i] = { ...edge, id: newId }
             }
+          } else {
+            // Persist contextNote edits on existing edges.
+            await fetch(`/api/connections/${wid}/${edge.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contextNote: edge.data?.contextNote ?? null,
+              }),
+            })
           }
         }
+
+        // Workspace choreography knobs (fingerprint v4).
+        await fetch(`/api/workspaces/${wid}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            maxRevisionRounds: s.maxRevisionRounds,
+            deliveryMode: s.deliveryMode,
+          }),
+        })
 
         const localEdgeIds = new Set(updatedEdges.map(e => e.id))
         for (const dbConn of dbConnections) {
@@ -815,14 +921,20 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           body: JSON.stringify({ trigger: "MANUAL_SAVE" }),
         })
 
-        const currentName = get().workspaceName
-        const currentSkills = get().skills
-        const currentHb = get().heartbeatSchedule
+        const current = get()
         set({
           nodes: updatedNodes,
           edges: updatedEdges,
           lastSavedAt: new Date(),
-          lastSavedState: cloneState(updatedNodes, updatedEdges, currentName, currentSkills, currentHb),
+          lastSavedState: cloneState(
+            updatedNodes,
+            updatedEdges,
+            current.workspaceName,
+            current.skills,
+            current.heartbeatSchedule,
+            current.maxRevisionRounds,
+            current.deliveryMode,
+          ),
         })
         queueMicrotask(() => {
           set({ isDirty: false, isSaving: false })

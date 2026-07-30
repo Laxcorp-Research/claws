@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useBuilderStore, type AgentNodeData, type ConnectionEdgeData } from "@/stores/builder-store"
 import { MarkdownEditor } from "./markdown-editor"
@@ -11,16 +11,23 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { AI_MODELS } from "@/lib/models"
+import {
+  CONTEXT_NOTE_MAX_CHARS,
+  WORKFLOW_FENCE_BEGIN,
+  WORKFLOW_FENCE_END,
+  formatWorkflowLawSection,
+  normalizeContextNote,
+} from "@/lib/openclaw/workflow-language"
+import {
+  AUTO_PROCEED_DISABLED_COPY,
+} from "@/lib/openclaw/validate-topology"
+import {
+  REGULATED_QUALITY_THRESHOLD_FLOOR,
+  isRegulatedTemplateSlug,
+} from "@/lib/openclaw/regulated-threshold-floor"
+import { deriveReportsToMap } from "@/lib/openclaw/derive-reports-to"
 
 const MODEL_OPTIONS = AI_MODELS.map(m => ({ value: m.value, label: m.label }))
-
-const CONDITION_OPTIONS = [
-  { value: "ON_COMPLETE", label: "On complete" },
-  { value: "ON_APPROVAL", label: "On approval" },
-  { value: "ON_REJECTION", label: "On rejection" },
-  { value: "ON_SCHEDULE", label: "On schedule" },
-  { value: "ON_HUMAN_APPROVE", label: "On human approval" },
-]
 
 function Label({ text, tooltip }: { text: string; tooltip: string }) {
   return (
@@ -31,8 +38,22 @@ function Label({ text, tooltip }: { text: string; tooltip: string }) {
   )
 }
 
+function splitFence(agentsMd: string): { before: string; fence: string | null; after: string } {
+  const begin = agentsMd.indexOf(WORKFLOW_FENCE_BEGIN)
+  const end = agentsMd.indexOf(WORKFLOW_FENCE_END)
+  if (begin === -1 || end === -1 || end < begin) {
+    return { before: agentsMd, fence: null, after: "" }
+  }
+  const afterEnd = end + WORKFLOW_FENCE_END.length
+  return {
+    before: agentsMd.slice(0, begin),
+    fence: agentsMd.slice(begin, afterEnd),
+    after: agentsMd.slice(afterEnd),
+  }
+}
+
 function ConnectionPanel() {
-  const { nodes, edges, selectedEdgeId, updateConnectionCondition, removeConnection } = useBuilderStore()
+  const { nodes, edges, selectedEdgeId, updateConnectionContextNote, removeConnection } = useBuilderStore()
 
   const edge = edges.find(e => e.id === selectedEdgeId)
   if (!edge) return null
@@ -41,7 +62,7 @@ function ConnectionPanel() {
   const targetNode = nodes.find(n => n.id === edge.target)
   const sourceName = (sourceNode?.data as AgentNodeData)?.name || "Unknown"
   const targetName = (targetNode?.data as AgentNodeData)?.name || "Unknown"
-  const condition = (edge.data as ConnectionEdgeData)?.condition || "ON_COMPLETE"
+  const note = (edge.data as ConnectionEdgeData)?.contextNote ?? ""
 
   return (
     <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
@@ -58,12 +79,23 @@ function ConnectionPanel() {
       </div>
 
       <div className="mb-2.5">
-        <Label text="Condition" tooltip="When this connection activates. 'On complete' fires after the source agent finishes. 'On human approval' waits for a human to approve first. These connections also generate the Workflow guidance written into the Orchestrator's AGENTS.md." />
-        <CustomSelect
-          value={condition}
-          onChange={(val) => updateConnectionCondition(selectedEdgeId!, val)}
-          options={CONDITION_OPTIONS}
+        <Label
+          text={`Note (${(note || "").length}/${CONTEXT_NOTE_MAX_CHARS})`}
+          tooltip="Optional hint woven into the Commander's Workflow sentence for this worker. Conditions are not used — every solid edge is an unconditional handoff."
         />
+        <textarea
+          value={note || ""}
+          maxLength={CONTEXT_NOTE_MAX_CHARS}
+          onChange={(e) => updateConnectionContextNote(selectedEdgeId!, e.target.value)}
+          rows={3}
+          placeholder="Optional context for this handoff…"
+          className="w-full px-2 py-[5px] border border-[var(--bd)] rounded-[6px] text-[11px] bg-[var(--bg)] text-[var(--tx)] focus:outline-none focus:border-[var(--tx)] resize-y"
+        />
+        {normalizeContextNote(note) && (
+          <p className="mt-1.5 text-[10px] text-[var(--tx3)] italic">
+            Preview: Delegate work to {targetName} ({normalizeContextNote(note)}).
+          </p>
+        )}
       </div>
 
       <button
@@ -76,11 +108,154 @@ function ConnectionPanel() {
   )
 }
 
+function WorkflowKnobsPanel() {
+  const {
+    nodes,
+    maxRevisionRounds,
+    deliveryMode,
+    templateSlug,
+    setMaxRevisionRounds,
+    setDeliveryMode,
+    updateAgentProperty,
+    focusWorkflowKnobs,
+    clearFocusWorkflowKnobs,
+  } = useBuilderStore()
+
+  const critic = nodes.find((n) => (n.data as AgentNodeData).role === "CRITIC")
+  const orch = nodes.find((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")
+  const criticData = critic?.data as AgentNodeData | undefined
+  const orchData = orch?.data as AgentNodeData | undefined
+  const regulated = isRegulatedTemplateSlug(templateSlug)
+  const thresholdMin = regulated ? REGULATED_QUALITY_THRESHOLD_FLOOR : 1
+  const threshold = Math.max(thresholdMin, criticData?.qualityThreshold ?? 8)
+
+  useEffect(() => {
+    if (focusWorkflowKnobs) {
+      clearFocusWorkflowKnobs()
+    }
+  }, [focusWorkflowKnobs, clearFocusWorkflowKnobs])
+
+  const lawPreview = useMemo(
+    () =>
+      formatWorkflowLawSection({
+        orchestratorDisplayName: orchData?.name || "Commander",
+        criticDisplayName: criticData?.name || "Quality Critic",
+        qualityThreshold: threshold,
+        maxRevisionRounds,
+        deliveryMode,
+      }),
+    [orchData?.name, criticData?.name, threshold, maxRevisionRounds, deliveryMode],
+  )
+
+  return (
+    <div
+      className={cn(
+        "mb-2.5 rounded-[6px] border border-[var(--bd)] p-2",
+        focusWorkflowKnobs && "ring-1 ring-[var(--ac)]",
+      )}
+      data-testid="workflow-knobs-panel"
+    >
+      <h5 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">
+        Workflow settings
+      </h5>
+
+      {critic && (
+        <div className="mb-2.5">
+          <Label
+            text={`Quality threshold: ${threshold}`}
+            tooltip="Minimum score (1–10) for work to be approved. Below this, the Critic sends it back for revision."
+          />
+          <input
+            type="range"
+            min={thresholdMin}
+            max={10}
+            step={0.5}
+            value={threshold}
+            onChange={(e) =>
+              updateAgentProperty(critic.id, "qualityThreshold", parseFloat(e.target.value))
+            }
+            className="w-full h-1.5 accent-[var(--tx)]"
+          />
+          <div className="flex justify-between text-[9px] text-[var(--tx3)]">
+            <span>{regulated ? `${thresholdMin} (floor)` : "1 (lenient)"}</span>
+            <span>10 (strict)</span>
+          </div>
+          {regulated && (
+            <p className="mt-1 text-[9px] text-[var(--tx3)]">
+              Lenient scores are hidden for this regulated template (floor {REGULATED_QUALITY_THRESHOLD_FLOOR}).
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="mb-2.5">
+        <Label
+          text={`Revision rounds: ${maxRevisionRounds}`}
+          tooltip="How many times rejected work can loop back before the Commander presents the best attempt."
+        />
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={1}
+          value={maxRevisionRounds}
+          onChange={(e) => setMaxRevisionRounds(parseInt(e.target.value, 10))}
+          className="w-full h-1.5 accent-[var(--tx)]"
+        />
+      </div>
+
+      <div className="mb-2.5">
+        <Label text="Delivery mode" tooltip="Whether the Commander asks you before acting on approved work." />
+        <CustomSelect
+          value={deliveryMode}
+          onChange={(val) => {
+            if (val === "AUTO_PROCEED") return
+            setDeliveryMode("APPROVAL_REQUIRED")
+          }}
+          options={[
+            { value: "APPROVAL_REQUIRED", label: "Ask before acting" },
+            { value: "AUTO_PROCEED", label: "Autonomous (unavailable)" },
+          ]}
+        />
+        <p className="mt-1 text-[9px] text-[var(--tx3)]">{AUTO_PROCEED_DISABLED_COPY}</p>
+      </div>
+
+      <div className="rounded-[6px] bg-[var(--bg2)] px-2 py-1.5 text-[10px] text-[var(--tx2)] leading-snug">
+        <span className="font-medium text-[var(--tx)]">Live law preview: </span>
+        {lawPreview}
+      </div>
+    </div>
+  )
+}
+
 export function PropertiesPanel() {
-  const { nodes, edges, selectedAgentId, selectedEdgeId, updateAgentProperty, deleteAgent, addConnection, removeConnection: removeConn, updateConnection } = useBuilderStore()
+  const {
+    nodes,
+    edges,
+    selectedAgentId,
+    selectedEdgeId,
+    updateAgentProperty,
+    deleteAgent,
+    jumpToWorkflowKnobs,
+  } = useBuilderStore()
   const snackbar = useSnackbarOptional()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const reportsToMap = useMemo(
+    () =>
+      deriveReportsToMap({
+        agents: nodes.map((n) => ({
+          id: n.id,
+          role: (n.data as AgentNodeData).role,
+        })),
+        edges: edges.map((e) => ({
+          sourceAgentId: e.source,
+          targetAgentId: e.target,
+        })),
+      }),
+    [nodes, edges],
+  )
 
   if (selectedEdgeId) {
     return <ConnectionPanel />
@@ -92,7 +267,10 @@ export function PropertiesPanel() {
     return (
       <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">Workspace</h4>
-        <p className="text-[11px] text-[var(--tx2)]">Select an agent on the canvas or sidebar to edit its properties.</p>
+        <p className="text-[11px] text-[var(--tx2)] mb-2.5">
+          Select an agent on the canvas or sidebar to edit its properties.
+        </p>
+        <WorkflowKnobsPanel />
       </div>
     )
   }
@@ -104,62 +282,15 @@ export function PropertiesPanel() {
   const connectionCount = edges.filter(
     (e) => e.source === selectedAgentId || e.target === selectedAgentId,
   ).length
-  const otherAgents = nodes.filter((n) => n.id !== selectedAgentId)
 
-  const incomingEdge = edges.find(e => e.target === selectedAgentId)
-  const outgoingEdge = edges.find(e => e.source === selectedAgentId)
+  const projectedReportsTo = selectedAgentId
+    ? reportsToMap.get(selectedAgentId) ?? null
+    : null
+  const reportsToName = projectedReportsTo
+    ? (nodes.find((n) => n.id === projectedReportsTo)?.data as AgentNodeData | undefined)?.name
+    : null
 
-  function roleFilteredOptions(filter: (r: string) => boolean, currentValue?: string) {
-    const filtered = otherAgents.filter(n => filter((n.data as AgentNodeData).role))
-    const options = [
-      { value: "", label: "None" },
-      ...filtered.map(n => ({ value: n.id, label: (n.data as AgentNodeData).name })),
-    ]
-    if (currentValue && !options.some(o => o.value === currentValue)) {
-      const staleNode = nodes.find(n => n.id === currentValue)
-      const staleName = staleNode ? (staleNode.data as AgentNodeData).name : "Unknown"
-      options.push({ value: currentValue, label: staleName })
-    }
-    return options
-  }
-
-  const reportsToOptions = roleFilteredOptions(
-    r => r === "ORCHESTRATOR" || r === "WORKER",
-    incomingEdge?.source
-  )
-  const outputsToOptions = isOrch
-    ? roleFilteredOptions(r => r === "WORKER", outgoingEdge?.target)
-    : isCritic
-      ? roleFilteredOptions(r => r === "ORCHESTRATOR" || r === "WORKER", outgoingEdge?.target)
-      : roleFilteredOptions(r => r === "CRITIC" || r === "WORKER", outgoingEdge?.target)
-
-  function handleReportsToChange(newParentId: string) {
-    if (!selectedAgentId) return
-    if (newParentId === selectedAgentId) return
-
-    if (!newParentId) {
-      if (incomingEdge) removeConn(incomingEdge.id)
-    } else if (incomingEdge) {
-      updateConnection(incomingEdge.id, { source: newParentId })
-    } else {
-      addConnection({ source: newParentId, target: selectedAgentId })
-    }
-    updateAgentProperty(selectedAgentId, "reportsTo", newParentId || undefined)
-  }
-
-  function handleOutputsToChange(newTargetId: string) {
-    if (!selectedAgentId) return
-    if (newTargetId === selectedAgentId) return
-
-    if (!newTargetId) {
-      if (outgoingEdge) removeConn(outgoingEdge.id)
-    } else if (outgoingEdge) {
-      updateConnection(outgoingEdge.id, { target: newTargetId })
-    } else {
-      addConnection({ source: selectedAgentId, target: newTargetId })
-    }
-    updateAgentProperty(selectedAgentId, "outputsTo", newTargetId || undefined)
-  }
+  const fenceParts = isOrch ? splitFence(agent.agentsMd || "") : null
 
   function handleDeleteConfirm() {
     if (!selectedAgentId) return
@@ -219,13 +350,54 @@ export function PropertiesPanel() {
         placeholder="Agent identity and personality..."
       />
 
-      <MarkdownEditor
-        label="AGENTS.md"
-        tooltip="Step-by-step operating procedures this agent follows. Like a detailed SOP - what to do, in what order, with what tools."
-        value={agent.agentsMd || ""}
-        onChange={(val) => updateAgentProperty(selectedAgentId!, "agentsMd", val)}
-        placeholder="Operating procedures..."
-      />
+      {isOrch && fenceParts ? (
+        <>
+          <MarkdownEditor
+            label="AGENTS.md (procedures)"
+            tooltip="Operating procedures outside the Workflow fence. The fenced Workflow block is generated from the canvas and knobs — edit those instead."
+            value={fenceParts.before + fenceParts.after}
+            onChange={(val) => {
+              // Preserve existing fence (if any) between prose edits.
+              const next = fenceParts.fence
+                ? `${val.trimEnd()}\n\n${fenceParts.fence}\n`
+                : val
+              updateAgentProperty(selectedAgentId!, "agentsMd", next)
+            }}
+            placeholder="Operating procedures..."
+          />
+          <div
+            className="mb-2.5 rounded-[6px] border border-[var(--bd)] bg-[var(--bg2)] p-2 cursor-default select-none"
+            data-testid="workflow-fence-card"
+          >
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">
+                Workflow (locked)
+              </span>
+              <button
+                type="button"
+                onClick={() => jumpToWorkflowKnobs()}
+                className="text-[10px] text-[var(--ac-text)] underline bg-transparent border-0 cursor-pointer p-0"
+              >
+                Jump to settings
+              </button>
+            </div>
+            <p className="text-[10px] text-[var(--tx3)] mb-1.5">
+              Regenerated on deploy from canvas edges + knobs. Cursor entry disabled.
+            </p>
+            <pre className="whitespace-pre-wrap text-[10px] text-[var(--tx2)] font-mono max-h-[140px] overflow-y-auto">
+              {fenceParts.fence || "(Will be generated on deploy from your connections.)"}
+            </pre>
+          </div>
+        </>
+      ) : (
+        <MarkdownEditor
+          label="AGENTS.md"
+          tooltip="Step-by-step operating procedures this agent follows. Like a detailed SOP - what to do, in what order, with what tools."
+          value={agent.agentsMd || ""}
+          onChange={(val) => updateAgentProperty(selectedAgentId!, "agentsMd", val)}
+          placeholder="Operating procedures..."
+        />
+      )}
 
       <div className="mb-2.5">
         <Label text="Skills" tooltip="Tools and capabilities available to this agent. Each skill gives the agent instructions for using a specific tool." />
@@ -241,47 +413,19 @@ export function PropertiesPanel() {
         ) : isCritic ? (
           <>
             <label className="block text-[10px] text-[var(--tx2)] font-medium mb-[3px]">Receives from</label>
-            <p className="text-[11px] text-[var(--tx3)] italic">All workers (via their output settings)</p>
+            <p className="text-[11px] text-[var(--tx3)] italic">All workers automatically (review is not a drawn edge)</p>
           </>
         ) : (
           <>
-            <Label text="Reports to" tooltip="Which agent this one reports its work to. Typically Workers report to the Orchestrator." />
-            <CustomSelect
-              value={incomingEdge?.source || ""}
-              onChange={(val) => handleReportsToChange(val)}
-              options={reportsToOptions}
-            />
+            <Label text="Reports to" tooltip="Projected from your Commander → Worker edge. Read-only." />
+            <p className="text-[11px] text-[var(--tx)] px-[8px] py-[5px] bg-[var(--bg2)] rounded-[6px]">
+              {reportsToName || "Not connected — draw an edge from the Commander"}
+            </p>
           </>
         )}
       </div>
 
-      <div className="mb-2.5">
-        <Label text="Outputs to" tooltip="Where this agent sends its completed work. Usually the Critic for review, or another Worker for the next step." />
-        <CustomSelect
-          value={outgoingEdge?.target || ""}
-          onChange={(val) => handleOutputsToChange(val)}
-          options={outputsToOptions}
-        />
-      </div>
-
-      {isCritic && (
-        <div className="mb-2.5">
-          <Label text={`Quality threshold: ${agent.qualityThreshold ?? 8.0}`} tooltip="Minimum score (1-10) for work to be approved. Below this, the Critic sends it back for revision. Default 8.0 works well for most cases." />
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={0.5}
-            value={agent.qualityThreshold ?? 8.0}
-            onChange={(e) => updateAgentProperty(selectedAgentId!, "qualityThreshold", parseFloat(e.target.value))}
-            className="w-full h-1.5 accent-[var(--tx)]"
-          />
-          <div className="flex justify-between text-[9px] text-[var(--tx3)]">
-            <span>1 (lenient)</span>
-            <span>10 (strict)</span>
-          </div>
-        </div>
-      )}
+      {(isOrch || isCritic) && <WorkflowKnobsPanel />}
 
       {canDelete && (
         <>
