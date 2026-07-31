@@ -64,12 +64,14 @@ export function TopBar() {
     return () => { cancelled = true }
   }, [sessionReady])
 
-  const baseNavItems =
-    status === "loading"
-      ? loadingNavItems
-      : sessionReady
-        ? authNavItems
-        : publicNavItems
+  // Only paint public/Sign-in on EXPLICIT unauthenticated. loading + any
+  // unknown status stay neutral — never fall through to Pricing/Sign-in while
+  // session is still resolving (admin hard-load gap after #389).
+  const baseNavItems = sessionReady
+    ? authNavItems
+    : status === "unauthenticated"
+      ? publicNavItems
+      : loadingNavItems
   const withGettingStarted: NavItem[] = sessionReady && showGettingStartedNav
     ? [
         ...baseNavItems,
@@ -135,11 +137,7 @@ export function TopBar() {
         </nav>
       </div>
 
-      {status === "loading" ? (
-        <div className="w-[72px]" role="status" aria-label="Loading session">
-          <LoadingSkeleton variant="short" count={1} />
-        </div>
-      ) : sessionReady ? (
+      {sessionReady ? (
         <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
           <DropdownMenuTrigger asChild>
             <button
@@ -201,12 +199,16 @@ export function TopBar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      ) : (
+      ) : status === "unauthenticated" ? (
         <Link href="/auth/signin">
           <button type="button" className="text-[13px] font-medium px-4 py-1.5 rounded-lg bg-[var(--tx)] text-white hover:opacity-90 transition-colors">
             Sign in
           </button>
         </Link>
+      ) : (
+        <div className="w-[72px]" role="status" aria-label="Loading session">
+          <LoadingSkeleton variant="short" count={1} />
+        </div>
       )}
     </header>
   )

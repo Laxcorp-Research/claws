@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
+import { getServerSession } from "next-auth"
 import { Providers } from "@/components/providers"
+import { authOptions } from "@/lib/auth"
 import { WebVitals } from "@/lib/axiom/client"
 import "./globals.css"
 
@@ -11,12 +13,13 @@ export const metadata: Metadata = {
   description: "The visual platform for building, deploying, and managing autonomous AI agent teams. By Laxcorp Research.",
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession(authOptions)
   return (
     <html lang="en">
       <WebVitals />
       <body>
-        <Providers>{children}</Providers>
+        <Providers session={session}>{children}</Providers>
       </body>
     </html>
   )
