@@ -93,4 +93,18 @@ describe("hibernateWorkspace — P3 refuse path", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/hibernation/manager.ts"), "utf8")
     expect(src).toContain('destroyPolicy: "refuse-unsafe"')
   })
+
+  it("successful hibernate marks prior COMPLETED deployments SUPERSEDED", async () => {
+    mockSyncThenDestroy.mockResolvedValue({ destroyed: true })
+    ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    ;(prismaMock.deployment.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 3 })
+    ;(prismaMock.agent.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+
+    const result = await hibernateWorkspace("ws-1")
+    expect(result).toEqual({ hibernated: true })
+    expect(prismaMock.deployment.updateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws-1", status: "COMPLETED" },
+      data: { status: "SUPERSEDED" },
+    })
+  })
 })

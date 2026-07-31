@@ -20,6 +20,7 @@
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { prisma } from '@/lib/db';
+import { supersedePriorDeployments } from '@/lib/deploy/supersede-deployments';
 import { encrypt, decrypt, decryptAndMaybeReencrypt } from '@/lib/encryption';
 import {
   requireActivityEndpoint,
@@ -297,11 +298,26 @@ export async function deployToCloud(workspaceId: string): Promise<{
     },
   });
 
+  // Retire prior COMPLETED rows so force-update / admin counts target current only.
+  await supersedePriorDeployments(workspaceId, deployment.id);
+
   await clearDeployEvents(workspaceId).catch(() => {});
 
   try {
     await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
     const generated = await generateWorkspace(workspaceId);
+    if (generated.workflowFenceCorrected) {
+      // Ledger only when a stale/tampered fence was actually replaced.
+      await prisma.activityLog.create({
+        data: {
+          workspaceId,
+          action: 'Workflow fence regenerated',
+          actionType: 'SYSTEM',
+          detail: 'Orchestrator AGENTS.md workflow fence was corrected from canvas + knobs.',
+          metadata: JSON.stringify({ eventKind: 'workflow_fence_regenerated' }),
+        },
+      }).catch(() => {});
+    }
     const fingerprint = await buildWorkspaceConfigFingerprint(workspaceId);
     const completionData = buildDeploymentCompletionData(fingerprint, generated);
 

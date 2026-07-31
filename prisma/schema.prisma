@@ -257,6 +257,12 @@ model Workspace {
   // See src/lib/hibernation/predicates.ts (runningIdleWhere / warmIdleWhere).
   alwaysOn                    Boolean   @default(false)
 
+  // WIRE-FULL choreography knobs (fingerprint v4). Generator inputs only —
+  // ships locked to APPROVAL_REQUIRED language this arc; AUTO_PROCEED is
+  // schema-present, UI-disabled until action integrations are connected.
+  maxRevisionRounds           Int            @default(3)
+  deliveryMode                DeliveryMode   @default(APPROVAL_REQUIRED)
+
   // PR-B: opt out of critical-alert pushes (Telegram, fallback email) for
   // container-unhealthy / cron-job-failed / heartbeat-missed / state-sync-stale.
   // Default false → alerts ON by default. See src/lib/alerts/critical-alert-push.ts.
@@ -390,9 +396,15 @@ model AgentConnection {
   sourceAgentId String
   targetAgentId String
 
+  // WIRE-FULL X2: solid ORCH→WORKER edges are unconditional delegation.
+  // Seeds/API write ON_COMPLETE uniformly. Generator IGNORES this column.
+  // ON_SCHEDULE / ON_HUMAN_APPROVE / ON_APPROVAL / ON_REJECTION / CUSTOM
+  // are dormant (no enum migration) — kept for schema stability only.
   condition     ConnectionCondition @default(ON_COMPLETE)
   conditionExpr String?
   label         String?
+  // Optional ≤140-char note woven into the generated delegation sentence.
+  contextNote   String?
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceAgent Agent     @relation("SourceAgent", fields: [sourceAgentId], references: [id], onDelete: Cascade)
@@ -410,6 +422,11 @@ enum ConnectionCondition {
   ON_SCHEDULE
   ON_HUMAN_APPROVE
   CUSTOM
+}
+
+enum DeliveryMode {
+  APPROVAL_REQUIRED
+  AUTO_PROCEED
 }
 
 // ─── SKILLS LIBRARY ─────────────────────────────────────
@@ -782,6 +799,8 @@ enum DeploymentStatus {
   COMPLETED
   FAILED
   ROLLED_BACK
+  /// Prior success row retired by hibernate/replace; structurally excluded from force-update "current" selection after DISTINCT-latest.
+  SUPERSEDED
 }
 
 // ─── ACTIVITY LOGS ──────────────────────────────────────

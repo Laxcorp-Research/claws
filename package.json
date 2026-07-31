@@ -23,6 +23,7 @@
     "db:seed": "npx prisma db seed",
     "seed:dev": "npx prisma db seed",
     "seed:staging": "dotenv -e .env.staging -- npx prisma db seed",
+    "seed:templates:staging": "dotenv -e .env.staging -- npx tsx scripts/seed-claw-templates-only.ts",
     "migrate:staging": "dotenv -e .env.staging -- npx prisma migrate deploy",
     "migrate:production": "dotenv -e .env.production -- npx prisma migrate deploy",
     "sync:clawhub": "npx tsx scripts/sync-clawhub.ts",

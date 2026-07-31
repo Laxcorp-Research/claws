@@ -137,6 +137,32 @@ jobs:
             --jq '[.statusCheckRollup[]? | select(.name != null and .name != "")] | length')
           echo "permissions-probe OK: statusCheckRollup readable on PR #$PR (named checks=$COUNT)"
 
+      # PREFLIGHT_MERGEABLE_ASSERT: fail fast on staging↔main conflict before
+      # GHCR/staging gates open any promote window (wave-36 class: checks green
+      # but "merge commit cannot be cleanly created"). Conflict ≠ permissions —
+      # conflict path must never mint or suggest a personal-access token.
+      - name: Fail fast if staging→main PR is CONFLICTING / DIRTY
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # PREFLIGHT_MERGEABLE_ASSERT: staging_main_not_dirty
+          REPO="${{ github.repository }}"
+          ROW=$(gh pr list -R "$REPO" --base main --head staging --state open \
+            --json number,mergeable,mergeStateStatus --jq '.[0] // empty')
+          if [ -z "$ROW" ]; then
+            echo "preflight-mergeable: no open staging→main PR yet — OK (created later)"
+            exit 0
+          fi
+          PR_NUMBER=$(printf '%s' "$ROW" | jq -r .number)
+          MERGEABLE=$(printf '%s' "$ROW" | jq -r .mergeable)
+          STATE=$(printf '%s' "$ROW" | jq -r .mergeStateStatus)
+          echo "preflight-mergeable: PR #$PR_NUMBER mergeable=$MERGEABLE mergeStateStatus=$STATE"
+          if [ "$MERGEABLE" = "CONFLICTING" ] || [ "$STATE" = "DIRTY" ]; then
+            echo "::error::CONFLICT: merge origin/main into staging and re-dispatch"
+            exit 1
+          fi
+
       # PREFLIGHT: requested VERSION digest must exist in GHCR.
       # Do NOT require :candidate equality — raw-upstream builds no longer move
       # :candidate, so candidate drift must not block promote (no skip flag needed).
@@ -392,6 +418,18 @@ jobs:
           # Poll implementation → scopes (must match workflow-level permissions):
           #   gh pr view --json statusCheckRollup  → checks:read + statuses:read
           #   gh pr checks (diagnostics on fail/timeout) → checks:read
+
+          # Re-check mergeability before burning the wait window (PR may have
+          # been created/reused after preflight, or tip moved into conflict).
+          META=$(gh pr view "$PR_NUMBER" --json mergeable,mergeStateStatus)
+          MERGEABLE=$(printf '%s' "$META" | jq -r .mergeable)
+          STATE=$(printf '%s' "$META" | jq -r .mergeStateStatus)
+          echo "pre-wait mergeable=$MERGEABLE mergeStateStatus=$STATE"
+          if [ "$MERGEABLE" = "CONFLICTING" ] || [ "$STATE" = "DIRTY" ]; then
+            echo "::error::CONFLICT: merge origin/main into staging and re-dispatch"
+            exit 1
+          fi
+
           DEADLINE_SECS=2400
           START=$SECONDS
           echo "Waiting up to ${DEADLINE_SECS}s for PR #$PR_NUMBER check-runs to go green…"
@@ -432,6 +470,14 @@ jobs:
           set -e
           if [ "$MERGE_EC" -ne 0 ]; then
             echo "$MERGE_OUT"
+            # CONFLICT_NOT_PAT_ASSERT: wave-36 — "merge commit cannot be cleanly
+            # created" is a staging↔main conflict, NOT a permissions failure.
+            # Never suggest minting PROMOTE_GITHUB_TOKEN for conflict-class fails.
+            if printf '%s' "$MERGE_OUT" | grep -qiE \
+              'merge commit cannot be cleanly created|Pull Request is not mergeable|is not mergeable|merge conflicts?|CONFLICTING'; then
+              echo "::error::CONFLICT: merge origin/main into staging and re-dispatch"
+              exit 1
+            fi
             echo "::error::GITHUB_TOKEN could not merge PR #$PR_NUMBER after checks were green (branch protection / permissions / merge method). Create repo secret PROMOTE_GITHUB_TOKEN (PAT that can bypass required checks / merge to main), then re-run. Do not mint the PAT until this failure is observed."
             exit 1
           fi

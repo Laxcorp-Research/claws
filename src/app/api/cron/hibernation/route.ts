@@ -15,6 +15,7 @@ import {
   isWakeEligible,
   type WakeEligibilityLine,
 } from "@/lib/hibernation/wake-geometry"
+import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 
 // before: 55 — Vercel FUNCTION_INVOCATION_TIMEOUT when wakes awaited inline.
 // after: 300 — belt for sleep-side syncThenDestroy + after() wake fan-out headroom.
@@ -119,16 +120,33 @@ export async function GET(req: NextRequest) {
 
   // ─── WAKE CANDIDATES (P2.3 geometry) — decide inline, execute in after() ─
 
+  const ownerEntitlementSelect = {
+    workspace: {
+      select: {
+        user: {
+          select: {
+            trialUsed: true,
+            trialStartedAt: true,
+            trialEndsAt: true,
+            hasActiveSubscription: true,
+          },
+        },
+      },
+    },
+  } as const
+
   const wakeCandidates = await prisma.containerState.findMany({
     where: wakeHibernatedWhere(),
     select: {
       workspaceId: true,
       nextHeartbeatAt: true,
       avgWakeDurationMs: true,
+      ...ownerEntitlementSelect,
     },
   })
 
   const wakeEligibility: WakeEligibilityLine[] = []
+  let wakeSkippedEntitlement = 0
 
   for (const candidate of wakeCandidates) {
     const hint = candidate.nextHeartbeatAt
@@ -153,6 +171,16 @@ export async function GET(req: NextRequest) {
       continue
     }
 
+    const entitlement = canWakeHibernatedWorkspace(candidate.workspace.user)
+    if (!entitlement.allowed) {
+      wakeSkippedEntitlement++
+      log.info("Hibernation cron: skip wake (entitlement denied)", {
+        workspaceId: candidate.workspaceId,
+        reason: entitlement.reason,
+      })
+      continue
+    }
+
     // WAKE_AFTER_FANOUT_ASSERT — do not await wakeWorkspace here.
     scheduleWake(candidate.workspaceId, "eligible")
     woke++
@@ -166,10 +194,22 @@ export async function GET(req: NextRequest) {
       containerPhase: "WAKING",
       wakeRequestedAt: { lt: stuckThreshold },
     },
-    select: { workspaceId: true },
+    select: {
+      workspaceId: true,
+      ...ownerEntitlementSelect,
+    },
   })
 
   for (const stuck of stuckWaking) {
+    const entitlement = canWakeHibernatedWorkspace(stuck.workspace.user)
+    if (!entitlement.allowed) {
+      wakeSkippedEntitlement++
+      log.info("Hibernation cron: skip stuck wake (entitlement denied)", {
+        workspaceId: stuck.workspaceId,
+        reason: entitlement.reason,
+      })
+      continue
+    }
     log.warn("Retrying stuck wake (scheduled after)", { workspaceId: stuck.workspaceId })
     scheduleWake(stuck.workspaceId, "stuck")
     woke++
@@ -181,6 +221,7 @@ export async function GET(req: NextRequest) {
     woke,
     errors,
     stuckRetried: stuckWaking.length,
+    wakeSkippedEntitlement,
     syncSkippedForBudget,
     wakeCandidatesConsidered: wakeEligibility.length,
     durationMs,

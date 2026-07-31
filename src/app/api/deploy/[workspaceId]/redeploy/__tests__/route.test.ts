@@ -25,6 +25,12 @@ vi.mock("@/lib/tools/deploy-tool-prerequisites", () => ({
     mockEvaluateToolPrereqs(...args),
 }))
 
+const mockEvaluateTopology = vi.fn()
+vi.mock("@/lib/openclaw/deploy-topology-prerequisites", () => ({
+  evaluateWorkspaceDeployTopologyPrerequisites: (...args: unknown[]) =>
+    mockEvaluateTopology(...args),
+}))
+
 import { POST } from "@/app/api/deploy/[workspaceId]/redeploy/route"
 
 async function callRoute(workspaceId = "ws-1") {
@@ -59,6 +65,13 @@ describe("POST /api/deploy/[workspaceId]/redeploy", () => {
       missingSlugs: [],
       missingLabels: [],
       unverifiedCount: 0,
+    })
+    mockEvaluateTopology.mockReset()
+    mockEvaluateTopology.mockResolvedValue({
+      ok: true,
+      hardErrors: [],
+      softWarnings: [],
+      primaryMessage: null,
     })
   })
 
@@ -145,5 +158,14 @@ describe("POST /api/deploy/[workspaceId]/redeploy", () => {
     )
     expect(src).toContain("evaluateWorkspaceDeployToolPrerequisites")
     expect(src).toContain("REQUIRED_TOOLS_MISSING")
+  })
+
+  it("MUTATION source lock: redeploy must call evaluateWorkspaceDeployTopologyPrerequisites", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/deploy/[workspaceId]/redeploy/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain("evaluateWorkspaceDeployTopologyPrerequisites")
+    expect(src).toContain("TOPOLOGY_INVALID")
   })
 })

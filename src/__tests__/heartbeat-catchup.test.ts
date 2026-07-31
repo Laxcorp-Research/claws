@@ -1,8 +1,8 @@
 /**
- * -10 catch-up-beat contract (repo-side, against overlay code).
+ * -11 catch-up-beat contract (repo-side, against overlay code).
  *
- * "boot at expected+10min emits exactly one HEARTBEAT-evidence event,
- * then next fire is the next slot".
+ * in-grace boot fires exactly once; each skip branch ledgers its reason.
+ * MUTATION: remove skip-ledger → reason test fails.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest"
 import fs from "node:fs"
@@ -20,7 +20,7 @@ beforeEach(async () => {
   catchup = await import("../../container/heartbeat-catchup.mjs")
 })
 
-describe("heartbeat catch-up (-10)", () => {
+describe("heartbeat catch-up (-11)", () => {
   let dir: string
 
   afterEach(() => {
@@ -48,11 +48,9 @@ describe("heartbeat catch-up (-10)", () => {
     schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" },
   }
 
-  it("boot at expected+10min → catch-up fires exactly one cron.run force", async () => {
-    writeJobs([dailyJob])
-    const now = new Date("2026-07-24T08:10:00.000Z")
+  function healthyFetch() {
     const calls: unknown[] = []
-    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? "{}"))
       calls.push(body)
       if (body.method === "health") {
@@ -68,6 +66,14 @@ describe("heartbeat catch-up (-10)", () => {
       }
       return new Response("nope", { status: 404 })
     })
+    return { fetchImpl, calls }
+  }
+
+  it("in-grace boot fires exactly once (catchup-v11)", async () => {
+    writeJobs([dailyJob])
+    const now = new Date("2026-07-24T08:10:00.000Z")
+    const { fetchImpl, calls } = healthyFetch()
+    const ledger = vi.fn()
 
     const result = await catchup.runHeartbeatCatchupOnBoot({
       dataDir: dir,
@@ -75,14 +81,18 @@ describe("heartbeat catch-up (-10)", () => {
       now,
       fetchImpl,
       CronExpressionParser,
+      ledger,
+      jobsReadyTimeoutMs: 50,
+      gatewayReadyTimeoutMs: 2000,
     })
 
     expect(result.ran).toBe(true)
     expect(result.reason).toBe("catchup-fired")
-    expect(result.marker).toBe("catchup-v10")
+    expect(result.marker).toBe("catchup-v11")
     expect(result.expectedAt).toBe("2026-07-24T08:00:00.000Z")
     expect(result.jobId).toBe(dailyJob.id)
     expect(result.nextFireAt).toBe("2026-07-25T08:00:00.000Z")
+    expect(ledger).not.toHaveBeenCalled()
 
     const runs = calls.filter(
       (c) => (c as { method?: string }).method === "cron.run",
@@ -92,70 +102,141 @@ describe("heartbeat catch-up (-10)", () => {
       method: "cron.run",
       params: { id: dailyJob.id, mode: "force" },
     })
-
-    // Emission shape matches sticky-clear contract (typed HEARTBEAT).
     expect(isHeartbeatBeatEvidence(result.evidenceShape)).toBe(true)
   })
 
-  it("beyond CATCHUP_GRACE → no fire (next occurrence owns it)", async () => {
-    writeJobs([dailyJob])
-    const now = new Date("2026-07-24T08:45:00.000Z") // 45m > 30m default
-    const fetchImpl = vi.fn()
-    const result = await catchup.runHeartbeatCatchupOnBoot({
-      dataDir: dir,
-      port: "18789",
-      now,
-      fetchImpl,
-      CronExpressionParser,
-      env: {},
-    })
-    expect(result.ran).toBe(false)
-    expect(result.reason).toBe("beyond-grace")
-    expect(fetchImpl).not.toHaveBeenCalled()
+  it("each skip branch ledgers its reason", async () => {
+    const cases: Array<{
+      reason: string
+      setup: () => void
+      env?: Record<string, string>
+      fetchImpl?: ReturnType<typeof vi.fn>
+      now?: Date
+    }> = [
+      {
+        reason: "disabled",
+        setup: () => writeJobs([dailyJob]),
+        env: { CLAWS_HEARTBEAT_CATCHUP_DISABLED: "true" },
+        now: new Date("2026-07-24T08:10:00.000Z"),
+      },
+      {
+        reason: "no-jobs",
+        setup: () => {
+          dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-catchup-"))
+          // no cron/jobs.json
+          fs.writeFileSync(
+            path.join(dir, ".env"),
+            "OPENCLAW_GATEWAY_TOKEN=test-gw-token\n",
+          )
+        },
+        now: new Date("2026-07-24T08:10:00.000Z"),
+        fetchImpl: healthyFetch().fetchImpl,
+      },
+      {
+        reason: "gateway-unhealthy",
+        setup: () => writeJobs([dailyJob]),
+        now: new Date("2026-07-24T08:10:00.000Z"),
+        fetchImpl: vi.fn(async () => new Response("down", { status: 503 })),
+      },
+      {
+        reason: "beyond-grace",
+        setup: () => writeJobs([dailyJob]),
+        now: new Date("2026-07-24T08:45:00.000Z"),
+        fetchImpl: healthyFetch().fetchImpl,
+      },
+      {
+        reason: "no-due-job",
+        setup: () =>
+          writeJobs([
+            {
+              id: "other-job",
+              name: "not-a-heartbeat",
+              enabled: true,
+              schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" },
+            },
+          ]),
+        now: new Date("2026-07-24T08:10:00.000Z"),
+        fetchImpl: healthyFetch().fetchImpl,
+      },
+      {
+        reason: "rpc-fail",
+        setup: () => writeJobs([dailyJob]),
+        now: new Date("2026-07-24T08:10:00.000Z"),
+        fetchImpl: vi.fn(async (_url: string, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body ?? "{}"))
+          if (body.method === "health") {
+            return new Response(JSON.stringify({ ok: true }), { status: 200 })
+          }
+          return new Response(JSON.stringify({ ok: false, error: "boom" }), {
+            status: 500,
+          })
+        }),
+      },
+    ]
+
+    for (const c of cases) {
+      const ledger = vi.fn(async () => ({ ok: true }))
+      c.setup()
+      const result = await catchup.runHeartbeatCatchupOnBoot({
+        dataDir: dir,
+        port: "18789",
+        now: c.now ?? new Date("2026-07-24T08:10:00.000Z"),
+        fetchImpl: c.fetchImpl ?? healthyFetch().fetchImpl,
+        CronExpressionParser,
+        env: c.env ?? {},
+        ledger,
+        jobsReadyTimeoutMs: 20,
+        gatewayReadyTimeoutMs: 200,
+        sleep: async () => {},
+      })
+      expect(result.ran, c.reason).toBe(false)
+      expect(result.reason, c.reason).toBe(c.reason)
+      expect(ledger, c.reason).toHaveBeenCalled()
+      const calls = ledger.mock.calls as unknown as Array<
+        [{ metadata: { eventKind: string; reason: string; marker: string } }]
+      >
+      const event = calls[0]![0]!
+      expect(event.metadata.eventKind).toBe("heartbeat_catchup_skip")
+      expect(event.metadata.reason).toBe(c.reason)
+      expect(event.metadata.marker).toBe("catchup-v11")
+      if (dir) {
+        fs.rmSync(dir, { recursive: true, force: true })
+        dir = ""
+      }
+    }
   })
 
-  it("stale expected (>> grace) → no catch-up", async () => {
-    writeJobs([dailyJob])
-    // 07:58 → prev is yesterday 08:00 (~24h) → beyond grace
-    const now = new Date("2026-07-24T07:58:00.000Z")
-    const fetchImpl = vi.fn()
-    const result = await catchup.runHeartbeatCatchupOnBoot({
-      dataDir: dir,
-      port: "18789",
-      now,
-      fetchImpl,
-      CronExpressionParser,
-      env: {},
-    })
-    expect(result.ran).toBe(false)
-    expect(result.reason).toBe("beyond-grace")
-    expect(fetchImpl).not.toHaveBeenCalled()
-  })
-
-  it("MUTATION tripwires: process-manager + Dockerfile must wire -10 catch-up", () => {
+  it("MUTATION tripwires: process-manager + Dockerfile + skip-ledger", () => {
     const pm = readFileSync(
       path.join(process.cwd(), "container/process-manager.mjs"),
       "utf8",
     )
     expect(pm).toContain("runHeartbeatCatchupOnBoot")
     expect(pm).toContain("CATCHUP_OVERLAY_MARKER")
+    expect(pm).toContain("ledger:")
 
     const dockerfile = readFileSync(
       path.join(process.cwd(), "docker/Dockerfile"),
       "utf8",
     )
     expect(dockerfile).toContain("heartbeat-catchup.mjs")
-    expect(dockerfile).toContain("-10 catch-up-beat")
+    expect(dockerfile).toContain("thinking-signature-heal.mjs")
+    expect(dockerfile).toContain("catchup-v11")
 
     const catchupSrc = readFileSync(
       path.join(process.cwd(), "container/heartbeat-catchup.mjs"),
       "utf8",
     )
-    // MUTATION: shouldCatchUpBeat always false → +10min contract fails.
     expect(catchupSrc).toMatch(/export function shouldCatchUpBeat/)
     expect(catchupSrc).not.toMatch(
       /export function shouldCatchUpBeat\(args\) \{\s*return false/,
     )
+    expect(catchupSrc).toContain("catchup-v11")
+    expect(catchupSrc).toContain("ledgerCatchupSkip")
+    expect(catchupSrc).toContain("heartbeat_catchup_skip")
+    expect(catchupSrc).toContain("waitForCronJobsReadable")
+    // MUTATION: remove skip-ledger → this assertion fails.
+    expect(catchupSrc).toMatch(/await ledgerCatchupSkip\(/)
   })
 
   it("shouldCatchUpBeat: age within grace only", () => {

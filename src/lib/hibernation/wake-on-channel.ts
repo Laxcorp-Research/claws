@@ -24,10 +24,17 @@ import {
   wakeInjectSessionKey,
   WAKE_REPLY_WAIT_MS,
 } from "@/lib/hibernation/wake-reply-routing"
+import {
+  canWakeHibernatedWorkspace,
+  WAKE_ON_CHANNEL_ENTITLEMENT_DENIED,
+} from "@/lib/trial/wake-entitlement"
 import crypto from "node:crypto"
 
 /** Locked ack copy — mutation: change string → contract fails. */
 export const WAKE_ON_CHANNEL_ACK = "Waking up — one moment"
+
+/** ActivityLog eventKind for wake-ack Telegram sends (soak ledger completeness). */
+export const WAKE_ACK_SENT_EVENT_KIND = "wake_ack_sent"
 
 export const WAKE_ON_CHANNEL_FAIL =
   "Couldn't wake your Claw — try again or open the dashboard."
@@ -72,6 +79,40 @@ export async function armTelegramWakeWebhook(workspaceId: string): Promise<boole
   return telegramSetWakeWebhook({ botToken, workspaceId })
 }
 
+async function ledgerWakeAckSent(args: {
+  workspaceId: string
+  ackKind: "wake" | "still_waking"
+  delivered: boolean
+  chatId: number
+}): Promise<void> {
+  try {
+    await prisma.activityLog.create({
+      data: {
+        workspaceId: args.workspaceId,
+        action:
+          args.ackKind === "wake"
+            ? "Wake ack sent"
+            : "Wake ack sent (still waking)",
+        detail: args.delivered ? null : "telegram-send-failed",
+        actionType: "SYSTEM",
+        timestamp: new Date(),
+        metadata: JSON.stringify({
+          eventKind: WAKE_ACK_SENT_EVENT_KIND,
+          ackKind: args.ackKind,
+          delivered: args.delivered,
+          chatId: args.chatId,
+          channel: "telegram",
+        }),
+      },
+    })
+  } catch (err) {
+    log.error("wake-on-channel: failed to ledger wake ack", {
+      workspaceId: args.workspaceId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 export type WakeOnChannelDeps = {
   wakeWorkspace: typeof wakeWorkspace
   sendMessage: typeof telegramSendMessage
@@ -110,6 +151,14 @@ export async function handleTelegramWakeOnChannel(
       containerHost: true,
       gatewayToken: true,
       chatDeviceKeyEncrypted: true,
+      user: {
+        select: {
+          trialUsed: true,
+          trialStartedAt: true,
+          trialEndsAt: true,
+          hasActiveSubscription: true,
+        },
+      },
     },
   })
   if (!workspace) {
@@ -148,19 +197,47 @@ export async function handleTelegramWakeOnChannel(
   }
 
   if (decision.action === "ack_still_waking") {
-    await deps.sendMessage({
+    const delivered = await deps.sendMessage({
       botToken,
       chatId: inbound.chatId,
       text: WAKE_ON_CHANNEL_STILL,
     })
+    await ledgerWakeAckSent({
+      workspaceId: args.workspaceId,
+      ackKind: "still_waking",
+      delivered,
+      chatId: inbound.chatId,
+    })
     return { ok: true, handled: "ack_still_waking" }
   }
 
+  // ack_and_wake — entitlement gate before ack / WAKING flip.
+  const entitlement = canWakeHibernatedWorkspace(workspace.user)
+  if (!entitlement.allowed) {
+    const delivered = await deps.sendMessage({
+      botToken,
+      chatId: inbound.chatId,
+      text: WAKE_ON_CHANNEL_ENTITLEMENT_DENIED,
+    })
+    log.info("wake-on-channel: entitlement denied", {
+      workspaceId: args.workspaceId,
+      reason: entitlement.reason,
+      delivered,
+    })
+    return { ok: true, handled: "entitlement_denied" }
+  }
+
   // ack_and_wake
-  await deps.sendMessage({
+  const delivered = await deps.sendMessage({
     botToken,
     chatId: inbound.chatId,
     text: WAKE_ON_CHANNEL_ACK,
+  })
+  await ledgerWakeAckSent({
+    workspaceId: args.workspaceId,
+    ackKind: "wake",
+    delivered,
+    chatId: inbound.chatId,
   })
 
   try {

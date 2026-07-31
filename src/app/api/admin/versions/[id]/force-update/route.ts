@@ -4,6 +4,12 @@ import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
 import { Resend } from 'resend'
+import {
+  FORCE_UPDATE_CURRENT_STATUSES,
+  buildSecurityPatchEmailHtml,
+  selectCurrentDeploymentsPerWorkspace,
+  uniqueSortedWorkspaceNames,
+} from '@/lib/deploy/force-update-targets'
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY)
@@ -29,11 +35,14 @@ export async function POST(
       return apiError('INVALID_STATE', 'Can only force-update to a stable version', 400)
     }
 
-    const affectedDeployments = await prisma.deployment.findMany({
+    // Historical COMPLETED rows (one per hibernate/wake) used to all match.
+    // Select newest COMPLETED|SUPERSEDED per workspace only.
+    const candidateRows = await prisma.deployment.findMany({
       where: {
-        status: 'COMPLETED',
+        status: { in: [...FORCE_UPDATE_CURRENT_STATUSES] },
         containerImage: { not: targetVersion.dockerImage },
       },
+      orderBy: { startedAt: 'desc' },
       include: {
         workspace: {
           select: {
@@ -45,6 +54,8 @@ export async function POST(
         },
       },
     })
+
+    const affectedDeployments = selectCurrentDeploymentsPerWorkspace(candidateRows)
 
     if (affectedDeployments.length === 0) {
       return apiSuccess({
@@ -71,13 +82,14 @@ export async function POST(
     for (const dep of affectedDeployments) {
       if (dep.workspace?.user?.email) {
         const existing = uniqueUsers.get(dep.workspace.userId)
+        const clawName = dep.workspace.name || 'Unnamed Claw'
         if (existing) {
-          existing.workspaceNames.push(dep.workspace.name || 'Unnamed Claw')
+          existing.workspaceNames.push(clawName)
         } else {
           uniqueUsers.set(dep.workspace.userId, {
             email: dep.workspace.user.email,
             name: dep.workspace.user.name,
-            workspaceNames: [dep.workspace.name || 'Unnamed Claw'],
+            workspaceNames: [clawName],
           })
         }
       }
@@ -86,40 +98,17 @@ export async function POST(
     const resend = getResend()
     const emailPromises = Array.from(uniqueUsers.values()).map(async (user) => {
       try {
+        const uniqueNames = uniqueSortedWorkspaceNames(user.workspaceNames)
         await resend.emails.send({
           from: 'Claws <noreply@buildclaws.ai>',
           to: user.email,
-          subject: `Security update scheduled for your Claw${user.workspaceNames.length > 1 ? 's' : ''}`,
-          html: `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto;">
-              <h2 style="font-size: 18px; font-weight: 600;">Security Update Scheduled</h2>
-              <p style="font-size: 14px; color: #555; line-height: 1.6;">
-                Hi ${user.name || 'there'},
-              </p>
-              <p style="font-size: 14px; color: #555; line-height: 1.6;">
-                A security patch (OpenClaw v${targetVersion.version}) has been scheduled for your Claw${user.workspaceNames.length > 1 ? 's' : ''}.
-              </p>
-              <div style="background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 14px; margin: 16px 0;">
-                <p style="font-size: 13px; font-weight: 600; color: #854d0e; margin: 0;">
-                  Your Claw${user.workspaceNames.length > 1 ? 's have' : ' has'} NOT been updated yet &mdash; the patch applies on the next redeploy. To apply it now, redeploy your Claw${user.workspaceNames.length > 1 ? 's' : ''} from the dashboard.
-                </p>
-              </div>
-              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
-                <p style="font-size: 13px; font-weight: 600; margin: 0 0 6px 0;">Claws scheduled to update:</p>
-                <ul style="font-size: 13px; color: #166534; margin: 0; padding-left: 18px;">
-                  ${user.workspaceNames.map(n => `<li>${n}</li>`).join('')}
-                </ul>
-              </div>
-              ${targetVersion.releaseNotes ? `
-              <p style="font-size: 13px; color: #777;">
-                <strong>What changed:</strong> ${targetVersion.releaseNotes}
-              </p>
-              ` : ''}
-              <p style="font-size: 13px; color: #999; margin-top: 24px;">
-                &mdash; The Claws Team
-              </p>
-            </div>
-          `,
+          subject: `Security update scheduled for your Claw${uniqueNames.length > 1 ? 's' : ''}`,
+          html: buildSecurityPatchEmailHtml({
+            userName: user.name,
+            version: targetVersion.version,
+            workspaceNames: user.workspaceNames,
+            releaseNotes: targetVersion.releaseNotes,
+          }),
         })
       } catch (emailError) {
         console.error(`Failed to send security update email to ${user.email}:`, emailError)

@@ -42,6 +42,7 @@ describe("decideTrialExpiryActions (GRACE-24)", () => {
     )
     expect(plan.toNotify).toHaveLength(1)
     expect(plan.toNotify[0].clawNames).toEqual(["Growth Machine"])
+    expect(plan.toNotify[0].workspaceIds).toEqual(["ws-1"])
     expect(plan.toStop).toHaveLength(0)
   })
 
@@ -88,7 +89,7 @@ describe("decideTrialExpiryActions (GRACE-24)", () => {
     expect(plan.toStop).toHaveLength(0)
   })
 
-  it("notify+24h+no-sub → stop RUNNING workspaces", () => {
+  it("notify+24h+no-sub → stop all non-terminal workspaces (RUNNING + HIBERNATED)", () => {
     const plan = decideTrialExpiryActions(
       [
         makeUser({
@@ -96,6 +97,8 @@ describe("decideTrialExpiryActions (GRACE-24)", () => {
           workspaces: [
             { id: "ws-1", name: "A", status: "RUNNING" },
             { id: "ws-2", name: "B", status: "HIBERNATED" },
+            { id: "ws-3", name: "C", status: "STOPPED" },
+            { id: "ws-4", name: "D", status: "DRAFT" },
           ],
         }),
       ],
@@ -110,8 +113,28 @@ describe("decideTrialExpiryActions (GRACE-24)", () => {
         name: "User",
         workspaceId: "ws-1",
         workspaceName: "A",
+        enforceMode: "destroy_container",
+      },
+      {
+        kind: "stop",
+        userId: "user-1",
+        email: "u@example.com",
+        name: "User",
+        workspaceId: "ws-2",
+        workspaceName: "B",
+        enforceMode: "status_flip",
       },
     ])
+  })
+
+  it("MUTATION: RUNNING-only stop would skip HIBERNATED (revenue hole)", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/trial/decide-trial-expiry.ts"),
+      "utf8",
+    )
+    expect(src).not.toMatch(/workspace\.status !== ["']RUNNING["']/)
+    expect(src).toContain("isTrialStopEnforceableStatus")
+    expect(src).toContain("status_flip")
   })
 
   it("inside grace (<24h after notify) → no stop yet", () => {

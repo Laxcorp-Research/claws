@@ -1,9 +1,13 @@
 /**
- * -10 catch-up-beat-on-boot.
+ * -11 catch-up-beat-on-boot (hardened from -10).
  *
- * After gateway is ready: if the most recent heartbeat cron moment is in the
- * past within CATCHUP_GRACE, fire ONE immediate cron.run (force) so the
- * reporter ledgers HEARTBEAT identically to a scheduled fire. OpenClaw's
+ * Boot order: wait for jobs file readable AND gateway healthy (bounded wait,
+ * same poll pattern as process-manager waitForProxyHealth / -9 rebuild-index
+ * readiness) BEFORE the catch-up decision. Every exit path ledgers a reason
+ * (eventKind=heartbeat_catchup_skip) or fires the beat — silent no-ops die here.
+ *
+ * After readiness: if the most recent heartbeat cron moment is in the past
+ * within CATCHUP_GRACE, fire ONE immediate cron.run (force). OpenClaw's
  * enqueueRun rolls nextRunAt — no double-fire at the next wall-clock slot.
  *
  * Pure helpers are exported for repo-side contract tests (no live gateway).
@@ -16,8 +20,15 @@ import { pathToFileURL } from "node:url"
 /** Default 30m — covers observed ~19.5m GH late-wake with margin. */
 export const DEFAULT_CATCHUP_GRACE_MS = 30 * 60 * 1000
 
-/** Marker logged / stamped so -10 boots are distinguishable in telemetry. */
-export const CATCHUP_OVERLAY_MARKER = "catchup-v10"
+/** Marker logged / stamped so -11 boots are distinguishable in telemetry. */
+export const CATCHUP_OVERLAY_MARKER = "catchup-v11"
+
+export const HEARTBEAT_CATCHUP_SKIP_EVENT_KIND = "heartbeat_catchup_skip"
+
+/** Bounded readiness waits (reuse -9 proxy-health poll shape). */
+export const DEFAULT_JOBS_READY_TIMEOUT_MS = 30_000
+export const DEFAULT_GATEWAY_READY_TIMEOUT_MS = 60_000
+export const DEFAULT_READY_POLL_MS = 500
 
 const HEARTBEAT_JOB_ID_PREFIX = "heartbeat-"
 const HEARTBEAT_JOB_NAME_PREFIX = "orchestrator-heartbeat-"
@@ -85,8 +96,47 @@ export async function loadCronParser() {
   throw new Error("cron-parser unavailable for heartbeat catch-up")
 }
 
+export function cronJobsFilePath(dataDir) {
+  return path.join(dataDir, "cron", "jobs.json")
+}
+
+/**
+ * True when cron/jobs.json exists and parses to an array (possibly empty).
+ * Empty array is "readable" — decision layer maps to no-due-job / no-jobs.
+ */
+export function isCronJobsFileReadable(dataDir) {
+  const p = cronJobsFilePath(dataDir)
+  try {
+    if (!fs.existsSync(p)) return false
+    const raw = fs.readFileSync(p, "utf8")
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Bounded wait for jobs file readable. Pattern mirrors waitForProxyHealth.
+ * MUTATION: remove this wait → in-grace boot before restore can silent no-op.
+ */
+export async function waitForCronJobsReadable(args) {
+  const {
+    dataDir,
+    timeoutMs = DEFAULT_JOBS_READY_TIMEOUT_MS,
+    pollMs = DEFAULT_READY_POLL_MS,
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  } = args
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (isCronJobsFileReadable(dataDir)) return true
+    await sleep(pollMs)
+  }
+  return isCronJobsFileReadable(dataDir)
+}
+
 export function readCronJobsFile(dataDir) {
-  const p = path.join(dataDir, "cron", "jobs.json")
+  const p = cronJobsFilePath(dataDir)
   if (!fs.existsSync(p)) return []
   try {
     const raw = fs.readFileSync(p, "utf8")
@@ -175,8 +225,8 @@ export async function waitForGatewayHealth(args) {
   const {
     port,
     token,
-    timeoutMs = 60_000,
-    pollMs = 500,
+    timeoutMs = DEFAULT_GATEWAY_READY_TIMEOUT_MS,
+    pollMs = DEFAULT_READY_POLL_MS,
     fetchImpl = globalThis.fetch,
   } = args
   const started = Date.now()
@@ -227,8 +277,49 @@ export async function fireCatchupCronRun(args) {
 }
 
 /**
+ * Ledger a skip reason via injected callback (defaults to no-op in pure tests).
+ * MUTATION: remove skip ledger calls → reason contract tests fail.
+ */
+export async function ledgerCatchupSkip(args) {
+  const { reason, expectedAt = null, graceMs = null, ledger, extra = {} } = args
+  if (typeof ledger !== "function") return { ok: false, reason: "no-ledger" }
+  const event = {
+    type: "ERROR",
+    timestamp: new Date().toISOString(),
+    agentId: null,
+    runId: null,
+    sessionKey: null,
+    channelId: null,
+    action: `Heartbeat catch-up skipped: ${reason}`,
+    detail: `marker=${CATCHUP_OVERLAY_MARKER} reason=${reason}`,
+    metadata: {
+      eventKind: HEARTBEAT_CATCHUP_SKIP_EVENT_KIND,
+      reason,
+      marker: CATCHUP_OVERLAY_MARKER,
+      expectedAt,
+      graceMs,
+      ...extra,
+    },
+  }
+  await ledger(event)
+  return { ok: true, event }
+}
+
+function skipResult(reason, fields = {}) {
+  return {
+    ran: false,
+    reason,
+    marker: CATCHUP_OVERLAY_MARKER,
+    ...fields,
+  }
+}
+
+/**
  * Full catch-up path. Returns a structured result for logs/tests.
  * Does not throw — callers log failures.
+ *
+ * Exit reasons (spec): disabled | no-jobs | gateway-unhealthy | beyond-grace |
+ * no-due-job | rpc-fail | catchup-fired
  */
 export async function runHeartbeatCatchupOnBoot(args) {
   const {
@@ -239,72 +330,103 @@ export async function runHeartbeatCatchupOnBoot(args) {
     fetchImpl = globalThis.fetch,
     CronExpressionParser,
     enabled = env.CLAWS_HEARTBEAT_CATCHUP_DISABLED !== "true",
+    ledger = null,
+    jobsReadyTimeoutMs = DEFAULT_JOBS_READY_TIMEOUT_MS,
+    gatewayReadyTimeoutMs = DEFAULT_GATEWAY_READY_TIMEOUT_MS,
+    sleep,
   } = args
 
   const graceMs = catchupGraceMsFromEnv(env)
+
+  async function finishSkip(reason, fields = {}) {
+    await ledgerCatchupSkip({
+      reason,
+      expectedAt: fields.expectedAt ?? null,
+      graceMs,
+      ledger,
+      extra: fields.extra ?? {},
+    })
+    return skipResult(reason, { graceMs, ...fields })
+  }
+
+  if (!enabled) {
+    return finishSkip("disabled", { expectedAt: null })
+  }
+
+  // Boot order #1: jobs file readable (bounded).
+  const jobsReady = await waitForCronJobsReadable({
+    dataDir,
+    timeoutMs: jobsReadyTimeoutMs,
+    sleep,
+  })
+  if (!jobsReady) {
+    return finishSkip("no-jobs", { expectedAt: null })
+  }
+
+  const token = readGatewayToken(env, dataDir)
+  if (!token) {
+    return finishSkip("gateway-unhealthy", {
+      expectedAt: null,
+      extra: { detail: "no-gateway-token" },
+    })
+  }
+
+  // Boot order #2: gateway healthy (bounded) BEFORE catch-up decision.
+  const healthy = await waitForGatewayHealth({
+    port,
+    token,
+    timeoutMs: gatewayReadyTimeoutMs,
+    fetchImpl,
+  })
+  if (!healthy) {
+    return finishSkip("gateway-unhealthy", { expectedAt: null })
+  }
+
   const jobs = readCronJobsFile(dataDir)
+  if (jobs.length === 0) {
+    return finishSkip("no-jobs", { expectedAt: null })
+  }
+
   const last = await lastExpectedHeartbeatFire(jobs, now, CronExpressionParser)
   const expectedAt = last?.expectedAt ?? null
   const job = last?.job ?? null
 
+  if (!expectedAt) {
+    return finishSkip("no-due-job", { expectedAt: null })
+  }
+
+  if (expectedAt.getTime() >= now.getTime()) {
+    return finishSkip("no-due-job", {
+      expectedAt: expectedAt.toISOString(),
+    })
+  }
+
+  const age = now.getTime() - expectedAt.getTime()
+  if (age > graceMs) {
+    return finishSkip("beyond-grace", {
+      expectedAt: expectedAt.toISOString(),
+    })
+  }
+
   if (
     !shouldCatchUpBeat({
-      enabled,
+      enabled: true,
       expectedAt,
       nowMs: now.getTime(),
       graceMs,
     })
   ) {
-    return {
-      ran: false,
-      reason: !enabled
-        ? "disabled"
-        : !expectedAt
-          ? "no-expected"
-          : expectedAt.getTime() >= now.getTime()
-            ? "not-past-due"
-            : "beyond-grace",
-      marker: CATCHUP_OVERLAY_MARKER,
-      expectedAt: expectedAt?.toISOString() ?? null,
-      graceMs,
-    }
-  }
-
-  const token = readGatewayToken(env, dataDir)
-  if (!token) {
-    return {
-      ran: false,
-      reason: "no-gateway-token",
-      marker: CATCHUP_OVERLAY_MARKER,
+    return finishSkip("no-due-job", {
       expectedAt: expectedAt.toISOString(),
-      graceMs,
-    }
+    })
   }
 
-  const healthy = await waitForGatewayHealth({
-    port,
-    token,
-    fetchImpl,
-  })
-  if (!healthy) {
-    return {
-      ran: false,
-      reason: "gateway-unhealthy",
-      marker: CATCHUP_OVERLAY_MARKER,
-      expectedAt: expectedAt.toISOString(),
-      graceMs,
-    }
-  }
-
-  const jobId = typeof job.id === "string" ? job.id : null
+  const jobId = typeof job?.id === "string" ? job.id : null
   if (!jobId) {
-    return {
-      ran: false,
-      reason: "no-job-id",
-      marker: CATCHUP_OVERLAY_MARKER,
+    return finishSkip("no-due-job", {
       expectedAt: expectedAt.toISOString(),
-      graceMs,
-    }
+      extra: { detail: "no-job-id" },
+    })
   }
 
   const rpc = await fireCatchupCronRun({
@@ -314,10 +436,21 @@ export async function runHeartbeatCatchupOnBoot(args) {
     fetchImpl,
   })
 
+  const ok =
+    rpc.httpStatus >= 200 && rpc.httpStatus < 300 && rpc.body?.ok !== false
+  if (!ok) {
+    return finishSkip("rpc-fail", {
+      expectedAt: expectedAt.toISOString(),
+      jobId,
+      extra: { httpStatus: rpc.httpStatus },
+      rpc,
+    })
+  }
+
   const nextAt = await nextFireAfter(job, now, CronExpressionParser)
 
   return {
-    ran: rpc.httpStatus >= 200 && rpc.httpStatus < 300 && rpc.body?.ok !== false,
+    ran: true,
     reason: "catchup-fired",
     marker: CATCHUP_OVERLAY_MARKER,
     expectedAt: expectedAt.toISOString(),

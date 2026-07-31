@@ -5,10 +5,25 @@
  * trialEndsAt. Retroactive first run: expired days ago + never notified →
  * notify now; stop only after notify+24h.
  *
+ * Stop enforces entitlement, not container liveness: any non-terminal
+ * workspace (RUNNING, HIBERNATED, WAKING, …) is stopped. HIBERNATED uses
+ * status-flip only (no container op); others use syncThenDestroy.
+ *
  * No Prisma imports at runtime. No side effects.
  */
 
 export const TRIAL_EXPIRY_GRACE_MS = 24 * 60 * 60 * 1000
+
+/** Already terminal / never-runtime — skip stop enforcement. */
+export const TRIAL_STOP_TERMINAL_STATUSES = [
+  "STOPPED",
+  "DRAFT",
+  "SETUP_INCOMPLETE",
+] as const
+
+export type TrialStopTerminalStatus = (typeof TRIAL_STOP_TERMINAL_STATUSES)[number]
+
+export type TrialStopEnforceMode = "destroy_container" | "status_flip"
 
 export type TrialExpiryUser = {
   id: string
@@ -33,6 +48,8 @@ export type NotifyAction = {
   email: string
   name: string | null
   clawNames: string[]
+  /** Workspace ids to ledger trial_expiry_notify (one ActivityLog row each). */
+  workspaceIds: string[]
 }
 
 export type StopAction = {
@@ -42,6 +59,8 @@ export type StopAction = {
   name: string | null
   workspaceId: string
   workspaceName: string
+  /** HIBERNATED → status flip only; else syncThenDestroy. */
+  enforceMode: TrialStopEnforceMode
 }
 
 export type TrialExpiryPlan = {
@@ -66,6 +85,18 @@ export function shouldSkipTrialStop(
   if (user.hasActiveSubscription) return true
   if (isSubscriptionOnHold(user)) return true
   return false
+}
+
+export function isTrialStopEnforceableStatus(status: string): boolean {
+  return !(TRIAL_STOP_TERMINAL_STATUSES as readonly string[]).includes(status)
+}
+
+/**
+ * HIBERNATED has no live container — flip to STOPPED only.
+ * Everything else may have a container → syncThenDestroy.
+ */
+export function trialStopEnforceMode(status: string): TrialStopEnforceMode {
+  return status === "HIBERNATED" ? "status_flip" : "destroy_container"
 }
 
 function isTrialExpired(
@@ -99,26 +130,23 @@ export function decideTrialExpiryActions(
     if (isSubscriptionOnHold(user)) continue
 
     if (user.trialExpiryNotifiedAt === null) {
-      const clawNames = user.workspaces
-        .filter((w) => w.status === "RUNNING")
-        .map((w) => w.name)
+      const running = user.workspaces.filter((w) => w.status === "RUNNING")
+      const ledgerWorkspaces = running.length > 0 ? running : user.workspaces
       // Still notify even with zero RUNNING claws (honesty + ledger stamp).
       toNotify.push({
         kind: "notify",
         userId: user.id,
         email: user.email,
         name: user.name,
-        clawNames:
-          clawNames.length > 0
-            ? clawNames
-            : user.workspaces.map((w) => w.name),
+        clawNames: ledgerWorkspaces.map((w) => w.name),
+        workspaceIds: ledgerWorkspaces.map((w) => w.id),
       })
       continue
     }
 
     if (user.trialExpiryNotifiedAt < stopCutoff) {
       for (const workspace of user.workspaces) {
-        if (workspace.status !== "RUNNING") continue
+        if (!isTrialStopEnforceableStatus(workspace.status)) continue
         toStop.push({
           kind: "stop",
           userId: user.id,
@@ -126,6 +154,7 @@ export function decideTrialExpiryActions(
           name: user.name,
           workspaceId: workspace.id,
           workspaceName: workspace.name,
+          enforceMode: trialStopEnforceMode(workspace.status),
         })
       }
     }

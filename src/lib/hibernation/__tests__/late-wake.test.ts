@@ -22,6 +22,13 @@ const cron = JSON.stringify([
   { schedule: { kind: "cron", expr: "0 12,16,20 * * *", tz: "UTC" } },
 ])
 
+const ACTIVE_OWNER = {
+  trialUsed: true,
+  trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+  trialEndsAt: new Date("2099-01-01T00:00:00.000Z"),
+  hasActiveSubscription: false,
+}
+
 describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
   beforeEach(() => {
     mockDeploy.mockReset()
@@ -34,6 +41,9 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
     ;(prismaMock.containerState.update as ReturnType<typeof vi.fn>).mockResolvedValue(
       {} as never,
     )
+    ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    } as never)
     ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)
     ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (ops: Promise<unknown>[]) => Promise.all(ops),
@@ -49,6 +59,7 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
     ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: WS,
       status: "HIBERNATED",
+      user: ACTIVE_OWNER,
       containerState: {
         nextHeartbeatAt: pastHint,
         heartbeatCronExpressions: cron,
@@ -111,6 +122,7 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
     ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: WS,
       status: "HIBERNATED",
+      user: ACTIVE_OWNER,
       containerState: {
         nextHeartbeatAt: new Date("2026-07-20T16:00:00.000Z"),
         heartbeatCronExpressions: cron,
@@ -143,5 +155,33 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
     expect(successState?.data).not.toHaveProperty("nextHeartbeatAt")
 
     vi.useRealTimers()
+  })
+
+  it("expired trial → STOPPED terminalize, no deployToCloud", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WS,
+      status: "HIBERNATED",
+      user: {
+        ...ACTIVE_OWNER,
+        trialEndsAt: new Date("2020-01-01T00:00:00.000Z"),
+      },
+      containerState: {
+        nextHeartbeatAt: new Date("2026-07-20T16:00:00.000Z"),
+        heartbeatCronExpressions: cron,
+        heartbeatInterval: null,
+        avgWakeDurationMs: 44_448,
+        runtimeStateSnapshot: null,
+      },
+    })
+
+    await wakeWorkspace(WS)
+
+    expect(mockDeploy).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: WS },
+        data: { status: "STOPPED" },
+      }),
+    )
   })
 })

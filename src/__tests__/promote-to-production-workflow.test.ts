@@ -48,6 +48,10 @@ const REQUIRED_STRUCTURAL = [
   "CHECKS_READ_PERMISSION_ASSERT",
   "STATUSES_READ_PERMISSION_ASSERT",
   "PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable",
+  // Wave-36: conflict-class ≠ PAT — fail fast + classify merge errors.
+  "PREFLIGHT_MERGEABLE_ASSERT: staging_main_not_dirty",
+  "CONFLICT_NOT_PAT_ASSERT",
+  "CONFLICT: merge origin/main into staging and re-dispatch",
   // Platform checkout + noop + dry-run (round-2 boot/platform fixes).
   "PLATFORM_NOOP_ASSERT: staging_eq_main",
   "platform already current (staging==main)",
@@ -287,6 +291,47 @@ describe("promote-to-production.yml contract", () => {
     expect(mergeStep).toContain('gh pr merge "$PR_NUMBER" --merge');
     expect(mergeStep).not.toMatch(/gh pr merge[^\n]*--admin/);
     expect(mergeStep).toContain("PROMOTE_GITHUB_TOKEN");
+    expect(mergeStep).toContain("CONFLICT_NOT_PAT_ASSERT");
+    expect(mergeStep).toContain(
+      "CONFLICT: merge origin/main into staging and re-dispatch",
+    );
+    // Conflict-class fail must NOT suggest PAT in the same error path marker block.
+    const conflictIdx = mergeStep.indexOf("CONFLICT_NOT_PAT_ASSERT");
+    const patRemedyIdx = mergeStep.indexOf(
+      "Create repo secret PROMOTE_GITHUB_TOKEN",
+    );
+    expect(conflictIdx).toBeGreaterThanOrEqual(0);
+    expect(patRemedyIdx).toBeGreaterThan(conflictIdx);
+  });
+
+  it("preflight fails fast when staging→main PR is CONFLICTING/DIRTY", () => {
+    const yml = loadWorkflow();
+    const preflight = jobBlock(yml, "preflight");
+    expect(preflight).toContain("PREFLIGHT_MERGEABLE_ASSERT: staging_main_not_dirty");
+    expect(preflight).toContain(
+      "CONFLICT: merge origin/main into staging and re-dispatch",
+    );
+    expect(preflight).toContain('--base main --head staging');
+    expect(preflight).toContain("mergeStateStatus");
+    // Must run before GHCR digest work (window burn).
+    const mergeableIdx = preflight.indexOf(
+      "PREFLIGHT_MERGEABLE_ASSERT: staging_main_not_dirty",
+    );
+    const digestsIdx = preflight.indexOf("Resolve GHCR digest for requested");
+    expect(mergeableIdx).toBeGreaterThanOrEqual(0);
+    expect(mergeableIdx).toBeLessThan(digestsIdx);
+    // Conflict error line must not tell operators to mint a PAT.
+    const conflictLine = preflight
+      .split("\n")
+      .find((l) => l.includes("CONFLICT: merge origin/main into staging"));
+    expect(conflictLine).toBeTruthy();
+    expect(conflictLine!).not.toContain("PROMOTE_GITHUB_TOKEN");
+  });
+
+  it("MUTATION: removing conflict-not-PAT classifier fails structural check", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replaceAll("CONFLICT_NOT_PAT_ASSERT", "REMOVED_CONFLICT_CLASS");
+    expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
   });
 
   it("MUTATION: removing wait-loop marker fails wait-then-merge contract", () => {

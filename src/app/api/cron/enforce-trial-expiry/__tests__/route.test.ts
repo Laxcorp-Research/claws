@@ -123,7 +123,26 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
         data: { trialExpiryNotifiedAt: expect.any(Date) },
       }),
     )
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workspaceId: "ws-1",
+          action: "Trial expiry notify",
+          actionType: "SYSTEM",
+          metadata: expect.stringContaining("trial_expiry_notify"),
+        }),
+      }),
+    )
     expect(mockSyncThenDestroy).not.toHaveBeenCalled()
+  })
+
+  it("MUTATION: notify phase must ledger trial_expiry_notify (drop → fail)", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/cron/enforce-trial-expiry/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain('eventKind: "trial_expiry_notify"')
+    expect(src).toContain('eventKind: "trial_expiry_stop"')
   })
 
   it("notify idempotency: marker already set → no second email / no re-stamp", async () => {
@@ -207,7 +226,7 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
     expect(mockSyncThenDestroy).not.toHaveBeenCalled()
   })
 
-  it("notify+24h+no-sub → syncThenDestroy + HIBERNATED + ledger + stopped email", async () => {
+  it("notify+24h+no-sub RUNNING → syncThenDestroy leaves STOPPED + ledger + stopped email", async () => {
     const notifiedAt = new Date(NOW_MS - 25 * 60 * 60 * 1000)
     ;(prismaMock.user.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
@@ -233,9 +252,9 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
     expect(json.data.stopped).toBe(1)
     expect(mockSyncThenDestroy).toHaveBeenCalledWith("ws-1")
     expect(mockDestroyContainer).not.toHaveBeenCalled()
-    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+    // Must NOT rewrite STOPPED → HIBERNATED (wake hole).
+    expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "ws-1" },
         data: { status: "HIBERNATED" },
       }),
     )
@@ -256,6 +275,52 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
     )
     const stoppedHtmlArgs = mockStopped.mock.calls[0][0] as { stoppedNames: string[] }
     expect(stoppedHtmlArgs.stoppedNames).toEqual(["Stoppable"])
+  })
+
+  it("notify+24h+no-sub HIBERNATED → status flip to STOPPED, no syncThenDestroy", async () => {
+    const notifiedAt = new Date(NOW_MS - 25 * 60 * 60 * 1000)
+    ;(prismaMock.user.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "u-hib",
+        email: "hib@example.com",
+        name: "Hib",
+        trialUsed: true,
+        trialEndsAt: new Date(NOW_MS - 2 * 24 * 60 * 60 * 1000),
+        trialExpiryNotifiedAt: notifiedAt,
+        hasActiveSubscription: false,
+        subscriptionStatus: null,
+        workspaces: [{ id: "ws-hib", name: "Asleep", status: "HIBERNATED" }],
+      } satisfies UserRow,
+    ])
+    ;(prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      hasActiveSubscription: false,
+      subscriptionStatus: null,
+      trialExpiryNotifiedAt: notifiedAt,
+    })
+
+    const res = await callRoute({ authHeader: `Bearer ${SECRET}` })
+    const json = await res.json()
+    expect(json.data.stopped).toBe(1)
+    expect(mockSyncThenDestroy).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "ws-hib" },
+        data: { status: "STOPPED" },
+      }),
+    )
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.stringContaining("status_flip"),
+        }),
+      }),
+    )
+    expect(mockStopped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "hib@example.com",
+        stoppedNames: ["Asleep"],
+      }),
+    )
   })
 
   it("subscribed users never touched (findMany filter + defense)", async () => {

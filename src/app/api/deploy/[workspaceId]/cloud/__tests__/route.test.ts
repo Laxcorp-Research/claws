@@ -21,6 +21,11 @@ vi.mock('@/lib/tools/deploy-tool-prerequisites', () => ({
   evaluateWorkspaceDeployToolPrerequisites: (...args: unknown[]) => mockEvaluateToolPrereqs(...args),
 }));
 
+const mockEvaluateTopology = vi.fn();
+vi.mock('@/lib/openclaw/deploy-topology-prerequisites', () => ({
+  evaluateWorkspaceDeployTopologyPrerequisites: (...args: unknown[]) => mockEvaluateTopology(...args),
+}));
+
 vi.mock('@/lib/logger', () => ({
   log: { deployEvent: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
@@ -77,6 +82,12 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
       missingSlugs: [],
       missingLabels: [],
       unverifiedCount: 0,
+    });
+    mockEvaluateTopology.mockResolvedValue({
+      ok: true,
+      hardErrors: [],
+      softWarnings: [],
+      primaryMessage: null,
     });
   });
 
@@ -270,5 +281,32 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(gateIdx).toBeGreaterThan(-1);
     expect(gateIdx).toBeLessThan(eligibilityIdx);
     expect(gateIdx).toBeLessThan(deployIdx);
+  });
+
+  it('returns 400 TOPOLOGY_INVALID when canvas has no orch→worker edges', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
+    mockEvaluateTopology.mockResolvedValue({
+      ok: false,
+      hardErrors: [{ code: 'NO_ORCH_WORKER_EDGES', message: 'Add a worker and connect it to your Commander.' }],
+      softWarnings: [],
+      primaryMessage: 'Add a worker and connect it to your Commander.',
+    });
+    mockEligibleUser();
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.code).toBe('TOPOLOGY_INVALID');
+    expect(mockDeployToCloud).not.toHaveBeenCalled();
+  });
+
+  it('MUTATION source lock: route must call evaluateWorkspaceDeployTopologyPrerequisites', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'src/app/api/deploy/[workspaceId]/cloud/route.ts'),
+      'utf8',
+    );
+    expect(src).toContain('evaluateWorkspaceDeployTopologyPrerequisites');
+    expect(src).toContain('TOPOLOGY_INVALID');
   });
 });

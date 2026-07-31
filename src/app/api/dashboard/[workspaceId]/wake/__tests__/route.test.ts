@@ -53,6 +53,12 @@ beforeEach(() => {
     userId: "user-1",
     status: "HIBERNATED",
     containerState: { workspaceId: WS, containerPhase: "HIBERNATED" },
+    user: {
+      trialUsed: true,
+      trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+      trialEndsAt: new Date("2099-01-01T00:00:00.000Z"),
+      hasActiveSubscription: false,
+    },
   })
   ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockResolvedValue([{}, {}])
   ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
@@ -93,10 +99,36 @@ describe("POST /api/dashboard/[workspaceId]/wake", () => {
       userId: "user-1",
       status: "RUNNING",
       containerState: null,
+      user: {
+        trialUsed: true,
+        trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+        trialEndsAt: new Date("2099-01-01T00:00:00.000Z"),
+        hasActiveSubscription: false,
+      },
     })
 
     const res = await POST({} as never, params(WS))
     expect(res.status).toBe(400)
+    expect(mockAfter).not.toHaveBeenCalled()
+    expect(mockWakeWorkspace).not.toHaveBeenCalled()
+  })
+
+  it("returns 402 when trial expired and no subscription (no after/wake)", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WS,
+      userId: "user-1",
+      status: "HIBERNATED",
+      containerState: { workspaceId: WS, containerPhase: "HIBERNATED" },
+      user: {
+        trialUsed: true,
+        trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+        trialEndsAt: new Date("2020-01-01T00:00:00.000Z"),
+        hasActiveSubscription: false,
+      },
+    })
+
+    const res = await POST({} as never, params(WS))
+    expect(res.status).toBe(402)
     expect(mockAfter).not.toHaveBeenCalled()
     expect(mockWakeWorkspace).not.toHaveBeenCalled()
   })

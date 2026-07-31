@@ -10,6 +10,14 @@ export interface SeedAgent {
   heartbeatMd: string
   skills: string[]
   position: { x: number; y: number }
+  /** Critic quality floor. Regulated templates must be ≥ 8 (X3). */
+  qualityThreshold?: number
+}
+
+/** Workspace choreography knobs embedded in workspaceSnapshot (WIRE-FULL). */
+export interface SeedWorkspaceKnobs {
+  maxRevisionRounds: number
+  deliveryMode: "APPROVAL_REQUIRED" | "AUTO_PROCEED"
 }
 
 export interface SeedConnection {
@@ -57,4 +65,6 @@ export interface SeedTemplate {
   agents: SeedAgent[]
   connections: SeedConnection[]
   tools: SeedTool[]
+  /** Defaults applied when omitted: rounds=3, APPROVAL_REQUIRED. */
+  knobs?: SeedWorkspaceKnobs
 }

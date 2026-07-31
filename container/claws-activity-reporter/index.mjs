@@ -48,7 +48,15 @@
 // PR-1 (sync-now): on-demand runtime-state sync. Shared bundle/upload logic
 // lives in ../state-sync.mjs (image: /opt/state-sync.mjs — see Dockerfile),
 // the SAME module process-manager uses for its interval/SIGTERM syncs.
-import { runStateSync } from "../state-sync.mjs";
+import { runStateSync, OPENCLAW_DATA_DIR, postActivityEvent } from "../state-sync.mjs";
+import {
+  THINKING_SIGNATURE_POISON_RE,
+  THINKING_SIGNATURE_HEAL_EVENT_KIND,
+  hasHealInWindow,
+  markHealAttempt,
+  resolveSessionJsonlPath,
+  stripThinkingFromSessionFile,
+} from "../thinking-signature-heal.mjs";
 
 const ENDPOINT_BASE = process.env.CLAWS_ACTIVITY_ENDPOINT;
 const ACTIVITY_SECRET = process.env.CLAWS_ACTIVITY_SECRET;
@@ -425,6 +433,19 @@ function handleAgentEnd(event, ctx) {
   }
   reporter.add(record);
 
+  // -11 BYOK path: credit-proxy never sees Anthropic rejects when
+  // CLAWS_CREDIT_MODE=false. On TASK_FAILED with thinking-signature poison,
+  // schedule a session-file strip + heal ledger OUTSIDE the hook (setImmediate)
+  // so we keep the sync-handler invariant. Strip (not rotate) — see heal module.
+  if (!success && THINKING_SIGNATURE_POISON_RE.test(fullError)) {
+    const sessionKey =
+      typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
+    const agentId = typeof ctx?.agentId === "string" ? ctx.agentId : null;
+    setImmediate(() => {
+      void maybeHealPoisonedSession({ sessionKey, agentId, fullError });
+    });
+  }
+
   // PR-9/A: ONE additional MESSAGE_SENT reply row for webchat turns —
   // emitted AFTER the (unchanged) TASK_COMPLETE/TASK_FAILED record. agent_end
   // fires once per run, so C1's "exactly one" holds by construction.
@@ -469,6 +490,49 @@ function handleAgentEnd(event, ctx) {
         : "Replied";
   replyRecord.detail = detail;
   reporter.add(replyRecord);
+}
+
+/**
+ * -11: strip poisoned thinking blocks from the live session jsonl (BYOK).
+ * Heal-once / 24h. Never throws into the hook path.
+ */
+async function maybeHealPoisonedSession({ sessionKey, agentId, fullError }) {
+  try {
+    if (!THINKING_SIGNATURE_POISON_RE.test(fullError || "")) return;
+    if (hasHealInWindow({ dataDir: OPENCLAW_DATA_DIR, sessionKey })) return;
+    const filePath = resolveSessionJsonlPath(
+      OPENCLAW_DATA_DIR,
+      sessionKey,
+      agentId,
+    );
+    if (!filePath) return;
+    const result = stripThinkingFromSessionFile(filePath);
+    if (result.blocksStripped === 0) return;
+    markHealAttempt({ dataDir: OPENCLAW_DATA_DIR, sessionKey });
+    await postActivityEvent({
+      type: "ERROR",
+      timestamp: new Date().toISOString(),
+      agentId,
+      runId: null,
+      sessionKey,
+      channelId: null,
+      action: "Thinking-signature heal: stripped poisoned thinking blocks from session",
+      detail: `blocksStripped=${result.blocksStripped} path=session-file`,
+      metadata: {
+        eventKind: THINKING_SIGNATURE_HEAL_EVENT_KIND,
+        sessionKey,
+        blocksStripped: result.blocksStripped,
+        path: "session-file",
+        retried: false,
+      },
+    });
+  } catch (err) {
+    console.error(
+      `[claws-activity-reporter] thinking-signature heal failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }
 
 function handleMessageReceived(event, ctx) {

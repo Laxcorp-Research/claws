@@ -41,18 +41,20 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       agentIdMap[a.agentSlug] = agent.id
     }
 
-    for (const a of data.agents) {
-      if (a.reportsTo && agentIdMap[a.reportsTo]) {
-        await tx.agent.update({ where: { id: agentIdMap[a.agentSlug] }, data: { reportsTo: agentIdMap[a.reportsTo] } })
-      }
-    }
+    // WIRE-FULL: reportsTo writers removed — edge projection only.
 
     for (const c of data.connections) {
       const src = agentIdMap[c.sourceSlug]
       const tgt = agentIdMap[c.targetSlug]
       if (src && tgt) {
         await tx.agentConnection.create({
-          data: { workspaceId: id, sourceAgentId: src, targetAgentId: tgt, condition: c.condition as "ON_COMPLETE" | "ON_APPROVAL" | "ON_REJECTION" | "ON_SCHEDULE" | "ON_HUMAN_APPROVE" | "CUSTOM", label: c.label || null },
+          data: {
+            workspaceId: id,
+            sourceAgentId: src,
+            targetAgentId: tgt,
+            condition: "ON_COMPLETE",
+            label: c.label || null,
+          },
         })
       }
     }

@@ -391,12 +391,14 @@ async function main() {
 
   spawnGateway();
 
-  // -10 catch-up-beat: after gateway accepts admin RPC, fire one missed
-  // heartbeat job if the last cron moment is within CATCHUP_GRACE.
+  // -11 catch-up-beat: wait jobs-readable + gateway healthy inside the
+  // catch-up module, then fire one missed heartbeat if within CATCHUP_GRACE.
+  // Every skip path ledgers heartbeat_catchup_skip (no silent no-op).
   // Non-blocking — never delays state-sync / steady-state loops.
   void runHeartbeatCatchupOnBoot({
     dataDir: OPENCLAW_DATA_DIR,
     port: GATEWAY_PORT,
+    ledger: (event) => postActivityEvent(event),
   })
     .then((result) => {
       console.log(

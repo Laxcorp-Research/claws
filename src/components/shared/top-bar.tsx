@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { useState, useEffect } from "react"
 import { Compass, User, Key, CreditCard, Lock, Store, Upload, Wrench, Shield, LogOut, type LucideIcon } from "lucide-react"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useOnboardingNavVisible } from "@/hooks/use-onboarding-state"
 import {
   DropdownMenu,
@@ -36,16 +37,23 @@ const authNavItems: NavItem[] = [
   { label: "Docs", href: "https://docs.buildclaws.ai", external: true },
 ]
 
+/** Neutral nav while session resolves — never Pricing/Sign-in flash (#229). */
+const loadingNavItems: NavItem[] = [
+  { label: "Store", href: "/store" },
+  { label: "Docs", href: "https://docs.buildclaws.ai", external: true },
+]
+
 export function TopBar() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const pathname = usePathname()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   // Client TopBar: nav visibility from cached /api/onboarding/state (not per-nav DB).
-  const showGettingStartedNav = useOnboardingNavVisible(!!session)
+  const sessionReady = status === "authenticated" && !!session
+  const showGettingStartedNav = useOnboardingNavVisible(sessionReady)
 
   useEffect(() => {
-    if (!session) return
+    if (!sessionReady) return
     let cancelled = false
     fetch("/api/admin/check")
       .then(res => res.json())
@@ -54,10 +62,15 @@ export function TopBar() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [session])
+  }, [sessionReady])
 
-  const baseNavItems = session ? authNavItems : publicNavItems
-  const withGettingStarted: NavItem[] = session && showGettingStartedNav
+  const baseNavItems =
+    status === "loading"
+      ? loadingNavItems
+      : sessionReady
+        ? authNavItems
+        : publicNavItems
+  const withGettingStarted: NavItem[] = sessionReady && showGettingStartedNav
     ? [
         ...baseNavItems,
         { label: "Getting started", href: "/onboarding", aiAccent: true },
@@ -122,7 +135,11 @@ export function TopBar() {
         </nav>
       </div>
 
-      {session ? (
+      {status === "loading" ? (
+        <div className="w-[72px]" role="status" aria-label="Loading session">
+          <LoadingSkeleton variant="short" count={1} />
+        </div>
+      ) : sessionReady ? (
         <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
           <DropdownMenuTrigger asChild>
             <button

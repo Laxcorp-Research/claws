@@ -1,0 +1,19 @@
+{
+  "description": "Canonical Vercel project env vars that ops must know for LaxClaws staging/production. Contract test asserts every process.env.NAME referenced by listed surfaces appears here (and vice versa for vars tagged requiredSurface). Optional debug knobs are documented so empty-default behavior cannot silently drift.",
+  "vars": [
+    {
+      "name": "CRON_SECRET",
+      "purpose": "Bearer token for Vercel cron + staging-cron-scheduler curls of /api/cron/* and admin payout release",
+      "required": true,
+      "surfaces": ["src/app/api/cron", "src/app/api/admin/payouts/release"],
+      "whereCreated": "Vercel project env (Production + Preview/staging); mirrored as STAGING_CRON_SECRET in GitHub Actions for the staging scheduler"
+    },
+    {
+      "name": "DAILY_DIGEST_WORKSPACE_IDS",
+      "purpose": "Optional debug override: comma-separated workspace ids for morning digest. Empty = full predicate (Telegram connected + heartbeat armed + ever-deployed + status not DRAFT/SETUP_INCOMPLETE/STOPPED). Override still applies the predicate — it is not a bypass.",
+      "required": false,
+      "surfaces": ["src/app/api/cron/daily-digest"],
+      "whereCreated": "Vercel project env (optional). Staging trial may set the fixture id for focused soak; leave unset in production for full armed fan-out"
+    }
+  ]
+}

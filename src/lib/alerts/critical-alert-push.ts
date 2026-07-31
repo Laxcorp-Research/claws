@@ -7,7 +7,8 @@
  * a SUCCESSFUL delivery (telegram or email) within the last COOLDOWN_MS
  * suppresses further pushes for that same key, even across process
  * restarts — the ledger lives in ActivityLog (SYSTEM rows,
- * metadata.eventKind = "critical_alert_push"), not in memory.
+ * metadata.eventKind = "alert_pushed"; legacy rows used "critical_alert_push"),
+ * not in memory.
  *
  * Recovery/clear is implicit: callers (health-monitor, activity route) only
  * invoke this on a NEW transition into the bad state (e.g. `heartbeatMissedAt`
@@ -38,7 +39,10 @@ export type AlertKey = (typeof ALERT_KEYS)[number]
 /** Dedup / re-alert window. MUTATION: dropping this check breaks dedup. */
 export const COOLDOWN_MS = 12 * 60 * 60 * 1000
 
-export const CRITICAL_ALERT_PUSH_EVENT_KIND = "critical_alert_push"
+/** Canonical ledger eventKind for critical-alert Telegram/email sends. */
+export const CRITICAL_ALERT_PUSH_EVENT_KIND = "alert_pushed"
+/** Pre-soak-followups rows — still count for 12h dedup. */
+export const CRITICAL_ALERT_PUSH_EVENT_KIND_LEGACY = "critical_alert_push"
 
 type AlertCopy = { title: string; emoji: string }
 
@@ -154,7 +158,12 @@ async function findLastDeliveredAt(
       actionType: "SYSTEM",
       timestamp: { gte: since },
       AND: [
-        { metadata: { contains: `"eventKind":"${CRITICAL_ALERT_PUSH_EVENT_KIND}"` } },
+        {
+          OR: [
+            { metadata: { contains: `"eventKind":"${CRITICAL_ALERT_PUSH_EVENT_KIND}"` } },
+            { metadata: { contains: `"eventKind":"${CRITICAL_ALERT_PUSH_EVENT_KIND_LEGACY}"` } },
+          ],
+        },
         { metadata: { contains: `"alertKey":"${alertKey}"` } },
         { metadata: { contains: `"delivered":true` } },
       ],
