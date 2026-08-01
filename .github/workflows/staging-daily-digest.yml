@@ -1,0 +1,66 @@
+# Dedicated staging morning digest scheduler (rule 31 ? sole 06:00Z owner).
+#
+# WHY SEPARATE FROM staging-cron-scheduler.yml:
+# GitHub Actions routinely drops sparse cron expressions when they share a
+# workflow with a high-frequency every-5-min schedule. Evidence 2026-07-31:
+# the `0 6 * * *` arm in staging-cron-scheduler.yml never produced a run with
+# github.event.schedule == "0 6 * * *" (05:50-06:40Z window only saw the
+# every-5-min arm at 06:20Z); zero ActivityLog daily_digest_sent rows.
+#
+# This workflow owns ONLY /api/cron/daily-digest. Multi-cron must NOT schedule
+# 0 6 (dispatch-only path listing for vercel.json parity is fine).
+#
+# OPERATOR: STAGING_CRON_SECRET must match staging Vercel CRON_SECRET.
+# Schedules only run from the default branch (main) ? merge this file to main
+# to arm the next 06:00Z UTC tick.
+
+name: Staging daily digest
+
+on:
+  schedule:
+    # vercel.json: /api/cron/daily-digest ? 0 6 * * *
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: staging-daily-digest
+  cancel-in-progress: false
+
+env:
+  STAGING_APP: https://staging.app.buildclaws.ai
+
+jobs:
+  digest:
+    name: Curl staging daily-digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require STAGING_CRON_SECRET
+        env:
+          STAGING_CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_CRON_SECRET:-}" ]; then
+            echo "::error::STAGING_CRON_SECRET is missing."
+            exit 1
+          fi
+
+      - name: GET /api/cron/daily-digest
+        env:
+          STAGING_CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${STAGING_APP}/api/cron/daily-digest"
+          echo "? GET $url"
+          code=$(curl -sS -o /tmp/digest-body.txt -w "%{http_code}" \
+            -H "Authorization: Bearer ${STAGING_CRON_SECRET}" \
+            --max-time 120 \
+            "$url" || echo "000")
+          body=$(head -c 800 /tmp/digest-body.txt || true)
+          echo "  HTTP $code"
+          echo "  body: $body"
+          if [ "$code" != "200" ]; then
+            echo "::error::daily-digest returned HTTP $code (expected 200)"
+            exit 1
+          fi

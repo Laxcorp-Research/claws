@@ -31,8 +31,8 @@ on:
     - cron: "0 2 * * *"
     # vercel: credit-pool-monitor, connection-health, enforce-trial-expiry → 0 * * * *
     - cron: "0 * * * *"
-    # vercel: /api/cron/daily-digest → 0 6 * * *
-    - cron: "0 6 * * *"
+    # Daily digest UTC-06 schedule lives only in staging-daily-digest.yml (rule 31).
+    # Do not re-add that sparse arm here — it starves beside */5.
   workflow_dispatch:
 
 concurrency:
@@ -78,11 +78,10 @@ jobs:
             "0 * * * *")
               PATHS='["/api/cron/credit-pool-monitor","/api/cron/connection-health","/api/cron/enforce-trial-expiry"]'
               ;;
-            "0 6 * * *")
-              PATHS='["/api/cron/daily-digest"]'
-              ;;
             "")
               # workflow_dispatch — exercise every vercel.json cron path once
+              # (daily-digest included for path parity; schedule fires from
+              # staging-daily-digest.yml only)
               PATHS='["/api/admin/payouts/release","/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/aggregate-credit-usage","/api/cron/credit-pool-monitor","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/connection-health","/api/cron/enforce-trial-expiry","/api/cron/daily-digest"]'
               ;;
             *)

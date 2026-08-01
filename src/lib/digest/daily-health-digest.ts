@@ -1,17 +1,49 @@
 /**
- * Morning health digest — 5-line table from ActivityLog receipts (not prose).
+ * Morning health digest — table from ActivityLog receipts (not prose).
  * Sent via Telegram using the same Bot API path as critical alerts.
  */
 
 export const DAILY_DIGEST_EVENT_KIND = "daily_digest_sent"
+
+/** External HTTP-class tools — counted separately from agent faults. */
+const EXTERNAL_TOOL_NAMES = new Set([
+  "web_fetch",
+  "http",
+  "fetch",
+  "browser",
+  "web_search",
+])
 
 export type DigestWindowStats = {
   heartbeatsKept: number
   heartbeatsMissedLedgered: number
   sleepWakeCycles: number
   costCents24h: number
+  /** When true, formatter labels the cost line "Costs (est.)". */
+  costIsEstimate: boolean
   strands: number
+  /** Raw ERROR row total (ledger). */
   errors24h: number
+  errorsAgent24h: number
+  errorsExternal24h: number
+}
+
+/**
+ * Classify an ERROR row: web_fetch / http-class → external; else agent.
+ * MUTATION: treating web_fetch as agent → Day-1 4/1 split fails.
+ */
+export function classifyDigestError(metadata: string | null): "external" | "agent" {
+  if (!metadata) return "agent"
+  try {
+    const parsed = JSON.parse(metadata) as { toolName?: unknown }
+    const tool =
+      typeof parsed.toolName === "string" ? parsed.toolName.toLowerCase() : ""
+    if (tool && EXTERNAL_TOOL_NAMES.has(tool)) return "external"
+    if (tool.includes("fetch") || tool.includes("http")) return "external"
+  } catch {
+    /* non-JSON metadata → agent */
+  }
+  return "agent"
 }
 
 /** Pure formatter — mutation: drop a line → snapshot test fails. */
@@ -25,14 +57,15 @@ export function formatDailyDigestMessage(args: {
     s.costCents24h <= 0
       ? "$0.00"
       : `$${(s.costCents24h / 100).toFixed(2)}`
+  const costLabel = s.costIsEstimate ? "Costs (est.)" : "Costs"
   return [
     `Claws digest — ${args.workspaceName}`,
     `As of ${args.asOfUtc} (UTC, last 24h)`,
     `Heartbeats: kept ${s.heartbeatsKept} | missed+ledgered ${s.heartbeatsMissedLedgered}`,
     `Sleep/wake cycles: ${s.sleepWakeCycles}`,
-    `Costs: ${cost}`,
+    `${costLabel}: ${cost}`,
     `Strands: ${s.strands}`,
-    `Errors: ${s.errors24h}`,
+    `Errors: ${s.errorsAgent24h} agent · ${s.errorsExternal24h} external`,
   ].join("\n")
 }
 
@@ -49,12 +82,15 @@ export type DigestActivityRow = {
 export function computeDigestStats(args: {
   rows: DigestActivityRow[]
   costCents24h: number
+  costIsEstimate?: boolean
   strandOpen: boolean
 }): DigestWindowStats {
   let heartbeatsKept = 0
   let heartbeatsMissedLedgered = 0
   let sleepWakeCycles = 0
   let errors24h = 0
+  let errorsAgent24h = 0
+  let errorsExternal24h = 0
 
   for (const row of args.rows) {
     if (row.actionType === "HEARTBEAT" && /Heartbeat tick/i.test(row.action)) {
@@ -92,6 +128,11 @@ export function computeDigestStats(args: {
     }
     if (row.actionType === "ERROR") {
       errors24h++
+      if (classifyDigestError(row.metadata) === "external") {
+        errorsExternal24h++
+      } else {
+        errorsAgent24h++
+      }
     }
   }
 
@@ -100,7 +141,17 @@ export function computeDigestStats(args: {
     heartbeatsMissedLedgered,
     sleepWakeCycles,
     costCents24h: args.costCents24h,
+    costIsEstimate: args.costIsEstimate ?? false,
     strands: args.strandOpen ? 1 : 0,
     errors24h,
+    errorsAgent24h,
+    errorsExternal24h,
   }
+}
+
+/** UTC calendar-day start for idempotency (same-day skip). */
+export function utcDigestDayStart(now: Date): Date {
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
+  )
 }
