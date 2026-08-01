@@ -92,6 +92,10 @@ describe("staging-cron-scheduler.yml contract", () => {
     expect(yml).toContain('cron: "*/5 * * * *"');
     expect(yml).toContain('cron: "0 2 * * *"');
     expect(yml).toContain('cron: "0 * * * *"');
-    expect(yml).toContain('cron: "0 6 * * *"');
+    // daily-digest UTC-06 schedule lives in staging-daily-digest.yml only.
+    const scheduleCrons = [...yml.matchAll(/^\s+- cron: "([^"]+)"/gm)].map(
+      (m) => m[1],
+    );
+    expect(scheduleCrons).not.toContain("0 6 * * *");
   });
 });
