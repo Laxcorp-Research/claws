@@ -184,6 +184,33 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(res.status).toBe(201);
   });
 
+  it('Card 18: STOPPED + subscribed + topology ok → /cloud deploys (not 402)', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-sub' });
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: { id: 'ws-canary', status: 'STOPPED', containerId: null },
+    });
+    mockEligibleUser({
+      id: 'user-sub',
+      trialUsed: true,
+      trialStartedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      trialEndsAt: new Date(Date.now() - 27 * 24 * 60 * 60 * 1000),
+      hasActiveSubscription: true,
+    });
+    mockEvaluateTopology.mockResolvedValue({
+      ok: true,
+      hardErrors: [],
+      softWarnings: [],
+      primaryMessage: null,
+      ignoredLegacyReviewEdges: 4,
+    });
+
+    const res = await callRoute('ws-canary');
+    expect(res.status).toBe(201);
+    expect(mockDeployToCloud).toHaveBeenCalledWith('ws-canary');
+    expect(mockEvaluateTopology).toHaveBeenCalledWith('ws-canary');
+  });
+
   it('calls deployToCloud and returns deployment result', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
     mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
