@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { StatCard } from "@/components/ui/stat-card"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { Button } from "@/components/ui/button"
@@ -44,25 +44,76 @@ function mapStatus(status: string): "running" | "paused" | "error" | "draft" | "
   return map[status] ?? "draft"
 }
 
+/** Success return from Dodo platform checkout (no cancel_url in Dodo SDK). */
+export const BILLING_SUBSCRIBE_RETURN = "/settings?tab=billing&subscribed=1"
+
 export function BillingDashboard() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const subscribedReturn = searchParams.get("subscribed") === "1"
+
   const [data, setData] = useState<BillingData | null>(null)
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([])
   const [loading, setLoading] = useState(true)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [subscribing, setSubscribing] = useState(false)
+  const [subscribeMessage, setSubscribeMessage] = useState<string | null>(null)
   const [portalMessage, setPortalMessage] = useState<string | null>(null)
 
-  useEffect(() => {
-    Promise.all([
+  const loadBilling = useCallback(async () => {
+    const [billingJson, wsJson] = await Promise.all([
       fetch("/api/user/billing").then((r) => r.json()),
       fetch("/api/workspaces").then((r) => r.json()),
     ])
-      .then(([billingJson, wsJson]) => {
-        if (billingJson.success) setData(billingJson.data)
-        if (wsJson.success) setWorkspaces(wsJson.data ?? [])
-      })
-      .finally(() => setLoading(false))
+    if (billingJson.success) setData(billingJson.data)
+    if (wsJson.success) setWorkspaces(wsJson.data ?? [])
   }, [])
+
+  useEffect(() => {
+    loadBilling().finally(() => setLoading(false))
+  }, [loadBilling])
+
+  // After Dodo return (?subscribed=1): refetch entitlement so redeploy gates unlock.
+  useEffect(() => {
+    if (!subscribedReturn) return
+    void loadBilling()
+  }, [subscribedReturn, loadBilling])
+
+  const handleSubscribe = async () => {
+    // MUTATION: marketing pricing navigation restored here → subscribe-checkout test fails.
+    setSubscribing(true)
+    setSubscribeMessage(null)
+    try {
+      const preferred =
+        workspaces.find((w) => w.status === "STOPPED") ??
+        workspaces.find((w) => w.status === "RUNNING" || w.status === "PAUSED") ??
+        workspaces[0]
+      const res = await fetch("/api/dodo-payments/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "claw_platform",
+          ...(preferred ? { workspaceId: preferred.id } : {}),
+          returnUrl: BILLING_SUBSCRIBE_RETURN,
+        }),
+      })
+      const json = await res.json()
+      if (json.data?.checkoutUrl) {
+        window.location.href = json.data.checkoutUrl as string
+        return
+      }
+      if (json.data?.mockMode) {
+        await loadBilling()
+        setSubscribeMessage("Subscription active (test mode).")
+        return
+      }
+      setSubscribeMessage(json.error?.message || "Checkout unavailable. Please try again.")
+    } catch {
+      setSubscribeMessage("Couldn't start checkout. Please try again.")
+    } finally {
+      setSubscribing(false)
+    }
+  }
 
   const openPortal = async () => {
     // PR-7: open the tab synchronously (inside the click gesture) so the
@@ -109,14 +160,17 @@ export function BillingDashboard() {
   const runningClaws = data.runningClaws
   const monthlyTotal = runningClaws * 79
   const listedWorkspaces = workspaces.filter(
-    (w) => w.status === "RUNNING" || w.status === "PAUSED",
+    (w) => w.status === "RUNNING" || w.status === "PAUSED" || w.status === "STOPPED",
   )
+  const stoppedWorkspaces = workspaces.filter((w) => w.status === "STOPPED")
 
   const now = new Date()
   const trialEnd = data.trialEndsAt ? new Date(data.trialEndsAt) : null
   const trialActive = trialEnd && trialEnd > now
   const trialExpired = data.trialUsed && !trialActive
   const showTrialExpiredBanner = trialExpired && !data.hasActiveSubscription
+  const showSubscribedBanner =
+    data.hasActiveSubscription && (subscribedReturn || Boolean(subscribeMessage?.includes("active")))
 
   const trialStatusLabel = !data.trialUsed
     ? "Available"
@@ -136,11 +190,25 @@ export function BillingDashboard() {
 
   return (
     <div>
+      {showSubscribedBanner && (
+        <AlertBanner variant="info">
+          <p className="font-medium">Subscription active</p>
+          <p className="mt-0.5 opacity-80">
+            Platform entitlement is live. Redeploy stopped Claws from their dashboard.
+          </p>
+        </AlertBanner>
+      )}
+
       {showTrialExpiredBanner && (
         <AlertBanner
           variant="warning"
           actions={
-            <Button variant="primary" size="sm" onClick={() => router.push("/pricing")}>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={subscribing}
+              onClick={handleSubscribe}
+            >
               Subscribe - $79/mo
             </Button>
           }
@@ -169,15 +237,37 @@ export function BillingDashboard() {
           <p className="text-[11px] text-[var(--tx2)]">No running Claws. Deploy a Claw to start your subscription.</p>
         ) : (
           listedWorkspaces.map((ws) => (
-            <div key={ws.id} className="flex justify-between items-center text-[11px] py-[4px] border-b border-[var(--bd)] last:border-0">
+            <div key={ws.id} className="flex justify-between items-center text-[11px] py-[4px] border-b border-[var(--bd)] last:border-0 gap-[8px]">
               <span className="font-medium">{ws.name}</span>
-              <StatusBadge status={mapStatus(ws.status)} />
+              <div className="flex items-center gap-[6px]">
+                <StatusBadge status={mapStatus(ws.status)} />
+                {ws.status === "STOPPED" && data.hasActiveSubscription && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => router.push(`/dashboard/${ws.id}`)}
+                  >
+                    Redeploy
+                  </Button>
+                )}
+              </div>
             </div>
           ))
         )}
       </div>
 
+      {data.hasActiveSubscription && stoppedWorkspaces.length > 0 && (
+        <p className="text-[11px] text-[var(--tx2)] mb-[10px]">
+          {stoppedWorkspaces.length} stopped Claw{stoppedWorkspaces.length === 1 ? "" : "s"} — Redeploy is enabled.
+        </p>
+      )}
+
       <div className="flex gap-[6px]">
+        {!data.hasActiveSubscription && !showTrialExpiredBanner && (
+          <Button variant="primary" loading={subscribing} onClick={handleSubscribe}>
+            Subscribe - $79/mo
+          </Button>
+        )}
         <Button variant="outline" onClick={openPortal} loading={portalLoading}>
           Manage subscription
         </Button>
@@ -185,6 +275,11 @@ export function BillingDashboard() {
           View invoices
         </Button>
       </div>
+      {subscribeMessage && (
+        <p role="status" className="text-[11px] text-[var(--tx2)] mt-[6px]">
+          {subscribeMessage}
+        </p>
+      )}
       {portalMessage && (
         <p role="status" className="text-[11px] text-[var(--tx2)] mt-[6px]">
           {portalMessage}
