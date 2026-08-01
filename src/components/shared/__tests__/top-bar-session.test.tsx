@@ -56,13 +56,17 @@ describe("TopBar session loading — no Sign-in flash", () => {
     expect(screen.getByText("My Claws")).toBeTruthy()
   })
 
-  it("MUTATION: fall-through session?auth:SignIn without status===loading gate fails", () => {
+  it("MUTATION: Sign in only on explicit unauthenticated (no loading else-fallthrough)", () => {
     const src = readFileSync(join(process.cwd(), "src/components/shared/top-bar.tsx"), "utf8")
     expect(src).toContain("Loading session")
     expect(src).toContain("LoadingSkeleton")
-    // CTA must branch loading → sessionReady → Sign in (never falsy-session fallthrough)
+    // CTA: sessionReady → unauthenticated? Sign in : skeleton (never bare else→Sign in)
     expect(src).toMatch(
-      /\{\s*status === "loading"\s*\?[\s\S]*sessionReady\s*\?[\s\S]*Sign in/,
+      /sessionReady\s*\?[\s\S]*status === "unauthenticated"\s*\?[\s\S]*Sign in[\s\S]*Loading session/,
+    )
+    // Nav: public items only behind explicit unauthenticated
+    expect(src).toMatch(
+      /status === "unauthenticated"\s*\?[\s\S]*publicNavItems[\s\S]*loadingNavItems/,
     )
   })
 })

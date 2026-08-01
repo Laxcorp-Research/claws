@@ -14,6 +14,48 @@
       "required": false,
       "surfaces": ["src/app/api/cron/daily-digest"],
       "whereCreated": "Vercel project env (optional). Staging trial may set the fixture id for focused soak; leave unset in production for full armed fan-out"
+    },
+    {
+      "name": "DODO_PAYMENTS_API_KEY",
+      "purpose": "Bearer token for Dodo Payments SDK (checkout, subscriptions, portal)",
+      "required": true,
+      "surfaces": ["src/lib/dodo-payments.ts"],
+      "whereCreated": "Dodo dashboard → API keys; Vercel Production + Preview"
+    },
+    {
+      "name": "DODO_PAYMENTS_ENVIRONMENT",
+      "purpose": "Dodo SDK environment: test_mode or live_mode",
+      "required": true,
+      "surfaces": ["src/lib/dodo-payments.ts"],
+      "whereCreated": "Vercel Production (live_mode) + Preview/staging (test_mode preferred)"
+    },
+    {
+      "name": "DODO_PAYMENTS_WEBHOOK_KEY",
+      "purpose": "Webhook signature verification for /api/dodo-payments/webhook",
+      "required": true,
+      "surfaces": ["src/app/api/dodo-payments/webhook"],
+      "whereCreated": "Dodo dashboard → Webhooks; Vercel Production + Preview"
+    },
+    {
+      "name": "DODO_PRODUCT_PLATFORM",
+      "purpose": "Dodo product id for $79/mo Claw Platform subscription (claw_platform checkout)",
+      "required": true,
+      "surfaces": ["src/lib/dodo-payments.ts"],
+      "whereCreated": "Dodo Products (subscription, $79/mo). Map id into Vercel Production + Preview. P7 live-product founder card if absent in live_mode"
+    },
+    {
+      "name": "DODO_PRODUCT_TEMPLATE_49",
+      "purpose": "Dodo product id for $49 one-time official templates",
+      "required": false,
+      "surfaces": ["src/lib/dodo-payments.ts"],
+      "whereCreated": "Dodo Products; Vercel Production + Preview"
+    },
+    {
+      "name": "DODO_PRODUCT_TEMPLATE_99",
+      "purpose": "Dodo product id for $99 one-time official templates",
+      "required": false,
+      "surfaces": ["src/lib/dodo-payments.ts"],
+      "whereCreated": "Dodo Products; Vercel Production + Preview"
     }
   ]
 }

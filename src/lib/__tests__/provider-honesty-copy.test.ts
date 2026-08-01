@@ -10,11 +10,9 @@ describe("provider honesty copy alignment", () => {
     expect(SUPPORTED_PROVIDERS_COPY).toBe(ALIGNED)
   })
 
-  it("pricing, settings, and setup use the aligned string", () => {
-    // Onboarding step-1 copy was reframed for credit mode (v2.1 D-v) — no longer
-    // required to carry this exact marketing string.
+  it("settings and setup use the aligned provider string", () => {
+    // Pricing step 3 is credits-honest (subscribe path); no longer requires ALIGNED.
     const roots = [
-      "src/app/pricing/page.tsx",
       "src/components/settings/api-key-manager.tsx",
       "src/app/setup/[workspaceId]/step/[n]/page.tsx",
     ]
@@ -22,6 +20,13 @@ describe("provider honesty copy alignment", () => {
       const src = readFileSync(join(process.cwd(), rel), "utf8")
       expect(src, rel).toContain(ALIGNED)
     }
+  })
+
+  it("pricing AI model costs is credits-honest", () => {
+    const src = readFileSync(join(process.cwd(), "src/app/pricing/page.tsx"), "utf8")
+    expect(src).toContain(
+      "Start with $50 free credits or bring your own API keys — pay your provider directly.",
+    )
   })
 
   it("settings and setup do not surface OpenRouter or Ollama as saveable providers", () => {

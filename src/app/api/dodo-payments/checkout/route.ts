@@ -199,13 +199,40 @@ async function handleCommunityPurchase(
 
 async function handleClawPlatform(
   body: Record<string, unknown>,
-  user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
+  user: {
+    id: string
+    email: string
+    name: string | null
+    dodoCustomerId: string | null
+    workspaces?: Array<{ id: string }>
+  },
 ) {
-  const { workspaceId, returnUrl } = body as { workspaceId?: string; returnUrl?: string }
-  if (!workspaceId) return ERRORS.VALIDATION("workspaceId required")
+  const { workspaceId: bodyWorkspaceId, returnUrl } = body as {
+    workspaceId?: string
+    returnUrl?: string
+  }
 
-  const workspace = await prisma.workspace.findFirst({ where: { id: workspaceId, userId: user.id } })
-  if (!workspace) return ERRORS.NOT_FOUND("Workspace")
+  // Billing / lapsed-subscribe may omit workspaceId — entitlement is user-level;
+  // metadata.workspaceId is best-effort for failed-sub destroy targeting.
+  let workspaceId = bodyWorkspaceId
+  if (workspaceId) {
+    const workspace = await prisma.workspace.findFirst({
+      where: { id: workspaceId, userId: user.id },
+    })
+    if (!workspace) return ERRORS.NOT_FOUND("Workspace")
+  } else {
+    const owned =
+      user.workspaces?.[0] ??
+      (await prisma.workspace.findFirst({
+        where: { userId: user.id },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true },
+      }))
+    if (!owned) {
+      return ERRORS.VALIDATION("workspaceId required (no workspaces on account)")
+    }
+    workspaceId = owned.id
+  }
 
   const result = await createPlatformSubscription({
     workspaceId,
@@ -221,9 +248,9 @@ async function handleClawPlatform(
       where: { id: user.id },
       data: { hasActiveSubscription: true },
     })
-    return apiSuccess({ mockMode: true })
+    return apiSuccess({ mockMode: true, workspaceId })
   }
 
   if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
-  return apiSuccess({ checkoutUrl: result.checkoutUrl })
+  return apiSuccess({ checkoutUrl: result.checkoutUrl, workspaceId })
 }

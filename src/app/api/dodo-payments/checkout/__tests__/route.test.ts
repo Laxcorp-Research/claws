@@ -280,11 +280,60 @@ describe('POST /api/dodo-payments/checkout', () => {
       );
     });
 
-    it('returns 400 when workspaceId is missing', async () => {
+    it('picks an owned workspace when workspaceId is omitted (billing lapsed path)', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...MOCK_USER,
+        workspaces: [{ id: 'ws-owned' }],
+      });
+      mockCreatePlatformSubscription.mockResolvedValue({
+        checkoutUrl: 'https://pay.dodo.com/sub-billing',
+        mockMode: false,
+      });
+
+      const res = await callCheckout({
+        type: 'claw_platform',
+        returnUrl: '/settings?tab=billing&subscribed=1',
+      });
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json.data.checkoutUrl).toBe('https://pay.dodo.com/sub-billing');
+      expect(mockCreatePlatformSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: 'ws-owned',
+          returnUrl: expect.stringContaining('/settings?tab=billing&subscribed=1'),
+          dodoCustomerId: undefined,
+        }),
+      );
+    });
+
+    it('returns 400 when workspaceId is missing and account has no workspaces', async () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.workspace.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       const res = await callCheckout({ type: 'claw_platform' });
       expect(res.status).toBe(400);
+    });
+
+    it('passes dodoCustomerId into platform subscription when present', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...MOCK_USER,
+        dodoCustomerId: 'cus_abc',
+      });
+      (prismaMock.workspace.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'ws-1',
+        userId: 'user-1',
+      });
+      mockCreatePlatformSubscription.mockResolvedValue({
+        checkoutUrl: 'https://pay.dodo.com/sub',
+        mockMode: false,
+      });
+
+      await callCheckout({ type: 'claw_platform', workspaceId: 'ws-1' });
+      expect(mockCreatePlatformSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({ dodoCustomerId: 'cus_abc' }),
+      );
     });
   });
 
