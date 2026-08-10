@@ -63,13 +63,29 @@ describe("staging-cron-scheduler.yml contract", () => {
 
   it("documents hibernation */5 accepted delta and concurrency guard", () => {
     const yml = loadWorkflow();
-    expect(yml).toContain("group: staging-cron-scheduler");
+    // Per-schedule concurrency: never mass-cancel; */5 must not block hourly.
+    expect(yml).toMatch(
+      /group:\s*staging-cron-scheduler-\$\{\{\s*github\.event\.schedule/,
+    );
     expect(yml).toContain("cancel-in-progress: false");
     expect(yml).toContain("STAGING_CRON_SECRET");
     expect(yml).toContain("staging.app.buildclaws.ai");
     // Hibernation: vercel every-minute is not reproducible on Actions.
     expect(yml).toMatch(/hibernation[\s\S]*\*\/5/);
     expect(yml).toContain("accepted delta");
+  });
+
+  it("CURL hardening: per-route connect/max-time + continue-on-error (hang class)", () => {
+    const yml = loadWorkflow();
+    expect(yml).toContain("STAGING_CRON_CURL_HARDENING");
+    expect(yml).toContain("--connect-timeout");
+    expect(yml).toContain("--max-time");
+    expect(yml).toContain("CRON_CURL_MAX_TIME");
+    // Must not abort the loop on first non-200 (set -e removed from curl step).
+    expect(yml).toMatch(/Curl staging cron routes[\s\S]*set -uo pipefail/);
+    expect(yml).toContain("timeout-minutes: 8");
+    // MUTATION: restore cancel-in-progress: true → mass-cancel emails return.
+    expect(yml).not.toMatch(/cancel-in-progress:\s*true/);
   });
 
   it("mirrors vercel.json schedule expressions where Actions can (quotes for operators)", () => {

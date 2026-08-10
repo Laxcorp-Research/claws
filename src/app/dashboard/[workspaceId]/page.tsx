@@ -26,6 +26,7 @@ import {
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
+import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-error"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrency, formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { timeAgo } from "@/lib/utils"
@@ -622,14 +623,21 @@ export default function DashboardPage() {
   const handleRedeployFromStopped = async () => {
     setRedeployFromStoppedConfirmOpen(false)
     try {
+      // STOPPED + destroyed container → /cloud (full recreate). /redeploy is for
+      // existing-service updates. Surface API error detail (#386 / Card 18).
       await mutateWithFeedback(
         async () => {
           const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
-          if (!res.ok) throw new Error("Could not restart Claw")
+          const json: unknown = await res.json().catch(() => null)
+          if (!res.ok) {
+            throw new Error(
+              getRedeployApiErrorMessage(json, `Could not restart Claw (${res.status})`),
+            )
+          }
           fetchStats()
           fetchChannelStatus()
         },
-        { message: "Claw restarting", errorMessage: "Could not restart Claw" },
+        { message: "Claw restarting" },
         showSnackbar,
       )
     } catch {
