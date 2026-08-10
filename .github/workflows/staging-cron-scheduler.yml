@@ -18,6 +18,13 @@ name: Staging cron scheduler
 # and jittered; wake-lead windows for nextHeartbeatAt often need
 # `workflow_dispatch` assist. Production uses Vercel cron (true minutely).
 # Pattern: dispatch-assist on staging; do not treat GH jitter as a product bug.
+#
+# HANG CLASS (Aug 2026): 12 runs on 2026-08-06 hit job timeout-minutes:15 with
+# job conclusion cancelled / empty steps ("All jobs were cancelled" emails).
+# Root: sequential curls could starve the job budget; overlapping */5 ticks
+# queued behind hung runs. Fix: per-route connect/max timeouts, continue-on-
+# error across routes, shorter job timeout, concurrency keyed by schedule so
+# */5 cannot serialize behind hourly/daily (never mass-cancel).
 
 on:
   schedule:
@@ -36,17 +43,23 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: staging-cron-scheduler
+  # Key by schedule expression so a stuck */5 tick never blocks hourly/daily.
+  # cancel-in-progress: false → queue within the same cadence; never mass-cancel.
+  group: staging-cron-scheduler-${{ github.event.schedule || github.event_name }}
   cancel-in-progress: false
 
 env:
   STAGING_APP: https://staging.app.buildclaws.ai
+  # Per-route budget: connect 10s + transfer 45s. Four */5 routes ≤ ~4m worst case.
+  CRON_CURL_CONNECT_TIMEOUT: "10"
+  CRON_CURL_MAX_TIME: "45"
 
 jobs:
   invoke:
     name: Curl staging cron routes
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Shorter than legacy 15m so a wedged runner fails fast; curl caps dominate.
+    timeout-minutes: 8
     steps:
       - name: Require STAGING_CRON_SECRET
         env:
@@ -97,17 +110,20 @@ jobs:
           STAGING_CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
           ROUTES_JSON: ${{ steps.routes.outputs.paths }}
         shell: bash
+        # STAGING_CRON_CURL_HARDENING: per-route timeouts + continue-on-error
+        # MUTATION: drop --max-time / continue-all → hang-class regressions return
         run: |
-          set -euo pipefail
+          set -uo pipefail
           fail=0
           while IFS= read -r path; do
             [ -z "$path" ] && continue
             url="${STAGING_APP}${path}"
             echo "→ GET $url"
-            # Failures → workflow red (first scheduled-failure surface for staging crons)
+            # continue-on-error: one hung/slow route must not skip the rest
             code=$(curl -sS -o /tmp/cron-body.txt -w "%{http_code}" \
               -H "Authorization: Bearer ${STAGING_CRON_SECRET}" \
-              --max-time 120 \
+              --connect-timeout "${CRON_CURL_CONNECT_TIMEOUT}" \
+              --max-time "${CRON_CURL_MAX_TIME}" \
               "$url" || echo "000")
             body=$(head -c 500 /tmp/cron-body.txt || true)
             echo "  HTTP $code"
