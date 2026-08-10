@@ -7,7 +7,10 @@ import { log } from "@/lib/logger"
 import {
   METERING_SECRET_HEADER,
   proxyReportBatchBodySchema,
+  type ProxyUsageRecord,
 } from "@/lib/credits/proxy-metering-payload"
+import { usageRecordIdempotencyKey } from "@/lib/credits/usage-idempotency"
+import { PRE_INSTRUMENTATION_NOTE_EVENT_KIND } from "@/lib/credits/usage-retention"
 
 function verifyMeteringSecret(req: NextRequest): boolean {
   const secret = req.headers.get(METERING_SECRET_HEADER)?.trim()
@@ -73,38 +76,83 @@ export async function POST(req: NextRequest) {
   }
 
   let totalProcessed = 0
+  let totalHandled = 0
   // Collect exhaustion side-effects outside the transaction; schedule via
   // after() so Vercel does not kill setImmediate/bare-promise work when the
   // response ends (same class as the dashboard wake fire-and-forget bug).
   const exhaustedUserIds: string[] = []
 
   for (const [userId, userRecords] of byUser) {
-    const totalCost = userRecords.reduce((sum, r) => sum + (r.costCents || 0), 0)
-
     try {
       let exhausted = false
       let newBalance = 0
       let wrote = false
+      let persisted = 0
+      let spendCents = 0
+      let handled = 0
 
       await prisma.$transaction(async (tx) => {
         const account = await tx.creditAccount.findUnique({ where: { userId } })
         if (!account || account.status !== "ACTIVE") return
 
-        newBalance = Math.max(0, account.balanceCents - totalCost)
+        // Soft idempotency: drop retries whose fingerprint matches a recent row.
+        const fresh: ProxyUsageRecord[] = []
+        for (const r of userRecords) {
+          const idempotencyKey = usageRecordIdempotencyKey(r)
+          const ts = Date.parse(r.timestamp)
+          const windowStart = Number.isFinite(ts)
+            ? new Date(ts - 120_000)
+            : new Date(Date.now() - 120_000)
+          const windowEnd = Number.isFinite(ts)
+            ? new Date(ts + 120_000)
+            : new Date()
+          const dup = await tx.creditUsageRecord.findFirst({
+            where: {
+              creditAccountId: account.id,
+              workspaceId: r.workspaceId,
+              model: r.model,
+              inputTokens: r.inputTokens,
+              outputTokens: r.outputTokens,
+              costCents: r.costCents,
+              createdAt: { gte: windowStart, lte: windowEnd },
+            },
+            select: { id: true },
+          })
+          if (dup) {
+            log.info("report-batch: skip duplicate via idempotencyKey", {
+              userId,
+              idempotencyKey,
+            })
+            handled += 1
+            continue
+          }
+          fresh.push(r)
+        }
+
+        if (fresh.length === 0) {
+          wrote = true
+          persisted = 0
+          spendCents = 0
+          newBalance = account.balanceCents
+          return
+        }
+
+        spendCents = fresh.reduce((sum, r) => sum + (r.costCents || 0), 0)
+        newBalance = Math.max(0, account.balanceCents - spendCents)
 
         await tx.creditAccount.update({
           where: { userId },
           data: {
             balanceCents: newBalance,
-            totalConsumedCents: { increment: totalCost },
+            totalConsumedCents: { increment: spendCents },
             status: newBalance === 0 ? "EXHAUSTED" : "ACTIVE",
             exhaustedAt: newBalance === 0 ? new Date() : undefined,
           },
         })
 
-        // Proxy emits provider+timestamp; DB stores provider enum + createdAt.
+        // MUTATION: drop createMany → usage-retention + handshake tests fail.
         await tx.creditUsageRecord.createMany({
-          data: userRecords.map((r) => ({
+          data: fresh.map((r) => ({
             creditAccountId: account.id,
             workspaceId: r.workspaceId,
             agentId: r.agentId || null,
@@ -117,19 +165,53 @@ export async function POST(req: NextRequest) {
           })),
         })
 
+        // One-shot ledger note when account shows prior consumption but we are
+        // minting the first retained row after the 7d-purge era (no backfill).
+        if (account.totalConsumedCents > 0) {
+          const priorNote = await tx.activityLog.findFirst({
+            where: {
+              workspaceId: { in: fresh.map((r) => r.workspaceId) },
+              actionType: "SYSTEM",
+              metadata: { contains: PRE_INSTRUMENTATION_NOTE_EVENT_KIND },
+            },
+            select: { id: true },
+          })
+          if (!priorNote) {
+            const wsId = fresh[0]!.workspaceId
+            await tx.activityLog.create({
+              data: {
+                workspaceId: wsId,
+                actionType: "SYSTEM",
+                action: "Credit ledger note: pre-instrumentation consumption",
+                detail: `Account totalConsumedCents=${account.totalConsumedCents} predates retained CreditUsageRecord rows (7d purge / pre-retention). Not backfilled.`,
+                metadata: JSON.stringify({
+                  eventKind: PRE_INSTRUMENTATION_NOTE_EVENT_KIND,
+                  totalConsumedCents: account.totalConsumedCents,
+                  note: "pre-instrumentation consumption",
+                }),
+              },
+            })
+          }
+        }
+
         exhausted = newBalance === 0
         wrote = true
+        persisted = fresh.length
+        handled += fresh.length
       })
 
       if (!wrote) continue
 
-      totalProcessed += userRecords.length
+      totalProcessed += persisted
+      totalHandled += handled
 
       // Redis is a cache of the DB ledger — never fail the durable write if
       // Upstash is down (that was a silent 200/processed:0 → proxy drop path).
       try {
         await redis.set(`credit:balance:${userId}`, newBalance.toString())
-        await redis.decrby(`credit:reservations:${userId}`, totalCost)
+        if (spendCents > 0) {
+          await redis.decrby(`credit:reservations:${userId}`, spendCents)
+        }
       } catch (redisErr) {
         log.warn("report-batch: redis cache update failed after durable write", {
           userId,
@@ -156,7 +238,8 @@ export async function POST(req: NextRequest) {
 
   // Proxy only requeues on !res.ok. A 200 with processed:0 after a non-empty
   // batch would DROP the in-memory pending forever — return 503 so it retries.
-  if (records.length > 0 && totalProcessed === 0) {
+  // All-duplicate batches are handled (idempotent success) — do not 503.
+  if (records.length > 0 && totalHandled === 0 && totalProcessed === 0) {
     return apiError(
       "PROCESSING_FAILED",
       "No usage records were persisted; proxy should requeue",

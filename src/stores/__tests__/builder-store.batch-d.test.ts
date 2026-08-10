@@ -198,4 +198,52 @@ describe("Batch D — builder store", () => {
       expect(s.nodes).toEqual([])
     })
   })
+
+  describe("heartbeat picker — armed MD cron must not load as Off", () => {
+    it("null heartbeatFrequency + HEARTBEAT.md cron → frequency custom", async () => {
+      global.fetch = vi.fn(async () =>
+        jsonResponse({
+          success: true,
+          data: {
+            id: "ws-1",
+            name: "Armed",
+            status: "RUNNING",
+            updatedAt: new Date().toISOString(),
+            agents: [
+              {
+                id: "orch-1",
+                name: "Commander",
+                role: "ORCHESTRATOR",
+                color: "#8BFCAE",
+                model: "anthropic/claude-sonnet-4-6",
+                soulMd: "",
+                agentsMd: "",
+                heartbeatFrequency: null,
+                heartbeatTime: null,
+                heartbeatMd: `- cron: "0 8 * * *"\n- cron: "0 21 * * *"\n`,
+                positionX: 300,
+                positionY: 40,
+                skills: [],
+              },
+            ],
+            connections: [],
+            containerState: { heartbeatCronExpressions: null },
+          },
+        }),
+      )
+
+      await useBuilderStore.getState().loadWorkspace("ws-1")
+      const hb = useBuilderStore.getState().heartbeatSchedule
+      expect(hb.frequency).toBe("custom")
+      expect(hb.customWindowCount).toBe(2)
+      expect(hb.frequency).not.toBe("off")
+    })
+
+    it('MUTATION: load path restores frequency: savedFreq || "off" without custom detection → fail', () => {
+      const src = readFileSync(join(ROOT, "src/stores/builder-store.ts"), "utf8")
+      expect(src).toContain("resolvePickerHeartbeatSchedule")
+      // Buggy fallthrough that lies for MD-armed claws.
+      expect(src).not.toMatch(/frequency:\s*savedFreq\s*\|\|\s*"off"/)
+    })
+  })
 })

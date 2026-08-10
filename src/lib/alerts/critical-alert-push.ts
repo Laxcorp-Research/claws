@@ -22,7 +22,11 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
 import { getResend } from "@/lib/resend"
-import { parseChannelConfigBlob, type ChannelConfigMap } from "@/lib/openclaw/channel-config"
+import {
+  parseChannelConfigBlob,
+  preferNumericTelegramAllowFrom,
+  type ChannelConfigMap,
+} from "@/lib/openclaw/channel-config"
 import { telegramSendMessage } from "@/lib/channels/telegram-bot-api"
 
 // ─── Alert classes ─────────────────────────────────────────────────────────
@@ -102,7 +106,7 @@ export function resolveDeliveryTarget(
   ownerEmail: string | null,
 ): DeliveryTarget {
   const telegram = config.telegram
-  const chatId = telegram?.allowFrom?.[0]
+  const chatId = preferNumericTelegramAllowFrom(telegram?.allowFrom)?.[0]
   if (telegram?.botToken && chatId !== undefined && chatId !== null) {
     return { channel: "telegram", botToken: telegram.botToken, chatId }
   }
@@ -177,14 +181,16 @@ async function findLastDeliveredAt(
 async function sendCriticalAlertEmail(args: {
   email: string
   alertKey: AlertKey
+  workspaceName: string
   detail?: string | null
 }): Promise<boolean> {
   const copy = ALERT_COPY[args.alertKey]
+  const workspaceLabel = args.workspaceName.trim() || "Unnamed Claw"
   try {
     await getResend().emails.send({
       from: "Claws <noreply@buildclaws.ai>",
       to: args.email,
-      subject: `Claws critical alert: ${copy.title}`,
+      subject: `Claws critical alert: ${workspaceLabel} — ${copy.title}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -194,6 +200,7 @@ async function sendCriticalAlertEmail(args: {
             <tr>
               <td style="padding:40px 32px;text-align:center;">
                 <div style="font-size:20px;font-weight:700;color:#0A0A0B;margin-bottom:8px;">Claws</div>
+                <div style="font-size:13px;color:#555;margin-bottom:8px;">${workspaceLabel}</div>
                 <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">${copy.emoji} ${copy.title}</div>
                 ${args.detail ? `<div style="font-size:13px;color:#555;margin-bottom:16px;line-height:1.6;">${args.detail}</div>` : ""}
                 <a href="https://app.buildclaws.ai/dashboard" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
@@ -238,6 +245,7 @@ export async function sendCriticalAlert(args: {
     where: { id: args.workspaceId },
     select: {
       id: true,
+      name: true,
       criticalAlertsOptOut: true,
       channelConfigEncrypted: true,
       user: { select: { email: true } },
@@ -250,6 +258,7 @@ export async function sendCriticalAlert(args: {
     })
     return { sent: false, channel: "skipped", reason: "workspace-not-found" }
   }
+  const workspaceName = workspace.name?.trim() || "Unnamed Claw"
 
   const lastDeliveredAt = await findLastDeliveredAt(args.workspaceId, args.alertKey)
   const decision = decideCriticalAlertSend({
@@ -311,6 +320,7 @@ export async function sendCriticalAlert(args: {
       const emailOk = await sendCriticalAlertEmail({
         email: ownerEmail,
         alertKey: args.alertKey,
+        workspaceName,
         detail: args.detail,
       })
       await ledgerCriticalAlertPush({
@@ -329,6 +339,7 @@ export async function sendCriticalAlert(args: {
     const ok = await sendCriticalAlertEmail({
       email: target.email,
       alertKey: args.alertKey,
+      workspaceName,
       detail: args.detail,
     })
     await ledgerCriticalAlertPush({

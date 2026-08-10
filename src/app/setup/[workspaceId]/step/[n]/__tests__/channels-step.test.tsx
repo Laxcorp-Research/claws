@@ -544,6 +544,7 @@ describe("Setup Step 5 drift-aware go live", () => {
 
 describe("Setup Step 4 Deploy exit drift prompt", () => {
   let deployStatusData: TestDeployStatusData
+  let workspaceClawTemplate: { recommendedAlwaysOn?: boolean } | null
 
   beforeEach(() => {
     push.mockReset()
@@ -551,6 +552,7 @@ describe("Setup Step 4 Deploy exit drift prompt", () => {
     mockStartRedeploy.mockImplementation(async () => { redeployCompleted?.() })
     redeployCompleted = undefined
     deployStatusData = { workspaceStatus: "RUNNING", drift: { isStale: true, changedAreas: ["channels"] } }
+    workspaceClawTemplate = null
     vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
       const href = String(url)
       if (href.includes("/api/user/billing")) {
@@ -577,7 +579,7 @@ describe("Setup Step 4 Deploy exit drift prompt", () => {
         })
       }
       if (href.includes("/api/workspaces/ws-1")) {
-        return jsonResponse({ success: true, data: { clawTemplate: null } })
+        return jsonResponse({ success: true, data: { clawTemplate: workspaceClawTemplate } })
       }
       if (href.includes("/api/tools/ws-1")) {
         return jsonResponse({ success: true, data: { connections: [] } })
@@ -623,5 +625,53 @@ describe("Setup Step 4 Deploy exit drift prompt", () => {
 
     expect(mockStartRedeploy).not.toHaveBeenCalled()
     expect(push).toHaveBeenCalledWith("/setup/ws-1/step/5")
+  })
+
+  it("surfaces recommendedAlwaysOn banner when template metadata says so", async () => {
+    deployStatusData = {
+      workspaceStatus: "DRAFT",
+      drift: { isStale: false, changedAreas: [] },
+    }
+    // Fresh deploy surface (no prior deployment status) so the banner is visible.
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
+      const href = String(url)
+      if (href.includes("/api/user/billing")) {
+        return jsonResponse({
+          success: true,
+          data: { trialUsed: false, trialEndsAt: null, hasActiveSubscription: false },
+        })
+      }
+      if (href.includes("/api/deploy/ws-1/status?drift=1")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            workspaceStatus: "DRAFT",
+            apiKeySource: "USER_OWN_KEY",
+            deployment: null,
+            drift: { isStale: false, changedAreas: [] },
+          },
+        })
+      }
+      if (href.includes("/api/channels/ws-1")) {
+        return jsonResponse({ success: true, data: { hasConfiguredChannels: false } })
+      }
+      if (href.includes("/api/workspaces/ws-1/tool-requirements")) {
+        return jsonResponse({
+          success: true,
+          data: { tools: [], required: [], recommended: [], source: "empty" },
+        })
+      }
+      if (href.includes("/api/workspaces/ws-1")) {
+        return jsonResponse({
+          success: true,
+          data: { clawTemplate: { slug: "quant-trader", recommendedAlwaysOn: true } },
+        })
+      }
+      return jsonResponse({ success: true, data: {} })
+    }))
+
+    render(<Step3 workspaceId="ws-1" />)
+
+    expect(await screen.findByText("This template recommends Always on")).toBeDefined()
   })
 })

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
+import { creditUsageRetentionCutoff } from "@/lib/credits/usage-retention"
 
 export const maxDuration = 60
 
@@ -66,11 +67,13 @@ export async function GET(req: NextRequest) {
               model: r.model,
             },
           },
+          // SET absolute day totals (not increment) — re-runs / overlapping
+          // windows must not double-count into CreditUsageDaily.
           update: {
-            totalCalls: { increment: r._count },
-            totalInputTokens: { increment: r._sum.inputTokens ?? 0 },
-            totalOutputTokens: { increment: r._sum.outputTokens ?? 0 },
-            totalCostCents: { increment: r._sum.costCents ?? 0 },
+            totalCalls: r._count,
+            totalInputTokens: r._sum.inputTokens ?? 0,
+            totalOutputTokens: r._sum.outputTokens ?? 0,
+            totalCostCents: r._sum.costCents ?? 0,
           },
           create: {
             creditAccountId: r.creditAccountId,
@@ -97,9 +100,9 @@ export async function GET(req: NextRequest) {
     currentDay = nextDay
   }
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000)
+  const retentionCutoff = creditUsageRetentionCutoff()
   const deleted = await prisma.creditUsageRecord.deleteMany({
-    where: { createdAt: { lt: sevenDaysAgo } },
+    where: { createdAt: { lt: retentionCutoff } },
   })
 
   log.info("Credit usage aggregation complete", {

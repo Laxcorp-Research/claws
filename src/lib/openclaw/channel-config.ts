@@ -323,12 +323,47 @@ export function maskChannelConfig(config: ChannelConfigMap): MaskedChannelConfig
   return masked
 }
 
+/**
+ * Telegram chat/user ids are numeric (optionally negative for groups).
+ * Bare @username entries are not durable outbound targets for OpenClaw.
+ */
+export function isNumericTelegramAllowFromEntry(entry: string | number): boolean {
+  if (typeof entry === "number") return Number.isFinite(entry)
+  const trimmed = entry.trim()
+  if (!trimmed) return false
+  return /^-?\d+$/.test(trimmed)
+}
+
+/**
+ * Prefer numeric chat/user IDs at the front of allowFrom so OpenClaw's
+ * default outbound target (allowFrom[0]) is never a bare @username when a
+ * numeric id is stored alongside it.
+ *
+ * LIMITATION: username-only allowFrom is left unchanged — we cannot invent
+ * a numeric id without a Telegram getChat round-trip.
+ */
+export function preferNumericTelegramAllowFrom(
+  allowFrom: Array<string | number> | undefined,
+): Array<string | number> | undefined {
+  if (!allowFrom || allowFrom.length === 0) return allowFrom
+  const numeric: Array<string | number> = []
+  const rest: Array<string | number> = []
+  for (const entry of allowFrom) {
+    if (isNumericTelegramAllowFromEntry(entry)) numeric.push(entry)
+    else rest.push(entry)
+  }
+  if (numeric.length === 0) return allowFrom
+  return [...numeric, ...rest]
+}
+
 export function buildOpenClawChannelsConfig(config: ChannelConfigMap): Record<string, unknown> {
   const channels: Record<string, unknown> = {}
 
   if (config.telegram) {
+    const allowFrom = preferNumericTelegramAllowFrom(config.telegram.allowFrom)
     channels.telegram = {
       ...config.telegram,
+      ...(allowFrom !== undefined ? { allowFrom } : {}),
       groups: config.telegram.groups ?? { "*": { requireMention: true } },
     }
   }

@@ -68,11 +68,19 @@ describe("report-batch ↔ credit-proxy handshake", () => {
               id: "ca-wire",
               userId: "user-wire",
               balanceCents: 500,
+              totalConsumedCents: 0,
               status: "ACTIVE",
             }),
             update,
           },
-          creditUsageRecord: { createMany },
+          creditUsageRecord: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            createMany,
+          },
+          activityLog: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: "al-1" }),
+          },
         }
         await fn(tx)
       },

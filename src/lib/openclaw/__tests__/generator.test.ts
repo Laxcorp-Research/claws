@@ -490,6 +490,28 @@ describe('generateWorkspace', () => {
     });
   });
 
+  describe('BOOT.md memory path (EISDIR)', () => {
+    it('ORCHESTRATOR BOOT.md uses dated memory file — never Check memory/ directory', async () => {
+      const result = await generateWorkspace('ws-test-1');
+      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+      const boot = result.workspaces[orchKey!]['BOOT.md'];
+      expect(boot).not.toContain('Check memory/ directory');
+      expect(boot).toContain('memory/YYYY-MM-DD.md');
+      expect(boot).toMatch(/never .*read.* memory\//i);
+    });
+
+    it('MUTATION: restoring Check memory/ directory in generateBootMd fails', async () => {
+      const { readFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const src = readFileSync(join(process.cwd(), 'src/lib/openclaw/generator.ts'), 'utf8');
+      const bootStart = src.indexOf('function generateBootMd');
+      expect(bootStart).toBeGreaterThanOrEqual(0);
+      const bootFn = src.slice(bootStart, bootStart + 900);
+      expect(bootFn).not.toContain('Check memory/ directory');
+      expect(bootFn).toContain('memory/YYYY-MM-DD.md');
+    });
+  });
+
   it('includes tool connection credentials in skills entries (keyed by toolSlug)', async () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);

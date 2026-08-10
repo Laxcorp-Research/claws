@@ -34,6 +34,26 @@ describe("formatDailyDigestMessage", () => {
     expect(text).toContain("Errors: 1 agent · 4 external")
   })
 
+  it("MUTATION: digest body must include workspace name", () => {
+    const text = formatDailyDigestMessage({
+      workspaceName: "Quant Trader",
+      asOfUtc: "2026-08-10T06:00:00.000Z",
+      stats: {
+        heartbeatsKept: 0,
+        heartbeatsMissedLedgered: 0,
+        sleepWakeCycles: 0,
+        costCents24h: 0,
+        costIsEstimate: false,
+        strands: 0,
+        errors24h: 0,
+        errorsAgent24h: 0,
+        errorsExternal24h: 0,
+      },
+    })
+    expect(text.startsWith("Claws digest — Quant Trader")).toBe(true)
+    expect(text).toContain("Quant Trader")
+  })
+
   it("labels Costs (not est.) for credit-mode real cents", () => {
     const text = formatDailyDigestMessage({
       workspaceName: "W",

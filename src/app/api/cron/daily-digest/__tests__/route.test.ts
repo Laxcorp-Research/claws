@@ -36,6 +36,8 @@ vi.mock("@/lib/openclaw/channel-config", () => ({
   parseChannelConfigBlob: () => ({
     telegram: { botToken: "tok", allowFrom: ["123"] },
   }),
+  preferNumericTelegramAllowFrom: (allowFrom: string[] | undefined) =>
+    (allowFrom ?? []).filter((v) => /^\d+$/.test(v)),
 }))
 
 vi.mock("@/lib/channels/telegram-bot-api", () => ({

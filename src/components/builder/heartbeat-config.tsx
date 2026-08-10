@@ -1,10 +1,12 @@
 "use client"
 
 import { useBuilderStore } from "@/stores/builder-store"
+import { customHeartbeatLabel } from "@/lib/builder/heartbeat-picker"
 import { CustomSelect } from "./custom-select"
 import { HelpTooltip } from "@/components/ui/help-tooltip"
+import { AlertBanner } from "@/components/ui/alert-banner"
 
-const FREQUENCY_OPTIONS = [
+const BASE_FREQUENCY_OPTIONS = [
   { value: "off", label: "Off" },
   { value: "hourly", label: "Every hour" },
   { value: "every_6h", label: "Every 6 hours" },
@@ -28,7 +30,34 @@ const TIME_OPTIONS = [
 
 export function HeartbeatConfig() {
   const { heartbeatSchedule, setHeartbeatSchedule } = useBuilderStore()
-  const showTime = heartbeatSchedule.frequency !== "hourly" && heartbeatSchedule.frequency !== "off"
+  const isCustom = heartbeatSchedule.frequency === "custom"
+  const showTime =
+    heartbeatSchedule.frequency !== "hourly" &&
+    heartbeatSchedule.frequency !== "off" &&
+    !isCustom
+
+  const frequencyOptions = isCustom
+    ? [
+        {
+          value: "custom",
+          label: customHeartbeatLabel(heartbeatSchedule.customWindowCount ?? null),
+        },
+        ...BASE_FREQUENCY_OPTIONS,
+      ]
+    : BASE_FREQUENCY_OPTIONS
+
+  const onFrequencyChange = (val: string) => {
+    if (isCustom && val !== "custom") {
+      const label = customHeartbeatLabel(heartbeatSchedule.customWindowCount ?? null)
+      const ok = confirm(
+        `This will replace the custom cron schedule (${label}). The HEARTBEAT.md cron windows will no longer drive the picker frequency. Continue?`,
+      )
+      if (!ok) return
+      setHeartbeatSchedule({ frequency: val, customWindowCount: null })
+      return
+    }
+    setHeartbeatSchedule({ frequency: val })
+  }
 
   return (
     <div>
@@ -37,10 +66,18 @@ export function HeartbeatConfig() {
         <HelpTooltip text="How often the Orchestrator wakes up and runs its task checklist. Daily at 8 AM is a good default for most business Claws." />
       </div>
       <div className="flex flex-col gap-[6px]">
+        {isCustom && (
+          <AlertBanner variant="warning">
+            <p className="font-medium">Custom schedule (HEARTBEAT.md cron)</p>
+            <p className="mt-0.5 opacity-80">
+              Armed via MD cron windows — frequency picker is unset. Changing frequency replaces this custom schedule.
+            </p>
+          </AlertBanner>
+        )}
         <CustomSelect
           value={heartbeatSchedule.frequency}
-          onChange={(val) => setHeartbeatSchedule({ frequency: val })}
-          options={FREQUENCY_OPTIONS}
+          onChange={onFrequencyChange}
+          options={frequencyOptions}
         />
         {showTime && (
           <CustomSelect

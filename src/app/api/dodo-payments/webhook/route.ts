@@ -1,10 +1,64 @@
 import { NextRequest, NextResponse } from "next/server"
 import DodoPayments from "dodopayments"
+import type { AuditAction } from "@/generated/prisma/client"
 import { prisma } from "@/lib/db"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { log } from "@/lib/logger"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 import { destroyContainer } from "@/lib/openclaw/deployer"
+
+/**
+ * Ledger a subscription lifecycle webhook into AuditLog.
+ * Uses existing AuditAction enums; `resource` carries the exact event name
+ * (e.g. subscription.active) so the ledger stays queryable by event.
+ */
+async function ledgerSubscriptionLifecycle(args: {
+  userId: string
+  eventType: string
+  subscriptionId?: string | null
+  status: string
+  workspaceId?: string | null
+}): Promise<void> {
+  const action = subscriptionEventAuditAction(args.eventType)
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: args.userId,
+        workspaceId: args.workspaceId ?? null,
+        action,
+        resource: args.eventType,
+        resourceId: args.subscriptionId ?? args.userId,
+        after: JSON.stringify({
+          eventType: args.eventType,
+          subscriptionStatus: args.status,
+          subscriptionId: args.subscriptionId ?? null,
+        }),
+      },
+    })
+  } catch (err) {
+    // Never fail the webhook over ledger write — Dodo retries on non-200.
+    log.error("dodo-webhook: failed to ledger subscription lifecycle", {
+      userId: args.userId,
+      eventType: args.eventType,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+function subscriptionEventAuditAction(eventType: string): AuditAction {
+  switch (eventType) {
+    case "subscription.active":
+    case "subscription.on_hold":
+      return "SUBSCRIPTION_STARTED"
+    case "subscription.cancelled":
+    case "subscription.expired":
+      return "SUBSCRIPTION_CANCELED"
+    case "subscription.failed":
+      return "PAYMENT_FAILED"
+    default:
+      return "SUBSCRIPTION_STARTED"
+  }
+}
 
 export async function POST(req: NextRequest) {
   if (!process.env.DODO_PAYMENTS_API_KEY || !process.env.DODO_PAYMENTS_WEBHOOK_KEY) {
@@ -219,6 +273,13 @@ async function handleSubscriptionActive(
 
     log.info("User subscription updated", { userId: updated.id, hasActiveSubscription: updated.hasActiveSubscription, subscriptionId: updated.subscriptionId })
     log.paymentEvent({ event: "subscription_activated", userId: user.id, status: "success" })
+    await ledgerSubscriptionLifecycle({
+      userId: user.id,
+      eventType: "subscription.active",
+      subscriptionId,
+      status: "active",
+      workspaceId: metadata.workspaceId,
+    })
   } else {
     log.warn("handleSubscriptionActive: metadata.type is not claw_platform", { metadataType: metadata.type, metadata: JSON.stringify(metadata) })
   }
@@ -243,6 +304,13 @@ async function handleSubscriptionCancelled(
     await prisma.user.update({
       where: { id: user.id },
       data: { hasActiveSubscription: false, subscriptionStatus: "cancelled" },
+    })
+    await ledgerSubscriptionLifecycle({
+      userId: user.id,
+      eventType: "subscription.cancelled",
+      subscriptionId,
+      status: "cancelled",
+      workspaceId: metadata.workspaceId,
     })
   }
 
@@ -277,6 +345,13 @@ async function handleSubscriptionOnHold(
       userId: user.id,
       subscriptionId: subscriptionId ?? null,
     })
+    await ledgerSubscriptionLifecycle({
+      userId: user.id,
+      eventType: "subscription.on_hold",
+      subscriptionId,
+      status: "on_hold",
+      workspaceId: metadata.workspaceId,
+    })
   }
 }
 
@@ -290,6 +365,13 @@ async function handleSubscriptionFailed(
     await prisma.user.update({
       where: { id: user.id },
       data: { hasActiveSubscription: false, subscriptionStatus: "failed" },
+    })
+    await ledgerSubscriptionLifecycle({
+      userId: user.id,
+      eventType: "subscription.failed",
+      subscriptionId: (_data?.subscription_id as string | undefined) ?? null,
+      status: "failed",
+      workspaceId: metadata.workspaceId,
     })
 
     if (metadata.workspaceId) {
@@ -323,6 +405,13 @@ async function handleSubscriptionExpired(
         subscriptionEndsAt: null,
         subscriptionStatus: "expired",
       },
+    })
+    await ledgerSubscriptionLifecycle({
+      userId: user.id,
+      eventType: "subscription.expired",
+      subscriptionId: (_data?.subscription_id as string | undefined) ?? null,
+      status: "expired",
+      workspaceId: metadata.workspaceId,
     })
   }
 }

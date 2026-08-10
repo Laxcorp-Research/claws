@@ -53,9 +53,11 @@ function mockWorkspace(overrides: Partial<{
   criticalAlertsOptOut: boolean
   channelConfigEncrypted: string | null
   email: string | null
+  name: string
 }> = {}) {
   ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
     id: WORKSPACE_ID,
+    name: overrides.name ?? "Sales Claw",
     criticalAlertsOptOut: overrides.criticalAlertsOptOut ?? false,
     channelConfigEncrypted: overrides.channelConfigEncrypted ?? null,
     user: { email: overrides.email === undefined ? "owner@example.com" : overrides.email },
@@ -228,14 +230,40 @@ describe("sendCriticalAlert — integration", () => {
   })
 
   it("falls back to email when no Telegram channel is configured", async () => {
-    mockWorkspace({ channelConfigEncrypted: null, email: "fallback@example.com" })
+    mockWorkspace({ channelConfigEncrypted: null, email: "fallback@example.com", name: "Fixture Claw" })
 
     const result = await sendCriticalAlert({ workspaceId: WORKSPACE_ID, alertKey: "cron-job-failed" })
 
     expect(result).toEqual({ sent: true, channel: "email" })
     expect(mockTelegramSend).not.toHaveBeenCalled()
     expect(mockResendSend).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "fallback@example.com" }),
+      expect.objectContaining({
+        to: "fallback@example.com",
+        subject: "Claws critical alert: Fixture Claw — Cron job failing repeatedly",
+      }),
+    )
+    const html = (mockResendSend.mock.calls[0][0] as { html: string }).html
+    expect(html).toContain("Fixture Claw")
+  })
+
+  it("MUTATION: critical-alert email subject/body must include workspace name", async () => {
+    mockWorkspace({ channelConfigEncrypted: null, email: "owner@example.com", name: "Named Workspace" })
+    await sendCriticalAlert({ workspaceId: WORKSPACE_ID, alertKey: "container-unhealthy" })
+    const call = mockResendSend.mock.calls[0][0] as { subject: string; html: string }
+    expect(call.subject).toContain("Named Workspace")
+    expect(call.html).toContain("Named Workspace")
+  })
+
+  it("prefers numeric allowFrom over username when both are present", async () => {
+    mockWorkspace({
+      channelConfigEncrypted: telegramConfigBlob("bt-1", ["@trader", 777]),
+    })
+    mockTelegramSend.mockResolvedValue(true)
+
+    await sendCriticalAlert({ workspaceId: WORKSPACE_ID, alertKey: "state-sync-stale" })
+
+    expect(mockTelegramSend).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: 777 }),
     )
   })
 

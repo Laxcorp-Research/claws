@@ -1986,6 +1986,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
   const [hasConfiguredChannels, setHasConfiguredChannels] = useState(false)
   const [applyDeployOpen, setApplyDeployOpen] = useState(false)
+  const [recommendedAlwaysOn, setRecommendedAlwaysOn] = useState(false)
   const [toolPrereqs, setToolPrereqs] = useState<RequiredToolsSatisfaction>(EMPTY_TOOL_PREREQS)
   const toolPrereqsReady = toolPrereqs.satisfied
   const unverifiedInfo = unverifiedToolsInfoLine(toolPrereqs.unverifiedCount)
@@ -2022,10 +2023,11 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     async function init() {
       try {
-        const [, statusRes, channelsRes, toolsReady] = await Promise.all([
+        const [, statusRes, channelsRes, workspaceRes, toolsReady] = await Promise.all([
           checkBillingAndUpdateEligibility(),
           fetch(`/api/deploy/${workspaceId}/status?drift=1`),
           fetch(`/api/channels/${workspaceId}`),
+          fetch(`/api/workspaces/${workspaceId}`),
           loadDeployToolPrerequisites(workspaceId),
         ])
 
@@ -2053,6 +2055,12 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         const channelsJson = await channelsRes.json()
         if (channelsJson.success) {
           setHasConfiguredChannels(Boolean(channelsJson.data?.hasConfiguredChannels))
+        }
+        const workspaceJson = await workspaceRes.json()
+        if (workspaceJson.success) {
+          setRecommendedAlwaysOn(
+            Boolean(workspaceJson.data?.clawTemplate?.recommendedAlwaysOn),
+          )
         }
         setToolPrereqs(toolsReady)
       } catch (err) {
@@ -2222,6 +2230,17 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         eligibility?.reason !== "trial_active" && (
           <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
         )}
+
+      {recommendedAlwaysOn && !deploymentStatus && (
+        <div className="mb-3.5">
+          <AlertBanner variant="info">
+            <p className="font-medium">This template recommends Always on</p>
+            <p className="mt-0.5 opacity-80">
+              Market-hour schedules can miss beats if the Claw hibernates. After deploy, enable Always on in the dashboard (higher hosting cost).
+            </p>
+          </AlertBanner>
+        </div>
+      )}
 
       {needsSub && !deploymentStatus && !waitingForActivation && (
         <AlertBanner variant="warning">

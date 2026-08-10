@@ -337,6 +337,7 @@ describe('POST /api/dodo-payments/webhook', () => {
     it('keeps hasActiveSubscription true and stamps subscriptionStatus=on_hold', async () => {
       mockUserLookup('user-dunning');
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      (prismaMock.auditLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const req = createWebhookRequest({
         type: 'subscription.on_hold',
@@ -355,6 +356,70 @@ describe('POST /api/dodo-payments/webhook', () => {
             hasActiveSubscription: true,
             subscriptionStatus: 'on_hold',
             subscriptionId: 'sub_hold',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('subscription lifecycle ledger', () => {
+    it('writes AuditLog on subscription.active naming the event', async () => {
+      mockUserLookup('user-ledger');
+      (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'user-ledger',
+        hasActiveSubscription: true,
+        subscriptionId: 'sub_ledger',
+      });
+      (prismaMock.auditLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const req = createWebhookRequest({
+        type: 'subscription.active',
+        data: {
+          subscription_id: 'sub_ledger',
+          customer: { customer_id: 'cust_ledger' },
+          metadata: { type: 'claw_platform', userId: 'user-ledger', workspaceId: 'ws-1' },
+        },
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            userId: 'user-ledger',
+            workspaceId: 'ws-1',
+            action: 'SUBSCRIPTION_STARTED',
+            resource: 'subscription.active',
+            resourceId: 'sub_ledger',
+          }),
+        }),
+      );
+      const after = JSON.parse(
+        (prismaMock.auditLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0].data.after as string,
+      ) as { eventType: string; subscriptionStatus: string }
+      expect(after).toMatchObject({ eventType: 'subscription.active', subscriptionStatus: 'active' })
+    });
+
+    it('writes AuditLog on subscription.cancelled', async () => {
+      mockUserLookup('user-cancel');
+      (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      (prismaMock.auditLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const req = createWebhookRequest({
+        type: 'subscription.cancelled',
+        data: {
+          subscription_id: 'sub_cancel_ledger',
+          metadata: { type: 'claw_platform', userId: 'user-cancel' },
+        },
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'SUBSCRIPTION_CANCELED',
+            resource: 'subscription.cancelled',
           }),
         }),
       );

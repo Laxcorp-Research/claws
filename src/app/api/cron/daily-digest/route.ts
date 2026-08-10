@@ -2,7 +2,10 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
-import { parseChannelConfigBlob } from "@/lib/openclaw/channel-config"
+import {
+  parseChannelConfigBlob,
+  preferNumericTelegramAllowFrom,
+} from "@/lib/openclaw/channel-config"
 import { telegramSendMessage } from "@/lib/channels/telegram-bot-api"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
 import {
@@ -76,8 +79,9 @@ export async function GET(req: NextRequest) {
       }
 
       // Re-resolve botToken/chatId for send (hasConnectedTelegram already gated).
+      // Prefer numeric chat id when username + id both exist (message-tool safety).
       const telegram = config.telegram
-      const chatId = telegram?.allowFrom?.[0]
+      const chatId = preferNumericTelegramAllowFrom(telegram?.allowFrom)?.[0]
       if (!telegram?.botToken || chatId === undefined || chatId === null) {
         skipped++
         continue
