@@ -82,6 +82,19 @@ export async function GET(req: NextRequest) {
   let errors = 0
   let syncSkippedForBudget = 0
 
+  // Heal pre-flip lag: channel connect used to set hasActiveChannels without
+  // RUNNING→WARM, so claws sat outside both sleep predicates. Reconcile into
+  // WARM so warmIdle owns them (runningIdle keeps hasActiveChannels:false).
+  const healedToWarm = await prisma.containerState.updateMany({
+    where: { containerPhase: "RUNNING", hasActiveChannels: true },
+    data: { containerPhase: "WARM" },
+  })
+  if (healedToWarm.count > 0) {
+    log.info("Hibernation cron: healed RUNNING+channels → WARM", {
+      count: healedToWarm.count,
+    })
+  }
+
   // ─── HIBERNATE CANDIDATES (inline, budget-guarded) ───
   // Predicates shared with /api/internal/hibernation/candidates (parity).
 

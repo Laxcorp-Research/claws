@@ -85,6 +85,9 @@ beforeEach(() => {
   afterCallbacks.length = 0
   mockHibernate.mockResolvedValue({ hibernated: true })
   mockWake.mockResolvedValue(undefined)
+  ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+    count: 0,
+  })
   prevCronSecret = process.env.CRON_SECRET
   process.env.CRON_SECRET = CRON_SECRET
   delete process.env.HIBERNATION_ENABLED
@@ -339,6 +342,30 @@ describe("hibernation cron — wake after() fan-out", () => {
     const src = readFileSync(ROUTE_SRC, "utf8")
     expect(src).toMatch(/export const maxDuration = 300/)
     expect(src).not.toMatch(/export const maxDuration = 55/)
+  })
+})
+
+describe("hibernation cron — RUNNING+channels → WARM heal", () => {
+  it("reconciles lagging RUNNING+hasActiveChannels before sleep predicates", async () => {
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    const res = await callCron()
+    expect(res.status).toBe(200)
+    expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
+      where: { containerPhase: "RUNNING", hasActiveChannels: true },
+      data: { containerPhase: "WARM" },
+    })
+  })
+
+  it("MUTATION: drop RUNNING+channels heal → fixture stuck outside warmIdle", () => {
+    const src = readFileSync(ROUTE_SRC, "utf8")
+    expect(src).toContain('containerPhase: "RUNNING"')
+    expect(src).toContain("hasActiveChannels: true")
+    expect(src).toMatch(/healedToWarm|healed RUNNING\+channels/)
   })
 })
 
