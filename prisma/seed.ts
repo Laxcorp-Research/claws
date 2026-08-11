@@ -89,6 +89,10 @@ async function main() {
       legalDisclaimer: template.legalDisclaimer ?? null,
       maxRevisionRounds: knobs.maxRevisionRounds,
       deliveryMode: knobs.deliveryMode,
+      // Discoverability: templates that recommend Always on (e.g. Quant Trader).
+      ...(template.recommendedAlwaysOn === true
+        ? { recommendedAlwaysOn: true }
+        : {}),
     })
 
     const data = {

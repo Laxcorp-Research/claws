@@ -106,5 +106,13 @@ describe("hibernateWorkspace — P3 refuse path", () => {
       where: { workspaceId: "ws-1", status: "COMPLETED" },
       data: { status: "SUPERSEDED" },
     })
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "Workspace hibernated",
+          metadata: expect.stringContaining("hibernation_complete"),
+        }),
+      }),
+    )
   })
 })

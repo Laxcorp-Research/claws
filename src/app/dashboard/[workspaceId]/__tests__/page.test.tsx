@@ -182,6 +182,7 @@ function mockFetch(opts: {
   trialUsed?: boolean;
   trialEndsAt?: string | null;
   hasActiveSubscription?: boolean;
+  workspaceStatus?: string;
 } = {}) {
   const payloadOptions = {
     mcpSessionHealthStatus: opts.mcpSessionHealthStatus ?? null,
@@ -195,6 +196,9 @@ function mockFetch(opts: {
       const payload = activityPayload(payloadOptions)
       if (opts.apiKeySource) {
         payload.data.workspace.apiKeySource = opts.apiKeySource
+      }
+      if (opts.workspaceStatus) {
+        payload.data.workspace.status = opts.workspaceStatus
       }
       return { ok: true, json: async () => payload } as Response
     }
@@ -338,6 +342,19 @@ describe("DashboardPage MCP session banner", () => {
         body: JSON.stringify({ alwaysOn: true }),
       })
     })
+  })
+
+  it("hibernating banner links to Always on toggle", async () => {
+    mockFetch({ workspaceStatus: "HIBERNATED" })
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("This Claw is hibernating")).toBeDefined()
+    const link = await screen.findByRole("button", {
+      name: "Enable Always on to skip hibernation",
+    })
+    expect(document.getElementById("always-on")).toBeTruthy()
+    fireEvent.click(link)
+    expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1#always-on")
   })
 
   it("preview View all switches to the Activity tab", async () => {

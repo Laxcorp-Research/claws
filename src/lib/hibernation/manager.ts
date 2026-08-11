@@ -156,6 +156,24 @@ export async function hibernateWorkspace(
       })
     }
 
+    // Digest sleepWakeCycles counts ActivityLog rows matching /Hibernat/i or
+    // metadata hibernation — without this row, real naps show cycles=0.
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        actionType: "SYSTEM",
+        action: "Workspace hibernated",
+        detail: nextHeartbeatAt
+          ? `nextHeartbeatAt=${nextHeartbeatAt.toISOString()}`
+          : "nextHeartbeatAt=null",
+        metadata: JSON.stringify({
+          eventKind: "hibernation_complete",
+          nextHeartbeatAt: nextHeartbeatAt?.toISOString() ?? null,
+          hibernatedAt: hibernatedAt.toISOString(),
+        }),
+      },
+    })
+
     log.info("Workspace hibernated", {
       workspaceId,
       hasStateSnapshot: !!workspace.containerState?.runtimeStateSnapshot,

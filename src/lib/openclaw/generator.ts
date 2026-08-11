@@ -1986,7 +1986,7 @@ function generateBootMd(agent: AgentWithRelations): string {
 
 On gateway startup:
 1. Read SOUL.md and USER.md to restore context
-2. Check memory/ directory for recent activity
+2. Read today's dated memory file (memory/YYYY-MM-DD.md) and any agent-specific workspace memory files for recent activity — never \`read\` the memory/ directory itself (that yields EISDIR)
 3. Verify HEARTBEAT.md has your scheduled tasks
 4. If everything looks good, reply with NO_REPLY
 5. If something is wrong (missing files, corrupted memory), send a brief status message to the human

@@ -2,15 +2,16 @@
  * P2.3 wake geometry — lead floor + past-due eligibility.
  *
  * Staging hibernation cron is GH Actions every-5-minutes (gaps + jitter). A lead
- * narrower than that cadence (the old 2m clamp from avgWake*2) can make the
- * assist tick fire before the wake window opens, then skip forever once the
- * hint is past-due (gt-now upper cutoff). Lead must never be narrower than
- * the trigger's own gaps.
+ * narrower than observed inter-tick gaps leaves the fixture ineligible on the
+ * tick before the window, then only selects past-due after the beat (late wake
+ * / missed_wake). Evidence Aug-10/11: gaps 22–30m with an 8m floor → 16:00 and
+ * 08:00 beats missed. Lead must cover observed gaps, not just the nominal 5m
+ * cadence.
  *
  * Env (ms, optional):
  *   HIBERNATION_CRON_CADENCE_MS  — trigger period (default 5m staging)
  *   HIBERNATION_WAKE_BUFFER_MS   — slack on top of cadence+avg (default 1m)
- *   HIBERNATION_WAKE_MIN_LEAD_MS — absolute floor (default 8m)
+ *   HIBERNATION_WAKE_MIN_LEAD_MS — absolute floor (default 30m)
  */
 
 /** Staging GH Actions hibernation cadence (every 5 minutes). Prod may set 60_000. */
@@ -19,8 +20,12 @@ export const DEFAULT_HIBERNATION_CRON_CADENCE_MS = 5 * 60 * 1000
 /** Slack above cadence + avgWake. */
 export const DEFAULT_WAKE_BUFFER_MS = 60 * 1000
 
-/** Absolute minimum lead — never thinner than this. */
-export const DEFAULT_WAKE_MIN_LEAD_MS = 8 * 60 * 1000
+/**
+ * Absolute minimum lead — never thinner than this.
+ * MUTATION: restore 8m → Aug-11 class (tick at T−11m ineligible, next tick
+ * past-due after beat) fails the gap-floor tests.
+ */
+export const DEFAULT_WAKE_MIN_LEAD_MS = 30 * 60 * 1000
 
 /** Fallback when ContainerState.avgWakeDurationMs is null. */
 export const DEFAULT_AVG_WAKE_MS = 45 * 1000

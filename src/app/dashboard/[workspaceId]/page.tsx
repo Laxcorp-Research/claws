@@ -1176,6 +1176,23 @@ export default function DashboardPage() {
           <>
             <p className="font-medium">This Claw is hibernating</p>
             <p className="mt-0.5 opacity-80">Agents are sleeping to save resources. They&apos;ll wake automatically for the next scheduled heartbeat, or you can wake them now.</p>
+            <p className="mt-1.5">
+              <button
+                type="button"
+                className="text-[11px] text-[var(--tx2)] underline underline-offset-2 hover:text-[var(--tx)]"
+                onClick={() => {
+                  router.replace(`/dashboard/${workspaceId}#always-on`)
+                  queueMicrotask(() => {
+                    const el = document.getElementById("always-on")
+                    if (el && typeof el.scrollIntoView === "function") {
+                      el.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                  })
+                }}
+              >
+                Enable Always on to skip hibernation
+              </button>
+            </p>
           </>
         ),
         actions: <Button variant="primary" size="xs" onClick={handleWakeNow}>Wake now</Button>,
@@ -1524,7 +1541,7 @@ export default function DashboardPage() {
                 />
               </div>
             </section>
-            <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Always on">
+            <section id="always-on" className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Always on">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-[12px] font-semibold text-[var(--tx)]">Always on — never hibernate (higher hosting cost)</h2>

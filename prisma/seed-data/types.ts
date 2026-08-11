@@ -62,6 +62,11 @@ export interface SeedTemplate {
   featured: boolean
   sortOrder: number
   legalDisclaimer?: string
+  /**
+   * When true, seed embeds recommendedAlwaysOn into workspaceSnapshot JSON
+   * so deploy UI can surface an Always-on recommendation (no Prisma column).
+   */
+  recommendedAlwaysOn?: boolean
   agents: SeedAgent[]
   connections: SeedConnection[]
   tools: SeedTool[]

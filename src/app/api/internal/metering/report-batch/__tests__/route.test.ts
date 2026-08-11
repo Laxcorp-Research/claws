@@ -51,12 +51,18 @@ describe("POST /api/internal/metering/report-batch — exhaustion after()", () =
               id: "ca-1",
               userId: "user-1",
               balanceCents: 5,
+              totalConsumedCents: 0,
               status: "ACTIVE",
             }),
             update: vi.fn().mockResolvedValue({}),
           },
           creditUsageRecord: {
+            findFirst: vi.fn().mockResolvedValue(null),
             createMany: vi.fn().mockResolvedValue({ count: 1 }),
+          },
+          activityLog: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: "al-1" }),
           },
         }
         await fn(tx as never)
@@ -104,12 +110,18 @@ describe("POST /api/internal/metering/report-batch — exhaustion after()", () =
               id: "ca-1",
               userId: "user-1",
               balanceCents: 500,
+              totalConsumedCents: 0,
               status: "ACTIVE",
             }),
             update: vi.fn().mockResolvedValue({}),
           },
           creditUsageRecord: {
+            findFirst: vi.fn().mockResolvedValue(null),
             createMany: vi.fn().mockResolvedValue({ count: 1 }),
+          },
+          activityLog: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: "al-1" }),
           },
         }
         await fn(tx as never)

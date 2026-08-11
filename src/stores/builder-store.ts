@@ -13,8 +13,16 @@ import {
   addEdge,
 } from "@xyflow/react"
 import { DEFAULT_MODEL } from "@/lib/models"
+import { resolvePickerHeartbeatSchedule } from "@/lib/builder/heartbeat-picker"
 import { evaluateConnectAttempt } from "@/lib/openclaw/builder-topology"
 import type { ConnectAttemptResult } from "@/lib/openclaw/builder-topology"
+
+export type HeartbeatScheduleState = {
+  frequency: string
+  time: string
+  /** Set when frequency is synthetic `custom` (MD / deployed cron windows). */
+  customWindowCount?: number | null
+}
 
 export type AgentRole = "ORCHESTRATOR" | "WORKER" | "CRITIC"
 
@@ -72,7 +80,7 @@ interface SavedState {
   edges: Edge<ConnectionEdgeData>[]
   workspaceName: string
   skills: SkillItem[]
-  heartbeatSchedule: { frequency: string; time: string }
+  heartbeatSchedule: HeartbeatScheduleState
   maxRevisionRounds: number
   deliveryMode: DeliveryModeUi
 }
@@ -98,7 +106,7 @@ interface BuilderState {
   leftPanelTab: "agents" | "skills"
 
   skills: SkillItem[]
-  heartbeatSchedule: { frequency: string; time: string }
+  heartbeatSchedule: HeartbeatScheduleState
 
   isDirty: boolean
   isSaving: boolean
@@ -134,7 +142,7 @@ interface BuilderState {
   updateAgent: (id: string, updates: Partial<AgentNodeData>) => void
   updateAgentProperty: (id: string, key: string, value: unknown) => void
   toggleSkill: (agentId: string, skillId: string) => void
-  setHeartbeatSchedule: (schedule: Partial<{ frequency: string; time: string }>) => void
+  setHeartbeatSchedule: (schedule: Partial<HeartbeatScheduleState>) => void
   addConnection: (data: { source: string; target: string; condition?: string }) => ConnectAttemptResult
   removeConnection: (id: string) => void
   updateConnection: (edgeId: string, updates: { source?: string; target?: string }) => void
@@ -170,7 +178,7 @@ function cloneState(
   edges: Edge<ConnectionEdgeData>[],
   name: string,
   skills: SkillItem[] = [],
-  heartbeatSchedule: { frequency: string; time: string } = { frequency: "off", time: "08:00" },
+  heartbeatSchedule: HeartbeatScheduleState = { frequency: "off", time: "08:00" },
   maxRevisionRounds = 3,
   deliveryMode: DeliveryModeUi = "APPROVAL_REQUIRED",
 ): SavedState {
@@ -190,7 +198,7 @@ function computeIsDirty(state: {
   edges: Edge<ConnectionEdgeData>[]
   workspaceName: string
   skills: SkillItem[]
-  heartbeatSchedule: { frequency: string; time: string }
+  heartbeatSchedule: HeartbeatScheduleState
   maxRevisionRounds: number
   deliveryMode: DeliveryModeUi
   lastSavedState: SavedState | null
@@ -252,7 +260,7 @@ interface DraftState {
   edges: Edge<ConnectionEdgeData>[]
   workspaceName: string
   skills: SkillItem[]
-  heartbeatSchedule?: { frequency: string; time: string }
+  heartbeatSchedule?: HeartbeatScheduleState
   timestamp: number
 }
 
@@ -709,12 +717,34 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         const name = (ws.name as string) || ""
 
         const orchestrator = agents.find((a: Record<string, unknown>) => a.role === "ORCHESTRATOR") as Record<string, unknown> | undefined
-        const savedFreq = orchestrator && typeof orchestrator.heartbeatFrequency === "string" ? (orchestrator.heartbeatFrequency as string) : null
-        const savedTime = orchestrator && typeof orchestrator.heartbeatTime === "string" ? (orchestrator.heartbeatTime as string) : null
-        const heartbeatSchedule = {
-          frequency: savedFreq || "off",
-          time: savedTime || "08:00",
-        }
+        const savedFreq =
+          orchestrator && typeof orchestrator.heartbeatFrequency === "string"
+            ? (orchestrator.heartbeatFrequency as string)
+            : null
+        const savedTime =
+          orchestrator && typeof orchestrator.heartbeatTime === "string"
+            ? (orchestrator.heartbeatTime as string)
+            : null
+        const heartbeatMd =
+          orchestrator && typeof orchestrator.heartbeatMd === "string"
+            ? (orchestrator.heartbeatMd as string)
+            : null
+        const containerState = ws.containerState as
+          | { heartbeatCronExpressions?: string | null }
+          | null
+          | undefined
+        const heartbeatCronExpressions =
+          containerState && typeof containerState.heartbeatCronExpressions === "string"
+            ? containerState.heartbeatCronExpressions
+            : null
+        // Armed via MD cron / deployed cron windows must surface as `custom`,
+        // never silent "Off" (savedFreq || "off" without detection is a lie).
+        const heartbeatSchedule = resolvePickerHeartbeatSchedule({
+          heartbeatFrequency: savedFreq,
+          heartbeatTime: savedTime,
+          heartbeatMd,
+          heartbeatCronExpressions,
+        })
 
         const maxRevisionRounds = typeof ws.maxRevisionRounds === "number" ? (ws.maxRevisionRounds as number) : 3
         const deliveryMode: DeliveryModeUi =
@@ -793,9 +823,14 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         const idMap = new Map<string, string>()
 
         const hbFreq = s.heartbeatSchedule.frequency
-        const hbPayload = hbFreq && hbFreq !== "off"
-          ? { heartbeatFrequency: hbFreq, heartbeatTime: hbFreq === "hourly" ? null : (s.heartbeatSchedule.time || null) }
-          : { heartbeatFrequency: null, heartbeatTime: null }
+        // Synthetic `custom` is picker-only — persist null so MD cron remains truth.
+        const hbPayload =
+          hbFreq && hbFreq !== "off" && hbFreq !== "custom"
+            ? {
+                heartbeatFrequency: hbFreq,
+                heartbeatTime: hbFreq === "hourly" ? null : s.heartbeatSchedule.time || null,
+              }
+            : { heartbeatFrequency: null, heartbeatTime: null }
 
         for (const node of s.nodes) {
           const d = node.data as AgentNodeData

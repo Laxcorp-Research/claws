@@ -35,6 +35,7 @@ const quantTrader: SeedTemplate = {
   agentCount: 7,
   featured: true,
   sortOrder: 1,
+  recommendedAlwaysOn: true,
   legalDisclaimer:
     "Not financial advice. For research and signal intelligence only. Past performance does not guarantee future results. All trading involves risk of loss.",
   agents: [

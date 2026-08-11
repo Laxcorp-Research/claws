@@ -78,15 +78,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
 
   const saved = readConfig(updated.channelConfigEncrypted)
 
-  // P1.1: first-time channel connect stamps channelsConnectedAt (fresh
-  // null-message claws stay protected from warmIdle for 24h).
+  // P1.1: channel connect → hasActiveChannels + first-connect stamp.
+  // RUNNING→WARM so warmIdle (not runningIdle) owns channel-connected claws.
+  // Do not clobber HIBERNATED / WAKING / STOPPED.
   if (hasConfiguredChannels(saved)) {
     await prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: { hasActiveChannels: true },
+    })
+    await prisma.containerState.updateMany({
       where: { workspaceId, channelsConnectedAt: null },
-      data: {
-        hasActiveChannels: true,
-        channelsConnectedAt: new Date(),
-      },
+      data: { channelsConnectedAt: new Date() },
+    })
+    await prisma.containerState.updateMany({
+      where: { workspaceId, containerPhase: "RUNNING" },
+      data: { containerPhase: "WARM" },
     })
   }
 
@@ -140,6 +146,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ w
         hasActiveChannels: false,
         channelsConnectedAt: null,
       },
+    })
+    // Last channel gone: WARM → RUNNING (leave HIBERNATED/WAKING/STOPPED alone).
+    await prisma.containerState.updateMany({
+      where: { workspaceId, containerPhase: "WARM" },
+      data: { containerPhase: "RUNNING" },
     })
   }
 

@@ -85,6 +85,9 @@ beforeEach(() => {
   afterCallbacks.length = 0
   mockHibernate.mockResolvedValue({ hibernated: true })
   mockWake.mockResolvedValue(undefined)
+  ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+    count: 0,
+  })
   prevCronSecret = process.env.CRON_SECRET
   process.env.CRON_SECRET = CRON_SECRET
   delete process.env.HIBERNATION_ENABLED
@@ -280,7 +283,8 @@ describe("hibernation cron — wake after() fan-out", () => {
 
   it("eligibility observability lists ineligible candidates (not silent skip)", async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date("2026-07-20T15:50:00.000Z"))
+    // 30m lead → deadline 15:30; 15:20 is still ineligible.
+    vi.setSystemTime(new Date("2026-07-20T15:20:00.000Z"))
 
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([])
@@ -298,8 +302,8 @@ describe("hibernation cron — wake after() fan-out", () => {
       workspaceId: "early",
       eligible: false,
       pastDue: false,
-      deadline: "2026-07-20T15:52:00.000Z",
-      leadMs: 8 * 60 * 1000,
+      deadline: "2026-07-20T15:30:00.000Z",
+      leadMs: 30 * 60 * 1000,
     })
     expect(mockAfter).not.toHaveBeenCalled()
     expect(mockWake).not.toHaveBeenCalled()
@@ -339,6 +343,30 @@ describe("hibernation cron — wake after() fan-out", () => {
     const src = readFileSync(ROUTE_SRC, "utf8")
     expect(src).toMatch(/export const maxDuration = 300/)
     expect(src).not.toMatch(/export const maxDuration = 55/)
+  })
+})
+
+describe("hibernation cron — RUNNING+channels → WARM heal", () => {
+  it("reconciles lagging RUNNING+hasActiveChannels before sleep predicates", async () => {
+    ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    const res = await callCron()
+    expect(res.status).toBe(200)
+    expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
+      where: { containerPhase: "RUNNING", hasActiveChannels: true },
+      data: { containerPhase: "WARM" },
+    })
+  })
+
+  it("MUTATION: drop RUNNING+channels heal → fixture stuck outside warmIdle", () => {
+    const src = readFileSync(ROUTE_SRC, "utf8")
+    expect(src).toContain('containerPhase: "RUNNING"')
+    expect(src).toContain("hasActiveChannels: true")
+    expect(src).toMatch(/healedToWarm|healed RUNNING\+channels/)
   })
 })
 

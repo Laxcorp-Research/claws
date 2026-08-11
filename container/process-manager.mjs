@@ -395,10 +395,26 @@ async function main() {
   // catch-up module, then fire one missed heartbeat if within CATCHUP_GRACE.
   // Every skip path ledgers heartbeat_catchup_skip (no silent no-op).
   // Non-blocking — never delays state-sync / steady-state loops.
+  // Ledger with retries — boot race vs activity reporter used to drop
+  // beyond-grace skips (silent no-op class on -11).
+  async function ledgerCatchupWithRetry(event) {
+    let last = { ok: false, reason: "not-attempted" };
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      last = await postActivityEvent(event);
+      if (last?.ok) return last;
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+    console.error(
+      `[process-manager] heartbeat catch-up ledger failed after retries:`,
+      JSON.stringify(last),
+    );
+    return last;
+  }
+
   void runHeartbeatCatchupOnBoot({
     dataDir: OPENCLAW_DATA_DIR,
     port: GATEWAY_PORT,
-    ledger: (event) => postActivityEvent(event),
+    ledger: (event) => ledgerCatchupWithRetry(event),
   })
     .then((result) => {
       console.log(

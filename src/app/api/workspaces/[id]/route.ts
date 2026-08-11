@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
+import { parseRecommendedAlwaysOn } from "@/lib/templates/recommended-always-on"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -18,11 +19,30 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     include: {
       agents: { include: { skills: { include: { skill: true } } }, orderBy: { createdAt: "asc" } },
       connections: true,
-      clawTemplate: { select: { name: true, slug: true, category: true } },
+      clawTemplate: {
+        select: { name: true, slug: true, category: true, workspaceSnapshot: true },
+      },
+      // Builder heartbeat picker needs deployed cron windows when frequency is unset.
+      containerState: { select: { heartbeatCronExpressions: true } },
     },
   })
 
-  return apiSuccess(workspace)
+  if (!workspace) return ERRORS.NOT_FOUND("Workspace")
+
+  // Strip heavy snapshot; expose only the Always-on recommendation bit for UI.
+  const { clawTemplate, ...rest } = workspace
+  const recommendedAlwaysOn = parseRecommendedAlwaysOn(clawTemplate?.workspaceSnapshot)
+  return apiSuccess({
+    ...rest,
+    clawTemplate: clawTemplate
+      ? {
+          name: clawTemplate.name,
+          slug: clawTemplate.slug,
+          category: clawTemplate.category,
+          recommendedAlwaysOn,
+        }
+      : null,
+  })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

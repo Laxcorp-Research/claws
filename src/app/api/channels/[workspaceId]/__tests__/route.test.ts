@@ -154,4 +154,70 @@ describe("/api/channels/[workspaceId]", () => {
     })
     expect(json.data.hasConfiguredChannels).toBe(false)
   })
+
+  it("POST connect sets hasActiveChannels and RUNNING→WARM", async () => {
+    ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      channelConfigEncrypted: `enc:${JSON.stringify(telegramConfig)}`,
+    })
+    const updateMany = prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>
+    updateMany.mockResolvedValue({ count: 1 })
+
+    const res = await POST(
+      req("POST", { channel: "telegram", config: { botToken: "123456789:telegram-secret-token" } }),
+      { params: Promise.resolve({ workspaceId: "ws-1" }) },
+    )
+    expect(res.status).toBe(200)
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws-1" },
+      data: { hasActiveChannels: true },
+    })
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws-1", containerPhase: "RUNNING" },
+      data: { containerPhase: "WARM" },
+    })
+  })
+
+  it("DELETE last channel clears hasActiveChannels and WARM→RUNNING", async () => {
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: ownedWorkspace(`enc:${JSON.stringify(telegramConfig)}`),
+    })
+    ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      channelConfigEncrypted: null,
+    })
+    const updateMany = prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>
+    updateMany.mockResolvedValue({ count: 1 })
+
+    const res = await DELETE(
+      req("DELETE", { channel: "telegram" }),
+      { params: Promise.resolve({ workspaceId: "ws-1" }) },
+    )
+    expect(res.status).toBe(200)
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws-1" },
+      data: {
+        hasActiveChannels: false,
+        channelsConnectedAt: null,
+      },
+    })
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws-1", containerPhase: "WARM" },
+      data: { containerPhase: "RUNNING" },
+    })
+  })
+
+  it("MUTATION: connect path without RUNNING→WARM flip fails", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/channels/[workspaceId]/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain('containerPhase: "RUNNING"')
+    expect(src).toContain('containerPhase: "WARM"')
+    // Must gate the flip on current RUNNING (not blind overwrite).
+    expect(src).toMatch(/where:\s*\{\s*workspaceId,\s*containerPhase:\s*"RUNNING"/)
+  })
 })
