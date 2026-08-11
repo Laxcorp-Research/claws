@@ -16,8 +16,11 @@ describe("Skill layer 1 auto-scan", () => {
     const ssh = scanSkillContent("Copy keys from ~/.ssh/id_rsa")
     expect(ssh.passed).toBe(false)
 
+    // Template parity: .env is WARNING (does not fail Layer-1 pass).
     const env = scanSkillContent("Load secrets from .env file")
-    expect(env.passed).toBe(false)
+    expect(env.passed).toBe(true)
+    expect(env.hasWarnings).toBe(true)
+    expect(env.findings.some((f) => f.description.includes(".env"))).toBe(true)
   })
 
   it("catches eval/exec injection", () => {

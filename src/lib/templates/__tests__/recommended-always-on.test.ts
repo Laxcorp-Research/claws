@@ -22,9 +22,14 @@ describe("recommendedAlwaysOn template metadata", () => {
     expect(parseRecommendedAlwaysOn(null)).toBe(false)
   })
 
-  it("MUTATION: seed.ts must embed recommendedAlwaysOn into workspaceSnapshot", () => {
-    const src = readFileSync(join(process.cwd(), "prisma/seed.ts"), "utf8")
-    expect(src).toContain("recommendedAlwaysOn")
-    expect(src).toContain("template.recommendedAlwaysOn === true")
+  it("MUTATION: seed uses shared snapshot builder that embeds recommendedAlwaysOn", () => {
+    const seed = readFileSync(join(process.cwd(), "prisma/seed.ts"), "utf8")
+    expect(seed).toContain("buildWorkspaceSnapshotFromSeedTemplate")
+    const builder = readFileSync(
+      join(process.cwd(), "src/lib/marketplace/workspace-snapshot.ts"),
+      "utf8",
+    )
+    expect(builder).toContain("recommendedAlwaysOn")
+    expect(builder).toContain("template.recommendedAlwaysOn === true")
   })
 })
