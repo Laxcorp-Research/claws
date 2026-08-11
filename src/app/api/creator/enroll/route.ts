@@ -2,8 +2,13 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import { isMarketplaceCreatorEnrollEnabled } from "@/lib/marketplace/feature-flags"
 
 export async function POST(request: NextRequest) {
+  if (!isMarketplaceCreatorEnrollEnabled()) {
+    return apiError("COMING_SOON", "Creator enrollment is coming soon", 403)
+  }
+
   const user = await getSessionUser()
   if (!user) return ERRORS.UNAUTHORIZED()
 

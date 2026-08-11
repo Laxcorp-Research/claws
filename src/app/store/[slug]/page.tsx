@@ -17,6 +17,7 @@ import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { getComplianceNotice } from "@/lib/compliance-notices"
 import { formatEstimatedMonthlyTotal } from "@/lib/marketplace/estimated-monthly-total"
+import { isMarketplaceCommunityPurchaseEnabled } from "@/lib/marketplace/feature-flags"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 
 interface TemplateAgent {
@@ -165,10 +166,16 @@ export default function TemplateDetailPage() {
     }
     if (!data) return
 
+    const t = data.template
+    const isCommunityPaid = !!t.creatorId && !t.isFree
+    if (isCommunityPaid && !isMarketplaceCommunityPurchaseEnabled()) {
+      setPurchaseError("Community purchases coming soon")
+      return
+    }
+
     setPurchasing(true)
     setPurchaseError(null)
     try {
-      const t = data.template
       let checkoutType = "claw_purchase"
       if (t.isFree) checkoutType = "free_template"
       else if (t.creatorId) checkoutType = "community_purchase"
@@ -317,18 +324,34 @@ export default function TemplateDetailPage() {
             ) : (
               <PriceDisplay price={template.price} isFree={template.isFree} />
             )}
-            <Button
-              size="lg"
-              className="mt-2.5"
-              onClick={handlePurchase}
-              loading={purchasing}
-            >
-              {!session?.user
-                ? "Sign in to buy"
-                : template.isFree || hasPurchased
-                  ? "Install"
-                  : "Buy"}
-            </Button>
+            {(() => {
+              const communityPaidGated =
+                !!template.creatorId &&
+                !template.isFree &&
+                !hasPurchased &&
+                !isMarketplaceCommunityPurchaseEnabled()
+              if (communityPaidGated) {
+                return (
+                  <Button size="lg" className="mt-2.5" disabled>
+                    Purchase coming soon
+                  </Button>
+                )
+              }
+              return (
+                <Button
+                  size="lg"
+                  className="mt-2.5"
+                  onClick={handlePurchase}
+                  loading={purchasing}
+                >
+                  {!session?.user
+                    ? "Sign in to buy"
+                    : template.isFree || hasPurchased
+                      ? "Install"
+                      : "Buy"}
+                </Button>
+              )
+            })()}
             {purchaseError && <p className="text-[10px] text-[var(--err)] mt-1">{purchaseError}</p>}
           </div>
         </div>

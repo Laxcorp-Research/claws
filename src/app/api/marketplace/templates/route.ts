@@ -12,6 +12,7 @@ import { log } from "@/lib/logger"
 import { searchTemplates } from "@/lib/marketplace/search"
 import { formatMarketplaceTemplateRow } from "@/lib/marketplace/format-marketplace-template"
 import { publicListingWhere } from "@/lib/marketplace/public-visibility"
+import { isMarketplacePublishEnabled } from "@/lib/marketplace/feature-flags"
 
 export const maxDuration = 30
 
@@ -165,6 +166,10 @@ const VALID_CATEGORIES: ClawCategory[] = ["MONEY_MAKING", "CREATOR", "BUSINESS_O
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isMarketplacePublishEnabled()) {
+      return apiError("COMING_SOON", "Template publishing is coming soon", 403)
+    }
+
     const user = await getSessionUser()
     if (!user) return ERRORS.UNAUTHORIZED()
 

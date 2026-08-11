@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { prismaMock } from '@/test/helpers/mock-prisma';
@@ -190,6 +190,24 @@ describe('POST /api/dodo-payments/checkout', () => {
   });
 
   describe('community_purchase', () => {
+    beforeEach(() => {
+      process.env.MARKETPLACE_COMMUNITY_PURCHASE_ENABLED = 'true';
+    });
+    afterEach(() => {
+      delete process.env.MARKETPLACE_COMMUNITY_PURCHASE_ENABLED;
+    });
+
+    it('returns COMING_SOON when community purchase flag is OFF', async () => {
+      delete process.env.MARKETPLACE_COMMUNITY_PURCHASE_ENABLED;
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+
+      const res = await callCheckout({ type: 'community_purchase', templateId: 'tpl-comm' });
+      const json = await res.json();
+      expect(res.status).toBe(403);
+      expect(json.error?.code).toBe('COMING_SOON');
+    });
+
     it('creates checkout for community template', async () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);

@@ -9,8 +9,14 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { StatCard } from "@/components/ui/stat-card"
 import { formatCurrencyRounded } from "@/lib/utils/format"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
+import { MarketplaceComingSoonPanel } from "@/components/marketplace/coming-soon-panel"
+import { Badge } from "@/components/ui/badge"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
+import {
+  isMarketplaceCreatorEnrollEnabled,
+  isMarketplacePublishEnabled,
+} from "@/lib/marketplace/feature-flags"
 import type { TrustTier } from "@/types/marketplace"
 
 interface CreatorProfile {
@@ -189,6 +195,15 @@ export function CreatorDashboard() {
     return <div className="text-center py-10 text-[var(--tx2)] text-[12px]">Loading...</div>
   }
 
+  if (enrolled === false && !isMarketplaceCreatorEnrollEnabled()) {
+    return (
+      <MarketplaceComingSoonPanel
+        title="Creator enrollment coming soon"
+        description="Publishing on the Claws marketplace opens when the creator economy arcs ship. Existing creator profiles are unchanged."
+      />
+    )
+  }
+
   if (enrolled === false && !showEnrollForm) {
     return (
       <div className="border border-[var(--bd)] rounded-[12px] p-8 text-center max-w-md mx-auto">
@@ -287,9 +302,13 @@ export function CreatorDashboard() {
       <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-[13px] font-semibold text-[var(--tx)]">My Templates</h3>
-          <Link href="/publish/template">
-            <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
-          </Link>
+          {isMarketplacePublishEnabled() ? (
+            <Link href="/publish/template">
+              <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
+            </Link>
+          ) : (
+            <Badge variant="neutral">Coming soon</Badge>
+          )}
         </div>
         {templates.length === 0 ? (
           <p className="text-[12px] text-[var(--tx3)]">No templates published yet. Publish your first!</p>
@@ -328,9 +347,13 @@ export function CreatorDashboard() {
       <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-[13px] font-semibold text-[var(--tx)]">My Skills</h3>
-          <Link href="/publish/skill">
-            <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
-          </Link>
+          {isMarketplacePublishEnabled() ? (
+            <Link href="/publish/skill">
+              <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
+            </Link>
+          ) : (
+            <Badge variant="neutral">Coming soon</Badge>
+          )}
         </div>
         {skills.length === 0 ? (
           <p className="text-[12px] text-[var(--tx3)]">No skills published yet. Publish your first!</p>

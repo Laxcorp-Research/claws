@@ -10,6 +10,7 @@ import { sanitizeText, sanitizeMarkdown } from "@/lib/security/sanitize"
 import { log } from "@/lib/logger"
 import { searchSkills } from "@/lib/marketplace/search"
 import { publicListingWhere } from "@/lib/marketplace/public-visibility"
+import { isMarketplacePublishEnabled } from "@/lib/marketplace/feature-flags"
 
 export const maxDuration = 30
 
@@ -131,6 +132,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isMarketplacePublishEnabled()) {
+      return apiError("COMING_SOON", "Skill publishing is coming soon", 403)
+    }
+
     const user = await getSessionUser()
     if (!user) return ERRORS.UNAUTHORIZED()
 

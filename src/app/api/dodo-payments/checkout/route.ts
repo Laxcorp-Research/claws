@@ -9,6 +9,7 @@ import {
 } from "@/lib/workspace-from-template"
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
+import { isMarketplaceCommunityPurchaseEnabled } from "@/lib/marketplace/feature-flags"
 
 export async function POST(req: NextRequest) {
   const sessionUser = await getSessionUser()
@@ -129,6 +130,10 @@ async function handleCommunityPurchase(
   body: Record<string, unknown>,
   user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
 ) {
+  if (!isMarketplaceCommunityPurchaseEnabled()) {
+    return apiError("COMING_SOON", "Community template purchases are coming soon", 403)
+  }
+
   const { templateId } = body as { templateId?: string }
   if (!templateId) return ERRORS.VALIDATION("templateId required")
 
