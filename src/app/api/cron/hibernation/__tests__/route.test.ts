@@ -283,7 +283,8 @@ describe("hibernation cron — wake after() fan-out", () => {
 
   it("eligibility observability lists ineligible candidates (not silent skip)", async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date("2026-07-20T15:50:00.000Z"))
+    // 30m lead → deadline 15:30; 15:20 is still ineligible.
+    vi.setSystemTime(new Date("2026-07-20T15:20:00.000Z"))
 
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([])
@@ -301,8 +302,8 @@ describe("hibernation cron — wake after() fan-out", () => {
       workspaceId: "early",
       eligible: false,
       pastDue: false,
-      deadline: "2026-07-20T15:52:00.000Z",
-      leadMs: 8 * 60 * 1000,
+      deadline: "2026-07-20T15:30:00.000Z",
+      leadMs: 30 * 60 * 1000,
     })
     expect(mockAfter).not.toHaveBeenCalled()
     expect(mockWake).not.toHaveBeenCalled()

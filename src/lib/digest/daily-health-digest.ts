@@ -119,9 +119,12 @@ export function computeDigestStats(args: {
     ) {
       heartbeatsMissedLedgered++
     }
+    // Counts hibernate + wake-ack ledger rows (not paired units). Missing
+    // hibernation_complete ledgers made real naps report cycles=0.
     if (
       /Hibernat/i.test(row.action) ||
       meta.includes("hibernation") ||
+      meta.includes('"eventKind":"hibernation_complete"') ||
       meta.includes('"eventKind":"wake_ack_sent"')
     ) {
       sleepWakeCycles++

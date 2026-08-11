@@ -140,6 +140,30 @@ describe("computeDigestStats", () => {
     expect(stats.errorsAgent24h).toBe(2)
     expect(stats.errorsExternal24h).toBe(1)
   })
+
+  it("counts hibernation_complete ledger as a sleep/wake cycle (not pair-only)", () => {
+    const stats = computeDigestStats({
+      costCents24h: 0,
+      strandOpen: false,
+      rows: [
+        {
+          actionType: "SYSTEM",
+          action: "Workspace hibernated",
+          metadata: '{"eventKind":"hibernation_complete","nextHeartbeatAt":"2026-08-11T08:00:00.000Z"}',
+        },
+      ],
+    })
+    expect(stats.sleepWakeCycles).toBe(1)
+  })
+
+  it("MUTATION: manager must ledger hibernation_complete on success", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/hibernation/manager.ts"),
+      "utf8",
+    )
+    expect(src).toContain("hibernation_complete")
+    expect(src).toContain("Workspace hibernated")
+  })
 })
 
 describe("daily-digest route contract", () => {
