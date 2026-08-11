@@ -13,6 +13,7 @@ import { searchTemplates } from "@/lib/marketplace/search"
 import { formatMarketplaceTemplateRow } from "@/lib/marketplace/format-marketplace-template"
 import { publicListingWhere } from "@/lib/marketplace/public-visibility"
 import { isMarketplacePublishEnabled } from "@/lib/marketplace/feature-flags"
+import { buildWorkspaceSnapshotFromWorkspace } from "@/lib/marketplace/workspace-snapshot"
 
 export const maxDuration = 30
 
@@ -235,52 +236,7 @@ export async function POST(request: NextRequest) {
       return ERRORS.VALIDATION("Workspace has no agents. Add agents in the builder before publishing.")
     }
 
-    const workspaceSnapshot = JSON.stringify({
-      agents: workspace.agents.map((a) => ({
-        name: a.name,
-        agentSlug: a.agentSlug,
-        role: a.role,
-        roleDescription: a.roleDescription,
-        description: a.description,
-        color: a.color,
-        icon: a.icon,
-        soulMd: a.soulMd,
-        agentsMd: a.agentsMd,
-        heartbeatMd: a.heartbeatMd,
-        heartbeatFrequency: a.heartbeatFrequency,
-        heartbeatTime: a.heartbeatTime,
-        toolsMd: a.toolsMd,
-        userMd: a.userMd,
-        identityMd: a.identityMd,
-        model: a.model,
-        fallbackModel: a.fallbackModel,
-        reportsTo: a.reportsTo,
-        maxRetries: a.maxRetries,
-        qualityThreshold: a.qualityThreshold,
-        positionX: a.positionX,
-        positionY: a.positionY,
-        skills: a.skills.map((s) => ({
-          slug: s.skill.slug,
-          name: s.skill.name,
-          configOverrides: s.configOverrides,
-        })),
-      })),
-      connections: workspace.connections.map((c) => ({
-        sourceAgentId: c.sourceAgentId,
-        targetAgentId: c.targetAgentId,
-        sourceSlug: workspace.agents.find((a) => a.id === c.sourceAgentId)?.agentSlug,
-        targetSlug: workspace.agents.find((a) => a.id === c.targetAgentId)?.agentSlug,
-        condition: c.condition,
-        conditionExpr: c.conditionExpr,
-        label: c.label,
-      })),
-      tools: workspace.toolConnections.map((t) => ({
-        slug: t.toolSlug,
-        name: t.displayName,
-        connectionType: t.connectionType,
-        required: true,
-      })),
-    })
+    const workspaceSnapshot = buildWorkspaceSnapshotFromWorkspace(workspace)
 
     const parsedSnapshot = JSON.parse(workspaceSnapshot) as Record<string, unknown>
     const skillCheck = await validateSkillDependencies(parsedSnapshot)

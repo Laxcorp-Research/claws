@@ -664,6 +664,12 @@ model ClawTemplate {
 
   workspaceSnapshot String @db.Text
 
+  /// PR-2 republish: pending snapshot stays off-store until admin approve.
+  /// Live workspaceSnapshot + isPublished stay public while this is set.
+  pendingWorkspaceSnapshot String?   @db.Text
+  pendingVersion           Int?
+  pendingSubmittedAt       DateTime?
+
   purchaseCount Int @default(0)
   installCount  Int @default(0)
   avgRating     Float?
@@ -683,6 +689,7 @@ model ClawTemplate {
   @@index([isPublished])
   @@index([creatorId])
   @@index([installCount])
+  @@index([pendingSubmittedAt])
 }
 
 enum ClawCategory {
