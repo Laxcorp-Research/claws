@@ -1,11 +1,16 @@
 /**
- * -12 catch-up-beat-on-boot (ledger-RETRY over -11).
+ * -13 catch-up-beat-on-boot (croner loader + no-throw ledger over -12).
  *
  * Boot order: wait for jobs file readable AND gateway healthy (bounded wait,
  * same poll pattern as process-manager waitForProxyHealth / -9 rebuild-index
  * readiness) BEFORE the catch-up decision. Every exit path ledgers a reason
  * (eventKind=heartbeat_catchup_skip) or fires the beat — silent no-ops die here.
  * process-manager wraps the ledger with retries (boot race vs activity reporter).
+ *
+ * -12 stdout ground truth (fixture v72): catch-up invoked but threw
+ * "cron-parser unavailable" before any finishSkip — OpenClaw base ships
+ * `croner`, not `cron-parser`. -13 loads croner via createRequire(/app) and
+ * never exits the decision path without a ledger row.
  *
  * After readiness: if the most recent heartbeat cron moment is in the past
  * within CATCHUP_GRACE, fire ONE immediate cron.run (force). OpenClaw's
@@ -16,13 +21,14 @@
 
 import fs from "node:fs"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { pathToFileURL } from "node:url"
 
 /** Default 30m — covers observed ~19.5m GH late-wake with margin. */
 export const DEFAULT_CATCHUP_GRACE_MS = 30 * 60 * 1000
 
-/** Marker logged / stamped so -12 boots are distinguishable in telemetry. */
-export const CATCHUP_OVERLAY_MARKER = "catchup-v12"
+/** Marker logged / stamped so -13 boots are distinguishable in telemetry. */
+export const CATCHUP_OVERLAY_MARKER = "catchup-v13"
 
 export const HEARTBEAT_CATCHUP_SKIP_EVENT_KIND = "heartbeat_catchup_skip"
 
@@ -65,36 +71,119 @@ export function extractCronExpr(job) {
 }
 
 /**
- * Load cron-parser from the OpenClaw app tree (image) or package resolution (tests).
+ * Adapt OpenClaw's `croner` to the cron-parser CronExpressionParser shape
+ * used by lastExpectedHeartbeatFire / nextFireAfter (prev/next → toDate()).
+ * prev() is strictly before currentDate (cron-parser semantics).
+ */
+export function cronerAsCronExpressionParser(Cron) {
+  return {
+    parse(expr, opts = {}) {
+      const currentDate =
+        opts.currentDate instanceof Date
+          ? opts.currentDate
+          : new Date(opts.currentDate ?? Date.now())
+      const tz = typeof opts.tz === "string" ? opts.tz : "UTC"
+      const cron = new Cron(expr, { timezone: tz })
+      return {
+        prev() {
+          // croner previousRuns can skip a fire inside the same second;
+          // probe +1s then keep only runs strictly before currentDate.
+          const exclusiveEnd = new Date(currentDate.getTime() - 1)
+          const probe = new Date(exclusiveEnd.getTime() + 1000)
+          const runs = cron.previousRuns(5, probe)
+          const d = runs.find((x) => x.getTime() <= exclusiveEnd.getTime())
+          if (!(d instanceof Date)) {
+            throw new Error("croner: no previous run")
+          }
+          return { toDate: () => d }
+        },
+        next() {
+          let d = cron.nextRun(currentDate)
+          if (d instanceof Date && d.getTime() <= currentDate.getTime()) {
+            d = cron.nextRun(new Date(currentDate.getTime() + 1))
+          }
+          if (!(d instanceof Date)) {
+            throw new Error("croner: no next run")
+          }
+          return { toDate: () => d }
+        },
+      }
+    },
+  }
+}
+
+function asCronExpressionParser(mod) {
+  if (!mod) return null
+  if (mod.CronExpressionParser || mod.default?.CronExpressionParser) {
+    return mod.CronExpressionParser || mod.default.CronExpressionParser
+  }
+  if (typeof mod.parseExpression === "function") {
+    return {
+      parse: (expr, opts) => ({
+        prev: () => mod.parseExpression(expr, opts).prev(),
+        next: () => mod.parseExpression(expr, opts).next(),
+      }),
+    }
+  }
+  // croner default export shape: { Cron }
+  const Cron = mod.Cron || mod.default?.Cron
+  if (typeof Cron === "function") {
+    return cronerAsCronExpressionParser(Cron)
+  }
+  return null
+}
+
+/**
+ * Load a CronExpressionParser-compatible API.
+ * Prefer cron-parser (repo tests / future vendor); fall back to OpenClaw's
+ * bundled `croner` via createRequire("/app/package.json").
+ * Returns null when nothing loads — callers MUST ledger (no throw).
+ * MUTATION: throw here again → silent catch in process-manager (class C).
  */
 export async function loadCronParser() {
-  const candidates = [
+  const fileCandidates = [
     "/app/node_modules/cron-parser/dist/index.js",
     "/app/node_modules/cron-parser/lib/index.js",
-    "cron-parser",
   ]
-  for (const c of candidates) {
+  for (const c of fileCandidates) {
     try {
-      if (c.startsWith("/") && !fs.existsSync(c)) continue
-      const mod = c.startsWith("/")
-        ? await import(pathToFileURL(c).href)
-        : await import(c)
-      if (mod?.CronExpressionParser || mod?.default?.CronExpressionParser) {
-        return mod.CronExpressionParser || mod.default.CronExpressionParser
-      }
-      if (typeof mod?.parseExpression === "function") {
-        return {
-          parse: (expr, opts) => ({
-            prev: () => mod.parseExpression(expr, opts).prev(),
-            next: () => mod.parseExpression(expr, opts).next(),
-          }),
-        }
-      }
+      if (!fs.existsSync(c)) continue
+      const mod = await import(pathToFileURL(c).href)
+      const parser = asCronExpressionParser(mod)
+      if (parser) return parser
     } catch {
       // try next
     }
   }
-  throw new Error("cron-parser unavailable for heartbeat catch-up")
+
+  for (const spec of ["cron-parser", "croner"]) {
+    try {
+      const mod = await import(spec)
+      const parser = asCronExpressionParser(mod)
+      if (parser) return parser
+    } catch {
+      // try next
+    }
+  }
+
+  // Image reality: process-manager lives under /usr/local/bin; bare
+  // import("croner") does not walk /app/node_modules. createRequire does.
+  try {
+    const require = createRequire("/app/package.json")
+    for (const spec of ["cron-parser", "croner"]) {
+      try {
+        const mod = require(spec)
+        const parser = asCronExpressionParser(mod)
+        if (parser) return parser
+      } catch {
+        // try next
+      }
+    }
+  } catch {
+    // no /app package.json
+  }
+
+  return null
 }
 
 export function cronJobsFilePath(dataDir) {
@@ -154,6 +243,9 @@ export function readCronJobsFile(dataDir) {
  */
 export async function lastExpectedHeartbeatFire(jobs, now, CronExpressionParser) {
   const Parser = CronExpressionParser || (await loadCronParser())
+  if (!Parser) {
+    throw new Error("cron-parser unavailable for heartbeat catch-up")
+  }
   let best = null
   for (const job of jobs) {
     if (!isHeartbeatCronJob(job)) continue
@@ -179,6 +271,7 @@ export async function lastExpectedHeartbeatFire(jobs, now, CronExpressionParser)
 /** Next fire strictly after `from` for a single job. */
 export async function nextFireAfter(job, from, CronExpressionParser) {
   const Parser = CronExpressionParser || (await loadCronParser())
+  if (!Parser) return null
   const cron = extractCronExpr(job)
   if (!cron) return null
   try {
@@ -320,7 +413,7 @@ function skipResult(reason, fields = {}) {
  * Does not throw — callers log failures.
  *
  * Exit reasons (spec): disabled | no-jobs | gateway-unhealthy | beyond-grace |
- * no-due-job | rpc-fail | catchup-fired
+ * no-due-job | rpc-fail | cron-parser-unavailable | catchup-fired
  */
 export async function runHeartbeatCatchupOnBoot(args) {
   const {
@@ -330,6 +423,7 @@ export async function runHeartbeatCatchupOnBoot(args) {
     now = new Date(),
     fetchImpl = globalThis.fetch,
     CronExpressionParser,
+    loadCronParser: loadCronParserImpl = loadCronParser,
     enabled = env.CLAWS_HEARTBEAT_CATCHUP_DISABLED !== "true",
     ledger = null,
     jobsReadyTimeoutMs = DEFAULT_JOBS_READY_TIMEOUT_MS,
@@ -350,119 +444,140 @@ export async function runHeartbeatCatchupOnBoot(args) {
     return skipResult(reason, { graceMs, ...fields })
   }
 
-  if (!enabled) {
-    return finishSkip("disabled", { expectedAt: null })
-  }
+  try {
+    if (!enabled) {
+      return await finishSkip("disabled", { expectedAt: null })
+    }
 
-  // Boot order #1: jobs file readable (bounded).
-  const jobsReady = await waitForCronJobsReadable({
-    dataDir,
-    timeoutMs: jobsReadyTimeoutMs,
-    sleep,
-  })
-  if (!jobsReady) {
-    return finishSkip("no-jobs", { expectedAt: null })
-  }
-
-  const token = readGatewayToken(env, dataDir)
-  if (!token) {
-    return finishSkip("gateway-unhealthy", {
-      expectedAt: null,
-      extra: { detail: "no-gateway-token" },
+    // Boot order #1: jobs file readable (bounded).
+    const jobsReady = await waitForCronJobsReadable({
+      dataDir,
+      timeoutMs: jobsReadyTimeoutMs,
+      sleep,
     })
-  }
+    if (!jobsReady) {
+      return await finishSkip("no-jobs", { expectedAt: null })
+    }
 
-  // Boot order #2: gateway healthy (bounded) BEFORE catch-up decision.
-  const healthy = await waitForGatewayHealth({
-    port,
-    token,
-    timeoutMs: gatewayReadyTimeoutMs,
-    fetchImpl,
-  })
-  if (!healthy) {
-    return finishSkip("gateway-unhealthy", { expectedAt: null })
-  }
+    const token = readGatewayToken(env, dataDir)
+    if (!token) {
+      return await finishSkip("gateway-unhealthy", {
+        expectedAt: null,
+        extra: { detail: "no-gateway-token" },
+      })
+    }
 
-  const jobs = readCronJobsFile(dataDir)
-  if (jobs.length === 0) {
-    return finishSkip("no-jobs", { expectedAt: null })
-  }
-
-  const last = await lastExpectedHeartbeatFire(jobs, now, CronExpressionParser)
-  const expectedAt = last?.expectedAt ?? null
-  const job = last?.job ?? null
-
-  if (!expectedAt) {
-    return finishSkip("no-due-job", { expectedAt: null })
-  }
-
-  if (expectedAt.getTime() >= now.getTime()) {
-    return finishSkip("no-due-job", {
-      expectedAt: expectedAt.toISOString(),
+    // Boot order #2: gateway healthy (bounded) BEFORE catch-up decision.
+    const healthy = await waitForGatewayHealth({
+      port,
+      token,
+      timeoutMs: gatewayReadyTimeoutMs,
+      fetchImpl,
     })
-  }
+    if (!healthy) {
+      return await finishSkip("gateway-unhealthy", { expectedAt: null })
+    }
 
-  const age = now.getTime() - expectedAt.getTime()
-  if (age > graceMs) {
-    return finishSkip("beyond-grace", {
-      expectedAt: expectedAt.toISOString(),
+    const jobs = readCronJobsFile(dataDir)
+    if (jobs.length === 0) {
+      return await finishSkip("no-jobs", { expectedAt: null })
+    }
+
+    // Resolve parser before decision — never throw past finishSkip (-12 class C).
+    const Parser = CronExpressionParser || (await loadCronParserImpl())
+    if (!Parser) {
+      return await finishSkip("cron-parser-unavailable", {
+        expectedAt: null,
+        extra: { detail: "no cron-parser or croner in image resolve path" },
+      })
+    }
+
+    const last = await lastExpectedHeartbeatFire(jobs, now, Parser)
+    const expectedAt = last?.expectedAt ?? null
+    const job = last?.job ?? null
+
+    if (!expectedAt) {
+      return await finishSkip("no-due-job", { expectedAt: null })
+    }
+
+    if (expectedAt.getTime() >= now.getTime()) {
+      return await finishSkip("no-due-job", {
+        expectedAt: expectedAt.toISOString(),
+      })
+    }
+
+    const age = now.getTime() - expectedAt.getTime()
+    if (age > graceMs) {
+      return await finishSkip("beyond-grace", {
+        expectedAt: expectedAt.toISOString(),
+      })
+    }
+
+    if (
+      !shouldCatchUpBeat({
+        enabled: true,
+        expectedAt,
+        nowMs: now.getTime(),
+        graceMs,
+      })
+    ) {
+      return await finishSkip("no-due-job", {
+        expectedAt: expectedAt.toISOString(),
+      })
+    }
+
+    const jobId = typeof job?.id === "string" ? job.id : null
+    if (!jobId) {
+      return await finishSkip("no-due-job", {
+        expectedAt: expectedAt.toISOString(),
+        extra: { detail: "no-job-id" },
+      })
+    }
+
+    const rpc = await fireCatchupCronRun({
+      port,
+      token,
+      jobId,
+      fetchImpl,
     })
-  }
 
-  if (
-    !shouldCatchUpBeat({
-      enabled: true,
-      expectedAt,
-      nowMs: now.getTime(),
-      graceMs,
-    })
-  ) {
-    return finishSkip("no-due-job", {
-      expectedAt: expectedAt.toISOString(),
-    })
-  }
+    const ok =
+      rpc.httpStatus >= 200 && rpc.httpStatus < 300 && rpc.body?.ok !== false
+    if (!ok) {
+      return await finishSkip("rpc-fail", {
+        expectedAt: expectedAt.toISOString(),
+        jobId,
+        extra: { httpStatus: rpc.httpStatus },
+        rpc,
+      })
+    }
 
-  const jobId = typeof job?.id === "string" ? job.id : null
-  if (!jobId) {
-    return finishSkip("no-due-job", {
-      expectedAt: expectedAt.toISOString(),
-      extra: { detail: "no-job-id" },
-    })
-  }
+    const nextAt = await nextFireAfter(job, now, Parser)
 
-  const rpc = await fireCatchupCronRun({
-    port,
-    token,
-    jobId,
-    fetchImpl,
-  })
-
-  const ok =
-    rpc.httpStatus >= 200 && rpc.httpStatus < 300 && rpc.body?.ok !== false
-  if (!ok) {
-    return finishSkip("rpc-fail", {
+    return {
+      ran: true,
+      reason: "catchup-fired",
+      marker: CATCHUP_OVERLAY_MARKER,
       expectedAt: expectedAt.toISOString(),
       jobId,
-      extra: { httpStatus: rpc.httpStatus },
+      graceMs,
+      nextFireAt: nextAt?.toISOString() ?? null,
       rpc,
+      // Contract: exactly one force run; next slot is the following occurrence.
+      evidenceShape: {
+        type: "HEARTBEAT",
+        action: "Heartbeat tick",
+      },
+    }
+  } catch (err) {
+    // Last-resort ledger — closes the -12 throw→console.error silence.
+    const message = err instanceof Error ? err.message : String(err)
+    const reason = /cron-parser unavailable|croner:/i.test(message)
+      ? "cron-parser-unavailable"
+      : "rpc-fail"
+    return finishSkip(reason, {
+      expectedAt: null,
+      extra: { detail: message.slice(0, 300) },
     })
-  }
-
-  const nextAt = await nextFireAfter(job, now, CronExpressionParser)
-
-  return {
-    ran: true,
-    reason: "catchup-fired",
-    marker: CATCHUP_OVERLAY_MARKER,
-    expectedAt: expectedAt.toISOString(),
-    jobId,
-    graceMs,
-    nextFireAt: nextAt?.toISOString() ?? null,
-    rpc,
-    // Contract: exactly one force run; next slot is the following occurrence.
-    evidenceShape: {
-      type: "HEARTBEAT",
-      action: "Heartbeat tick",
-    },
   }
 }

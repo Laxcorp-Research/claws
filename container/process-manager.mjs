@@ -391,12 +391,14 @@ async function main() {
 
   spawnGateway();
 
-  // -12 catch-up-beat: wait jobs-readable + gateway healthy inside the
+  // -13 catch-up-beat: wait jobs-readable + gateway healthy inside the
   // catch-up module, then fire one missed heartbeat if within CATCHUP_GRACE.
   // Every skip path ledgers heartbeat_catchup_skip (no silent no-op).
   // Non-blocking — never delays state-sync / steady-state loops.
   // Ledger with retries — boot race vs activity reporter used to drop
   // beyond-grace skips (silent no-op class on -11; receipt #2 Aug-11 09:42).
+  // -13: module loads croner from /app (base has no cron-parser); catch-up
+  // itself ledgers on load failure — this .catch is last-resort only.
   async function ledgerCatchupWithRetry(event) {
     let last = { ok: false, reason: "not-attempted" };
     for (let attempt = 1; attempt <= 4; attempt++) {
@@ -428,12 +430,37 @@ async function main() {
         }),
       );
     })
-    .catch((err) => {
+    .catch(async (err) => {
+      const message = err instanceof Error ? err.message : String(err);
       console.error(
-        `[process-manager] heartbeat catch-up failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[process-manager] heartbeat catch-up failed: ${message}`,
       );
+      // Last-resort ledger — -12 threw before finishSkip and only logged here.
+      try {
+        await ledgerCatchupWithRetry({
+          type: 'ERROR',
+          timestamp: new Date().toISOString(),
+          agentId: null,
+          runId: null,
+          sessionKey: null,
+          channelId: null,
+          action: `Heartbeat catch-up skipped: cron-parser-unavailable`,
+          detail: `marker=${CATCHUP_OVERLAY_MARKER} reason=cron-parser-unavailable`,
+          metadata: {
+            eventKind: 'heartbeat_catchup_skip',
+            reason: 'cron-parser-unavailable',
+            marker: CATCHUP_OVERLAY_MARKER,
+            expectedAt: null,
+            graceMs: null,
+            detail: message.slice(0, 300),
+          },
+        });
+      } catch (ledgerErr) {
+        console.error(
+          `[process-manager] heartbeat catch-up last-resort ledger failed:`,
+          ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+        );
+      }
     });
 
   // PR2 (2026-04-28): initial sync delay reduced 2min → 30sec. With state

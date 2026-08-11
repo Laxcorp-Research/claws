@@ -4,7 +4,7 @@ FROM ${BASE_IMAGE}
 # -8 emission-version: bake overlay source SHA (hash of docker/+container/
 # at image build) so the reporter can emit it on boot. Workflow passes
 # CLAWS_OVERLAY_SHA=steps.overlay.outputs.sha.
-# -12: catch-up skip-ledger RETRY in process-manager (catchup-v12).
+# -13: catch-up loads OpenClaw `croner` (base has no cron-parser); catchup-v13.
 ARG CLAWS_OVERLAY_SHA=
 ENV CLAWS_OVERLAY_SHA=${CLAWS_OVERLAY_SHA}
 
