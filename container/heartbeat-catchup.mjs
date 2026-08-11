@@ -1,10 +1,11 @@
 /**
- * -11 catch-up-beat-on-boot (hardened from -10).
+ * -12 catch-up-beat-on-boot (ledger-RETRY over -11).
  *
  * Boot order: wait for jobs file readable AND gateway healthy (bounded wait,
  * same poll pattern as process-manager waitForProxyHealth / -9 rebuild-index
  * readiness) BEFORE the catch-up decision. Every exit path ledgers a reason
  * (eventKind=heartbeat_catchup_skip) or fires the beat — silent no-ops die here.
+ * process-manager wraps the ledger with retries (boot race vs activity reporter).
  *
  * After readiness: if the most recent heartbeat cron moment is in the past
  * within CATCHUP_GRACE, fire ONE immediate cron.run (force). OpenClaw's
@@ -20,8 +21,8 @@ import { pathToFileURL } from "node:url"
 /** Default 30m — covers observed ~19.5m GH late-wake with margin. */
 export const DEFAULT_CATCHUP_GRACE_MS = 30 * 60 * 1000
 
-/** Marker logged / stamped so -11 boots are distinguishable in telemetry. */
-export const CATCHUP_OVERLAY_MARKER = "catchup-v11"
+/** Marker logged / stamped so -12 boots are distinguishable in telemetry. */
+export const CATCHUP_OVERLAY_MARKER = "catchup-v12"
 
 export const HEARTBEAT_CATCHUP_SKIP_EVENT_KIND = "heartbeat_catchup_skip"
 

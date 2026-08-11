@@ -69,7 +69,7 @@ describe("heartbeat catch-up (-11)", () => {
     return { fetchImpl, calls }
   }
 
-  it("in-grace boot fires exactly once (catchup-v11)", async () => {
+  it("in-grace boot fires exactly once (catchup-v12)", async () => {
     writeJobs([dailyJob])
     const now = new Date("2026-07-24T08:10:00.000Z")
     const { fetchImpl, calls } = healthyFetch()
@@ -88,7 +88,7 @@ describe("heartbeat catch-up (-11)", () => {
 
     expect(result.ran).toBe(true)
     expect(result.reason).toBe("catchup-fired")
-    expect(result.marker).toBe("catchup-v11")
+    expect(result.marker).toBe("catchup-v12")
     expect(result.expectedAt).toBe("2026-07-24T08:00:00.000Z")
     expect(result.jobId).toBe(dailyJob.id)
     expect(result.nextFireAt).toBe("2026-07-25T08:00:00.000Z")
@@ -198,7 +198,7 @@ describe("heartbeat catch-up (-11)", () => {
       const event = calls[0]![0]!
       expect(event.metadata.eventKind).toBe("heartbeat_catchup_skip")
       expect(event.metadata.reason).toBe(c.reason)
-      expect(event.metadata.marker).toBe("catchup-v11")
+      expect(event.metadata.marker).toBe("catchup-v12")
       if (dir) {
         fs.rmSync(dir, { recursive: true, force: true })
         dir = ""
@@ -214,6 +214,9 @@ describe("heartbeat catch-up (-11)", () => {
     expect(pm).toContain("runHeartbeatCatchupOnBoot")
     expect(pm).toContain("CATCHUP_OVERLAY_MARKER")
     expect(pm).toContain("ledger:")
+    // -12: ledger RETRY closes silent no-op (boot race vs activity reporter).
+    expect(pm).toContain("ledgerCatchupWithRetry")
+    expect(pm).toMatch(/attempt <= 4/)
 
     const dockerfile = readFileSync(
       path.join(process.cwd(), "docker/Dockerfile"),
@@ -221,7 +224,7 @@ describe("heartbeat catch-up (-11)", () => {
     )
     expect(dockerfile).toContain("heartbeat-catchup.mjs")
     expect(dockerfile).toContain("thinking-signature-heal.mjs")
-    expect(dockerfile).toContain("catchup-v11")
+    expect(dockerfile).toContain("catchup-v12")
 
     const catchupSrc = readFileSync(
       path.join(process.cwd(), "container/heartbeat-catchup.mjs"),
@@ -231,7 +234,7 @@ describe("heartbeat catch-up (-11)", () => {
     expect(catchupSrc).not.toMatch(
       /export function shouldCatchUpBeat\(args\) \{\s*return false/,
     )
-    expect(catchupSrc).toContain("catchup-v11")
+    expect(catchupSrc).toContain("catchup-v12")
     expect(catchupSrc).toContain("ledgerCatchupSkip")
     expect(catchupSrc).toContain("heartbeat_catchup_skip")
     expect(catchupSrc).toContain("waitForCronJobsReadable")

@@ -391,12 +391,12 @@ async function main() {
 
   spawnGateway();
 
-  // -11 catch-up-beat: wait jobs-readable + gateway healthy inside the
+  // -12 catch-up-beat: wait jobs-readable + gateway healthy inside the
   // catch-up module, then fire one missed heartbeat if within CATCHUP_GRACE.
   // Every skip path ledgers heartbeat_catchup_skip (no silent no-op).
   // Non-blocking — never delays state-sync / steady-state loops.
   // Ledger with retries — boot race vs activity reporter used to drop
-  // beyond-grace skips (silent no-op class on -11).
+  // beyond-grace skips (silent no-op class on -11; receipt #2 Aug-11 09:42).
   async function ledgerCatchupWithRetry(event) {
     let last = { ok: false, reason: "not-attempted" };
     for (let attempt = 1; attempt <= 4; attempt++) {
