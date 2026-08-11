@@ -62,6 +62,12 @@ import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, Mess
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
 import type { ChannelId, ChannelStatusMap, LaunchChannelId, MaskedChannelConfigMap } from "@/lib/openclaw/channel-config"
+import {
+  CHANNEL_BETA_LABEL,
+  PROVIDER_BYOK_BETA_LABEL,
+  isBetaChannel,
+  isByokBetaProvider,
+} from "@/lib/ui/beta-labels"
 
 interface AgentRow {
   id: string
@@ -348,7 +354,17 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           return (
             <div key={provider} className="flex items-start justify-between gap-[24px] px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
               <div className="min-w-0 max-w-[60%]">
-                <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
+                  {provider === "ANTHROPIC" && (
+                    <Badge variant="success">default</Badge>
+                  )}
+                  {isByokBetaProvider(provider) && (
+                    <Badge variant="warning" title="Supported with your own API key; not the proven default.">
+                      {PROVIDER_BYOK_BETA_LABEL}
+                    </Badge>
+                  )}
+                </div>
                 {usingAgents.length > 0 && (
                   <div className="text-[11px] text-[var(--tx3)] mt-[2px]">
                     Used by: {usingAgents.map(a => a.name).join(", ")}
@@ -2379,6 +2395,8 @@ type ChannelDefinition = {
   alwaysConnected?: boolean
   launch?: boolean
   staged?: boolean
+  /** Honesty badge label (e.g. "beta"); rendered via DS Badge. */
+  badgeLabel?: string
   fields?: ChannelField[]
   helpUrl?: string
   setupSteps?: string[]
@@ -2390,7 +2408,7 @@ const CHANNELS: ChannelDefinition[] = [
     id: "telegram",
     channelId: "telegram",
     name: "Telegram",
-    description: "Enter bot token from @BotFather",
+    description: "Proven default — enter bot token from @BotFather",
     icon: <Send className={ICON_CLASS} />,
     launch: true,
     fields: [
@@ -2416,6 +2434,7 @@ const CHANNELS: ChannelDefinition[] = [
     description: "Enter bot token from Developer Portal",
     icon: <Gamepad2 className={ICON_CLASS} />,
     launch: true,
+    badgeLabel: CHANNEL_BETA_LABEL,
     fields: [
       { key: "token", label: "Bot token", placeholder: "Paste your Discord bot token", required: true },
       {
@@ -2440,6 +2459,7 @@ const CHANNELS: ChannelDefinition[] = [
     description: "Socket Mode with bot and app tokens",
     icon: <Hash className={ICON_CLASS} />,
     launch: true,
+    badgeLabel: CHANNEL_BETA_LABEL,
     fields: [
       { key: "appToken", label: "App token (xapp-…)", placeholder: "xapp-…", required: true },
       { key: "botToken", label: "Bot token (xoxb-…)", placeholder: "xoxb-…", required: true },
@@ -2700,6 +2720,13 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
               name={channel.name}
               description={channelDescription(channel, summary, channelDrift)}
               icon={channel.icon}
+              badge={
+                channel.badgeLabel
+                  ? <Badge variant="warning">{channel.badgeLabel}</Badge>
+                  : channel.channelId && isBetaChannel(channel.channelId)
+                    ? <Badge variant="warning">{CHANNEL_BETA_LABEL}</Badge>
+                    : undefined
+              }
               status={
                 channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.live === "connected")
                   ? "connected"

@@ -4,12 +4,14 @@ import { useState, useEffect, useCallback } from "react"
 import { ApiKeyRow } from "./api-key-row"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { CreditBalanceCard } from "@/components/credits/credit-balance-card"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
+import { PROVIDER_BYOK_BETA_LABEL, isByokBetaProvider } from "@/lib/ui/beta-labels"
 
 interface ApiKey {
   id: string
@@ -237,6 +239,15 @@ export function ApiKeyManager() {
               provider={provider.key}
               name={provider.name}
               status={status}
+              badge={
+                provider.key === "ANTHROPIC" ? (
+                  <Badge variant="success">default</Badge>
+                ) : isByokBetaProvider(provider.key) ? (
+                  <Badge variant="warning" title="Supported with your own API key; not the proven default.">
+                    {PROVIDER_BYOK_BETA_LABEL}
+                  </Badge>
+                ) : undefined
+              }
               keyHint={key?.keyHint}
               lastUsedAt={
                 key?.lastUsedAt

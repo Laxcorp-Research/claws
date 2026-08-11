@@ -163,6 +163,11 @@ describe("Setup Step 4 channel persistence UI", () => {
 
     expect(await screen.findByText(/No channel\? Your Claw is fully usable from the dashboard/i)).toBeDefined()
     expect(screen.getAllByText("Coming soon")).toHaveLength(2)
+    // PR-0: Discord/Slack honesty badges; Telegram remains the proven default.
+    expect(screen.getAllByText("beta")).toHaveLength(2)
+    expect(screen.getByText("Discord")).toBeDefined()
+    expect(screen.getByText("Slack")).toBeDefined()
+    expect(screen.getByText(/Proven default — enter bot token from @BotFather/i)).toBeDefined()
     expect(screen.getByText("WhatsApp")).toBeDefined()
     expect(screen.getByText("QR pairing — coming soon")).toBeDefined()
     expect(screen.getByText("Microsoft Teams")).toBeDefined()

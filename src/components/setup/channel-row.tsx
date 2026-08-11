@@ -12,19 +12,24 @@ interface ChannelRowProps {
   status: "connected" | "disconnected" | "connecting" | "error"
   errorMessage?: string
   alwaysConnected?: boolean
+  /** Optional honesty badge (e.g. "beta") rendered next to the name. */
+  badge?: ReactNode
   onConnect: () => void
   onDisconnect: () => void
   action?: ReactNode
 }
 
-export function ChannelRow({ name, description, icon, status, errorMessage, alwaysConnected = false, onConnect, onDisconnect, action }: ChannelRowProps) {
+export function ChannelRow({ name, description, icon, status, errorMessage, alwaysConnected = false, badge, onConnect, onDisconnect, action }: ChannelRowProps) {
   return (
     <div className="px-3 py-2.5 border-b border-[var(--bd)] last:border-b-0">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <span className="w-5 flex items-center justify-center text-[var(--tx2)]">{icon}</span>
           <div>
-            <p className="text-xs font-semibold">{name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-semibold">{name}</p>
+              {badge}
+            </div>
             <p className="text-[10px] text-[var(--tx2)]">{description}</p>
           </div>
         </div>

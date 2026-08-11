@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 
 interface ApiKeyRowProps {
@@ -9,6 +10,8 @@ interface ApiKeyRowProps {
   keyHint?: string
   lastUsedAt?: string
   lastError?: string
+  /** Optional honesty badge (e.g. "beta — bring your own key"). */
+  badge?: ReactNode
   onAdd: () => void
   onTest: () => void
   onRemove: () => void
@@ -22,6 +25,7 @@ export function ApiKeyRow({
   keyHint,
   lastUsedAt,
   lastError,
+  badge,
   onAdd,
   onTest,
   onRemove,
@@ -42,7 +46,10 @@ export function ApiKeyRow({
           aria-hidden="true"
         />
         <div>
-          <div className="text-[12px] font-semibold">{name}</div>
+          <div className="flex items-center gap-1.5">
+            <div className="text-[12px] font-semibold">{name}</div>
+            {badge}
+          </div>
           <div className="text-[10px] text-[var(--tx2)]">
             {status === "connected" && (
               <span>{keyHint ?? "***"} · {lastUsedAt ?? ""}</span>

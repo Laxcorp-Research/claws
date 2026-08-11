@@ -42,6 +42,8 @@ import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { extractVersionFromImage, isNewerVersion } from "@/lib/openclaw/version-order"
 import type { ApiKeySource } from "@/generated/prisma/client"
 import type { ChannelId, ChannelLiveState, ChannelStatusMap } from "@/lib/openclaw/channel-config"
+import { Badge } from "@/components/ui/badge"
+import { CHANNEL_BETA_LABEL, isBetaChannel } from "@/lib/ui/beta-labels"
 
 interface DashboardStats {
   agentsRunning: number
@@ -253,6 +255,9 @@ export function ChannelStatusSection({ channelStatus }: { channelStatus: Channel
           return (
             <div key={channelId} className="flex items-center gap-1.5 rounded-lg border border-[var(--bd)] px-2 py-1.5">
               <span className="text-[11px] font-medium text-[var(--tx)]">{CHANNEL_LABELS[channelId]}</span>
+              {isBetaChannel(channelId) && (
+                <Badge variant="warning">{CHANNEL_BETA_LABEL}</Badge>
+              )}
               <StatusBadge status={channelStatusBadge(state.live)} />
               {state.detail && <span className="text-[10px] text-[var(--err)]">{state.detail}</span>}
             </div>
