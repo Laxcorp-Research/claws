@@ -31,8 +31,8 @@ export function MarketplaceComingSoonPanel({
   if (!fullPage) return body
 
   return (
-    <PageShell title="Marketplace" description="Creator economy surfaces unlock as each arc ships.">
-      {body}
+    <PageShell>
+      <div className="max-w-2xl mx-auto px-4 py-10">{body}</div>
     </PageShell>
   )
 }
