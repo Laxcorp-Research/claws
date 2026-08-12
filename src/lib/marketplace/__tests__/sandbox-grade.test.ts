@@ -177,6 +177,9 @@ describe("sandbox workflow contract", () => {
     expect(yml).toContain("marketplace-skill-sandbox")
     expect(yml).toContain("secrets.SANDBOX_ANTHROPIC_KEY")
     expect(yml).toContain("secrets.SANDBOX_REPORT_TOKEN")
+    expect(yml).toContain("staging.app.buildclaws.ai:443")
+    expect(yml).toContain("app.buildclaws.ai:443")
+    expect(yml).toContain("intake_base_url")
   })
 
   it("MUTATION: widen allowlist to * or drop block → fail", () => {
