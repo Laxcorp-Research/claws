@@ -20,7 +20,6 @@ test.describe('Navigation & Routing', () => {
       content?.includes('Business') ||
       content?.includes('Premium') ||
       content?.includes('$79') ||
-      content?.includes('$149') ||
       content?.includes('$');
 
     expect(hasPricingContent).toBe(true);
