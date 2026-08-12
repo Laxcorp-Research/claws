@@ -90,17 +90,59 @@
     },
     {
       "name": "SANDBOX_GITHUB_REF",
-      "purpose": "Git ref for sandbox workflow_dispatch (default staging)",
+      "purpose": "Git ref for sandbox workflow_dispatch (Preview: staging; Production: main — workflow file must exist on that ref)",
       "required": false,
       "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
-      "whereCreated": "Vercel optional; defaults in code"
+      "whereCreated": "Vercel optional; defaults in code to staging — set Production=main before prod publish vetting"
     },
     {
       "name": "SANDBOX_INTAKE_BASE_URL",
-      "purpose": "Base URL the sandbox worker posts reports to (staging.app.buildclaws.ai)",
+      "purpose": "Base URL the sandbox worker posts reports to (Preview: https://staging.app.buildclaws.ai; Production: https://app.buildclaws.ai)",
       "required": false,
       "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
-      "whereCreated": "Vercel optional; falls back to NEXTAUTH_URL then staging host"
+      "whereCreated": "Vercel optional; falls back to NEXTAUTH_URL then staging host — set Production explicitly to prod host"
+    },
+    {
+      "name": "MARKETPLACE_PUBLISH_ENABLED",
+      "purpose": "Server gate for creator publish wizards + POST publish APIs",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/feature-flags.ts"],
+      "whereCreated": "Vercel Preview then Production when founder flips marketplace publish"
+    },
+    {
+      "name": "NEXT_PUBLIC_MARKETPLACE_PUBLISH_ENABLED",
+      "purpose": "Client bundle gate mirroring MARKETPLACE_PUBLISH_ENABLED (build-time)",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/feature-flags.ts"],
+      "whereCreated": "Vercel Preview + Production (must rebuild after flip)"
+    },
+    {
+      "name": "MARKETPLACE_CREATOR_ENROLL_ENABLED",
+      "purpose": "Server gate for new creator enrollment",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/feature-flags.ts"],
+      "whereCreated": "Vercel Preview then Production when founder flips enroll"
+    },
+    {
+      "name": "NEXT_PUBLIC_MARKETPLACE_CREATOR_ENROLL_ENABLED",
+      "purpose": "Client bundle gate mirroring MARKETPLACE_CREATOR_ENROLL_ENABLED (build-time)",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/feature-flags.ts"],
+      "whereCreated": "Vercel Preview + Production (must rebuild after flip)"
+    },
+    {
+      "name": "MARKETPLACE_COMMUNITY_PURCHASE_ENABLED",
+      "purpose": "Server gate for community paid template checkout + store Buy CTA",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/feature-flags.ts"],
+      "whereCreated": "Vercel Preview then Production when founder flips community purchase"
+    },
+    {
+      "name": "NEXT_PUBLIC_MARKETPLACE_COMMUNITY_PURCHASE_ENABLED",
+      "purpose": "Client bundle gate mirroring MARKETPLACE_COMMUNITY_PURCHASE_ENABLED (build-time)",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/feature-flags.ts"],
+      "whereCreated": "Vercel Preview + Production (must rebuild after flip)"
     }
   ]
 }

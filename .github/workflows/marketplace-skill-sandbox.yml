@@ -5,7 +5,7 @@
 #
 # NEW SECRETS (flagged — add to docs/GITHUB_ACTIONS_SECRETS_MANIFEST.json):
 #   SANDBOX_ANTHROPIC_KEY  — dedicated low-limit Anthropic key (FOUNDER CARD; do NOT reuse master/BYOK)
-#   SANDBOX_REPORT_TOKEN   — auth for staging sandbox intake (must match Vercel SANDBOX_REPORT_TOKEN)
+#   SANDBOX_REPORT_TOKEN   — auth for sandbox intake (must match Vercel SANDBOX_REPORT_TOKEN per env)
 
 name: Marketplace Skill Sandbox
 
@@ -25,7 +25,7 @@ on:
         required: true
         type: string
       intake_base_url:
-        description: Staging base URL for sandbox intake
+        description: Env-aware intake base URL (staging.app… or app.buildclaws.ai)
         required: true
         type: string
         default: https://staging.app.buildclaws.ai
@@ -56,6 +56,7 @@ jobs:
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
             staging.app.buildclaws.ai:443
+            app.buildclaws.ai:443
 
       - name: Checkout
         uses: actions/checkout@v5
