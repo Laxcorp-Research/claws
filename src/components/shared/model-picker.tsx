@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { Input } from "@/components/ui/input"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 type Option = { value: string; label: string }
 
@@ -141,7 +142,9 @@ export function ModelPicker({
         <p className="text-[10px] text-[var(--warn)]">{missingKeyHint}</p>
       )}
       {honesty && !byokOpenRouter && (
-        <p className="text-[10px] text-[var(--tx3)] line-clamp-2">{honesty}</p>
+        <p className="text-[10px] text-[var(--tx3)]">
+          <TruncatedText>{honesty}</TruncatedText>
+        </p>
       )}
     </div>
   )
