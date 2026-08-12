@@ -510,8 +510,15 @@ describe('POST /api/dodo-payments/webhook', () => {
         id: 'sale-refund',
         skillId: null,
         buyerId: 'user-1',
+        payoutStatus: 'PENDING',
+        amount: 49,
+        creatorPayout: 47,
+        templateId: 'tpl-1',
+        creatorId: 'creator-1',
+        dodoPaymentId: 'pay_refund',
       });
       (prismaMock.purchase.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      (prismaMock.marketplaceSale.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
       (prismaMock.marketplaceSale.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
       (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
         overrides.hasDeploy ? { id: 'dep-1' } : null,
@@ -533,9 +540,10 @@ describe('POST /api/dodo-payments/webhook', () => {
           data: expect.objectContaining({ status: 'REFUNDED' }),
         }),
       );
-      expect(prismaMock.marketplaceSale.updateMany).toHaveBeenCalledWith(
+      // cancelPayout uses update (by sale id), not updateMany — status-aware clawback.
+      expect(prismaMock.marketplaceSale.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ dodoPaymentId: 'pay_refund' }),
+          where: { id: 'sale-refund' },
           data: expect.objectContaining({ payoutStatus: 'REFUNDED' }),
         }),
       );
@@ -590,7 +598,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       }));
       expect(res.status).toBe(200);
       expect(prismaMock.workspace.delete).not.toHaveBeenCalled();
-      expect(prismaMock.marketplaceSale.updateMany).toHaveBeenCalled();
+      expect(prismaMock.marketplaceSale.update).toHaveBeenCalled();
     });
 
     it('community skill sale clawback: cancelPayout without Purchase row', async () => {
@@ -599,17 +607,23 @@ describe('POST /api/dodo-payments/webhook', () => {
         id: 'sale-skill-r',
         skillId: 'skill-1',
         buyerId: 'user-1',
+        payoutStatus: 'RELEASABLE',
+        amount: 19,
+        creatorPayout: 18,
+        templateId: null,
+        creatorId: 'creator-1',
+        dodoPaymentId: 'pay_skill_refund',
       });
-      (prismaMock.marketplaceSale.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+      (prismaMock.marketplaceSale.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       const res = await POST(createWebhookRequest({
         type: 'refund.succeeded',
         data: { payment_id: 'pay_skill_refund' },
       }));
       expect(res.status).toBe(200);
-      expect(prismaMock.marketplaceSale.updateMany).toHaveBeenCalledWith(
+      expect(prismaMock.marketplaceSale.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ dodoPaymentId: 'pay_skill_refund' }),
+          where: { id: 'sale-skill-r' },
           data: expect.objectContaining({ payoutStatus: 'REFUNDED' }),
         }),
       );

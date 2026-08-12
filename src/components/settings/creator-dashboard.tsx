@@ -6,6 +6,7 @@ import { ExternalLink, Plus, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { Select } from "@/components/ui/select"
 import { StatCard } from "@/components/ui/stat-card"
 import { formatCurrencyRounded } from "@/lib/utils/format"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
@@ -419,15 +420,16 @@ export function CreatorDashboard() {
           <div className="space-y-3">
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Method</label>
-              <select
+              <Select
                 value={payoutMethod}
-                onChange={(e) => setPayoutMethod(e.target.value as PayoutMethodChoice)}
-                className="w-full px-[10px] py-2 border border-[var(--bd)] rounded-[6px] text-[12px] text-[var(--tx)] bg-[var(--bg)] focus:border-[var(--tx)] focus:outline-none"
-              >
-                <option value="WISE">Wise</option>
-                <option value="BANK">Bank transfer</option>
-                <option value="PAYPAL">PayPal</option>
-              </select>
+                onValueChange={(v) => setPayoutMethod(v as PayoutMethodChoice)}
+                options={[
+                  { value: "WISE", label: "Wise" },
+                  { value: "BANK", label: "Bank transfer" },
+                  { value: "PAYPAL", label: "PayPal" },
+                ]}
+                aria-label="Payout method"
+              />
             </div>
             {payoutMethod === "BANK" ? (
               <>
