@@ -49,7 +49,9 @@ describe("sandbox approve / VERIFIED mint (PR-4/PR-5)", () => {
     expect(skillApprove).toContain("resolveCommunityApprovedTrustTier")
     // Must not mint VERIFIED from a bare ternary / hardcode on the update data.
     expect(skillApprove).not.toMatch(/sandboxPassed\s*\?\s*['"]VERIFIED['"]/)
-    expect(skillApprove).not.toMatch(/data:\s*\{[^}]*trustTier:\s*['"]VERIFIED['"]/s)
+    expect(skillApprove).toContain("trustTier: newTier")
+    expect(skillApprove).not.toContain('trustTier: "VERIFIED"')
+    expect(skillApprove).not.toContain("trustTier: 'VERIFIED'")
   })
 
   it("MUTATION: TrustBadgeLegend Verified copy locked", () => {

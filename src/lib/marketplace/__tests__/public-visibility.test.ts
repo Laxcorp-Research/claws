@@ -99,8 +99,10 @@ describe("VERIFIED mint gated on SANDBOX_VETTING_ENABLED (PR-4)", () => {
       "utf8",
     )
     expect(skillApprove).not.toMatch(/sandboxPassed\s*\?\s*['"]VERIFIED['"]/)
-    expect(skillApprove).not.toMatch(/data:\s*\{[^}]*trustTier:\s*['"]VERIFIED['"]/s)
-    expect(templateApprove).not.toMatch(/data:\s*\{[^}]*trustTier:\s*['"]VERIFIED['"]/s)
+    expect(skillApprove).not.toMatch(/trustTier:\s*newTier[\s\S]*trustTier:\s*['"]VERIFIED['"]/)
+    expect(skillApprove).toContain("trustTier: newTier")
+    expect(templateApprove).not.toContain('trustTier: "VERIFIED"')
+    expect(templateApprove).not.toContain("trustTier: 'VERIFIED'")
     expect(skillApprove).toContain("resolveCommunityApprovedTrustTier")
     expect(templateApprove).toContain("resolveCommunityApprovedTrustTier")
     expect(skillApprove).toContain("assertVerifiedMintAllowed")
