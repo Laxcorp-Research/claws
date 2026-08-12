@@ -53,4 +53,12 @@ describe("model catalog (OpenRouter arc)", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/api-key-validation.ts"), "utf8")
     expect(src).toContain("openrouter.ai/api/v1/key")
   })
+
+  it("MUTATION: creditMode gates catalog to Anthropic-only (platform meter)", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    expect(src).toContain("creditMode")
+    expect(src).toMatch(/creditMode[\s\S]*provider\s*=\s*["']ANTHROPIC["']/)
+    expect(src).toMatch(/creditMode\s*&&\s*s\.provider\s*!==\s*["']ANTHROPIC["']/)
+  })
 })
+
