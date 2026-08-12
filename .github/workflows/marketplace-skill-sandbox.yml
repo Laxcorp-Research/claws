@@ -1,0 +1,120 @@
+# PR-4: Marketplace skill Layer-2 sandbox vetting.
+# Substrate: GH Actions + Docker(pinned openclaw-runtime) + harden-runner
+# egress-policy: block. Allowlist: api.anthropic.com + ghcr.io (+ GitHub
+# orchestration hosts required for checkout/API — not sandbox trust surface).
+#
+# NEW SECRETS (flagged — add to docs/GITHUB_ACTIONS_SECRETS_MANIFEST.json):
+#   SANDBOX_ANTHROPIC_KEY  — dedicated low-limit Anthropic key (FOUNDER CARD; do NOT reuse master/BYOK)
+#   SANDBOX_REPORT_TOKEN   — auth for staging sandbox intake (must match Vercel SANDBOX_REPORT_TOKEN)
+
+name: Marketplace Skill Sandbox
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill_id:
+        description: MarketplaceSkill id
+        required: true
+        type: string
+      content_digest:
+        description: sha256 hex of skill content
+        required: true
+        type: string
+      docker_image:
+        description: Pinned openclaw-runtime image
+        required: true
+        type: string
+      intake_base_url:
+        description: Staging base URL for sandbox intake
+        required: true
+        type: string
+        default: https://staging.app.buildclaws.ai
+
+concurrency:
+  group: marketplace-skill-sandbox
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  sandbox:
+    name: Vet skill
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Harden runner (egress block)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.anthropic.com:443
+            ghcr.io:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pkg-containers.githubusercontent.com:443
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Require sandbox secrets
+        run: |
+          if [ -z "${{ secrets.SANDBOX_ANTHROPIC_KEY }}" ]; then
+            echo "SANDBOX_ANTHROPIC_KEY missing (FOUNDER CARD: mint dedicated key)"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SANDBOX_REPORT_TOKEN }}" ]; then
+            echo "SANDBOX_REPORT_TOKEN missing"
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ vars.GHCR_READ_USER }}
+          password: ${{ secrets.GHCR_READ_PAT }}
+
+      - name: Pull + boot pinned openclaw-runtime (family proof)
+        run: |
+          docker pull "${{ inputs.docker_image }}"
+          # Boot canary — zero creds, no long-running gateway. Confirms image family.
+          docker run --rm --entrypoint /bin/true "${{ inputs.docker_image }}" \
+            || docker run --rm --entrypoint true "${{ inputs.docker_image }}"
+
+      - name: Run sandbox (dry checks + one Haiku agent turn)
+        env:
+          SANDBOX_SKILL_ID: ${{ inputs.skill_id }}
+          SANDBOX_CONTENT_DIGEST: ${{ inputs.content_digest }}
+          SANDBOX_INTAKE_BASE_URL: ${{ inputs.intake_base_url }}
+          SANDBOX_REPORT_TOKEN: ${{ secrets.SANDBOX_REPORT_TOKEN }}
+          SANDBOX_ANTHROPIC_KEY: ${{ secrets.SANDBOX_ANTHROPIC_KEY }}
+          SANDBOX_DOCKER_IMAGE: ${{ inputs.docker_image }}
+          SANDBOX_EXECUTION: jail
+          SANDBOX_OUT_DIR: /tmp/sandbox-out
+        run: |
+          mkdir -p /tmp/sandbox-out
+          # Harness runs on the hardened runner (egress block). Image boot is separate.
+          # Zero user/Composio/master keys — only SANDBOX_* above.
+          node scripts/marketplace-sandbox/run.mjs
+
+      - name: Fail-closed TIMEOUT report on cancellation
+        if: cancelled()
+        env:
+          SANDBOX_SKILL_ID: ${{ inputs.skill_id }}
+          SANDBOX_CONTENT_DIGEST: ${{ inputs.content_digest }}
+          SANDBOX_INTAKE_BASE_URL: ${{ inputs.intake_base_url }}
+          SANDBOX_REPORT_TOKEN: ${{ secrets.SANDBOX_REPORT_TOKEN }}
+          SANDBOX_DOCKER_IMAGE: ${{ inputs.docker_image }}
+          SANDBOX_TIMED_OUT: "1"
+          SANDBOX_OUT_DIR: /tmp/sandbox-out
+        run: |
+          mkdir -p /tmp/sandbox-out
+          SANDBOX_ANTHROPIC_KEY=unused node scripts/marketplace-sandbox/run.mjs || true
