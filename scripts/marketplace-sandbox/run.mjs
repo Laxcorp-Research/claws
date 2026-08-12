@@ -20,7 +20,8 @@ const EGRESS_PATTERNS = [
 const CRED_PATH_PATTERNS = [
   /~\/\.ssh\//,
   /\/etc\/(shadow|passwd)/i,
-  /\.env\b/,
+  // Do not match process.env (agent dry-check narration).
+  /(?<![A-Za-z0-9_])\.env\b/,
   /\/home\/node\/\.openclaw\/(?!workspace|skills)/i,
   /Load secrets from \.env/i,
   /read\s+\.env/i,
