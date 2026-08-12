@@ -1,4 +1,5 @@
 import type { ReviewStatus, TrustTier } from "@/generated/prisma/client"
+import { isJailExecutionReportRaw } from "@/lib/marketplace/sandbox-jail"
 
 /**
  * Layer-2 sandbox vetting gate. Opt-in via env (staging: set true after
@@ -46,12 +47,19 @@ export function publicListingSql(alias: "t" | "s"): string {
 
 /**
  * Trust tier after human admin approve.
- * When sandbox vetting is enabled, VERIFIED requires sandboxPassed=true.
+ * VERIFIED requires: flag on + sandboxPassed + jail-quality report
+ * (pinned openclaw-runtime dockerImage + real non-SKIPPED agent turn).
+ * Simulated / local-grade reports stay SCANNED.
  */
 export function resolveCommunityApprovedTrustTier(
   sandboxPassed?: boolean | null,
+  sandboxReportRaw?: string | null,
 ): "SCANNED" | "VERIFIED" {
-  if (isSandboxVettingEnabled() && sandboxPassed === true) {
+  if (
+    isSandboxVettingEnabled() &&
+    sandboxPassed === true &&
+    isJailExecutionReportRaw(sandboxReportRaw)
+  ) {
     return "VERIFIED"
   }
   return "SCANNED"

@@ -30,11 +30,15 @@ export interface SandboxDryChecks {
   credPathCanaries: Array<{ path: string; touched: boolean }>
 }
 
+export type SandboxExecutionKind = "jail" | "simulated"
+
 export interface SandboxReportV1 {
   version: typeof SANDBOX_REPORT_VERSION
   skillId: string
   contentDigest: string
   passed: boolean
+  /** jail = real GHA+Docker+Haiku; simulated = local-grade (cannot mint VERIFIED). */
+  execution: SandboxExecutionKind
   violations: SandboxViolation[]
   dryChecks: SandboxDryChecks
   agentTurn: {

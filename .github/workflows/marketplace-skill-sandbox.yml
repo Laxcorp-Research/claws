@@ -97,6 +97,7 @@ jobs:
           SANDBOX_REPORT_TOKEN: ${{ secrets.SANDBOX_REPORT_TOKEN }}
           SANDBOX_ANTHROPIC_KEY: ${{ secrets.SANDBOX_ANTHROPIC_KEY }}
           SANDBOX_DOCKER_IMAGE: ${{ inputs.docker_image }}
+          SANDBOX_EXECUTION: jail
           SANDBOX_OUT_DIR: /tmp/sandbox-out
         run: |
           mkdir -p /tmp/sandbox-out

@@ -256,14 +256,31 @@ describe("admin approve/reject listing gate (Arc 1)", () => {
     expect(updateArg.data.trustTier).not.toBe("VERIFIED")
   })
 
-  it("skill approve with sandboxPassed mints VERIFIED when vetting env on", async () => {
+  it("skill approve with jail-quality report mints VERIFIED when vetting env on", async () => {
     process.env.SANDBOX_VETTING_ENABLED = "true"
+    const jailReport = JSON.stringify({
+      version: 1,
+      skillId: "sk-1",
+      contentDigest: "a".repeat(64),
+      passed: true,
+      execution: "jail",
+      violations: [],
+      dryChecks: { bins: [], envVars: [], credPathCanaries: [] },
+      agentTurn: {
+        model: "claude-haiku-4-5-20251001",
+        completed: true,
+        summary: "Probe complete without network.",
+      },
+      dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-4",
+      finishedAt: new Date().toISOString(),
+    })
     prismaMock.marketplaceSkill.findUnique.mockResolvedValue({
       id: "sk-1",
       name: "S",
       slug: "s",
       reviewStatus: "PENDING",
       sandboxPassed: true,
+      sandboxReport: jailReport,
       publishedAt: null,
       creator: { displayName: "C", user: { email: "c@test.com", name: "C" } },
     } as never)
@@ -284,6 +301,52 @@ describe("admin approve/reject listing gate (Arc 1)", () => {
     expect(prismaMock.marketplaceSkill.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ trustTier: "VERIFIED" }),
+      }),
+    )
+    delete process.env.SANDBOX_VETTING_ENABLED
+  })
+
+  it("skill approve with simulated report stays SCANNED when vetting env on", async () => {
+    process.env.SANDBOX_VETTING_ENABLED = "true"
+    const sim = JSON.stringify({
+      version: 1,
+      skillId: "sk-1",
+      contentDigest: "b".repeat(64),
+      passed: true,
+      execution: "simulated",
+      violations: [],
+      dryChecks: { bins: [], envVars: [], credPathCanaries: [] },
+      agentTurn: { model: "x", completed: false, summary: "AGENT_SKIPPED" },
+      dockerImage: "e2e-local-grade",
+      finishedAt: new Date().toISOString(),
+    })
+    prismaMock.marketplaceSkill.findUnique.mockResolvedValue({
+      id: "sk-1",
+      name: "S",
+      slug: "s",
+      reviewStatus: "PENDING",
+      sandboxPassed: true,
+      sandboxReport: sim,
+      publishedAt: null,
+      creator: { displayName: "C", user: { email: "c@test.com", name: "C" } },
+    } as never)
+    prismaMock.marketplaceSkill.update.mockResolvedValue({
+      id: "sk-1",
+      reviewStatus: "APPROVED",
+      trustTier: "SCANNED",
+      isPublished: true,
+    } as never)
+
+    const res = await approveSkill(
+      createMockRequest("http://localhost/api/admin/review-queue/skills/sk-1/approve", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "sk-1" }) },
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.marketplaceSkill.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ trustTier: "SCANNED" }),
       }),
     )
     delete process.env.SANDBOX_VETTING_ENABLED

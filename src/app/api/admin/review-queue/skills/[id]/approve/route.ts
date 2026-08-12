@@ -51,7 +51,11 @@ export async function POST(
       )
     }
 
-    const newTier = resolveCommunityApprovedTrustTier(skill.sandboxPassed)
+    // VERIFIED only when jail-quality report (pinned image + real Haiku turn).
+    const newTier = resolveCommunityApprovedTrustTier(
+      skill.sandboxPassed,
+      skill.sandboxReport,
+    )
     if (newTier === 'VERIFIED') {
       try {
         assertVerifiedMintAllowed()

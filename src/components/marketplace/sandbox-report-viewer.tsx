@@ -12,6 +12,7 @@ export interface SandboxReportViewerProps {
 
 type Parsed = {
   passed?: boolean
+  execution?: "jail" | "simulated"
   contentDigest?: string
   violations?: Array<{ class: string; detail: string; source: string }>
   dryChecks?: {
@@ -84,8 +85,14 @@ export function SandboxReportViewer({
         )}
       </div>
       <div className="rounded-[8px] border border-[var(--bd)] bg-[var(--bg2)] p-3">
-        <div className="mb-2 flex items-center gap-[6px]">
+        <div className="mb-2 flex items-center gap-[6px] flex-wrap">
           <PassChip passed={passed} />
+          {parsed?.execution === "simulated" && (
+            <Badge variant="neutral">execution: simulated</Badge>
+          )}
+          {parsed?.execution === "jail" && (
+            <Badge variant="neutral">execution: jail</Badge>
+          )}
           {parsed?.failClosedReason && (
             <Badge variant="neutral">{parsed.failClosedReason}</Badge>
           )}

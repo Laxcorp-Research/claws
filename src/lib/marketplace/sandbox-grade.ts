@@ -90,6 +90,7 @@ export function buildSandboxReport(args: {
   agentCompleted?: boolean
   agentModel?: string
   dockerImage: string
+  execution?: "jail" | "simulated"
   harnessError?: string | null
   timedOut?: boolean
   oom?: boolean
@@ -160,18 +161,26 @@ export function buildSandboxReport(args: {
     )?.class ?? undefined
 
   const passed = deduped.length === 0
+  const skipped =
+    args.agentTurnText === "AGENT_SKIPPED" ||
+    args.agentTurnText === undefined ||
+    args.agentTurnText === null
+  const execution =
+    args.execution ??
+    (skipped || !args.dockerImage.includes("openclaw-runtime:") ? "simulated" : "jail")
 
   return {
     version: SANDBOX_REPORT_VERSION,
     skillId: args.skillId,
     contentDigest: args.contentDigest,
     passed,
+    execution,
     violations: deduped,
     dryChecks: { bins, envVars, credPathCanaries },
     agentTurn: args.agentTurnText !== undefined
       ? {
           model: args.agentModel ?? "claude-haiku-4-5-20251001",
-          completed: !!args.agentCompleted,
+          completed: !!args.agentCompleted && !skipped,
           summary: args.agentTurnText?.slice(0, 500),
           rawExcerpt: args.agentTurnText?.slice(0, 2000),
         }

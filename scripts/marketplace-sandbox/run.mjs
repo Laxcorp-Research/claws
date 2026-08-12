@@ -179,11 +179,16 @@ function buildReport(args) {
     deduped.push(v)
   }
 
+  const skipped = !args.agentTurnText || args.agentTurnText === "AGENT_SKIPPED"
+  const execution =
+    process.env.SANDBOX_EXECUTION === "jail" && !skipped ? "jail" : "simulated"
+
   return {
     version: SANDBOX_REPORT_VERSION,
     skillId: args.skillId,
     contentDigest: args.contentDigest,
     passed: deduped.length === 0,
+    execution,
     violations: deduped,
     dryChecks: {
       bins: args.requiredBins.map((name) => ({ name, present: binPresent(name) })),
@@ -193,7 +198,7 @@ function buildReport(args) {
     agentTurn: args.agentTurnText
       ? {
           model: AGENT_MODEL,
-          completed: true,
+          completed: !skipped,
           summary: args.agentTurnText.slice(0, 500),
           rawExcerpt: args.agentTurnText.slice(0, 2000),
         }
