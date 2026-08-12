@@ -43,11 +43,12 @@ describe("Batch A recurrence guards", () => {
     expect(src).not.toMatch(/Stripe/i)
   })
 
-  it("install-success copy fixture: no false runtime-available claim", () => {
+  it("install-success copy fixture: redeploy-carries honesty (no false hot-add)", () => {
     const src = read("src/app/store/skills/[slug]/page.tsx")
     expect(src).not.toContain("available to all agents")
-    expect(src).toContain("Runtime hot-add is pending")
-    expect(src).toContain("Purchase coming soon")
+    expect(src).not.toContain("Runtime hot-add is pending")
+    expect(src).toContain("Applies on next redeploy")
+    expect(src).toContain("community_purchase")
   })
 
   it("paid-install-entitlement: install route checks MarketplaceSale", () => {

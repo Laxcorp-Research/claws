@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { checkDeployEligibility, getTemplateProductId } from '@/lib/dodo-payments';
 
 describe('checkDeployEligibility', () => {
@@ -98,5 +100,32 @@ describe('getTemplateProductId', () => {
 
   it('throws for zero price (free templates bypass checkout)', () => {
     expect(() => getTemplateProductId(0)).toThrow('Unknown template price: 0');
+  });
+});
+
+describe('createCommunityCheckout product_cart shape (PR-7)', () => {
+  const src = readFileSync(join(process.cwd(), 'src/lib/dodo-payments.ts'), 'utf8');
+
+  it('product_cart uses dodoProductId — never Prisma cuid fields', () => {
+    expect(src).toContain('product_cart: [{ product_id: params.dodoProductId, quantity: 1 }]');
+    expect(src).not.toMatch(/product_cart:\s*\[\s*\{\s*product_id:\s*params\.templateId/);
+    expect(src).toContain('COMMUNITY_CHECKOUT_REJECTS_CUID_AS_PRODUCT_ID');
+  });
+
+  it('MUTATION: cuid-as-product_id restored → this test fails', () => {
+    // Lock the fixed line; if someone reverts to params.templateId, fail loudly.
+    expect(src).toMatch(/product_id:\s*params\.dodoProductId/);
+    expect(src).not.toMatch(/product_id:\s*params\.templateId/);
+  });
+});
+
+describe('ensureCommunityDodoProduct Phase A surface', () => {
+  it('quotes products.create on the dodo community helper', () => {
+    const helper = readFileSync(
+      join(process.cwd(), 'src/lib/marketplace/dodo-community-product.ts'),
+      'utf8',
+    );
+    expect(helper).toContain('dodo.products.create');
+    expect(helper).toContain('one_time_price');
   });
 });

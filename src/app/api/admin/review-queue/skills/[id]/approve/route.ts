@@ -9,6 +9,7 @@ import {
   assertVerifiedMintAllowed,
   resolveCommunityApprovedTrustTier,
 } from '@/lib/marketplace/public-visibility'
+import { ensureCommunityDodoProduct } from '@/lib/marketplace/dodo-community-product'
 
 export async function POST(
   request: NextRequest,
@@ -64,6 +65,21 @@ export async function POST(
       }
     }
 
+    // PR-7 DYNAMIC-AT-APPROVAL: paid community skills get a Dodo product id.
+    let dodoProductId = skill.dodoProductId
+    const paidPrice = skill.price
+    const isPaidCommunity =
+      !!skill.creatorId && !skill.isFree && typeof paidPrice === 'number' && paidPrice > 0
+    if (isPaidCommunity && paidPrice != null) {
+      dodoProductId = await ensureCommunityDodoProduct({
+        kind: 'skill',
+        itemId: skill.id,
+        name: skill.name,
+        priceUsd: paidPrice,
+        existingDodoProductId: skill.dodoProductId,
+      })
+    }
+
     // MUTATION lock: VERIFIED only via resolveCommunityApprovedTrustTier(sandboxPassed).
     // Never hardcode the verified tier string on the update payload.
     const updated = await prisma.marketplaceSkill.update({
@@ -74,6 +90,9 @@ export async function POST(
         isPublished: true,
         publishedAt: skill.publishedAt ?? new Date(),
         reviewedAt: new Date(),
+        ...(dodoProductId && dodoProductId !== skill.dodoProductId
+          ? { dodoProductId }
+          : {}),
       },
     })
 

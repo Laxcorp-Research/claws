@@ -131,17 +131,37 @@ async function handleCommunityPurchase(
   user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
 ) {
   if (!isMarketplaceCommunityPurchaseEnabled()) {
-    return apiError("COMING_SOON", "Community template purchases are coming soon", 403)
+    return apiError("COMING_SOON", "Community marketplace purchases are coming soon", 403)
   }
 
-  const { templateId } = body as { templateId?: string }
-  if (!templateId) return ERRORS.VALIDATION("templateId required")
+  const { templateId, skillId } = body as { templateId?: string; skillId?: string }
+  if (!!templateId === !!skillId) {
+    return ERRORS.VALIDATION("Provide exactly one of templateId or skillId")
+  }
 
+  if (skillId) {
+    return handleCommunitySkillPurchase(skillId, user)
+  }
+
+  return handleCommunityTemplatePurchase(templateId!, user)
+}
+
+async function handleCommunityTemplatePurchase(
+  templateId: string,
+  user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
+) {
   const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
   if (!template || !isPubliclyListable(template)) return ERRORS.NOT_FOUND("Template")
   if (!template.creatorId) return apiError("NOT_COMMUNITY", "This is not a community template", 400)
   if (template.isFree) return apiError("USE_FREE_FLOW", "Use the free_template checkout type for free templates", 400)
   if (template.price < 19) return apiError("PRICE_TOO_LOW", "Community template price must be at least $19", 400)
+  if (!template.dodoProductId) {
+    return apiError(
+      "PRODUCT_NOT_READY",
+      "This listing has no Dodo product yet — re-approve after DYNAMIC-AT-APPROVAL mint",
+      400,
+    )
+  }
 
   const existingPurchase = await prisma.purchase.findFirst({
     where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
@@ -155,6 +175,7 @@ async function handleCommunityPurchase(
   }
 
   const result = await createCommunityCheckout({
+    dodoProductId: template.dodoProductId,
     templateId: template.id,
     templateSlug: template.slug,
     price: template.price,
@@ -195,6 +216,73 @@ async function handleCommunityPurchase(
     return apiSuccess({
       mockMode: true,
       redirectUrl: installLandingPath(workspaceId, isFirstWorkspace),
+    })
+  }
+
+  if (!result.checkoutUrl) return apiError("CHECKOUT_FAILED", "Failed to create checkout session", 500)
+  return apiSuccess({ checkoutUrl: result.checkoutUrl })
+}
+
+async function handleCommunitySkillPurchase(
+  skillId: string,
+  user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
+) {
+  const skill = await prisma.marketplaceSkill.findUnique({ where: { id: skillId } })
+  if (!skill || !isPubliclyListable(skill)) return ERRORS.NOT_FOUND("Skill")
+  if (!skill.creatorId) return apiError("NOT_COMMUNITY", "This is not a community skill", 400)
+  if (skill.isFree || skill.price == null || skill.price <= 0) {
+    return apiError("USE_FREE_FLOW", "Free skills install without checkout", 400)
+  }
+  if (skill.price < 19) return apiError("PRICE_TOO_LOW", "Community skill price must be at least $19", 400)
+  if (!skill.dodoProductId) {
+    return apiError(
+      "PRODUCT_NOT_READY",
+      "This listing has no Dodo product yet — re-approve after DYNAMIC-AT-APPROVAL mint",
+      400,
+    )
+  }
+
+  const existingSale = await prisma.marketplaceSale.findFirst({
+    where: { skillId: skill.id, buyerId: user.id },
+    select: { id: true },
+  })
+  if (existingSale) {
+    return apiSuccess({ purchased: true, skillId: skill.id, skillSlug: skill.slug })
+  }
+
+  const result = await createCommunityCheckout({
+    dodoProductId: skill.dodoProductId,
+    skillId: skill.id,
+    skillSlug: skill.slug,
+    price: skill.price,
+    userEmail: user.email,
+    userName: user.name ?? undefined,
+    userId: user.id,
+    creatorId: skill.creatorId,
+    dodoCustomerId: user.dodoCustomerId ?? undefined,
+  })
+
+  if (result.mockMode) {
+    const paymentId = `mock_skill_${Date.now()}`
+    const processingFee = Math.round(skill.price * 0.035 * 100) / 100
+    await createMarketplaceSale({
+      skillId: skill.id,
+      buyerId: user.id,
+      creatorId: skill.creatorId,
+      amount: skill.price,
+      processingFee,
+      dodoPaymentId: paymentId,
+    })
+    await prisma.skillInstall.upsert({
+      where: { skillId_userId: { skillId: skill.id, userId: user.id } },
+      create: { skillId: skill.id, userId: user.id },
+      update: {},
+    })
+    return apiSuccess({
+      mockMode: true,
+      purchased: true,
+      skillId: skill.id,
+      skillSlug: skill.slug,
     })
   }
 

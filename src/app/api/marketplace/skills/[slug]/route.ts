@@ -54,7 +54,11 @@ export async function GET(
     installed: boolean
     hasPurchased: boolean
     hasRunningWorkspaces: boolean
-    workspaces: Array<{ id: string; name: string }>
+    workspaces: Array<{
+      id: string
+      name: string
+      agents: Array<{ id: string; name: string; role: string }>
+    }>
   } | null = null
 
   try {
@@ -64,22 +68,36 @@ export async function GET(
         where: { skillId_userId: { skillId: skill.id, userId: user.id } },
       })
 
-      // Entitlement = MarketplaceSale row (buyerId + skillId). No skill checkout yet.
+      // Entitlement = MarketplaceSale row (buyerId + skillId).
       const purchase = await prisma.marketplaceSale.findFirst({
         where: { skillId: skill.id, buyerId: user.id },
         select: { id: true },
       })
 
-      const runningWorkspaces = await prisma.workspace.findMany({
-        where: { userId: user.id, status: "RUNNING" },
-        select: { id: true, name: true },
+      // REDEPLOY-CARRIES: any owned workspace can receive AgentSkill attach.
+      const workspaces = await prisma.workspace.findMany({
+        where: { userId: user.id, status: { not: "DRAFT" } },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          agents: {
+            select: { id: true, name: true, role: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
       })
 
       installStatus = {
         installed: !!existingInstall,
         hasPurchased: !!purchase,
-        hasRunningWorkspaces: runningWorkspaces.length > 0,
-        workspaces: runningWorkspaces,
+        hasRunningWorkspaces: workspaces.some((w) => w.status === "RUNNING"),
+        workspaces: workspaces.map((w) => ({
+          id: w.id,
+          name: w.name,
+          agents: w.agents,
+        })),
       }
     }
   } catch {

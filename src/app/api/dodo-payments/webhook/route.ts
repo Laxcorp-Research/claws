@@ -182,10 +182,48 @@ async function handlePaymentSucceeded(
   customerEmail: string | undefined,
 ) {
   const isPurchase = metadata.type === "claw_purchase" || metadata.type === "community_purchase"
-  if (!isPurchase || !metadata.templateId) return
+  if (!isPurchase) return
 
   const paymentId = data?.payment_id as string
   if (!paymentId) return
+
+  // PR-7: community skill purchase (no Purchase/workspace row).
+  if (metadata.type === "community_purchase" && metadata.skillId) {
+    const existingSale = await prisma.marketplaceSale.findFirst({ where: { dodoPaymentId: paymentId } })
+    if (existingSale) return
+
+    const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onPaymentSucceeded.skill")
+    const skill = await prisma.marketplaceSkill.findUnique({ where: { id: metadata.skillId } })
+    if (!skill?.creatorId || skill.price == null) return
+
+    const processingFee = Math.round(skill.price * 0.035 * 100) / 100
+    await createMarketplaceSale({
+      skillId: skill.id,
+      buyerId: user.id,
+      creatorId: skill.creatorId,
+      amount: skill.price,
+      processingFee,
+      dodoPaymentId: paymentId,
+    })
+    await prisma.skillInstall.upsert({
+      where: { skillId_userId: { skillId: skill.id, userId: user.id } },
+      create: { skillId: skill.id, userId: user.id },
+      update: {},
+    })
+    await prisma.marketplaceSkill.update({
+      where: { id: skill.id },
+      data: { installCount: { increment: 1 } },
+    })
+
+    const customerId = (data?.customer as Record<string, string>)?.customer_id
+    if (customerId) {
+      await prisma.user.update({ where: { id: user.id }, data: { dodoCustomerId: customerId } })
+    }
+    log.paymentEvent({ event: "skill_purchased", templateId: skill.id, userId: user.id, status: "success" })
+    return
+  }
+
+  if (!metadata.templateId) return
 
   const existing = await prisma.purchase.findFirst({ where: { dodoPaymentId: paymentId } })
   if (existing) return
@@ -425,15 +463,33 @@ async function handleRefundSucceeded(data: Record<string, unknown> | undefined) 
   if (!paymentId) return
 
   const purchase = await prisma.purchase.findFirst({ where: { dodoPaymentId: paymentId } })
-  if (!purchase) return
-
-  await prisma.purchase.update({
-    where: { id: purchase.id },
-    data: { status: "REFUNDED", refundedAt: new Date() },
+  const sale = await prisma.marketplaceSale.findFirst({
+    where: { dodoPaymentId: paymentId },
+    select: { id: true, skillId: true, buyerId: true },
   })
+  // Template purchases have Purchase; skill community sales may be sale-only.
+  if (!purchase && !sale) return
+
+  if (purchase) {
+    await prisma.purchase.update({
+      where: { id: purchase.id },
+      data: { status: "REFUNDED", refundedAt: new Date() },
+    })
+  }
 
   // Claw back MarketplaceSale while still PENDING/RELEASABLE (before PAID).
+  // Applies to community template + skill sales (PR-6 / PR-7).
   await cancelPayout(paymentId)
+
+  if (!purchase) {
+    log.info("Refund clawed back community sale without Purchase row", {
+      category: "payment",
+      paymentId,
+      saleId: sale?.id,
+      skillId: sale?.skillId,
+    })
+    return
+  }
 
   let hasSuccessfulDeploy = false
   if (purchase.workspaceId) {

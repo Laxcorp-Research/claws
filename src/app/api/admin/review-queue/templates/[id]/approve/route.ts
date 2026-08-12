@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
 import { getResend } from '@/lib/resend'
 import { resolveCommunityApprovedTrustTier } from '@/lib/marketplace/public-visibility'
+import { ensureCommunityDodoProduct } from '@/lib/marketplace/dodo-community-product'
 
 export async function POST(
   request: NextRequest,
@@ -41,6 +42,20 @@ export async function POST(
 
     const trustTier = resolveCommunityApprovedTrustTier()
 
+    // PR-7 DYNAMIC-AT-APPROVAL: paid community templates get a Dodo product id.
+    let dodoProductId = template.dodoProductId
+    const isPaidCommunity =
+      !!template.creatorId && !template.isFree && typeof template.price === 'number' && template.price > 0
+    if (isPaidCommunity) {
+      dodoProductId = await ensureCommunityDodoProduct({
+        kind: 'template',
+        itemId: template.id,
+        name: template.name,
+        priceUsd: template.price,
+        existingDodoProductId: template.dodoProductId,
+      })
+    }
+
     const updated = await prisma.clawTemplate.update({
       where: { id },
       data: {
@@ -48,6 +63,9 @@ export async function POST(
         trustTier,
         isPublished: true,
         reviewedAt: new Date(),
+        ...(dodoProductId && dodoProductId !== template.dodoProductId
+          ? { dodoProductId }
+          : {}),
         ...(isRepublishPending
           ? {
               workspaceSnapshot: template.pendingWorkspaceSnapshot!,
