@@ -185,21 +185,15 @@ describe("imminent-beat exemption (HEARTBEAT_IMMINENT_EXEMPT_MS)", () => {
   })
 })
 
-describe("cron ↔ candidates parity", () => {
-  it("both routes import warmIdleWhere / runningIdleWhere from predicates", () => {
+describe("hibernation cron shared-predicate contract", () => {
+  it("keeps all candidate selection in shared lib predicates", () => {
     const cron = readFileSync(
       join(process.cwd(), "src/app/api/cron/hibernation/route.ts"),
       "utf8",
     )
-    const candidates = readFileSync(
-      join(process.cwd(), "src/app/api/internal/hibernation/candidates/route.ts"),
-      "utf8",
-    )
     expect(cron).toContain('from "@/lib/hibernation/predicates"')
-    expect(candidates).toContain('from "@/lib/hibernation/predicates"')
     expect(cron).toContain("warmIdleWhere")
-    expect(candidates).toContain("warmIdleWhere")
     expect(cron).toContain("runningIdleWhere")
-    expect(candidates).toContain("runningIdleWhere")
+    expect(cron).toContain("wakeHibernatedWhere")
   })
 })

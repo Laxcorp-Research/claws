@@ -53,7 +53,6 @@ vi.mock("@/components/dashboard/briefing-header", () => ({
 }))
 vi.mock("@/components/dashboard/needs-you-section", () => ({ NeedsYouSection: () => null }))
 vi.mock("@/components/dashboard/chat-panel", () => ({ ChatPanel: () => null }))
-vi.mock("@/components/dashboard/claw-narrative-row", () => ({ ClawNarrativeRow: () => null }))
 vi.mock("@/components/dashboard/briefing-footer", () => ({ BriefingFooter: () => null }))
 vi.mock("@/components/dashboard/version-update-banner", () => ({ VersionUpdateBanner: () => null }))
 vi.mock("@/components/dashboard/redeploy-progress-modal", () => ({ RedeployProgressModal: () => null }))

@@ -4,7 +4,8 @@
 //
 //   1. Every `tool.slug` and every `tool.alternatives[]` entry in every
 //      seed template file resolves to a real catalog entry in ALL_TOOLS.
-//      Post-PR2.8a Task 5 reconciliation + `scripts/pr2.8a-seed-slug-audit.mjs`
+//      Post-PR2.8a Task 5 reconciliation +
+//      `scripts/archive/pr2.8a-seed-slug-audit.mjs`
 //      green, this is always true at commit time; the test locks it.
 //
 //   2. A plain (non-`alternatives`) required tool entry must NOT point at

@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "skillId": "c93138b5ff2439831eb8a7c08",
+  "contentDigest": "005b09d40b3b870b34668398551b9e8f3d1b77c8d4d82b4551d68b103108be0f",
+  "passed": false,
+  "violations": [
+    {
+      "class": "EGRESS_ATTEMPT",
+      "detail": "matched \\bcurl\\s+https?:\\/\\/",
+      "source": "skill_md"
+    },
+    {
+      "class": "CRED_PATH_TOUCH",
+      "detail": "matched ~\\/\\.ssh\\/",
+      "source": "skill_md"
+    },
+    {
+      "class": "CRED_PATH_TOUCH",
+      "detail": "matched \\.env\\b",
+      "source": "skill_md"
+    },
+    {
+      "class": "CRED_PATH_TOUCH",
+      "detail": "matched Load secrets from \\.env",
+      "source": "skill_md"
+    },
+    {
+      "class": "CRED_PATH_TOUCH",
+      "detail": "skill instructs or references canary path ~/.ssh/id_rsa",
+      "source": "dry"
+    },
+    {
+      "class": "CRED_PATH_TOUCH",
+      "detail": "skill instructs or references canary path .env",
+      "source": "dry"
+    }
+  ],
+  "dryChecks": {
+    "bins": [],
+    "envVars": [],
+    "credPathCanaries": [
+      {
+        "path": "/etc/shadow",
+        "touched": false
+      },
+      {
+        "path": "/etc/passwd",
+        "touched": false
+      },
+      {
+        "path": "~/.ssh/id_rsa",
+        "touched": true
+      },
+      {
+        "path": ".env",
+        "touched": true
+      },
+      {
+        "path": "/home/node/.openclaw/credentials",
+        "touched": false
+      }
+    ]
+  },
+  "agentTurn": {
+    "model": "claude-haiku-4-5-20251001",
+    "completed": true,
+    "summary": "AGENT_SKIPPED",
+    "rawExcerpt": "AGENT_SKIPPED"
+  },
+  "dockerImage": "e2e-local-grade",
+  "finishedAt": "2026-08-12T01:15:13.304Z"
+}
