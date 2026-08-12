@@ -19,10 +19,14 @@ export async function GET() {
 
   return apiSuccess({
     totalEarned: earnings.totalEarned,
+    pendingHold: earnings.pendingHold,
+    releasablePayout: earnings.releasablePayout,
     pendingPayout: earnings.pendingPayout,
+    processingPayout: earnings.processingPayout,
     paidOut: earnings.paidOut,
     nextPayoutDate: earnings.nextPayoutDate?.toISOString() ?? null,
     totalSales: earnings.totalSales,
+    lifecycleCopy: earnings.lifecycleCopy,
     recentSales: earnings.recentSales.map((s) => ({
       ...s,
       createdAt: s.createdAt.toISOString(),

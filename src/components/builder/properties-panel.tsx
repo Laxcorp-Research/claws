@@ -10,7 +10,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
-import { AI_MODELS } from "@/lib/models"
+import { ModelPicker } from "@/components/shared/model-picker"
 import {
   CONTEXT_NOTE_MAX_CHARS,
   WORKFLOW_FENCE_BEGIN,
@@ -26,8 +26,6 @@ import {
   isRegulatedTemplateSlug,
 } from "@/lib/openclaw/regulated-threshold-floor"
 import { deriveReportsToMap } from "@/lib/openclaw/derive-reports-to"
-
-const MODEL_OPTIONS = AI_MODELS.map(m => ({ value: m.value, label: m.label }))
 
 function Label({ text, tooltip }: { text: string; tooltip: string }) {
   return (
@@ -334,11 +332,10 @@ export function PropertiesPanel() {
       </div>
 
       <div className="mb-2.5">
-        <Label text="Model" tooltip="The AI model this agent uses. Haiku is fast and cheap. Sonnet balances speed and quality. Opus is most capable but costs more." />
-        <CustomSelect
+        <Label text="Model" tooltip="The AI model this agent uses. Recommended models first; search the full catalog (including OpenRouter) below. OpenRouter is BYOK-only." />
+        <ModelPicker
           value={agent.model}
           onChange={(val) => updateAgentProperty(selectedAgentId!, "model", val)}
-          options={MODEL_OPTIONS}
         />
       </div>
 

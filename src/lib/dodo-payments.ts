@@ -89,15 +89,25 @@ export async function createPlatformSubscription(params: {
 }
 
 export async function createCommunityCheckout(params: {
-  templateId: string
-  templateSlug: string
+  /** Stored Dodo product id from approve-time mint — never a Prisma cuid. */
+  dodoProductId: string
   price: number
   userEmail: string
   userName?: string
   userId: string
   creatorId: string
   dodoCustomerId?: string
+  templateId?: string
+  templateSlug?: string
+  skillId?: string
+  skillSlug?: string
 }): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
+  if (!params.dodoProductId) {
+    throw new Error("COMMUNITY_CHECKOUT_REQUIRES_DODO_PRODUCT_ID")
+  }
+  if (params.dodoProductId === params.templateId || params.dodoProductId === params.skillId) {
+    throw new Error("COMMUNITY_CHECKOUT_REJECTS_CUID_AS_PRODUCT_ID")
+  }
   if (MOCK_MODE) return { checkoutUrl: null, mockMode: true }
 
   const dodo = getDodoClient()
@@ -109,16 +119,18 @@ export async function createCommunityCheckout(params: {
       name: params.userName || params.userEmail,
       ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
-    product_cart: [{ product_id: params.templateId, quantity: 1 }],
+    product_cart: [{ product_id: params.dodoProductId, quantity: 1 }],
     payment_link: true,
     return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
     metadata: {
       userId: params.userId,
       email: params.userEmail,
-      templateId: params.templateId,
-      templateSlug: params.templateSlug,
       creatorId: params.creatorId,
       type: "community_purchase",
+      ...(params.templateId
+        ? { templateId: params.templateId, templateSlug: params.templateSlug ?? "" }
+        : {}),
+      ...(params.skillId ? { skillId: params.skillId, skillSlug: params.skillSlug ?? "" } : {}),
     },
   })
 

@@ -9,6 +9,7 @@ import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
 
 const adminLinks = [
   { href: "/admin/reviews", label: "Reviews" },
+  { href: "/admin/payouts", label: "Payouts" },
   { href: "/admin/reports", label: "Reports" },
   { href: "/admin/versions", label: "Versions" },
 ]

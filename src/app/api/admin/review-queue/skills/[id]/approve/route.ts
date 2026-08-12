@@ -5,9 +5,11 @@ import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
 import { getResend } from '@/lib/resend'
 import {
+  assertSandboxPassedForApprove,
   assertVerifiedMintAllowed,
   resolveCommunityApprovedTrustTier,
 } from '@/lib/marketplace/public-visibility'
+import { ensureCommunityDodoProduct } from '@/lib/marketplace/dodo-community-product'
 
 export async function POST(
   request: NextRequest,
@@ -39,9 +41,22 @@ export async function POST(
       return apiError('INVALID_STATE', 'Skill is not pending review', 400)
     }
 
-    // While sandbox vetting is absent, resolveCommunityApprovedTrustTier returns SCANNED only.
-    // Explicit reject if anything tries to mint VERIFIED before sandbox is configured.
-    const newTier = resolveCommunityApprovedTrustTier(skill.sandboxPassed)
+    // PR-5: when SANDBOX_VETTING_ENABLED, refuse approve until sandboxPassed=true.
+    try {
+      assertSandboxPassedForApprove(skill.sandboxPassed)
+    } catch {
+      return apiError(
+        'SANDBOX_REQUIRED',
+        'Sandbox must pass before approve when sandbox vetting is enabled',
+        400,
+      )
+    }
+
+    // VERIFIED only when jail-quality report (pinned image + real Haiku turn).
+    const newTier = resolveCommunityApprovedTrustTier(
+      skill.sandboxPassed,
+      skill.sandboxReport,
+    )
     if (newTier === 'VERIFIED') {
       try {
         assertVerifiedMintAllowed()
@@ -50,6 +65,23 @@ export async function POST(
       }
     }
 
+    // PR-7 DYNAMIC-AT-APPROVAL: paid community skills get a Dodo product id.
+    let dodoProductId = skill.dodoProductId
+    const paidPrice = skill.price
+    const isPaidCommunity =
+      !!skill.creatorId && !skill.isFree && typeof paidPrice === 'number' && paidPrice > 0
+    if (isPaidCommunity && paidPrice != null) {
+      dodoProductId = await ensureCommunityDodoProduct({
+        kind: 'skill',
+        itemId: skill.id,
+        name: skill.name,
+        priceUsd: paidPrice,
+        existingDodoProductId: skill.dodoProductId,
+      })
+    }
+
+    // MUTATION lock: VERIFIED only via resolveCommunityApprovedTrustTier(sandboxPassed).
+    // Never hardcode the verified tier string on the update payload.
     const updated = await prisma.marketplaceSkill.update({
       where: { id },
       data: {
@@ -58,6 +90,9 @@ export async function POST(
         isPublished: true,
         publishedAt: skill.publishedAt ?? new Date(),
         reviewedAt: new Date(),
+        ...(dodoProductId && dodoProductId !== skill.dodoProductId
+          ? { dodoProductId }
+          : {}),
       },
     })
 

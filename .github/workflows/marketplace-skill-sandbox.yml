@@ -55,6 +55,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
+            staging.app.buildclaws.ai:443
 
       - name: Checkout
         uses: actions/checkout@v5

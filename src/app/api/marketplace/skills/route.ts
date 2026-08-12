@@ -4,12 +4,15 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
 import { Prisma, TrustTier } from "@/generated/prisma/client"
 import { scanSkillContent } from "@/lib/marketplace/skill-scan"
+import { extractSkillRequirements, mergeSkillRequirements } from "@/lib/marketplace/skill-extract"
 import { runLLMSecurityReview } from "@/lib/marketplace/llm-security-review"
 import { generateUniqueSlug } from "@/lib/marketplace/slug-utils"
 import { sanitizeText, sanitizeMarkdown } from "@/lib/security/sanitize"
 import { log } from "@/lib/logger"
 import { searchSkills } from "@/lib/marketplace/search"
 import { publicListingWhere } from "@/lib/marketplace/public-visibility"
+import { isMarketplacePublishEnabled } from "@/lib/marketplace/feature-flags"
+import { enqueueSkillSandbox } from "@/lib/marketplace/sandbox-enqueue"
 
 export const maxDuration = 30
 
@@ -131,6 +134,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isMarketplacePublishEnabled()) {
+      return apiError("COMING_SOON", "Skill publishing is coming soon", 403)
+    }
+
     const user = await getSessionUser()
     if (!user) return ERRORS.UNAUTHORIZED()
 
@@ -175,6 +182,9 @@ export async function POST(request: NextRequest) {
       if (price > 999) return ERRORS.VALIDATION("Price cannot exceed $999")
     }
 
+    const extracted = extractSkillRequirements(skillMd)
+    const merged = mergeSkillRequirements(requiredBins, requiredEnvVars, extracted)
+
     const scanResult = scanSkillContent(skillMd)
 
     const skillRegexFindings = scanResult.findings.map(f => ({
@@ -208,10 +218,15 @@ export async function POST(request: NextRequest) {
             severity: f.severity, pattern: "AI review", line: 0, description: `${f.description} (${f.evidence})`,
           })),
         ],
+        extraction: extracted,
       }, { status: 422 })
     }
 
     const slug = await generateUniqueSlug(name.trim(), prisma.marketplaceSkill)
+
+    const reviewNotes = merged.mismatchNote
+      ? JSON.stringify({ requirementMismatch: merged.mismatchNote, extracted, declared: { requiredBins, requiredEnvVars } })
+      : null
 
     const skill = await prisma.marketplaceSkill.create({
       data: {
@@ -222,8 +237,8 @@ export async function POST(request: NextRequest) {
         category,
         tags: tags?.map((t) => t.trim()) ?? [],
         skillMd: sanitizeMarkdown(skillMd.trim()),
-        requiredBins: requiredBins?.map((b) => b.trim()) ?? [],
-        requiredEnvVars: requiredEnvVars?.map((v) => v.trim()) ?? [],
+        requiredBins: merged.requiredBins,
+        requiredEnvVars: merged.requiredEnvVars,
         creatorId: creatorProfile.id,
         isFree: !!isFree,
         price: isFree ? null : (price ?? null),
@@ -233,7 +248,13 @@ export async function POST(request: NextRequest) {
         publishedAt: null,
         version: 1,
         autoScanPassed: scanResult.passed,
-        autoScanReport: scanResult.findings.length > 0 ? JSON.stringify(scanResult.findings) : null,
+        autoScanReport: JSON.stringify({
+          findings: scanResult.findings,
+          extraction: extracted,
+          merged: { requiredBins: merged.requiredBins, requiredEnvVars: merged.requiredEnvVars },
+          mismatchNote: merged.mismatchNote,
+        }),
+        reviewNotes,
         sandboxPassed: null,
         sandboxReport: null,
       },
@@ -250,6 +271,16 @@ export async function POST(request: NextRequest) {
       skillSlug: skill.slug,
     })
 
+    // Layer-2: enqueue GH Actions sandbox (idempotent by content digest).
+    const sandboxEnqueue = await enqueueSkillSandbox(skill.id).catch((err) => {
+      log.warn("Sandbox enqueue failed after skill publish", {
+        category: "marketplace",
+        skillId: skill.id,
+        error: String(err),
+      })
+      return { status: "skipped" as const, reason: "enqueue_error", contentDigest: "" }
+    })
+
     log.marketplaceEvent({ event: "skill_published", itemId: skill.id, itemType: "skill", userId: user.id })
 
     return apiSuccess({
@@ -257,6 +288,7 @@ export async function POST(request: NextRequest) {
       slug: skill.slug,
       isPublished: false,
       reviewStatus: "PENDING",
+      sandboxEnqueue,
       scanResult: {
         passed: scanResult.passed,
         hasCritical: scanResult.hasCritical,

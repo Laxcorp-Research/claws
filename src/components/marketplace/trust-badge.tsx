@@ -27,7 +27,7 @@ const TRUST_CONFIG: Record<TrustTier, {
   },
   VERIFIED: {
     label: "Verified",
-    title: "Verified — passed automated checks and deeper review",
+    title: "Verified — ran in an isolated sandbox (no credentials, network locked to the AI model)",
     Icon: ShieldCheck,
     bg: "#EDFFF3",
     text: "#0D6B32",
@@ -72,12 +72,12 @@ export function TrustBadge({ tier, className = "" }: TrustBadgeProps) {
   )
 }
 
-/** Short legend for store surfaces explaining Auto-scanned honesty. */
+/** Short legend for store surfaces — Verified mintable once sandbox vetting is live. */
 export function TrustBadgeLegend({ className = "" }: { className?: string }) {
   return (
     <p className={`text-[11px] text-[var(--tx3)] leading-snug ${className}`}>
       <span className="font-medium text-[var(--tx2)]">Trust badges:</span>{" "}
-      Official = Claws team. Auto-scanned = automated checks passed. Unreviewed items stay in the review queue and are not listed.
+      Official = Claws team. Verified — ran in an isolated sandbox (no credentials, network locked to the AI model). Auto-scanned = automated checks passed. Unreviewed items stay in the review queue and are not listed.
     </p>
   )
 }

@@ -9,13 +9,42 @@ export async function GET() {
 
   const profile = await prisma.creatorProfile.findUnique({
     where: { userId: user.id },
+    // Never return payoutDetailsEncrypted on the profile surface.
+    select: {
+      id: true,
+      userId: true,
+      displayName: true,
+      bio: true,
+      avatarUrl: true,
+      websiteUrl: true,
+      twitterUrl: true,
+      githubUrl: true,
+      isActive: true,
+      agreedToTermsAt: true,
+      totalInstalls: true,
+      totalTemplates: true,
+      totalSkills: true,
+      averageRating: true,
+      payoutMethod: true,
+      payoutDetailsHint: true,
+      payoutDetailsUpdatedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   })
 
   if (!profile) {
     return apiSuccess({ enrolled: false, profile: null })
   }
 
-  return apiSuccess({ enrolled: true, profile })
+  return apiSuccess({
+    enrolled: true,
+    profile: {
+      ...profile,
+      hasPayoutDetails: !!profile.payoutDetailsHint,
+      payoutDetailsEncrypted: undefined,
+    },
+  })
 }
 
 export async function PUT(request: NextRequest) {
@@ -71,7 +100,33 @@ export async function PUT(request: NextRequest) {
   const updated = await prisma.creatorProfile.update({
     where: { userId: user.id },
     data: updateData,
+    select: {
+      id: true,
+      userId: true,
+      displayName: true,
+      bio: true,
+      avatarUrl: true,
+      websiteUrl: true,
+      twitterUrl: true,
+      githubUrl: true,
+      isActive: true,
+      agreedToTermsAt: true,
+      totalInstalls: true,
+      totalTemplates: true,
+      totalSkills: true,
+      averageRating: true,
+      payoutMethod: true,
+      payoutDetailsHint: true,
+      payoutDetailsUpdatedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   })
 
-  return apiSuccess({ profile: updated })
+  return apiSuccess({
+    profile: {
+      ...updated,
+      hasPayoutDetails: !!updated.payoutDetailsHint,
+    },
+  })
 }

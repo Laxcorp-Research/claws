@@ -56,6 +56,51 @@
       "required": false,
       "surfaces": ["src/lib/dodo-payments.ts"],
       "whereCreated": "Dodo Products; Vercel Production + Preview"
+    },
+    {
+      "name": "SANDBOX_VETTING_ENABLED",
+      "purpose": "When true, community skill approve mints VERIFIED only for jail-quality sandbox reports (pinned openclaw-runtime + real Haiku turn)",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/public-visibility.ts"],
+      "whereCreated": "Vercel Preview (staging flip) then Production on wave; Sensitive string true/false"
+    },
+    {
+      "name": "SANDBOX_REPORT_TOKEN",
+      "purpose": "Shared secret for GHA sandbox worker → /api/internal/marketplace/sandbox-* (header X-Sandbox-Report-Token)",
+      "required": true,
+      "surfaces": [
+        "src/app/api/internal/marketplace/sandbox-job",
+        "src/app/api/internal/marketplace/sandbox-report"
+      ],
+      "whereCreated": "Vercel Preview + Production (Sensitive); mirrored as GitHub Actions SANDBOX_REPORT_TOKEN"
+    },
+    {
+      "name": "SANDBOX_GITHUB_DISPATCH_TOKEN",
+      "purpose": "GitHub PAT (actions:write) for workflow_dispatch of marketplace-skill-sandbox.yml from enqueue",
+      "required": true,
+      "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
+      "whereCreated": "Vercel Preview + Production (Sensitive); fine-scoped PAT — not the Anthropic key"
+    },
+    {
+      "name": "SANDBOX_GITHUB_REPO",
+      "purpose": "Optional owner/repo override for sandbox workflow_dispatch (default Laxcorp-Research/claws)",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
+      "whereCreated": "Vercel optional; defaults in code"
+    },
+    {
+      "name": "SANDBOX_GITHUB_REF",
+      "purpose": "Git ref for sandbox workflow_dispatch (default staging)",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
+      "whereCreated": "Vercel optional; defaults in code"
+    },
+    {
+      "name": "SANDBOX_INTAKE_BASE_URL",
+      "purpose": "Base URL the sandbox worker posts reports to (staging.app.buildclaws.ai)",
+      "required": false,
+      "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
+      "whereCreated": "Vercel optional; falls back to NEXTAUTH_URL then staging host"
     }
   ]
 }

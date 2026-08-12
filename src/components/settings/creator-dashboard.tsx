@@ -6,11 +6,18 @@ import { ExternalLink, Plus, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { Select } from "@/components/ui/select"
 import { StatCard } from "@/components/ui/stat-card"
 import { formatCurrencyRounded } from "@/lib/utils/format"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
+import { MarketplaceComingSoonPanel } from "@/components/marketplace/coming-soon-panel"
+import { Badge } from "@/components/ui/badge"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
+import {
+  isMarketplaceCreatorEnrollEnabled,
+  isMarketplacePublishEnabled,
+} from "@/lib/marketplace/feature-flags"
 import type { TrustTier } from "@/types/marketplace"
 
 interface CreatorProfile {
@@ -29,10 +36,31 @@ interface CreatorProfile {
 
 interface EarningsData {
   totalEarned: number
+  pendingHold: number
+  releasablePayout: number
   pendingPayout: number
+  processingPayout: number
   paidOut: number
   nextPayoutDate: string | null
   totalSales: number
+  lifecycleCopy: string
+  recentSales?: Array<{
+    id: string
+    itemName: string
+    payoutStatus: string
+    creatorPayout: number
+    isAdjustment?: boolean
+    createdAt: string
+  }>
+}
+
+type PayoutMethodChoice = "BANK" | "WISE" | "PAYPAL"
+
+interface PayoutDetailsState {
+  method: PayoutMethodChoice | null
+  masked: string | null
+  hasDetails: boolean
+  updatedAt: string | null
 }
 
 interface PublishedTemplate {
@@ -99,6 +127,31 @@ export function CreatorDashboard() {
   const [templates, setTemplates] = useState<PublishedTemplate[]>([])
   const [skills, setSkills] = useState<PublishedSkill[]>([])
 
+  const [payoutMeta, setPayoutMeta] = useState<PayoutDetailsState | null>(null)
+  const [editingPayout, setEditingPayout] = useState(false)
+  const [payoutMethod, setPayoutMethod] = useState<PayoutMethodChoice>("WISE")
+  const [bankHolder, setBankHolder] = useState("")
+  const [bankAccount, setBankAccount] = useState("")
+  const [bankSwift, setBankSwift] = useState("")
+  const [payoutEmail, setPayoutEmail] = useState("")
+  const [savingPayout, setSavingPayout] = useState(false)
+
+  const loadPayoutDetails = useCallback(() => {
+    fetch("/api/creator/payout-details")
+      .then((r) => r.json())
+      .then((j) => {
+        const d = j.data ?? j
+        setPayoutMeta({
+          method: d.method ?? null,
+          masked: d.masked ?? null,
+          hasDetails: !!d.hasDetails,
+          updatedAt: d.updatedAt ?? null,
+        })
+        if (d.method) setPayoutMethod(d.method)
+      })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     fetch("/api/creator/profile")
       .then((r) => r.json())
@@ -119,10 +172,54 @@ export function CreatorDashboard() {
           fetch("/api/creator/earnings").then((r) => r.json()).then((j) => setEarnings(j.data ?? j)).catch(() => {})
           fetch("/api/creator/templates").then((r) => r.json()).then((j) => setTemplates((j.data ?? j).templates ?? [])).catch(() => {})
           fetch("/api/creator/skills").then((r) => r.json()).then((j) => setSkills((j.data ?? j).skills ?? [])).catch(() => {})
+          loadPayoutDetails()
         }
       })
       .catch(() => setIsLoadingProfile(false))
-  }, [])
+  }, [loadPayoutDetails])
+
+  const handleSavePayoutDetails = async () => {
+    setSavingPayout(true)
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const body =
+            payoutMethod === "BANK"
+              ? {
+                  method: "BANK" as const,
+                  holderName: bankHolder.trim(),
+                  accountOrIban: bankAccount.trim(),
+                  swiftOrBic: bankSwift.trim() || undefined,
+                }
+              : {
+                  method: payoutMethod,
+                  email: payoutEmail.trim(),
+                }
+          const res = await fetch("/api/creator/payout-details", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+          const json = await res.json()
+          if (!res.ok) throw new Error(json.error?.message || "Could not save payout details")
+          setEditingPayout(false)
+          setBankHolder("")
+          setBankAccount("")
+          setBankSwift("")
+          setPayoutEmail("")
+          loadPayoutDetails()
+        },
+        {
+          message: "Payout details saved",
+          errorMessage: "Could not save payout details",
+        },
+        showSnackbar,
+      )
+    } catch {
+      /* snackbar shown */
+    }
+    setSavingPayout(false)
+  }
 
   const handleEnroll = async () => {
     if (!enrollName.trim()) { setEnrollError("Display name is required"); return }
@@ -189,6 +286,15 @@ export function CreatorDashboard() {
     return <div className="text-center py-10 text-[var(--tx2)] text-[12px]">Loading...</div>
   }
 
+  if (enrolled === false && !isMarketplaceCreatorEnrollEnabled()) {
+    return (
+      <MarketplaceComingSoonPanel
+        title="Creator enrollment coming soon"
+        description="Publishing on the Claws marketplace opens when the creator economy arcs ship. Existing creator profiles are unchanged."
+      />
+    )
+  }
+
   if (enrolled === false && !showEnrollForm) {
     return (
       <div className="border border-[var(--bd)] rounded-[12px] p-8 text-center max-w-md mx-auto">
@@ -243,10 +349,128 @@ export function CreatorDashboard() {
 
   return (
     <div className="space-y-[14px]">
-      <div className="grid grid-cols-3 gap-2">
-        <StatCard label="Total Earned" value={earnings ? formatCurrencyRounded(earnings.totalEarned) : "$0"} />
-        <StatCard label="Pending Payout" value={earnings ? formatCurrencyRounded(earnings.pendingPayout) : "$0"} />
-        <StatCard label="Next Payout" value={earnings?.nextPayoutDate ? new Date(earnings.nextPayoutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "-"} />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <StatCard label="Pending (hold)" value={earnings ? formatCurrencyRounded(earnings.pendingHold ?? 0) : "$0"} />
+        <StatCard label="Releasable" value={earnings ? formatCurrencyRounded(earnings.releasablePayout ?? 0) : "$0"} />
+        <StatCard label="Processing" value={earnings ? formatCurrencyRounded(earnings.processingPayout ?? 0) : "$0"} />
+        <StatCard label="Paid" value={earnings ? formatCurrencyRounded(earnings.paidOut) : "$0"} />
+      </div>
+      <p className="text-[11px] text-[var(--tx2)]">
+        {earnings?.lifecycleCopy ??
+          "Payouts are processed manually in batches. Status moves pending → releasable → processing → paid."}
+      </p>
+      {earnings?.recentSales && earnings.recentSales.length > 0 && (
+        <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
+          <h3 className="text-[13px] font-semibold text-[var(--tx)] mb-2">Recent sales</h3>
+          <div className="space-y-1">
+            {earnings.recentSales.slice(0, 8).map((s) => (
+              <div key={s.id} className="flex justify-between text-[11px] text-[var(--tx2)]">
+                <span>
+                  {s.itemName}
+                  {s.isAdjustment ? " (adjustment)" : ""} · {s.payoutStatus.toLowerCase()}
+                </span>
+                <span className="font-medium text-[var(--tx)]">{formatCurrencyRounded(s.creatorPayout)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-[13px] font-semibold text-[var(--tx)]">Payout details</h3>
+          {payoutMeta?.hasDetails && !editingPayout && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditingPayout(true)
+                setBankHolder("")
+                setBankAccount("")
+                setBankSwift("")
+                setPayoutEmail("")
+              }}
+            >
+              Edit
+            </Button>
+          )}
+        </div>
+        <p className="text-[11px] text-[var(--tx2)] mb-3">
+          Encrypted at rest. We never show full account details after save — re-enter to change.
+        </p>
+        {payoutMeta?.hasDetails && !editingPayout ? (
+          <div className="text-[12px] text-[var(--tx)] space-y-1">
+            <p>
+              Method:{" "}
+              <span className="font-medium">
+                {payoutMeta.method === "BANK"
+                  ? "Bank transfer"
+                  : payoutMeta.method === "WISE"
+                    ? "Wise"
+                    : payoutMeta.method === "PAYPAL"
+                      ? "PayPal"
+                      : "—"}
+              </span>
+            </p>
+            <p>
+              Details: <span className="font-mono">{payoutMeta.masked ?? "••••"}</span>
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Method</label>
+              <Select
+                value={payoutMethod}
+                onValueChange={(v) => setPayoutMethod(v as PayoutMethodChoice)}
+                options={[
+                  { value: "WISE", label: "Wise" },
+                  { value: "BANK", label: "Bank transfer" },
+                  { value: "PAYPAL", label: "PayPal" },
+                ]}
+                aria-label="Payout method"
+              />
+            </div>
+            {payoutMethod === "BANK" ? (
+              <>
+                <div>
+                  <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Account holder</label>
+                  <Input value={bankHolder} onChange={(e) => setBankHolder(e.target.value)} placeholder="Full legal name" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">IBAN or account number</label>
+                  <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} placeholder="IBAN / account" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">SWIFT / BIC (optional)</label>
+                  <Input value={bankSwift} onChange={(e) => setBankSwift(e.target.value)} placeholder="SWIFT" />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">
+                  {payoutMethod === "WISE" ? "Wise email" : "PayPal email"}
+                </label>
+                <Input
+                  type="email"
+                  value={payoutEmail}
+                  onChange={(e) => setPayoutEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
+              </div>
+            )}
+            <div className="flex gap-2">
+              {editingPayout && (
+                <Button size="sm" variant="outline" onClick={() => setEditingPayout(false)}>
+                  Cancel
+                </Button>
+              )}
+              <Button size="sm" onClick={() => void handleSavePayoutDetails()} loading={savingPayout}>
+                Save payout details
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
@@ -287,9 +511,13 @@ export function CreatorDashboard() {
       <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-[13px] font-semibold text-[var(--tx)]">My Templates</h3>
-          <Link href="/publish/template">
-            <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
-          </Link>
+          {isMarketplacePublishEnabled() ? (
+            <Link href="/publish/template">
+              <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
+            </Link>
+          ) : (
+            <Badge variant="neutral">Coming soon</Badge>
+          )}
         </div>
         {templates.length === 0 ? (
           <p className="text-[12px] text-[var(--tx3)]">No templates published yet. Publish your first!</p>
@@ -328,9 +556,13 @@ export function CreatorDashboard() {
       <div className="border border-[var(--bd)] rounded-[12px] p-[14px]">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-[13px] font-semibold text-[var(--tx)]">My Skills</h3>
-          <Link href="/publish/skill">
-            <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
-          </Link>
+          {isMarketplacePublishEnabled() ? (
+            <Link href="/publish/skill">
+              <Button size="sm"><Plus size={12} className="mr-1" aria-hidden="true" /> Publish New</Button>
+            </Link>
+          ) : (
+            <Badge variant="neutral">Coming soon</Badge>
+          )}
         </div>
         {skills.length === 0 ? (
           <p className="text-[12px] text-[var(--tx3)]">No skills published yet. Publish your first!</p>

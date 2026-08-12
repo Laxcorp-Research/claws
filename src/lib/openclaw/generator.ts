@@ -627,12 +627,28 @@ function generateOpenClawConfig(
   // ModelsConfigSchema.providers → ModelProviderSchema.baseUrl
   // (zod-schema.core-D7Y_eqdd.js). anthropic is a built-in overlay id, so
   // models[] is optional. BYOK/NONE: omit — clients hit api.anthropic.com.
-  if (getApiKeySource(workspace, workspace.user) === 'PLATFORM_CREDIT') {
+  // Credit metering: anthropic proxy only. OpenRouter is BYOK-only (no credit proxy).
+  // When any agent uses openrouter/*, emit explicit provider overlay (baseUrl locked).
+  const usesOpenRouter = runtimeAgents.some((a) =>
+    (a.model || "").startsWith("openrouter/"),
+  );
+  const creditModeProviders =
+    getApiKeySource(workspace, workspace.user) === "PLATFORM_CREDIT"
+      ? { anthropic: { baseUrl: ANTHROPIC_PROXY_URL } }
+      : null;
+
+  if (creditModeProviders || usesOpenRouter) {
     config.models = {
       providers: {
-        anthropic: {
-          baseUrl: ANTHROPIC_PROXY_URL,
-        },
+        ...(creditModeProviders ?? {}),
+        ...(usesOpenRouter
+          ? {
+              openrouter: {
+                baseUrl: "https://openrouter.ai/api/v1",
+                api: "openai-completions",
+              },
+            }
+          : {}),
       },
     };
   }
@@ -964,8 +980,9 @@ function generateSkillsEntriesConfig(
   // IDs per skill and POSTs to Composio's execute endpoint (option iv).
   const composioApiKey = process.env.COMPOSIO_API_KEY?.trim();
   if (!composioApiKey) {
-    // Quiet no-op. Local builder / dev flows stay unblocked; production
-    // deploys must set COMPOSIO_API_KEY on the server.
+    // Quiet no-op for OAuth emission. Still attach marketplace skill entries
+    // (PR-8) so redeploy-carries installs land in skills.entries.
+    emitMarketplaceSkillEntries(workspace, entries);
     return { entries, uncuratedToolSlugs, uncuratedToolConnectedAccounts, uncuratedLocalKeySlugs };
   }
 
@@ -1055,7 +1072,56 @@ function generateSkillsEntriesConfig(
     }
   }
 
+  // --- Marketplace / AgentSkill branch (PR-8 REDEPLOY-CARRIES) -------------
+  emitMarketplaceSkillEntries(workspace, entries);
+
   return { entries, uncuratedToolSlugs, uncuratedToolConnectedAccounts, uncuratedLocalKeySlugs };
+}
+
+/**
+ * Ensure AgentSkill-attached marketplace skills appear in skills.entries.
+ * Env values are filled from matching API_KEY ToolConnection maps when present;
+ * missing values stay absent so OpenClaw's requires.env check shows PENDING.
+ */
+function emitMarketplaceSkillEntries(
+  workspace: WorkspaceWithRelations,
+  entries: Record<string, unknown>,
+): void {
+  const credentialMaps: Record<string, string>[] = [];
+  for (const toolConn of workspace.toolConnections) {
+    if (toolConn.connectionType !== 'API_KEY') continue;
+    if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
+    const env = parseLocalCredentialMap(toolConn);
+    if (env) credentialMaps.push(env);
+  }
+
+  for (const agent of workspace.agents) {
+    for (const agentSkill of agent.skills) {
+      const skill = agentSkill.skill;
+      if (!skill?.slug) continue;
+      if (entries[skill.slug]) continue;
+
+      // Only marketplace / custom skills with declared env map into entries.
+      // Curated tool skills already emit via ToolConnection branches above.
+      const required = skill.requiredEnvVars ?? [];
+      if (required.length === 0) continue;
+
+      const env: Record<string, string> = {};
+      for (const name of required) {
+        for (const map of credentialMaps) {
+          if (typeof map[name] === 'string' && map[name].length > 0) {
+            env[name] = map[name];
+            break;
+          }
+        }
+      }
+
+      entries[skill.slug] = {
+        enabled: true,
+        ...(Object.keys(env).length > 0 ? { env } : {}),
+      };
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,6 +1168,10 @@ function generateEnvFile(
         break;
       case 'GOOGLE':
         lines.push(`GEMINI_API_KEY=${decrypted}`);
+        break;
+      case 'OPENROUTER':
+        // Bundled OpenClaw provider — baseUrl defaults to https://openrouter.ai/api/v1
+        lines.push(`OPENROUTER_API_KEY=${decrypted}`);
         break;
     }
   }
@@ -2151,6 +2221,13 @@ function generateSkillFiles(
     const skill = agentSkill.skill;
 
     const envFrontmatter = resolveSkillFrontmatterEnv(skill.slug, skill.compatibleTools ?? null);
+    // Marketplace / USER_GENERATED skills carry requiredEnvVars on the Skill row
+    // (bridged from MarketplaceSkill). Prefer catalog mapping when present;
+    // otherwise emit the marketplace env list so SKILL.md matches curated shape.
+    const marketplaceEnv =
+      !envFrontmatter && skill.requiredEnvVars && skill.requiredEnvVars.length > 0
+        ? skill.requiredEnvVars
+        : null;
 
     // Build the `metadata.openclaw.requires` sub-object incrementally so we
     // emit `{ bins: [...] }`, `{ env: [...] }`, both, or neither as
@@ -2162,11 +2239,14 @@ function generateSkillFiles(
     }
     if (envFrontmatter) {
       requires.env = envFrontmatter.requiresEnv;
+    } else if (marketplaceEnv) {
+      requires.env = marketplaceEnv;
     }
 
     const openclawMeta: Record<string, unknown> = {
       ...(skill.emoji && { emoji: skill.emoji }),
       ...(envFrontmatter?.primaryEnv && { primaryEnv: envFrontmatter.primaryEnv }),
+      ...(!envFrontmatter && marketplaceEnv?.[0] && { primaryEnv: marketplaceEnv[0] }),
       ...(Object.keys(requires).length > 0 && { requires }),
     };
 
@@ -2533,6 +2613,7 @@ type SkillRecord = {
   description: string;
   emoji?: string | null;
   requiredBins?: string[] | null;
+  requiredEnvVars?: string[] | null;
   compatibleTools?: string[] | null;
   skillMd?: string | null;
 };

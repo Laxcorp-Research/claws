@@ -66,6 +66,14 @@ function PublishSkillContent() {
   const [publishedSlug, setPublishedSlug] = useState<string | null>(null)
   const [scanFailed, setScanFailed] = useState(false)
   const [scanFindings, setScanFindings] = useState<ScanFinding[]>([])
+  const [extractionPreview, setExtractionPreview] = useState<{
+    requiredBins: string[]
+    requiredEnvVars: string[]
+    mismatchNote: string | null
+    scanPassed: boolean
+    findingCount: number
+  } | null>(null)
+  const [extractionLoading, setExtractionLoading] = useState(false)
 
   useEffect(() => {
     fetch("/api/creator/profile")
@@ -77,6 +85,46 @@ function PublishSkillContent() {
       })
       .catch(() => { router.push("/auth/signin") })
   }, [router])
+
+  // PR-3: scan-preview surfaces bins/env extraction on the SKILL.md step.
+  useEffect(() => {
+    if (currentStep !== 1 || skillMd.trim().length < 20) {
+      setExtractionPreview(null)
+      return
+    }
+    const timer = setTimeout(async () => {
+      setExtractionLoading(true)
+      try {
+        const res = await fetch("/api/marketplace/skills/scan-preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            skillMd: skillMd.trim(),
+            requiredBins: bins,
+            requiredEnvVars: envVars,
+          }),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+          setExtractionPreview(null)
+          return
+        }
+        const d = json.data ?? json
+        setExtractionPreview({
+          requiredBins: d.merged?.requiredBins ?? d.extraction?.requiredBins ?? [],
+          requiredEnvVars: d.merged?.requiredEnvVars ?? d.extraction?.requiredEnvVars ?? [],
+          mismatchNote: d.mismatchNote ?? null,
+          scanPassed: !!d.scanPassed,
+          findingCount: Array.isArray(d.findings) ? d.findings.length : 0,
+        })
+      } catch {
+        setExtractionPreview(null)
+      } finally {
+        setExtractionLoading(false)
+      }
+    }, 450)
+    return () => clearTimeout(timer)
+  }, [currentStep, skillMd, bins, envVars])
 
   const addItem = (input: string, setInput: (v: string) => void, items: string[], setItems: (v: string[]) => void, max: number) => {
     const t = input.trim()
@@ -262,6 +310,44 @@ function PublishSkillContent() {
                 }} />
               </label>
             </div>
+            {(extractionLoading || extractionPreview) && (
+              <div className="border border-[var(--bd)] rounded-[12px] p-3 space-y-2">
+                <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--tx)]">
+                  <Shield size={12} aria-hidden="true" />
+                  Scan preview
+                  {extractionLoading && <span className="text-[10px] font-normal text-[var(--tx3)]">Analyzing…</span>}
+                </div>
+                {extractionPreview && (
+                  <>
+                    <p className="text-[11px] text-[var(--tx2)]">
+                      Auto-scan: {extractionPreview.scanPassed ? "passed" : "failed"}
+                      {extractionPreview.findingCount > 0
+                        ? ` · ${extractionPreview.findingCount} finding${extractionPreview.findingCount === 1 ? "" : "s"}`
+                        : ""}
+                    </p>
+                    <div className="text-[11px] text-[var(--tx2)]">
+                      <span className="font-medium text-[var(--tx)]">Detected bins:</span>{" "}
+                      {extractionPreview.requiredBins.length
+                        ? extractionPreview.requiredBins.join(", ")
+                        : "none"}
+                    </div>
+                    <div className="text-[11px] text-[var(--tx2)]">
+                      <span className="font-medium text-[var(--tx)]">Detected env vars:</span>{" "}
+                      {extractionPreview.requiredEnvVars.length
+                        ? extractionPreview.requiredEnvVars.join(", ")
+                        : "none"}
+                    </div>
+                    {extractionPreview.mismatchNote && (
+                      <AlertBanner variant="warning">
+                        <p className="text-[11px]">
+                          Declared vs extracted mismatch (will be noted for reviewers): {extractionPreview.mismatchNote}
+                        </p>
+                      </AlertBanner>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 

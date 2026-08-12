@@ -43,18 +43,34 @@ export async function POST(
     })
 
     if (!template) return apiError('NOT_FOUND', 'Template not found', 404)
-    if (template.reviewStatus !== 'PENDING') {
+
+    const isFirstPublish = template.reviewStatus === 'PENDING'
+    const isRepublishPending = template.pendingSubmittedAt != null
+    if (!isFirstPublish && !isRepublishPending) {
       return apiError('INVALID_STATE', 'Template is not pending review', 400)
     }
 
+    // Republish reject: clear pending only — live listing stays public.
+    // First-publish reject: mark REJECTED and unpublish.
     const updated = await prisma.clawTemplate.update({
       where: { id },
-      data: {
-        reviewStatus: 'REJECTED',
-        rejectionReason: reason.trim(),
-        isPublished: false,
-        reviewedAt: new Date(),
-      },
+      data: isRepublishPending && !isFirstPublish
+        ? {
+            pendingWorkspaceSnapshot: null,
+            pendingVersion: null,
+            pendingSubmittedAt: null,
+            rejectionReason: reason.trim(),
+            reviewedAt: new Date(),
+          }
+        : {
+            reviewStatus: 'REJECTED',
+            rejectionReason: reason.trim(),
+            isPublished: false,
+            reviewedAt: new Date(),
+            pendingWorkspaceSnapshot: null,
+            pendingVersion: null,
+            pendingSubmittedAt: null,
+          },
     })
 
     if (template.creator?.user?.email) {

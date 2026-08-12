@@ -31,10 +31,29 @@ async function validateGoogleKey(apiKey: string): Promise<{ valid: boolean; erro
   } catch { return { valid: false, error: "Could not reach Google AI API" } }
 }
 
+/**
+ * OpenRouter: GET /models is PUBLIC (200 even with a bad key) — do NOT use it alone.
+ * Real credential check = GET /api/v1/key (401 on invalid). Catalog stays /models.
+ */
+async function validateOpenRouterKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/key", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (res.ok) return { valid: true }
+    if (res.status === 401) return { valid: false, error: "Invalid API key" }
+    if (res.status === 403) return { valid: false, error: "API key lacks permission" }
+    return { valid: false, error: `Unexpected response: ${res.status}` }
+  } catch {
+    return { valid: false, error: "Could not reach OpenRouter API" }
+  }
+}
+
 const validators: Record<string, (key: string) => Promise<{ valid: boolean; error?: string }>> = {
   ANTHROPIC: validateAnthropicKey,
   OPENAI: validateOpenAIKey,
   GOOGLE: validateGoogleKey,
+  OPENROUTER: validateOpenRouterKey,
 }
 
 export async function validateApiKey(provider: string, plainKey: string): Promise<{ valid: boolean; error?: string }> {

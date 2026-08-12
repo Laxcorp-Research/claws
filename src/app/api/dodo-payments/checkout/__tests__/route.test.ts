@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { prismaMock } from '@/test/helpers/mock-prisma';
@@ -41,7 +41,13 @@ const MOCK_FREE_TEMPLATE = {
   isPublished: true, trustTier: 'OFFICIAL', reviewStatus: 'APPROVED',
 };
 const MOCK_COMMUNITY_TEMPLATE = {
-  id: 'tpl-comm', slug: 'community', price: 49, isFree: false, creatorId: 'creator-1', dodoProductId: null,
+  id: 'tpl-comm', slug: 'community', price: 49, isFree: false, creatorId: 'creator-1',
+  dodoProductId: 'prod_comm_tpl_1',
+  isPublished: true, trustTier: 'SCANNED', reviewStatus: 'APPROVED',
+};
+const MOCK_COMMUNITY_SKILL = {
+  id: 'skill-comm', slug: 'community-skill', name: 'Community Skill', price: 29, isFree: false,
+  creatorId: 'creator-1', dodoProductId: 'prod_comm_skill_1',
   isPublished: true, trustTier: 'SCANNED', reviewStatus: 'APPROVED',
 };
 
@@ -190,7 +196,25 @@ describe('POST /api/dodo-payments/checkout', () => {
   });
 
   describe('community_purchase', () => {
-    it('creates checkout for community template', async () => {
+    beforeEach(() => {
+      process.env.MARKETPLACE_COMMUNITY_PURCHASE_ENABLED = 'true';
+    });
+    afterEach(() => {
+      delete process.env.MARKETPLACE_COMMUNITY_PURCHASE_ENABLED;
+    });
+
+    it('returns COMING_SOON when community purchase flag is OFF', async () => {
+      delete process.env.MARKETPLACE_COMMUNITY_PURCHASE_ENABLED;
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+
+      const res = await callCheckout({ type: 'community_purchase', templateId: 'tpl-comm' });
+      const json = await res.json();
+      expect(res.status).toBe(403);
+      expect(json.error?.code).toBe('COMING_SOON');
+    });
+
+    it('creates checkout for community template with stored dodoProductId (not cuid)', async () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_COMMUNITY_TEMPLATE);
@@ -201,6 +225,56 @@ describe('POST /api/dodo-payments/checkout', () => {
       const json = await res.json();
       expect(res.status).toBe(200);
       expect(json.data.checkoutUrl).toBe('https://pay.dodo.com/community');
+      expect(mockCreateCommunityCheckout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dodoProductId: 'prod_comm_tpl_1',
+          templateId: 'tpl-comm',
+        }),
+      );
+      const passed = mockCreateCommunityCheckout.mock.calls[0][0] as { dodoProductId: string; templateId: string };
+      expect(passed.dodoProductId).not.toBe(passed.templateId);
+    });
+
+    it('rejects community template when dodoProductId missing (approve mint required)', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...MOCK_COMMUNITY_TEMPLATE,
+        dodoProductId: null,
+      });
+      (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      const res = await callCheckout({ type: 'community_purchase', templateId: 'tpl-comm' });
+      const json = await res.json();
+      expect(res.status).toBe(400);
+      expect(json.error?.code).toBe('PRODUCT_NOT_READY');
+    });
+
+    it('skill purchase e2e (mock): mints MarketplaceSale at 3.5% + SkillInstall', async () => {
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_COMMUNITY_SKILL);
+      (prismaMock.marketplaceSale.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      mockCreateCommunityCheckout.mockResolvedValue({ checkoutUrl: null, mockMode: true });
+      (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'sale-skill' });
+      (prismaMock.skillInstall.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'si-1' });
+
+      const res = await callCheckout({ type: 'community_purchase', skillId: 'skill-comm' });
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json.data.mockMode).toBe(true);
+      expect(json.data.purchased).toBe(true);
+      expect(mockCreateCommunityCheckout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dodoProductId: 'prod_comm_skill_1',
+          skillId: 'skill-comm',
+        }),
+      );
+      const saleCall = (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(saleCall.data.skillId).toBe('skill-comm');
+      expect(saleCall.data.processingFee).toBeCloseTo(29 * 0.035, 2);
+      expect(saleCall.data.payoutStatus).toBe('PENDING');
+      expect(prismaMock.skillInstall.upsert).toHaveBeenCalled();
     });
 
     it('creates MarketplaceSale in mock mode with correct fee math', async () => {

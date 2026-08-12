@@ -26,6 +26,8 @@ describe("ChannelStatusSection", () => {
     expect(screen.getByText("Telegram")).toBeDefined()
     expect(screen.getByText("Discord")).toBeDefined()
     expect(screen.getByText("Slack")).toBeDefined()
+    // PR-0: Discord/Slack labeled beta; Telegram has no beta badge.
+    expect(screen.getAllByText("beta")).toHaveLength(2)
     expect(screen.getByText("Running")).toBeDefined()
     expect(screen.getByText("Error")).toBeDefined()
     expect(screen.getByText("Setup")).toBeDefined()

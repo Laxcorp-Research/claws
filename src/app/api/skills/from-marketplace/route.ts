@@ -2,34 +2,8 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS, apiError } from "@/lib/api/response"
-import type { SkillCategory } from "@/generated/prisma/client"
 import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
-
-const CATEGORY_MAP: Record<string, SkillCategory> = {
-  core: "CORE",
-  crm: "CRM",
-  email: "EMAIL_SENDER",
-  social: "SOCIAL",
-  calendar: "CALENDAR",
-  analytics: "ANALYTICS",
-  search: "SEARCH",
-  finance: "FINANCE",
-  trading: "TRADING",
-  content: "CONTENT",
-  communication: "COMMUNICATION",
-  security: "SECURITY",
-  marketing: "CRM",
-  developer: "CORE",
-  productivity: "CORE",
-  system: "CORE",
-  data: "ANALYTICS",
-  web: "SEARCH",
-}
-
-function mapCategory(raw: string): SkillCategory {
-  const lower = raw.toLowerCase().trim()
-  return CATEGORY_MAP[lower] || "CUSTOM"
-}
+import { bridgeMarketplaceSkillToSkill } from "@/lib/marketplace/skill-bridge"
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser()
@@ -49,23 +23,7 @@ export async function POST(req: NextRequest) {
     if (!mpSkill) return ERRORS.NOT_FOUND("Marketplace skill")
     if (!isPubliclyListable(mpSkill)) return ERRORS.NOT_FOUND("Marketplace skill")
 
-    let skill = await prisma.skill.findUnique({ where: { slug: mpSkill.slug } })
-
-    if (!skill) {
-      skill = await prisma.skill.create({
-        data: {
-          name: mpSkill.name,
-          slug: mpSkill.slug,
-          description: mpSkill.description || "Marketplace skill",
-          skillMd: mpSkill.skillMd || "",
-          type: "USER_GENERATED",
-          category: mapCategory(mpSkill.category),
-          isVerified: mpSkill.trustTier === "VERIFIED" || mpSkill.trustTier === "OFFICIAL",
-          isBuiltIn: false,
-          isCurated: false,
-        },
-      })
-    }
+    const skill = await bridgeMarketplaceSkillToSkill(mpSkill)
 
     return apiSuccess({
       id: skill.id,

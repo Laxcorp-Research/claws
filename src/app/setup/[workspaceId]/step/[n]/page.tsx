@@ -62,6 +62,12 @@ import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, Mess
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
 import type { ChannelId, ChannelStatusMap, LaunchChannelId, MaskedChannelConfigMap } from "@/lib/openclaw/channel-config"
+import {
+  CHANNEL_BETA_LABEL,
+  PROVIDER_BYOK_BETA_LABEL,
+  isBetaChannel,
+  isByokBetaProvider,
+} from "@/lib/ui/beta-labels"
 
 interface AgentRow {
   id: string
@@ -191,28 +197,32 @@ const PROVIDER_NAMES: Record<string, string> = {
   ANTHROPIC: "Anthropic (Claude)",
   OPENAI: "OpenAI (GPT)",
   GOOGLE: "Google (Gemini)",
+  OPENROUTER: "OpenRouter — one key, every model",
 }
 
 const PROVIDER_HELP: Record<string, string> = {
   ANTHROPIC: "https://console.anthropic.com/settings/keys",
   OPENAI: "https://platform.openai.com/api-keys",
   GOOGLE: "https://aistudio.google.com/apikey",
+  OPENROUTER: "https://openrouter.ai/keys",
 }
 
 const PROVIDER_PLACEHOLDER: Record<string, string> = {
   ANTHROPIC: "sk-ant-api03-...",
   OPENAI: "sk-...",
   GOOGLE: "AIza...",
+  OPENROUTER: "sk-or-v1-...",
 }
 
 function getRequiredProviders(agents: AgentRow[]): string[] {
   const providers = new Set<string>()
   for (const a of agents) {
     const m = a.model || "anthropic/claude-sonnet-4-6"
-    if (m.startsWith("anthropic/")) providers.add("ANTHROPIC")
+    if (m.startsWith("openrouter/")) providers.add("OPENROUTER")
+    else if (m.startsWith("anthropic/")) providers.add("ANTHROPIC")
     else if (m.startsWith("openai/")) providers.add("OPENAI")
     else if (m.startsWith("google/")) providers.add("GOOGLE")
-    // OPENROUTER / OLLAMA deliberately not surfaced (D1 provider honesty).
+    // OLLAMA stays cut (not a supported BYOK surface).
   }
   if (providers.size === 0) providers.add("ANTHROPIC")
   return Array.from(providers)
@@ -329,7 +339,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       <p className="text-xs text-[var(--tx2)] mb-3.5">
         {creditMode
           ? "Your agents are powered by Claws Starter Credits. Choose which models each agent should use below."
-          : "Your agents need API keys to think. We support Anthropic, OpenAI, and Google. Configure keys for each provider your agents use."}
+          : "Your agents need API keys to think. We support Anthropic, OpenAI, Google, and OpenRouter. Configure keys for each provider your agents use. OpenRouter is BYOK-only."}
       </p>
 
       {creditMode && <StarterCreditBanner balanceCents={creditBalanceCents} />}
@@ -348,7 +358,17 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           return (
             <div key={provider} className="flex items-start justify-between gap-[24px] px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
               <div className="min-w-0 max-w-[60%]">
-                <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
+                  {provider === "ANTHROPIC" && (
+                    <Badge variant="success">default</Badge>
+                  )}
+                  {isByokBetaProvider(provider) && (
+                    <Badge variant="warning" title="Supported with your own API key; not the proven default.">
+                      {PROVIDER_BYOK_BETA_LABEL}
+                    </Badge>
+                  )}
+                </div>
                 {usingAgents.length > 0 && (
                   <div className="text-[11px] text-[var(--tx3)] mt-[2px]">
                     Used by: {usingAgents.map(a => a.name).join(", ")}
@@ -425,7 +445,14 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       )}
 
       {/* Model Selection Table */}
-      {agents.length > 0 && <ModelSelectionTable agents={agents} onModelChange={handleModelChange} creditMode={creditMode} />}
+      {agents.length > 0 && (
+        <ModelSelectionTable
+          agents={agents}
+          onModelChange={handleModelChange}
+          creditMode={creditMode}
+          configuredProviders={keyStatus.filter((k) => k.hasKey || k.globalKeyValid || k.overrideKeyValid).map((k) => k.provider)}
+        />
+      )}
 
       {creditMode && (
         <p className="text-[11px] text-[var(--tx3)] mb-3.5">
@@ -2379,6 +2406,8 @@ type ChannelDefinition = {
   alwaysConnected?: boolean
   launch?: boolean
   staged?: boolean
+  /** Honesty badge label (e.g. "beta"); rendered via DS Badge. */
+  badgeLabel?: string
   fields?: ChannelField[]
   helpUrl?: string
   setupSteps?: string[]
@@ -2390,7 +2419,7 @@ const CHANNELS: ChannelDefinition[] = [
     id: "telegram",
     channelId: "telegram",
     name: "Telegram",
-    description: "Enter bot token from @BotFather",
+    description: "Proven default — enter bot token from @BotFather",
     icon: <Send className={ICON_CLASS} />,
     launch: true,
     fields: [
@@ -2416,6 +2445,7 @@ const CHANNELS: ChannelDefinition[] = [
     description: "Enter bot token from Developer Portal",
     icon: <Gamepad2 className={ICON_CLASS} />,
     launch: true,
+    badgeLabel: CHANNEL_BETA_LABEL,
     fields: [
       { key: "token", label: "Bot token", placeholder: "Paste your Discord bot token", required: true },
       {
@@ -2440,6 +2470,7 @@ const CHANNELS: ChannelDefinition[] = [
     description: "Socket Mode with bot and app tokens",
     icon: <Hash className={ICON_CLASS} />,
     launch: true,
+    badgeLabel: CHANNEL_BETA_LABEL,
     fields: [
       { key: "appToken", label: "App token (xapp-…)", placeholder: "xapp-…", required: true },
       { key: "botToken", label: "Bot token (xoxb-…)", placeholder: "xoxb-…", required: true },
@@ -2700,6 +2731,13 @@ export function Step4({ workspaceId }: { workspaceId: string }) {
               name={channel.name}
               description={channelDescription(channel, summary, channelDrift)}
               icon={channel.icon}
+              badge={
+                channel.badgeLabel
+                  ? <Badge variant="warning">{channel.badgeLabel}</Badge>
+                  : channel.channelId && isBetaChannel(channel.channelId)
+                    ? <Badge variant="warning">{CHANNEL_BETA_LABEL}</Badge>
+                    : undefined
+              }
               status={
                 channel.alwaysConnected || (channel.channelId && summary?.channels[channel.channelId]?.live === "connected")
                   ? "connected"

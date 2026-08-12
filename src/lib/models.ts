@@ -1,3 +1,10 @@
+/**
+ * Static pinned fallbacks + helpers.
+ * Live catalog lives in ModelCatalogEntry (see src/lib/models/catalog.ts).
+ * AI_MODELS kept for backward-compat imports; mirrors PINNED_SEED_MODELS natives.
+ */
+import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
+
 export const AI_MODELS = [
   { value: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", provider: "Anthropic", tier: "fast", costPer1kCalls: 0.001 },
   { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", provider: "Anthropic", tier: "balanced", costPer1kCalls: 0.015 },
@@ -16,9 +23,15 @@ export const DEFAULT_MODEL: Record<string, AIModelValue> = {
 }
 
 export function getModelLabel(value: string): string {
-  return AI_MODELS.find((m) => m.value === value)?.label ?? value
+  const fromStatic = AI_MODELS.find((m) => m.value === value)?.label
+  if (fromStatic) return fromStatic
+  const seed = PINNED_SEED_MODELS.find((m) => m.modelId === value)
+  return seed?.displayName ?? value
 }
 
 export function getModelCost(value: string): number {
-  return AI_MODELS.find((m) => m.value === value)?.costPer1kCalls ?? 0.015
+  const fromStatic = AI_MODELS.find((m) => m.value === value)?.costPer1kCalls
+  if (fromStatic !== undefined) return fromStatic
+  const seed = PINNED_SEED_MODELS.find((m) => m.modelId === value)
+  return seed?.costPer1kEst ?? 0.015
 }

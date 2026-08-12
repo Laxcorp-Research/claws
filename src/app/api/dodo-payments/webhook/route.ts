@@ -4,7 +4,11 @@ import type { AuditAction } from "@/generated/prisma/client"
 import { prisma } from "@/lib/db"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { log } from "@/lib/logger"
-import { createMarketplaceSale } from "@/lib/marketplace/payouts"
+import { createMarketplaceSale, cancelPayout } from "@/lib/marketplace/payouts"
+import {
+  DEPLOYED_EVIDENCE_STATUSES,
+  decideRefundWorkspaceAction,
+} from "@/lib/marketplace/refund-policy"
 import { destroyContainer } from "@/lib/openclaw/deployer"
 
 /**
@@ -178,10 +182,48 @@ async function handlePaymentSucceeded(
   customerEmail: string | undefined,
 ) {
   const isPurchase = metadata.type === "claw_purchase" || metadata.type === "community_purchase"
-  if (!isPurchase || !metadata.templateId) return
+  if (!isPurchase) return
 
   const paymentId = data?.payment_id as string
   if (!paymentId) return
+
+  // PR-7: community skill purchase (no Purchase/workspace row).
+  if (metadata.type === "community_purchase" && metadata.skillId) {
+    const existingSale = await prisma.marketplaceSale.findFirst({ where: { dodoPaymentId: paymentId } })
+    if (existingSale) return
+
+    const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onPaymentSucceeded.skill")
+    const skill = await prisma.marketplaceSkill.findUnique({ where: { id: metadata.skillId } })
+    if (!skill?.creatorId || skill.price == null) return
+
+    const processingFee = Math.round(skill.price * 0.035 * 100) / 100
+    await createMarketplaceSale({
+      skillId: skill.id,
+      buyerId: user.id,
+      creatorId: skill.creatorId,
+      amount: skill.price,
+      processingFee,
+      dodoPaymentId: paymentId,
+    })
+    await prisma.skillInstall.upsert({
+      where: { skillId_userId: { skillId: skill.id, userId: user.id } },
+      create: { skillId: skill.id, userId: user.id },
+      update: {},
+    })
+    await prisma.marketplaceSkill.update({
+      where: { id: skill.id },
+      data: { installCount: { increment: 1 } },
+    })
+
+    const customerId = (data?.customer as Record<string, string>)?.customer_id
+    if (customerId) {
+      await prisma.user.update({ where: { id: user.id }, data: { dodoCustomerId: customerId } })
+    }
+    log.paymentEvent({ event: "skill_purchased", templateId: skill.id, userId: user.id, status: "success" })
+    return
+  }
+
+  if (!metadata.templateId) return
 
   const existing = await prisma.purchase.findFirst({ where: { dodoPaymentId: paymentId } })
   if (existing) return
@@ -421,12 +463,92 @@ async function handleRefundSucceeded(data: Record<string, unknown> | undefined) 
   if (!paymentId) return
 
   const purchase = await prisma.purchase.findFirst({ where: { dodoPaymentId: paymentId } })
-  if (!purchase) return
+  const sale = await prisma.marketplaceSale.findFirst({
+    where: { dodoPaymentId: paymentId },
+    select: { id: true, skillId: true, buyerId: true },
+  })
+  // Template purchases have Purchase; skill community sales may be sale-only.
+  if (!purchase && !sale) return
 
-  await prisma.purchase.update({ where: { id: purchase.id }, data: { status: "REFUNDED", refundedAt: new Date() } })
-
-  if (purchase.workspaceId) {
-    const days = Math.floor((Date.now() - purchase.createdAt.getTime()) / 86400000)
-    if (days <= 7) await prisma.workspace.delete({ where: { id: purchase.workspaceId } })
+  if (purchase) {
+    await prisma.purchase.update({
+      where: { id: purchase.id },
+      data: { status: "REFUNDED", refundedAt: new Date() },
+    })
   }
+
+  // Claw back MarketplaceSale while still PENDING/RELEASABLE (before PAID).
+  // Applies to community template + skill sales (PR-6 / PR-7).
+  await cancelPayout(paymentId)
+
+  if (!purchase) {
+    log.info("Refund clawed back community sale without Purchase row", {
+      category: "payment",
+      paymentId,
+      saleId: sale?.id,
+      skillId: sale?.skillId,
+    })
+    return
+  }
+
+  let hasSuccessfulDeploy = false
+  if (purchase.workspaceId) {
+    const deployEvidence = await prisma.deployment.findFirst({
+      where: {
+        workspaceId: purchase.workspaceId,
+        status: { in: [...DEPLOYED_EVIDENCE_STATUSES] },
+      },
+      select: { id: true },
+    })
+    hasSuccessfulDeploy = !!deployEvidence
+  }
+
+  const decision = decideRefundWorkspaceAction({
+    hasWorkspace: !!purchase.workspaceId,
+    purchaseCreatedAt: purchase.createdAt,
+    hasSuccessfulDeploy,
+  })
+
+  if (decision.deleteWorkspace && purchase.workspaceId) {
+    await prisma.workspace.delete({ where: { id: purchase.workspaceId } })
+    log.info("Refund deleted never-deployed workspace within 7-day window", {
+      category: "payment",
+      purchaseId: purchase.id,
+      workspaceId: purchase.workspaceId,
+      reason: decision.reason,
+    })
+    return
+  }
+
+  // Outside window or already deployed: keep workspace; ledger note for ops.
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: purchase.userId,
+        workspaceId: purchase.workspaceId,
+        action: "PAYMENT_FAILED",
+        resource: "refund.succeeded.workspace_retained",
+        resourceId: purchase.id,
+        after: JSON.stringify({
+          paymentId,
+          decision: decision.reason,
+          deleteWorkspace: false,
+          hasSuccessfulDeploy,
+        }),
+      },
+    })
+  } catch (err) {
+    log.warn("Failed to ledger refund workspace-retained note", {
+      category: "payment",
+      purchaseId: purchase.id,
+      error: String(err),
+    })
+  }
+
+  log.info("Refund recorded; workspace retained", {
+    category: "payment",
+    purchaseId: purchase.id,
+    workspaceId: purchase.workspaceId,
+    reason: decision.reason,
+  })
 }

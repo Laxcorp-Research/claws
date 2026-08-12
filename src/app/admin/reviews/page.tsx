@@ -12,6 +12,7 @@ import { AdminAccessDenied } from "@/components/admin/admin-access-denied"
 import { NetworkError } from "@/components/shared/network-error"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
+import { SandboxReportViewer } from "@/components/marketplace/sandbox-report-viewer"
 
 interface CreatorInfo {
   id: string
@@ -227,12 +228,14 @@ function AgentAccordion({ agent }: { agent: SnapshotAgent }) {
   )
 }
 
-function DetailPanel({ item, onClose, onApprove, onReject, actionLoading }: {
+function DetailPanel({ item, onClose, onApprove, onReject, onSandboxRerun, actionLoading, sandboxRerunLoading }: {
   item: ReviewItem
   onClose: () => void
   onApprove: () => void
   onReject: () => void
+  onSandboxRerun?: () => void
   actionLoading: boolean
+  sandboxRerunLoading?: boolean
 }) {
   const isTemplate = !isSkill(item)
   const template = isTemplate ? (item as ReviewTemplate) : null
@@ -384,17 +387,14 @@ function DetailPanel({ item, onClose, onApprove, onReject, actionLoading }: {
             </div>
           )}
 
-          {/* Skill: Sandbox */}
-          {skill && skill.sandboxReport && (
-            <div className="mb-4">
-              <h3 className="text-[12px] font-semibold text-[var(--tx)] mb-2">Sandbox Results</h3>
-              <div className="bg-[var(--bg2)] border border-[var(--bd)] rounded-[8px] p-3">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <ScanStatus passed={skill.sandboxPassed} />
-                </div>
-                <pre className="text-[10px] font-mono text-[var(--tx2)] whitespace-pre-wrap">{skill.sandboxReport}</pre>
-              </div>
-            </div>
+          {/* Skill: Sandbox (always show for skills — pending or graded) */}
+          {skill && (
+            <SandboxReportViewer
+              passed={skill.sandboxPassed}
+              reportRaw={skill.sandboxReport}
+              onRerun={onSandboxRerun}
+              rerunLoading={sandboxRerunLoading}
+            />
           )}
 
           {/* Footer: Actions */}
@@ -422,6 +422,7 @@ export default function AdminReviewsPage() {
   const [rejectItem, setRejectItem] = useState<ReviewItem | null>(null)
   const [rejectReason, setRejectReason] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [sandboxRerunId, setSandboxRerunId] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -472,7 +473,13 @@ export default function AdminReviewsPage() {
           const res = await fetch(`/api/admin/review-queue/${type}/${id}/approve`, {
             method: "POST",
           })
-          if (!res.ok) throw new Error("Could not approve")
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({})) as { error?: { code?: string; message?: string } }
+            if (body?.error?.code === "SANDBOX_REQUIRED") {
+              throw new Error(body.error.message || "Sandbox must pass before approve")
+            }
+            throw new Error(body?.error?.message || "Could not approve")
+          }
           if (type === "templates") {
             setTemplates((prev) => prev.filter((t) => t.id !== id))
           } else {
@@ -487,6 +494,35 @@ export default function AdminReviewsPage() {
       console.error("Approve failed:", error)
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  async function handleSandboxRerun(id: string) {
+    setSandboxRerunId(id)
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch(`/api/admin/review-queue/skills/${id}/sandbox-rerun`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ force: true }),
+          })
+          if (!res.ok) throw new Error("Could not re-run sandbox")
+          await fetchData()
+          const skillRes = await fetch("/api/admin/review-queue/skills")
+          if (skillRes.ok) {
+            const skillJson = await skillRes.json() as { data?: ReviewSkill[] }
+            const refreshed = (skillJson.data ?? []).find((s) => s.id === id)
+            if (refreshed) setSelectedItem(refreshed)
+          }
+        },
+        { message: "Sandbox re-queued", errorMessage: "Could not re-run sandbox" },
+        (opts) => snackbar?.show(opts),
+      )
+    } catch (error) {
+      console.error("Sandbox re-run failed:", error)
+    } finally {
+      setSandboxRerunId(null)
     }
   }
 
@@ -700,7 +736,13 @@ export default function AdminReviewsPage() {
           onClose={() => setSelectedItem(null)}
           onApprove={() => handleApprove(reviewQueueType(selectedItem), selectedItem.id)}
           onReject={() => { setRejectItem(selectedItem); setRejectReason("") }}
+          onSandboxRerun={
+            isSkill(selectedItem)
+              ? () => { void handleSandboxRerun(selectedItem.id) }
+              : undefined
+          }
           actionLoading={actionLoading === selectedItem.id}
+          sandboxRerunLoading={sandboxRerunId === selectedItem.id}
         />
       )}
     </div>

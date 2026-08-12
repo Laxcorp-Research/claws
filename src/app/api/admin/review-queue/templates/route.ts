@@ -12,8 +12,12 @@ export async function GET() {
   try {
     const templates = await prisma.clawTemplate.findMany({
       where: {
-        reviewStatus: 'PENDING',
         trustTier: { not: 'OFFICIAL' },
+        OR: [
+          { reviewStatus: 'PENDING' },
+          // PR-2: live listing with pending republish also needs human review.
+          { pendingSubmittedAt: { not: null } },
+        ],
       },
       include: {
         creator: {

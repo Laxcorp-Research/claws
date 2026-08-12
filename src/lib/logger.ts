@@ -63,6 +63,7 @@ export const log = {
   marketplaceEvent: (data: {
     event:
       | "template_published"
+      | "template_republish_submitted"
       | "skill_published"
       | "template_purchased"
       | "skill_purchased"

@@ -32,7 +32,7 @@ const BANNED: Array<{ name: string; pattern: RegExp }> = [
   { name: "gateway", pattern: /\bgateway\b/i },
   { name: "snapshot", pattern: /\bsnapshot\b/i },
   { name: "sandbox-queue", pattern: /sandbox[-\s]?queue/i },
-  // Marketplace honesty: no user-facing "sandbox" vetting claims while L2 is absent.
+  // Marketplace: bare "sandbox" still banned except the locked Verified claim (allowlist below).
   { name: "sandbox", pattern: /\bsandbox\b/i },
 ]
 
@@ -44,7 +44,11 @@ function stripCommentsAndImports(src: string): string {
 }
 
 /** Discord product UI label — not our runtime "gateway" jargon. */
-const ALLOWED_LITERAL_SUBSTRINGS = ["Privileged Gateway Intents"] as const
+/** PR-5 locked Verified sandbox claim (Layer-2 live). */
+const ALLOWED_LITERAL_SUBSTRINGS = [
+  "Privileged Gateway Intents",
+  "Verified — ran in an isolated sandbox (no credentials, network locked to the AI model)",
+] as const
 
 function userStringHits(src: string): string[] {
   const body = stripCommentsAndImports(src)

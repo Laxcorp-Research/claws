@@ -1,7 +1,8 @@
 /**
- * -11 catch-up-beat contract (repo-side, against overlay code).
+ * -13 catch-up-beat contract (repo-side, against overlay code).
  *
  * in-grace boot fires exactly once; each skip branch ledgers its reason.
+ * cron-parser-unavailable (image has croner only) must ledger, not throw.
  * MUTATION: remove skip-ledger → reason test fails.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest"
@@ -69,7 +70,7 @@ describe("heartbeat catch-up (-11)", () => {
     return { fetchImpl, calls }
   }
 
-  it("in-grace boot fires exactly once (catchup-v11)", async () => {
+  it("in-grace boot fires exactly once (catchup-v13)", async () => {
     writeJobs([dailyJob])
     const now = new Date("2026-07-24T08:10:00.000Z")
     const { fetchImpl, calls } = healthyFetch()
@@ -88,7 +89,7 @@ describe("heartbeat catch-up (-11)", () => {
 
     expect(result.ran).toBe(true)
     expect(result.reason).toBe("catchup-fired")
-    expect(result.marker).toBe("catchup-v11")
+    expect(result.marker).toBe("catchup-v13")
     expect(result.expectedAt).toBe("2026-07-24T08:00:00.000Z")
     expect(result.jobId).toBe(dailyJob.id)
     expect(result.nextFireAt).toBe("2026-07-25T08:00:00.000Z")
@@ -103,6 +104,90 @@ describe("heartbeat catch-up (-11)", () => {
       params: { id: dailyJob.id, mode: "force" },
     })
     expect(isHeartbeatBeatEvidence(result.evidenceShape)).toBe(true)
+  })
+
+  it("cron-parser-unavailable ledgers (closes -12 throw silence)", async () => {
+    writeJobs([dailyJob])
+    const ledger = vi.fn(async () => ({ ok: true }))
+    const result = await catchup.runHeartbeatCatchupOnBoot({
+      dataDir: dir,
+      port: "18789",
+      now: new Date("2026-07-24T08:10:00.000Z"),
+      fetchImpl: healthyFetch().fetchImpl,
+      loadCronParser: async () => null,
+      ledger,
+      jobsReadyTimeoutMs: 50,
+      gatewayReadyTimeoutMs: 2000,
+      sleep: async () => {},
+    })
+    expect(result.ran).toBe(false)
+    expect(result.reason).toBe("cron-parser-unavailable")
+    expect(result.marker).toBe("catchup-v13")
+    expect(ledger).toHaveBeenCalled()
+    const calls = ledger.mock.calls as unknown as Array<
+      [{ metadata: { eventKind: string; reason: string; marker: string } }]
+    >
+    const event = calls[0]![0]!
+    expect(event.metadata.eventKind).toBe("heartbeat_catchup_skip")
+    expect(event.metadata.reason).toBe("cron-parser-unavailable")
+    expect(event.metadata.marker).toBe("catchup-v13")
+  })
+
+  it("cronerAsCronExpressionParser matches cron-parser prev/next", () => {
+    // Minimal Cron stub matching OpenClaw croner previousRuns/nextRun.
+    class FakeCron {
+      expr: string
+      constructor(expr: string) {
+        this.expr = expr
+      }
+      previousRuns(n: number, probe: Date) {
+        // For 0 8 * * *: emit 08:00 UTC for probe's UTC day and prior days.
+        const out: Date[] = []
+        const probeDay = Date.UTC(
+          probe.getUTCFullYear(),
+          probe.getUTCMonth(),
+          probe.getUTCDate(),
+        )
+        for (let i = 0; i < n + 2; i++) {
+          out.push(new Date(probeDay - i * 86_400_000 + 8 * 3600_000))
+        }
+        return out
+      }
+      nextRun(from: Date) {
+        const day = Date.UTC(
+          from.getUTCFullYear(),
+          from.getUTCMonth(),
+          from.getUTCDate(),
+        )
+        const today8 = new Date(day + 8 * 3600_000)
+        if (today8.getTime() > from.getTime()) return today8
+        return new Date(day + 86_400_000 + 8 * 3600_000)
+      }
+    }
+    const adapted = catchup.cronerAsCronExpressionParser(FakeCron)
+    const now = new Date("2026-08-11T11:46:00.000Z")
+    const prev = adapted
+      .parse("0 8 * * *", { currentDate: now, tz: "UTC" })
+      .prev()
+      .toDate()
+    const next = adapted
+      .parse("0 8 * * *", { currentDate: now, tz: "UTC" })
+      .next()
+      .toDate()
+    const cpPrev = CronExpressionParser.parse("0 8 * * *", {
+      currentDate: now,
+      tz: "UTC",
+    })
+      .prev()
+      .toDate()
+    const cpNext = CronExpressionParser.parse("0 8 * * *", {
+      currentDate: now,
+      tz: "UTC",
+    })
+      .next()
+      .toDate()
+    expect(prev.toISOString()).toBe(cpPrev.toISOString())
+    expect(next.toISOString()).toBe(cpNext.toISOString())
   })
 
   it("each skip branch ledgers its reason", async () => {
@@ -198,7 +283,7 @@ describe("heartbeat catch-up (-11)", () => {
       const event = calls[0]![0]!
       expect(event.metadata.eventKind).toBe("heartbeat_catchup_skip")
       expect(event.metadata.reason).toBe(c.reason)
-      expect(event.metadata.marker).toBe("catchup-v11")
+      expect(event.metadata.marker).toBe("catchup-v13")
       if (dir) {
         fs.rmSync(dir, { recursive: true, force: true })
         dir = ""
@@ -214,6 +299,11 @@ describe("heartbeat catch-up (-11)", () => {
     expect(pm).toContain("runHeartbeatCatchupOnBoot")
     expect(pm).toContain("CATCHUP_OVERLAY_MARKER")
     expect(pm).toContain("ledger:")
+    // -12: ledger RETRY closes silent no-op (boot race vs activity reporter).
+    expect(pm).toContain("ledgerCatchupWithRetry")
+    expect(pm).toMatch(/attempt <= 4/)
+    // -13: last-resort ledger in .catch (throw silence class).
+    expect(pm).toContain("cron-parser-unavailable")
 
     const dockerfile = readFileSync(
       path.join(process.cwd(), "docker/Dockerfile"),
@@ -221,7 +311,7 @@ describe("heartbeat catch-up (-11)", () => {
     )
     expect(dockerfile).toContain("heartbeat-catchup.mjs")
     expect(dockerfile).toContain("thinking-signature-heal.mjs")
-    expect(dockerfile).toContain("catchup-v11")
+    expect(dockerfile).toContain("catchup-v13")
 
     const catchupSrc = readFileSync(
       path.join(process.cwd(), "container/heartbeat-catchup.mjs"),
@@ -231,12 +321,17 @@ describe("heartbeat catch-up (-11)", () => {
     expect(catchupSrc).not.toMatch(
       /export function shouldCatchUpBeat\(args\) \{\s*return false/,
     )
-    expect(catchupSrc).toContain("catchup-v11")
+    expect(catchupSrc).toContain("catchup-v13")
+    expect(catchupSrc).toContain("cronerAsCronExpressionParser")
+    expect(catchupSrc).toContain("createRequire")
+    expect(catchupSrc).toContain("cron-parser-unavailable")
     expect(catchupSrc).toContain("ledgerCatchupSkip")
     expect(catchupSrc).toContain("heartbeat_catchup_skip")
     expect(catchupSrc).toContain("waitForCronJobsReadable")
     // MUTATION: remove skip-ledger → this assertion fails.
     expect(catchupSrc).toMatch(/await ledgerCatchupSkip\(/)
+    // MUTATION: restore throw-from-loadCronParser without ledger → fails.
+    expect(catchupSrc).toContain("return null")
   })
 
   it("shouldCatchUpBeat: age within grace only", () => {

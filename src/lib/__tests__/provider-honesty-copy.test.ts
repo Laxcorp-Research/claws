@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { SUPPORTED_PROVIDERS_COPY } from "@/lib/supported-providers"
 
-const ALIGNED = "Anthropic, OpenAI, and Google"
+const ALIGNED = "Anthropic, OpenAI, Google, and OpenRouter"
 
 describe("provider honesty copy alignment", () => {
   it("exports the exact aligned string", () => {
@@ -11,7 +11,6 @@ describe("provider honesty copy alignment", () => {
   })
 
   it("settings and setup use the aligned provider string", () => {
-    // Pricing step 3 is credits-honest (subscribe path); no longer requires ALIGNED.
     const roots = [
       "src/components/settings/api-key-manager.tsx",
       "src/app/setup/[workspaceId]/step/[n]/page.tsx",
@@ -29,19 +28,19 @@ describe("provider honesty copy alignment", () => {
     )
   })
 
-  it("settings and setup do not surface OpenRouter or Ollama as saveable providers", () => {
+  it("settings and setup surface OpenRouter as a real BYOK provider; Ollama stays cut", () => {
     const settings = readFileSync(
       join(process.cwd(), "src/components/settings/api-key-manager.tsx"),
       "utf8",
     )
-    expect(settings).not.toMatch(/key:\s*"OPENROUTER"/)
-    expect(settings).not.toContain("OpenRouter")
+    expect(settings).toMatch(/key:\s*"OPENROUTER"/)
+    expect(settings).toContain("OpenRouter — one key, every model")
 
     const setup = readFileSync(
       join(process.cwd(), "src/app/setup/[workspaceId]/step/[n]/page.tsx"),
       "utf8",
     )
-    expect(setup).not.toMatch(/OPENROUTER:\s*"OpenRouter"/)
+    expect(setup).toContain('OPENROUTER: "OpenRouter — one key, every model"')
     expect(setup).not.toMatch(/OLLAMA:\s*"Ollama/)
   })
 })

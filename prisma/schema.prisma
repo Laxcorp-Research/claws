@@ -158,6 +158,34 @@ enum ApiProvider {
   OLLAMA
 }
 
+/// Dynamic model registry — refreshed from provider APIs (OpenRouter /models, etc.).
+/// Agent.model stores the OpenClaw ref (e.g. anthropic/…, openrouter/openai/gpt-4o).
+model ModelCatalogEntry {
+  id                 String   @id @default(cuid())
+  /// OpenClaw model ref used in Agent.model / openclaw.json
+  modelId            String   @unique
+  /// ANTHROPIC | OPENAI | GOOGLE | OPENROUTER
+  provider           String
+  displayName        String
+  contextLength      Int?
+  /// Short pricing snippet for UI (e.g. "$0.15/$0.60 per 1M")
+  pricingSnippet     String?
+  /// Rough est. USD per 1k calls for legacy cost column (estimate-only for BYOK)
+  costPer1kEst       Float?
+  isPinned           Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  /// seed | openrouter | openai | google | anthropic
+  source             String
+  rawMeta            Json?
+  refreshedAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([provider])
+  @@index([isPinned, isActive])
+  @@index([displayName])
+}
+
 // ─── WORKSPACES ─────────────────────────────────────────
 
 model Workspace {
@@ -442,10 +470,15 @@ model Skill {
   type        SkillType
   category    SkillCategory
   icon        String?
+  emoji       String?
 
   compatibleTools  String[]
   requiresToolConnection  Boolean @default(false)
   requiredToolCategory    String?
+  /// Marketplace / custom skill binary canaries (generator → SKILL.md requires.bins).
+  requiredBins String[] @default([])
+  /// Marketplace env names (generator → SKILL.md requires.env + skills.entries).
+  requiredEnvVars String[] @default([])
 
   isVerified  Boolean @default(false)
   isBuiltIn   Boolean @default(false)
@@ -664,6 +697,12 @@ model ClawTemplate {
 
   workspaceSnapshot String @db.Text
 
+  /// PR-2 republish: pending snapshot stays off-store until admin approve.
+  /// Live workspaceSnapshot + isPublished stay public while this is set.
+  pendingWorkspaceSnapshot String?   @db.Text
+  pendingVersion           Int?
+  pendingSubmittedAt       DateTime?
+
   purchaseCount Int @default(0)
   installCount  Int @default(0)
   avgRating     Float?
@@ -683,6 +722,7 @@ model ClawTemplate {
   @@index([isPublished])
   @@index([creatorId])
   @@index([installCount])
+  @@index([pendingSubmittedAt])
 }
 
 enum ClawCategory {
@@ -952,6 +992,10 @@ enum AuditAction {
   TRADE_REJECTED_BY_HUMAN
   TRADE_LIMIT_REACHED
   TRADE_CIRCUIT_BREAKER_TRIGGERED
+  PAYOUT_DETAILS_VIEWED
+  PAYOUT_MARKED_PROCESSING
+  PAYOUT_MARKED_PAID
+  PAYOUT_CLAWBACK_ADJUSTMENT
 }
 
 // ─── MARKETPLACE ────────────────────────────────────────
@@ -984,7 +1028,14 @@ model CreatorProfile {
   isActive    Boolean  @default(true)
   agreedToTermsAt DateTime
 
-  dodoBeneficiaryId String?
+  dodoBeneficiaryId String? // DEAD — Stripe Connect / Dodo beneficiary post-launch; unused on MANUAL-RAIL
+
+  /// AES-256-GCM blob (same encrypt() as UserApiKey). NEVER return plaintext to creators.
+  payoutDetailsEncrypted String? @db.Text
+  payoutMethod           PayoutMethod?
+  payoutDetailsUpdatedAt DateTime?
+  /// Masked hint written at save time (e.g. last-4 of IBAN / email local-part) — safe to render.
+  payoutDetailsHint      String?
 
   totalInstalls  Int   @default(0)
   totalTemplates Int   @default(0)
@@ -998,6 +1049,12 @@ model CreatorProfile {
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+enum PayoutMethod {
+  BANK
+  WISE
+  PAYPAL
 }
 
 model MarketplaceSkill {
@@ -1030,6 +1087,8 @@ model MarketplaceSkill {
 
   isFree       Boolean @default(true)
   price        Float?
+  /// Dodo product id minted at admin approve (DYNAMIC-AT-APPROVAL). Never use cuid at checkout.
+  dodoProductId String?
   installCount Int     @default(0)
   isPublished  Boolean @default(false)
   publishedAt  DateTime?
@@ -1107,14 +1166,21 @@ model MarketplaceSale {
   payoutHeldUntil DateTime?
   payoutBatchId String?
   paidAt        DateTime?
+  /// Wise/bank transfer reference entered by admin when marking PAID.
+  payoutTransferRef String?
 
   dodoPaymentId String? @unique
+
+  /// When set, this row is a post-PAID clawback adjustment (negative creatorPayout).
+  adjustmentOfSaleId String?
 
   createdAt    DateTime @default(now())
 
   @@index([creatorId])
   @@index([payoutStatus])
   @@index([createdAt])
+  @@index([payoutBatchId])
+  @@index([adjustmentOfSaleId])
 }
 
 model Report {

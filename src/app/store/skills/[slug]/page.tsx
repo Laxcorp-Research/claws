@@ -50,7 +50,11 @@ interface PageData {
     installed: boolean
     hasPurchased: boolean
     hasRunningWorkspaces: boolean
-    workspaces: Array<{ id: string; name: string }>
+    workspaces: Array<{
+      id: string
+      name: string
+      agents: Array<{ id: string; name: string; role: string }>
+    }>
   } | null
 }
 
@@ -75,7 +79,9 @@ export default function SkillDetailPage() {
 
   const [showInstallModal, setShowInstallModal] = useState(false)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("")
+  const [selectedAgentId, setSelectedAgentId] = useState("")
   const [isInstalling, setIsInstalling] = useState(false)
+  const [isPurchasing, setIsPurchasing] = useState(false)
   const [installError, setInstallError] = useState<string | null>(null)
   const [installSuccess, setInstallSuccess] = useState(false)
 
@@ -121,8 +127,53 @@ export default function SkillDetailPage() {
     setIsLoadingReviews(false)
   }, [data, slug, reviews, isLoadingReviews])
 
+  const workspaceAgents =
+    data?.installStatus?.workspaces.find((w) => w.id === selectedWorkspaceId)?.agents ?? []
+
+  const defaultAgentId = (() => {
+    const orch = workspaceAgents.find((a) => a.role === "ORCHESTRATOR")
+    return orch?.id ?? workspaceAgents[0]?.id ?? ""
+  })()
+
+  const handlePurchase = async () => {
+    if (!data) return
+    setIsPurchasing(true)
+    setInstallError(null)
+    try {
+      await mutateWithFeedback(
+        async () => {
+          const res = await fetch("/api/dodo-payments/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "community_purchase", skillId: data.skill.id }),
+          })
+          const json = await res.json()
+          if (!res.ok) {
+            throw new Error(json.error?.message || "Purchase failed")
+          }
+          if (json.data?.checkoutUrl) {
+            window.location.href = json.data.checkoutUrl as string
+            return
+          }
+          fetchData()
+        },
+        {
+          message: "Purchase complete — you can install now",
+          errorMessage: "Could not start purchase",
+        },
+        showSnackbar,
+      )
+    } catch (err: unknown) {
+      setInstallError(err instanceof Error ? err.message : "Purchase failed")
+    } finally {
+      setIsPurchasing(false)
+    }
+  }
+
   const handleInstall = async () => {
     if (!selectedWorkspaceId) { setInstallError("Please select a workspace"); return }
+    const agentId = selectedAgentId || defaultAgentId
+    if (!agentId) { setInstallError("Please select an agent"); return }
     setIsInstalling(true)
     setInstallError(null)
     try {
@@ -131,7 +182,10 @@ export default function SkillDetailPage() {
           const res = await fetch(`/api/marketplace/skills/${slug}/install`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workspaceId: selectedWorkspaceId }),
+            body: JSON.stringify({
+              workspaceId: selectedWorkspaceId,
+              agentIds: [agentId],
+            }),
           })
           if (!res.ok) {
             const err = await res.json()
@@ -143,10 +197,11 @@ export default function SkillDetailPage() {
             setShowInstallModal(false)
             setInstallSuccess(false)
             setSelectedWorkspaceId("")
+            setSelectedAgentId("")
           }, 1500)
         },
         {
-          message: "Skill installed",
+          message: "Skill installed — applies on next redeploy",
           errorMessage: "Could not install skill",
         },
         showSnackbar,
@@ -259,11 +314,15 @@ export default function SkillDetailPage() {
                   </Button>
                 )
               }
-              // Batch A / A2: no skill-checkout flow — paid-unowned is disabled honesty, not a CTA.
               if (needsPurchase && installStatus) {
                 return (
-                  <Button disabled size="lg" className="mt-3">
-                    Purchase coming soon
+                  <Button
+                    size="lg"
+                    className="mt-3"
+                    loading={isPurchasing}
+                    onClick={() => void handlePurchase()}
+                  >
+                    Buy ${skill.price?.toFixed(0)}
                   </Button>
                 )
               }
@@ -276,8 +335,8 @@ export default function SkillDetailPage() {
                       window.location.href = "/auth/signin"
                       return
                     }
-                    if (!installStatus.hasRunningWorkspaces) {
-                      setInstallError("You need a running workspace to install skills. Deploy a Claw first.")
+                    if (installStatus.workspaces.length === 0) {
+                      setInstallError("Create a Claw workspace first, then install this skill.")
                       return
                     }
                     setShowInstallModal(true)
@@ -393,7 +452,13 @@ export default function SkillDetailPage() {
       {/* Install Modal */}
       <Modal
         open={showInstallModal}
-        onClose={() => { setShowInstallModal(false); setInstallError(null); setInstallSuccess(false); setSelectedWorkspaceId("") }}
+        onClose={() => {
+          setShowInstallModal(false)
+          setInstallError(null)
+          setInstallSuccess(false)
+          setSelectedWorkspaceId("")
+          setSelectedAgentId("")
+        }}
         title={`Install ${data.skill.name}`}
         size="sm"
       >
@@ -402,24 +467,58 @@ export default function SkillDetailPage() {
             <Check size={24} className="mx-auto mb-2 text-[var(--ok)]" />
             <p className="text-[13px] font-semibold text-[var(--ok)]">Skill installed successfully!</p>
             <p className="text-[11px] text-[var(--tx2)] mt-1">
-              Saved to your workspace. Runtime hot-add is pending — agents pick it up after the next deploy.
+              Attached to the selected agent. Applies on next redeploy (SKILL.md is written by the generator).
             </p>
           </div>
         ) : (
           <>
             {installError && <AlertBanner variant="error">{installError}</AlertBanner>}
-            <div>
-              <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Choose workspace</label>
-              <CustomSelect
-                value={selectedWorkspaceId}
-                onChange={setSelectedWorkspaceId}
-                placeholder="Select a workspace..."
-                options={installStatus?.workspaces.map((ws) => ({ value: ws.id, label: ws.name })) || []}
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Choose workspace</label>
+                <CustomSelect
+                  value={selectedWorkspaceId}
+                  onChange={(id) => {
+                    setSelectedWorkspaceId(id)
+                    setSelectedAgentId("")
+                  }}
+                  placeholder="Select a workspace..."
+                  options={installStatus?.workspaces.map((ws) => ({ value: ws.id, label: ws.name })) || []}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">
+                  Attach to agent <span className="text-[var(--tx3)]">(default: Orchestrator)</span>
+                </label>
+                <CustomSelect
+                  value={selectedAgentId || defaultAgentId}
+                  onChange={setSelectedAgentId}
+                  placeholder={selectedWorkspaceId ? "Select an agent..." : "Select a workspace first"}
+                  options={workspaceAgents.map((a) => ({
+                    value: a.id,
+                    label: a.role === "ORCHESTRATOR" ? `${a.name} (Orchestrator)` : a.name,
+                  }))}
+                />
+              </div>
+              {skill.requiredEnvVars.length > 0 && (
+                <p className="text-[11px] text-[var(--tx3)]">
+                  Env required: {skill.requiredEnvVars.join(", ")}. Missing values show as PENDING until
+                  connected — then redeploy.
+                </p>
+              )}
+              <p className="text-[11px] text-[var(--tx3)]">
+                Install writes the skill + agent attach now. Runtime applies on next redeploy.
+              </p>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <Button variant="outline" onClick={() => setShowInstallModal(false)}>Cancel</Button>
-              <Button onClick={handleInstall} loading={isInstalling} disabled={!selectedWorkspaceId}>Install to Workspace</Button>
+              <Button
+                onClick={handleInstall}
+                loading={isInstalling}
+                disabled={!selectedWorkspaceId || !(selectedAgentId || defaultAgentId)}
+              >
+                Install to Workspace
+              </Button>
             </div>
           </>
         )}

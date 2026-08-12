@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg"
 import { ALL_TEMPLATES } from "./seed-data"
 import { ALL_SKILLS } from "./seed-data/skills-index"
 import { MARKETPLACE_SKILLS_CATALOG, generateSkillMd } from "./seed-data/marketplace-skills"
+import { buildWorkspaceSnapshotFromSeedTemplate } from "../src/lib/marketplace/workspace-snapshot"
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" })
 const prisma = new PrismaClient({ adapter })
@@ -58,42 +59,8 @@ async function main() {
   //        DELETE FROM "TemplateReview"
   //          WHERE title = 'MUTATION_TEST_SENTINEL';
   for (const template of ALL_TEMPLATES) {
-    const knobs = template.knobs ?? {
-      maxRevisionRounds: 3,
-      deliveryMode: "APPROVAL_REQUIRED" as const,
-    }
-    const workspaceSnapshot = JSON.stringify({
-      agents: template.agents.map((a) => ({
-        name: a.name,
-        agentSlug: a.agentSlug,
-        role: a.role,
-        color: a.color,
-        model: a.model,
-        roleDescription: a.roleDescription,
-        soulMd: a.soulMd,
-        agentsMd: a.agentsMd,
-        heartbeatMd: a.heartbeatMd,
-        skills: a.skills,
-        positionX: a.position.x,
-        positionY: a.position.y,
-        // WIRE-FULL: critics always carry an explicit threshold (default 8).
-        ...(a.role === "CRITIC"
-          ? { qualityThreshold: a.qualityThreshold ?? 8 }
-          : a.qualityThreshold != null
-            ? { qualityThreshold: a.qualityThreshold }
-            : {}),
-      })),
-      connections: template.connections,
-      tools: template.tools,
-      flowDescription: template.flowDescription,
-      legalDisclaimer: template.legalDisclaimer ?? null,
-      maxRevisionRounds: knobs.maxRevisionRounds,
-      deliveryMode: knobs.deliveryMode,
-      // Discoverability: templates that recommend Always on (e.g. Quant Trader).
-      ...(template.recommendedAlwaysOn === true
-        ? { recommendedAlwaysOn: true }
-        : {}),
-    })
+    // Shared builder with community publish — never drift on parity keys.
+    const workspaceSnapshot = buildWorkspaceSnapshotFromSeedTemplate(template)
 
     const data = {
       name: template.name,
