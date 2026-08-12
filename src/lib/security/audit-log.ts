@@ -5,6 +5,7 @@ type AdminAction =
   | "template.reject"
   | "skill.approve"
   | "skill.reject"
+  | "skill.sandbox_rerun"
   | "report.resolve"
   | "version.promote"
   | "version.edit"

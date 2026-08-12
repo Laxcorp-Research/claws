@@ -1,4 +1,5 @@
 export { TrustBadge, TrustBadgeLegend } from "./trust-badge"
+export { SandboxReportViewer } from "./sandbox-report-viewer"
 export { MarketplaceTabs } from "./marketplace-tabs"
 export { SkillCard } from "./skill-card"
 export { MarketplaceFilters } from "./marketplace-filters"

@@ -216,7 +216,8 @@ describe("admin approve/reject listing gate (Arc 1)", () => {
     )
   })
 
-  it("skill approve with sandboxPassed still mints SCANNED not VERIFIED", async () => {
+  it("skill approve with sandboxPassed still mints SCANNED when vetting env off", async () => {
+    delete process.env.SANDBOX_VETTING_ENABLED
     prismaMock.marketplaceSkill.findUnique.mockResolvedValue({
       id: "sk-1",
       name: "S",
@@ -253,5 +254,63 @@ describe("admin approve/reject listing gate (Arc 1)", () => {
       data: { trustTier: string }
     }
     expect(updateArg.data.trustTier).not.toBe("VERIFIED")
+  })
+
+  it("skill approve with sandboxPassed mints VERIFIED when vetting env on", async () => {
+    process.env.SANDBOX_VETTING_ENABLED = "true"
+    prismaMock.marketplaceSkill.findUnique.mockResolvedValue({
+      id: "sk-1",
+      name: "S",
+      slug: "s",
+      reviewStatus: "PENDING",
+      sandboxPassed: true,
+      publishedAt: null,
+      creator: { displayName: "C", user: { email: "c@test.com", name: "C" } },
+    } as never)
+    prismaMock.marketplaceSkill.update.mockResolvedValue({
+      id: "sk-1",
+      reviewStatus: "APPROVED",
+      trustTier: "VERIFIED",
+      isPublished: true,
+    } as never)
+
+    const res = await approveSkill(
+      createMockRequest("http://localhost/api/admin/review-queue/skills/sk-1/approve", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "sk-1" }) },
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.marketplaceSkill.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ trustTier: "VERIFIED" }),
+      }),
+    )
+    delete process.env.SANDBOX_VETTING_ENABLED
+  })
+
+  it("skill approve without sandbox refused when vetting env on", async () => {
+    process.env.SANDBOX_VETTING_ENABLED = "true"
+    prismaMock.marketplaceSkill.findUnique.mockResolvedValue({
+      id: "sk-1",
+      name: "S",
+      slug: "s",
+      reviewStatus: "PENDING",
+      sandboxPassed: null,
+      publishedAt: null,
+      creator: { displayName: "C", user: { email: "c@test.com", name: "C" } },
+    } as never)
+
+    const res = await approveSkill(
+      createMockRequest("http://localhost/api/admin/review-queue/skills/sk-1/approve", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "sk-1" }) },
+    )
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error?.code).toBe("SANDBOX_REQUIRED")
+    expect(prismaMock.marketplaceSkill.update).not.toHaveBeenCalled()
+    delete process.env.SANDBOX_VETTING_ENABLED
   })
 })

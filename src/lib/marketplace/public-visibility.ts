@@ -1,10 +1,16 @@
 import type { ReviewStatus, TrustTier } from "@/generated/prisma/client"
 
 /**
- * Layer-2 sandbox vetting is not configured. While false, VERIFIED must not be minted.
+ * Layer-2 sandbox vetting gate. Opt-in via env (staging: set true after
+ * SANDBOX_REPORT_TOKEN + SANDBOX_GITHUB_DISPATCH_TOKEN + GHA secrets land).
  */
-/** Typed as boolean so TS does not collapse the VERIFIED branch as dead. */
-export const SANDBOX_VETTING_ENABLED: boolean = false
+export function isSandboxVettingEnabled(): boolean {
+  return process.env.SANDBOX_VETTING_ENABLED === "true"
+}
+
+/** @deprecated Prefer isSandboxVettingEnabled() — kept for call-site grep stability. */
+export const SANDBOX_VETTING_ENABLED: boolean =
+  typeof process !== "undefined" && process.env.SANDBOX_VETTING_ENABLED === "true"
 
 export type PublicVisibilityFields = {
   isPublished: boolean
@@ -40,13 +46,12 @@ export function publicListingSql(alias: "t" | "s"): string {
 
 /**
  * Trust tier after human admin approve.
- * VERIFIED is unmintable while sandbox vetting is absent — always SCANNED.
- * When SANDBOX_VETTING_ENABLED lands, sandboxPassed→VERIFIED becomes available.
+ * When sandbox vetting is enabled, VERIFIED requires sandboxPassed=true.
  */
 export function resolveCommunityApprovedTrustTier(
   sandboxPassed?: boolean | null,
 ): "SCANNED" | "VERIFIED" {
-  if (SANDBOX_VETTING_ENABLED && sandboxPassed) {
+  if (isSandboxVettingEnabled() && sandboxPassed === true) {
     return "VERIFIED"
   }
   return "SCANNED"
@@ -54,7 +59,17 @@ export function resolveCommunityApprovedTrustTier(
 
 /** Reject any attempt to mint VERIFIED while sandbox vetting is off. */
 export function assertVerifiedMintAllowed(): void {
-  if (!SANDBOX_VETTING_ENABLED) {
+  if (!isSandboxVettingEnabled()) {
     throw new Error("VERIFIED_UNMINTABLE: sandbox vetting is not configured")
+  }
+}
+
+/**
+ * PR-5: when sandbox vetting is on, refuse approve until sandboxPassed=true.
+ */
+export function assertSandboxPassedForApprove(sandboxPassed?: boolean | null): void {
+  if (!isSandboxVettingEnabled()) return
+  if (sandboxPassed !== true) {
+    throw new Error("SANDBOX_REQUIRED: sandbox must pass before approve when vetting is enabled")
   }
 }

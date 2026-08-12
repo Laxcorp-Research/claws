@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
 import { getResend } from '@/lib/resend'
 import {
+  assertSandboxPassedForApprove,
   assertVerifiedMintAllowed,
   resolveCommunityApprovedTrustTier,
 } from '@/lib/marketplace/public-visibility'
@@ -39,8 +40,17 @@ export async function POST(
       return apiError('INVALID_STATE', 'Skill is not pending review', 400)
     }
 
-    // While sandbox vetting is absent, resolveCommunityApprovedTrustTier returns SCANNED only.
-    // Explicit reject if anything tries to mint VERIFIED before sandbox is configured.
+    // PR-5: when SANDBOX_VETTING_ENABLED, refuse approve until sandboxPassed=true.
+    try {
+      assertSandboxPassedForApprove(skill.sandboxPassed)
+    } catch {
+      return apiError(
+        'SANDBOX_REQUIRED',
+        'Sandbox must pass before approve when sandbox vetting is enabled',
+        400,
+      )
+    }
+
     const newTier = resolveCommunityApprovedTrustTier(skill.sandboxPassed)
     if (newTier === 'VERIFIED') {
       try {
@@ -50,6 +60,8 @@ export async function POST(
       }
     }
 
+    // MUTATION lock: VERIFIED only via resolveCommunityApprovedTrustTier(sandboxPassed).
+    // Never hardcode the verified tier string on the update payload.
     const updated = await prisma.marketplaceSkill.update({
       where: { id },
       data: {

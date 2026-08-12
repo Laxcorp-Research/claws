@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import {
   assertVerifiedMintAllowed,
   isPubliclyListable,
+  isSandboxVettingEnabled,
   publicListingSql,
   publicListingWhere,
   resolveCommunityApprovedTrustTier,
-  SANDBOX_VETTING_ENABLED,
 } from "@/lib/marketplace/public-visibility"
 
 const ROOT = process.cwd()
@@ -67,24 +67,29 @@ describe("public listing visibility (Arc 1)", () => {
     expect(src).toContain('reviewStatus: "APPROVED"')
     expect(src).toContain('trustTier: "OFFICIAL"')
     expect(publicListingSql("t")).toMatch(/reviewStatus.*=.*'APPROVED'/)
-    // If someone reverts to isPublished-only, this assertion fails.
     expect(publicListingSql("t")).not.toBe('t."isPublished" = true')
   })
 })
 
-describe("VERIFIED mint block while sandbox absent (Arc 1)", () => {
-  it("resolveCommunityApprovedTrustTier always returns SCANNED while sandbox off", () => {
-    expect(SANDBOX_VETTING_ENABLED).toBe(false)
+describe("VERIFIED mint gated on SANDBOX_VETTING_ENABLED (PR-4)", () => {
+  afterEach(() => {
+    delete process.env.SANDBOX_VETTING_ENABLED
+  })
+
+  it("resolveCommunityApprovedTrustTier returns SCANNED while sandbox env off", () => {
+    delete process.env.SANDBOX_VETTING_ENABLED
+    expect(isSandboxVettingEnabled()).toBe(false)
     expect(resolveCommunityApprovedTrustTier(true)).toBe("SCANNED")
     expect(resolveCommunityApprovedTrustTier(false)).toBe("SCANNED")
     expect(resolveCommunityApprovedTrustTier(null)).toBe("SCANNED")
   })
 
-  it("assertVerifiedMintAllowed rejects while sandbox absent", () => {
+  it("assertVerifiedMintAllowed rejects while sandbox env off", () => {
+    delete process.env.SANDBOX_VETTING_ENABLED
     expect(() => assertVerifiedMintAllowed()).toThrow(/VERIFIED_UNMINTABLE/)
   })
 
-  it("MUTATION: allow VERIFIED mint on skill approve → fail", () => {
+  it("MUTATION: approve path must use resolve + assertSandbox + never hardcode VERIFIED", () => {
     const skillApprove = readFileSync(
       join(ROOT, "src/app/api/admin/review-queue/skills/[id]/approve/route.ts"),
       "utf8",
@@ -94,11 +99,12 @@ describe("VERIFIED mint block while sandbox absent (Arc 1)", () => {
       "utf8",
     )
     expect(skillApprove).not.toMatch(/sandboxPassed\s*\?\s*['"]VERIFIED['"]/)
-    expect(skillApprove).not.toMatch(/trustTier:\s*['"]VERIFIED['"]/)
-    expect(templateApprove).not.toMatch(/trustTier:\s*['"]VERIFIED['"]/)
+    expect(skillApprove).not.toMatch(/data:\s*\{[^}]*trustTier:\s*['"]VERIFIED['"]/s)
+    expect(templateApprove).not.toMatch(/data:\s*\{[^}]*trustTier:\s*['"]VERIFIED['"]/s)
     expect(skillApprove).toContain("resolveCommunityApprovedTrustTier")
     expect(templateApprove).toContain("resolveCommunityApprovedTrustTier")
     expect(skillApprove).toContain("assertVerifiedMintAllowed")
+    expect(skillApprove).toContain("assertSandboxPassedForApprove")
     expect(skillApprove).toContain("VERIFIED_UNMINTABLE")
   })
 

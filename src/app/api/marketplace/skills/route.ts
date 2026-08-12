@@ -12,6 +12,7 @@ import { log } from "@/lib/logger"
 import { searchSkills } from "@/lib/marketplace/search"
 import { publicListingWhere } from "@/lib/marketplace/public-visibility"
 import { isMarketplacePublishEnabled } from "@/lib/marketplace/feature-flags"
+import { enqueueSkillSandbox } from "@/lib/marketplace/sandbox-enqueue"
 
 export const maxDuration = 30
 
@@ -270,6 +271,16 @@ export async function POST(request: NextRequest) {
       skillSlug: skill.slug,
     })
 
+    // Layer-2: enqueue GH Actions sandbox (idempotent by content digest).
+    const sandboxEnqueue = await enqueueSkillSandbox(skill.id).catch((err) => {
+      log.warn("Sandbox enqueue failed after skill publish", {
+        category: "marketplace",
+        skillId: skill.id,
+        error: String(err),
+      })
+      return { status: "skipped" as const, reason: "enqueue_error", contentDigest: "" }
+    })
+
     log.marketplaceEvent({ event: "skill_published", itemId: skill.id, itemType: "skill", userId: user.id })
 
     return apiSuccess({
@@ -277,6 +288,7 @@ export async function POST(request: NextRequest) {
       slug: skill.slug,
       isPublished: false,
       reviewStatus: "PENDING",
+      sandboxEnqueue,
       scanResult: {
         passed: scanResult.passed,
         hasCritical: scanResult.hasCritical,

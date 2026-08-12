@@ -179,7 +179,8 @@ describe('Admin Review Queue API', () => {
   });
 
   describe('POST /api/admin/review-queue/skills/[id]/approve', () => {
-    it('sets SCANNED (not VERIFIED) even when sandboxPassed is true — VERIFIED unmintable', async () => {
+    it('sets SCANNED when sandboxPassed is true but SANDBOX_VETTING_ENABLED is off', async () => {
+      delete process.env.SANDBOX_VETTING_ENABLED;
       (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_SKILL);
       const updated = { ...MOCK_SKILL, reviewStatus: 'APPROVED', trustTier: 'SCANNED', isPublished: true };
       (prismaMock.marketplaceSkill.update as ReturnType<typeof vi.fn>).mockResolvedValue(updated);
@@ -197,7 +198,8 @@ describe('Admin Review Queue API', () => {
       );
     });
 
-    it('sets SCANNED tier when sandboxPassed is false', async () => {
+    it('sets SCANNED tier when sandboxPassed is false and vetting off', async () => {
+      delete process.env.SANDBOX_VETTING_ENABLED;
       const skillNoSandbox = { ...MOCK_SKILL, sandboxPassed: false };
       (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(skillNoSandbox);
       const updated = { ...skillNoSandbox, reviewStatus: 'APPROVED', trustTier: 'SCANNED', isPublished: true };
