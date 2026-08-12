@@ -33,16 +33,20 @@ describe("POST /api/workspaces/[id]/api-keys", () => {
     mockValidate.mockResolvedValue({ valid: true })
   })
 
-  it("rejects OPENROUTER with 400", async () => {
+  it("accepts OPENROUTER after live validate", async () => {
+    mockValidate.mockResolvedValueOnce({ valid: true })
+    ;(prismaMock.workspaceApiKey.upsert as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "wok-1",
+      provider: "OPENROUTER",
+    })
     const req = createMockRequest("http://localhost:3000/api/workspaces/ws-1/api-keys", {
       method: "POST",
       body: { provider: "OPENROUTER", apiKey: "sk-or-test" },
     })
     const res = await POST(req, { params: Promise.resolve({ id: "ws-1" }) })
-    const { status, data } = await parseResponse(res)
-    expect(status).toBe(400)
-    expect(data.success).toBe(false)
-    expect(prismaMock.workspaceApiKey.upsert).not.toHaveBeenCalled()
+    expect(res.status).toBe(200)
+    expect(mockValidate).toHaveBeenCalledWith("OPENROUTER", "sk-or-test")
+    expect(prismaMock.workspaceApiKey.upsert).toHaveBeenCalled()
   })
 
   it("rejects OLLAMA with 400", async () => {

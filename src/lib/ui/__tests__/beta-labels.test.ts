@@ -15,7 +15,7 @@ describe("PR-0 beta honesty labels", () => {
     expect(CHANNEL_BETA_LABEL).toBe("beta")
     expect(PROVIDER_BYOK_BETA_LABEL).toBe("beta — bring your own key")
     expect(CHANNELS_WITH_BETA).toEqual(["discord", "slack"])
-    expect(PROVIDERS_WITH_BYOK_BETA).toEqual(["OPENAI", "GOOGLE"])
+    expect(PROVIDERS_WITH_BYOK_BETA).toEqual(["OPENAI", "GOOGLE", "OPENROUTER"])
   })
 
   it("classifies Discord/Slack as beta; Telegram is not", () => {
@@ -24,9 +24,10 @@ describe("PR-0 beta honesty labels", () => {
     expect(isBetaChannel("telegram")).toBe(false)
   })
 
-  it("classifies OpenAI/Google as BYOK beta; Anthropic is not", () => {
+  it("classifies OpenAI/Google/OpenRouter as BYOK beta; Anthropic is not", () => {
     expect(isByokBetaProvider("OPENAI")).toBe(true)
     expect(isByokBetaProvider("GOOGLE")).toBe(true)
+    expect(isByokBetaProvider("OPENROUTER")).toBe(true)
     expect(isByokBetaProvider("ANTHROPIC")).toBe(false)
   })
 

@@ -158,6 +158,34 @@ enum ApiProvider {
   OLLAMA
 }
 
+/// Dynamic model registry — refreshed from provider APIs (OpenRouter /models, etc.).
+/// Agent.model stores the OpenClaw ref (e.g. anthropic/…, openrouter/openai/gpt-4o).
+model ModelCatalogEntry {
+  id                 String   @id @default(cuid())
+  /// OpenClaw model ref used in Agent.model / openclaw.json
+  modelId            String   @unique
+  /// ANTHROPIC | OPENAI | GOOGLE | OPENROUTER
+  provider           String
+  displayName        String
+  contextLength      Int?
+  /// Short pricing snippet for UI (e.g. "$0.15/$0.60 per 1M")
+  pricingSnippet     String?
+  /// Rough est. USD per 1k calls for legacy cost column (estimate-only for BYOK)
+  costPer1kEst       Float?
+  isPinned           Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  /// seed | openrouter | openai | google | anthropic
+  source             String
+  rawMeta            Json?
+  refreshedAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([provider])
+  @@index([isPinned, isActive])
+  @@index([displayName])
+}
+
 // ─── WORKSPACES ─────────────────────────────────────────
 
 model Workspace {

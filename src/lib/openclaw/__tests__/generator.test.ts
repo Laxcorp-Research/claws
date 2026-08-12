@@ -1529,4 +1529,31 @@ describe('generateWorkspace', () => {
       expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
     });
   });
+
+  describe('OpenRouter BYOK emission', () => {
+    it('emits OPENROUTER_API_KEY + models.providers.openrouter.baseUrl when agent uses openrouter/*', async () => {
+      const ws = buildMockWorkspace();
+      ws.agents[0].model = 'openrouter/openai/gpt-4o-mini';
+      ;(ws as { user: Record<string, unknown> }).user = {
+        ...ws.user,
+        apiKeySource: 'USER_OWN_KEY',
+        apiKeys: [
+          { provider: 'ANTHROPIC', encryptedKey: 'encrypted-anthropic-key' },
+          { provider: 'OPENROUTER', encryptedKey: 'encrypted-openrouter-key' },
+        ],
+      };
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']) as {
+        agents: { list: Array<{ model?: string }> };
+        models?: { providers?: { openrouter?: { baseUrl?: string; api?: string } } };
+      };
+
+      expect(config.agents.list.some((a) => a.model === 'openrouter/openai/gpt-4o-mini')).toBe(true);
+      expect(config.models?.providers?.openrouter?.baseUrl).toBe('https://openrouter.ai/api/v1');
+      expect(config.models?.providers?.openrouter?.api).toBe('openai-completions');
+      expect(result['.env']).toContain('OPENROUTER_API_KEY=decrypted-encrypted-openrouter-key');
+    });
+  });
 });

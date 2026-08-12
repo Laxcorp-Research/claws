@@ -166,16 +166,26 @@ describe('POST /api/api-keys', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects OPENROUTER with 400', async () => {
+  it('accepts OPENROUTER (real BYOK — validates then stores)', async () => {
+    mockValidateApiKey.mockResolvedValueOnce({ valid: true });
+    (prismaMock.userApiKey.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prismaMock.userApiKey.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'key-or',
+      provider: 'OPENROUTER',
+      keyHint: 'sk-o…test',
+      label: null,
+      isValid: true,
+      createdAt: new Date(),
+    });
     const req = createMockRequest('http://localhost:3000/api/api-keys', {
       method: 'POST',
       body: { provider: 'OPENROUTER', apiKey: 'sk-or-test' },
     });
     const res = await POST(req);
     const { status } = await parseResponse(res);
-    expect(status).toBe(400);
-    expect(prismaMock.userApiKey.create).not.toHaveBeenCalled();
-    expect(mockValidateApiKey).not.toHaveBeenCalled();
+    expect(status).toBe(201);
+    expect(mockValidateApiKey).toHaveBeenCalledWith('OPENROUTER', 'sk-or-test');
+    expect(prismaMock.userApiKey.create).toHaveBeenCalled();
   });
 
   it('rejects OLLAMA with 400', async () => {

@@ -627,12 +627,28 @@ function generateOpenClawConfig(
   // ModelsConfigSchema.providers → ModelProviderSchema.baseUrl
   // (zod-schema.core-D7Y_eqdd.js). anthropic is a built-in overlay id, so
   // models[] is optional. BYOK/NONE: omit — clients hit api.anthropic.com.
-  if (getApiKeySource(workspace, workspace.user) === 'PLATFORM_CREDIT') {
+  // Credit metering: anthropic proxy only. OpenRouter is BYOK-only (no credit proxy).
+  // When any agent uses openrouter/*, emit explicit provider overlay (baseUrl locked).
+  const usesOpenRouter = runtimeAgents.some((a) =>
+    (a.model || "").startsWith("openrouter/"),
+  );
+  const creditModeProviders =
+    getApiKeySource(workspace, workspace.user) === "PLATFORM_CREDIT"
+      ? { anthropic: { baseUrl: ANTHROPIC_PROXY_URL } }
+      : null;
+
+  if (creditModeProviders || usesOpenRouter) {
     config.models = {
       providers: {
-        anthropic: {
-          baseUrl: ANTHROPIC_PROXY_URL,
-        },
+        ...(creditModeProviders ?? {}),
+        ...(usesOpenRouter
+          ? {
+              openrouter: {
+                baseUrl: "https://openrouter.ai/api/v1",
+                api: "openai-completions",
+              },
+            }
+          : {}),
       },
     };
   }
@@ -1152,6 +1168,10 @@ function generateEnvFile(
         break;
       case 'GOOGLE':
         lines.push(`GEMINI_API_KEY=${decrypted}`);
+        break;
+      case 'OPENROUTER':
+        // Bundled OpenClaw provider — baseUrl defaults to https://openrouter.ai/api/v1
+        lines.push(`OPENROUTER_API_KEY=${decrypted}`);
         break;
     }
   }

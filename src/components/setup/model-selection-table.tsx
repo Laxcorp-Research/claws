@@ -1,7 +1,7 @@
 "use client"
 
-import { AI_MODELS } from "@/lib/models"
-import { CustomSelect } from "@/components/ui/custom-select"
+import { getModelCost } from "@/lib/models"
+import { ModelPicker } from "@/components/shared/model-picker"
 
 interface AgentModelRow {
   id: string
@@ -14,6 +14,7 @@ interface ModelSelectionTableProps {
   agents: AgentModelRow[]
   onModelChange: (agentId: string, model: string) => void
   creditMode?: boolean
+  configuredProviders?: string[]
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -22,20 +23,12 @@ const ROLE_COLORS: Record<string, string> = {
   CRITIC: "text-[#5b21b6]",
 }
 
-const ALL_MODEL_OPTIONS = AI_MODELS.map(m => ({
-  value: m.value,
-  label: `${m.label} (${m.provider}) - ~$${m.costPer1kCalls}/call`,
-}))
-
-const CREDIT_MODEL_OPTIONS = AI_MODELS
-  .filter(m => m.provider === "Anthropic")
-  .map(m => ({
-    value: m.value,
-    label: `${m.label} - ~$${m.costPer1kCalls}/call`,
-  }))
-
-export function ModelSelectionTable({ agents, onModelChange, creditMode }: ModelSelectionTableProps) {
-  const MODEL_OPTIONS = creditMode ? CREDIT_MODEL_OPTIONS : ALL_MODEL_OPTIONS
+export function ModelSelectionTable({
+  agents,
+  onModelChange,
+  creditMode,
+  configuredProviders,
+}: ModelSelectionTableProps) {
   return (
     <table className="w-full text-xs mb-3.5 border-collapse">
       <thead>
@@ -48,22 +41,25 @@ export function ModelSelectionTable({ agents, onModelChange, creditMode }: Model
       </thead>
       <tbody>
         {agents.map((agent) => {
-          const selected = AI_MODELS.find((m) => m.value === agent.model)
+          const est = getModelCost(agent.model)
           return (
             <tr key={agent.id} className="border-b border-[var(--bd)]">
               <td className="px-2 py-1.5 font-semibold">{agent.name}</td>
               <td className={`px-2 py-1.5 text-[10px] ${ROLE_COLORS[agent.role] || ""}`}>
                 {agent.role.charAt(0) + agent.role.slice(1).toLowerCase()}
               </td>
-              <td className="px-2 py-1.5">
-                <CustomSelect
+              <td className="px-2 py-1.5 min-w-[220px]">
+                <ModelPicker
                   value={agent.model}
                   onChange={(val) => onModelChange(agent.id, val)}
-                  options={MODEL_OPTIONS}
+                  creditMode={creditMode}
+                  configuredProviders={configuredProviders}
                 />
               </td>
               <td className="px-2 py-1.5 text-right text-[var(--tx3)] text-[10px]">
-                {selected ? `~$${selected.costPer1kCalls}/call` : "-"}
+                {agent.model.startsWith("openrouter/")
+                  ? "est. (BYOK)"
+                  : `~$${est}/call`}
               </td>
             </tr>
           )

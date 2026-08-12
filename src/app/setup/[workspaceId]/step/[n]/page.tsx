@@ -197,28 +197,32 @@ const PROVIDER_NAMES: Record<string, string> = {
   ANTHROPIC: "Anthropic (Claude)",
   OPENAI: "OpenAI (GPT)",
   GOOGLE: "Google (Gemini)",
+  OPENROUTER: "OpenRouter — one key, every model",
 }
 
 const PROVIDER_HELP: Record<string, string> = {
   ANTHROPIC: "https://console.anthropic.com/settings/keys",
   OPENAI: "https://platform.openai.com/api-keys",
   GOOGLE: "https://aistudio.google.com/apikey",
+  OPENROUTER: "https://openrouter.ai/keys",
 }
 
 const PROVIDER_PLACEHOLDER: Record<string, string> = {
   ANTHROPIC: "sk-ant-api03-...",
   OPENAI: "sk-...",
   GOOGLE: "AIza...",
+  OPENROUTER: "sk-or-v1-...",
 }
 
 function getRequiredProviders(agents: AgentRow[]): string[] {
   const providers = new Set<string>()
   for (const a of agents) {
     const m = a.model || "anthropic/claude-sonnet-4-6"
-    if (m.startsWith("anthropic/")) providers.add("ANTHROPIC")
+    if (m.startsWith("openrouter/")) providers.add("OPENROUTER")
+    else if (m.startsWith("anthropic/")) providers.add("ANTHROPIC")
     else if (m.startsWith("openai/")) providers.add("OPENAI")
     else if (m.startsWith("google/")) providers.add("GOOGLE")
-    // OPENROUTER / OLLAMA deliberately not surfaced (D1 provider honesty).
+    // OLLAMA stays cut (not a supported BYOK surface).
   }
   if (providers.size === 0) providers.add("ANTHROPIC")
   return Array.from(providers)
@@ -335,7 +339,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       <p className="text-xs text-[var(--tx2)] mb-3.5">
         {creditMode
           ? "Your agents are powered by Claws Starter Credits. Choose which models each agent should use below."
-          : "Your agents need API keys to think. We support Anthropic, OpenAI, and Google. Configure keys for each provider your agents use."}
+          : "Your agents need API keys to think. We support Anthropic, OpenAI, Google, and OpenRouter. Configure keys for each provider your agents use. OpenRouter is BYOK-only."}
       </p>
 
       {creditMode && <StarterCreditBanner balanceCents={creditBalanceCents} />}
@@ -441,7 +445,14 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       )}
 
       {/* Model Selection Table */}
-      {agents.length > 0 && <ModelSelectionTable agents={agents} onModelChange={handleModelChange} creditMode={creditMode} />}
+      {agents.length > 0 && (
+        <ModelSelectionTable
+          agents={agents}
+          onModelChange={handleModelChange}
+          creditMode={creditMode}
+          configuredProviders={keyStatus.filter((k) => k.hasKey || k.globalKeyValid || k.overrideKeyValid).map((k) => k.provider)}
+        />
+      )}
 
       {creditMode && (
         <p className="text-[11px] text-[var(--tx3)] mb-3.5">
