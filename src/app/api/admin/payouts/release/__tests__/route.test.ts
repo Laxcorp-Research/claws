@@ -3,6 +3,7 @@ import { createMockRequest } from "@/test/helpers/mock-request"
 
 const mockRequireAdmin = vi.fn()
 const mockGetBatches = vi.fn()
+const mockGetProcessing = vi.fn()
 const mockRelease = vi.fn()
 
 vi.mock("@/lib/api/admin", () => ({
@@ -10,6 +11,7 @@ vi.mock("@/lib/api/admin", () => ({
 }))
 vi.mock("@/lib/marketplace/payouts", () => ({
   getReleasablePayoutBatches: () => mockGetBatches(),
+  getProcessingPayoutBatches: () => mockGetProcessing(),
   releaseEligiblePayouts: () => mockRelease(),
 }))
 vi.mock("@/lib/security/audit-log", () => ({
@@ -26,7 +28,11 @@ describe("GET /api/admin/payouts/release — cron auth (D1/vercel.json)", () => 
   beforeEach(() => {
     mockRequireAdmin.mockReset()
     mockGetBatches.mockReset()
+    mockGetProcessing.mockReset()
+    mockRelease.mockReset()
     mockGetBatches.mockResolvedValue([])
+    mockGetProcessing.mockResolvedValue([])
+    mockRelease.mockResolvedValue({ released: 0, totalAmount: 0 })
     prevCronSecret = process.env.CRON_SECRET
     process.env.CRON_SECRET = CRON_SECRET
   })
@@ -44,7 +50,9 @@ describe("GET /api/admin/payouts/release — cron auth (D1/vercel.json)", () => 
     const res = await GET(req)
     expect(res.status).toBe(200)
     expect(mockRequireAdmin).not.toHaveBeenCalled()
+    expect(mockRelease).toHaveBeenCalledTimes(1)
     expect(mockGetBatches).toHaveBeenCalledTimes(1)
+    expect(mockGetProcessing).toHaveBeenCalledTimes(1)
   })
 
   it("MUTATION: dropping cron auth gate would 403 the scheduler", async () => {

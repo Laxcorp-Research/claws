@@ -964,6 +964,10 @@ enum AuditAction {
   TRADE_REJECTED_BY_HUMAN
   TRADE_LIMIT_REACHED
   TRADE_CIRCUIT_BREAKER_TRIGGERED
+  PAYOUT_DETAILS_VIEWED
+  PAYOUT_MARKED_PROCESSING
+  PAYOUT_MARKED_PAID
+  PAYOUT_CLAWBACK_ADJUSTMENT
 }
 
 // ─── MARKETPLACE ────────────────────────────────────────
@@ -996,7 +1000,14 @@ model CreatorProfile {
   isActive    Boolean  @default(true)
   agreedToTermsAt DateTime
 
-  dodoBeneficiaryId String?
+  dodoBeneficiaryId String? // DEAD — Stripe Connect / Dodo beneficiary post-launch; unused on MANUAL-RAIL
+
+  /// AES-256-GCM blob (same encrypt() as UserApiKey). NEVER return plaintext to creators.
+  payoutDetailsEncrypted String? @db.Text
+  payoutMethod           PayoutMethod?
+  payoutDetailsUpdatedAt DateTime?
+  /// Masked hint written at save time (e.g. last-4 of IBAN / email local-part) — safe to render.
+  payoutDetailsHint      String?
 
   totalInstalls  Int   @default(0)
   totalTemplates Int   @default(0)
@@ -1010,6 +1021,12 @@ model CreatorProfile {
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+enum PayoutMethod {
+  BANK
+  WISE
+  PAYPAL
 }
 
 model MarketplaceSkill {
@@ -1121,14 +1138,21 @@ model MarketplaceSale {
   payoutHeldUntil DateTime?
   payoutBatchId String?
   paidAt        DateTime?
+  /// Wise/bank transfer reference entered by admin when marking PAID.
+  payoutTransferRef String?
 
   dodoPaymentId String? @unique
+
+  /// When set, this row is a post-PAID clawback adjustment (negative creatorPayout).
+  adjustmentOfSaleId String?
 
   createdAt    DateTime @default(now())
 
   @@index([creatorId])
   @@index([payoutStatus])
   @@index([createdAt])
+  @@index([payoutBatchId])
+  @@index([adjustmentOfSaleId])
 }
 
 model Report {
