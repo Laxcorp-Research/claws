@@ -1,7 +1,9 @@
 "use client"
 
+import Link from "next/link"
 import type { CreditUsageRecord } from "@/hooks/use-credit-usage"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
+import { Tooltip } from "@/components/ui/tooltip"
 
 interface UsageRecentTableProps {
   records: CreditUsageRecord[]
@@ -48,8 +50,19 @@ export function UsageRecentTable({ records }: UsageRecentTableProps) {
                     {new Date(r.createdAt).toLocaleString()}
                   </TruncatedText>
                 </td>
-                <td className="px-[12px] py-[6px] text-[var(--tx2)] font-mono text-[11px] max-w-[140px]">
-                  <TruncatedText>{r.workspaceId}</TruncatedText>
+                <td className="px-[12px] py-[6px] max-w-[160px]">
+                  <Tooltip
+                    content={r.workspaceId}
+                    align="center"
+                    triggerClassName="inline-flex w-auto max-w-full min-w-0"
+                  >
+                    <Link
+                      href={`/dashboard/${r.workspaceId}`}
+                      className="block max-w-full truncate text-[12px] font-medium text-[var(--ac-text)] hover:underline"
+                    >
+                      {r.workspaceName || "Workspace"}
+                    </Link>
+                  </Tooltip>
                 </td>
                 <td className="px-[12px] py-[6px]">
                   <div className="text-[var(--tx)]">{r.model}</div>

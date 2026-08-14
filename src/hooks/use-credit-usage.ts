@@ -13,6 +13,7 @@ export interface CreditUsageRecord {
   id: string
   creditAccountId: string
   workspaceId: string
+  workspaceName: string | null
   agentId: string | null
   provider: CreditProvider
   model: string
