@@ -5,6 +5,7 @@ import {
   assertVerifiedMintAllowed,
   isPubliclyListable,
   isSandboxVettingEnabled,
+  ownerMaySeePendingReview,
   publicListingSql,
   publicListingWhere,
   resolveCommunityApprovedTrustTier,
@@ -49,6 +50,41 @@ describe("public listing visibility (Arc 1)", () => {
         isPublished: false,
         trustTier: "SCANNED",
         reviewStatus: "APPROVED",
+      }),
+    ).toBe(false)
+  })
+
+  it("ownerMaySeePendingReview is owner+PENDING only", () => {
+    expect(
+      ownerMaySeePendingReview({
+        publiclyListable: false,
+        reviewStatus: "PENDING",
+        viewerUserId: "u-1",
+        creatorUserId: "u-1",
+      }),
+    ).toBe(true)
+    expect(
+      ownerMaySeePendingReview({
+        publiclyListable: false,
+        reviewStatus: "PENDING",
+        viewerUserId: "stranger",
+        creatorUserId: "u-1",
+      }),
+    ).toBe(false)
+    expect(
+      ownerMaySeePendingReview({
+        publiclyListable: false,
+        reviewStatus: "REJECTED",
+        viewerUserId: "u-1",
+        creatorUserId: "u-1",
+      }),
+    ).toBe(false)
+    expect(
+      ownerMaySeePendingReview({
+        publiclyListable: true,
+        reviewStatus: "PENDING",
+        viewerUserId: "u-1",
+        creatorUserId: "u-1",
       }),
     ).toBe(false)
   })

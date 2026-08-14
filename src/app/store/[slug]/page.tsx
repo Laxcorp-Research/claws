@@ -12,7 +12,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { Card } from "@/components/ui/card"
 import { AgentPill } from "@/components/ui/agent-pill"
 import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge"
-import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
+import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState } from "@/components/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TemplateHierarchyPreview } from "@/components/store/template-hierarchy-preview"
@@ -105,6 +105,7 @@ export default function TemplateDetailPage() {
   const [data, setData] = useState<PageData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pendingReview, setPendingReview] = useState(false)
   const [purchasing, setPurchasing] = useState(false)
   const [purchaseError, setPurchaseError] = useState<string | null>(null)
 
@@ -129,6 +130,7 @@ export default function TemplateDetailPage() {
   const fetchData = useCallback(() => {
     setIsLoading(true)
     setError(null)
+    setPendingReview(false)
     fetch(`/api/marketplace/templates/${slug}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.status === 404 ? "Template not found" : "Failed to load")
@@ -136,6 +138,11 @@ export default function TemplateDetailPage() {
       })
       .then((json) => {
         const payload = json.data ?? json
+        if (payload?.listingState === "pending_review") {
+          setPendingReview(true)
+          setIsLoading(false)
+          return
+        }
         setData(payload)
         setReviews(payload.reviews ?? [])
         setIsLoading(false)
@@ -259,6 +266,16 @@ export default function TemplateDetailPage() {
             <div className="h-40 bg-[var(--bg3)] rounded animate-pulse" />
             <div className="h-32 bg-[var(--bg3)] rounded animate-pulse" />
           </div>
+        </div>
+      </PageShell>
+    )
+  }
+
+  if (pendingReview) {
+    return (
+      <PageShell background="secondary">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <PendingReviewEmptyState />
         </div>
       </PageShell>
     )

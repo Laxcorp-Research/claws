@@ -2,7 +2,11 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
-import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
+import {
+  isPubliclyListable,
+  ownerMaySeePendingReview,
+  pendingReviewListing,
+} from "@/lib/marketplace/public-visibility"
 
 export async function GET(
   _request: NextRequest,
@@ -38,7 +42,34 @@ export async function GET(
   })
 
   if (!skill) return ERRORS.NOT_FOUND("skill")
-  if (!isPubliclyListable(skill)) return ERRORS.NOT_FOUND("skill")
+  if (!isPubliclyListable(skill)) {
+    let viewerUserId: string | null = null
+    let creatorUserId: string | null = null
+    try {
+      const user = await getSessionUser()
+      viewerUserId = user?.id ?? null
+    } catch {
+      viewerUserId = null
+    }
+    if (skill.creatorId && viewerUserId) {
+      const owner = await prisma.creatorProfile.findUnique({
+        where: { id: skill.creatorId },
+        select: { userId: true },
+      })
+      creatorUserId = owner?.userId ?? null
+    }
+    if (
+      ownerMaySeePendingReview({
+        publiclyListable: false,
+        reviewStatus: skill.reviewStatus,
+        viewerUserId,
+        creatorUserId,
+      })
+    ) {
+      return apiSuccess(pendingReviewListing(skill.name, skill.slug))
+    }
+    return ERRORS.NOT_FOUND("skill")
+  }
 
   const formattedReviews = skill.reviews.map((r) => ({
     id: r.id,
