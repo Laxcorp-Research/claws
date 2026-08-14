@@ -1,7 +1,15 @@
 /**
- * Pinned / recommended models — always present; render first in pickers.
- * Native Anthropic/OpenAI/Google stay as direct providers; OpenRouter models
- * use openrouter/<openrouter-id> refs for the runtime.
+ * Pinned / recommended models — the SINGLE SOURCE for native provider lists.
+ *
+ * Native refresh (`refreshNativeProviderLists`) re-upserts these pins only.
+ * There is no Anthropic/OpenAI/Google models API — adding a Claude/GPT/Gemini
+ * pin is a one-line data change here; pickers read ModelCatalogEntry, not this
+ * array, so component code does not change.
+ *
+ * OpenRouter rows here are the recommended subset; the daily cron also upserts
+ * the full OpenRouter catalog (unpinned) for search.
+ *
+ * Nine pins: 3 Anthropic + 2 OpenAI + 1 Google + 3 OpenRouter.
  */
 export type SeedModel = {
   modelId: string

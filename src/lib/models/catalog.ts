@@ -159,7 +159,11 @@ export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fe
   return { upserted, fetched: models.length }
 }
 
-/** Sync native Anthropic/OpenAI/Google lists from seed (API lists are incomplete/auth-gated). */
+/**
+ * Native Anthropic/OpenAI/Google lists have no provider API (lists are
+ * incomplete / auth-gated). Refresh re-seeds PINNED_SEED_MODELS only.
+ * MUTATION: calling a native models HTTP API here → catalog tests fail.
+ */
 export async function refreshNativeProviderLists(): Promise<number> {
   return ensureSeedModels()
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AI_MODELS, DEFAULT_MODEL, getModelLabel, getModelCost } from '@/lib/models';
+import { PINNED_SEED_MODELS } from '@/lib/models/seed-models';
 
 describe('AI_MODELS', () => {
   it('contains expected number of models', () => {
@@ -14,6 +15,12 @@ describe('AI_MODELS', () => {
       expect(m.tier).toBeTruthy();
       expect(typeof m.costPer1kCalls).toBe('number');
     }
+  });
+
+  it('is derived from PINNED_SEED_MODELS natives (single source)', () => {
+    expect(AI_MODELS.map((m) => m.value)).toEqual(
+      PINNED_SEED_MODELS.filter((m) => m.provider !== 'OPENROUTER').map((m) => m.modelId),
+    );
   });
 });
 

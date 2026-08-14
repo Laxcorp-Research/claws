@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { Input } from "@/components/ui/input"
-import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 type Option = { value: string; label: string }
 
@@ -16,8 +15,8 @@ interface ModelPickerProps {
 }
 
 /**
- * Pinned/recommended first via CustomSelect; full catalog behind search
- * (never a 400-item flat dropdown).
+ * Options come from GET /api/models/catalog (ModelCatalogEntry registry).
+ * MUTATION: restore a hardcoded native option array here → picker tests fail.
  */
 export function ModelPicker({
   value,
@@ -29,7 +28,6 @@ export function ModelPicker({
   const [search, setSearch] = useState("")
   const [searchOptions, setSearchOptions] = useState<Option[]>([])
   const [searching, setSearching] = useState(false)
-  const [honesty, setHonesty] = useState<string | null>(null)
 
   const loadPinned = useCallback(async () => {
     const params = new URLSearchParams({ pinned: "1", limit: "40" })
@@ -46,7 +44,6 @@ export function ModelPicker({
       opts.unshift({ value, label: value })
     }
     setPinnedOptions(opts)
-    if (typeof d.honesty === "string") setHonesty(d.honesty)
   }, [creditMode, value])
 
   useEffect(() => {
@@ -140,11 +137,6 @@ export function ModelPicker({
       )}
       {missingKeyHint && (
         <p className="text-[10px] text-[var(--warn)]">{missingKeyHint}</p>
-      )}
-      {honesty && !byokOpenRouter && (
-        <p className="text-[10px] text-[var(--tx3)]">
-          <TruncatedText>{honesty}</TruncatedText>
-        </p>
       )}
     </div>
   )

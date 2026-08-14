@@ -27,7 +27,5 @@ export async function GET(request: NextRequest) {
   return apiSuccess({
     models,
     options: catalogToLegacyOptions(models),
-    honesty:
-      "BYOK cost figures are estimates. OpenRouter and other BYOK providers are billed by your provider — Claws does not meter them.",
   })
 }

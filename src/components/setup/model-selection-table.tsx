@@ -2,6 +2,10 @@
 
 import { getModelCost } from "@/lib/models"
 import { ModelPicker } from "@/components/shared/model-picker"
+import {
+  BYOK_COST_DISCLAIMER,
+  shouldShowByokCostDisclaimer,
+} from "@/lib/models/byok-disclaimer"
 
 interface AgentModelRow {
   id: string
@@ -29,42 +33,58 @@ export function ModelSelectionTable({
   creditMode,
   configuredProviders,
 }: ModelSelectionTableProps) {
+  const showByokDisclaimer = shouldShowByokCostDisclaimer({
+    creditMode,
+    configuredProviders,
+    selectedModels: agents.map((a) => a.model),
+  })
+
   return (
-    <table className="w-full text-xs mb-3.5 border-collapse">
-      <thead>
-        <tr>
-          <th className="text-left text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Agent</th>
-          <th className="text-left text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Role</th>
-          <th className="text-left text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Model</th>
-          <th className="text-right text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Est. cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        {agents.map((agent) => {
-          const est = getModelCost(agent.model)
-          return (
-            <tr key={agent.id} className="border-b border-[var(--bd)]">
-              <td className="px-2 py-1.5 font-semibold">{agent.name}</td>
-              <td className={`px-2 py-1.5 text-[10px] ${ROLE_COLORS[agent.role] || ""}`}>
-                {agent.role.charAt(0) + agent.role.slice(1).toLowerCase()}
-              </td>
-              <td className="px-2 py-1.5 min-w-[220px]">
-                <ModelPicker
-                  value={agent.model}
-                  onChange={(val) => onModelChange(agent.id, val)}
-                  creditMode={creditMode}
-                  configuredProviders={configuredProviders}
-                />
-              </td>
-              <td className="px-2 py-1.5 text-right text-[var(--tx3)] text-[10px]">
-                {agent.model.startsWith("openrouter/")
-                  ? "est. (BYOK)"
-                  : `~$${est}/call`}
-              </td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+    <div className="mb-3.5">
+      {showByokDisclaimer && (
+        <p
+          data-testid="byok-cost-disclaimer"
+          className="text-[10px] text-[var(--tx3)] mb-[8px]"
+        >
+          {BYOK_COST_DISCLAIMER}
+        </p>
+      )}
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr>
+            <th className="text-left text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Agent</th>
+            <th className="text-left text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Role</th>
+            <th className="text-left text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Model</th>
+            <th className="text-right text-[11px] font-semibold text-[var(--tx2)] px-2 py-1.5">Est. cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {agents.map((agent) => {
+            const est = getModelCost(agent.model)
+            return (
+              <tr key={agent.id} className="border-b border-[var(--bd)]">
+                <td className="px-2 py-1.5 font-semibold">{agent.name}</td>
+                <td className={`px-2 py-1.5 text-[10px] ${ROLE_COLORS[agent.role] || ""}`}>
+                  {agent.role.charAt(0) + agent.role.slice(1).toLowerCase()}
+                </td>
+                <td className="px-2 py-1.5 min-w-[220px]">
+                  <ModelPicker
+                    value={agent.model}
+                    onChange={(val) => onModelChange(agent.id, val)}
+                    creditMode={creditMode}
+                    configuredProviders={configuredProviders}
+                  />
+                </td>
+                <td className="px-2 py-1.5 text-right text-[var(--tx3)] text-[10px]">
+                  {agent.model.startsWith("openrouter/")
+                    ? "est. (BYOK)"
+                    : `~$${est}/call`}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }

@@ -60,5 +60,30 @@ describe("model catalog (OpenRouter arc)", () => {
     expect(src).toMatch(/creditMode[\s\S]*provider\s*=\s*["']ANTHROPIC["']/)
     expect(src).toMatch(/creditMode\s*&&\s*s\.provider\s*!==\s*["']ANTHROPIC["']/)
   })
+
+  it("native seed is exactly 9 pins (3 Anthropic + 2 OpenAI + 1 Google + 3 OpenRouter)", () => {
+    expect(PINNED_SEED_MODELS).toHaveLength(9)
+    expect(PINNED_SEED_MODELS.map((m) => m.modelId)).toEqual([
+      "anthropic/claude-haiku-4-5-20251001",
+      "anthropic/claude-sonnet-4-6",
+      "anthropic/claude-opus-4-6",
+      "openai/gpt-4o",
+      "openai/gpt-4o-mini",
+      "google/gemini-2.5-pro",
+      "openrouter/openai/gpt-4o-mini",
+      "openrouter/google/gemini-2.0-flash-001",
+      "openrouter/meta-llama/llama-3.3-70b-instruct",
+    ])
+  })
+
+  it("native refresh re-seeds pins only (no Anthropic/OpenAI/Google models API)", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    expect(src).toMatch(
+      /export async function refreshNativeProviderLists[\s\S]*?return ensureSeedModels\(\)/,
+    )
+    expect(src).not.toMatch(/api\.anthropic\.com/)
+    expect(src).not.toMatch(/api\.openai\.com/)
+    expect(src).not.toMatch(/generativelanguage\.googleapis\.com/)
+  })
 })
 
