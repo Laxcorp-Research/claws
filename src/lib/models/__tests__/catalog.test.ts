@@ -61,12 +61,12 @@ describe("model catalog (OpenRouter arc)", () => {
     expect(src).toMatch(/creditMode\s*&&\s*s\.provider\s*!==\s*["']ANTHROPIC["']/)
   })
 
-  it("native seed is exactly 9 pins (3 Anthropic + 2 OpenAI + 1 Google + 3 OpenRouter)", () => {
+  it("native seed is 9 pins (3 Anthropic flagship fallbacks + 2 OpenAI + 1 Google + 3 OpenRouter)", () => {
     expect(PINNED_SEED_MODELS).toHaveLength(9)
     expect(PINNED_SEED_MODELS.map((m) => m.modelId)).toEqual([
       "anthropic/claude-haiku-4-5-20251001",
-      "anthropic/claude-sonnet-4-6",
-      "anthropic/claude-opus-4-6",
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-opus-5",
       "openai/gpt-4o",
       "openai/gpt-4o-mini",
       "google/gemini-2.5-pro",
@@ -76,14 +76,18 @@ describe("model catalog (OpenRouter arc)", () => {
     ])
   })
 
-  it("native refresh re-seeds pins only (no Anthropic/OpenAI/Google models API)", () => {
+  it("MUTATION: refresh-returns-pins-only restored → fails", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
-    expect(src).toMatch(
-      /export async function refreshNativeProviderLists[\s\S]*?return ensureSeedModels\(\)/,
+    const anthropic = readFileSync(
+      join(process.cwd(), "src/lib/models/anthropic-catalog.ts"),
+      "utf8",
     )
-    expect(src).not.toMatch(/api\.anthropic\.com/)
-    expect(src).not.toMatch(/api\.openai\.com/)
-    expect(src).not.toMatch(/generativelanguage\.googleapis\.com/)
+    expect(src).toContain("refreshAnthropicCatalog")
+    expect(src).not.toMatch(
+      /export async function refreshNativeProviderLists[\s\S]*?return ensureSeedModels\(\)\s*\}/,
+    )
+    expect(anthropic).toContain("https://api.anthropic.com/v1/models")
+    expect(anthropic).toContain("CLAWS_MASTER_ANTHROPIC_KEY")
   })
 })
 

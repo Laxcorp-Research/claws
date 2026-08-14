@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AI_MODELS, DEFAULT_MODEL, getModelLabel, getModelCost } from '@/lib/models';
+import { AI_MODELS, DEFAULT_MODEL, getModelLabel, getModelCost, formatModelEstCost } from '@/lib/models';
 import { PINNED_SEED_MODELS } from '@/lib/models/seed-models';
 
 describe('AI_MODELS', () => {
@@ -40,7 +40,7 @@ describe('DEFAULT_MODEL', () => {
 
 describe('getModelLabel', () => {
   it('returns label for known model', () => {
-    expect(getModelLabel('anthropic/claude-sonnet-4-6')).toBe('Claude Sonnet 4.6');
+    expect(getModelLabel('anthropic/claude-sonnet-5')).toBe('Claude Sonnet 5');
   });
 
   it('returns value as fallback for unknown model', () => {
@@ -53,7 +53,20 @@ describe('getModelCost', () => {
     expect(getModelCost('anthropic/claude-haiku-4-5-20251001')).toBe(0.001);
   });
 
-  it('returns 0.015 default for unknown model', () => {
-    expect(getModelCost('unknown/model')).toBe(0.015);
+  it('returns null for unpriced / unknown models (never a fabricated number)', () => {
+    expect(getModelCost('anthropic/claude-opus-5')).toBeNull();
+    expect(getModelCost('unknown/model')).toBeNull();
+  });
+});
+
+describe('formatModelEstCost', () => {
+  it('renders em dash when pricing is missing', () => {
+    expect(formatModelEstCost('anthropic/claude-sonnet-5')).toBe('—');
+    expect(formatModelEstCost('anthropic/claude-opus-4-8')).toBe('—');
+  });
+
+  it('renders known seed prices and OpenRouter BYOK marker', () => {
+    expect(formatModelEstCost('anthropic/claude-haiku-4-5-20251001')).toBe('~$0.001/call');
+    expect(formatModelEstCost('openrouter/openai/gpt-4o-mini')).toBe('est. (BYOK)');
   });
 });

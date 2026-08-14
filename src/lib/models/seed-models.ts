@@ -1,15 +1,17 @@
 /**
- * Pinned / recommended models — the SINGLE SOURCE for native provider lists.
+ * Pinned / recommended models.
  *
- * Native refresh (`refreshNativeProviderLists`) re-upserts these pins only.
- * There is no Anthropic/OpenAI/Google models API — adding a Claude/GPT/Gemini
- * pin is a one-line data change here; pickers read ModelCatalogEntry, not this
- * array, so component code does not change.
+ * Anthropic: live GET https://api.anthropic.com/v1/models (platform master key)
+ * owns the catalog; these three are the fallback flagship pins if refresh is
+ * skipped. Daily cron re-pins the current Haiku/Sonnet/Opus equivalents from
+ * the live list.
+ *
+ * OpenAI GET /v1/models and Google GET /v1beta/models exist but the platform
+ * has no keys (BYOK-only) — pins below are the curated source; live refresh
+ * when/if platform keys exist.
  *
  * OpenRouter rows here are the recommended subset; the daily cron also upserts
  * the full OpenRouter catalog (unpinned) for search.
- *
- * Nine pins: 3 Anthropic + 2 OpenAI + 1 Google + 3 OpenRouter.
  */
 export type SeedModel = {
   modelId: string
@@ -32,21 +34,17 @@ export const PINNED_SEED_MODELS: SeedModel[] = [
     isPinned: true,
   },
   {
-    modelId: "anthropic/claude-sonnet-4-6",
+    modelId: "anthropic/claude-sonnet-5",
     provider: "ANTHROPIC",
-    displayName: "Claude Sonnet 4.6",
-    contextLength: 200000,
-    pricingSnippet: "~$0.015/call est.",
-    costPer1kEst: 0.015,
+    displayName: "Claude Sonnet 5",
+    contextLength: 1000000,
     isPinned: true,
   },
   {
-    modelId: "anthropic/claude-opus-4-6",
+    modelId: "anthropic/claude-opus-5",
     provider: "ANTHROPIC",
-    displayName: "Claude Opus 4.6",
-    contextLength: 200000,
-    pricingSnippet: "~$0.075/call est.",
-    costPer1kEst: 0.075,
+    displayName: "Claude Opus 5",
+    contextLength: 1000000,
     isPinned: true,
   },
   {

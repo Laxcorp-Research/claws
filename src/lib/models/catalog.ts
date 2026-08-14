@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
+import { refreshAnthropicCatalog } from "@/lib/models/anthropic-catalog"
 
 export type CatalogModel = {
   modelId: string
@@ -160,21 +161,39 @@ export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fe
 }
 
 /**
- * Native Anthropic/OpenAI/Google lists have no provider API (lists are
- * incomplete / auth-gated). Refresh re-seeds PINNED_SEED_MODELS only.
- * MUTATION: calling a native models HTTP API here → catalog tests fail.
+ * Native refresh: Anthropic has a live GET /v1/models (platform master key).
+ * OpenAI GET /v1/models and Google GET /v1beta/models exist but the platform
+ * holds no keys — pins remain the curated source until/if platform keys exist.
+ * MUTATION: drop the Anthropic /v1/models call → anthropic-catalog tests fail.
  */
-export async function refreshNativeProviderLists(): Promise<number> {
-  return ensureSeedModels()
+export async function refreshNativeProviderLists(): Promise<{
+  seed: number
+  anthropic: { upserted: number; fetched: number; pinned: string[] } | { skipped: true }
+}> {
+  const seed = await ensureSeedModels()
+  try {
+    const anthropic = await refreshAnthropicCatalog()
+    return { seed, anthropic }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg === "ANTHROPIC_REFRESH_SKIPPED_NO_KEY") {
+      log.warn("Anthropic catalog refresh skipped: no CLAWS_MASTER_ANTHROPIC_KEY", {
+        category: "models",
+      })
+      return { seed, anthropic: { skipped: true } }
+    }
+    throw err
+  }
 }
 
 export async function refreshAllModelCatalogs(): Promise<{
   seed: number
+  anthropic: { upserted: number; fetched: number; pinned: string[] } | { skipped: true }
   openrouter: { upserted: number; fetched: number }
 }> {
-  const seed = await ensureSeedModels()
+  const native = await refreshNativeProviderLists()
   const openrouter = await refreshOpenRouterCatalog()
-  return { seed, openrouter }
+  return { seed: native.seed, anthropic: native.anthropic, openrouter }
 }
 
 export async function queryModelCatalog(params: {
@@ -251,7 +270,7 @@ export function catalogToLegacyOptions(models: CatalogModel[]): LegacyModelRow[]
     label: m.displayName,
     provider: PROVIDER_LABEL[m.provider] ?? m.provider,
     tier: m.isPinned ? "recommended" : "catalog",
-    costPer1kCalls: m.costPer1kEst ?? 0.015,
+    costPer1kCalls: m.costPer1kEst ?? 0,
   }))
 }
 

@@ -23,21 +23,29 @@ export const AI_MODELS = PINNED_SEED_MODELS.filter((m) => m.provider !== "OPENRO
   label: m.displayName,
   provider: NATIVE_PROVIDER_LABEL[m.provider] ?? m.provider,
   tier: nativeTier(m.modelId),
-  costPer1kCalls: m.costPer1kEst ?? 0.015,
+  costPer1kCalls: m.costPer1kEst ?? 0,
 }))
 
 export type AIModelValue = (typeof AI_MODELS)[number]["value"]
 
 export const DEFAULT_MODEL: Record<string, string> = {
   ORCHESTRATOR: "anthropic/claude-haiku-4-5-20251001",
-  WORKER: "anthropic/claude-sonnet-4-6",
-  CRITIC: "anthropic/claude-opus-4-6",
+  WORKER: "anthropic/claude-sonnet-5",
+  CRITIC: "anthropic/claude-opus-5",
 }
 
 export function getModelLabel(value: string): string {
   return PINNED_SEED_MODELS.find((m) => m.modelId === value)?.displayName ?? value
 }
 
-export function getModelCost(value: string): number {
-  return PINNED_SEED_MODELS.find((m) => m.modelId === value)?.costPer1kEst ?? 0.015
+/** Known seed price, or null — never invent a number for unpriced models. */
+export function getModelCost(value: string): number | null {
+  return PINNED_SEED_MODELS.find((m) => m.modelId === value)?.costPer1kEst ?? null
+}
+
+export function formatModelEstCost(modelId: string): string {
+  if (modelId.startsWith("openrouter/")) return "est. (BYOK)"
+  const est = getModelCost(modelId)
+  if (est == null) return "—"
+  return `~$${est}/call`
 }

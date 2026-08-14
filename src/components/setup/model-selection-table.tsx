@@ -1,6 +1,6 @@
 "use client"
 
-import { getModelCost } from "@/lib/models"
+import { formatModelEstCost } from "@/lib/models"
 import { ModelPicker } from "@/components/shared/model-picker"
 import {
   BYOK_COST_DISCLAIMER,
@@ -60,7 +60,6 @@ export function ModelSelectionTable({
         </thead>
         <tbody>
           {agents.map((agent) => {
-            const est = getModelCost(agent.model)
             return (
               <tr key={agent.id} className="border-b border-[var(--bd)]">
                 <td className="px-2 py-1.5 font-semibold">{agent.name}</td>
@@ -76,9 +75,7 @@ export function ModelSelectionTable({
                   />
                 </td>
                 <td className="px-2 py-1.5 text-right text-[var(--tx3)] text-[10px]">
-                  {agent.model.startsWith("openrouter/")
-                    ? "est. (BYOK)"
-                    : `~$${est}/call`}
+                  {formatModelEstCost(agent.model)}
                 </td>
               </tr>
             )

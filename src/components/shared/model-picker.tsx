@@ -51,7 +51,7 @@ export function ModelPicker({
   }, [loadPinned])
 
   useEffect(() => {
-    if (!search.trim() || creditMode) {
+    if (!search.trim()) {
       setSearchOptions([])
       return
     }
@@ -59,6 +59,7 @@ export function ModelPicker({
       setSearching(true)
       try {
         const params = new URLSearchParams({ q: search.trim(), limit: "30" })
+        if (creditMode) params.set("creditMode", "1")
         const res = await fetch(`/api/models/catalog?${params}`)
         const json = await res.json()
         const d = json.data ?? json
@@ -100,12 +101,15 @@ export function ModelPicker({
         onChange={onChange}
         options={pinnedOptions.length ? pinnedOptions : [{ value, label: value || "Select model" }]}
       />
-      {!creditMode && (
-        <div>
+      <div>
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search full catalog (OpenRouter + natives)…"
+            placeholder={
+              creditMode
+                ? "Search Claude models…"
+                : "Search full catalog (OpenRouter + natives)…"
+            }
             className="text-[11px]"
           />
           {searching && <p className="text-[10px] text-[var(--tx3)] mt-1">Searching…</p>}
@@ -129,7 +133,6 @@ export function ModelPicker({
             </ul>
           )}
         </div>
-      )}
       {byokOpenRouter && (
         <p className="text-[10px] text-[var(--tx2)]">
           OpenRouter — BYOK only · estimate-only cost · billed by OpenRouter

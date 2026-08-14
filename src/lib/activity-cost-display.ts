@@ -72,7 +72,7 @@ export function aggregateAgentCostRow(input: {
   messageSents: ReadonlyArray<{ apiCost?: number | null }>
 }): { calls: number; cost: number; isEstimate: boolean } {
   const calls = input.taskCompleteCalls
-  const estimatedFallback = calls * getModelCost(input.model)
+  const estimatedFallback = calls * (getModelCost(input.model) ?? 0)
 
   if (input.messageSents.length > 0) {
     const resolved = resolveWindowCost(input.messageSents, estimatedFallback)
