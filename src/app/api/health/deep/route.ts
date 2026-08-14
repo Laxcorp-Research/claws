@@ -1,3 +1,4 @@
+// KEEP: operations dependency probe; also intended for direct human inspection.
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { redis } from "@/lib/redis"

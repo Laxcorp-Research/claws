@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 import { createMockRequest, parseResponse } from "@/test/helpers/mock-request"
@@ -17,6 +19,8 @@ import { getSessionUser } from "@/lib/api/auth"
 import { POST as rejectTemplate } from "@/app/api/admin/review-queue/templates/[id]/reject/route"
 import { POST as approveTemplate } from "@/app/api/admin/review-queue/templates/[id]/approve/route"
 import { POST as approveSkill } from "@/app/api/admin/review-queue/skills/[id]/approve/route"
+
+const ROOT = process.cwd()
 
 process.env.ADMIN_EMAILS = "admin@test.com"
 
@@ -84,6 +88,29 @@ describe("listing gate — public detail/install (Arc 1)", () => {
     expect(res.status).toBe(404)
   })
 
+  it("creator viewing own pending template gets pending_review, stranger still 404", async () => {
+    prismaMock.clawTemplate.findUnique.mockResolvedValue(pendingCommunity as never)
+    prismaMock.creatorProfile.findUnique.mockResolvedValue({ userId: "creator-1" } as never)
+
+    vi.mocked(getSessionUser).mockResolvedValue({ id: "creator-1", email: "c@test.com" } as never)
+    const ownerRes = await getTemplateDetail(
+      createMockRequest("http://localhost/api/marketplace/templates/pending-community"),
+      { params: Promise.resolve({ slug: "pending-community" }) },
+    )
+    const ownerBody = await parseResponse(ownerRes)
+    expect(ownerRes.status).toBe(200)
+    expect(ownerBody.data.data.listingState).toBe("pending_review")
+    expect(ownerBody.data.data.slug).toBe("pending-community")
+    expect(ownerBody.data.data.template).toBeUndefined()
+
+    vi.mocked(getSessionUser).mockResolvedValue({ id: "stranger", email: "s@test.com" } as never)
+    const strangerRes = await getTemplateDetail(
+      createMockRequest("http://localhost/api/marketplace/templates/pending-community"),
+      { params: Promise.resolve({ slug: "pending-community" }) },
+    )
+    expect(strangerRes.status).toBe(404)
+  })
+
   it("official template detail remains available (regression)", async () => {
     prismaMock.clawTemplate.findUnique.mockResolvedValue(officialTemplate as never)
     prismaMock.clawTemplate.findMany.mockResolvedValue([])
@@ -94,6 +121,36 @@ describe("listing gate — public detail/install (Arc 1)", () => {
     const { status, data } = await parseResponse(res)
     expect(status).toBe(200)
     expect(data.data.template.slug).toBe("official-claw")
+  })
+
+  it("detail returns slim workspaceSnapshot (no soulMd) for hierarchy preview", async () => {
+    prismaMock.clawTemplate.findUnique.mockResolvedValue({
+      ...officialTemplate,
+      workspaceSnapshot: JSON.stringify({
+        agents: [
+          { name: "Lead", agentSlug: "lead", role: "ORCHESTRATOR", color: "#5BA1F5", soulMd: "SECRET SOUL" },
+          { name: "Scout", agentSlug: "scout", role: "WORKER", color: "#8BFCAE", soulMd: "SECRET SOUL" },
+          { name: "Gate", agentSlug: "gate", role: "CRITIC", color: "#A78BFA", soulMd: "SECRET SOUL" },
+        ],
+        connections: [{ sourceSlug: "lead", targetSlug: "scout", condition: "ON_COMPLETE" }],
+        tools: [],
+      }),
+    } as never)
+    prismaMock.clawTemplate.findMany.mockResolvedValue([])
+    const res = await getTemplateDetail(
+      createMockRequest("http://localhost/api/marketplace/templates/official-claw"),
+      { params: Promise.resolve({ slug: "official-claw" }) },
+    )
+    const { status, data } = await parseResponse(res)
+    expect(status).toBe(200)
+    const snap = data.data.template.workspaceSnapshot as {
+      agents: Array<Record<string, unknown>>
+      connections: unknown[]
+    }
+    expect(snap.agents).toHaveLength(3)
+    expect(snap.connections).toHaveLength(1)
+    expect(JSON.stringify(snap)).not.toContain("SECRET")
+    expect(snap.agents[0]).not.toHaveProperty("soulMd")
   })
 
   it("pre-approval skill is invisible and uninstallable", async () => {
@@ -145,6 +202,30 @@ describe("listing gate — public detail/install (Arc 1)", () => {
       { params: Promise.resolve({ slug: "pending-skill" }) },
     )
     expect(install.status).toBe(404)
+  })
+
+  it("creator viewing own pending skill gets pending_review", async () => {
+    const pendingSkill = {
+      id: "sk-1",
+      slug: "pending-skill",
+      creatorId: "cp-1",
+      isPublished: false,
+      trustTier: "UNREVIEWED",
+      reviewStatus: "PENDING",
+      name: "Pending Skill",
+    }
+    prismaMock.marketplaceSkill.findUnique.mockResolvedValue(pendingSkill as never)
+    prismaMock.creatorProfile.findUnique.mockResolvedValue({ userId: "creator-1" } as never)
+    vi.mocked(getSessionUser).mockResolvedValue({ id: "creator-1", email: "c@test.com" } as never)
+
+    const res = await getSkillDetail(
+      createMockRequest("http://localhost/api/marketplace/skills/pending-skill"),
+      { params: Promise.resolve({ slug: "pending-skill" }) },
+    )
+    const { status, data } = await parseResponse(res)
+    expect(status).toBe(200)
+    expect(data.data.listingState).toBe("pending_review")
+    expect(data.data.skill).toBeUndefined()
   })
 })
 
@@ -400,5 +481,22 @@ describe("admin approve/reject listing gate (Arc 1)", () => {
     expect(json.error?.code).toBe("SANDBOX_REQUIRED")
     expect(prismaMock.marketplaceSkill.update).not.toHaveBeenCalled()
     delete process.env.SANDBOX_VETTING_ENABLED
+  })
+
+  it("skill-approve email exists with live store URL (B5)", () => {
+    const skillApprove = readFileSync(
+      join(ROOT, "src/app/api/admin/review-queue/skills/[id]/approve/route.ts"),
+      "utf8",
+    )
+    const templateApprove = readFileSync(
+      join(ROOT, "src/app/api/admin/review-queue/templates/[id]/approve/route.ts"),
+      "utf8",
+    )
+    expect(skillApprove).toContain("getResend().emails.send")
+    expect(skillApprove).toContain("https://app.buildclaws.ai/store/skills/${skill.slug}")
+    expect(skillApprove).toContain("View in marketplace")
+    expect(templateApprove).toContain("getResend().emails.send")
+    expect(templateApprove).toContain("https://app.buildclaws.ai/store/${template.slug}")
+    expect(templateApprove).toContain("View in marketplace")
   })
 })

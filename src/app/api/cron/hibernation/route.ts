@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ─── HIBERNATE CANDIDATES (inline, budget-guarded) ───
-  // Predicates shared with /api/internal/hibernation/candidates (parity).
+  // Shared predicates remain in lib; the duplicate internal candidates route was removed.
 
   const runningIdle = await prisma.containerState.findMany({
     where: runningIdleWhere(now),

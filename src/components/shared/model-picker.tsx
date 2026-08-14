@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { Input } from "@/components/ui/input"
-import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 
 type Option = { value: string; label: string }
 
@@ -16,8 +15,8 @@ interface ModelPickerProps {
 }
 
 /**
- * Pinned/recommended first via CustomSelect; full catalog behind search
- * (never a 400-item flat dropdown).
+ * Options come from GET /api/models/catalog (ModelCatalogEntry registry).
+ * MUTATION: restore a hardcoded native option array here → picker tests fail.
  */
 export function ModelPicker({
   value,
@@ -29,7 +28,6 @@ export function ModelPicker({
   const [search, setSearch] = useState("")
   const [searchOptions, setSearchOptions] = useState<Option[]>([])
   const [searching, setSearching] = useState(false)
-  const [honesty, setHonesty] = useState<string | null>(null)
 
   const loadPinned = useCallback(async () => {
     const params = new URLSearchParams({ pinned: "1", limit: "40" })
@@ -46,7 +44,6 @@ export function ModelPicker({
       opts.unshift({ value, label: value })
     }
     setPinnedOptions(opts)
-    if (typeof d.honesty === "string") setHonesty(d.honesty)
   }, [creditMode, value])
 
   useEffect(() => {
@@ -54,7 +51,7 @@ export function ModelPicker({
   }, [loadPinned])
 
   useEffect(() => {
-    if (!search.trim() || creditMode) {
+    if (!search.trim()) {
       setSearchOptions([])
       return
     }
@@ -62,6 +59,7 @@ export function ModelPicker({
       setSearching(true)
       try {
         const params = new URLSearchParams({ q: search.trim(), limit: "30" })
+        if (creditMode) params.set("creditMode", "1")
         const res = await fetch(`/api/models/catalog?${params}`)
         const json = await res.json()
         const d = json.data ?? json
@@ -103,12 +101,15 @@ export function ModelPicker({
         onChange={onChange}
         options={pinnedOptions.length ? pinnedOptions : [{ value, label: value || "Select model" }]}
       />
-      {!creditMode && (
-        <div>
+      <div>
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search full catalog (OpenRouter + natives)…"
+            placeholder={
+              creditMode
+                ? "Search Claude models…"
+                : "Search full catalog (OpenRouter + natives)…"
+            }
             className="text-[11px]"
           />
           {searching && <p className="text-[10px] text-[var(--tx3)] mt-1">Searching…</p>}
@@ -132,7 +133,6 @@ export function ModelPicker({
             </ul>
           )}
         </div>
-      )}
       {byokOpenRouter && (
         <p className="text-[10px] text-[var(--tx2)]">
           OpenRouter — BYOK only · estimate-only cost · billed by OpenRouter
@@ -140,11 +140,6 @@ export function ModelPicker({
       )}
       {missingKeyHint && (
         <p className="text-[10px] text-[var(--warn)]">{missingKeyHint}</p>
-      )}
-      {honesty && !byokOpenRouter && (
-        <p className="text-[10px] text-[var(--tx3)]">
-          <TruncatedText>{honesty}</TruncatedText>
-        </p>
       )}
     </div>
   )

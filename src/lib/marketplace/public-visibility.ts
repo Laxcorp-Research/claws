@@ -29,6 +29,37 @@ export function isPubliclyListable(item: PublicVisibilityFields): boolean {
   return item.reviewStatus === "APPROVED"
 }
 
+/** Owner-only store payload — not a public listing. */
+export const PENDING_REVIEW_LISTING_STATE = "pending_review" as const
+
+export type PendingReviewListing = {
+  listingState: typeof PENDING_REVIEW_LISTING_STATE
+  name: string
+  slug: string
+}
+
+export function pendingReviewListing(name: string, slug: string): PendingReviewListing {
+  return { listingState: PENDING_REVIEW_LISTING_STATE, name, slug }
+}
+
+export function isPendingReviewListing(data: unknown): data is PendingReviewListing {
+  if (!data || typeof data !== "object") return false
+  return (data as PendingReviewListing).listingState === PENDING_REVIEW_LISTING_STATE
+}
+
+/** Creator may see a pending-review empty state; everyone else stays not-found. */
+export function ownerMaySeePendingReview(opts: {
+  publiclyListable: boolean
+  reviewStatus: string
+  viewerUserId?: string | null
+  creatorUserId?: string | null
+}): boolean {
+  if (opts.publiclyListable) return false
+  if (opts.reviewStatus !== "PENDING") return false
+  if (!opts.viewerUserId || !opts.creatorUserId) return false
+  return opts.viewerUserId === opts.creatorUserId
+}
+
 /** Prisma `where` fragment for public template/skill list queries. */
 export function publicListingWhere(): {
   isPublished: true

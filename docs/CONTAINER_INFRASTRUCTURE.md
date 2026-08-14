@@ -35,9 +35,6 @@ TLS, scaling, and restarts.
 | `src/lib/openclaw/deployer.ts` | Orchestrates the full deploy lifecycle: generate files, create Railway service, poll for success. Falls back to simulation when Railway is not configured. |
 | `src/lib/openclaw/generator.ts` | Converts Prisma DB models into OpenClaw workspace files (`openclaw.json`, `.env`, per-agent `SOUL.md`/`AGENTS.md`/etc). |
 | `src/app/api/deploy/[workspaceId]/cloud/route.ts` | API route that triggers `deployToCloud()`. |
-| `src/app/api/deploy/[workspaceId]/health/route.ts` | API route for checking Railway deployment status. |
-| `src/app/api/deploy/[workspaceId]/logs/route.ts` | API route for fetching container logs from Railway. |
-| `src/app/api/admin/containers/health/route.ts` | Admin endpoint listing all Railway services in the project. |
 
 ---
 

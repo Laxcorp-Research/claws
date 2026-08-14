@@ -14,7 +14,7 @@ tag our production image is built from — nothing here is inference.
 | Runtime image verified | `ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-1` (staging DB stable `OpenClawVersion` row; `-1` = overlay-only rebuild suffix per `.github/workflows/build-openclaw-image.yml:166-184`) |
 | Upstream source read | `github.com/openclaw/openclaw` tag `v2026.5.22` = commit `a374c3a5bfd5225ce319bce3865aab6216309c4f` (`buildSourceTag` of the stable row) |
 | Live verification | Staging workspace **SPIKE-PR9** (`cmq81n2cp000210hq54sxz61c`), Developer Productivity OS template, orchestrator slug `dev-commander`, BYOK key source. Deployed/destroyed twice (2026-06-10); all residue rows purged after close-out; WIRE-TEST verified field-wise untouched before/after. |
-| Probe | `scripts/spike-pr9-gateway-probe.mjs` (non-production; PR-9/A deletes it). Replaces the deleted `scripts/probe-gateway-api.mjs`, which was hardcoded to a destroyed container. |
+| Probe | Deleted after the PR-9 gateway contract was captured; `scripts/spike-pr9-gateway-probe.mjs` was non-production one-shot tooling. |
 | Evidence status | **Complete.** Phase 2 ran with a placeholder LLM key (transport/auth/routing/idempotency evidence only + a captured errored-turn shape). The reply-path gap was **closed 2026-06-10** with a valid key: a genuine multi-step assistant reply was captured end-to-end (§5). |
 | Upstream citations | `file:line` references below are to the `v2026.5.22` clone unless prefixed `laxclaws:`. |
 

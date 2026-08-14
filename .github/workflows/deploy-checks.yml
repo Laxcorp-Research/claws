@@ -32,5 +32,5 @@ jobs:
             echo "⚠️ Skipping API checks — Vercel auth enabled"
             exit 0
           fi
-          curl -sSfL --max-time 30 "$DEPLOY_URL/api/templates" > /dev/null || echo "⚠️ Templates API not responding"
+          curl -sSfL --max-time 30 "$DEPLOY_URL/api/marketplace/templates" > /dev/null || echo "⚠️ Marketplace templates API not responding"
           echo "✅ API checks complete"

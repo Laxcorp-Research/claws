@@ -64,7 +64,6 @@ function PublishSkillContent() {
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishSuccess, setPublishSuccess] = useState(false)
-  const [publishedSlug, setPublishedSlug] = useState<string | null>(null)
   const [scanFailed, setScanFailed] = useState(false)
   const [scanFindings, setScanFindings] = useState<ScanFinding[]>([])
   const [extractionPreview, setExtractionPreview] = useState<{
@@ -181,8 +180,6 @@ function PublishSkillContent() {
         return
       }
       if (!res.ok) { throw new Error(json.error?.message ?? "Publishing failed") }
-      const d = json.data ?? json
-      setPublishedSlug(d.slug)
       setPublishSuccess(true)
     } catch (err: unknown) {
       setPublishError(err instanceof Error ? err.message : "Publishing failed")
@@ -410,11 +407,10 @@ function PublishSkillContent() {
           publishSuccess ? (
             <div className="text-center py-6">
               <Check size={32} className="mx-auto mb-3 text-[var(--ok)]" aria-hidden="true" />
-              <h2 className="text-[18px] font-semibold text-[var(--tx)]">Skill Published!</h2>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">Auto-scan passed. Submitted for manual review. Not listed until approved.</p>
+              <h2 className="text-[18px] font-semibold text-[var(--tx)]">Skill submitted</h2>
+              <p className="text-[12px] text-[var(--tx2)] mt-1">{"Submitted for review — you'll get an email when it's approved."}</p>
               <div className="flex justify-center gap-2 mt-4">
-                {publishedSlug && <Link href={`/store/skills/${publishedSlug}`}><Button variant="outline">View in Marketplace</Button></Link>}
-                <Link href="/settings?tab=creator"><Button variant="outline">Creator Dashboard</Button></Link>
+                <Link href="/settings?tab=creator"><Button variant="primary">View in your creator dashboard</Button></Link>
               </div>
             </div>
           ) : scanFailed ? (

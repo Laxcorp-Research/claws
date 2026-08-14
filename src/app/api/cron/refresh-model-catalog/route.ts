@@ -5,7 +5,10 @@ import { log } from "@/lib/logger"
 
 export const maxDuration = 60
 
-/** Daily cron: seed natives + refresh OpenRouter /models into ModelCatalogEntry. */
+/**
+ * Daily cron and on-demand model-catalog refresh path.
+ * The duplicate /api/models/refresh surface was removed.
+ */
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization")
   if (auth !== `Bearer ${process.env.CRON_SECRET}` || !process.env.CRON_SECRET) {

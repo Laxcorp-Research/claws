@@ -8,7 +8,7 @@
  * value can never drift across grant logic, schema defaults, UI copy, and email.
  *
  * NOTE: this is the GRANT amount only. The WIRE-TEST staging fixture
- * (`scripts/reprovision-wire-test.ts`, 500c) is a deliberately separate test
+ * (`scripts/archive/reprovision-wire-test.ts`, 500c) is a deliberately separate test
  * value and is intentionally NOT derived from this constant.
  */
 export const STARTER_CREDIT_CENTS = 5000

@@ -60,5 +60,34 @@ describe("model catalog (OpenRouter arc)", () => {
     expect(src).toMatch(/creditMode[\s\S]*provider\s*=\s*["']ANTHROPIC["']/)
     expect(src).toMatch(/creditMode\s*&&\s*s\.provider\s*!==\s*["']ANTHROPIC["']/)
   })
+
+  it("native seed is 9 pins (3 Anthropic flagship fallbacks + 2 OpenAI + 1 Google + 3 OpenRouter)", () => {
+    expect(PINNED_SEED_MODELS).toHaveLength(9)
+    expect(PINNED_SEED_MODELS.map((m) => m.modelId)).toEqual([
+      "anthropic/claude-haiku-4-5-20251001",
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-opus-5",
+      "openai/gpt-4o",
+      "openai/gpt-4o-mini",
+      "google/gemini-2.5-pro",
+      "openrouter/openai/gpt-4o-mini",
+      "openrouter/google/gemini-2.0-flash-001",
+      "openrouter/meta-llama/llama-3.3-70b-instruct",
+    ])
+  })
+
+  it("MUTATION: refresh-returns-pins-only restored → fails", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    const anthropic = readFileSync(
+      join(process.cwd(), "src/lib/models/anthropic-catalog.ts"),
+      "utf8",
+    )
+    expect(src).toContain("refreshAnthropicCatalog")
+    expect(src).not.toMatch(
+      /export async function refreshNativeProviderLists[\s\S]*?return ensureSeedModels\(\)\s*\}/,
+    )
+    expect(anthropic).toContain("https://api.anthropic.com/v1/models")
+    expect(anthropic).toContain("CLAWS_MASTER_ANTHROPIC_KEY")
+  })
 })
 

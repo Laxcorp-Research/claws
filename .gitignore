@@ -83,3 +83,5 @@ poc-*/
 
 # PR2.8a probe outputs (staging/prod DB state snapshots; regeneratable)
 /probe-*.json
+
+scripts/marketplace-sandbox/.out-*/

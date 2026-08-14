@@ -7,7 +7,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
 import { AlertBanner } from "@/components/ui/alert-banner"
-import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
+import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState } from "@/components/marketplace"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TextLink } from "@/components/ui/text-link"
@@ -72,6 +72,7 @@ export default function SkillDetailPage() {
   const [data, setData] = useState<PageData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pendingReview, setPendingReview] = useState(false)
 
   const [reviews, setReviews] = useState<TemplateReviewData[]>([])
   const [showAllReviews, setShowAllReviews] = useState(false)
@@ -95,6 +96,7 @@ export default function SkillDetailPage() {
   const fetchData = useCallback(() => {
     setIsLoading(true)
     setError(null)
+    setPendingReview(false)
     fetch(`/api/marketplace/skills/${slug}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.status === 404 ? "Skill not found" : "Failed to load")
@@ -102,6 +104,11 @@ export default function SkillDetailPage() {
       })
       .then((json) => {
         const payload = json.data ?? json
+        if (payload?.listingState === "pending_review") {
+          setPendingReview(true)
+          setIsLoading(false)
+          return
+        }
         setData(payload)
         setReviews(payload.reviews ?? [])
         setIsLoading(false)
@@ -249,6 +256,16 @@ export default function SkillDetailPage() {
             <div className="h-60 bg-[var(--bg3)] rounded animate-pulse" />
             <div className="h-32 bg-[var(--bg3)] rounded animate-pulse" />
           </div>
+        </div>
+      </PageShell>
+    )
+  }
+
+  if (pendingReview) {
+    return (
+      <PageShell background="secondary">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <PendingReviewEmptyState />
         </div>
       </PageShell>
     )

@@ -4,7 +4,8 @@
 > `src/data/claw-templates.ts`, which Cursor's PR2.8a pre-flight verification
 > proved is dead code for the wizard. The actual runtime data flow runs
 > through `prisma/seed-data/*.ts` → `ClawTemplate.workspaceSnapshot` →
-> `/api/templates/{slug}` → setup wizard. The "66/146 broken refs" and
+> the workspace tool-requirements API → setup wizard. The former
+> `/api/templates/{slug}` surface was later deleted. The "66/146 broken refs" and
 > "20/20 templates Deploy-blocked" counts below were measured against the
 > wrong file — in the wizard path, pre-PR2.7 blockers were narrower (the
 > `"Twitter API"` alias was load-bearing; the `"Claude API"` alias never

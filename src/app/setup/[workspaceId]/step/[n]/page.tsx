@@ -543,7 +543,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     apiKeyForm: null,
   })
   const [customApis, setCustomApis] = useState<CustomApiConnectionSummary[]>([])
-  /** Swap uses BrowseToolsModal (filtered library), not ToolSwapModal. */
+  /** Swap uses BrowseToolsModal's filtered library. */
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
   /** Template tools dropped from the workspace set — Restore via `restore` op. */
@@ -595,11 +595,11 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
 
         // PR2.8a Task 7: switched from name-based (`getToolByName(t.name)`)
         // to slug-based (`getToolBySlug(t.slug)`) template-tool resolution.
-        // The API route at /api/templates/{slug} already returns both fields
-        // in each entry of `tools.required` / `tools.recommended`; pre-PR2.8a
-        // the wizard read only `.name` and substring-matched it back to the
-        // catalog (see the pre-PR2.7 Deploy-blocker for the "Claude API" vs
-        // "Anthropic (Claude)" miss that TOOL_NAME_ALIASES papered over).
+        // Workspace tool-requirements already returns both fields in each
+        // `required` / `recommended` entry; pre-PR2.8a the wizard read only
+        // `.name` and substring-matched it back to the catalog (see the
+        // pre-PR2.7 Deploy-blocker for the "Claude API" vs "Anthropic
+        // (Claude)" miss that TOOL_NAME_ALIASES papered over).
         //
         // Tool customization: workspace-owned set via dual-read resolver.
         // Requirement entry = row of record; ToolConnection only decorates
