@@ -23,6 +23,7 @@ function toClawCard(t: MarketplaceTemplate): ClawCardData {
     price: t.price,
     isFree: t.isFree,
     tagline: t.tagline,
+    category: t.category,
     flowDescription: t.flowDescription ?? "",
     legalDisclaimer: t.legalDisclaimer,
     agents: t.agents ?? [],
@@ -66,11 +67,9 @@ const SKILL_GRID = "grid grid-cols-1 sm:grid-cols-2 gap-2"
 function TemplateList({
   templates,
   defaultCreatorName,
-  hideTrustBadge,
 }: {
   templates: MarketplaceTemplate[]
   defaultCreatorName?: string
-  hideTrustBadge?: boolean
 }) {
   return (
     <div className={TEMPLATE_LIST}>
@@ -79,7 +78,6 @@ function TemplateList({
           key={t.id}
           claw={toClawCard(t)}
           trustTier={t.trustTier}
-          hideTrustBadge={hideTrustBadge}
           installCount={t.installCount}
           avgRating={t.avgRating}
           creatorName={defaultCreatorName ?? t.creator?.displayName ?? null}
@@ -101,7 +99,6 @@ function TemplateSection({
   loadMore,
   isLoadingMore,
   defaultCreatorName,
-  hideTrustBadge,
 }: {
   title: string
   badge?: React.ReactNode
@@ -113,7 +110,6 @@ function TemplateSection({
   loadMore: () => void
   isLoadingMore: boolean
   defaultCreatorName?: string
-  hideTrustBadge?: boolean
 }) {
   const [visibleCount, setVisibleCount] = useState(TEMPLATE_INITIAL_VISIBLE)
 
@@ -145,7 +141,7 @@ function TemplateSection({
         <p className="text-[12px] text-[var(--tx3)]">{emptyText ?? "No templates found."}</p>
       ) : (
         <>
-          <TemplateList templates={visible} defaultCreatorName={defaultCreatorName} hideTrustBadge={hideTrustBadge} />
+          <TemplateList templates={visible} defaultCreatorName={defaultCreatorName} />
           {canShowMore && (
             <div className="mt-2">
               <MoreButton onClick={handleShowMore} loading={!hasMoreLoaded && isLoadingMore}>
@@ -414,7 +410,6 @@ function StoreContent() {
                   loadMore={official.loadMore}
                   isLoadingMore={official.isLoadingMore}
                   defaultCreatorName="Claws Team"
-                  hideTrustBadge
                 />
 
                 {(trending.isLoading || trending.items.length > 0) && (
