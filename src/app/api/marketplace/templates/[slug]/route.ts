@@ -5,9 +5,18 @@ import { getSessionUser } from "@/lib/api/auth"
 import { isPubliclyListable, publicListingWhere } from "@/lib/marketplace/public-visibility"
 
 interface SnapshotAgent {
+  id?: string
   name: string
+  agentSlug?: string
   role: string
   color: string
+}
+
+interface SnapshotConnection {
+  sourceSlug?: string
+  targetSlug?: string
+  sourceAgentId?: string
+  targetAgentId?: string
 }
 
 interface SnapshotTool {
@@ -59,13 +68,29 @@ export async function GET(
   let tools: { required: SnapshotTool[]; recommended: SnapshotTool[] } = { required: [], recommended: [] }
   let flowDescription = ""
   let legalDisclaimer: string | null = null
+  let workspaceSnapshot: { agents: SnapshotAgent[]; connections: SnapshotConnection[] } | null = null
   try {
-    const snap = JSON.parse(template.workspaceSnapshot)
-    agents = (snap.agents ?? []).map((a: SnapshotAgent) => ({
+    const snap = JSON.parse(template.workspaceSnapshot) as {
+      agents?: SnapshotAgent[]
+      connections?: SnapshotConnection[]
+      tools?: SnapshotTool[]
+      flowDescription?: string
+      legalDisclaimer?: string | null
+    }
+    agents = (snap.agents ?? []).map((a) => ({
+      id: a.id,
       name: a.name,
+      agentSlug: a.agentSlug,
       role: a.role,
       color: a.color,
     }))
+    const connections = (snap.connections ?? []).map((c) => ({
+      sourceSlug: c.sourceSlug,
+      targetSlug: c.targetSlug,
+      sourceAgentId: c.sourceAgentId,
+      targetAgentId: c.targetAgentId,
+    }))
+    workspaceSnapshot = { agents, connections }
     const allTools = (snap.tools ?? []) as SnapshotTool[]
     tools = {
       required: allTools.filter((t) => t.required),
@@ -176,6 +201,7 @@ export async function GET(
       tools,
       flowDescription,
       legalDisclaimer,
+      workspaceSnapshot,
     },
     reviews: formattedReviews,
     reviewCount: template._count.reviews,

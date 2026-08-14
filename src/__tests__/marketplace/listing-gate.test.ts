@@ -96,6 +96,36 @@ describe("listing gate — public detail/install (Arc 1)", () => {
     expect(data.data.template.slug).toBe("official-claw")
   })
 
+  it("detail returns slim workspaceSnapshot (no soulMd) for hierarchy preview", async () => {
+    prismaMock.clawTemplate.findUnique.mockResolvedValue({
+      ...officialTemplate,
+      workspaceSnapshot: JSON.stringify({
+        agents: [
+          { name: "Lead", agentSlug: "lead", role: "ORCHESTRATOR", color: "#5BA1F5", soulMd: "SECRET SOUL" },
+          { name: "Scout", agentSlug: "scout", role: "WORKER", color: "#8BFCAE", soulMd: "SECRET SOUL" },
+          { name: "Gate", agentSlug: "gate", role: "CRITIC", color: "#A78BFA", soulMd: "SECRET SOUL" },
+        ],
+        connections: [{ sourceSlug: "lead", targetSlug: "scout", condition: "ON_COMPLETE" }],
+        tools: [],
+      }),
+    } as never)
+    prismaMock.clawTemplate.findMany.mockResolvedValue([])
+    const res = await getTemplateDetail(
+      createMockRequest("http://localhost/api/marketplace/templates/official-claw"),
+      { params: Promise.resolve({ slug: "official-claw" }) },
+    )
+    const { status, data } = await parseResponse(res)
+    expect(status).toBe(200)
+    const snap = data.data.template.workspaceSnapshot as {
+      agents: Array<Record<string, unknown>>
+      connections: unknown[]
+    }
+    expect(snap.agents).toHaveLength(3)
+    expect(snap.connections).toHaveLength(1)
+    expect(JSON.stringify(snap)).not.toContain("SECRET")
+    expect(snap.agents[0]).not.toHaveProperty("soulMd")
+  })
+
   it("pre-approval skill is invisible and uninstallable", async () => {
     const pendingSkill = {
       id: "sk-1",

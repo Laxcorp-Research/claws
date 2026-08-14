@@ -15,6 +15,7 @@ import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge
 import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars } from "@/components/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
+import { TemplateHierarchyPreview } from "@/components/store/template-hierarchy-preview"
 import { getComplianceNotice } from "@/lib/compliance-notices"
 import { formatEstimatedMonthlyTotal } from "@/lib/marketplace/estimated-monthly-total"
 import { isMarketplaceCommunityPurchaseEnabled } from "@/lib/marketplace/feature-flags"
@@ -67,6 +68,7 @@ interface TemplateData {
   tools: { required: TemplateTool[]; recommended: TemplateTool[] }
   flowDescription: string
   legalDisclaimer?: string | null
+  workspaceSnapshot?: unknown
 }
 
 interface SimilarTemplate {
@@ -423,6 +425,8 @@ export default function TemplateDetailPage() {
         <div className="mb-3.5">
           <CreatorCard creator={template.creator} isOfficial={isOfficial} />
         </div>
+
+        <TemplateHierarchyPreview snapshot={template.workspaceSnapshot} />
 
         {/* Flow description */}
         <div className="text-[11px] text-[var(--tx2)] italic leading-normal py-2 px-3 bg-[var(--bg2)] rounded-[8px] border-l-[3px] border-[var(--bd)] mb-3.5">
