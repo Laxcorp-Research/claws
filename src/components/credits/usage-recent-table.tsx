@@ -58,6 +58,7 @@ export function UsageRecentTable({ records }: UsageRecentTableProps) {
                   >
                     <Link
                       href={`/dashboard/${r.workspaceId}`}
+                      // truncate-allowlist: DS Tooltip already shows workspace cuid
                       className="block max-w-full truncate text-[12px] font-medium text-[var(--ac-text)] hover:underline"
                     >
                       {r.workspaceName || "Workspace"}

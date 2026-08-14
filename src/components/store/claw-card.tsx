@@ -74,7 +74,7 @@ export function ClawCard({
             </div>
 
             <div data-store-card="meta" className="flex items-center gap-[6px] text-[10px] text-[var(--tx3)] mb-1.5 min-w-0">
-              <span className="truncate">{meta.join(" · ")}</span>
+              <TruncateWithTooltip>{meta.join(" · ")}</TruncateWithTooltip>
               {showRating && (
                 <span className="shrink-0">
                   {" "}
