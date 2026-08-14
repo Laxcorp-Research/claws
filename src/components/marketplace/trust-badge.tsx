@@ -34,7 +34,7 @@ const TRUST_CONFIG: Record<TrustTier, {
     border: "#B8FFCF",
   },
   SCANNED: {
-    label: "Auto-scanned — automated checks passed",
+    label: "Auto-scanned",
     title: "Auto-scanned — automated checks passed (regex + AI review). Not a deeper runtime vetting result.",
     Icon: Shield,
     bg: "#EEF5FF",
@@ -58,7 +58,7 @@ export function TrustBadge({ tier, className = "" }: TrustBadgeProps) {
   return (
     <Tooltip content={config.title} align="center" triggerClassName="inline-flex w-auto">
       <span
-        className={`inline-flex items-center gap-[3px] rounded-[4px] px-2 py-[2px] text-[10px] font-semibold leading-tight ${className}`}
+        className={`inline-flex items-center gap-[3px] h-[16px] max-h-[16px] shrink-0 whitespace-nowrap rounded-[4px] px-2 py-0 text-[10px] font-semibold leading-none ${className}`}
         style={{
           backgroundColor: config.bg,
           color: config.text,
