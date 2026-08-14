@@ -293,7 +293,9 @@ describe("K1 command strip data", () => {
     const firstTaskCount = (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(firstTaskCount.where.actionType).toBe("TASK_COMPLETE");
     expect(data.stats.estimatedCostTodayCalls).toBe(4);
-    expect(data.stats.estimatedCostToday).toBe(0.06);
+    // model "claude" is unknown — getModelCost must not invent the old 0.015 fallback
+    expect(data.stats.estimatedCostToday).toBe(0);
+    expect(data.stats.estimatedCostTodayIsEstimate).toBe(true);
   });
 });
 
