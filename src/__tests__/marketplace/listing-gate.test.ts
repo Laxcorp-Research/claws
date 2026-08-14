@@ -406,4 +406,29 @@ describe("admin approve/reject listing gate (Arc 1)", () => {
     expect(prismaMock.marketplaceSkill.update).not.toHaveBeenCalled()
     delete process.env.SANDBOX_VETTING_ENABLED
   })
+
+  it("skill approve with sandboxPassed=false refused when vetting env on (PR-5)", async () => {
+    process.env.SANDBOX_VETTING_ENABLED = "true"
+    prismaMock.marketplaceSkill.findUnique.mockResolvedValue({
+      id: "sk-1",
+      name: "S",
+      slug: "s",
+      reviewStatus: "PENDING",
+      sandboxPassed: false,
+      publishedAt: null,
+      creator: { displayName: "C", user: { email: "c@test.com", name: "C" } },
+    } as never)
+
+    const res = await approveSkill(
+      createMockRequest("http://localhost/api/admin/review-queue/skills/sk-1/approve", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "sk-1" }) },
+    )
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error?.code).toBe("SANDBOX_REQUIRED")
+    expect(prismaMock.marketplaceSkill.update).not.toHaveBeenCalled()
+    delete process.env.SANDBOX_VETTING_ENABLED
+  })
 })
