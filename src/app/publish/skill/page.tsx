@@ -11,6 +11,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { formatCurrency } from "@/lib/utils/format"
+import { commitChipDraft, isEnvChipToken } from "@/lib/marketplace/chip-commit"
 
 const STEPS = ["Details", "SKILL.md", "Pricing", "Submit"] as const
 
@@ -126,9 +127,19 @@ function PublishSkillContent() {
     return () => clearTimeout(timer)
   }, [currentStep, skillMd, bins, envVars])
 
-  const addItem = (input: string, setInput: (v: string) => void, items: string[], setItems: (v: string[]) => void, max: number) => {
-    const t = input.trim()
-    if (t && items.length < max && !items.includes(t)) { setItems([...items, t]); setInput("") }
+  const addItem = (input: string, setInput: (v: string) => void, items: string[], setItems: (v: string[]) => void, max: number, isValid?: (token: string) => boolean) => {
+    const next = commitChipDraft(input, items, max, isValid)
+    setItems(next.items)
+    setInput(next.draft)
+  }
+
+  const flushPendingChips = () => {
+    const t = commitChipDraft(tagInput, tags, 5)
+    const b = commitChipDraft(binInput, bins, 20)
+    const e = commitChipDraft(envVarInput, envVars, 20, isEnvChipToken)
+    setTags(t.items); setTagInput(t.draft)
+    setBins(b.items); setBinInput(b.draft)
+    setEnvVars(e.items); setEnvVarInput(e.draft)
   }
 
   const canProceed = (): boolean => {
@@ -142,6 +153,12 @@ function PublishSkillContent() {
   }
 
   const handlePublish = async () => {
+    const t = commitChipDraft(tagInput, tags, 5)
+    const b = commitChipDraft(binInput, bins, 20)
+    const e = commitChipDraft(envVarInput, envVars, 20, isEnvChipToken)
+    setTags(t.items); setTagInput(t.draft)
+    setBins(b.items); setBinInput(b.draft)
+    setEnvVars(e.items); setEnvVarInput(e.draft)
     setIsPublishing(true)
     setPublishError(null)
     setScanFailed(false)
@@ -152,7 +169,7 @@ function PublishSkillContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(), emoji: emoji.trim() || null, description: description.trim(),
-          category, tags, requiredBins: bins, requiredEnvVars: envVars,
+          category, tags: t.items, requiredBins: b.items, requiredEnvVars: e.items,
           skillMd: skillMd.trim(), isFree, price: isFree ? null : price,
         }),
       })
@@ -222,7 +239,7 @@ function PublishSkillContent() {
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Tags <span className="text-[var(--tx3)]">(up to 5)</span></label>
               <div className="flex gap-2">
-                <Input value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(tagInput, setTagInput, tags, setTags, 5) } }} placeholder="Add a tag..." maxLength={30} disabled={tags.length >= 5} />
+                <Input value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(tagInput, setTagInput, tags, setTags, 5) } }} onBlur={() => { flushPendingChips() }} placeholder="Add a tag..." maxLength={30} disabled={tags.length >= 5} />
                 <Button variant="outline" size="sm" onClick={() => addItem(tagInput, setTagInput, tags, setTags, 5)} disabled={tags.length >= 5 || !tagInput.trim()}>Add</Button>
               </div>
               {tags.length > 0 && (
@@ -239,7 +256,7 @@ function PublishSkillContent() {
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block"><Terminal size={10} className="inline mr-1" aria-hidden="true" />Required Binaries <span className="text-[var(--tx3)]">(optional)</span></label>
               <div className="flex gap-2">
-                <Input value={binInput} onChange={(e) => setBinInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(binInput, setBinInput, bins, setBins, 20) } }} placeholder="curl" maxLength={50} disabled={bins.length >= 20} />
+                <Input value={binInput} onChange={(e) => setBinInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(binInput, setBinInput, bins, setBins, 20) } }} onBlur={() => { flushPendingChips() }} placeholder="curl" maxLength={50} disabled={bins.length >= 20} />
                 <Button variant="outline" size="sm" onClick={() => addItem(binInput, setBinInput, bins, setBins, 20)} disabled={bins.length >= 20 || !binInput.trim()}>Add</Button>
               </div>
               {bins.length > 0 && (
@@ -256,10 +273,10 @@ function PublishSkillContent() {
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block"><Key size={10} className="inline mr-1" aria-hidden="true" />Required Environment Variables <span className="text-[var(--tx3)]">(UPPER_SNAKE_CASE)</span></label>
               <div className="flex gap-2">
-                <Input value={envVarInput} onChange={(e) => setEnvVarInput(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (/^[A-Z][A-Z0-9_]*$/.test(envVarInput)) addItem(envVarInput, setEnvVarInput, envVars, setEnvVars, 20) } }} placeholder="HUBSPOT_API_KEY" maxLength={100} disabled={envVars.length >= 20} />
-                <Button variant="outline" size="sm" onClick={() => { if (/^[A-Z][A-Z0-9_]*$/.test(envVarInput)) addItem(envVarInput, setEnvVarInput, envVars, setEnvVars, 20) }} disabled={envVars.length >= 20 || !envVarInput.trim() || !/^[A-Z][A-Z0-9_]*$/.test(envVarInput)}>Add</Button>
+                <Input value={envVarInput} onChange={(e) => setEnvVarInput(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(envVarInput, setEnvVarInput, envVars, setEnvVars, 20, isEnvChipToken) } }} onBlur={() => { flushPendingChips() }} placeholder="HUBSPOT_API_KEY" maxLength={100} disabled={envVars.length >= 20} />
+                <Button variant="outline" size="sm" onClick={() => { addItem(envVarInput, setEnvVarInput, envVars, setEnvVars, 20, isEnvChipToken) }} disabled={envVars.length >= 20 || !envVarInput.trim() || !isEnvChipToken(envVarInput)}>Add</Button>
               </div>
-              {envVarInput && !/^[A-Z][A-Z0-9_]*$/.test(envVarInput) && envVarInput.length > 0 && (
+              {envVarInput && !isEnvChipToken(envVarInput) && envVarInput.length > 0 && (
                 <p className="text-[10px] text-[var(--warn)] mt-1">Must start with a letter and contain only A-Z, 0-9, _</p>
               )}
               {envVars.length > 0 && (
@@ -479,7 +496,7 @@ function PublishSkillContent() {
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => { setCurrentStep(Math.max(0, currentStep - 1)); setAttemptedNext(false) }} disabled={currentStep === 0}>Back</Button>
               {currentStep < 3 && (
-                <Button onClick={() => { if (canProceed()) { setCurrentStep(currentStep + 1); setAttemptedNext(false) } else { setAttemptedNext(true) } }}>
+                <Button onClick={() => { flushPendingChips(); if (canProceed()) { setCurrentStep(currentStep + 1); setAttemptedNext(false) } else { setAttemptedNext(true) } }}>
                   Next: {STEPS[currentStep + 1]} →
                 </Button>
               )}

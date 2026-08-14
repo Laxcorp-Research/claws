@@ -15,6 +15,7 @@ type Parsed = {
   execution?: "jail" | "simulated"
   contentDigest?: string
   violations?: Array<{ class: string; detail: string; source: string }>
+  notes?: Array<{ class: string; detail: string; source: string }>
   dryChecks?: {
     bins?: Array<{ name: string; present: boolean }>
     envVars?: Array<{ name: string; set: boolean }>
@@ -125,6 +126,26 @@ export function SandboxReportViewer({
                       <span className="text-[var(--tx3)]"> · {v.source}</span>
                       <div className="mt-[2px] font-mono text-[10px] text-[var(--tx2)]">
                         {v.detail}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {parsed.notes && parsed.notes.length > 0 && (
+              <div>
+                <p className="mb-1 text-[11px] font-medium text-[var(--tx2)]">Notes</p>
+                <ul className="flex flex-col gap-[4px]">
+                  {parsed.notes.map((n, i) => (
+                    <li
+                      key={`note-${n.class}-${i}`}
+                      className="rounded-[4px] border border-[var(--bd)] bg-[var(--bg)] px-[8px] py-[5px] text-[11px] text-[var(--tx)]"
+                    >
+                      <span className="font-medium text-[var(--tx2)]">{n.class}</span>
+                      <span className="text-[var(--tx3)]"> · {n.source} · informational</span>
+                      <div className="mt-[2px] font-mono text-[10px] text-[var(--tx2)]">
+                        {n.detail}
                       </div>
                     </li>
                   ))}

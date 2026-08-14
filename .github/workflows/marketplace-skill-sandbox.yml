@@ -105,6 +105,8 @@ jobs:
           mkdir -p /tmp/sandbox-out
           # Harness runs on the hardened runner (egress block). Image boot is separate.
           # Zero user/Composio/master keys — only SANDBOX_* above.
+          # Agent-source grading is traces-only (run.mjs gradeAgentTurn). Narrative
+          # mentions of probe constraints must not Fail (B3).
           node scripts/marketplace-sandbox/run.mjs
 
       - name: Fail-closed TIMEOUT report on cancellation

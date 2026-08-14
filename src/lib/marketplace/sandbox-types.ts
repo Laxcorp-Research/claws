@@ -24,6 +24,13 @@ export interface SandboxViolation {
   source: SandboxViolationSource
 }
 
+/** Non-failing agent-narrative mention. Never counted in `passed`. */
+export interface SandboxNote {
+  class: SandboxViolationClass
+  detail: string
+  source: "agent"
+}
+
 export interface SandboxDryChecks {
   bins: Array<{ name: string; present: boolean }>
   envVars: Array<{ name: string; set: boolean }>
@@ -40,6 +47,8 @@ export interface SandboxReportV1 {
   /** jail = real GHA+Docker+Haiku; simulated = local-grade (cannot mint VERIFIED). */
   execution: SandboxExecutionKind
   violations: SandboxViolation[]
+  /** Narrative path/egress mentions — informational only (B3). */
+  notes?: SandboxNote[]
   dryChecks: SandboxDryChecks
   agentTurn: {
     model: string
