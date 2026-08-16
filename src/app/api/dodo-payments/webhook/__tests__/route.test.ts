@@ -289,6 +289,82 @@ describe('POST /api/dodo-payments/webhook', () => {
       expect(prismaMock.skillInstall.upsert).toHaveBeenCalled();
       expect(prismaMock.purchase.create).not.toHaveBeenCalled();
     });
+
+    it('MarketplaceSale uses webhook total_amount (paid), not list price', async () => {
+      mockUserLookup('user-buyer-c');
+      setupTransactionMock();
+      (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_COMMUNITY_TEMPLATE);
+      (prismaMock.workspace.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ws-community', name: 'Community Claw' });
+      (prismaMock.agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'agent-c' });
+      (prismaMock.agent.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      (prismaMock.templateInstall.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'install-c' });
+      (prismaMock.clawTemplate.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_COMMUNITY_TEMPLATE);
+      (prismaMock.purchase.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'purch-c' });
+      (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'sale-disc' });
+      (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const res = await POST(createWebhookRequest({
+        type: 'payment.succeeded',
+        data: {
+          payment_id: 'pay_discounted',
+          total_amount: 2000,
+          currency: 'usd',
+          customer: { customer_id: 'cust_disc' },
+          metadata: {
+            type: 'community_purchase',
+            userId: 'user-buyer-c',
+            templateId: 'tpl-community',
+            creatorId: 'creator-1',
+          },
+        },
+      }));
+      expect(res.status).toBe(200);
+      const saleCall = (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(saleCall.data.amount).toBe(20);
+      expect(saleCall.data.processingFee).toBeCloseTo(0.7, 2);
+      expect(saleCall.data.creatorPayout).toBeCloseTo(19.3, 2);
+      expect(saleCall.data.amount).not.toBe(MOCK_COMMUNITY_TEMPLATE.price);
+      const purchCall = (prismaMock.purchase.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(purchCall.data.amountPaid).toBe(20);
+    });
+
+    it('community skill sale uses paid total_amount when discounted', async () => {
+      mockUserLookup('user-skill');
+      (prismaMock.marketplaceSale.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'skill-1',
+        price: 29,
+        creatorId: 'creator-1',
+      });
+      (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'sale-skill-d' });
+      (prismaMock.skillInstall.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'si-1' });
+      (prismaMock.marketplaceSkill.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const res = await POST(createWebhookRequest({
+        type: 'payment.succeeded',
+        data: {
+          payment_id: 'pay_skill_disc',
+          total_amount: 1000,
+          currency: 'usd',
+          customer: { customer_id: 'cust_s' },
+          metadata: {
+            type: 'community_purchase',
+            userId: 'user-skill',
+            skillId: 'skill-1',
+            creatorId: 'creator-1',
+          },
+        },
+      }));
+      expect(res.status).toBe(200);
+      const saleCall = (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(saleCall.data.amount).toBe(10);
+      expect(saleCall.data.processingFee).toBeCloseTo(0.35, 2);
+      expect(saleCall.data.creatorPayout).toBeCloseTo(9.65, 2);
+      expect(saleCall.data.amount).not.toBe(29);
+    });
   });
 
   describe('payment.failed', () => {
