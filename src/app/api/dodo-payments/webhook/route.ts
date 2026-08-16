@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db"
 import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { log } from "@/lib/logger"
 import { createMarketplaceSale, cancelPayout } from "@/lib/marketplace/payouts"
+import { marketplaceFeeFromPaid, paidDollarsFromWebhook } from "@/lib/marketplace/paid-amount"
 import {
   DEPLOYED_EVIDENCE_STATUSES,
   decideRefundWorkspaceAction,
@@ -194,14 +195,22 @@ async function handlePaymentSucceeded(
 
     const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onPaymentSucceeded.skill")
     const skill = await prisma.marketplaceSkill.findUnique({ where: { id: metadata.skillId } })
-    if (!skill?.creatorId || skill.price == null) return
+    if (!skill?.creatorId) return
 
-    const processingFee = Math.round(skill.price * 0.035 * 100) / 100
+    const paid = paidDollarsFromWebhook(data)
+    if (paid == null) {
+      log.error("onPaymentSucceeded.skill: missing data.total_amount — refusing list-price sale", {
+        paymentId,
+        skillId: skill.id,
+      })
+      return
+    }
+    const { amount, processingFee } = marketplaceFeeFromPaid(paid)
     await createMarketplaceSale({
       skillId: skill.id,
       buyerId: user.id,
       creatorId: skill.creatorId,
-      amount: skill.price,
+      amount,
       processingFee,
       dodoPaymentId: paymentId,
     })
@@ -242,23 +251,31 @@ async function handlePaymentSucceeded(
       userId: user.id,
       clawTemplateId: metadata.templateId,
       workspaceId,
-      amountPaid: (data?.total_amount as number) ? ((data?.total_amount as number) / 100) : (template?.price ?? 0),
+      amountPaid: paidDollarsFromWebhook(data) ?? 0,
       currency: (data?.currency as string) ?? "usd",
       dodoPaymentId: paymentId,
       status: "COMPLETED",
     },
   })
 
-  if (metadata.type === "community_purchase" && metadata.creatorId && template?.price && template.creatorId) {
-    const processingFee = Math.round(template.price * 0.035 * 100) / 100
-    await createMarketplaceSale({
-      templateId: metadata.templateId,
-      buyerId: user.id,
-      creatorId: template.creatorId,
-      amount: template.price,
-      processingFee,
-      dodoPaymentId: paymentId,
-    })
+  if (metadata.type === "community_purchase" && metadata.creatorId && template?.creatorId) {
+    const paid = paidDollarsFromWebhook(data)
+    if (paid == null) {
+      log.error("onPaymentSucceeded: missing data.total_amount — refusing list-price sale", {
+        paymentId,
+        templateId: metadata.templateId,
+      })
+    } else {
+      const { amount, processingFee } = marketplaceFeeFromPaid(paid)
+      await createMarketplaceSale({
+        templateId: metadata.templateId,
+        buyerId: user.id,
+        creatorId: template.creatorId,
+        amount,
+        processingFee,
+        dodoPaymentId: paymentId,
+      })
+    }
   }
 
   const customerId = (data?.customer as Record<string, string>)?.customer_id

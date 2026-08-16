@@ -107,15 +107,35 @@ describe('createCommunityCheckout product_cart shape (PR-7)', () => {
   const src = readFileSync(join(process.cwd(), 'src/lib/dodo-payments.ts'), 'utf8');
 
   it('product_cart uses dodoProductId — never Prisma cuid fields', () => {
-    expect(src).toContain('product_cart: [{ product_id: params.dodoProductId, quantity: 1 }]');
+    expect(src).toContain('product_cart: [{ product_id: params.productId, quantity: 1 }]');
     expect(src).not.toMatch(/product_cart:\s*\[\s*\{\s*product_id:\s*params\.templateId/);
     expect(src).toContain('COMMUNITY_CHECKOUT_REJECTS_CUID_AS_PRODUCT_ID');
   });
 
   it('MUTATION: cuid-as-product_id restored → this test fails', () => {
-    // Lock the fixed line; if someone reverts to params.templateId, fail loudly.
-    expect(src).toMatch(/product_id:\s*params\.dodoProductId/);
+    expect(src).toMatch(/productId:\s*params\.dodoProductId/);
     expect(src).not.toMatch(/product_id:\s*params\.templateId/);
+  });
+});
+
+describe('one-time checkout sessions allow discount codes', () => {
+  const src = readFileSync(join(process.cwd(), 'src/lib/dodo-payments.ts'), 'utf8');
+
+  it('ground-truth: checkoutSessions.create + feature_flags.allow_discount_code; no pre-applied code', () => {
+    expect(src).toContain('dodo.checkoutSessions.create');
+    expect(src).toContain('feature_flags: ONE_TIME_CHECKOUT_FLAGS');
+    expect(src).toContain('allow_discount_code: true');
+    expect(src).not.toMatch(/\bdiscount_code\s*:/);
+    expect(src).not.toContain('dodo.payments.create');
+  });
+
+  it('subscription checkout does not enable coupons', () => {
+    const start = src.indexOf('export async function createPlatformSubscription');
+    const end = src.indexOf('export async function createCommunityCheckout');
+    const subBlock = src.slice(start, end);
+    expect(subBlock).toContain('dodo.subscriptions.create');
+    expect(subBlock).not.toContain('allow_discount_code');
+    expect(subBlock).not.toContain('checkoutSessions');
   });
 });
 
