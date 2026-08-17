@@ -49,6 +49,7 @@ function templatePayload(slug: string) {
     installCount: 0,
     similar: [],
     hasPurchased: false,
+    isOwner: false,
   }
 }
 

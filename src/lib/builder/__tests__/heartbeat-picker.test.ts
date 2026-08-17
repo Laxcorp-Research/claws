@@ -17,7 +17,9 @@ describe("resolvePickerHeartbeatSchedule", () => {
     })
     expect(r.frequency).toBe("custom")
     expect(r.customWindowCount).toBe(2)
-    expect(customHeartbeatLabel(r.customWindowCount)).toBe("Custom (2 windows)")
+    expect(customHeartbeatLabel(r.customWindowCount)).toBe(
+      "Runs on its template schedule (2 windows/day)",
+    )
   })
 
   it("null frequency + deployed heartbeatCronExpressions → custom", () => {
@@ -60,9 +62,9 @@ describe("resolvePickerHeartbeatSchedule", () => {
     expect(r.frequency).toBe("off")
   })
 
-  it("customHeartbeatLabel falls back to Custom schedule", () => {
-    expect(customHeartbeatLabel(null)).toBe("Custom schedule")
-    expect(customHeartbeatLabel(1)).toBe("Custom (1 window)")
+  it("customHeartbeatLabel falls back to template-schedule copy", () => {
+    expect(customHeartbeatLabel(null)).toBe("Runs on its template schedule")
+    expect(customHeartbeatLabel(1)).toBe("Runs on its template schedule (1 window/day)")
   })
 
   it("MUTATION: default-render-for-armed restored → fails (null freq + cron ≠ Off)", () => {

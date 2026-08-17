@@ -306,6 +306,61 @@ describe('POST /api/dodo-payments/checkout', () => {
       expect(saleCall.data.payoutHeldUntil).toBeInstanceOf(Date);
     });
 
+    it('refuses owner==buyer with 403 OWN_LISTING (creator.userId, not profile id)', async () => {
+      mockCreateCommunityCheckout.mockClear();
+      mockCreateWorkspace.mockClear();
+      (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mockClear();
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...MOCK_COMMUNITY_TEMPLATE,
+        creatorId: 'cprof-1',
+        creator: { userId: 'user-1' },
+      });
+
+      const res = await callCheckout({ type: 'community_purchase', templateId: 'tpl-comm' });
+      const json = await res.json();
+      expect(res.status).toBe(403);
+      expect(json.error?.code).toBe('OWN_LISTING');
+      expect(json.error?.message).toBe('This is your template');
+      expect(mockCreateCommunityCheckout).not.toHaveBeenCalled();
+      expect(prismaMock.marketplaceSale.create).not.toHaveBeenCalled();
+      expect(mockCreateWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('refuses skill owner==buyer with 403 OWN_LISTING', async () => {
+      mockCreateCommunityCheckout.mockClear();
+      (prismaMock.marketplaceSale.create as ReturnType<typeof vi.fn>).mockClear();
+      mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+      (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
+      (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...MOCK_COMMUNITY_SKILL,
+        creatorId: 'cprof-skill',
+        creator: { userId: 'user-1' },
+      });
+
+      const res = await callCheckout({ type: 'community_purchase', skillId: 'skill-comm' });
+      const json = await res.json();
+      expect(res.status).toBe(403);
+      expect(json.error?.code).toBe('OWN_LISTING');
+      expect(json.error?.message).toBe('This is your skill');
+      expect(mockCreateCommunityCheckout).not.toHaveBeenCalled();
+      expect(prismaMock.marketplaceSale.create).not.toHaveBeenCalled();
+    });
+
+    it('MUTATION: self-buy path restored → fail', () => {
+      const src = readFileSync(
+        join(process.cwd(), 'src/app/api/dodo-payments/checkout/route.ts'),
+        'utf8',
+      );
+      expect(src).toContain('isOwnListing');
+      expect(src).toContain('OWN_LISTING');
+      expect(src).toContain('ownListingMessage("template")');
+      expect(src).toContain('ownListingMessage("skill")');
+      expect(src).not.toMatch(/template\.creatorId === user\.id/);
+      expect(src).not.toMatch(/skill\.creatorId === user\.id/);
+    });
+
     it('rejects when template has no creatorId', async () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);

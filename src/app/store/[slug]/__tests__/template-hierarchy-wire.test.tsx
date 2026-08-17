@@ -78,6 +78,7 @@ describe("store template detail hierarchy wire", () => {
               installCount: 0,
               similar: [],
               hasPurchased: false,
+              isOwner: false,
             },
           }),
         } as Response

@@ -6,6 +6,7 @@ import { createWorkspaceFromTemplate } from "@/lib/workspace-from-template"
 import { log } from "@/lib/logger"
 import { createMarketplaceSale, cancelPayout } from "@/lib/marketplace/payouts"
 import { marketplaceFeeFromPaid, paidDollarsFromWebhook } from "@/lib/marketplace/paid-amount"
+import { isOwnListing } from "@/lib/marketplace/own-listing"
 import {
   DEPLOYED_EVIDENCE_STATUSES,
   decideRefundWorkspaceAction,
@@ -194,8 +195,19 @@ async function handlePaymentSucceeded(
     if (existingSale) return
 
     const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onPaymentSucceeded.skill")
-    const skill = await prisma.marketplaceSkill.findUnique({ where: { id: metadata.skillId } })
+    const skill = await prisma.marketplaceSkill.findUnique({
+      where: { id: metadata.skillId },
+      include: { creator: { select: { userId: true } } },
+    })
     if (!skill?.creatorId) return
+    if (isOwnListing(skill.creator?.userId, user.id)) {
+      log.warn("onPaymentSucceeded.skill: ignoring self-sale", {
+        paymentId,
+        skillId: skill.id,
+        userId: user.id,
+      })
+      return
+    }
 
     const paid = paidDollarsFromWebhook(data)
     if (paid == null) {
@@ -239,12 +251,26 @@ async function handlePaymentSucceeded(
 
   const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onPaymentSucceeded")
 
+  const template = await prisma.clawTemplate.findUnique({
+    where: { id: metadata.templateId },
+    include: { creator: { select: { userId: true } } },
+  })
+  if (
+    metadata.type === "community_purchase" &&
+    isOwnListing(template?.creator?.userId, user.id)
+  ) {
+    log.warn("onPaymentSucceeded: ignoring self-sale", {
+      paymentId,
+      templateId: metadata.templateId,
+      userId: user.id,
+    })
+    return
+  }
+
   const { workspaceId } = await createWorkspaceFromTemplate({
     userId: user.id,
     templateId: metadata.templateId,
   })
-
-  const template = await prisma.clawTemplate.findUnique({ where: { id: metadata.templateId } })
 
   await prisma.purchase.create({
     data: {

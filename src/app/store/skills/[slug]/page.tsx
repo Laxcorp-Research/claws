@@ -56,6 +56,7 @@ interface PageData {
       agents: Array<{ id: string; name: string; role: string }>
     }>
   } | null
+  isOwner: boolean
 }
 
 export default function SkillDetailPage() {
@@ -284,7 +285,7 @@ export default function SkillDetailPage() {
     )
   }
 
-  const { skill, reviewCount, installStatus } = data
+  const { skill, reviewCount, installStatus, isOwner } = data
 
   return (
     <PageShell background="secondary">
@@ -322,6 +323,11 @@ export default function SkillDetailPage() {
             <PriceDisplay price={skill.price} isFree={skill.isFree} showPlatformFee={false} />
             {(() => {
               const isPaid = !skill.isFree && skill.price != null && skill.price > 0
+              if (isOwner && isPaid) {
+                return (
+                  <p className="text-[11px] text-[var(--tx2)] mt-3">This is your skill</p>
+                )
+              }
               const needsPurchase = isPaid && !(installStatus?.hasPurchased)
               if (installStatus?.installed) {
                 return (
@@ -450,7 +456,7 @@ export default function SkillDetailPage() {
             <p className="text-[11px] text-[var(--tx3)] mt-2">Loading more reviews...</p>
           )}
 
-          {installStatus?.installed && (
+          {installStatus?.installed && !isOwner && (
             <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowReviewModal(true)}>
               Write a review
             </Button>

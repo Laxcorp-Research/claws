@@ -36,7 +36,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe("HeartbeatConfig — custom MD cron truth", () => {
+describe("HeartbeatConfig — template schedule copy", () => {
   beforeEach(() => {
     useBuilderStore.setState({
       heartbeatSchedule: {
@@ -47,10 +47,11 @@ describe("HeartbeatConfig — custom MD cron truth", () => {
     })
   })
 
-  it("shows Custom (N windows) and drift banner — not Off", () => {
+  it("shows Runs on its template schedule (N windows/day) — not Off", () => {
     render(<HeartbeatConfig />)
-    expect(screen.getByText("Custom (2 windows)")).toBeTruthy()
-    expect(screen.getByText(/Armed via MD cron windows/)).toBeTruthy()
+    expect(screen.getAllByText("Runs on its template schedule (2 windows/day)").length).toBeGreaterThan(0)
+    expect(screen.queryByText(/HEARTBEAT\.md/)).toBeNull()
+    expect(screen.queryByText(/MD cron/)).toBeNull()
     const freq = screen.getByTestId("select-freq")
     expect(freq.getAttribute("data-value")).toBe("custom")
     expect(freq.getAttribute("data-value")).not.toBe("off")
@@ -60,8 +61,7 @@ describe("HeartbeatConfig — custom MD cron truth", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false)
     render(<HeartbeatConfig />)
     fireEvent.click(screen.getByRole("button", { name: "Daily" }))
-    expect(confirmSpy).toHaveBeenCalled()
-    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/custom cron schedule/i)
+    expect(confirmSpy).toHaveBeenCalledWith("Replace the template schedule with Daily?")
     expect(useBuilderStore.getState().heartbeatSchedule.frequency).toBe("custom")
   })
 

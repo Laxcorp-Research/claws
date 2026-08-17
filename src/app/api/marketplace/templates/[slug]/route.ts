@@ -45,6 +45,7 @@ export async function GET(
       creator: {
         select: {
           id: true,
+          userId: true,
           displayName: true,
           avatarUrl: true,
           bio: true,
@@ -197,10 +198,12 @@ export async function GET(
   }
 
   let hasPurchased = false
+  let isOwner = false
 
   try {
     const user = await getSessionUser()
     if (user) {
+      isOwner = user.id === template.creator?.userId
       const purchase = await prisma.purchase.findFirst({
         where: { userId: user.id, clawTemplateId: template.id, status: "COMPLETED" },
         select: { id: true },
@@ -209,7 +212,20 @@ export async function GET(
     }
   } catch {
     hasPurchased = false
+    isOwner = false
   }
+
+  const creator = template.creator
+    ? {
+        id: template.creator.id,
+        displayName: template.creator.displayName,
+        avatarUrl: template.creator.avatarUrl,
+        bio: template.creator.bio,
+        totalTemplates: template.creator.totalTemplates,
+        totalInstalls: template.creator.totalInstalls,
+        averageRating: template.creator.averageRating,
+      }
+    : null
 
   return apiSuccess({
     template: {
@@ -228,7 +244,7 @@ export async function GET(
       agentCount: template.agentCount,
       version: template.version,
       creatorId: template.creatorId,
-      creator: template.creator,
+      creator,
       agents,
       tools,
       flowDescription,
@@ -240,5 +256,6 @@ export async function GET(
     installCount: template.installCount,
     similar,
     hasPurchased,
+    isOwner,
   })
 }

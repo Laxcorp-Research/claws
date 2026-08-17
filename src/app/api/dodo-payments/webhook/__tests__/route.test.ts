@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { prismaMock } from '@/test/helpers/mock-prisma';
 import { NextRequest } from 'next/server';
 
@@ -220,6 +222,76 @@ describe('POST /api/dodo-payments/webhook', () => {
       expect(saleCall.data.creatorPayout).toBeGreaterThan(0);
       expect(saleCall.data.processingFee).toBeGreaterThan(0);
       expect(saleCall.data.creatorPayout + saleCall.data.processingFee).toBeCloseTo(49, 1);
+    });
+
+    it('ignores community self-sale (creator.userId === buyer) — no workspace/sale/install', async () => {
+      mockUserLookup('user-founder');
+      (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...MOCK_COMMUNITY_TEMPLATE,
+        creatorId: 'cprof-1',
+        creator: { userId: 'user-founder' },
+      });
+
+      const res = await POST(createWebhookRequest({
+        type: 'payment.succeeded',
+        data: {
+          payment_id: 'pay_self_sale',
+          total_amount: 0,
+          currency: 'usd',
+          metadata: {
+            type: 'community_purchase',
+            userId: 'user-founder',
+            templateId: 'tpl-community',
+            creatorId: 'cprof-1',
+          },
+        },
+      }));
+      expect(res.status).toBe(200);
+      expect(prismaMock.workspace.create).not.toHaveBeenCalled();
+      expect(prismaMock.purchase.create).not.toHaveBeenCalled();
+      expect(prismaMock.marketplaceSale.create).not.toHaveBeenCalled();
+      expect(prismaMock.templateInstall.upsert).not.toHaveBeenCalled();
+    });
+
+    it('ignores community skill self-sale — no sale/install', async () => {
+      mockUserLookup('user-founder');
+      (prismaMock.marketplaceSale.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'skill-1',
+        price: 29,
+        creatorId: 'cprof-skill',
+        creator: { userId: 'user-founder' },
+      });
+
+      const res = await POST(createWebhookRequest({
+        type: 'payment.succeeded',
+        data: {
+          payment_id: 'pay_self_skill',
+          total_amount: 0,
+          currency: 'usd',
+          metadata: {
+            type: 'community_purchase',
+            userId: 'user-founder',
+            skillId: 'skill-1',
+            creatorId: 'cprof-skill',
+          },
+        },
+      }));
+      expect(res.status).toBe(200);
+      expect(prismaMock.marketplaceSale.create).not.toHaveBeenCalled();
+      expect(prismaMock.skillInstall.upsert).not.toHaveBeenCalled();
+    });
+
+    it('MUTATION: self-buy webhook path restored → fail', () => {
+      const src = readFileSync(
+        join(process.cwd(), 'src/app/api/dodo-payments/webhook/route.ts'),
+        'utf8',
+      );
+      expect(src).toContain('isOwnListing');
+      expect(src).toContain('ignoring self-sale');
+      expect(src).not.toMatch(/user\.id === template\.creatorId/);
+      expect(src).not.toMatch(/user\.id === skill\.creatorId/);
     });
 
     it('does not create MarketplaceSale for official template purchase', async () => {

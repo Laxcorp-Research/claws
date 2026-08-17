@@ -74,7 +74,7 @@ export function resolvePickerHeartbeatSchedule(args: {
 
 export function customHeartbeatLabel(count: number | null | undefined): string {
   if (typeof count === "number" && count > 0) {
-    return `Custom (${count} window${count === 1 ? "" : "s"})`
+    return `Runs on its template schedule (${count} window${count === 1 ? "" : "s"}/day)`
   }
-  return "Custom schedule"
+  return "Runs on its template schedule"
 }
