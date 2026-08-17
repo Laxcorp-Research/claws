@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest"
-import {
-  customHeartbeatLabel,
-  resolvePickerHeartbeatSchedule,
-} from "@/lib/builder/heartbeat-picker"
+import { resolvePickerHeartbeatSchedule } from "@/lib/builder/heartbeat-picker"
+import { serializeSchedule } from "@/lib/schedule/persist"
 
 const MD_TWO = `- cron: "0 8 * * *"
   task: morning
@@ -10,19 +8,25 @@ const MD_TWO = `- cron: "0 8 * * *"
   task: evening`
 
 describe("resolvePickerHeartbeatSchedule", () => {
-  it("null frequency + HEARTBEAT.md cron windows → custom (not Off)", () => {
+  it("null frequency + HEARTBEAT.md cron windows → times (not Off, not banner custom)", () => {
     const r = resolvePickerHeartbeatSchedule({
       heartbeatFrequency: null,
       heartbeatMd: MD_TWO,
+      timezone: "UTC",
     })
-    expect(r.frequency).toBe("custom")
-    expect(r.customWindowCount).toBe(2)
-    expect(customHeartbeatLabel(r.customWindowCount)).toBe(
-      "Runs on its template schedule (2 windows/day)",
+    expect(r.frequency).toBe("times")
+    expect(r.frequency).not.toBe("off")
+    expect(r.frequency).not.toBe("custom")
+    const parsed = JSON.parse(r.time) as { slots: Array<{ hour: number; minute: number }> }
+    expect(parsed.slots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ hour: 8, minute: 0 }),
+        expect.objectContaining({ hour: 21, minute: 0 }),
+      ]),
     )
   })
 
-  it("null frequency + deployed heartbeatCronExpressions → custom", () => {
+  it("null frequency + deployed heartbeatCronExpressions → times", () => {
     const r = resolvePickerHeartbeatSchedule({
       heartbeatFrequency: null,
       heartbeatMd: null,
@@ -31,9 +35,11 @@ describe("resolvePickerHeartbeatSchedule", () => {
         { schedule: { kind: "cron", expr: "0 12 * * *" } },
         { schedule: { kind: "cron", expr: "0 18 * * *" } },
       ]),
+      timezone: "UTC",
     })
-    expect(r.frequency).toBe("custom")
-    expect(r.customWindowCount).toBe(3)
+    expect(r.frequency).toBe("times")
+    const parsed = JSON.parse(r.time) as { slots: unknown[] }
+    expect(parsed.slots).toHaveLength(3)
   })
 
   it("explicit off stays Off even when MD has cron", () => {
@@ -42,7 +48,6 @@ describe("resolvePickerHeartbeatSchedule", () => {
       heartbeatMd: MD_TWO,
     })
     expect(r.frequency).toBe("off")
-    expect(r.customWindowCount).toBeNull()
   })
 
   it("daily frequency wins over MD cron", () => {
@@ -51,7 +56,7 @@ describe("resolvePickerHeartbeatSchedule", () => {
       heartbeatTime: "09:00",
       heartbeatMd: MD_TWO,
     })
-    expect(r).toEqual({ frequency: "daily", time: "09:00", customWindowCount: null })
+    expect(r).toEqual({ frequency: "daily", time: "09:00" })
   })
 
   it("null frequency + no cron → Off", () => {
@@ -62,19 +67,26 @@ describe("resolvePickerHeartbeatSchedule", () => {
     expect(r.frequency).toBe("off")
   })
 
-  it("customHeartbeatLabel falls back to template-schedule copy", () => {
-    expect(customHeartbeatLabel(null)).toBe("Runs on its template schedule")
-    expect(customHeartbeatLabel(1)).toBe("Runs on its template schedule (1 window/day)")
-  })
-
   it("MUTATION: default-render-for-armed restored → fails (null freq + cron ≠ Off)", () => {
-    // If resolvePickerHeartbeatSchedule regresses to treating null+cron as Off,
-    // armed claws show "Off" in the picker while still beating.
     const r = resolvePickerHeartbeatSchedule({
       heartbeatFrequency: null,
       heartbeatMd: MD_TWO,
     })
     expect(r.frequency).not.toBe("off")
-    expect(r.frequency).toBe("custom")
+    expect(r.frequency).toBe("times")
+  })
+
+  it("round-trips a times value through serialize", () => {
+    const ser = serializeSchedule({
+      mode: "times",
+      tz: "Asia/Dubai",
+      slots: [{ hour: 14, minute: 43, weekdays: [1, 2, 3, 4, 5] }],
+    })
+    const r = resolvePickerHeartbeatSchedule({
+      heartbeatFrequency: ser.heartbeatFrequency,
+      heartbeatTime: ser.heartbeatTime,
+    })
+    expect(r.frequency).toBe("times")
+    expect(JSON.parse(r.time).slots[0]).toMatchObject({ hour: 14, minute: 43 })
   })
 })

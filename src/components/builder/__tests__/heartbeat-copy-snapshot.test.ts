@@ -19,18 +19,17 @@ function walkTsx(dir: string, acc: string[] = []): string[] {
 }
 
 describe("template-schedule user-facing copy snapshot", () => {
-  it("builder picker + banner use template-schedule wording", () => {
+  it("MUTATION: banner-restored fails — template-schedule copy is gone", () => {
     const config = readFileSync(join(ROOT, "src/components/builder/heartbeat-config.tsx"), "utf8")
     const picker = readFileSync(join(ROOT, "src/lib/builder/heartbeat-picker.ts"), "utf8")
 
-    expect(picker).toContain("Runs on its template schedule (${count} window${count === 1 ? \"\" : \"s\"}/day)")
-    expect(config).toContain("Replace the template schedule with ${preset}?")
-    expect(config).toContain("customHeartbeatLabel(heartbeatSchedule.customWindowCount ?? null)")
-
+    expect(config).not.toContain("Runs on its template schedule")
+    expect(picker).not.toContain("Runs on its template schedule")
+    expect(config).not.toContain("customHeartbeatLabel")
+    expect(picker).not.toContain("customHeartbeatLabel")
+    expect(config).not.toContain("Replace the template schedule")
     expect(config).not.toContain("HEARTBEAT.md")
     expect(config).not.toMatch(/MD cron/)
-    expect(picker).not.toContain("Custom schedule")
-    expect(picker).not.toMatch(/Custom \(\$\{count\}/)
   })
 
   it("MUTATION: HEARTBEAT.md / MD cron restored in buyer UI → fail", () => {

@@ -30,33 +30,33 @@ describe('buildHeartbeatSchedule', () => {
     });
   });
 
-  describe('interval frequencies (agents.defaults.heartbeat path)', () => {
-    it('maps "hourly" to { every: "1h" }', () => {
+  describe('interval frequencies (cron/jobs.json path)', () => {
+    it('maps "hourly" to cron "0 * * * *"', () => {
       const result = buildHeartbeatSchedule('hourly', null, TZ, SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '1h' });
-      expect(result?.cronJob).toBeUndefined();
+      expect(result?.intervalConfig).toBeUndefined();
+      expect(result?.cronJob?.schedule).toEqual({ kind: 'cron', expr: '0 * * * *', tz: TZ });
     });
 
-    it('maps "every_6h" to { every: "6h" }', () => {
+    it('maps "every_6h" to cron "0 */6 * * *"', () => {
       const result = buildHeartbeatSchedule('every_6h', null, TZ, SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '6h' });
-      expect(result?.cronJob).toBeUndefined();
+      expect(result?.intervalConfig).toBeUndefined();
+      expect(result?.cronJob?.schedule.expr).toBe('0 */6 * * *');
     });
 
-    it('maps "every_12h" to { every: "12h" }', () => {
+    it('maps "every_12h" to cron "0 */12 * * *"', () => {
       const result = buildHeartbeatSchedule('every_12h', null, TZ, SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '12h' });
-      expect(result?.cronJob).toBeUndefined();
+      expect(result?.intervalConfig).toBeUndefined();
+      expect(result?.cronJob?.schedule.expr).toBe('0 */12 * * *');
     });
 
     it('ignores time argument for interval frequencies', () => {
       const result = buildHeartbeatSchedule('hourly', '14:30', TZ, SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '1h' });
+      expect(result?.cronJob?.schedule.expr).toBe('0 * * * *');
     });
 
-    it('ignores timezone argument for interval frequencies', () => {
+    it('stamps workspace timezone on interval crons', () => {
       const result = buildHeartbeatSchedule('every_6h', null, 'Asia/Kolkata', SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '6h' });
+      expect(result?.cronJob?.schedule.tz).toBe('Asia/Kolkata');
     });
   });
 
@@ -331,32 +331,32 @@ describe('buildHeartbeatSchedule', () => {
   });
 
   describe('invalid time fallback', () => {
-    it('falls back to hourly interval when time is "not-a-time"', () => {
+    it('defaults daily to 08:00 when time is "not-a-time"', () => {
       const result = buildHeartbeatSchedule('daily', 'not-a-time', TZ, SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '1h' });
-      expect(result?.cronJob).toBeUndefined();
+      expect(result?.intervalConfig).toBeUndefined();
+      expect(result?.cronJob?.schedule.expr).toBe('0 8 * * *');
     });
 
-    it('falls back to hourly interval when hour is out of range', () => {
-      expect(buildHeartbeatSchedule('daily', '24:00', TZ, SLUG)?.intervalConfig).toEqual({ every: '1h' });
-      expect(buildHeartbeatSchedule('daily', '25:30', TZ, SLUG)?.intervalConfig).toEqual({ every: '1h' });
-      expect(buildHeartbeatSchedule('daily', '-1:00', TZ, SLUG)?.intervalConfig).toEqual({ every: '1h' });
+    it('defaults daily to 08:00 when hour is out of range', () => {
+      expect(buildHeartbeatSchedule('daily', '24:00', TZ, SLUG)?.cronJob?.schedule.expr).toBe('0 8 * * *');
+      expect(buildHeartbeatSchedule('daily', '25:30', TZ, SLUG)?.cronJob?.schedule.expr).toBe('0 8 * * *');
+      expect(buildHeartbeatSchedule('daily', '-1:00', TZ, SLUG)?.cronJob?.schedule.expr).toBe('0 8 * * *');
     });
 
-    it('falls back to hourly interval when minute is out of range', () => {
-      expect(buildHeartbeatSchedule('daily', '08:60', TZ, SLUG)?.intervalConfig).toEqual({ every: '1h' });
-      expect(buildHeartbeatSchedule('daily', '08:99', TZ, SLUG)?.intervalConfig).toEqual({ every: '1h' });
+    it('defaults daily to 08:00 when minute is out of range', () => {
+      expect(buildHeartbeatSchedule('daily', '08:60', TZ, SLUG)?.cronJob?.schedule.expr).toBe('0 8 * * *');
+      expect(buildHeartbeatSchedule('daily', '08:99', TZ, SLUG)?.cronJob?.schedule.expr).toBe('0 8 * * *');
     });
 
-    it('falls back to hourly interval when minute is missing entirely', () => {
+    it('defaults daily to 08:00 when minute is missing entirely', () => {
       const result = buildHeartbeatSchedule('daily', '08', TZ, SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '1h' });
+      expect(result?.cronJob?.schedule.expr).toBe('0 8 * * *');
     });
 
-    it('falls back for weekday with invalid time too', () => {
+    it('defaults weekday to 08:00 with invalid time too', () => {
       const result = buildHeartbeatSchedule('weekday', 'foo:bar', TZ, SLUG);
-      expect(result?.intervalConfig).toEqual({ every: '1h' });
-      expect(result?.cronJob).toBeUndefined();
+      expect(result?.intervalConfig).toBeUndefined();
+      expect(result?.cronJob?.schedule.expr).toBe('0 8 * * 1-5');
     });
   });
 });

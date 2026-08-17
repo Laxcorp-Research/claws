@@ -1,4 +1,6 @@
-import { CronExpressionParser } from "cron-parser"
+import { nextRunsCroner, previousRunCroner } from "@/lib/schedule/croner-parse"
+
+/** Grace after expected fire before Watchtower flags a miss. */
 
 /** Grace after expected fire before Watchtower flags a miss. */
 export const HEARTBEAT_MISS_GRACE_MS = 10 * 60 * 1000
@@ -63,12 +65,9 @@ export function calculateNextHeartbeat(
       if (!cronExpr) continue
       try {
         const tz = extractCronTimezone(job)
-        const next = CronExpressionParser.parse(cronExpr, {
-          currentDate: from,
-          ...(tz ? { tz } : {}),
-        })
-          .next()
-          .toDate()
+        const runs = nextRunsCroner(cronExpr, 1, from, tz)
+        const next = runs[0]
+        if (!next) continue
         if (!earliest || next < earliest) earliest = next
       } catch {
         // Invalid cron expression — skip
@@ -171,12 +170,8 @@ export function lastExpectedCronFire(
           typeof (job as { schedule: { tz?: unknown } }).schedule.tz === "string"
             ? ((job as { schedule: { tz: string } }).schedule.tz as string)
             : undefined
-        const prev = CronExpressionParser.parse(cronExpr, {
-          currentDate: now,
-          ...(tz ? { tz } : {}),
-        })
-          .prev()
-          .toDate()
+        const prev = previousRunCroner(cronExpr, now, tz)
+        if (!prev) continue
         if (!latest || prev > latest) latest = prev
       } catch {
         // skip invalid
