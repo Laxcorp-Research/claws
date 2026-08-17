@@ -133,9 +133,29 @@ describe('one-time checkout sessions allow discount codes', () => {
     const start = src.indexOf('export async function createPlatformSubscription');
     const end = src.indexOf('export async function createCommunityCheckout');
     const subBlock = src.slice(start, end);
-    expect(subBlock).toContain('dodo.subscriptions.create');
+    expect(subBlock).toContain('feature_flags: EDITABLE_COUNTRY_FLAGS');
     expect(subBlock).not.toContain('allow_discount_code');
-    expect(subBlock).not.toContain('checkoutSessions');
+    expect(subBlock).not.toContain('dodo.subscriptions.create');
+  });
+});
+
+describe('checkout session does not pre-fill country', () => {
+  const src = readFileSync(join(process.cwd(), 'src/lib/dodo-payments.ts'), 'utf8');
+
+  it('payload is email+name only — no billing_address / country / customer_id', () => {
+    expect(src).toContain('email: params.userEmail');
+    expect(src).toContain('name: params.userName || params.userEmail');
+    expect(src).toContain('allow_customer_editing_country: true');
+    expect(src).not.toMatch(/billing_address\s*:/)
+    expect(src).not.toMatch(/customer_id\s*:/)
+    expect(src).not.toMatch(/country:\s*"US"/);
+    expect(src).not.toContain('dodo.subscriptions.create');
+    expect(src).not.toContain('dodo.payments.create');
+  });
+
+  it('MUTATION: hardcoded US billing restored → fail', () => {
+    expect(src).not.toMatch(/country:\s*["']US["']/);
+    expect(src).not.toMatch(/billing:\s*\{\s*city:/);
   });
 });
 
