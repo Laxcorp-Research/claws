@@ -10,6 +10,7 @@ import {
 import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
 import { isMarketplaceCommunityPurchaseEnabled } from "@/lib/marketplace/feature-flags"
+import { isOwnListing, ownListingMessage, OWN_LISTING_CODE } from "@/lib/marketplace/own-listing"
 
 export async function POST(req: NextRequest) {
   const sessionUser = await getSessionUser()
@@ -150,9 +151,15 @@ async function handleCommunityTemplatePurchase(
   templateId: string,
   user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
 ) {
-  const template = await prisma.clawTemplate.findUnique({ where: { id: templateId } })
+  const template = await prisma.clawTemplate.findUnique({
+    where: { id: templateId },
+    include: { creator: { select: { userId: true } } },
+  })
   if (!template || !isPubliclyListable(template)) return ERRORS.NOT_FOUND("Template")
   if (!template.creatorId) return apiError("NOT_COMMUNITY", "This is not a community template", 400)
+  if (isOwnListing(template.creator?.userId, user.id)) {
+    return apiError(OWN_LISTING_CODE, ownListingMessage("template"), 403)
+  }
   if (template.isFree) return apiError("USE_FREE_FLOW", "Use the free_template checkout type for free templates", 400)
   if (template.price < 19) return apiError("PRICE_TOO_LOW", "Community template price must be at least $19", 400)
   if (!template.dodoProductId) {
@@ -227,9 +234,15 @@ async function handleCommunitySkillPurchase(
   skillId: string,
   user: { id: string; email: string; name: string | null; dodoCustomerId: string | null },
 ) {
-  const skill = await prisma.marketplaceSkill.findUnique({ where: { id: skillId } })
+  const skill = await prisma.marketplaceSkill.findUnique({
+    where: { id: skillId },
+    include: { creator: { select: { userId: true } } },
+  })
   if (!skill || !isPubliclyListable(skill)) return ERRORS.NOT_FOUND("Skill")
   if (!skill.creatorId) return apiError("NOT_COMMUNITY", "This is not a community skill", 400)
+  if (isOwnListing(skill.creator?.userId, user.id)) {
+    return apiError(OWN_LISTING_CODE, ownListingMessage("skill"), 403)
+  }
   if (skill.isFree || skill.price == null || skill.price <= 0) {
     return apiError("USE_FREE_FLOW", "Free skills install without checkout", 400)
   }

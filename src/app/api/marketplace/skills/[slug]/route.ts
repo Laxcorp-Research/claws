@@ -20,6 +20,7 @@ export async function GET(
       creator: {
         select: {
           id: true,
+          userId: true,
           displayName: true,
           avatarUrl: true,
           bio: true,
@@ -91,10 +92,12 @@ export async function GET(
       agents: Array<{ id: string; name: string; role: string }>
     }>
   } | null = null
+  let isOwner = false
 
   try {
     const user = await getSessionUser()
     if (user) {
+      isOwner = user.id === skill.creator?.userId
       const existingInstall = await prisma.skillInstall.findUnique({
         where: { skillId_userId: { skillId: skill.id, userId: user.id } },
       })
@@ -133,7 +136,20 @@ export async function GET(
     }
   } catch {
     installStatus = null
+    isOwner = false
   }
+
+  const creator = skill.creator
+    ? {
+        id: skill.creator.id,
+        displayName: skill.creator.displayName,
+        avatarUrl: skill.creator.avatarUrl,
+        bio: skill.creator.bio,
+        totalTemplates: skill.creator.totalTemplates,
+        totalInstalls: skill.creator.totalInstalls,
+        averageRating: skill.creator.averageRating,
+      }
+    : null
 
   return apiSuccess({
     skill: {
@@ -152,11 +168,12 @@ export async function GET(
       requiredBins: skill.requiredBins,
       requiredEnvVars: skill.requiredEnvVars,
       minOpenClawVersion: skill.minOpenClawVersion,
-      creator: skill.creator,
+      creator,
       publishedAt: skill.publishedAt?.toISOString() ?? null,
     },
     reviews: formattedReviews,
     reviewCount: skill._count.reviews,
     installStatus,
+    isOwner,
   })
 }

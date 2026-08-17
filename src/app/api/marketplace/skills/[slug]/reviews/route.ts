@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import { isOwnListing, ownListingMessage, OWN_LISTING_CODE } from "@/lib/marketplace/own-listing"
 
 export async function GET(
   request: NextRequest,
@@ -53,9 +54,12 @@ export async function POST(
 
   const skill = await prisma.marketplaceSkill.findUnique({
     where: { slug },
-    select: { id: true },
+    select: { id: true, creator: { select: { userId: true } } },
   })
   if (!skill) return ERRORS.NOT_FOUND("skill")
+  if (isOwnListing(skill.creator?.userId, user.id)) {
+    return apiError(OWN_LISTING_CODE, ownListingMessage("skill"), 403)
+  }
 
   const install = await prisma.skillInstall.findUnique({
     where: { skillId_userId: { skillId: skill.id, userId: user.id } },

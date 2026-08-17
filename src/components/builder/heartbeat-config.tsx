@@ -48,10 +48,9 @@ export function HeartbeatConfig() {
 
   const onFrequencyChange = (val: string) => {
     if (isCustom && val !== "custom") {
-      const label = customHeartbeatLabel(heartbeatSchedule.customWindowCount ?? null)
-      const ok = confirm(
-        `This will replace the custom cron schedule (${label}). The HEARTBEAT.md cron windows will no longer drive the picker frequency. Continue?`,
-      )
+      const preset =
+        BASE_FREQUENCY_OPTIONS.find((o) => o.value === val)?.label ?? val
+      const ok = confirm(`Replace the template schedule with ${preset}?`)
       if (!ok) return
       setHeartbeatSchedule({ frequency: val, customWindowCount: null })
       return
@@ -68,9 +67,8 @@ export function HeartbeatConfig() {
       <div className="flex flex-col gap-[6px]">
         {isCustom && (
           <AlertBanner variant="warning">
-            <p className="font-medium">Custom schedule (HEARTBEAT.md cron)</p>
-            <p className="mt-0.5 opacity-80">
-              Armed via MD cron windows — frequency picker is unset. Changing frequency replaces this custom schedule.
+            <p className="font-medium">
+              {customHeartbeatLabel(heartbeatSchedule.customWindowCount ?? null)}
             </p>
           </AlertBanner>
         )}

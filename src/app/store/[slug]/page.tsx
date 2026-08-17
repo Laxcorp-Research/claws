@@ -90,6 +90,7 @@ interface PageData {
   installCount: number
   similar: SimilarTemplate[]
   hasPurchased: boolean
+  isOwner: boolean
 }
 
 function SectionHeader({ title }: { title: string }) {
@@ -296,7 +297,7 @@ export default function TemplateDetailPage() {
     )
   }
 
-  const { template, reviewCount, installCount, similar, hasPurchased } = data
+  const { template, reviewCount, installCount, similar, hasPurchased, isOwner } = data
   const isOfficial = template.trustTier === "OFFICIAL"
   const allTools = [...template.tools.required, ...template.tools.recommended]
   const complianceNotice = getComplianceNotice(template.slug)
@@ -343,7 +344,10 @@ export default function TemplateDetailPage() {
             ) : (
               <PriceDisplay price={template.price} isFree={template.isFree} />
             )}
-            {(() => {
+            {isOwner && !template.isFree ? (
+              <p className="text-[11px] text-[var(--tx2)] mt-2.5">This is your template</p>
+            ) : (
+              (() => {
               const communityPaidGated =
                 !!template.creatorId &&
                 !template.isFree &&
@@ -370,7 +374,8 @@ export default function TemplateDetailPage() {
                       : "Buy"}
                 </Button>
               )
-            })()}
+            })()
+            )}
             {purchaseError && <p className="text-[10px] text-[var(--err)] mt-1">{purchaseError}</p>}
           </div>
         </div>
@@ -504,7 +509,7 @@ export default function TemplateDetailPage() {
             <p className="text-[11px] text-[var(--tx3)] mt-2">Loading more reviews...</p>
           )}
 
-          {hasPurchased && (
+          {hasPurchased && !isOwner && (
             <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowReviewModal(true)}>
               Write a review
             </Button>
