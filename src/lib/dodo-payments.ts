@@ -30,19 +30,25 @@ export function getTemplateProductId(price: number): string {
 }
 
 /**
- * One-time checkouts (official + community) use Checkout Sessions so the
- * coupon field renders. SDK: CheckoutSessionCreateParams.feature_flags.allow_discount_code.
+ * One-time + platform-sub checkouts use Checkout Sessions.
+ * Coupon field: feature_flags.allow_discount_code (one-time only).
  * Do NOT set discount_code — the buyer types it at checkout.
- * Platform $79 subscription stays on subscriptions.create (no coupon field).
+ * Do NOT pre-fill address or country — Dodo locks pre-filled address fields.
+ * The subscriptions.create API requires a country; we do not call it.
  */
-const ONE_TIME_CHECKOUT_FLAGS = { allow_discount_code: true } as const
+const EDITABLE_COUNTRY_FLAGS = { allow_customer_editing_country: true } as const
+const ONE_TIME_CHECKOUT_FLAGS = {
+  ...EDITABLE_COUNTRY_FLAGS,
+  allow_discount_code: true,
+} as const
 
-async function createOneTimeCheckoutSession(params: {
+async function createCheckoutSession(params: {
   productId: string
   userEmail: string
   userName?: string
-  dodoCustomerId?: string
+  returnUrl: string
   metadata: Record<string, string>
+  feature_flags: { allow_customer_editing_country: true; allow_discount_code?: true }
 }): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
   if (MOCK_MODE) return { checkoutUrl: null, mockMode: true }
 
@@ -52,12 +58,10 @@ async function createOneTimeCheckoutSession(params: {
     customer: {
       email: params.userEmail,
       name: params.userName || params.userEmail,
-      ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
     },
-    billing_address: { city: "", country: "US", state: "", street: "", zipcode: "" },
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
+    return_url: params.returnUrl,
     metadata: params.metadata,
-    feature_flags: ONE_TIME_CHECKOUT_FLAGS,
+    feature_flags: params.feature_flags,
   })
 
   return { checkoutUrl: session.checkout_url ?? null, mockMode: false }
@@ -74,11 +78,12 @@ export async function createClawCheckout(params: {
   dodoCustomerId?: string
 }): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
   const productId = params.dodoProductId || getTemplateProductId(params.templatePrice)
-  return createOneTimeCheckoutSession({
+  return createCheckoutSession({
     productId,
     userEmail: params.userEmail,
     userName: params.userName,
-    dodoCustomerId: params.dodoCustomerId,
+    returnUrl: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
+    feature_flags: ONE_TIME_CHECKOUT_FLAGS,
     metadata: {
       userId: params.userId,
       email: params.userEmail,
@@ -97,24 +102,19 @@ export async function createPlatformSubscription(params: {
   dodoCustomerId?: string
   returnUrl?: string
 }): Promise<{ checkoutUrl: string | null; mockMode: boolean }> {
-  if (MOCK_MODE) return { checkoutUrl: null, mockMode: true }
-
-  const dodo = getDodoClient()
-  const subscription = await dodo.subscriptions.create({
-    billing: { city: "", country: "US", state: "", street: "", zipcode: "" },
-    customer: {
+  return createCheckoutSession({
+    productId: CLAW_PLATFORM_PRODUCT,
+    userEmail: params.userEmail,
+    userName: params.userName,
+    returnUrl: params.returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/checkout/complete`,
+    feature_flags: EDITABLE_COUNTRY_FLAGS,
+    metadata: {
+      userId: params.userId,
       email: params.userEmail,
-      name: params.userName || params.userEmail,
-      ...(params.dodoCustomerId ? { customer_id: params.dodoCustomerId } : {}),
+      workspaceId: params.workspaceId,
+      type: "claw_platform",
     },
-    product_id: CLAW_PLATFORM_PRODUCT,
-    quantity: 1,
-    payment_link: true,
-    return_url: params.returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/checkout/complete`,
-    metadata: { userId: params.userId, email: params.userEmail, workspaceId: params.workspaceId, type: "claw_platform" },
   })
-
-  return { checkoutUrl: subscription.payment_link ?? null, mockMode: false }
 }
 
 export async function createCommunityCheckout(params: {
@@ -137,11 +137,12 @@ export async function createCommunityCheckout(params: {
   if (params.dodoProductId === params.templateId || params.dodoProductId === params.skillId) {
     throw new Error("COMMUNITY_CHECKOUT_REJECTS_CUID_AS_PRODUCT_ID")
   }
-  return createOneTimeCheckoutSession({
+  return createCheckoutSession({
     productId: params.dodoProductId,
     userEmail: params.userEmail,
     userName: params.userName,
-    dodoCustomerId: params.dodoCustomerId,
+    returnUrl: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success`,
+    feature_flags: ONE_TIME_CHECKOUT_FLAGS,
     metadata: {
       userId: params.userId,
       email: params.userEmail,
