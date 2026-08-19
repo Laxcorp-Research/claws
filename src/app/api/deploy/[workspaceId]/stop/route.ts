@@ -35,6 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
 
   try {
     const { syncThenDestroy } = await import("@/lib/openclaw/deployer")
+    // User Stop: serviceDelete is correct — operator asked to tear the box down.
     const result = await syncThenDestroy(workspaceId, {
       destroyPolicy: force ? "force" : "destroy-anyway",
     })

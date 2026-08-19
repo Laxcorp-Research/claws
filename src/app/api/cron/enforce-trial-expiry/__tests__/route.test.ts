@@ -277,7 +277,7 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
     expect(stoppedHtmlArgs.stoppedNames).toEqual(["Stoppable"])
   })
 
-  it("notify+24h+no-sub HIBERNATED → status flip to STOPPED, no syncThenDestroy", async () => {
+  it("notify+24h+no-sub HIBERNATED → destroyContainer (HWD leftover service) then STOPPED, no syncThenDestroy", async () => {
     const notifiedAt = new Date(NOW_MS - 25 * 60 * 60 * 1000)
     ;(prismaMock.user.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
@@ -301,6 +301,7 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
     const res = await callRoute({ authHeader: `Bearer ${SECRET}` })
     const json = await res.json()
     expect(json.data.stopped).toBe(1)
+    expect(mockDestroyContainer).toHaveBeenCalledWith("ws-hib")
     expect(mockSyncThenDestroy).not.toHaveBeenCalled()
     expect(prismaMock.workspace.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -332,14 +333,21 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
     expect(mockSyncThenDestroy).not.toHaveBeenCalled()
   })
 
-  it("MUTATION: route must pre-check shouldSkipTrialStop / on_hold before syncThenDestroy", () => {
+  it("MUTATION: route must pre-check shouldSkipTrialStop / on_hold before teardown", () => {
     const src = readFileSync(
       join(process.cwd(), "src/app/api/cron/enforce-trial-expiry/route.ts"),
       "utf8",
     )
     expect(src).toContain("shouldSkipTrialStop")
     expect(src).toContain("syncThenDestroy")
-    expect(src).not.toMatch(/await destroyContainer\(/)
+    // HWD leftover empty service: status_flip must still serviceDelete.
+    expect(src).toContain("await destroyContainer(")
+    const skipIdx = src.indexOf("shouldSkipTrialStop")
+    const destroyIdx = src.indexOf("await destroyContainer(")
+    const syncIdx = src.indexOf("await syncThenDestroy(")
+    expect(skipIdx).toBeGreaterThan(-1)
+    expect(destroyIdx).toBeGreaterThan(skipIdx)
+    expect(syncIdx).toBeGreaterThan(skipIdx)
     expect(src).toContain("trialExpiryNotifiedAt: now")
   })
 

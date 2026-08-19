@@ -75,7 +75,7 @@ vi.mock("@/lib/composio", () => ({
   getComposioUserId: (id: string) => `claws_${id}`,
 }))
 
-import { redeployWorkspace } from "@/lib/openclaw/deployer"
+import { deployToCloud, redeployWorkspace } from "@/lib/openclaw/deployer"
 
 function generatedStub() {
   return {
@@ -331,5 +331,40 @@ describe("redeployWorkspace — honest deploy path", () => {
     const workspaceUpdates = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls
       .map((call) => call[0])
     expect(workspaceUpdates.some((call) => Object.prototype.hasOwnProperty.call(call.data, "gatewayToken"))).toBe(false)
+  })
+})
+
+describe("deployToCloud — HWD wake never serviceCreate when containerId exists", () => {
+  it("reuse branch calls updateAndRedeployService, never createService", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({
+        gatewayToken: "enc-existing-gateway-token",
+        status: "HIBERNATED",
+      }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
+    mockGetServiceStatus
+      .mockResolvedValueOnce({ status: "REMOVED", deploymentId: "dep-nap", healthy: false })
+      .mockResolvedValue({ status: "SUCCESS", deploymentId: "dep-wake", healthy: true })
+
+    await deployToCloud("ws-redeploy", { forbidCreate: true })
+
+    expect(mockCreateService).not.toHaveBeenCalled()
+    expect(mockUpdateAndRedeployService).toHaveBeenCalledTimes(1)
+    expect(mockUpdateAndRedeployService.mock.calls[0][0]).toBe("svc-existing")
+  })
+
+  it("MUTATION: orphan + forbidCreate refuses serviceCreate while containerId is set", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(userStub())
+    mockUpdateAndRedeployService.mockRejectedValue(new Error("service not found"))
+    mockFindServiceByName.mockResolvedValue(null)
+
+    await expect(deployToCloud("ws-redeploy", { forbidCreate: true })).rejects.toThrow(
+      /Wake forbidCreate: refused serviceCreate while containerId=svc-existing/,
+    )
+    expect(mockCreateService).not.toHaveBeenCalled()
   })
 })

@@ -72,6 +72,43 @@ export const BOOT_SCRIPT_B64 = Buffer.from(BOOT_SCRIPT).toString('base64');
 const START_COMMAND =
   '/bin/sh -c "echo $CLAWS_BOOT_B64 | base64 -d > /tmp/boot.sh && exec sh /tmp/boot.sh"';
 
+/** Rider-2: Railway serverless auto-wakes on HTTP to the kept domain and would skip canWakeHibernatedWorkspace. */
+export const SLEEP_APPLICATION_BYPASSES_ENTITLEMENT_GATE =
+  'sleepApplication_bypasses_entitlement_gate';
+
+export function assertSleepApplicationNeverEnabled(input: {
+  sleepApplication?: boolean | null;
+}): void {
+  if (input.sleepApplication === true) {
+    throw new Error(
+      `${SLEEP_APPLICATION_BYPASSES_ENTITLEMENT_GATE}: Railway serverless auto-wake would skip canWakeHibernatedWorkspace`,
+    );
+  }
+}
+
+function buildServiceInstanceUpdateInput(imageToUse: string): {
+  source: { image: string };
+  startCommand: string;
+  healthcheckPath: string;
+  healthcheckTimeout: number;
+  sleepApplication: false;
+  registryCredentials?: { username: string; password: string };
+} {
+  const input = {
+    source: { image: imageToUse },
+    startCommand: START_COMMAND,
+    healthcheckPath: '/healthz',
+    healthcheckTimeout: 120,
+    // Explicit false — omitting the field is not an assert. Never enable serverless.
+    sleepApplication: false as const,
+    ...(GHCR_USERNAME && GHCR_PAT
+      ? { registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT } }
+      : {}),
+  };
+  assertSleepApplicationNeverEnabled(input);
+  return input;
+}
+
 // ---------------------------------------------------------------------------
 // Configuration check
 // ---------------------------------------------------------------------------
@@ -337,15 +374,7 @@ export async function createService(config: {
     {
       serviceId,
       environmentId: RAILWAY_ENVIRONMENT_ID,
-      input: {
-        source: { image: imageToUse },
-        startCommand: START_COMMAND,
-        healthcheckPath: '/healthz',
-        healthcheckTimeout: 120,
-        ...(GHCR_USERNAME && GHCR_PAT ? {
-          registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
-        } : {}),
-      },
+      input: buildServiceInstanceUpdateInput(imageToUse),
     },
   );
 
@@ -463,15 +492,7 @@ export async function updateAndRedeployService(
     {
       serviceId,
       environmentId: RAILWAY_ENVIRONMENT_ID,
-      input: {
-        source: { image: imageToUse },
-        startCommand: START_COMMAND,
-        healthcheckPath: '/healthz',
-        healthcheckTimeout: 120,
-        ...(GHCR_USERNAME && GHCR_PAT ? {
-          registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT },
-        } : {}),
-      },
+      input: buildServiceInstanceUpdateInput(imageToUse),
     },
   );
 
@@ -504,6 +525,15 @@ export async function updateAndRedeployService(
   return { serviceId, domain };
 }
 
+/**
+ * Railway serviceDelete. Allowed callers only (HWD):
+ *   - user Stop (`syncThenDestroy` via /api/deploy/[id]/stop)
+ *   - trial termination (`enforce-trial-expiry` → syncThenDestroy / destroyContainer)
+ *   - credit termination (`onCreditsExhausted` → syncThenDestroy)
+ *   - Dodo enforcement (subscription.failed webhook → destroyContainer)
+ *   - workspace deletion (DELETE /api/workspaces/[id] → destroyContainer)
+ * Hibernate MUST use removeLatestDeployment, never this.
+ */
 export async function deleteService(serviceId: string): Promise<void> {
   assertRailwayTargetAllowed();
   await railwayGql(
@@ -514,6 +544,43 @@ export async function deleteService(serviceId: string): Promise<void> {
   );
 
   log.info('Railway service deleted', { serviceId });
+}
+
+/**
+ * Remove one Railway deployment; the Service + ServiceDomain + variables remain.
+ * HWD hibernate path. Does not count against the 25/day serviceCreate quota.
+ */
+export async function removeDeployment(deploymentId: string): Promise<void> {
+  assertRailwayTargetAllowed();
+  await railwayGql(
+    `mutation($id: String!) {
+      deploymentRemove(id: $id)
+    }`,
+    { id: deploymentId },
+  );
+  log.info('Railway deployment removed (service kept)', { deploymentId });
+}
+
+/**
+ * Remove the latest deployment on a service if one is still running/listed.
+ * Idempotent when already REMOVED / NO_DEPLOYMENT (hibernated-with-service).
+ */
+export async function removeLatestDeployment(serviceId: string): Promise<string | null> {
+  const status = await getServiceStatus(serviceId);
+  if (
+    !status.deploymentId ||
+    status.status === 'NO_DEPLOYMENT' ||
+    status.status === 'REMOVED'
+  ) {
+    log.info('Railway latest deployment already gone', {
+      serviceId,
+      status: status.status,
+    });
+    return null;
+  }
+
+  await removeDeployment(status.deploymentId);
+  return status.deploymentId;
 }
 
 export async function redeployService(serviceId: string): Promise<void> {

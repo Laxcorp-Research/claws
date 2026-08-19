@@ -9,6 +9,9 @@
 // service no longer exists, a log.warn fires but the DB state still
 // converges to the correct STOPPED + null-fields shape.
 //
+// serviceDelete is correct here: ops teardown of leaked services (Stop-class),
+// not hibernate.
+//
 // Add workspace IDs to TARGETS as drift is identified. This is intentionally
 // a manual list (not a SQL filter) so each row gets explicit human review
 // — auto-destroying based on a filter risks orphaning live Railway services
