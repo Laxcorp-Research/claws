@@ -18,8 +18,8 @@
 // for legitimately paused workspaces if true pauseContainer ever lands.
 //
 // Usage:
-//   npx dotenv -e .env.staging    -- npx tsx prisma/migrations/cleanup-drifted-paused-workspaces.ts
-//   npx dotenv -e .env.production -- npx tsx prisma/migrations/cleanup-drifted-paused-workspaces.ts
+//   npx dotenv -e .env.staging    -- npx tsx scripts/archive/cleanup-drifted-paused-workspaces.ts
+//   npx dotenv -e .env.production -- npx tsx scripts/archive/cleanup-drifted-paused-workspaces.ts
 
 import "./_polyfills"
 

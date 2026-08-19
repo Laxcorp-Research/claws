@@ -1,8 +1,7 @@
-// Migration scripts run via `tsx` (not Next.js), so globalThis.AsyncLocalStorage
-// isn't auto-set. @axiomhq/nextjs expects it at module-load time, which causes
-// any migration script that transitively imports the logger to crash.
+// tsx helper for archive scripts that import the logger chain.
+// @axiomhq/nextjs expects globalThis.AsyncLocalStorage at module-load.
 //
-// Import this file at the very top of any migration script that imports
+// Import this file at the very top of any archive script that imports
 // modules dragging in the logger chain (anything in src/lib/openclaw/,
 // src/lib/credits/, etc.). Existing scripts that only import @/lib/db
 // (prisma) don't need it.
