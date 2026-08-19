@@ -226,7 +226,16 @@ jobs:
           DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
 
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 5
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # ubuntu-latest unattended-upgrades holds the apt lock; --with-deps
+          # then hangs indefinitely (HWD E2E installed in 41s; this PR's first
+          # two attempts sat on this step 25+ min with no further output).
+          sudo systemctl stop unattended-upgrades.service || true
+          sudo killall --quiet apt-get apt unattended-upgr || true
+          npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
         run: npx playwright test --retries=2

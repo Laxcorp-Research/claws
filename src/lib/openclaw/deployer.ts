@@ -62,6 +62,14 @@ import {
   extractHeartbeatIntervalMsFromOpenclawJson,
 } from '@/lib/hibernation/next-heartbeat';
 import { isRuntimeStateStale } from '@/lib/hibernation/stale-destroy';
+import {
+  assertCreateBudgetOrEnqueue,
+  enqueueFromQuotaRejection,
+  isProvisioningQueuedError,
+  ProvisioningQueuedError,
+  recordSuccessfulCreate,
+} from '@/lib/railway/governor';
+import { isRailwayCreateQuotaError } from '@/lib/railway/governor-budget';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -105,6 +113,28 @@ export function isOrphanRailwayServiceError(err: unknown): boolean {
 function isRailwayAuthOutageError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /NotAuthorized|not\s*authorized|unauthorized|401/i.test(message);
+}
+
+/**
+ * Every serviceCreate goes through the governor. Reuse / wake (existing
+ * containerId → updateAndRedeployService) never call this.
+ */
+async function createServiceGoverned(
+  workspaceId: string,
+  config: { name: string; envVars: Record<string, string>; image?: string },
+): Promise<{ serviceId: string; domain: string }> {
+  await assertCreateBudgetOrEnqueue(workspaceId);
+  try {
+    const result = await createService(config);
+    await recordSuccessfulCreate(workspaceId, result.serviceId);
+    return result;
+  } catch (err: unknown) {
+    if (isRailwayCreateQuotaError(err)) {
+      const queued = await enqueueFromQuotaRejection(workspaceId);
+      throw new ProvisioningQueuedError(queued);
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -468,7 +498,7 @@ export async function deployToCloud(
             data: { containerId: null, containerName: null, containerHost: null },
           });
           try {
-            result = await createService({ name: serviceName, envVars, image });
+            result = await createServiceGoverned(workspaceId, { name: serviceName, envVars, image });
           } catch (freshErr) {
             // Guard: auth outage on NEW provision fails loud — do not loop.
             if (isRailwayAuthOutageError(freshErr)) {
@@ -484,7 +514,7 @@ export async function deployToCloud(
       }
     } else {
       try {
-        result = await createService({ name: serviceName, envVars, image });
+        result = await createServiceGoverned(workspaceId, { name: serviceName, envVars, image });
       } catch (err: unknown) {
         // Fresh provision NotAuthorized → fail loud (no orphan clear/retry loop).
         if (isRailwayAuthOutageError(err) && !String(err).includes('already exists')) {
@@ -563,6 +593,11 @@ export async function deployToCloud(
       gatewayToken: generated.gatewayToken,
     };
   } catch (error: unknown) {
+    if (isProvisioningQueuedError(error)) {
+      // Honest wait — never ERROR. Workspace is already PROVISIONING_QUEUED.
+      await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', error.queued.message);
+      throw error;
+    }
     const message = error instanceof Error ? error.message : 'Unknown deployment error';
     await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
     // Atomically converge Workspace + ContainerState rows on deploy failure.

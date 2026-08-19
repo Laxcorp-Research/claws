@@ -30,7 +30,21 @@ vi.mock('@/lib/logger', () => ({
   log: { deployEvent: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+const mockEvaluateCreateBudget = vi.hoisted(() => vi.fn());
+const mockEnqueueProvisioning = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/railway/governor', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/railway/governor')>(
+    '@/lib/railway/governor',
+  );
+  return {
+    ...actual,
+    evaluateCreateBudget: (...args: unknown[]) => mockEvaluateCreateBudget(...args),
+    enqueueProvisioning: (...args: unknown[]) => mockEnqueueProvisioning(...args),
+  };
+});
+
 import { POST } from '@/app/api/deploy/[workspaceId]/cloud/route';
+import { ProvisioningQueuedError } from '@/lib/railway/governor';
 
 // Mirrors the exact `select` block in the route. If the route adds/removes
 // a selected field, TypeScript will flag every user-mock site in this file.
@@ -88,6 +102,22 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
       hardErrors: [],
       softWarnings: [],
       primaryMessage: null,
+    });
+    mockEvaluateCreateBudget.mockResolvedValue({
+      allowed: true,
+      cap: 25,
+      margin: 2,
+      usable: 23,
+      rollingCount: 0,
+      quotaHoldUntil: null,
+      etaAt: new Date(),
+    });
+    mockEnqueueProvisioning.mockResolvedValue({
+      workspaceId: 'ws-1',
+      position: 1,
+      etaAt: new Date('2026-08-20T12:00:00.000Z'),
+      reason: 'budget',
+      message: "High demand — your claw is queued to provision, ~24h. We'll notify you.",
     });
   });
 
@@ -335,5 +365,92 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     );
     expect(src).toContain('evaluateWorkspaceDeployTopologyPrerequisites');
     expect(src).toContain('TOPOLOGY_INVALID');
+  });
+
+  it('over-cap create path → 202 queued, never DEPLOYING / deployToCloud / ERROR', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: { id: 'ws-1', status: 'DRAFT', containerId: null },
+    });
+    mockEligibleUser();
+    mockEvaluateCreateBudget.mockResolvedValue({
+      allowed: false,
+      cap: 25,
+      margin: 2,
+      usable: 23,
+      rollingCount: 23,
+      quotaHoldUntil: null,
+      etaAt: new Date('2026-08-20T12:00:00.000Z'),
+    });
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(202);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.queued).toBe(true);
+    expect(json.data.position).toBe(1);
+    expect(json.data.message).toContain('queued to provision');
+    expect(mockDeployToCloud).not.toHaveBeenCalled();
+    expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'DEPLOYING' }) }),
+    );
+    expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'ERROR' }) }),
+    );
+  });
+
+  it('existing containerId bypasses the create governor', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: { id: 'ws-1', status: 'STOPPED', containerId: 'svc-keep' },
+    });
+    mockEligibleUser();
+    mockEvaluateCreateBudget.mockResolvedValue({ allowed: false });
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(201);
+    expect(mockEvaluateCreateBudget).not.toHaveBeenCalled();
+    expect(mockDeployToCloud).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('backstop: ProvisioningQueuedError from deployToCloud → 202, not DEPLOY_FAILED', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: { id: 'ws-1', status: 'DRAFT', containerId: null },
+    });
+    mockEligibleUser();
+    mockDeployToCloud.mockRejectedValue(
+      new ProvisioningQueuedError({
+        workspaceId: 'ws-1',
+        position: 2,
+        etaAt: new Date('2026-08-20T03:11:00.000Z'),
+        reason: 'railway_quota',
+        message: "High demand — your claw is queued to provision, ~4h. We'll notify you.",
+      }),
+    );
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(202);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.queued).toBe(true);
+    expect(json.data.position).toBe(2);
+    expect(json.error).toBeUndefined();
+  });
+
+  it('MUTATION: fail-on-cap restored (500 DEPLOY_FAILED on !allowed) → this test fails', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'src/app/api/deploy/[workspaceId]/cloud/route.ts'),
+      'utf8',
+    );
+    expect(src).toContain('evaluateCreateBudget');
+    expect(src).toContain('202');
+    expect(src).toContain('queued: true');
+    expect(src).toContain('isProvisioningQueuedError');
+    const failOnCap = /if\s*\(\s*!budget\.allowed\s*\)[\s\S]{0,200}DEPLOY_FAILED/;
+    expect(src).not.toMatch(failOnCap);
   });
 });

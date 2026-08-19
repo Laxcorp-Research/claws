@@ -112,6 +112,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiError("WORKSPACE_STOPPED", "Your Claw is stopped. Redeploy it to chat.", 409)
     case "DEPLOYING":
     case "WAKING":
+    case "PROVISIONING_QUEUED":
       return apiError("WORKSPACE_TRANSITIONING", "Your Claw is starting up — try again shortly.", 409)
     default:
       // DRAFT / SETUP_INCOMPLETE / PAUSED (reserved, no writer)

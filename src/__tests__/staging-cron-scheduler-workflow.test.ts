@@ -99,6 +99,7 @@ describe("staging-cron-scheduler.yml contract", () => {
     expect(byPath["/api/cron/credit-pool-monitor"]).toBe("0 * * * *");
     expect(byPath["/api/cron/hibernation"]).toBe("* * * * *");
     expect(byPath["/api/cron/health-monitor"]).toBe("*/2 * * * *");
+    expect(byPath["/api/cron/provisioning-queue"]).toBe("*/5 * * * *");
     expect(byPath["/api/cron/connection-health"]).toBe("0 * * * *");
     expect(byPath["/api/cron/enforce-trial-expiry"]).toBe("0 * * * *");
     expect(byPath["/api/cron/daily-digest"]).toBe("0 6 * * *");

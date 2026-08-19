@@ -200,6 +200,9 @@ export async function GET(req: NextRequest) {
                   nextHeartbeatAt: null,
                 },
               }),
+              prisma.provisioningQueue.deleteMany({
+                where: { workspaceId: action.workspaceId },
+              }),
             ])
           } else {
             // RUNNING / WAKING / PAUSED / ERROR / DEPLOYING — tear down container.

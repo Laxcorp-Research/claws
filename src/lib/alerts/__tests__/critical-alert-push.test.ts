@@ -1,7 +1,7 @@
 // PR-B: critical-alerts push (Telegram, fallback email) — opt-out + 12h dedup.
 //
 // Contracts under test:
-//   1. Class matrix — buildAlertMessage covers all 4 alert keys with copy
+//   1. Class matrix — buildAlertMessage covers all alert keys with copy
 //      that never says "paused".
 //   2. Cooldown — decideCriticalAlertSend: opt-out skips; a delivered send
 //      within COOLDOWN_MS skips; past the window it sends again.
@@ -77,12 +77,14 @@ beforeEach(() => {
 })
 
 describe("buildAlertMessage — class matrix", () => {
-  it("covers all 4 alert keys with non-empty, distinct copy", () => {
+  it("covers all alert keys with non-empty, distinct copy", () => {
     expect(ALERT_KEYS).toEqual([
       "container-unhealthy",
       "cron-job-failed",
       "heartbeat-missed",
       "state-sync-stale",
+      "railway-create-budget",
+      "provisioning-queued",
     ])
     const messages = ALERT_KEYS.map((key) => buildAlertMessage(key))
     expect(new Set(messages).size).toBe(ALERT_KEYS.length)
@@ -301,6 +303,25 @@ describe("sendCriticalAlert — integration", () => {
 
   it("MUTATION: every alertKey is a valid AlertKey the sender accepts", () => {
     const keys: AlertKey[] = [...ALERT_KEYS]
-    expect(keys).toHaveLength(4)
+    expect(keys).toHaveLength(6)
+  })
+
+  it("global dedup omits workspaceId from the 12h lookup (80% budget class)", async () => {
+    mockWorkspace({ channelConfigEncrypted: telegramConfigBlob() })
+    mockTelegramSend.mockResolvedValue(true)
+
+    await sendCriticalAlert({
+      workspaceId: WORKSPACE_ID,
+      alertKey: "railway-create-budget",
+      dedup: "global",
+    })
+
+    const findArgs = (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(findArgs.where.workspaceId).toBeUndefined()
+    expect(findArgs.where.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ metadata: { contains: '"alertKey":"railway-create-budget"' } }),
+      ]),
+    )
   })
 })

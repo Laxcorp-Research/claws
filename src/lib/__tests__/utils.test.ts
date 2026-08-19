@@ -30,6 +30,10 @@ describe('mapWorkspaceStatus', () => {
     expect(mapWorkspaceStatus('STOPPED')).toBe('stopped');
   });
 
+  it('maps PROVISIONING_QUEUED to queued', () => {
+    expect(mapWorkspaceStatus('PROVISIONING_QUEUED')).toBe('queued');
+  });
+
   it('returns draft for unknown status', () => {
     expect(mapWorkspaceStatus('SOMETHING_UNKNOWN')).toBe('draft');
   });

@@ -97,6 +97,10 @@ describe("decideWakeOnChannel", () => {
     expect(decideWakeOnChannel("HIBERNATED")).toEqual({ action: "ack_and_wake" })
     expect(decideWakeOnChannel("RUNNING")).toEqual({ action: "running_untouched" })
     expect(decideWakeOnChannel("WAKING")).toEqual({ action: "ack_still_waking" })
+    expect(decideWakeOnChannel("PROVISIONING_QUEUED")).toEqual({
+      action: "reject",
+      detail: "provisioning queued",
+    })
   })
 })
 
