@@ -8,6 +8,11 @@ import { log } from "@/lib/logger"
 import { evaluateWorkspaceDeployToolPrerequisites } from "@/lib/tools/deploy-tool-prerequisites"
 import { missingRequiredToolsBannerTitle } from "@/lib/tools/required-tools"
 import { evaluateWorkspaceDeployTopologyPrerequisites } from "@/lib/openclaw/deploy-topology-prerequisites"
+import {
+  evaluateCreateBudget,
+  enqueueProvisioning,
+  isProvisioningQueuedError,
+} from "@/lib/railway/governor"
 
 export const maxDuration = 300
 
@@ -77,6 +82,24 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
     )
   }
 
+  // Existing-service reuse (HWD wake / redeploy with containerId) bypasses
+  // the create governor — those paths never serviceCreate.
+  if (!workspace?.containerId) {
+    const budget = await evaluateCreateBudget()
+    if (!budget.allowed) {
+      const queued = await enqueueProvisioning(workspaceId, "budget")
+      return apiSuccess(
+        {
+          queued: true,
+          position: queued.position,
+          etaAt: queued.etaAt.toISOString(),
+          message: queued.message,
+        },
+        202,
+      )
+    }
+  }
+
   try {
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -100,6 +123,17 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       },
     }, 201)
   } catch (err: unknown) {
+    if (isProvisioningQueuedError(err)) {
+      return apiSuccess(
+        {
+          queued: true,
+          position: err.queued.position,
+          etaAt: err.queued.etaAt.toISOString(),
+          message: err.queued.message,
+        },
+        202,
+      )
+    }
     log.deployEvent({
       event: "failed",
       workspaceId,
@@ -107,6 +141,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       error: err instanceof Error ? err.message : "Unknown",
     })
     const msg = err instanceof Error ? err.message : "Deployment failed"
-    return apiError("DEPLOY_FAILED", msg.length > 300 ? `${msg.substring(0, 300)}â€¦` : msg, 500)
+    return apiError("DEPLOY_FAILED", msg.length > 300 ? `${msg.substring(0, 300)}…` : msg, 500)
   }
 }

@@ -94,11 +94,13 @@ export function isTrialStopEnforceableStatus(status: string): boolean {
 }
 
 /**
- * HIBERNATED: DB flip to STOPPED; route also destroyContainer (HWD empty service).
+ * HIBERNATED / PROVISIONING_QUEUED: no live replica → status_flip.
  * Everything else with a live replica → syncThenDestroy.
  */
 export function trialStopEnforceMode(status: string): TrialStopEnforceMode {
-  return status === "HIBERNATED" ? "status_flip" : "destroy_container"
+  return status === "HIBERNATED" || status === "PROVISIONING_QUEUED"
+    ? "status_flip"
+    : "destroy_container"
 }
 
 function isTrialExpired(

@@ -99,6 +99,7 @@ describe("decideTrialExpiryActions (GRACE-24)", () => {
             { id: "ws-2", name: "B", status: "HIBERNATED" },
             { id: "ws-3", name: "C", status: "STOPPED" },
             { id: "ws-4", name: "D", status: "DRAFT" },
+            { id: "ws-5", name: "E", status: "PROVISIONING_QUEUED" },
           ],
         }),
       ],
@@ -122,6 +123,15 @@ describe("decideTrialExpiryActions (GRACE-24)", () => {
         name: "User",
         workspaceId: "ws-2",
         workspaceName: "B",
+        enforceMode: "status_flip",
+      },
+      {
+        kind: "stop",
+        userId: "user-1",
+        email: "u@example.com",
+        name: "User",
+        workspaceId: "ws-5",
+        workspaceName: "E",
         enforceMode: "status_flip",
       },
     ])

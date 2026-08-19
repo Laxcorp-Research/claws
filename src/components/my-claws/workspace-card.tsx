@@ -5,7 +5,7 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { WorkspaceContextMenu } from "./workspace-context-menu"
 import { timeAgo } from "@/lib/utils"
 
-type WorkspaceStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking"
+type WorkspaceStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking" | "queued"
 
 interface WorkspaceCardProps {
   id: string
@@ -75,6 +75,8 @@ export function WorkspaceCard({
           ? `${agentCount} agents · Hibernating · Wakes on next heartbeat`
           : status === "waking"
             ? `${agentCount} agents · Starting up · ~30 seconds`
+            : status === "queued"
+              ? `${agentCount} agents · Queued to provision`
             : status === "stopped"
               ? `${agentCount} agents · Stopped · Redeploy to restart`
               : `${agentCount} agents · ${source}`}

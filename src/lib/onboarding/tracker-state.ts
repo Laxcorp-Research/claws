@@ -19,6 +19,7 @@ export type TrackerWorkspaceStatus =
   | "WAKING"
   | "ERROR"
   | "STOPPED"
+  | "PROVISIONING_QUEUED"
 
 export interface TrackerWorkspace {
   id: string

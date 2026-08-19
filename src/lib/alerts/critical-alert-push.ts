@@ -2,8 +2,9 @@
  * PR-B: Critical alerts push — owner Telegram (fallback email), with
  * opt-out + 12h dedup.
  *
- * Emitted for four alert classes (see AlertKey below). Each call to
- * `sendCriticalAlert` is independently deduped per (workspaceId, alertKey):
+ * Emitted for six alert classes (see AlertKey below). Each call to
+ * `sendCriticalAlert` is independently deduped per (workspaceId, alertKey)
+ * by default, or globally per alertKey when `dedup: "global"` (12h).
  * a SUCCESSFUL delivery (telegram or email) within the last COOLDOWN_MS
  * suppresses further pushes for that same key, even across process
  * restarts — the ledger lives in ActivityLog (SYSTEM rows,
@@ -36,6 +37,8 @@ export const ALERT_KEYS = [
   "cron-job-failed",
   "heartbeat-missed",
   "state-sync-stale",
+  "railway-create-budget",
+  "provisioning-queued",
 ] as const
 
 export type AlertKey = (typeof ALERT_KEYS)[number]
@@ -56,6 +59,8 @@ const ALERT_COPY: Record<AlertKey, AlertCopy> = {
   "cron-job-failed": { emoji: "\u26A0\uFE0F", title: "Cron job failing repeatedly" },
   "heartbeat-missed": { emoji: "\u23F0", title: "Heartbeat missed" },
   "state-sync-stale": { emoji: "\uD83D\uDD04", title: "State sync stale" },
+  "railway-create-budget": { emoji: "\uD83D\uDEA8", title: "Railway create budget at 80%" },
+  "provisioning-queued": { emoji: "\u23F3", title: "Claw queued to provision" },
 }
 
 export function buildAlertMessage(alertKey: AlertKey, detail?: string | null): string {
@@ -152,13 +157,13 @@ async function ledgerCriticalAlertPush(args: {
 }
 
 async function findLastDeliveredAt(
-  workspaceId: string,
   alertKey: AlertKey,
+  workspaceId?: string,
 ): Promise<Date | null> {
   const since = new Date(Date.now() - COOLDOWN_MS)
   const prior = await prisma.activityLog.findFirst({
     where: {
-      workspaceId,
+      ...(workspaceId ? { workspaceId } : {}),
       actionType: "SYSTEM",
       timestamp: { gte: since },
       AND: [
@@ -240,6 +245,7 @@ export async function sendCriticalAlert(args: {
   workspaceId: string
   alertKey: AlertKey
   detail?: string | null
+  dedup?: "workspace" | "global"
 }): Promise<SendCriticalAlertResult> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: args.workspaceId },
@@ -260,7 +266,10 @@ export async function sendCriticalAlert(args: {
   }
   const workspaceName = workspace.name?.trim() || "Unnamed Claw"
 
-  const lastDeliveredAt = await findLastDeliveredAt(args.workspaceId, args.alertKey)
+  const lastDeliveredAt = await findLastDeliveredAt(
+    args.alertKey,
+    args.dedup === "global" ? undefined : args.workspaceId,
+  )
   const decision = decideCriticalAlertSend({
     optOut: workspace.criticalAlertsOptOut,
     lastDeliveredAt,

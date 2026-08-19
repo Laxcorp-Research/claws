@@ -30,11 +30,30 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   if (!workspace) return ERRORS.NOT_FOUND("Workspace")
 
+  let provisioningQueue: { position: number; etaAt: string; reason: string } | null = null
+  if (workspace.status === "PROVISIONING_QUEUED") {
+    const queueRow = await prisma.provisioningQueue.findUnique({
+      where: { workspaceId: id },
+      select: { enqueuedAt: true, etaAt: true, reason: true },
+    })
+    if (queueRow) {
+      const position = await prisma.provisioningQueue.count({
+        where: { enqueuedAt: { lte: queueRow.enqueuedAt } },
+      })
+      provisioningQueue = {
+        position,
+        etaAt: queueRow.etaAt.toISOString(),
+        reason: queueRow.reason,
+      }
+    }
+  }
+
   // Strip heavy snapshot; expose only the Always-on recommendation bit for UI.
   const { clawTemplate, ...rest } = workspace
   const recommendedAlwaysOn = parseRecommendedAlwaysOn(clawTemplate?.workspaceSnapshot)
   return apiSuccess({
     ...rest,
+    provisioningQueue,
     clawTemplate: clawTemplate
       ? {
           name: clawTemplate.name,

@@ -313,6 +313,7 @@ model Workspace {
   agents      Agent[]
   connections AgentConnection[]
   activityLogs ActivityLog[]
+  provisioningQueue ProvisioningQueue?
   deployments  Deployment[]
   toolConnections ToolConnection[]
   customToolConnections CustomToolConnection[]
@@ -341,6 +342,8 @@ enum WorkspaceStatus {
   WAKING
   ERROR
   STOPPED
+  /// Honest wait: Railway serviceCreate is over daily cap. Not ERROR.
+  PROVISIONING_QUEUED
 }
 
 // DeploymentType removed — cloud-only platform
@@ -1383,4 +1386,42 @@ model ContainerState {
 
   @@index([containerPhase])
   @@index([nextHeartbeatAt])
+}
+
+// ─── RAILWAY DEPLOY GOVERNOR ────────────────────────────────
+// Account-wide serviceCreate quota (not workspace-scoped). ActivityLog cannot
+// be the ledger: it is per-workspace JSON metadata with no global rolling
+// index. Rows MUST survive workspace delete — Railway still counts the create.
+
+model RailwayCreateLedger {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  workspaceId String
+  serviceId   String?
+
+  @@index([createdAt])
+  @@index([workspaceId])
+}
+
+model ProvisioningQueue {
+  id            String    @id @default(cuid())
+  workspaceId   String    @unique
+  enqueuedAt    DateTime  @default(now())
+  /// "budget" | "railway_quota"
+  reason        String
+  etaAt         DateTime
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  lastError     String?
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([enqueuedAt])
+}
+
+/// Singleton (id = "default"). quotaHoldUntil is set when Railway rejects a
+/// create with the account-wide cap even if our ledger is empty/under count.
+model RailwayGovernorState {
+  id             String    @id
+  quotaHoldUntil DateTime?
+  updatedAt      DateTime  @updatedAt
 }

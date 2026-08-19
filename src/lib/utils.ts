@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type BadgeStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking";
+type BadgeStatus = "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking" | "queued";
 
 const STATUS_MAP: Record<string, BadgeStatus> = {
   RUNNING: "running",
@@ -17,6 +17,7 @@ const STATUS_MAP: Record<string, BadgeStatus> = {
   STOPPED: "stopped",
   HIBERNATED: "hibernated",
   WAKING: "waking",
+  PROVISIONING_QUEUED: "queued",
 };
 
 export function mapWorkspaceStatus(dbStatus: string): BadgeStatus {

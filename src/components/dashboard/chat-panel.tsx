@@ -30,6 +30,7 @@ export type ChatUnavailableReason =
   | "deploying" // DEPLOYING
   | "paused" // PAUSED (defensive — no writer today, §audit)
   | "stopped" // WORKSPACE_STOPPED (send-time race; panel is hidden pre-send)
+  | "queued" // PROVISIONING_QUEUED
   | "transitioning" // WORKSPACE_TRANSITIONING (send-time; status ambiguous)
   | "unreachable" // GATEWAY_UNREACHABLE (RUNNING but container down)
   | "rate_limited" // RATE_LIMITED (429)
@@ -44,6 +45,7 @@ const REASON_COPY: Record<ChatUnavailableReason, ChatUnavailableCopy> = {
   asleep: { message: "Your Claw is asleep — wake it to chat.", cta: "wake" },
   waking: { message: "Starting up — chat unlocks automatically." },
   deploying: { message: "Deploying — chat unlocks when it's live." },
+  queued: { message: "High demand — your claw is queued to provision." },
   paused: { message: "Chat is paused." },
   stopped: { message: "This Claw is stopped — redeploy it to chat." },
   transitioning: { message: "Your Claw is starting up — try again shortly.", cta: "retry" },
@@ -68,6 +70,8 @@ export function statusToReason(status: string): ChatUnavailableReason {
       return "waking"
     case "DEPLOYING":
       return "deploying"
+    case "PROVISIONING_QUEUED":
+      return "queued"
     case "PAUSED":
       return "paused"
     case "STOPPED":
