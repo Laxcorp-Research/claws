@@ -13,10 +13,10 @@
  * represent potential drift states that need separate review.
  *
  * Usage (staging):
- *   npx dotenv -e .env.staging -- npx tsx prisma/migrations/reclassify-paused-destroyed.ts
+ *   npx dotenv -e .env.staging -- npx tsx scripts/archive/reclassify-paused-destroyed.ts
  *
  * Usage (production):
- *   npx dotenv -e .env.production -- npx tsx prisma/migrations/reclassify-paused-destroyed.ts
+ *   npx dotenv -e .env.production -- npx tsx scripts/archive/reclassify-paused-destroyed.ts
  *
  * Idempotent: second run finds 0 rows to update and exits cleanly.
  */

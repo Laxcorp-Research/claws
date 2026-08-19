@@ -38,6 +38,7 @@ const REQUIRED_STRUCTURAL = [
   "retrying listing without team scope",
   // Migration guard (maiden window ships the guard; later dispatches enforce it).
   "MIGRATION_GUARD_ASSERT: prisma_migrations_ack",
+  "MIGRATION_GUARD_ASSERT: families_only",
   "ACK-MIGRATIONS",
   "migrations_ack",
   "prisma/migrations/",
@@ -134,6 +135,27 @@ describe("promote-to-production.yml contract", () => {
     );
     expect(mutated).not.toContain("MIGRATION_GUARD_ASSERT: prisma_migrations_ack");
     expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(false);
+  });
+
+  it("migration guard ACK keys off timestamped families, not raw prisma/migrations/ LIST", () => {
+    const yml = loadWorkflow();
+    expect(yml).toContain("MIGRATION_GUARD_ASSERT: families_only");
+    const start = yml.indexOf("MIGRATION_GUARD_ASSERT: families_only");
+    const end = yml.indexOf("migrations_ack=ACK-MIGRATIONS accepted");
+    const guard = yml.slice(start, end);
+    expect(guard).toContain('if [ -z "${FAMILIES}" ]');
+    expect(guard).toContain("s|^prisma/migrations/([0-9]{14}_[^/]+)/.*|\\1|p");
+    expect(guard).not.toContain('if [ -z "${LIST}" ]');
+  });
+
+  it("MUTATION: ACK empty-check on raw LIST (script passengers) fails families_only contract", () => {
+    const yml = loadWorkflow();
+    const mutated = yml.replace('if [ -z "${FAMILIES}" ]', 'if [ -z "${LIST}" ]');
+    const start = mutated.indexOf("MIGRATION_GUARD_ASSERT: families_only");
+    const end = mutated.indexOf("migrations_ack=ACK-MIGRATIONS accepted");
+    const guard = mutated.slice(start, end);
+    expect(guard).toContain('if [ -z "${LIST}" ]');
+    expect(guard).not.toContain('if [ -z "${FAMILIES}" ]');
   });
 
   it("workflow-level permissions grant packages: write (reusable image callee)", () => {
