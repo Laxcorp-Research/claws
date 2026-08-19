@@ -37,6 +37,7 @@ import {
   updateAndRedeployService,
   findServiceByName,
   getServiceStatus,
+  removeLatestDeployment,
   getRailwayTargetProvenance,
   BOOT_SCRIPT_B64,
 } from './railway-client';
@@ -259,7 +260,18 @@ export async function resolveDeployImage(): Promise<string> {
 // Deploy to Cloud (Railway)
 // ---------------------------------------------------------------------------
 
-export async function deployToCloud(workspaceId: string): Promise<{
+export type DeployToCloudOptions = {
+  /**
+   * Wake (HWD): never serviceCreate when Workspace.containerId is set.
+   * Orphan adopt-by-name is still reuse, not create.
+   */
+  forbidCreate?: boolean;
+};
+
+export async function deployToCloud(
+  workspaceId: string,
+  opts: DeployToCloudOptions = {},
+): Promise<{
   deploymentId: string;
   containerId: string;
   gatewayToken: string;
@@ -413,7 +425,10 @@ export async function deployToCloud(workspaceId: string): Promise<{
       try {
         log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId, image });
         const beforeStatus = await getServiceStatus(workspace.containerId);
-        previousDeploymentId = beforeStatus.deploymentId;
+        previousDeploymentId =
+          beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
+            ? null
+            : beforeStatus.deploymentId;
         result = await updateAndRedeployService(workspace.containerId, envVars, image);
         if (!result.domain && workspace.containerHost) {
           result.domain = workspace.containerHost;
@@ -437,9 +452,17 @@ export async function deployToCloud(workspaceId: string): Promise<{
             foundServiceId: existingId,
           });
           const beforeStatus = await getServiceStatus(existingId);
-          previousDeploymentId = beforeStatus.deploymentId;
+          previousDeploymentId =
+            beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
+              ? null
+              : beforeStatus.deploymentId;
           result = await updateAndRedeployService(existingId, envVars, image);
         } else {
+          if (opts.forbidCreate) {
+            throw new Error(
+              `Wake forbidCreate: refused serviceCreate while containerId=${workspace.containerId} is set`,
+            );
+          }
           await prisma.workspace.update({
             where: { id: workspaceId },
             data: { containerId: null, containerName: null, containerHost: null },
@@ -473,7 +496,10 @@ export async function deployToCloud(workspaceId: string): Promise<{
           const existingId = await findServiceByName(serviceName);
           if (!existingId) throw new Error(`Service "${serviceName}" exists but could not be found`);
           const beforeStatus = await getServiceStatus(existingId);
-          previousDeploymentId = beforeStatus.deploymentId;
+          previousDeploymentId =
+            beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
+              ? null
+              : beforeStatus.deploymentId;
           result = await updateAndRedeployService(existingId, envVars, image);
         } else {
           throw err;
@@ -570,11 +596,19 @@ export async function deployToCloud(workspaceId: string): Promise<{
  * only pre-destroy persistence on this path is the container's own best-effort
  * SIGTERM sync (process-manager.mjs), which Railway may cut short with SIGKILL.
  *
+ * serviceDelete is correct HERE only for terminal teardown (not hibernate):
+ *   - user Stop (`syncThenDestroy`)
+ *   - trial / credit termination
+ *   - Dodo enforcement
+ *   - workspace deletion
+ *
+ * Hibernate uses removeDeploymentKeepService / syncThenRemoveDeployment.
+ *
  * Use this directly ONLY where speed / not-throwing matters more than a
  * guaranteed-fresh snapshot: the Dodo webhook (must stay fast to avoid retry
  * storms) and credit exhaustion. For any user-/admin-initiated stop of a
- * RUNNING container whose history must be preserved (Stop button, hibernate,
- * and the future force-update restart step), call syncThenDestroy instead — it
+ * RUNNING container whose history must be preserved (Stop button, and the
+ * future force-update restart step), call syncThenDestroy instead — it
  * confirms the snapshot before calling this.
  */
 export async function destroyContainer(workspaceId: string): Promise<void> {
@@ -636,6 +670,21 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
       data: { containerPhase: 'STOPPED' },
     }),
   ]);
+}
+
+/**
+ * HWD hibernate teardown: remove the latest Railway deployment, keep the
+ * Service (same id, same domain). Does NOT null containerId/containerHost and
+ * does NOT write STOPPED — hibernateWorkspace then sets HIBERNATED.
+ */
+export async function removeDeploymentKeepService(workspaceId: string): Promise<void> {
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
+  });
+
+  if (isRailwayConfigured() && workspace.containerId) {
+    await removeLatestDeployment(workspace.containerId);
+  }
 }
 
 /**
@@ -731,6 +780,106 @@ async function trySyncNow(containerHost: string, timeoutMs: number): Promise<Syn
 }
 
 /**
+ * Shared sync gate for syncThenDestroy (terminal teardown) and
+ * syncThenRemoveDeployment (hibernate keep-service).
+ */
+async function confirmedSyncThenTeardown(
+  workspaceId: string,
+  opts: SyncThenDestroyOptions,
+  teardown: (id: string) => Promise<void>,
+  logLabel: string,
+): Promise<SyncThenDestroyResult> {
+  const {
+    syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS,
+    skipSync = false,
+    destroyPolicy = 'destroy-anyway',
+  } = opts;
+
+  const enabled = process.env.SYNC_BEFORE_DESTROY !== 'false';
+  if (!enabled || skipSync) {
+    if (destroyPolicy === 'refuse-unsafe') {
+      log.warn(`${logLabel}: refuse-unsafe — skipSync/kill-switch will not teardown`, {
+        workspaceId,
+        skipSync,
+        syncBeforeDestroy: enabled,
+      });
+      return {
+        destroyed: false,
+        refused: true,
+        reason: skipSync ? 'skip-sync-budget' : 'sync-disabled',
+      };
+    }
+    await teardown(workspaceId);
+    return { destroyed: true };
+  }
+
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
+    include: { containerState: { select: { runtimeStateUpdatedAt: true } } },
+  });
+
+  if (!workspace.containerId || !workspace.containerHost) {
+    await teardown(workspaceId);
+    return { destroyed: true };
+  }
+
+  const outcome = await trySyncNow(workspace.containerHost, syncTimeoutMs);
+
+  if (outcome.synced) {
+    await prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: { lastSyncIncompleteAt: null, lastSyncIncompleteReason: null },
+    });
+    log.info(`${logLabel}: pre-destroy sync confirmed`, { workspaceId });
+  } else {
+    await prisma.containerState.updateMany({
+      where: { workspaceId },
+      data: { lastSyncIncompleteAt: new Date(), lastSyncIncompleteReason: outcome.reason },
+    });
+    log.warn(`${logLabel}: pre-destroy sync NOT confirmed`, {
+      workspaceId,
+      reason: outcome.reason,
+      destroyPolicy,
+      lastRuntimeStateUpdatedAt: workspace.containerState?.runtimeStateUpdatedAt ?? null,
+    });
+
+    if (destroyPolicy === 'refuse-unsafe') {
+      return { destroyed: false, refused: true, reason: `sync-failed:${outcome.reason}` };
+    }
+  }
+
+  const freshState = await prisma.containerState.findUnique({
+    where: { workspaceId },
+    select: { runtimeStateUpdatedAt: true },
+  });
+  const stale = isRuntimeStateStale(freshState?.runtimeStateUpdatedAt ?? null);
+
+  if (stale && destroyPolicy === 'refuse-unsafe') {
+    log.warn(`${logLabel}: refuse-unsafe — runtime state stale beyond threshold`, {
+      workspaceId,
+      runtimeStateUpdatedAt: freshState?.runtimeStateUpdatedAt ?? null,
+    });
+    return { destroyed: false, refused: true, reason: 'stale-snapshot' };
+  }
+
+  await teardown(workspaceId);
+
+  if (!outcome.synced) {
+    return {
+      destroyed: true,
+      syncWarning: `Pre-destroy sync failed (${outcome.reason}); container stopped with possibly stale snapshot.`,
+    };
+  }
+  if (stale && destroyPolicy !== 'force') {
+    return {
+      destroyed: true,
+      syncWarning: 'Runtime state snapshot was older than the stale threshold at stop.',
+    };
+  }
+  return { destroyed: true };
+}
+
+/**
  * Confirmed-sync teardown: flushes + persists runtime state via POST
  * /internal/sync-now BEFORE destroy when possible.
  *
@@ -747,97 +896,23 @@ export async function syncThenDestroy(
   workspaceId: string,
   opts: SyncThenDestroyOptions = {},
 ): Promise<SyncThenDestroyResult> {
-  const {
-    syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS,
-    skipSync = false,
-    destroyPolicy = 'destroy-anyway',
-  } = opts;
+  return confirmedSyncThenTeardown(workspaceId, opts, destroyContainer, 'syncThenDestroy');
+}
 
-  // Kill-switch / skipSync.
-  const enabled = process.env.SYNC_BEFORE_DESTROY !== 'false';
-  if (!enabled || skipSync) {
-    if (destroyPolicy === 'refuse-unsafe') {
-      log.warn('syncThenDestroy: refuse-unsafe — skipSync/kill-switch will not destroy', {
-        workspaceId,
-        skipSync,
-        syncBeforeDestroy: enabled,
-      });
-      return {
-        destroyed: false,
-        refused: true,
-        reason: skipSync ? 'skip-sync-budget' : 'sync-disabled',
-      };
-    }
-    await destroyContainer(workspaceId);
-    return { destroyed: true };
-  }
-
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { id: workspaceId },
-    include: { containerState: { select: { runtimeStateUpdatedAt: true } } },
-  });
-
-  // Nothing to sync to: already torn down, never deployed, or simulation mode.
-  if (!workspace.containerId || !workspace.containerHost) {
-    await destroyContainer(workspaceId);
-    return { destroyed: true };
-  }
-
-  const outcome = await trySyncNow(workspace.containerHost, syncTimeoutMs);
-
-  if (outcome.synced) {
-    await prisma.containerState.updateMany({
-      where: { workspaceId },
-      data: { lastSyncIncompleteAt: null, lastSyncIncompleteReason: null },
-    });
-    log.info('syncThenDestroy: pre-destroy sync confirmed', { workspaceId });
-  } else {
-    await prisma.containerState.updateMany({
-      where: { workspaceId },
-      data: { lastSyncIncompleteAt: new Date(), lastSyncIncompleteReason: outcome.reason },
-    });
-    log.warn('syncThenDestroy: pre-destroy sync NOT confirmed', {
-      workspaceId,
-      reason: outcome.reason,
-      destroyPolicy,
-      lastRuntimeStateUpdatedAt: workspace.containerState?.runtimeStateUpdatedAt ?? null,
-    });
-
-    if (destroyPolicy === 'refuse-unsafe') {
-      return { destroyed: false, refused: true, reason: `sync-failed:${outcome.reason}` };
-    }
-  }
-
-  // Re-read snapshot freshness after sync (sync may have just updated it).
-  const freshState = await prisma.containerState.findUnique({
-    where: { workspaceId },
-    select: { runtimeStateUpdatedAt: true },
-  });
-  const stale = isRuntimeStateStale(freshState?.runtimeStateUpdatedAt ?? null);
-
-  if (stale && destroyPolicy === 'refuse-unsafe') {
-    log.warn('syncThenDestroy: refuse-unsafe — runtime state stale beyond threshold', {
-      workspaceId,
-      runtimeStateUpdatedAt: freshState?.runtimeStateUpdatedAt ?? null,
-    });
-    return { destroyed: false, refused: true, reason: 'stale-snapshot' };
-  }
-
-  await destroyContainer(workspaceId);
-
-  if (!outcome.synced) {
-    return {
-      destroyed: true,
-      syncWarning: `Pre-destroy sync failed (${outcome.reason}); container stopped with possibly stale snapshot.`,
-    };
-  }
-  if (stale && destroyPolicy !== 'force') {
-    return {
-      destroyed: true,
-      syncWarning: 'Runtime state snapshot was older than the stale threshold at stop.',
-    };
-  }
-  return { destroyed: true };
+/**
+ * Hibernate path: same sync/refuse-unsafe gates as syncThenDestroy, then
+ * deploymentRemove(latest) — NEVER serviceDelete. containerId/containerHost persist.
+ */
+export async function syncThenRemoveDeployment(
+  workspaceId: string,
+  opts: SyncThenDestroyOptions = {},
+): Promise<SyncThenDestroyResult> {
+  return confirmedSyncThenTeardown(
+    workspaceId,
+    opts,
+    removeDeploymentKeepService,
+    'syncThenRemoveDeployment',
+  );
 }
 
 export async function restartContainer(workspaceId: string): Promise<void> {
@@ -1237,7 +1312,7 @@ export { calculateNextHeartbeat, extractCronExpression };
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function waitForDeploymentSuccess(
+export async function waitForDeploymentSuccess(
   serviceId: string,
   previousDeploymentId: string | null,
   timeoutMs = DEPLOY_TIMEOUT_MS,
@@ -1246,6 +1321,12 @@ async function waitForDeploymentSuccess(
 
   while (Date.now() - start < timeoutMs) {
     const status = await getServiceStatus(serviceId);
+
+    // Hibernated-with-service: latest may be REMOVED / NO_DEPLOYMENT until deployV2 lands.
+    if (status.status === 'REMOVED' || status.status === 'NO_DEPLOYMENT') {
+      await sleep(DEPLOY_POLL_INTERVAL_MS);
+      continue;
+    }
 
     // If we know the previous deployment ID, ignore it entirely.
     // Keep polling until Railway registers the NEW deployment.

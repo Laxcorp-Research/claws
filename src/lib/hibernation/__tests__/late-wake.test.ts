@@ -8,7 +8,7 @@ vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 const mockDeploy = vi.fn()
 vi.mock("@/lib/openclaw/deployer", () => ({
   deployToCloud: (...args: unknown[]) => mockDeploy(...args),
-  syncThenDestroy: vi.fn(),
+  syncThenRemoveDeployment: vi.fn(),
 }))
 
 vi.mock("@/lib/logger", () => ({
@@ -99,8 +99,18 @@ describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
         }),
       }),
     )
+    expect(mockDeploy).toHaveBeenCalledWith(WS, { forbidCreate: true })
 
     vi.useRealTimers()
+  })
+
+  it("MUTATION: create-on-wake restored → fail (must pass forbidCreate)", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/hibernation/manager.ts"),
+      "utf8",
+    )
+    expect(src).toContain("deployToCloud(workspaceId, { forbidCreate: true })")
+    expect(src).not.toMatch(/await deployToCloud\(workspaceId\)\s*$/m)
   })
 
   it("MUTATION: no roll on late wake → stranded (hint stays past-due)", () => {

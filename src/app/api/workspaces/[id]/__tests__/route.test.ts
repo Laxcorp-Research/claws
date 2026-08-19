@@ -15,15 +15,22 @@ vi.mock("@/lib/api/ownership", () => ({
   verifyWorkspaceOwnership: vi.fn().mockResolvedValue({ workspace: { id: "ws-1" }, error: null }),
 }))
 
-import { PATCH } from "@/app/api/workspaces/[id]/route"
+const mockDestroyContainer = vi.fn()
+vi.mock("@/lib/openclaw/deployer", () => ({
+  destroyContainer: (...args: unknown[]) => mockDestroyContainer(...args),
+}))
+
+import { DELETE, PATCH } from "@/app/api/workspaces/[id]/route"
 
 describe("PATCH /api/workspaces/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockDestroyContainer.mockReset().mockResolvedValue(undefined)
     ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "ws-1",
       alwaysOn: true,
     })
+    ;(prismaMock.workspace.delete as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "ws-1" })
   })
 
   // PR-C #10: alwaysOn allowlisted for the dashboard "never hibernate" toggle.
@@ -78,5 +85,30 @@ describe("PATCH /api/workspaces/[id]", () => {
 
     const call = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(call.data).not.toHaveProperty("containerId")
+  })
+})
+
+describe("DELETE /api/workspaces/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockDestroyContainer.mockReset().mockResolvedValue(undefined)
+    ;(prismaMock.workspace.delete as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "ws-1" })
+  })
+
+  it("serviceDeletes (destroyContainer) before deleting the workspace row", async () => {
+    const req = createMockRequest("http://localhost:3000/api/workspaces/ws-1", {
+      method: "DELETE",
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: "ws-1" }) })
+    const { status, data } = await parseResponse(res)
+
+    expect(status).toBe(200)
+    expect(data.success).toBe(true)
+    expect(data.data).toEqual({ deleted: true })
+    expect(mockDestroyContainer).toHaveBeenCalledWith("ws-1")
+    expect(prismaMock.workspace.delete).toHaveBeenCalledWith({ where: { id: "ws-1" } })
+    expect(mockDestroyContainer.mock.invocationCallOrder[0]).toBeLessThan(
+      (prismaMock.workspace.delete as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    )
   })
 })

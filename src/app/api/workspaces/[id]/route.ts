@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { parseRecommendedAlwaysOn } from "@/lib/templates/recommended-always-on"
+import { destroyContainer } from "@/lib/openclaw/deployer"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -105,6 +106,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (error === "NOT_FOUND") return ERRORS.NOT_FOUND("Workspace")
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
+  // Workspace deletion: serviceDelete is correct — the claw is gone, release the Railway slot (HWD leftover empty service included).
+  await destroyContainer(id)
   await prisma.workspace.delete({ where: { id } })
   return apiSuccess({ deleted: true })
 }

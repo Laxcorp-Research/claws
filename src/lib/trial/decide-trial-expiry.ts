@@ -6,8 +6,10 @@
  * notify now; stop only after notify+24h.
  *
  * Stop enforces entitlement, not container liveness: any non-terminal
- * workspace (RUNNING, HIBERNATED, WAKING, …) is stopped. HIBERNATED uses
- * status-flip only (no container op); others use syncThenDestroy.
+ * workspace (RUNNING, HIBERNATED, WAKING, …) is stopped. HWD napping claws
+ * keep an empty Railway service; the route still serviceDeletes on
+ * status_flip so trial termination releases the slot. Live containers use
+ * syncThenDestroy.
  *
  * No Prisma imports at runtime. No side effects.
  */
@@ -92,8 +94,8 @@ export function isTrialStopEnforceableStatus(status: string): boolean {
 }
 
 /**
- * HIBERNATED has no live container — flip to STOPPED only.
- * Everything else may have a container → syncThenDestroy.
+ * HIBERNATED: DB flip to STOPPED; route also destroyContainer (HWD empty service).
+ * Everything else with a live replica → syncThenDestroy.
  */
 export function trialStopEnforceMode(status: string): TrialStopEnforceMode {
   return status === "HIBERNATED" ? "status_flip" : "destroy_container"

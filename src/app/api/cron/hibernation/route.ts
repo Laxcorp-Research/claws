@@ -18,10 +18,10 @@ import {
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 
 // before: 55 — Vercel FUNCTION_INVOCATION_TIMEOUT when wakes awaited inline.
-// after: 300 — belt for sleep-side syncThenDestroy + after() wake fan-out headroom.
+// after: 300 — belt for sleep-side syncThenRemoveDeployment + after() wake fan-out headroom.
 export const maxDuration = 300
 
-// Sleep side stays INLINE (budget-guarded). Each hibernate awaits syncThenDestroy
+// Sleep side stays INLINE (budget-guarded). Each hibernate awaits syncThenRemoveDeployment
 // with a 10s sync budget; skipSync flips near the function ceiling so a sync
 // cannot be killed mid-write. Wakes (deployToCloud) are the long pole and run
 // via after() per-workspace so the tick HTTP response returns in seconds.

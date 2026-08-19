@@ -289,3 +289,54 @@ describe('getServiceVariables timeout/retry options (PR-8a/C/B)', () => {
     timeoutSpy.mockRestore();
   });
 });
+
+describe('sleepApplication_bypasses_entitlement_gate', () => {
+  it('throws when sleepApplication is true (Rider-2 serverless skips canWakeHibernatedWorkspace)', async () => {
+    const { assertSleepApplicationNeverEnabled, SLEEP_APPLICATION_BYPASSES_ENTITLEMENT_GATE } =
+      await loadClient();
+    expect(() => assertSleepApplicationNeverEnabled({ sleepApplication: true })).toThrow(
+      SLEEP_APPLICATION_BYPASSES_ENTITLEMENT_GATE,
+    );
+  });
+
+  it('allows explicit false and omitted field', async () => {
+    const { assertSleepApplicationNeverEnabled } = await loadClient();
+    expect(() => assertSleepApplicationNeverEnabled({ sleepApplication: false })).not.toThrow();
+    expect(() => assertSleepApplicationNeverEnabled({})).not.toThrow();
+  });
+});
+
+describe('removeLatestDeployment — hibernated-with-service is legal', () => {
+  function gqlData(data: unknown) {
+    return jsonResponse({ data });
+  }
+
+  it('REMOVED latest → no deploymentRemove mutation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      gqlData({
+        deployments: {
+          edges: [{ node: { id: 'dep-gone', status: 'REMOVED', createdAt: '2026-08-01T00:00:00Z' } }],
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { removeLatestDeployment } = await loadClient();
+
+    await expect(removeLatestDeployment('svc-hwd')).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { query: string };
+    expect(body.query).toContain('deployments(');
+    expect(body.query).not.toContain('deploymentRemove');
+  });
+
+  it('NO_DEPLOYMENT → no deploymentRemove mutation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(gqlData({ deployments: { edges: [] } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { removeLatestDeployment } = await loadClient();
+
+    await expect(removeLatestDeployment('svc-hwd')).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { query: string };
+    expect(body.query).not.toContain('deploymentRemove');
+  });
+});
