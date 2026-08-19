@@ -32,6 +32,7 @@ export function healthPill(
   if (status === "STOPPED") return { label: "Stopped", tone: "muted" }
   if (status === "HIBERNATED") return { label: "Hibernating", tone: "muted" }
   if (status === "WAKING") return { label: "Waking up", tone: "info" }
+  if (status === "PROVISIONING_QUEUED") return { label: "Queued to provision", tone: "info" }
   if (status === "ERROR" || healthStatus === "UNHEALTHY") return { label: "Not responding", tone: "error" }
   if (healthStatus === "DEGRADED") {
     const configDrift = lastHealthReason === "bad-token" || lastHealthReason === "plugin-not-loaded"

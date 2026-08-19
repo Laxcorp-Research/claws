@@ -456,8 +456,8 @@ export async function GET(req: NextRequest) {
   // workspace stuck at ERROR can SELF-HEAL the moment its container is
   // reachable again (the PR-4 reclassify in decideUpdate is unreachable
   // otherwise — an ERROR workspace would never be re-probed). PAUSED /
-  // HIBERNATED / STOPPED / DRAFT / SETUP_INCOMPLETE / DEPLOYING / WAKING stay
-  // excluded — those are deliberately off or transient.
+  // HIBERNATED / STOPPED / DRAFT / SETUP_INCOMPLETE / DEPLOYING / WAKING /
+  // PROVISIONING_QUEUED stay excluded — those are deliberately off or waiting.
   //
   // Cost note: genuinely-dead ERROR workspaces are now re-probed every 2 min
   // indefinitely (until redeployed or deleted). The cost is ~5s timeout + 1 DB

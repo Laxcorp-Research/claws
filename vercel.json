@@ -30,6 +30,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/cron/provisioning-queue",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/connection-health",
       "schedule": "0 * * * *"
     },

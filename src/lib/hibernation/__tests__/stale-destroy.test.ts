@@ -7,7 +7,7 @@ vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 
 const mockSyncThenDestroy = vi.fn()
 vi.mock("@/lib/openclaw/deployer", () => ({
-  syncThenDestroy: (...args: unknown[]) => mockSyncThenDestroy(...args),
+  syncThenRemoveDeployment: (...args: unknown[]) => mockSyncThenDestroy(...args),
   deployToCloud: vi.fn(),
 }))
 
@@ -92,6 +92,8 @@ describe("hibernateWorkspace — P3 refuse path", () => {
   it("MUTATION: hibernate must pass refuse-unsafe (destroy-anyway restored → fail)", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/hibernation/manager.ts"), "utf8")
     expect(src).toContain('destroyPolicy: "refuse-unsafe"')
+    expect(src).toContain("syncThenRemoveDeployment")
+    expect(src).not.toMatch(/await syncThenDestroy\(/)
   })
 
   it("successful hibernate marks prior COMPLETED deployments SUPERSEDED", async () => {

@@ -9,14 +9,17 @@
 // service no longer exists, a log.warn fires but the DB state still
 // converges to the correct STOPPED + null-fields shape.
 //
+// serviceDelete is correct here: ops teardown of leaked services (Stop-class),
+// not hibernate.
+//
 // Add workspace IDs to TARGETS as drift is identified. This is intentionally
 // a manual list (not a SQL filter) so each row gets explicit human review
 // — auto-destroying based on a filter risks orphaning live Railway services
 // for legitimately paused workspaces if true pauseContainer ever lands.
 //
 // Usage:
-//   npx dotenv -e .env.staging    -- npx tsx prisma/migrations/cleanup-drifted-paused-workspaces.ts
-//   npx dotenv -e .env.production -- npx tsx prisma/migrations/cleanup-drifted-paused-workspaces.ts
+//   npx dotenv -e .env.staging    -- npx tsx scripts/archive/cleanup-drifted-paused-workspaces.ts
+//   npx dotenv -e .env.production -- npx tsx scripts/archive/cleanup-drifted-paused-workspaces.ts
 
 import "./_polyfills"
 

@@ -50,6 +50,10 @@ describe("healthPill precedence", () => {
     expect(healthPill("STOPPED", "HEALTHY")).toEqual({ label: "Stopped", tone: "muted" })
     expect(healthPill("HIBERNATED", "HEALTHY")).toEqual({ label: "Hibernating", tone: "muted" })
     expect(healthPill("WAKING", "HEALTHY")).toEqual({ label: "Waking up", tone: "info" })
+    expect(healthPill("PROVISIONING_QUEUED", "UNKNOWN")).toEqual({
+      label: "Queued to provision",
+      tone: "info",
+    })
   })
 
   it("ERROR status or UNHEALTHY health → loud error pill", () => {

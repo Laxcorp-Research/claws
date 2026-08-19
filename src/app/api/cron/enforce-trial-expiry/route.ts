@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
-import { syncThenDestroy } from "@/lib/openclaw/deployer"
+import { syncThenDestroy, destroyContainer } from "@/lib/openclaw/deployer"
 import {
   decideTrialExpiryActions,
   shouldSkipTrialStop,
@@ -183,8 +183,9 @@ export async function GET(req: NextRequest) {
       for (const action of group.items) {
         try {
           if (action.enforceMode === "status_flip") {
-            // HIBERNATED: no live container — entitlement terminal is STOPPED.
-            // Clear nextHeartbeatAt so scheduled wake cannot resurrect.
+            // HIBERNATED: no live replica. HWD still leaves an empty Railway
+            // service — trial termination must serviceDelete to release the slot.
+            await destroyContainer(action.workspaceId)
             await prisma.$transaction([
               prisma.workspace.update({
                 where: { id: action.workspaceId },
@@ -199,9 +200,13 @@ export async function GET(req: NextRequest) {
                   nextHeartbeatAt: null,
                 },
               }),
+              prisma.provisioningQueue.deleteMany({
+                where: { workspaceId: action.workspaceId },
+              }),
             ])
           } else {
             // RUNNING / WAKING / PAUSED / ERROR / DEPLOYING — tear down container.
+            // Trial termination: serviceDelete is correct (syncThenDestroy).
             // syncThenDestroy → destroyContainer already writes STOPPED.
             // Do NOT rewrite to HIBERNATED (that re-opened the wake hole).
             await syncThenDestroy(action.workspaceId)

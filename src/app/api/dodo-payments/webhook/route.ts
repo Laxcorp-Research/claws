@@ -464,6 +464,7 @@ async function handleSubscriptionFailed(
       // retry storms. Log and continue.
       try {
         await destroyContainer(metadata.workspaceId)
+        // Dodo enforcement: subscription.failed — serviceDelete is correct.
       } catch (err) {
         log.error("Failed to destroy container on subscription failure", {
           workspaceId: metadata.workspaceId,

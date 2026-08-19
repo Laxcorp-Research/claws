@@ -26,6 +26,7 @@ const EXPECTED: Record<string, number> = {
   stopped: 11,
   hibernated: 11,
   waking: 11,
+  "provisioning-queued": 11,
   "config-drift": 12,
   "version-update": 13,
 }

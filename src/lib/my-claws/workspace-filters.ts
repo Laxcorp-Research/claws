@@ -21,6 +21,7 @@ export type WorkspaceFilterStatus =
   | "stopped"
   | "hibernated"
   | "waking"
+  | "queued"
 
 /** Map filter pill label to workspace badge status from mapWorkspaceStatus. */
 export function workspaceMatchesFilter(

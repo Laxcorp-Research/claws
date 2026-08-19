@@ -1,9 +1,9 @@
 import { cn } from "@/lib/utils";
-import { Circle, Pause, AlertTriangle, Settings, Square, Moon } from "lucide-react";
+import { Circle, Pause, AlertTriangle, Settings, Square, Moon, Clock } from "lucide-react";
 import type { ReactNode } from "react";
 
 interface StatusBadgeProps {
-  status: "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking";
+  status: "running" | "paused" | "error" | "draft" | "setup" | "deploying" | "stopped" | "hibernated" | "waking" | "queued";
 }
 
 const ICON_CLASS = "w-2.5 h-2.5 shrink-0";
@@ -18,6 +18,7 @@ const config: Record<StatusBadgeProps["status"], { bg: string; text: string; ico
   stopped:    { bg: "bg-[#fee2e2]", text: "text-[#ef4444]", icon: <Square className={ICON_CLASS} />, label: "Stopped" },
   hibernated: { bg: "bg-[var(--bg3)]", text: "text-[var(--tx3)]", icon: <Moon className={ICON_CLASS} />, label: "Sleeping" },
   waking:     { bg: "bg-[var(--acbg)]", text: "text-[var(--ac-text)]", icon: "spinner" as unknown as ReactNode, label: "Waking..." },
+  queued:     { bg: "bg-[var(--acbg)]", text: "text-[var(--ac-text)]", icon: <Clock className={ICON_CLASS} />, label: "Queued" },
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {

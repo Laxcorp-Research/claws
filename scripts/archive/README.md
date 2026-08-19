@@ -5,11 +5,16 @@ active production tooling:
 
 - `backfill-next-heartbeat-at.ts`
 - `backfill-superseded-deployments.ts`
+- `cleanup-drifted-paused-workspaces.ts`
+- `credit-system-data-migration.ts`
+- `reclassify-paused-destroyed.ts`
+- `rename-drifted-slugs.ts`
 - `reprovision-wire-test.ts`
 - `verify-marketplace-fts.ts`
 - `pr2.8a-probe.mjs`
 - `pr2.8a-seed-slug-audit.mjs`
 - `pr2.8a-wizard-parity-trace.mjs`
+- `_polyfills.ts` (tsx helper for archive scripts that import the logger chain)
 
 Their retained tests live in `__tests__/`. The
 `cmr3fo19r000404jlze8o7dm8` fixture is a KEEP permanent canary; never delete or

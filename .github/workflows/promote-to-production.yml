@@ -247,10 +247,10 @@ jobs:
           echo "Staging-proven: stable=$STABLE"
 
   # ─── 1b. MIGRATION GUARD (staging vs main) ──────────────────────────────
-  # Runs between preflight and platform. Lists prisma/migrations/ drift into the
-  # step summary always. Nonempty drift requires inputs.migrations_ack ==
-  # ACK-MIGRATIONS (maiden window may land this guard; second dispatch onward
-  # enforces it when migrations ride the promote).
+  # Runs between preflight and platform. Lists timestamped Prisma families
+  # (NNNNNNNNNNNNNN_name) into the step summary. Nonempty FAMILIES requires
+  # inputs.migrations_ack == ACK-MIGRATIONS. Stray files under prisma/migrations/
+  # are ignored for ACK (layout CI forbids them going forward).
   migration_guard:
     name: Migration guard (prisma/migrations)
     needs: [gate, preflight]
@@ -272,29 +272,37 @@ jobs:
           # MIGRATION_GUARD_ASSERT: prisma_migrations_ack
           git fetch origin main staging --depth=1 2>/dev/null || git fetch origin main staging
           LIST=$(git diff --name-only origin/main..origin/staging -- prisma/migrations/ || true)
-          if [ -z "${LIST}" ]; then
-            echo "Migration diff (origin/main..origin/staging -- prisma/migrations/): none"
+          # ACK is keyed on timestamped Prisma families (…/NNNNNNNNNNNNNN_name/…),
+          # not stray files. A script move/delete under prisma/migrations/ must
+          # not masquerade as a schema passenger. MIGRATION_GUARD_ASSERT: families_only
+          FAMILIES=$(printf '%s\n' "$LIST" | sed -nE 's|^prisma/migrations/([0-9]{14}_[^/]+)/.*|\1|p' | sort -u)
+          if [ -z "${FAMILIES}" ]; then
+            echo "Migration diff (origin/main..origin/staging -- prisma/migrations/ families): none"
+            if [ -n "${LIST}" ]; then
+              echo "Non-family prisma/migrations/ paths (ignored for ACK):"
+              printf '%s\n' "$LIST"
+            fi
             {
               echo "### Migration guard"
               echo ""
-              echo "prisma/migrations/ diff vs main: **none**"
+              echo "prisma/migrations/ families vs main: **none**"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          echo "Migration directories riding this promote:"
-          printf '%s\n' "$LIST"
+          echo "Migration families riding this promote:"
+          printf '%s\n' "$FAMILIES"
           {
             echo "### Migration guard"
             echo ""
-            echo "prisma/migrations/ directories vs main:"
+            echo "prisma/migrations/ families vs main:"
             echo '```'
-            printf '%s\n' "$LIST"
+            printf '%s\n' "$FAMILIES"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${MIGRATIONS_ACK}" != "ACK-MIGRATIONS" ]; then
-            echo "::error::prisma/migrations/ differs between origin/main and origin/staging (see list above). Re-dispatch with migrations_ack=ACK-MIGRATIONS to acknowledge, or remove the passenger migrations from staging first."
+            echo "::error::prisma/migrations/ families differ between origin/main and origin/staging (see list above). Re-dispatch with migrations_ack=ACK-MIGRATIONS to acknowledge, or remove the passenger migrations from staging first."
             exit 1
           fi
           echo "migrations_ack=ACK-MIGRATIONS accepted; proceeding with migrations aboard."

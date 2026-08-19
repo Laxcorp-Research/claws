@@ -11,6 +11,7 @@ export const SNAPSHOT_CONVERSATION_STATUSES = new Set([
   "WAKING",
   "DEPLOYING",
   "ERROR",
+  "PROVISIONING_QUEUED",
 ])
 
 /** Union: UI may fetch the conversations API for these statuses. */

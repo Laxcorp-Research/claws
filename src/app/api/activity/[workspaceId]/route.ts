@@ -240,6 +240,24 @@ export async function GET(
   const activityRows = hasMoreActivity ? recentLogs.slice(0, activityLimit) : recentLogs
   const nextCursor = hasMoreActivity ? encodeCursor(activityRows[activityRows.length - 1]) : null
 
+  let provisioningQueue: { position: number; etaAt: string; reason: string } | null = null
+  if (workspace!.status === "PROVISIONING_QUEUED") {
+    const queueRow = await prisma.provisioningQueue.findUnique({
+      where: { workspaceId },
+      select: { enqueuedAt: true, etaAt: true, reason: true },
+    })
+    if (queueRow) {
+      const position = await prisma.provisioningQueue.count({
+        where: { enqueuedAt: { lte: queueRow.enqueuedAt } },
+      })
+      provisioningQueue = {
+        position,
+        etaAt: queueRow.etaAt.toISOString(),
+        reason: queueRow.reason,
+      }
+    }
+  }
+
   // PR-3 near-cap: newest WARNING event (container emits ERROR + kind state_sync_near_cap)
   // stays unresolved until a later sync drops below re-arm (<70%).
   const [latestNearCapWarning, containerStateRow] = await Promise.all([
@@ -484,6 +502,7 @@ export async function GET(
       // revert the optimistic toggle state back to false.
       alwaysOn: workspace!.alwaysOn,
       apiKeySource,
+      provisioningQueue,
     },
     stats: {
       agentsRunning: agentsRunningCount,

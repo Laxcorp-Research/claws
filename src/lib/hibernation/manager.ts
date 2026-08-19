@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { supersedePriorDeployments } from "@/lib/deploy/supersede-deployments"
-import { deployToCloud, syncThenDestroy, type SyncThenDestroyOptions } from "@/lib/openclaw/deployer"
+import { deployToCloud, syncThenRemoveDeployment, type SyncThenDestroyOptions } from "@/lib/openclaw/deployer"
 import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
 import { isPastDueHint } from "@/lib/hibernation/wake-geometry"
 import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
@@ -32,11 +32,12 @@ export type HibernateResult =
 
 export async function hibernateWorkspace(
   workspaceId: string,
-  // PR-2: forwarded to syncThenDestroy. The hibernation cron passes a tighter
+  // PR-2: forwarded to syncThenRemoveDeployment. The hibernation cron passes a tighter
   // syncTimeoutMs (10s, matching the container SIGTERM window) and sets
   // skipSync when it's low on its 55s ceiling (budget guard).
   // Lifecycle P3: destroyPolicy is forced to refuse-unsafe — auto-hibernate
-  // NEVER destroys unsynced/stale state (skipSync → refuse, not bare destroy).
+  // NEVER tears down unsynced/stale state (skipSync → refuse, not bare remove).
+  // HWD: NEVER serviceDelete on this path — deploymentRemove only.
   syncOpts: SyncThenDestroyOptions = {},
 ): Promise<HibernateResult> {
   const workspace = await prisma.workspace.findUnique({
@@ -56,7 +57,7 @@ export async function hibernateWorkspace(
 
   try {
     // Lifecycle P3: refuse-unsafe — sync fail / stale / skipSync keeps RUNNING/WARM.
-    const teardown = await syncThenDestroy(workspaceId, {
+    const teardown = await syncThenRemoveDeployment(workspaceId, {
       ...syncOpts,
       destroyPolicy: "refuse-unsafe",
     })
@@ -117,9 +118,7 @@ export async function hibernateWorkspace(
       ? Date.now() - workspace.containerState.runtimeStateUpdatedAt.getTime()
       : Infinity
 
-    // Do not force-clear containerId/containerHost here. destroyContainer
-    // already nulls them when the Railway service is gone; when delete fails
-    // and the service survives, those fields stay so wake can reuse the domain.
+    // HWD: containerId/containerHost persist (service kept). Do not null them.
     await prisma.$transaction([
       prisma.containerState.update({
         where: { workspaceId },
@@ -262,7 +261,7 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
       }),
     ])
 
-    await deployToCloud(workspaceId)
+    await deployToCloud(workspaceId, { forbidCreate: true })
 
     const wakeDuration = Date.now() - wakeStart
     const existingState = await prisma.containerState.findUnique({

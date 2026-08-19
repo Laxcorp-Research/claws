@@ -37,6 +37,35 @@ jobs:
           done < <(find prisma/migrations -type f -name '*.sql' -print0)
           exit "$fail"
 
+      # prisma/migrations/ may only contain migration_lock.toml and timestamped
+      # family directories (NNNNNNNNNNNNNN_name/migration.sql). Stray scripts
+      # here become promote-guard passengers. Fail closed.
+      - name: Guard prisma/migrations layout (families only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          shopt -s nullglob
+          for p in prisma/migrations/*; do
+            base=$(basename "$p")
+            if [ -f "$p" ]; then
+              if [ "$base" != "migration_lock.toml" ]; then
+                echo "::error file=$p::non-migration file under prisma/migrations/. Only migration_lock.toml and timestamped family directories are allowed. Move scripts to scripts/archive/."
+                fail=1
+              fi
+            elif [ -d "$p" ]; then
+              if ! printf '%s' "$base" | grep -Eq '^[0-9]{14}_[a-z0-9_]+$'; then
+                echo "::error file=$p::prisma/migrations/ directory is not a timestamped family (expected NNNNNNNNNNNNNN_name)."
+                fail=1
+              fi
+              if [ ! -f "$p/migration.sql" ]; then
+                echo "::error file=$p::timestamped family is missing migration.sql."
+                fail=1
+              fi
+            fi
+          done
+          exit "$fail"
+
       # PR-4c: hard-fail any GHCR-touching workflow that clones the openclaw
       # upstream under a variable that isn't the unsuffixed upstream identifier.
       # PR-2b's immutable-tag policy lets us trigger overlay-only rebuilds via
@@ -226,7 +255,16 @@ jobs:
           DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
 
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 5
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # ubuntu-latest unattended-upgrades holds the apt lock; --with-deps
+          # then hangs indefinitely (HWD E2E installed in 41s; this PR's first
+          # two attempts sat on this step 25+ min with no further output).
+          sudo systemctl stop unattended-upgrades.service || true
+          sudo killall --quiet apt-get apt unattended-upgr || true
+          npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
         run: npx playwright test --retries=2

@@ -30,6 +30,7 @@ import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-erro
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
 import { formatCurrency, formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { timeAgo } from "@/lib/utils"
+import { formatQueueEta, queuedUserMessage } from "@/lib/railway/governor-budget"
 import { Tabs } from "@/components/ui/tabs"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { TextLink } from "@/components/ui/text-link"
@@ -89,6 +90,7 @@ interface WorkspaceInfo {
   criticalAlertsOptOut?: boolean
   /** PR-C #10: never hibernate this Claw — trades hosting cost for zero cold-start latency. */
   alwaysOn?: boolean
+  provisioningQueue?: { position: number; etaAt: string; reason: string } | null
 }
 
 interface AgentInfo {
@@ -628,12 +630,22 @@ export default function DashboardPage() {
   const handleRedeployFromStopped = async () => {
     setRedeployFromStoppedConfirmOpen(false)
     try {
-      // STOPPED + destroyed container → /cloud (full recreate). /redeploy is for
-      // existing-service updates. Surface API error detail (#386 / Card 18).
+      const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
+      const json: unknown = await res.json().catch(() => null)
+      const queued = json && typeof json === "object" && "data" in json
+        ? (json as { data?: { queued?: boolean; message?: string } }).data
+        : undefined
+      if (res.status === 202 || queued?.queued) {
+        showSnackbar({
+          message: queued?.message ?? "High demand — your claw is queued to provision. We'll notify you.",
+          variant: "info",
+        })
+        fetchStats()
+        fetchChannelStatus()
+        return
+      }
       await mutateWithFeedback(
         async () => {
-          const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
-          const json: unknown = await res.json().catch(() => null)
           if (!res.ok) {
             throw new Error(
               getRedeployApiErrorMessage(json, `Could not restart Claw (${res.status})`),
@@ -1204,6 +1216,30 @@ export default function DashboardPage() {
       })
     }
 
+    if (workspace?.status === "PROVISIONING_QUEUED") {
+      const eta = workspace.provisioningQueue?.etaAt
+        ? formatQueueEta(new Date(workspace.provisioningQueue.etaAt))
+        : "soon"
+      const position = workspace.provisioningQueue?.position
+      list.push({
+        key: "provisioning-queued",
+        priority: 11,
+        variant: "info",
+        content: (
+          <>
+            <p className="font-medium">
+              {position ? `You're #${position} in line` : "High demand"}
+            </p>
+            <p className="mt-0.5 opacity-80">
+              {workspace.provisioningQueue?.etaAt
+                ? queuedUserMessage(new Date(workspace.provisioningQueue.etaAt))
+                : `High demand — your claw is queued to provision, ~${eta}. We'll notify you.`}
+            </p>
+          </>
+        ),
+      })
+    }
+
     if (workspace?.status === "WAKING") {
       list.push({
         key: "waking",
@@ -1292,11 +1328,13 @@ export default function DashboardPage() {
   // on (never deployed, mid-setup, stopped, or no agents). Renders the calm
   // empty path instead of the populated briefing.
   const isEmpty =
-    !workspace ||
-    workspace.status === "DRAFT" ||
-    workspace.status === "SETUP_INCOMPLETE" ||
-    workspace.status === "STOPPED" ||
-    agents.length === 0
+    workspace?.status === "PROVISIONING_QUEUED"
+      ? false
+      : (!workspace ||
+        workspace.status === "DRAFT" ||
+        workspace.status === "SETUP_INCOMPLETE" ||
+        workspace.status === "STOPPED" ||
+        agents.length === 0)
 
   const missionAgents: MissionAgent[] = sortedAgents.map((a) => ({
     name: a.name,
@@ -1408,7 +1446,7 @@ export default function DashboardPage() {
       ) : isPaused ? (
         // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today — do not remove
         <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
-      ) : (
+      ) : workspace?.status === "PROVISIONING_QUEUED" ? null : (
         <Button variant="outline" size="sm" onClick={() => setStopConfirmOpen(true)}>
           <Square className="w-3.5 h-3.5" />
           Stop

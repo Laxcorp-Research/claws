@@ -32,8 +32,8 @@ export async function onCreditsExhausted(userId: string) {
     if (!isCreditUser(getApiKeySource(ws, user))) continue
 
     try {
-      // Final state sync before teardown (same path as hibernation Stop).
       await syncThenDestroy(ws.id)
+      // Credit termination: serviceDelete is correct — this claw is not napping.
     } catch (err) {
       log.error("Failed to destroy container on credit exhaustion", {
         workspaceId: ws.id,

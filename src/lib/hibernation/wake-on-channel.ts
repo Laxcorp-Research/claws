@@ -61,6 +61,9 @@ export function decideWakeOnChannel(status: string): WakeOnChannelDecision {
   if (status === "WAKING" || status === "DEPLOYING") {
     return { action: "ack_still_waking" }
   }
+  if (status === "PROVISIONING_QUEUED") {
+    return { action: "reject", detail: "provisioning queued" }
+  }
   if (status === "RUNNING" || status === "PAUSED" || status === "ERROR") {
     return { action: "running_untouched" }
   }

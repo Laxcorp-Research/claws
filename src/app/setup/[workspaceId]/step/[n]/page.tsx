@@ -16,6 +16,7 @@ import { DeployProgress } from "@/components/setup/deploy-progress"
 import { ChannelList } from "@/components/setup/channel-list"
 import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { queuedUserMessage } from "@/lib/railway/governor-budget"
 import { DriftBanner, formatChangedAreas } from "@/components/shared/drift-banner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -2014,6 +2015,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   const [hasConfiguredChannels, setHasConfiguredChannels] = useState(false)
   const [applyDeployOpen, setApplyDeployOpen] = useState(false)
   const [recommendedAlwaysOn, setRecommendedAlwaysOn] = useState(false)
+  const [queueMessage, setQueueMessage] = useState<string | null>(null)
   const [toolPrereqs, setToolPrereqs] = useState<RequiredToolsSatisfaction>(EMPTY_TOOL_PREREQS)
   const toolPrereqsReady = toolPrereqs.satisfied
   const unverifiedInfo = unverifiedToolsInfoLine(toolPrereqs.unverifiedCount)
@@ -2088,6 +2090,15 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
           setRecommendedAlwaysOn(
             Boolean(workspaceJson.data?.clawTemplate?.recommendedAlwaysOn),
           )
+          if (workspaceJson.data?.status === "PROVISIONING_QUEUED") {
+            setDeploymentStatus("QUEUED")
+            const etaAt = workspaceJson.data?.provisioningQueue?.etaAt
+            setQueueMessage(
+              etaAt
+                ? queuedUserMessage(new Date(etaAt))
+                : "High demand — your claw is queued to provision. We'll notify you.",
+            )
+          }
         }
         setToolPrereqs(toolsReady)
       } catch (err) {
@@ -2158,6 +2169,17 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
       const json = await res.json()
 
+      if (json.data?.queued || res.status === 202) {
+        setQueueMessage(
+          typeof json.data?.message === "string"
+            ? json.data.message
+            : "High demand — your claw is queued to provision. We'll notify you.",
+        )
+        setDeploymentStatus("QUEUED")
+        setIsDeploying(false)
+        return
+      }
+
       if (!json.success) {
         if (json.error?.code === "SUBSCRIPTION_REQUIRED") {
           setEligibility({ canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false })
@@ -2214,7 +2236,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
     setSubscribing(false)
   }, [workspaceId])
 
-  const canProceed = deploymentStatus === "COMPLETED"
+  const canProceed = deploymentStatus === "COMPLETED" || deploymentStatus === "QUEUED"
   const needsSub = eligibility?.needsSubscription === true
   const showStaleRunningConfig =
     (workspaceStatus === "RUNNING" || workspaceStatus === "PAUSED") &&
@@ -2316,7 +2338,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      {deploymentStatus && !showStaleRunningConfig && (
+      {deploymentStatus && deploymentStatus !== "QUEUED" && !showStaleRunningConfig && (
         <div className="mb-4">
           <DeployProgress
             steps={mapDeployStatus(deploymentStatus, null, hasConfiguredChannels)}
@@ -2334,6 +2356,15 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         }>
           <p className="font-medium">Deployment failed</p>
           <p className="mt-0.5 opacity-80">{deploymentError || "Please check your tool connections and API keys, then try again."}</p>
+        </AlertBanner>
+      )}
+
+      {deploymentStatus === "QUEUED" && (
+        <AlertBanner variant="info">
+          <p className="font-medium">High demand</p>
+          <p className="mt-0.5 opacity-80">
+            {queueMessage ?? "High demand — your claw is queued to provision. We'll notify you."}
+          </p>
         </AlertBanner>
       )}
 
