@@ -14,14 +14,13 @@ import {
 } from "@xyflow/react"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { resolvePickerHeartbeatSchedule } from "@/lib/builder/heartbeat-picker"
+import { deserializeSchedule, serializeSchedule, validateSchedule } from "@/lib/schedule"
 import { evaluateConnectAttempt } from "@/lib/openclaw/builder-topology"
 import type { ConnectAttemptResult } from "@/lib/openclaw/builder-topology"
 
 export type HeartbeatScheduleState = {
   frequency: string
   time: string
-  /** Set when frequency is synthetic `custom` (MD / deployed cron windows). */
-  customWindowCount?: number | null
 }
 
 export type AgentRole = "ORCHESTRATOR" | "WORKER" | "CRITIC"
@@ -89,6 +88,8 @@ interface BuilderState {
   workspaceId: string | null
   workspaceName: string
   workspaceStatus: string
+  /** IANA tz from workspace row — used to render/preview schedule fires. */
+  workspaceTimezone: string
   /** ClawTemplate slug when installed from marketplace — drives regulated floor UI. */
   templateSlug: string | null
   maxRevisionRounds: number
@@ -292,6 +293,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     workspaceId: null,
     workspaceName: "",
     workspaceStatus: "DRAFT",
+    workspaceTimezone: "UTC",
     templateSlug: null,
     maxRevisionRounds: 3,
     deliveryMode: "APPROVAL_REQUIRED",
@@ -622,6 +624,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         lastSavedAt: null, lastSavedState: null,
         hasDraftRecovery: false, draftTimestamp: null, _draftIntervalId: null,
         heartbeatSchedule: { frequency: "off", time: "08:00" },
+        workspaceTimezone: "UTC",
       })
 
       try {
@@ -737,13 +740,14 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           containerState && typeof containerState.heartbeatCronExpressions === "string"
             ? containerState.heartbeatCronExpressions
             : null
-        // Armed via MD cron / deployed cron windows must surface as `custom`,
-        // never silent "Off" (savedFreq || "off" without detection is a lie).
+        const workspaceTimezone =
+          typeof ws.timezone === "string" && ws.timezone.length > 0 ? ws.timezone : "UTC"
         const heartbeatSchedule = resolvePickerHeartbeatSchedule({
           heartbeatFrequency: savedFreq,
           heartbeatTime: savedTime,
           heartbeatMd,
           heartbeatCronExpressions,
+          timezone: workspaceTimezone,
         })
 
         const maxRevisionRounds = typeof ws.maxRevisionRounds === "number" ? (ws.maxRevisionRounds as number) : 3
@@ -756,6 +760,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         set({
           nodes, edges, workspaceId, workspaceName: name, workspaceStatus: (ws.status as string) || "DRAFT",
+          workspaceTimezone,
           templateSlug,
           maxRevisionRounds,
           deliveryMode,
@@ -822,15 +827,19 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         const idMap = new Map<string, string>()
 
-        const hbFreq = s.heartbeatSchedule.frequency
-        // Synthetic `custom` is picker-only — persist null so MD cron remains truth.
-        const hbPayload =
-          hbFreq && hbFreq !== "off" && hbFreq !== "custom"
-            ? {
-                heartbeatFrequency: hbFreq,
-                heartbeatTime: hbFreq === "hourly" ? null : s.heartbeatSchedule.time || null,
-              }
-            : { heartbeatFrequency: null, heartbeatTime: null }
+        const value =
+          deserializeSchedule(s.heartbeatSchedule.frequency, s.heartbeatSchedule.time) ?? {
+            mode: "off" as const,
+          }
+        const gate = validateSchedule(value, s.workspaceTimezone)
+        if (!gate.ok) {
+          throw new Error(gate.errors[0] ?? "Invalid heartbeat schedule")
+        }
+        const ser = serializeSchedule(value)
+        const hbPayload = {
+          heartbeatFrequency: ser.heartbeatFrequency,
+          heartbeatTime: ser.heartbeatTime,
+        }
 
         for (const node of s.nodes) {
           const d = node.data as AgentNodeData

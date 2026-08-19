@@ -51,6 +51,7 @@
     "archiver": "^7.0.1",
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
+    "croner": "10.0.1",
     "dockerode": "^4.0.10",
     "dodopayments": "^2.23.2",
     "dotenv": "^17.4.2",
@@ -112,6 +113,7 @@
     "postcss": "8.5.18",
     "@auth/core": "0.41.3",
     "sharp": "0.35.3",
-    "nanoid": "3.3.18"
+    "nanoid": "3.3.18",
+    "deepmerge-ts": "8.0.1"
   }
 }

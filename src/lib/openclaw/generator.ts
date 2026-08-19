@@ -43,6 +43,7 @@ import {
   type ChannelConfigMap,
 } from '@/lib/openclaw/channel-config';
 import { buildCronJobsFromHeartbeatMd } from '@/lib/openclaw/heartbeat-md-cron';
+import { deserializeSchedule, emitHeartbeatJobs } from '@/lib/schedule';
 import { getApiKeySource } from '@/lib/credits/api-key-source';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { deriveAllowAgents } from '@/lib/openclaw/derive-allow-agents';
@@ -289,12 +290,12 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     ? decrypt(workspace.gatewayToken)
     : generateSecureToken();
 
-  // 4. Resolve heartbeat once. Interval frequencies feed the openclaw.json
-  //    `agents.defaults.heartbeat` field; time-of-day frequencies feed
-  //    cron/jobs.json. When Builder frequency is unset/off, template schedules
-  //    embedded as HEARTBEAT.md `cron: "..."` lines become machine truth via
-  //    cron/jobs.json (OpenClaw -9 cron store reads jobs.json only — MD is
-  //    prose the agent reads when a job fires). See resolveHeartbeatSchedule.
+  // 4. Resolve heartbeat once. Every mode emits cron/jobs.json (croner-shaped)
+  //    so preview and runtime share one parser. When Builder frequency is
+  //    unset, template schedules embedded as HEARTBEAT.md `cron: "..."` lines
+  //    become machine truth via the same jobs.json path (OpenClaw -9 cron store
+  //    reads jobs.json only — MD is prose the agent reads when a job fires).
+  //    See resolveHeartbeatSchedule.
   //
   // PR-2b #8 + #9: orchestrator's slugified agent id is threaded into the
   // cron emit so the emitted job carries `id` (required by OpenClaw cron
@@ -503,10 +504,8 @@ function generateOpenClawConfig(
   });
 
   // Heartbeat config - only the orchestrator runs heartbeats.
-  // Interval frequencies (hourly/every_6h/every_12h) live here in
-  // agents.defaults.heartbeat. Time-of-day frequencies (daily/weekday) are
-  // emitted as cron jobs in cron/jobs.json instead, so heartbeat is undefined
-  // here for those cases.
+  // All modes emit cron/jobs.json (shared croner path). agents.defaults.heartbeat
+  // is left unset so the gateway interval runner cannot disagree with croner.
   const heartbeatInterval = heartbeat?.intervalConfig;
 
   // Channel config - from setup wizard step 4
@@ -1217,22 +1216,18 @@ function generateCronJobs(
     ...activeWorkers.map((worker) => toAgentId(worker.name)),
   ]);
 
-  // Time-of-day heartbeat (daily/weekday) OR HEARTBEAT.md schedule lines
-  // (when frequency is off) are emitted here as cron jobs. Pure interval
-  // heartbeats live in agents.defaults.heartbeat and are handled by the
-  // gateway's built-in heartbeat runner instead.
-  //
-  // OpenClaw -9 cron store (upstream src/cron/persisted-shape.ts): jobs with
-  // missing/empty id are dropped before they reach the scheduler
-  // (`getInvalidPersistedCronJobReason` → "missing-id"). Interval path does
-  // not use jobs.json — it reads agents.defaults.heartbeat.every.
-  if (heartbeat?.cronJob) {
-    jobs.push(heartbeat.cronJob);
-  }
-  if (heartbeat?.mdCronJobs?.length) {
-    for (const job of heartbeat.mdCronJobs) {
-      jobs.push(job);
-    }
+  // Every heartbeat mode (presets, times, interval, monthly, cron) AND
+  // HEARTBEAT.md schedule lines (when frequency is unset) emit here as cron
+  // jobs. OpenClaw -9 cron store drops jobs with missing/empty id
+  // (`getInvalidPersistedCronJobReason` → "missing-id").
+  const heartbeatJobs =
+    heartbeat?.cronJobs ??
+    [
+      ...(heartbeat?.cronJob ? [heartbeat.cronJob] : []),
+      ...(heartbeat?.mdCronJobs ?? []),
+    ];
+  for (const job of heartbeatJobs) {
+    jobs.push(job);
   }
 
   // Add any workspace-specific scheduled tasks from the template.
@@ -2398,28 +2393,25 @@ export type HeartbeatCronJob = {
 };
 
 /**
- * Output of `buildHeartbeatSchedule`. Heartbeat frequencies map to one of two
- * delivery mechanisms:
- *   - `intervalConfig`: written to `agents.defaults.heartbeat` in
- *     openclaw.json. Fires every N hours from container start. Used for pure
- *     interval frequencies (hourly / every_6h / every_12h).
- *   - `cronJob`: appended to `cron/jobs.json`. Fires at a specific time-of-day
- *     in the workspace timezone. Used for daily / weekday.
- * Exactly one is set when the result is non-null. The structure allows both
- * to be set in the future without changing the API.
+ * Output of `buildHeartbeatSchedule` / `resolveHeartbeatSchedule`.
+ * All modes emit `cronJobs` (croner 5-field). `cronJob` is the first job for
+ * callers that still read the singular field. `mdCronJobs` is the unset-
+ * frequency HEARTBEAT.md path (same job ids as before — do not churn the
+ * founder-armed fixture). `intervalConfig` is no longer written.
  */
 export type HeartbeatScheduleResult = {
   intervalConfig?: { every: string };
   cronJob?: HeartbeatCronJob;
+  cronJobs?: HeartbeatCronJob[];
   /** From HEARTBEAT.md `cron:` lines when Builder frequency is off/unset. */
   mdCronJobs?: HeartbeatCronJob[];
 };
 
 /**
  * Single schedule resolver for generator + backfill.
- * Prefer Builder frequency (interval or daily/weekday cron). Else emit
- * OpenClaw-shaped jobs from HEARTBEAT.md schedule lines. HEARTBEAT.md file
- * content is unchanged — this only materializes machine config.
+ * Prefer Builder frequency (all modes → cron/jobs.json via emitHeartbeatJobs).
+ * Else emit OpenClaw-shaped jobs from HEARTBEAT.md schedule lines. HEARTBEAT.md
+ * file content is unchanged — this only materializes machine config.
  */
 export function resolveHeartbeatSchedule(
   frequency: string | null | undefined,
@@ -2445,37 +2437,19 @@ export function resolveHeartbeatSchedule(
     timezone,
   });
   if (mdCronJobs.length === 0) return null;
-  return { mdCronJobs };
+  return { mdCronJobs, cronJobs: mdCronJobs, cronJob: mdCronJobs[0] };
 }
 
 /**
- * Translates the Builder UI's heartbeat selection (frequency + optional
- * time-of-day) into an OpenClaw heartbeat descriptor.
+ * Translates the Builder heartbeat value (frequency + optional JSON/time)
+ * into cron/jobs.json descriptors via emitHeartbeatJobs — the same path
+ * computeNextOccurrences uses. Unknown / off / unset → null.
  *
- * Returns `null` when heartbeat is off, unset, or unknown (caller skips both
- * the openclaw.json heartbeat field AND the cron job append).
+ * CROSS-REFERENCE — DO NOT CHANGE WITHOUT UPDATING claws-activity-reporter.
+ * Job `name` keeps the `orchestrator-heartbeat-` prefix
+ * (HEARTBEAT_CRON_NAME_PREFIX). `id` and `name` stay independent.
  *
- * Frequency mappings (verified shapes only):
- *   - null / "off" / unknown -> null
- *   - "hourly"               -> { intervalConfig: { every: "1h" } }
- *   - "every_6h"             -> { intervalConfig: { every: "6h" } }
- *   - "every_12h"            -> { intervalConfig: { every: "12h" } }
- *   - "daily"     at HH:MM   -> { cronJob: { schedule: { kind:'cron', expr:"<m> <h> * * *",   tz } } }
- *   - "weekday"   at HH:MM   -> { cronJob: { schedule: { kind:'cron', expr:"<m> <h> * * 1-5", tz } } }
- *
- * Invalid time strings (e.g. "not-a-time", out-of-range hour) for daily /
- * weekday degrade to `{ intervalConfig: { every: "1h" } }` so the gateway
- * still wakes up periodically rather than failing schema validation on a
- * malformed cron expression.
- *
- * @param orchestratorAgentSlug — Required when frequency resolves to a cron
- *   job (daily/weekday). The slug is baked into the cron job's `id`,
- *   `agentId`, and `sessionTarget` fields so the job loads correctly into
- *   OpenClaw's cron store and routes to the orchestrator's main session
- *   when it fires. Optional for interval frequencies (it's only used by
- *   the cron path). Pre-PR-2b this was missing entirely → every heartbeat
- *   cron was silently dropped at load by OpenClaw's missing-id check.
- *   See PR-2b items #8 and #9.
+ * test_5min remains an opaque DB-only frequency (not in the Builder picker).
  */
 export function buildHeartbeatSchedule(
   frequency: string | null | undefined,
@@ -2484,127 +2458,15 @@ export function buildHeartbeatSchedule(
   orchestratorAgentSlug: string,
 ): HeartbeatScheduleResult | null {
   if (!frequency || frequency === 'off') return null;
-
-  switch (frequency) {
-    case 'hourly':    return { intervalConfig: { every: '1h' } };
-    case 'every_6h':  return { intervalConfig: { every: '6h' } };
-    case 'every_12h': return { intervalConfig: { every: '12h' } };
-    // PR-2c: TEST-ONLY frequency for activity-wire validation. Emits a
-    // cron-shaped job (NOT intervalConfig) so it fires through the same
-    // code path as daily/weekday and surfaces cron_changed events to the
-    // claws-activity-reporter plugin. "*/5" fires every 5 minutes, which
-    // lets a wire-validation deploy redeploy-then-wait-5-min instead of
-    // racing a wall-clock fire window (the operational pain we hit
-    // 4 times during PR-2/PR-2b validation).
-    //
-    // Production safety:
-    //   - Setting heartbeatFrequency='test_5min' via DB causes the cron
-    //     to fire every 5 minutes FOREVER until reset to null/off.
-    //   - The Builder UI does NOT expose this option; opaque-string-only.
-    //   - The frequency name is loud on purpose ("test_5min") so anyone
-    //     spotting it in DB/logs knows it's a debug knob.
-    //   - Audit query: SELECT id, workspaceId FROM "Agent" WHERE
-    //     "heartbeatFrequency"='test_5min'  (should be 0 on prod normally).
-    //
-    // All PR-2b correctness invariants preserved:
-    //   - id: required by OpenClaw cron-store load
-    //   - name with "orchestrator-heartbeat-" prefix: required by the
-    //     plugin's isHeartbeatJob filter
-    //   - explicit agentId: explicit cron routing
-    //   - session-keyed sessionTarget: full context preservation
-    //   - payload.kind=agentTurn compatible with session-keyed target
-    case 'test_5min': {
-      return {
-        cronJob: {
-          id: `heartbeat-${orchestratorAgentSlug}-test_5min`,
-          name: `orchestrator-heartbeat-test_5min`,
-          description: 'Orchestrator heartbeat (every 5 minutes — TEST ONLY)',
-          enabled: true,
-          deleteAfterRun: false,
-          // No `tz` field — */5 fires on UTC minute marks regardless of
-          // workspace timezone, which is what we want for predictable
-          // wire-validation timing.
-          schedule: { kind: 'cron', expr: '*/5 * * * *' },
-          agentId: orchestratorAgentSlug,
-          sessionTarget: `session:agent:${orchestratorAgentSlug}:main`,
-          wakeMode: 'now',
-          payload: {
-            kind: 'agentTurn',
-            message:
-              'Heartbeat (test_5min). Read HEARTBEAT.md and follow it strictly. ' +
-              'If nothing needs attention, reply HEARTBEAT_OK.',
-          },
-        },
-      };
-    }
-  }
-
-  if (frequency !== 'daily' && frequency !== 'weekday') {
-    return null;
-  }
-
-  const rawTime = (time && time.trim().length > 0) ? time : '08:00';
-  const [hourStr, minuteStr] = rawTime.split(':');
-  const hour = parseInt(hourStr, 10);
-  const minute = parseInt(minuteStr, 10);
-
-  if (
-    !Number.isInteger(hour) || !Number.isInteger(minute) ||
-    hour < 0 || hour > 23 ||
-    minute < 0 || minute > 59
-  ) {
-    // Falling back to an interval (vs. returning null) keeps SOME heartbeat
-    // running. The gateway crashes on a malformed cron expr; an interval is safe.
-    return { intervalConfig: { every: '1h' } };
-  }
-
-  const dayOfWeek = frequency === 'weekday' ? '1-5' : '*';
-  const expr = `${minute} ${hour} * * ${dayOfWeek}`;
-  const tz = timezone && timezone.trim().length > 0 ? timezone : undefined;
-
-  // CROSS-REFERENCE — DO NOT CHANGE WITHOUT UPDATING claws-activity-reporter.
-  // The `orchestrator-heartbeat-` prefix on `name` is the SAME string the
-  // claws-activity-reporter plugin filters on at:
-  //   container/claws-activity-reporter/index.mjs (HEARTBEAT_CRON_NAME_PREFIX)
-  // If you rename the prefix, the plugin's HEARTBEAT activity-log emission
-  // goes silent (it does NOT misclassify other crons — it just stops).
-  // Searchable string for find-references: HEARTBEAT_CRON_NAME_PREFIX
-  //
-  // The `id` and `name` are deliberately independent: `id` is the cron
-  // store's key (multi-agent-future-safe), `name` is what the plugin
-  // matches on. Don't merge them; the prefix invariant on `name` is the
-  // load-bearing one.
-  return {
-    cronJob: {
-      // PR-2b #8: deterministic id, agent-slug-scoped for multi-agent safety
-      // when future versions emit per-agent heartbeats.
-      id: `heartbeat-${orchestratorAgentSlug}-${frequency}`,
-      name: `orchestrator-heartbeat-${frequency}`,
-      description: `Orchestrator heartbeat (${frequency} at ${rawTime}${tz ? ` ${tz}` : ''})`,
-      enabled: true,
-      deleteAfterRun: false,
-      schedule: {
-        kind: 'cron',
-        expr,
-        ...(tz ? { tz } : {}),
-      },
-      // PR-2b #9: explicit routing target.
-      agentId: orchestratorAgentSlug,
-      // PR-2b #9: full-context session key. The orchestrator's main session
-      // (transcripts, memory) is loaded when this fires, so HEARTBEAT.md
-      // can be read with full context. NOT "isolated" (throwaway session,
-      // no memory), NOT "main" literal (rejected at fire time for
-      // agentTurn payloads — see upstream cron/service/jobs.ts:267-268).
-      sessionTarget: `session:agent:${orchestratorAgentSlug}:main`,
-      wakeMode: 'now',
-      payload: {
-        kind: 'agentTurn',
-        message:
-          'Heartbeat. Read HEARTBEAT.md and follow it strictly. ' +
-          'If nothing needs attention, reply HEARTBEAT_OK.',
-      },
-    },
-  };
+  const value = deserializeSchedule(frequency, time);
+  if (!value || value.mode === 'off') return null;
+  const cronJobs = emitHeartbeatJobs({
+    value,
+    timezone,
+    orchestratorAgentSlug,
+  });
+  if (cronJobs.length === 0) return null;
+  return { cronJob: cronJobs[0], cronJobs };
 }
 
 type SkillRecord = {

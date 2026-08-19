@@ -16,11 +16,15 @@ describe("resolveHeartbeatSchedule", () => {
 
   it("null frequency + MD → mdCronJobs with 08:00 entry", () => {
     const r = resolveHeartbeatSchedule(null, null, "UTC", SLUG, FIXTURE_MD)
-    expect(r?.cronJob).toBeUndefined()
     expect(r?.mdCronJobs?.map((j) => j.schedule.expr)).toEqual([
       "0 8 * * *",
       "0 21 * * *",
     ])
+    expect(r?.cronJobs?.map((j) => j.schedule.expr)).toEqual([
+      "0 8 * * *",
+      "0 21 * * *",
+    ])
+    expect(r?.cronJob?.id).toMatch(/-md-/)
   })
 
   it("explicit off suppresses MD cron emission", () => {

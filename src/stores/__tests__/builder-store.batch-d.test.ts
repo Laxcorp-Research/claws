@@ -200,7 +200,7 @@ describe("Batch D — builder store", () => {
   })
 
   describe("heartbeat picker — armed MD cron must not load as Off", () => {
-    it("null heartbeatFrequency + HEARTBEAT.md cron → frequency custom", async () => {
+    it("null heartbeatFrequency + HEARTBEAT.md cron → frequency times", async () => {
       global.fetch = vi.fn(async () =>
         jsonResponse({
           success: true,
@@ -208,6 +208,7 @@ describe("Batch D — builder store", () => {
             id: "ws-1",
             name: "Armed",
             status: "RUNNING",
+            timezone: "UTC",
             updatedAt: new Date().toISOString(),
             agents: [
               {
@@ -234,9 +235,9 @@ describe("Batch D — builder store", () => {
 
       await useBuilderStore.getState().loadWorkspace("ws-1")
       const hb = useBuilderStore.getState().heartbeatSchedule
-      expect(hb.frequency).toBe("custom")
-      expect(hb.customWindowCount).toBe(2)
+      expect(hb.frequency).toBe("times")
       expect(hb.frequency).not.toBe("off")
+      expect(hb.frequency).not.toBe("custom")
     })
 
     it('MUTATION: load path restores frequency: savedFreq || "off" without custom detection → fail', () => {
