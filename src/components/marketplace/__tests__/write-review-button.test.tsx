@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
-// C4-a: "Write a review" used size="sm" (10px muted) and was unfindable under
-// Reviews. CTA must use the DS default Button size (11px), never sm.
+// C4-a: outline (transparent + --tx2) still read as a gray label. CTA must be
+// filled DS primary at default 11px — never sm, never outline.
 
 import { afterEach, describe, expect, it } from "vitest"
 import { cleanup, render, screen } from "@testing-library/react"
@@ -24,10 +24,13 @@ describe("WriteReviewButton — DS default size", () => {
     expect(btn.textContent).toBe("Write a review")
     expect(btn.className).toContain(DEFAULT_SIZE)
     expect(btn.className).not.toContain(SM_SIZE)
+    expect(btn.className).toContain("bg-[var(--tx)]")
+    expect(btn.className).toContain("text-white")
+    expect(btn.className).not.toContain("text-[var(--tx2)]")
     expect(btn.getAttribute("class")).not.toMatch(/\btext-\[10px\]\b/)
   })
 
-  it("MUTATION: inventing sm or a third size on the CTA → fail", () => {
+  it("MUTATION: outline or a non-default size on the CTA → fail", () => {
     const src = readFileSync(
       join(process.cwd(), "src/components/marketplace/write-review-button.tsx"),
       "utf8",
@@ -35,7 +38,8 @@ describe("WriteReviewButton — DS default size", () => {
     expect(src).not.toMatch(/size=["']sm["']/)
     expect(src).not.toMatch(/size=["']lg["']/)
     expect(src).not.toMatch(/size=["']xs["']/)
-    expect(src).toContain('variant="outline"')
+    expect(src).not.toContain('variant="outline"')
+    expect(src).toContain('variant="primary"')
     expect(src).toContain("data-testid=\"write-review-cta\"")
   })
 

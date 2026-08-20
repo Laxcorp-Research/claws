@@ -80,6 +80,9 @@ function expectFindableCta() {
   expect(getComputedStyle(btn).visibility).not.toBe("hidden")
   expect(btn.className).toContain("text-[11px]")
   expect(btn.className).not.toContain("text-[10px]")
+  expect(btn.className).toContain("bg-[var(--tx)]")
+  expect(btn.className).toContain("text-white")
+  expect(btn.className).not.toContain("text-[var(--tx2)]")
 }
 
 describe("template store page — write-review CTA", () => {
