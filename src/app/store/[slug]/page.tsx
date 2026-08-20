@@ -12,7 +12,7 @@ import { AlertBanner } from "@/components/ui/alert-banner"
 import { Card } from "@/components/ui/card"
 import { AgentPill } from "@/components/ui/agent-pill"
 import { CategoryBadge, type ClawCategory } from "@/components/ui/category-badge"
-import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState } from "@/components/marketplace"
+import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState, WriteReviewButton } from "@/components/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TemplateHierarchyPreview } from "@/components/store/template-hierarchy-preview"
@@ -489,7 +489,12 @@ export default function TemplateDetailPage() {
           </div>
 
           {reviews.length === 0 ? (
-            <p className="text-[12px] text-[var(--tx3)]">No reviews yet. Be the first!</p>
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-[12px] text-[var(--tx3)]">No reviews yet. Be the first!</p>
+              {hasPurchased && !isOwner && (
+                <WriteReviewButton onClick={() => setShowReviewModal(true)} />
+              )}
+            </div>
           ) : (
             reviews.slice(0, showAllReviews ? undefined : 5).map((r) => (
               <ReviewCard key={r.id} review={r} />
@@ -509,10 +514,8 @@ export default function TemplateDetailPage() {
             <p className="text-[11px] text-[var(--tx3)] mt-2">Loading more reviews...</p>
           )}
 
-          {hasPurchased && !isOwner && (
-            <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowReviewModal(true)}>
-              Write a review
-            </Button>
+          {reviews.length > 0 && hasPurchased && !isOwner && (
+            <WriteReviewButton className="mt-3" onClick={() => setShowReviewModal(true)} />
           )}
         </div>
 

@@ -7,7 +7,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
 import { AlertBanner } from "@/components/ui/alert-banner"
-import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState } from "@/components/marketplace"
+import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState, WriteReviewButton } from "@/components/marketplace"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TextLink } from "@/components/ui/text-link"
@@ -436,7 +436,12 @@ export default function SkillDetailPage() {
           </div>
 
           {reviews.length === 0 ? (
-            <p className="text-[12px] text-[var(--tx3)]">No reviews yet. Be the first!</p>
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-[12px] text-[var(--tx3)]">No reviews yet. Be the first!</p>
+              {installStatus?.installed && !isOwner && (
+                <WriteReviewButton onClick={() => setShowReviewModal(true)} />
+              )}
+            </div>
           ) : (
             reviews.slice(0, showAllReviews ? undefined : 5).map((r) => (
               <ReviewCard key={r.id} review={r} />
@@ -456,10 +461,8 @@ export default function SkillDetailPage() {
             <p className="text-[11px] text-[var(--tx3)] mt-2">Loading more reviews...</p>
           )}
 
-          {installStatus?.installed && !isOwner && (
-            <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowReviewModal(true)}>
-              Write a review
-            </Button>
+          {reviews.length > 0 && installStatus?.installed && !isOwner && (
+            <WriteReviewButton className="mt-3" onClick={() => setShowReviewModal(true)} />
           )}
         </div>
 
