@@ -15,9 +15,13 @@
 //      it renders.
 
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { render, screen, cleanup, act } from "@testing-library/react"
+import { render, screen, cleanup, act, waitFor } from "@testing-library/react"
 import { useState } from "react"
+import userEvent from "@testing-library/user-event"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { Modal } from "@/components/ui/modal"
+import { ReviewStars } from "@/components/marketplace/review-stars"
 
 afterEach(() => {
   cleanup()
@@ -226,5 +230,81 @@ describe("Modal — PR2.9-fix2 portal behavior", () => {
     // And the BYOK content must be REACHABLE — it's now interactive
     // because it's on top.
     expect(screen.getByText("Enter API key")).toBeDefined()
+  })
+})
+
+function ReviewModalHarness() {
+  const [open, setOpen] = useState(true)
+  const [title, setTitle] = useState("")
+  const [body, setBody] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [rating, setRating] = useState(1)
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => {
+        setOpen(false)
+        setError(null)
+      }}
+      title="Write a Review"
+    >
+      <div>
+        <ReviewStars value={rating} onChange={setRating} />
+        <input
+          aria-label="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <textarea
+          aria-label="Review"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+        {error ? <p>{error}</p> : null}
+      </div>
+    </Modal>
+  )
+}
+
+describe("Modal — C4 focus-once while open (inline onClose)", () => {
+  it("keeps Title/Review focused when inline onClose identity changes each keystroke", async () => {
+    const user = userEvent.setup()
+    render(<ReviewModalHarness />)
+
+    const title = await screen.findByLabelText("Title")
+    await user.click(title)
+    await user.type(title, "TEST")
+
+    expect(document.activeElement).toBe(title)
+    expect(title).toHaveProperty("value", "TEST")
+    expect(screen.getByRole("radio", { name: "1 star" }).getAttribute("aria-checked")).toBe("true")
+    expect(document.activeElement).not.toBe(screen.getByRole("radio", { name: "1 star" }))
+
+    const review = screen.getByLabelText("Review")
+    await user.click(review)
+    await user.type(review, "HELLO")
+
+    expect(document.activeElement).toBe(review)
+    expect(review).toHaveProperty("value", "HELLO")
+    expect(screen.getByRole("radio", { name: "1 star" }).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("MUTATION: restore [open, onClose, trapFocus] refocus → this fails", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/ui/modal.tsx"), "utf8")
+    expect(src).toContain("onCloseRef")
+    expect(src).toContain("boxRef.current.contains(document.activeElement)")
+    expect(src).not.toMatch(/\[open,\s*onClose,\s*trapFocus\]/)
+    expect(src).toMatch(/\}, \[open, trapFocus\]\)/)
+  })
+
+  it("Escape still calls the latest onClose after parent re-render", async () => {
+    const user = userEvent.setup()
+    render(<ReviewModalHarness />)
+    await screen.findByRole("dialog")
+    await user.keyboard("{Escape}")
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull()
+    })
   })
 })

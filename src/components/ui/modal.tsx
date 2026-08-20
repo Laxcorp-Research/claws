@@ -26,6 +26,11 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   const titleId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  // Call-site onClose is often an inline lambda (review modal, BYOK, etc.).
+  // Putting it in the focus-trap effect deps re-ran first?.focus() on every
+  // parent keystroke and stole focus to the first focusable control.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // PR2.9-fix2: portal to document.body so modal-on-modal stacking is
   // deterministic and JSX-order-independent. Before this change, two
@@ -88,6 +93,9 @@ export function Modal({ open, onClose, title, description, children, footer, siz
 
     const timer = setTimeout(() => {
       if (!boxRef.current) return;
+      // Focus-once-while-open: if the user already moved into a field,
+      // do not yank focus back to the first control.
+      if (boxRef.current.contains(document.activeElement)) return;
       const first = boxRef.current.querySelector<HTMLElement>(FOCUSABLE);
       first?.focus();
     }, 0);
@@ -95,7 +103,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
       trapFocus(e);
     };
@@ -109,7 +117,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
       document.body.style.overflow = "";
       previousFocus.current?.focus();
     };
-  }, [open, onClose, trapFocus]);
+  }, [open, trapFocus]);
 
   if (!open) return null;
   // Skip SSR + first client paint until mounted flips true; then portal
@@ -119,7 +127,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   return createPortal(
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.3)] z-50 flex items-center justify-center"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCloseRef.current(); }}
     >
       <div
         ref={boxRef}
