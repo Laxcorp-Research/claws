@@ -8,14 +8,15 @@ interface WriteReviewButtonProps {
 }
 
 /**
- * Store Reviews secondary CTA. Uses the DS default Button size (11px), never
- * `sm` (10px) — `sm` read as a footnote under Reviews empty copy.
+ * Store Reviews empty-state CTA. Outline on this surface is transparent +
+ * --tx2 on a --bd hairline — it reads as a gray label, not a control.
+ * Filled DS primary (default 11px) matches other empty-state actions.
  */
 export function WriteReviewButton({ onClick, className }: WriteReviewButtonProps) {
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="primary"
       data-testid="write-review-cta"
       className={className}
       onClick={onClick}
