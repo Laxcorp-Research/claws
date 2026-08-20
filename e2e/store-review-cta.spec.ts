@@ -121,6 +121,8 @@ async function expectWriteReviewFindable(page: Page) {
     const styles = getComputedStyle(el)
     return {
       fontSize: styles.fontSize,
+      color: styles.color,
+      backgroundColor: styles.backgroundColor,
       visibility: styles.visibility,
       display: styles.display,
       width: (el as HTMLElement).offsetWidth,
@@ -130,6 +132,12 @@ async function expectWriteReviewFindable(page: Page) {
   expect(metrics.visibility).toBe("visible")
   expect(metrics.display).not.toBe("none")
   expect(metrics.fontSize).toBe("11px")
+  expect(metrics.color).toBe("rgb(255, 255, 255)")
+  const rgb = metrics.backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+  expect(rgb).not.toBeNull()
+  expect(Number(rgb![1])).toBeLessThan(40)
+  expect(Number(rgb![2])).toBeLessThan(40)
+  expect(Number(rgb![3])).toBeLessThan(40)
   expect(metrics.width).toBeGreaterThan(80)
   expect(metrics.height).toBeGreaterThan(22)
 }
