@@ -38,6 +38,8 @@ export interface AgentNodeData extends Record<string, unknown> {
   role: AgentRole
   color: string
   model: string
+  /** OpenClaw thinking level (off|minimal|low|medium|high); null = runtime default. */
+  thinkingDefault?: string | null
   soulMd: string
   agentsMd: string
   skillCount: number
@@ -225,6 +227,7 @@ function computeIsDirty(state: {
     const d = node.data as AgentNodeData
     const sd = saved.data as AgentNodeData
     if (d.name !== sd.name || d.model !== sd.model || d.role !== sd.role) return true
+    if ((d.thinkingDefault ?? null) !== (sd.thinkingDefault ?? null)) return true
     if (d.soulMd !== sd.soulMd || d.agentsMd !== sd.agentsMd) return true
     if (d.reportsTo !== sd.reportsTo || d.outputsTo !== sd.outputsTo || d.qualityThreshold !== sd.qualityThreshold) return true
     if (JSON.stringify(d.agentSkillIds || []) !== JSON.stringify(sd.agentSkillIds || [])) return true
@@ -672,6 +675,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             data: {
               agentId: a.id as string, name: a.name as string, role, color: (a.color as string) || "#8BFCAE",
               model: (a.model as string) || "anthropic/claude-sonnet-4-6",
+              thinkingDefault: (a.thinkingDefault as string | null) ?? null,
               skillCount: agentSkills.length,
               agentSkillIds: agentSkills.map(s => s.skillId),
               hasHeartbeat: !!a.heartbeatMd || (!!a.heartbeatFrequency && a.heartbeatFrequency !== "off"),
@@ -853,6 +857,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 name: d.name, role: d.role, model: d.model, color: d.color,
+                thinkingDefault: d.thinkingDefault ?? null,
                 soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
                 positionX: node.position.x, positionY: node.position.y,
                 qualityThreshold: d.qualityThreshold,
@@ -873,7 +878,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             }
           } else {
             const patchBody: Record<string, unknown> = {
-              name: d.name, model: d.model, soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
+              name: d.name, model: d.model, thinkingDefault: d.thinkingDefault ?? null,
+              soulMd: d.soulMd || "", agentsMd: d.agentsMd || "",
               positionX: node.position.x, positionY: node.position.y,
               qualityThreshold: d.qualityThreshold, reportsTo: d.reportsTo || null,
               skillIds: d.agentSkillIds || [],

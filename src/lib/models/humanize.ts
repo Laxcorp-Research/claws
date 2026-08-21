@@ -26,6 +26,13 @@ export function humanizeModelId(modelId: string): string {
     .join(" ")
 }
 
+/** OpenRouter names arrive as "OpenAI: GPT-4o" — strip the vendor prefix for native rows. */
+export function stripVendorPrefix(name: string | null | undefined): string | null {
+  if (!name) return null
+  const stripped = name.replace(/^[A-Za-z0-9 .&-]+:\s+/, "").trim()
+  return stripped || null
+}
+
 /** Prefer a human catalog name; fall back when missing, blank, or itself a slug. */
 export function resolveCatalogDisplayName(
   modelId: string,

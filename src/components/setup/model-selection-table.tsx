@@ -12,13 +12,15 @@ interface AgentModelRow {
   name: string
   role: "ORCHESTRATOR" | "WORKER" | "CRITIC"
   model: string
+  thinkingDefault?: string | null
 }
 
 interface ModelSelectionTableProps {
   agents: AgentModelRow[]
-  onModelChange: (agentId: string, model: string) => void
+  onModelChange: (agentId: string, model: string, thinkingDefault: string | null) => void
   creditMode?: boolean
   configuredProviders?: string[]
+  onAddKey?: (provider: string) => void
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -32,6 +34,7 @@ export function ModelSelectionTable({
   onModelChange,
   creditMode,
   configuredProviders,
+  onAddKey,
 }: ModelSelectionTableProps) {
   const showByokDisclaimer = shouldShowByokCostDisclaimer({
     creditMode,
@@ -61,9 +64,12 @@ export function ModelSelectionTable({
                 <td className="px-2 py-1.5 min-w-[220px]">
                   <ModelPicker
                     value={agent.model}
-                    onChange={(val) => onModelChange(agent.id, val)}
+                    thinkingDefault={agent.thinkingDefault ?? null}
+                    onChange={(model, thinking) => onModelChange(agent.id, model, thinking)}
                     creditMode={creditMode}
                     configuredProviders={configuredProviders}
+                    agentName={agent.name}
+                    onAddKey={onAddKey}
                   />
                 </td>
                 <td className="px-2 py-1.5 text-right text-[var(--tx3)] text-[10px]">

@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { DEFAULT_MODEL } from "@/lib/models"
+import { isThinkingLevel } from "@/lib/models/thinking"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       workspaceId, name: body.name || "New Worker", agentSlug,
       role: body.role || "WORKER", color: body.color || "#8BFCAE",
       model: body.model || DEFAULT_MODEL[body.role || "WORKER"] || DEFAULT_MODEL.WORKER,
+      thinkingDefault: isThinkingLevel(body.thinkingDefault) ? body.thinkingDefault : null,
       soulMd: body.soulMd || "# New Agent\n\nDescribe this agent's identity.",
       agentsMd: body.agentsMd || "# Team\n\nDescribe how this agent works with others.",
       positionX: body.positionX ?? 300, positionY: body.positionY ?? 200,

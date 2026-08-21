@@ -45,6 +45,7 @@ import {
 import { buildCronJobsFromHeartbeatMd } from '@/lib/openclaw/heartbeat-md-cron';
 import { deserializeSchedule, emitHeartbeatJobs } from '@/lib/schedule';
 import { getApiKeySource } from '@/lib/credits/api-key-source';
+import { isThinkingLevel } from '@/lib/models/thinking';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { deriveAllowAgents } from '@/lib/openclaw/derive-allow-agents';
 import {
@@ -462,6 +463,13 @@ function generateOpenClawConfig(
       workspace: `/home/node/.openclaw/workspace-${agentId}`,
       model: resolveModel(agent.model),
     };
+
+    // Per-agent thinking effort → agents.list[].thinkingDefault (runtime-native
+    // key, levels off|minimal|low|medium|high). null/invalid → omit so the
+    // runtime default applies. Models without reasoning ignore it at run time.
+    if (isThinkingLevel(agent.thinkingDefault)) {
+      entry.thinkingDefault = agent.thinkingDefault;
+    }
 
     if (isOrchestrator) {
       // `default: true` is THE routing mechanism: OpenClaw's route resolution
@@ -2338,6 +2346,7 @@ type AgentWithRelations = {
   role: 'ORCHESTRATOR' | 'WORKER' | 'CRITIC';
   description?: string | null;
   model: string;
+  thinkingDefault?: string | null;
   soulMd?: string | null;
   agentsMd?: string | null;
   heartbeatMd?: string | null;

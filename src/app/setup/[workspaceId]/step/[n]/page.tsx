@@ -34,7 +34,7 @@ import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getComplianceNotice } from "@/lib/compliance-notices"
 import { getToolBySlug, type ToolDefinition } from "@/data/tool-catalog"
 import { StarterCreditBanner } from "@/components/setup/starter-credit-banner"
-import { ProviderAuthCards } from "@/components/setup/provider-auth-cards"
+import { PROVIDER_CARD_NAMES, ProviderAuthCards } from "@/components/setup/provider-auth-cards"
 import { isCreditAuthPath, isModelSelectable, validConfiguredProviders } from "@/lib/models/provider-auth"
 import {
   filterNonAiProviderRequiredEntries,
@@ -75,6 +75,7 @@ interface AgentRow {
   name: string
   role: "ORCHESTRATOR" | "WORKER" | "CRITIC"
   model: string
+  thinkingDefault?: string | null
 }
 
 function defaultModel(role: string): string {
@@ -237,8 +238,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         const agentsData = await agentsRes.json()
         if (agentsData.success) {
           setAgents(
-            agentsData.data.map((a: { id: string; name: string; role: string; model: string | null }) => ({
+            agentsData.data.map((a: { id: string; name: string; role: string; model: string | null; thinkingDefault?: string | null }) => ({
               id: a.id, name: a.name, role: a.role as AgentRow["role"], model: a.model || defaultModel(a.role),
+              thinkingDefault: a.thinkingDefault ?? null,
             }))
           )
         }
@@ -260,8 +262,8 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     load()
   }, [workspaceId, fetchKeyStatus])
 
-  const handleModelChange = useCallback((agentId: string, model: string) => {
-    setAgents((prev) => prev.map((a) => (a.id === agentId ? { ...a, model } : a)))
+  const handleModelChange = useCallback((agentId: string, model: string, thinkingDefault: string | null) => {
+    setAgents((prev) => prev.map((a) => (a.id === agentId ? { ...a, model, thinkingDefault } : a)))
   }, [])
 
   const handleNext = useCallback(async () => {
@@ -271,7 +273,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         agents.map((agent) =>
           fetch(`/api/agents/${workspaceId}/${agent.id}`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model: agent.model }),
+            body: JSON.stringify({ model: agent.model, thinkingDefault: agent.thinkingDefault ?? null }),
           })
         )
       )
@@ -348,6 +350,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           onModelChange={handleModelChange}
           creditMode={creditMode}
           configuredProviders={configuredProviders}
+          onAddKey={(provider) =>
+            setOverrideModal({ provider, providerName: PROVIDER_CARD_NAMES[provider] || provider })
+          }
         />
       )}
 

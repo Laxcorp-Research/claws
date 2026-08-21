@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { enforceQualityThresholdFloor } from "@/lib/openclaw/regulated-threshold-floor"
+import { isThinkingLevel } from "@/lib/models/thinking"
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ workspaceId: string; id: string }> }) {
   const user = await getSessionUser()
@@ -15,10 +16,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ wo
 
   const body = await req.json()
   // WIRE-FULL: reportsTo is a read-only projection from edges — writers removed.
-  const allowed = ["name", "color", "model", "fallbackModel", "soulMd", "agentsMd", "heartbeatMd", "heartbeatFrequency", "heartbeatTime", "toolsMd", "userMd", "qualityThreshold", "maxRetries", "positionX", "positionY", "roleDescription", "description", "icon"]
+  const allowed = ["name", "color", "model", "fallbackModel", "thinkingDefault", "soulMd", "agentsMd", "heartbeatMd", "heartbeatFrequency", "heartbeatTime", "toolsMd", "userMd", "qualityThreshold", "maxRetries", "positionX", "positionY", "roleDescription", "description", "icon"]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]
+  }
+
+  if (updates.thinkingDefault !== undefined && updates.thinkingDefault !== null && !isThinkingLevel(updates.thinkingDefault)) {
+    return ERRORS.VALIDATION("thinkingDefault must be one of off, minimal, low, medium, high (or null)")
   }
 
   if (updates.soulMd && (updates.soulMd as string).length > 50000) return ERRORS.VALIDATION("SOUL.md must be under 50,000 characters")
