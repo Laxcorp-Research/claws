@@ -96,6 +96,32 @@ type OpenRouterModel = {
   context_length?: number
   pricing?: { prompt?: string; completion?: string }
   supported_parameters?: string[]
+  architecture?: {
+    modality?: string
+    input_modalities?: string[]
+    output_modalities?: string[]
+  }
+}
+
+/**
+ * Agents drive text conversations + tool calls; a model whose OUTPUT is not
+ * text-only (audio like GPT Audio/Lyria, image generators like Nano Banana /
+ * GPT-5 Image, the mixed-output Auto Router) cannot be an agent's brain and
+ * only invites misconfiguration. Input modalities are irrelevant: vision/audio
+ * INPUT chat models (GPT-4o, Gemini 2.5 Pro) reply in text and stay.
+ * Missing metadata keeps the row - never over-delete on unknown.
+ */
+export function isTextOnlyChatModel(m: OpenRouterModel): boolean {
+  const outs = m.architecture?.output_modalities
+  if (Array.isArray(outs) && outs.length > 0) {
+    return outs.every((o) => o === "text")
+  }
+  const modality = m.architecture?.modality
+  if (typeof modality === "string" && modality.includes("->")) {
+    const right = modality.split("->").pop()?.trim() ?? ""
+    return right === "text"
+  }
+  return true
 }
 
 /**
@@ -159,6 +185,9 @@ export async function refreshOpenRouterCatalog(): Promise<{
       const modelId = `openrouter/${m.id}`
       const pinned = PINNED_SEED_MODELS.some((s) => s.modelId === modelId)
       const supportsReasoning = reasoningFromOpenRouter(m)
+      // Non-text-output rows are upserted INACTIVE (not skipped) so rows that
+      // slipped in active before this rule self-heal on the next refresh.
+      const textChat = isTextOnlyChatModel(m)
       const ops = [
         prisma.modelCatalogEntry.upsert({
           where: { modelId },
@@ -171,7 +200,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
             supportsReasoning,
             isPinned: pinned,
-            isActive: true,
+            isActive: textChat,
             source: "openrouter",
             rawMeta: m as object,
             refreshedAt: now,
@@ -182,7 +211,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
             pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
             supportsReasoning,
-            isActive: true,
+            isActive: textChat,
             source: "openrouter",
             rawMeta: m as object,
             refreshedAt: now,
@@ -209,7 +238,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
               costPer1kEst: costPer1kFromOpenRouter(m.pricing),
               supportsReasoning,
               isPinned: nativePinned,
-              isActive: true,
+              isActive: textChat,
               source: "openrouter-derived",
               rawMeta: m as object,
               refreshedAt: now,
@@ -220,7 +249,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
               pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
               costPer1kEst: costPer1kFromOpenRouter(m.pricing),
               supportsReasoning,
-              isActive: true,
+              isActive: textChat,
               source: "openrouter-derived",
               rawMeta: m as object,
               refreshedAt: now,

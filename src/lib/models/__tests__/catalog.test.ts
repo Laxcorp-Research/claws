@@ -5,6 +5,7 @@ import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
 import {
   catalogToLegacyOptions,
   derivedNativeFromOpenRouter,
+  isTextOnlyChatModel,
   reasoningFromOpenRouter,
 } from "@/lib/models/catalog"
 import { providerFromModelRef } from "@/lib/supported-providers"
@@ -120,6 +121,42 @@ describe("model catalog (OpenRouter arc)", () => {
     ).toBe(false)
     // Missing metadata = unknown, never false: the UI must not lock the control.
     expect(reasoningFromOpenRouter({ id: "x" })).toBeNull()
+  })
+
+  it("isTextOnlyChatModel keeps chat models, culls audio/image-output rows (founder ruling)", () => {
+    // Real staging-census fixtures, 2026-08-21.
+    expect(
+      isTextOnlyChatModel({ id: "openai/gpt-audio", architecture: { output_modalities: ["text", "audio"] } }),
+    ).toBe(false)
+    expect(
+      isTextOnlyChatModel({ id: "google/lyria-3-pro-preview", architecture: { output_modalities: ["text", "audio"] } }),
+    ).toBe(false)
+    expect(
+      isTextOnlyChatModel({ id: "google/gemini-2.5-flash-image", architecture: { output_modalities: ["image", "text"] } }),
+    ).toBe(false)
+    expect(
+      isTextOnlyChatModel({ id: "openrouter/auto", architecture: { output_modalities: ["text", "image"] } }),
+    ).toBe(false)
+    // Vision INPUT chat models reply in text - they stay.
+    expect(
+      isTextOnlyChatModel({
+        id: "openai/gpt-4o",
+        architecture: { input_modalities: ["text", "image"], output_modalities: ["text"] },
+      }),
+    ).toBe(true)
+    // Legacy modality-string fallback.
+    expect(isTextOnlyChatModel({ id: "x", architecture: { modality: "text+image->text" } })).toBe(true)
+    expect(isTextOnlyChatModel({ id: "x", architecture: { modality: "text->text+image" } })).toBe(false)
+    // Missing metadata = keep. Never over-delete on unknown.
+    expect(isTextOnlyChatModel({ id: "x" })).toBe(true)
+    expect(isTextOnlyChatModel({ id: "x", architecture: { output_modalities: [] } })).toBe(true)
+  })
+
+  it("MUTATION: isActive decoupled from the text-only classifier → fails", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    expect(src).toContain("const textChat = isTextOnlyChatModel(m)")
+    // Both the OpenRouter row and its derived-native twin write it (create+update each).
+    expect((src.match(/isActive: textChat/g) ?? []).length).toBe(4)
   })
 
   it("MUTATION: supportsReasoning dropped from refresh or seed writes → fails", () => {
