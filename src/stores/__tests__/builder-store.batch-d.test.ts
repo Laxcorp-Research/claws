@@ -150,7 +150,8 @@ describe("Batch D — builder store", () => {
       const createStart = src.indexOf('method: "POST", headers: { "Content-Type": "application/json" }')
       expect(createStart).toBeGreaterThanOrEqual(0)
       // First POST in saveWorkspace is agent create (connections POST is later).
-      const createBlock = src.slice(createStart, createStart + 450)
+      // Window widened 450 → 550 when thinkingDefault joined the create body.
+      const createBlock = src.slice(createStart, createStart + 550)
       expect(createBlock).toContain("skillIds")
       expect(createBlock).toContain("agentSkillIds")
     })

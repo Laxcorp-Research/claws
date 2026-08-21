@@ -235,6 +235,7 @@ export function PropertiesPanel() {
     edges,
     selectedAgentId,
     selectedEdgeId,
+    updateAgent,
     updateAgentProperty,
     deleteAgent,
     jumpToWorkflowKnobs,
@@ -353,12 +354,16 @@ export function PropertiesPanel() {
       </div>
 
       <div className="mb-2.5">
-        <Label text="Model" tooltip="The AI model this agent uses. Type to filter the full catalog. Locked providers need a key; Anthropic is covered by Claws credits." />
+        <Label text="Model" tooltip="The AI model this agent uses. Click to open the model catalog: pick a provider, a model, and the thinking effort." />
         <ModelPicker
           value={agent.model}
-          onChange={(val) => updateAgentProperty(selectedAgentId!, "model", val)}
+          thinkingDefault={agent.thinkingDefault ?? null}
+          onChange={(model, thinking) =>
+            updateAgent(selectedAgentId!, { model, thinkingDefault: thinking })
+          }
           creditMode={creditMode}
           configuredProviders={configuredProviders}
+          agentName={agent.name}
         />
         {shouldShowByokCostDisclaimer({
           creditMode,

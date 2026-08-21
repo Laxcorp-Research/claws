@@ -380,6 +380,9 @@ model Agent {
 
   model         String   @default("anthropic/claude-sonnet-4-6")
   fallbackModel String?
+  // OpenClaw agents.list[].thinkingDefault: off|minimal|low|medium|high.
+  // null = omit from config (runtime default). Validated app-side (lib/models/thinking.ts).
+  thinkingDefault String?
 
   skills        AgentSkill[]
 

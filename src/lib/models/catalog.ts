@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
 import { refreshAnthropicCatalog } from "@/lib/models/anthropic-catalog"
-import { resolveCatalogDisplayName } from "@/lib/models/humanize"
+import { resolveCatalogDisplayName, stripVendorPrefix } from "@/lib/models/humanize"
 import { providerLabel } from "@/lib/models/provider-labels"
 import { MODEL_CATALOG_MAX_LIMIT } from "@/lib/models/catalog-limits"
 
@@ -94,10 +94,33 @@ type OpenRouterModel = {
 }
 
 /**
- * Refresh OpenRouter catalog from public GET /models (no key required).
- * Writes openrouter/<id> refs. Does not deactivate pinned seeds.
+ * Native OPENAI/GOOGLE catalogs are derived from OpenRouter's public list:
+ * OpenRouter ids are exactly our native refs (`openai/gpt-4o`, `google/gemini-2.5-pro`),
+ * so a BYOK key can call every derived row directly. The platform holds no
+ * OpenAI/Google keys, so this public list is the only live source.
+ * Variant suffixes (`:free`, `:extended`) are OpenRouter-only routes — skipped.
+ * Anthropic is NOT derived here: its native list comes from the live
+ * Anthropic /v1/models refresh, which is authoritative.
  */
-export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fetched: number }> {
+export function derivedNativeFromOpenRouter(
+  m: OpenRouterModel,
+): { modelId: string; provider: "OPENAI" | "GOOGLE" } | null {
+  if (m.id.includes(":")) return null
+  if (m.id.startsWith("openai/")) return { modelId: m.id, provider: "OPENAI" }
+  if (m.id.startsWith("google/")) return { modelId: m.id, provider: "GOOGLE" }
+  return null
+}
+
+/**
+ * Refresh OpenRouter catalog from public GET /models (no key required).
+ * Writes openrouter/<id> refs plus derived native OPENAI/GOOGLE rows.
+ * Does not deactivate pinned seeds.
+ */
+export async function refreshOpenRouterCatalog(): Promise<{
+  upserted: number
+  fetched: number
+  derivedNatives: number
+}> {
   const res = await fetch("https://openrouter.ai/api/v1/models", {
     headers: { Accept: "application/json" },
   })
@@ -108,16 +131,17 @@ export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fe
   const models = json.data ?? []
   const now = new Date()
   let upserted = 0
+  let derivedNatives = 0
 
   // Batch in chunks to avoid huge transactions
   const CHUNK = 50
   for (let i = 0; i < models.length; i += CHUNK) {
     const chunk = models.slice(i, i + CHUNK)
-    await prisma.$transaction(
-      chunk.map((m) => {
-        const modelId = `openrouter/${m.id}`
-        const pinned = PINNED_SEED_MODELS.some((s) => s.modelId === modelId)
-        return prisma.modelCatalogEntry.upsert({
+    const writes = chunk.flatMap((m) => {
+      const modelId = `openrouter/${m.id}`
+      const pinned = PINNED_SEED_MODELS.some((s) => s.modelId === modelId)
+      const ops = [
+        prisma.modelCatalogEntry.upsert({
           where: { modelId },
           create: {
             modelId,
@@ -144,9 +168,47 @@ export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fe
             // Keep existing isPinned if already pinned via seed
             ...(pinned ? { isPinned: true } : {}),
           },
-        })
-      }),
-    )
+        }),
+      ]
+
+      const native = derivedNativeFromOpenRouter(m)
+      if (native) {
+        derivedNatives += 1
+        const nativePinned = PINNED_SEED_MODELS.some((s) => s.modelId === native.modelId)
+        const nativeName = resolveCatalogDisplayName(native.modelId, stripVendorPrefix(m.name))
+        ops.push(
+          prisma.modelCatalogEntry.upsert({
+            where: { modelId: native.modelId },
+            create: {
+              modelId: native.modelId,
+              provider: native.provider,
+              displayName: nativeName,
+              contextLength: m.context_length ?? null,
+              pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
+              costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+              isPinned: nativePinned,
+              isActive: true,
+              source: "openrouter-derived",
+              rawMeta: m as object,
+              refreshedAt: now,
+            },
+            update: {
+              displayName: nativeName,
+              contextLength: m.context_length ?? null,
+              pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
+              costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+              isActive: true,
+              source: "openrouter-derived",
+              rawMeta: m as object,
+              refreshedAt: now,
+              ...(nativePinned ? { isPinned: true } : {}),
+            },
+          }),
+        )
+      }
+      return ops
+    })
+    await prisma.$transaction(writes)
     upserted += chunk.length
   }
 
@@ -154,8 +216,9 @@ export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fe
     category: "models",
     fetched: models.length,
     upserted,
+    derivedNatives,
   })
-  return { upserted, fetched: models.length }
+  return { upserted, fetched: models.length, derivedNatives }
 }
 
 /**
@@ -187,7 +250,7 @@ export async function refreshNativeProviderLists(): Promise<{
 export async function refreshAllModelCatalogs(): Promise<{
   seed: number
   anthropic: { upserted: number; fetched: number; pinned: string[] } | { skipped: true }
-  openrouter: { upserted: number; fetched: number }
+  openrouter: { upserted: number; fetched: number; derivedNatives: number }
 }> {
   const native = await refreshNativeProviderLists()
   const openrouter = await refreshOpenRouterCatalog()

@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 import { ProviderAuthCards } from "@/components/setup/provider-auth-cards"
-import { NO_AUTH_PATH_LABEL, NO_KEY_LABEL, POWERED_BY_CLAWS_CREDITS } from "@/lib/models/provider-auth"
+import { ANTHROPIC_NO_AUTH_LABEL, NO_KEY_LABEL, POWERED_BY_CLAWS_CREDITS } from "@/lib/models/provider-auth"
 
 afterEach(() => cleanup())
 
@@ -40,7 +40,7 @@ describe("ProviderAuthCards credit-mode truth", () => {
     expect(screen.getByTestId("provider-auth-card-OPENAI").textContent).toContain(NO_KEY_LABEL)
   })
 
-  it("no credits and no key: Anthropic is no auth path, OpenAI is no key", () => {
+  it("no credits and no key: Anthropic reads 'No credits or API key', OpenAI 'No API key'", () => {
     render(
       <ProviderAuthCards
         agents={[{ name: "Commander", model: "anthropic/claude-sonnet-5" }]}
@@ -52,7 +52,9 @@ describe("ProviderAuthCards credit-mode truth", () => {
         onUseGlobal={() => {}}
       />,
     )
-    expect(screen.getByTestId("provider-auth-missing-ANTHROPIC").textContent).toBe(NO_AUTH_PATH_LABEL)
+    const anthropic = screen.getByTestId("provider-auth-missing-ANTHROPIC").textContent ?? ""
+    expect(anthropic).toBe(ANTHROPIC_NO_AUTH_LABEL)
+    expect(anthropic.toLowerCase()).not.toContain("auth path")
     expect(screen.getByTestId("provider-auth-missing-OPENAI").textContent).toBe(NO_KEY_LABEL)
   })
 })
