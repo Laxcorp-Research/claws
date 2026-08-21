@@ -11,6 +11,9 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { ModelPicker } from "@/components/shared/model-picker"
+import { useCreditBalance } from "@/hooks/use-credit-balance"
+import { isCreditAuthPath, validConfiguredProviders } from "@/lib/models/provider-auth"
+import { BYOK_COST_DISCLAIMER, shouldShowByokCostDisclaimer } from "@/lib/models/byok-disclaimer"
 import {
   CONTEXT_NOTE_MAX_CHARS,
   WORKFLOW_FENCE_BEGIN,
@@ -236,9 +239,27 @@ export function PropertiesPanel() {
     deleteAgent,
     jumpToWorkflowKnobs,
   } = useBuilderStore()
+  const workspaceId = useBuilderStore((s) => s.workspaceId)
+  const credit = useCreditBalance()
+  const creditMode = isCreditAuthPath(credit)
+  const [configuredProviders, setConfiguredProviders] = useState<string[]>([])
   const snackbar = useSnackbarOptional()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    if (!workspaceId) return
+    let cancelled = false
+    void fetch(`/api/workspaces/${workspaceId}/api-keys`)
+      .then((res) => res.json())
+      .then((json: { success?: boolean; data?: Parameters<typeof validConfiguredProviders>[0] }) => {
+        if (cancelled || !json.success || !Array.isArray(json.data)) return
+        setConfiguredProviders(validConfiguredProviders(json.data))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId])
 
   const reportsToMap = useMemo(
     () =>
@@ -332,11 +353,22 @@ export function PropertiesPanel() {
       </div>
 
       <div className="mb-2.5">
-        <Label text="Model" tooltip="The AI model this agent uses. Recommended models first; search the full catalog (including OpenRouter) below. OpenRouter is BYOK-only." />
+        <Label text="Model" tooltip="The AI model this agent uses. Type to filter the full catalog. Locked providers need a key; Anthropic is covered by Claws credits." />
         <ModelPicker
           value={agent.model}
           onChange={(val) => updateAgentProperty(selectedAgentId!, "model", val)}
+          creditMode={creditMode}
+          configuredProviders={configuredProviders}
         />
+        {shouldShowByokCostDisclaimer({
+          creditMode,
+          configuredProviders,
+          selectedModels: [agent.model],
+        }) && (
+          <p data-testid="byok-cost-disclaimer" className="text-[10px] text-[var(--tx3)] mt-[6px]">
+            {BYOK_COST_DISCLAIMER}
+          </p>
+        )}
       </div>
 
       <MarkdownEditor

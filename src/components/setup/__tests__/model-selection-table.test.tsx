@@ -32,7 +32,7 @@ describe("ModelSelectionTable BYOK disclaimer placement", () => {
     expect(screen.queryByText(BYOK_COST_DISCLAIMER)).toBeNull()
   })
 
-  it("renders exactly one line above the table when BYOK is relevant", () => {
+  it("renders exactly one line under the table when BYOK is relevant", () => {
     render(
       <ModelSelectionTable
         agents={[
@@ -48,7 +48,7 @@ describe("ModelSelectionTable BYOK disclaimer placement", () => {
     expect(lines).toHaveLength(1)
     expect(lines[0]?.textContent).toBe(BYOK_COST_DISCLAIMER)
     const table = screen.getByRole("table")
-    expect(lines[0] && lines[0].compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(table.compareDocumentPosition(lines[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it("MUTATION: per-row disclaimer restored → fails", () => {

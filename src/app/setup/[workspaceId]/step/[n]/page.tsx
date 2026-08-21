@@ -34,6 +34,8 @@ import { disconnectOauthTool } from "@/lib/oauth/disconnect-oauth-tool"
 import { getComplianceNotice } from "@/lib/compliance-notices"
 import { getToolBySlug, type ToolDefinition } from "@/data/tool-catalog"
 import { StarterCreditBanner } from "@/components/setup/starter-credit-banner"
+import { ProviderAuthCards } from "@/components/setup/provider-auth-cards"
+import { isCreditAuthPath, isModelSelectable, validConfiguredProviders } from "@/lib/models/provider-auth"
 import {
   filterNonAiProviderRequiredEntries,
   isAiProviderSlug,
@@ -59,15 +61,13 @@ import {
   UNSUPPORTED_TOOLKIT_TOOLTIP,
 } from "@/lib/composio/cheap-ops"
 import { DEFAULT_MODEL } from "@/lib/models"
-import { CheckCircle, XCircle, AlertTriangle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
+import { CheckCircle, Sparkles, Bot, ClipboardList, MessageSquare, BarChart3, Wrench, Hash, Smartphone, Send, Building2, Gamepad2, Globe, Loader2 } from "lucide-react"
 import { isCreditUser } from "@/lib/credits/api-key-source"
 import type { ApiKeySource } from "@/generated/prisma/client"
 import type { ChannelId, ChannelStatusMap, LaunchChannelId, MaskedChannelConfigMap } from "@/lib/openclaw/channel-config"
 import {
   CHANNEL_BETA_LABEL,
-  PROVIDER_BYOK_BETA_LABEL,
   isBetaChannel,
-  isByokBetaProvider,
 } from "@/lib/ui/beta-labels"
 
 interface AgentRow {
@@ -194,13 +194,6 @@ function needsRedeployToApply(drift: WizardDriftInfo | null): boolean {
   return (drift?.workspaceStatus === "RUNNING" || drift?.workspaceStatus === "PAUSED") && drift.isStale
 }
 
-const PROVIDER_NAMES: Record<string, string> = {
-  ANTHROPIC: "Anthropic (Claude)",
-  OPENAI: "OpenAI (GPT)",
-  GOOGLE: "Google (Gemini)",
-  OPENROUTER: "OpenRouter — one key, every model",
-}
-
 const PROVIDER_HELP: Record<string, string> = {
   ANTHROPIC: "https://console.anthropic.com/settings/keys",
   OPENAI: "https://platform.openai.com/api-keys",
@@ -213,20 +206,6 @@ const PROVIDER_PLACEHOLDER: Record<string, string> = {
   OPENAI: "sk-...",
   GOOGLE: "AIza...",
   OPENROUTER: "sk-or-v1-...",
-}
-
-function getRequiredProviders(agents: AgentRow[]): string[] {
-  const providers = new Set<string>()
-  for (const a of agents) {
-    const m = a.model || "anthropic/claude-sonnet-4-6"
-    if (m.startsWith("openrouter/")) providers.add("OPENROUTER")
-    else if (m.startsWith("anthropic/")) providers.add("ANTHROPIC")
-    else if (m.startsWith("openai/")) providers.add("OPENAI")
-    else if (m.startsWith("google/")) providers.add("GOOGLE")
-    // OLLAMA stays cut (not a supported BYOK surface).
-  }
-  if (providers.size === 0) providers.add("ANTHROPIC")
-  return Array.from(providers)
 }
 
 function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
@@ -264,7 +243,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           )
         }
         const creditData = await creditRes.json()
-        if (creditData.success && creditData.data?.hasCredits && creditData.data?.status === "ACTIVE") {
+        if (creditData.success && isCreditAuthPath(creditData.data)) {
           setCreditMode(true)
           setCreditBalanceCents(
             typeof creditData.data.balanceCents === "number" ? creditData.data.balanceCents : null,
@@ -315,14 +294,11 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
     await fetchKeyStatus()
   }, [workspaceId, fetchKeyStatus])
 
-  const requiredProviders = useMemo(() => getRequiredProviders(agents), [agents])
+  const configuredProviders = useMemo(() => validConfiguredProviders(keyStatus), [keyStatus])
 
-  const allProvidersConfigured = requiredProviders.every(p => {
-    const s = keyStatus.find(k => k.provider === p)
-    if (!s?.hasKey) return false
-    if (s.effectiveSource === "override") return s.overrideKeyValid
-    return s.globalKeyValid
-  })
+  const allAgentsHaveAuth = agents.every((a) =>
+    isModelSelectable(a.model, { creditMode, configuredProviders }),
+  )
 
   if (isLoading) {
     return (
@@ -345,95 +321,17 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
 
       {creditMode && <StarterCreditBanner balanceCents={creditBalanceCents} />}
 
-      {!creditMode && (
-      <>
-      <div className="border border-[var(--bd)] rounded-xl mb-3.5 overflow-hidden">
-        {requiredProviders.map((provider) => {
-          const status = keyStatus.find(k => k.provider === provider)
-          const providerName = PROVIDER_NAMES[provider] || provider
-          const usingAgents = agents.filter(a => {
-            const m = a.model || ""
-            return m.startsWith(`${provider.toLowerCase()}/`)
-          })
-
-          return (
-            <div key={provider} className="flex items-start justify-between gap-[24px] px-3.5 py-[10px] border-b border-[var(--bd)] last:border-b-0">
-              <div className="min-w-0 max-w-[60%]">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <div className="text-[13px] font-medium text-[var(--tx)]">{providerName}</div>
-                  {provider === "ANTHROPIC" && (
-                    <Badge variant="success">default</Badge>
-                  )}
-                  {isByokBetaProvider(provider) && (
-                    <Badge variant="warning" title="Supported with your own API key; not the proven default.">
-                      {PROVIDER_BYOK_BETA_LABEL}
-                    </Badge>
-                  )}
-                </div>
-                {usingAgents.length > 0 && (
-                  <div className="text-[11px] text-[var(--tx3)] mt-[2px]">
-                    Used by: {usingAgents.map(a => a.name).join(", ")}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-[8px] flex-shrink-0 whitespace-nowrap">
-                {status?.hasKey ? (
-                  <>
-                    {(status.effectiveSource === "override" ? status.overrideKeyValid : status.globalKeyValid) ? (
-                      <div className="flex items-center gap-[4px]">
-                        <CheckCircle className="w-[14px] h-[14px] text-[var(--ok)]" />
-                        <span className="text-[11px] text-[var(--ok)]">
-                          {status.effectiveSource === "override"
-                            ? `Custom key (${status.overrideKeyHint})`
-                            : `Global key (${status.globalKeyHint})`
-                          }
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-[4px]">
-                        <AlertTriangle className="w-[14px] h-[14px] text-[var(--warn)]" />
-                        <span className="text-[11px] text-[var(--warn)]">
-                          {status.effectiveSource === "override"
-                            ? `Custom key invalid (${status.overrideKeyHint})`
-                            : `Global key invalid (${status.globalKeyHint})`
-                          }
-                        </span>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => setOverrideModal({ provider, providerName })}
-                      className="text-[11px] text-[var(--ac-text)] hover:underline cursor-pointer bg-transparent border-none"
-                    >
-                      {status.hasOverride ? "Change key" : "Use different key"}
-                    </button>
-                    {status.hasOverride && (
-                      <button
-                        onClick={() => handleRemoveOverride(provider)}
-                        className="text-[11px] text-[var(--tx3)] hover:text-[var(--err)] cursor-pointer bg-transparent border-none"
-                      >
-                        Use global
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-[4px]">
-                      <XCircle className="w-[14px] h-[14px] text-[var(--err)]" />
-                      <span className="text-[11px] text-[var(--err)]">No key</span>
-                    </div>
-                    <button
-                      onClick={() => setOverrideModal({ provider, providerName })}
-                      className="text-[10px] px-2.5 py-[3px] rounded-md bg-[var(--tx)] text-white hover:opacity-90 transition-opacity cursor-pointer border-none"
-                    >
-                      Enter API key
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      <ProviderAuthCards
+        agents={agents}
+        keyStatus={keyStatus}
+        creditMode={creditMode}
+        configuredProviders={configuredProviders}
+        onEnterKey={(provider, providerName) => setOverrideModal({ provider, providerName })}
+        onChangeKey={(provider, providerName) => setOverrideModal({ provider, providerName })}
+        onUseGlobal={(provider) => {
+          void handleRemoveOverride(provider)
+        }}
+      />
 
       <div className="bg-[var(--bg2)] rounded-[8px] p-[10px] mb-3.5">
         <p className="text-[12px] text-[var(--tx2)] leading-[1.5]">
@@ -442,8 +340,6 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           All keys are encrypted with AES-256-GCM and never stored in plaintext.
         </p>
       </div>
-      </>
-      )}
 
       {/* Model Selection Table */}
       {agents.length > 0 && (
@@ -451,7 +347,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
           agents={agents}
           onModelChange={handleModelChange}
           creditMode={creditMode}
-          configuredProviders={keyStatus.filter((k) => k.hasKey || k.globalKeyValid || k.overrideKeyValid).map((k) => k.provider)}
+          configuredProviders={configuredProviders}
         />
       )}
 
@@ -468,7 +364,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         ) : (
           <div />
         )}
-        <Button variant="primary" onClick={handleNext} disabled={(!creditMode && !allProvidersConfigured) || isSavingModels}>
+        <Button variant="primary" onClick={handleNext} disabled={!allAgentsHaveAuth || isSavingModels}>
           {isSavingModels ? "Saving..." : "Next: Connect tools →"}
         </Button>
       </div>

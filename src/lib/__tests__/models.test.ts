@@ -43,8 +43,9 @@ describe('getModelLabel', () => {
     expect(getModelLabel('anthropic/claude-sonnet-5')).toBe('Claude Sonnet 5');
   });
 
-  it('returns value as fallback for unknown model', () => {
-    expect(getModelLabel('unknown/model-123')).toBe('unknown/model-123');
+  it('humanizes unknown model ids instead of rendering a slug', () => {
+    expect(getModelLabel('unknown/model-123')).toBe('Model 123');
+    expect(getModelLabel('unknown/model-123')).not.toContain('/');
   });
 });
 
@@ -68,5 +69,7 @@ describe('formatModelEstCost', () => {
   it('renders known seed prices and OpenRouter BYOK marker', () => {
     expect(formatModelEstCost('anthropic/claude-haiku-4-5-20251001')).toBe('~$0.001/call');
     expect(formatModelEstCost('openrouter/openai/gpt-4o-mini')).toBe('est. (BYOK)');
+    expect(formatModelEstCost('openai/gpt-4o')).toBe('est. (BYOK)');
+    expect(formatModelEstCost('google/gemini-2.5-pro')).toBe('est. (BYOK)');
   });
 });

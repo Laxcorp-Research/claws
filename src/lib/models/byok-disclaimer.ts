@@ -1,6 +1,6 @@
 /**
  * Single BYOK cost-honesty line for the model-selection table.
- * Per-row repetition is forbidden — render once above the table, only when relevant.
+ * Per-row repetition is forbidden — render once under the table, only when relevant.
  */
 
 export const BYOK_COST_DISCLAIMER =
