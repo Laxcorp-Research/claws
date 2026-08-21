@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import {
+  canDeleteCreatorListing,
+  deleteBlockedCopy,
+} from "@/lib/marketplace/creator-listing-lifecycle"
 
 export async function GET() {
   const user = await getSessionUser()
@@ -51,13 +55,20 @@ export async function GET() {
     }])
   )
 
-  const items = skills.map((s) => ({
-    ...s,
-    revenue: salesMap.get(s.id)?.revenue ?? 0,
-    salesCount: salesMap.get(s.id)?.salesCount ?? 0,
-    publishedAt: s.publishedAt?.toISOString() ?? null,
-    createdAt: s.createdAt.toISOString(),
-  }))
+  const items = skills.map((s) => {
+    const salesCount = salesMap.get(s.id)?.salesCount ?? 0
+    const counts = { salesCount, installCount: s.installCount }
+    const canDelete = canDeleteCreatorListing(counts)
+    return {
+      ...s,
+      revenue: salesMap.get(s.id)?.revenue ?? 0,
+      salesCount,
+      canDelete,
+      deleteBlockedReason: canDelete ? null : deleteBlockedCopy(counts),
+      publishedAt: s.publishedAt?.toISOString() ?? null,
+      createdAt: s.createdAt.toISOString(),
+    }
+  })
 
   return apiSuccess({ skills: items })
 }

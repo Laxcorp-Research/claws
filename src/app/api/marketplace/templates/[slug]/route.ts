@@ -2,6 +2,12 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import { deleteTemplate } from "@/lib/marketplace/creator-listing-actions"
+import {
+  ownerMaySeeUnpublished,
+  unpublishedListing,
+} from "@/lib/marketplace/creator-listing-lifecycle"
+import { listingActionResponse } from "@/lib/marketplace/listing-action-response"
 import {
   isPubliclyListable,
   ownerMaySeePendingReview,
@@ -93,6 +99,16 @@ export async function GET(
       })
     ) {
       return apiSuccess(pendingReviewListing(template.name, template.slug))
+    }
+    if (
+      ownerMaySeeUnpublished({
+        publiclyListable: false,
+        reviewStatus: template.reviewStatus,
+        viewerUserId,
+        creatorUserId,
+      })
+    ) {
+      return apiSuccess(unpublishedListing(template.name, template.slug))
     }
     return ERRORS.NOT_FOUND("template")
   }
@@ -259,3 +275,14 @@ export async function GET(
     isOwner,
   })
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  const user = await getSessionUser()
+  if (!user) return ERRORS.UNAUTHORIZED()
+  const { slug } = await params
+  return listingActionResponse(await deleteTemplate(user.id, slug))
+}
+

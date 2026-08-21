@@ -70,6 +70,12 @@ export const log = {
       | "skill_installed"
       | "review_submitted"
       | "report_filed"
+      | "template_unpublished"
+      | "skill_unpublished"
+      | "template_publish_again"
+      | "skill_publish_again"
+      | "template_deleted"
+      | "skill_deleted"
     itemId: string
     itemType: "template" | "skill"
     userId: string
