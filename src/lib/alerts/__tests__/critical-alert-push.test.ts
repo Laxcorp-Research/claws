@@ -1,16 +1,16 @@
-// PR-B: critical-alerts push (Telegram, fallback email) — opt-out + 12h dedup.
+// PR-B: critical-alerts push (Telegram, fallback email) - opt-out + 12h dedup.
 //
 // Contracts under test:
-//   1. Class matrix — buildAlertMessage covers all alert keys with copy
+//   1. Class matrix - buildAlertMessage covers all alert keys with copy
 //      that never says "paused".
-//   2. Cooldown — decideCriticalAlertSend: opt-out skips; a delivered send
+//   2. Cooldown - decideCriticalAlertSend: opt-out skips; a delivered send
 //      within COOLDOWN_MS skips; past the window it sends again.
-//   3. Delivery resolution — Telegram preferred, falls back to email, else
+//   3. Delivery resolution - Telegram preferred, falls back to email, else
 //      "no-channel-configured".
-//   4. sendCriticalAlert integration — opt-out / cooldown / telegram-ok /
+//   4. sendCriticalAlert integration - opt-out / cooldown / telegram-ok /
 //      telegram-fail-falls-back-to-email / no-channel-skip, and every path
 //      writes exactly one ActivityLog SYSTEM ledger row.
-//   5. MUTATION guard — dropping the COOLDOWN_MS comparison must fail a test.
+//   5. MUTATION guard - dropping the COOLDOWN_MS comparison must fail a test.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { readFileSync } from "node:fs"
@@ -22,7 +22,7 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 vi.mock("@/lib/encryption", () => ({
-  // Test fixtures store plaintext JSON directly in channelConfigEncrypted —
+  // Test fixtures store plaintext JSON directly in channelConfigEncrypted -
   // decrypt is identity so parseChannelConfigBlob's JSON.parse succeeds.
   decrypt: (value: string) => value,
 }))
@@ -76,7 +76,7 @@ beforeEach(() => {
   ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null)
 })
 
-describe("buildAlertMessage — class matrix", () => {
+describe("buildAlertMessage - class matrix", () => {
   it("covers all alert keys with non-empty, distinct copy", () => {
     expect(ALERT_KEYS).toEqual([
       "container-unhealthy",
@@ -102,7 +102,7 @@ describe("buildAlertMessage — class matrix", () => {
   })
 })
 
-describe("decideCriticalAlertSend — cooldown + opt-out", () => {
+describe("decideCriticalAlertSend - cooldown + opt-out", () => {
   it("opt-out always skips regardless of cooldown state", () => {
     const decision = decideCriticalAlertSend({
       optOut: true,
@@ -134,7 +134,7 @@ describe("decideCriticalAlertSend — cooldown + opt-out", () => {
 
   it("MUTATION: dropping the cooldown comparison collapses dedup to always-send", () => {
     // If someone deletes the `nowMs - lastDeliveredAt.getTime() < COOLDOWN_MS`
-    // check, a delivery 1 second ago would no longer skip — this test fails.
+    // check, a delivery 1 second ago would no longer skip - this test fails.
     const now = Date.now()
     const oneSecondAgo = new Date(now - 1000)
     const decision = decideCriticalAlertSend({ optOut: false, lastDeliveredAt: oneSecondAgo, nowMs: now })
@@ -173,7 +173,7 @@ describe("resolveDeliveryTarget", () => {
   })
 })
 
-describe("sendCriticalAlert — integration", () => {
+describe("sendCriticalAlert - integration", () => {
   it("opt-out: skips, never calls Telegram/email, ledgers a skip row", async () => {
     mockWorkspace({ criticalAlertsOptOut: true, channelConfigEncrypted: telegramConfigBlob() })
 
@@ -241,7 +241,7 @@ describe("sendCriticalAlert — integration", () => {
     expect(mockResendSend).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "fallback@example.com",
-        subject: "Claws critical alert: Fixture Claw — Cron job failing repeatedly",
+        subject: "Claws critical alert: Fixture Claw - Cron job failing repeatedly",
       }),
     )
     const html = (mockResendSend.mock.calls[0][0] as { html: string }).html

@@ -14,7 +14,7 @@ afterEach(() => {
   delete process.env.HEARTBEAT_IMMINENT_EXEMPT_MS
 })
 
-describe("warmIdleWhere — P1.1", () => {
+describe("warmIdleWhere - P1.1", () => {
   it("matches stamped idle OR (null stamp + channelsConnectedAt older than 24h)", () => {
     const now = new Date("2026-07-19T12:00:00.000Z")
     const where = warmIdleWhere(now)
@@ -44,7 +44,7 @@ describe("warmIdleWhere — P1.1", () => {
     // Must require channelsConnectedAt < cutoff alongside null stamp.
     expect(code).toContain("channelsConnectedAt: { lt: channelIdleCutoff }")
     expect(code).toContain("lastChannelMessageAt: null")
-    // Simulate buggy "null alone matches" — must NOT equal shipped where.
+    // Simulate buggy "null alone matches" - must NOT equal shipped where.
     const now = new Date()
     const shipped = warmIdleWhere(now)
     const buggyNullAlone = {

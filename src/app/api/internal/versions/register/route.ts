@@ -7,7 +7,7 @@
 // Auth: shared X-Pipeline-Secret header against VERSION_PIPELINE_SECRET env.
 // Same convention as /api/internal/state/upload (X-Metering-Secret).
 //
-// Flag policy (Option A — see PR-1 audit report):
+// Flag policy (Option A - see PR-1 audit report):
 //   - isCandidate=true  → set isLatest=true on this row, clear from all others.
 //                         Do NOT touch isStable. (Existing semantics from
 //                         admin/versions/create/route.ts.)
@@ -18,7 +18,7 @@
 //   - Both flags TRUE or both FALSE → 400. Each register call describes
 //                         exactly one of the two state transitions.
 //
-// dockerImage must end with ":<version>" — never a moving pointer. The
+// dockerImage must end with ":<version>" - never a moving pointer. The
 // deployer reads OpenClawVersion.dockerImage for the current isStable row,
 // so an `:latest`-tagged record here would silently un-pin every future
 // deploy to whatever `:latest` happens to resolve to. Reject explicitly.
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   if (!dockerImage) {
     return apiError("VALIDATION_ERROR", "dockerImage is required", 400);
   }
-  // Reject moving pointers — see header comment.
+  // Reject moving pointers - see header comment.
   if (!dockerImage.endsWith(`:${version}`)) {
     return apiError(
       "VALIDATION_ERROR",

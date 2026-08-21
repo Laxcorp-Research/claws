@@ -1,5 +1,5 @@
 /**
- * Finding F — required-tool satisfaction (deploy gate + Step 2 shared truth).
+ * Finding F - required-tool satisfaction (deploy gate + Step 2 shared truth).
  *
  * MUTATION contracts (must fail if someone regresses the fix):
  *   - Flip PENDING acceptance off → founder repro no longer passes.
@@ -23,14 +23,14 @@ import {
 } from "@/lib/tools/required-tools"
 
 const UNVERIFIED =
-  "Connected but not verified — will be tested on first use."
+  "Connected but not verified - will be tested on first use."
 
 const TWITTER_GROWTH_REQUIRED: RequiredToolEntry[] = [
   { slug: "anthropic_api", name: "Anthropic (Claude)" },
   { slug: "twitter-api", name: "Twitter/X API" },
 ]
 
-/** Mirrors staging founder cmrbpav2i… — credentialed PENDING twitter, zero anthropic rows. */
+/** Mirrors staging founder cmrbpav2i… - credentialed PENDING twitter, zero anthropic rows. */
 const FOUNDER_CONNECTIONS: RequiredToolConnection[] = [
   {
     toolSlug: "twitter-api",
@@ -107,7 +107,7 @@ describe("AI-provider exclusion", () => {
   })
 })
 
-describe("requiredToolsSatisfied — founder repro (cmrbpav2i…)", () => {
+describe("requiredToolsSatisfied - founder repro (cmrbpav2i…)", () => {
   it("PASSES the gate with credentialed PENDING twitter + zero anthropic rows", () => {
     const gated = filterNonAiProviderRequiredEntries(TWITTER_GROWTH_REQUIRED)
     const result = requiredToolsSatisfied(gated, FOUNDER_CONNECTIONS)
@@ -131,7 +131,7 @@ describe("requiredToolsSatisfied — founder repro (cmrbpav2i…)", () => {
     // Simulate pre-fix CONNECTED-only predicate against the same fixture.
     const connectedOnly = FOUNDER_CONNECTIONS.some((c) => c.status === "CONNECTED")
     expect(connectedOnly).toBe(false)
-    // Lock the real predicate still accepts PENDING — if flipped, this fails.
+    // Lock the real predicate still accepts PENDING - if flipped, this fails.
     expect(connectionSatisfiesRequired(FOUNDER_CONNECTIONS[0])).toBe(true)
   })
 
@@ -197,7 +197,7 @@ describe("gate copy helpers", () => {
 
   it("locks UX rider + banner body strings", () => {
     expect(REQUIRED_TOOLS_SECTION_SUBTITLE).toBe(
-      "Required for this template — you can add anything else via Browse or Custom API",
+      "Required for this template - you can add anything else via Browse or Custom API",
     )
     expect(MISSING_REQUIRED_TOOLS_BANNER_BODY).toBe(
       "Go back to Tools and connect the required services for this Claw.",

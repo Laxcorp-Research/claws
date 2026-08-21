@@ -33,7 +33,7 @@ describe("workflow-language", () => {
     }
   })
 
-  it("delegation sentence ignores condition — emission identical across values (X2)", () => {
+  it("delegation sentence ignores condition - emission identical across values (X2)", () => {
     const a = formatDelegationSentence({ workerDisplayName: "Researcher" })
     const b = formatDelegationSentence({
       workerDisplayName: "Researcher",
@@ -63,7 +63,7 @@ describe("workflow-language", () => {
     expect(law).toContain("Reviewer reviews every worker output")
     expect(law).toContain("Scores below 8 loop back for revision (max 3)")
     expect(law).toContain("ask the user before acting")
-    // Ships locked — AUTO_PROCEED must not change emission this arc.
+    // Ships locked - AUTO_PROCEED must not change emission this arc.
     expect(law).not.toContain("automatically proceed")
   })
 

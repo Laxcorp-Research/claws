@@ -1,5 +1,5 @@
 /**
- * Tool customization PR-1 — dual-read resolver + op mutations.
+ * Tool customization PR-1 - dual-read resolver + op mutations.
  *
  * MUTATION contracts (must fail if someone regresses):
  *   - Skip install copy of snapshot.tools → workspace-from-template test fails.
@@ -312,7 +312,7 @@ describe("demote → gate uses workspace set (not template)", () => {
       partitionToolRequirements(SNAPSHOT_TOOLS).required,
     )
     expect(requiredToolsSatisfied(workspaceGated, []).satisfied).toBe(true)
-    // Template still lists twitter as required — empty connections fail.
+    // Template still lists twitter as required - empty connections fail.
     expect(requiredToolsSatisfied(templateGated, []).satisfied).toBe(false)
     expect(templateGated.map((t) => t.slug)).toContain("twitter-api")
   })

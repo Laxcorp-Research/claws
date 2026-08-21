@@ -1,5 +1,5 @@
 /**
- * Tool customization PR-2 — Step-2 / Manage Tools UI.
+ * Tool customization PR-2 - Step-2 / Manage Tools UI.
  *
  * MUTATION: always-disconnect (ignore checkbox) → unchecked-preserves test fails.
  */
@@ -213,7 +213,7 @@ describe("Tool customization UI (Manage Tools)", () => {
     fireEvent.click(rowRemove)
 
     expect(await screen.findByRole("heading", { name: /Remove Twitter\/X API/ })).toBeDefined()
-    // Dependents load async; confirm is disabled until then — assert after resolve.
+    // Dependents load async; confirm is disabled until then - assert after resolve.
     expect(await screen.findByText("Trend Scout (mentioned in SOUL/AGENTS)")).toBeDefined()
     const checkbox = screen.getByLabelText(/Also disconnect and delete saved credentials/) as HTMLInputElement
     expect(checkbox.checked).toBe(true)

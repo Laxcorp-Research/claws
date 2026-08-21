@@ -35,7 +35,7 @@ model User {
   trialStartedAt  DateTime?
   trialEndsAt     DateTime?
   // GRACE-24: stamped when the expiry-notify email is sent. Stop phase
-  // anchors on this (+24h), never on trialEndsAt — so retroactive first
+  // anchors on this (+24h), never on trialEndsAt - so retroactive first
   // runs notify now and stop at notify+24h.
   trialExpiryNotifiedAt DateTime?
   // Dodo subscription lifecycle: "active" | "on_hold" | "cancelled" |
@@ -65,7 +65,7 @@ model User {
   @@index([stripeCustomerId])
 }
 
-// SubscriptionTier removed — flat pricing: buy template + $79/mo per Claw
+// SubscriptionTier removed - flat pricing: buy template + $79/mo per Claw
 
 model Account {
   id                String  @id @default(cuid())
@@ -158,7 +158,7 @@ enum ApiProvider {
   OLLAMA
 }
 
-/// Dynamic model registry — refreshed from provider APIs (OpenRouter /models, etc.).
+/// Dynamic model registry - refreshed from provider APIs (OpenRouter /models, etc.).
 /// Agent.model stores the OpenClaw ref (e.g. anthropic/…, openrouter/openai/gpt-4o).
 model ModelCatalogEntry {
   id                 String   @id @default(cuid())
@@ -172,6 +172,11 @@ model ModelCatalogEntry {
   pricingSnippet     String?
   /// Rough est. USD per 1k calls for legacy cost column (estimate-only for BYOK)
   costPer1kEst       Float?
+  /// Adjustable thinking/reasoning support. true/false from provider metadata
+  /// (OpenRouter supported_parameters, Anthropic version heuristic);
+  /// null = unknown (UI keeps the thinking control enabled; runtime ignores
+  /// the level on models that lack reasoning).
+  supportsReasoning  Boolean?
   isPinned           Boolean  @default(false)
   isActive           Boolean  @default(true)
   /// seed | openrouter | openai | google | anthropic
@@ -204,7 +209,7 @@ model Workspace {
   hostPort        Int?
   gatewayToken    String?
   // PR-9/A-vercel: AES-256-GCM-encrypted JSON blob
-  // {deviceId, publicKeyRawB64u, privateKeyPem} — the Ed25519 device
+  // {deviceId, publicKeyRawB64u, privateKeyPem} - the Ed25519 device
   // identity the chat send endpoint presents to the workspace's gateway
   // (remote clients without a device identity get their scopes cleared;
   // see docs/OPENCLAW_GATEWAY_PROTOCOL.md §3). Generated LAZILY on first
@@ -223,7 +228,7 @@ model Workspace {
   // PR-4: last health-probe classification reason, written by the health
   // monitor every pass. One of the ProbeResult reasons (e.g.
   // "plugin-not-loaded", "no-agents", "timeout", "healthy"). The dashboard
-  // reads this to pick the correct banner — distinguishing config drift
+  // reads this to pick the correct banner - distinguishing config drift
   // (4xx: alive-but-misconfigured) from a genuinely unreachable container
   // (5xx/timeout). Null until the first probe writes it.
   lastHealthReason String?
@@ -257,7 +262,7 @@ model Workspace {
   // C-engine B1: Composio Tool Router session id (trs_...) for the MCP
   // long-tail path. Written by the generator's reuse-or-create step when
   // CLAWS_MCP_LONGTAIL_ENABLED=true and the workspace has uncurated
-  // connected tools. Workspace-lifetime (survives redeploys — the session
+  // connected tools. Workspace-lifetime (survives redeploys - the session
   // is reused when its toolkit set matches; recreated on drift). Null for
   // curated-only workspaces and while the flag is off.
   composioToolRouterSessionId String?
@@ -268,7 +273,7 @@ model Workspace {
   stateSyncStaleDetectedAt    DateTime?
   // Cry-wolf guard (PR-C #13): consecutive stale-snapshot probes seen by the
   // health monitor. stateSyncStaleDetectedAt is only set once this reaches 2
-  // — a single blip (e.g. mid-sync probe timing) must not banner. Reset to 0
+  // - a single blip (e.g. mid-sync probe timing) must not banner. Reset to 0
   // the moment a probe sees a fresh snapshot. See decideStateSyncStale in
   // src/app/api/cron/health-monitor/route.ts.
   stateSyncStaleConsecutive   Int       @default(0)
@@ -279,13 +284,13 @@ model Workspace {
   // Banner feeds AlertStack DATA class slot (priority 6 with state-sync-stale).
   hibernationRefusedAt        DateTime?
   // PR-C #10: opt out of the hibernation sweep entirely (higher hosting cost,
-  // zero cold-start latency). Dashboard-only toggle — deliberately EXCLUDED
+  // zero cold-start latency). Dashboard-only toggle - deliberately EXCLUDED
   // from the config-fingerprint workspace projection (does not affect the
   // generated container config, only the hibernation cron's candidate query).
   // See src/lib/hibernation/predicates.ts (runningIdleWhere / warmIdleWhere).
   alwaysOn                    Boolean   @default(false)
 
-  // WIRE-FULL choreography knobs (fingerprint v4). Generator inputs only —
+  // WIRE-FULL choreography knobs (fingerprint v4). Generator inputs only -
   // ships locked to APPROVAL_REQUIRED language this arc; AUTO_PROCEED is
   // schema-present, UI-disabled until action integrations are connected.
   maxRevisionRounds           Int            @default(3)
@@ -301,7 +306,7 @@ model Workspace {
   // adds the columns; PR3 will start populating them via the Dodo webhook
   // (dual-write alongside User.hasActiveSubscription), and PR5 will cut
   // the eligibility-check reads over to these fields. No code path in
-  // this PR writes or reads these — all nullable, all unused until PR3.
+  // this PR writes or reads these - all nullable, all unused until PR3.
   subscriptionId      String?             @unique
   subscriptionStatus  SubscriptionStatus?
   currentPeriodEnd    DateTime?           // Maps from Dodo's next_billing_date
@@ -346,7 +351,7 @@ enum WorkspaceStatus {
   PROVISIONING_QUEUED
 }
 
-// DeploymentType removed — cloud-only platform
+// DeploymentType removed - cloud-only platform
 
 enum HealthStatus {
   HEALTHY
@@ -433,7 +438,7 @@ model AgentConnection {
   // WIRE-FULL X2: solid ORCH→WORKER edges are unconditional delegation.
   // Seeds/API write ON_COMPLETE uniformly. Generator IGNORES this column.
   // ON_SCHEDULE / ON_HUMAN_APPROVE / ON_APPROVAL / ON_REJECTION / CUSTOM
-  // are dormant (no enum migration) — kept for schema stability only.
+  // are dormant (no enum migration) - kept for schema stability only.
   condition     ConnectionCondition @default(ON_COMPLETE)
   conditionExpr String?
   label         String?
@@ -866,7 +871,7 @@ model ActivityLog {
   // `action` is the one-line feed text (e.g. "Heartbeat check"); `detail`
   // holds the full untruncated context (e.g. the raw heartbeat prompt with
   // the [cron:...] trace prefix, a full error stack, or a complete message
-  // body). Rendered only on click-to-expand in the activity feed. Nullable —
+  // body). Rendered only on click-to-expand in the activity feed. Nullable -
   // most rows don't need a detail beyond their action.
   detail      String?  @db.Text
 
@@ -1034,13 +1039,13 @@ model CreatorProfile {
   isActive    Boolean  @default(true)
   agreedToTermsAt DateTime
 
-  dodoBeneficiaryId String? // DEAD — Stripe Connect / Dodo beneficiary post-launch; unused on MANUAL-RAIL
+  dodoBeneficiaryId String? // DEAD - Stripe Connect / Dodo beneficiary post-launch; unused on MANUAL-RAIL
 
   /// AES-256-GCM blob (same encrypt() as UserApiKey). NEVER return plaintext to creators.
   payoutDetailsEncrypted String? @db.Text
   payoutMethod           PayoutMethod?
   payoutDetailsUpdatedAt DateTime?
-  /// Masked hint written at save time (e.g. last-4 of IBAN / email local-part) — safe to render.
+  /// Masked hint written at save time (e.g. last-4 of IBAN / email local-part) - safe to render.
   payoutDetailsHint      String?
 
   totalInstalls  Int   @default(0)
@@ -1227,7 +1232,7 @@ model OpenClawVersion {
 
   // PR-1 provenance fields (nullable; existing rows pre-date the pipeline).
   // Both written by the image pipeline's /api/internal/versions/register call.
-  imageDigest    String?  // sha256:... — immutable digest of the manifest the dockerImage tag resolves to at push time
+  imageDigest    String?  // sha256:... - immutable digest of the manifest the dockerImage tag resolves to at push time
   buildSourceTag String?  // upstream git tag the image was built from (e.g. "v2026.5.20")
 
   releaseNotes    String? @db.Text  // free-form notes, or a URL to upstream changelog
@@ -1374,7 +1379,7 @@ model ContainerState {
   // PR-2 (syncThenDestroy): teardown-time snapshot freshness marker. When a
   // Stop/hibernate routes through syncThenDestroy and the pre-destroy
   // /internal/sync-now call does NOT confirm a persist (non-200, timeout, or
-  // unreachable container), we record the failure here and destroy anyway —
+  // unreachable container), we record the failure here and destroy anyway -
   // so this row's runtimeStateSnapshot may lag the container's last live
   // state. Cleared (both NULL) on a confirmed sync and reset on the next
   // deployToCloud upsert (a fresh container makes prior staleness moot).
@@ -1394,7 +1399,7 @@ model ContainerState {
 // ─── RAILWAY DEPLOY GOVERNOR ────────────────────────────────
 // Account-wide serviceCreate quota (not workspace-scoped). ActivityLog cannot
 // be the ledger: it is per-workspace JSON metadata with no global rolling
-// index. Rows MUST survive workspace delete — Railway still counts the create.
+// index. Rows MUST survive workspace delete - Railway still counts the create.
 
 model RailwayCreateLedger {
   id          String   @id @default(cuid())

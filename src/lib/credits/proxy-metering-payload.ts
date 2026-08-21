@@ -1,7 +1,7 @@
 /**
  * Byte-exact contract for what container/credit-proxy.mjs POSTs to
  * /api/internal/metering/report-batch (and the per-record shape of
- * UsageReporter.add). Keep in lockstep with credit-proxy.mjs — the image
+ * UsageReporter.add). Keep in lockstep with credit-proxy.mjs - the image
  * is baked (-8); the platform route must accept THIS shape.
  *
  * Report POST (credit-proxy.mjs flush):

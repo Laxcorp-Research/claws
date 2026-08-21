@@ -51,7 +51,7 @@ describe("ActivityLogEntry expand affordance", () => {
   })
 
   // PR-4d: the visible chevron glyph was added because the previous
-  // implicit cursor:pointer + line-clamp affordance was not discoverable —
+  // implicit cursor:pointer + line-clamp affordance was not discoverable -
   // rows with hidden detail looked identical to rows without. The chevron
   // is the load-bearing visual signal.
   it("PR-4d: renders the ▸ chevron when collapsed and ▾ when expanded (only when detail says more)", () => {

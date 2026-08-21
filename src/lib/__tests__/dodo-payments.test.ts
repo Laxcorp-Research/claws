@@ -106,7 +106,7 @@ describe('getTemplateProductId', () => {
 describe('createCommunityCheckout product_cart shape (PR-7)', () => {
   const src = readFileSync(join(process.cwd(), 'src/lib/dodo-payments.ts'), 'utf8');
 
-  it('product_cart uses dodoProductId — never Prisma cuid fields', () => {
+  it('product_cart uses dodoProductId - never Prisma cuid fields', () => {
     expect(src).toContain('product_cart: [{ product_id: params.productId, quantity: 1 }]');
     expect(src).not.toMatch(/product_cart:\s*\[\s*\{\s*product_id:\s*params\.templateId/);
     expect(src).toContain('COMMUNITY_CHECKOUT_REJECTS_CUID_AS_PRODUCT_ID');
@@ -142,7 +142,7 @@ describe('one-time checkout sessions allow discount codes', () => {
 describe('checkout session does not pre-fill country', () => {
   const src = readFileSync(join(process.cwd(), 'src/lib/dodo-payments.ts'), 'utf8');
 
-  it('payload is email+name only — no billing_address / country / customer_id', () => {
+  it('payload is email+name only - no billing_address / country / customer_id', () => {
     expect(src).toContain('email: params.userEmail');
     expect(src).toContain('name: params.userName || params.userEmail');
     expect(src).toContain('allow_customer_editing_country: true');

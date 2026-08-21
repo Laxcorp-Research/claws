@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * Admin hard-load auth flash — coverage gap after #389.
+ * Admin hard-load auth flash - coverage gap after #389.
  *
  * #389 gated TopBar on status==="loading" but tested TopBar in isolation;
  * admin layout tests stubbed PageShell (TopBar) away. Hard load of
  * /admin/versions can paint admin children (cookie /api/admin/check OK)
- * while useSession is still resolving — the else-fallthrough to public
+ * while useSession is still resolving - the else-fallthrough to public
  * nav + "Sign in" was the hole.
  *
  * MUTATION: restore `status !== "loading" && !sessionReady → Sign in`
@@ -48,7 +48,7 @@ beforeEach(() => {
   }) as unknown as typeof fetch
 })
 
-describe("Admin /admin/* first paint — no Sign-in flash", () => {
+describe("Admin /admin/* first paint - no Sign-in flash", () => {
   it("session loading + admin check OK: children visible, never Sign in / Pricing", async () => {
     useSession.mockReturnValue({ data: null, status: "loading" })
 

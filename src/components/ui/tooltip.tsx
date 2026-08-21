@@ -5,16 +5,16 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
 
 /**
- * DS Tooltip — Radix Tooltip primitive.
+ * DS Tooltip - Radix Tooltip primitive.
  * Portal to body + collision detection (flip/shift) are mandatory.
  * collisionBoundary = documentElement so overflow scroll ancestors (e.g. builder
- * agent sidebar) do NOT become the flip boundary — viewport room wins.
+ * agent sidebar) do NOT become the flip boundary - viewport room wins.
  * Do NOT import @radix-ui/react-tooltip outside this file (grep-guard).
  *
  * Arrow contact: sideOffset={0} so Radix's `sideOffset + arrowHeight` places the
  * content exactly arrowHeight from the trigger; arrow span sits at content edge
- * (`[baseSide]:0`) and fills that gap — 0–1px content↔arrow abutment.
- * Do not force-visibility on the Arrow — that painted degenerate placement
+ * (`[baseSide]:0`) and fills that gap - 0–1px content↔arrow abutment.
+ * Do not force-visibility on the Arrow - that painted degenerate placement
  * (gap between arrow and content box). Native hide-when-unpointable stays.
  *
  * MUTATION: strip Portal / avoidCollisions / Arrow / documentElement boundary
@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils"
 
 export const TooltipProvider = TooltipPrimitive.Provider
 
-/** Arrow height used in Radix offset arithmetic — keep in sync with Arrow props. */
+/** Arrow height used in Radix offset arithmetic - keep in sync with Arrow props. */
 export const TOOLTIP_ARROW_HEIGHT = 5
 export const TOOLTIP_ARROW_WIDTH = 10
 
@@ -78,8 +78,8 @@ export function Tooltip({
   }, [disabled])
 
   // Sync data-arrow-hidden from Radix's arrow span (visibility:hidden when
-  // centerOffset≠0). Forced-edge probes assert this attribute — not silence.
-  // Portal content mounts async — poll a few frames + observe style mutations.
+  // centerOffset≠0). Forced-edge probes assert this attribute - not silence.
+  // Portal content mounts async - poll a few frames + observe style mutations.
   React.useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -115,7 +115,7 @@ export function Tooltip({
     }
   }, [open, content])
 
-  // Viewport boundary — NOT clipping ancestors (sidebar overflow-y-auto).
+  // Viewport boundary - NOT clipping ancestors (sidebar overflow-y-auto).
   const collisionBoundary =
     typeof document !== "undefined" ? document.documentElement : undefined
 
@@ -150,7 +150,7 @@ export function Tooltip({
             style={{ maxWidth }}
           >
             {content}
-            {/* Native Radix hide-on-unpointable retained — no force-visibility. */}
+            {/* Native Radix hide-on-unpointable retained - no force-visibility. */}
             <TooltipPrimitive.Arrow
               className="fill-[var(--tx)]"
               width={TOOLTIP_ARROW_WIDTH}

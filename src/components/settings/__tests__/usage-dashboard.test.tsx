@@ -10,7 +10,7 @@ vi.mock("@/hooks/use-credit-balance", () => ({
   useCreditBalance: () => ({
     hasCredits: false,
     balanceCents: 0,
-    totalConsumedCents: undefined, // the bug input — must not become "$NaN"
+    totalConsumedCents: undefined, // the bug input - must not become "$NaN"
     initialGrantCents: 0,
     status: null,
     grantedAt: null,

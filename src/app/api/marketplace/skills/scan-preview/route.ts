@@ -8,7 +8,7 @@ import { isMarketplacePublishEnabled } from "@/lib/marketplace/feature-flags"
 export const maxDuration = 30
 
 /**
- * PR-3: skill publish wizard preview — regex scan + bins/env extraction.
+ * PR-3: skill publish wizard preview - regex scan + bins/env extraction.
  */
 export async function POST(request: NextRequest) {
   if (!isMarketplacePublishEnabled()) {

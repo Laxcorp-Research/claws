@@ -62,8 +62,8 @@ describe('getModelCost', () => {
 
 describe('formatModelEstCost', () => {
   it('renders em dash when pricing is missing', () => {
-    expect(formatModelEstCost('anthropic/claude-sonnet-5')).toBe('—');
-    expect(formatModelEstCost('anthropic/claude-opus-4-8')).toBe('—');
+    expect(formatModelEstCost('anthropic/claude-sonnet-5')).toBe('-');
+    expect(formatModelEstCost('anthropic/claude-opus-4-8')).toBe('-');
   });
 
   it('renders known seed prices and OpenRouter BYOK marker', () => {

@@ -241,7 +241,7 @@ describe("Tool customization PR-5 acceptance", () => {
     expect(await screen.findByText("Twitter/X API")).toBeDefined()
     fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0])
     expect(await screen.findByRole("heading", { name: /Remove Twitter\/X API/ })).toBeDefined()
-    // Confirm stays loading/disabled until dependents resolve — click before that is a no-op.
+    // Confirm stays loading/disabled until dependents resolve - click before that is a no-op.
     expect(await screen.findByText("No labeled agent dependents found.")).toBeDefined()
     const confirmButtons = screen.getAllByRole("button", { name: "Remove" })
     const confirm = confirmButtons[confirmButtons.length - 1]
@@ -249,7 +249,7 @@ describe("Tool customization PR-5 acceptance", () => {
     fireEvent.click(confirm)
     await waitFor(() => expect(screen.queryByRole("button", { name: "Make optional" })).toBeNull())
     await waitFor(() => expect(screen.queryByText(/Was required/)).toBeNull())
-    // Connection deleted with default "Also disconnect" — not an Additional row.
+    // Connection deleted with default "Also disconnect" - not an Additional row.
     await waitFor(() => expect(screen.queryByText("Additional tools")).toBeNull())
     expect(connections.some((c) => c.toolSlug === "twitter-api")).toBe(false)
   })

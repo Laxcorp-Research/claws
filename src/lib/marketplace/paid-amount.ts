@@ -1,6 +1,6 @@
 /**
  * Dodo `payment.succeeded` charged amount.
- * Source field: `data.total_amount` — cents the customer paid (post-discount, incl. tax).
+ * Source field: `data.total_amount` - cents the customer paid (post-discount, incl. tax).
  * MUTATION: mint MarketplaceSale from list `template.price` / `skill.price` → tests fail.
  */
 export function paidDollarsFromWebhook(data: Record<string, unknown> | undefined): number | null {

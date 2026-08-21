@@ -25,7 +25,7 @@ describe("formatDailyDigestMessage", () => {
         errorsExternal24h: 4,
       },
     })
-    expect(text).toContain("Claws digest — Twitter/X Growth Machine (5)")
+    expect(text).toContain("Claws digest - Twitter/X Growth Machine (5)")
     expect(text).toContain("Heartbeats: kept 4 | missed+ledgered 0")
     expect(text).toContain("Sleep/wake cycles: 1")
     expect(text).toContain("Costs (est.): $1.23")
@@ -50,7 +50,7 @@ describe("formatDailyDigestMessage", () => {
         errorsExternal24h: 0,
       },
     })
-    expect(text.startsWith("Claws digest — Quant Trader")).toBe(true)
+    expect(text.startsWith("Claws digest - Quant Trader")).toBe(true)
     expect(text).toContain("Quant Trader")
   })
 

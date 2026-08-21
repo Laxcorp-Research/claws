@@ -6,7 +6,7 @@ export const POWERED_BY_CLAWS_CREDITS = "Powered by Claws credits"
  * Human copy ruling (founder, post-picker-rebuild): never render auth jargon.
  * "No auth path" is dead. A missing key reads "No API key"; Anthropic with
  * neither credits nor key reads "No credits or API key". Credits are automatic
- * when active — copy must never ask the user to "use" them.
+ * when active - copy must never ask the user to "use" them.
  */
 export const NO_KEY_LABEL = "No API key"
 export const ANTHROPIC_NO_AUTH_LABEL = "No credits or API key"
@@ -121,7 +121,7 @@ export function modelDeployWarning(
   if (auth.selectable) return null
   const pretty = providerLabel(provider)
   if (auth.cardState === "no-auth-path") {
-    return `No active credits on this account — add an Anthropic API key before deploy`
+    return `No active credits on this account - add an Anthropic API key before deploy`
   }
   return `Add ${articleFor(pretty)} ${pretty} API key before deploy`
 }

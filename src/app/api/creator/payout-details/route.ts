@@ -9,7 +9,7 @@ import {
   validatePayoutDetails,
 } from "@/lib/marketplace/payout-details"
 
-/** Masked read only — never returns decrypted fields. */
+/** Masked read only - never returns decrypted fields. */
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return ERRORS.UNAUTHORIZED()

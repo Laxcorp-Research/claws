@@ -40,7 +40,7 @@ function mockOwnerEligible() {
   })
 }
 
-describe("POST /api/deploy/[workspaceId]/restart — preconditions", () => {
+describe("POST /api/deploy/[workspaceId]/restart - preconditions", () => {
   beforeEach(() => {
     mockRestartContainer.mockReset()
     mockRestartContainer.mockResolvedValue(undefined)

@@ -7,7 +7,7 @@ import { isPastDueHint } from "@/lib/hibernation/wake-geometry"
 import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 
-// P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot — when a claw
+// P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot - when a claw
 // wakes past a due heartbeat hint, the container overlay should fire one
 // immediate HEARTBEAT poll after boot so the missed wall-clock beat is not
 // only "honest-miss + rolled" on the platform. File against openclaw-runtime
@@ -35,9 +35,9 @@ export async function hibernateWorkspace(
   // PR-2: forwarded to syncThenRemoveDeployment. The hibernation cron passes a tighter
   // syncTimeoutMs (10s, matching the container SIGTERM window) and sets
   // skipSync when it's low on its 55s ceiling (budget guard).
-  // Lifecycle P3: destroyPolicy is forced to refuse-unsafe — auto-hibernate
+  // Lifecycle P3: destroyPolicy is forced to refuse-unsafe - auto-hibernate
   // NEVER tears down unsynced/stale state (skipSync → refuse, not bare remove).
-  // HWD: NEVER serviceDelete on this path — deploymentRemove only.
+  // HWD: NEVER serviceDelete on this path - deploymentRemove only.
   syncOpts: SyncThenDestroyOptions = {},
 ): Promise<HibernateResult> {
   const workspace = await prisma.workspace.findUnique({
@@ -56,7 +56,7 @@ export async function hibernateWorkspace(
   }
 
   try {
-    // Lifecycle P3: refuse-unsafe — sync fail / stale / skipSync keeps RUNNING/WARM.
+    // Lifecycle P3: refuse-unsafe - sync fail / stale / skipSync keeps RUNNING/WARM.
     const teardown = await syncThenRemoveDeployment(workspaceId, {
       ...syncOpts,
       destroyPolicy: "refuse-unsafe",
@@ -156,7 +156,7 @@ export async function hibernateWorkspace(
     }
 
     // Digest sleepWakeCycles counts ActivityLog rows matching /Hibernat/i or
-    // metadata hibernation — without this row, real naps show cycles=0.
+    // metadata hibernation - without this row, real naps show cycles=0.
     await prisma.activityLog.create({
       data: {
         workspaceId,

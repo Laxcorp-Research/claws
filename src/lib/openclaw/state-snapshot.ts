@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db"
 
 /**
  * Single atomic persist for ContainerState.runtimeStateSnapshot.
- * INVARIANT: one updateMany — never read-modify-write of the snapshot columns.
+ * INVARIANT: one updateMany - never read-modify-write of the snapshot columns.
  * Used only by Blob /finalize (inline /upload is reject-only).
  */
 export async function persistRuntimeStateSnapshot(args: {

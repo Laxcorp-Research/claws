@@ -1,11 +1,11 @@
 /**
- * Morning health digest — table from ActivityLog receipts (not prose).
+ * Morning health digest - table from ActivityLog receipts (not prose).
  * Sent via Telegram using the same Bot API path as critical alerts.
  */
 
 export const DAILY_DIGEST_EVENT_KIND = "daily_digest_sent"
 
-/** External HTTP-class tools — counted separately from agent faults. */
+/** External HTTP-class tools - counted separately from agent faults. */
 const EXTERNAL_TOOL_NAMES = new Set([
   "web_fetch",
   "http",
@@ -46,7 +46,7 @@ export function classifyDigestError(metadata: string | null): "external" | "agen
   return "agent"
 }
 
-/** Pure formatter — mutation: drop a line → snapshot test fails. */
+/** Pure formatter - mutation: drop a line → snapshot test fails. */
 export function formatDailyDigestMessage(args: {
   workspaceName: string
   asOfUtc: string
@@ -59,7 +59,7 @@ export function formatDailyDigestMessage(args: {
       : `$${(s.costCents24h / 100).toFixed(2)}`
   const costLabel = s.costIsEstimate ? "Costs (est.)" : "Costs"
   return [
-    `Claws digest — ${args.workspaceName}`,
+    `Claws digest - ${args.workspaceName}`,
     `As of ${args.asOfUtc} (UTC, last 24h)`,
     `Heartbeats: kept ${s.heartbeatsKept} | missed+ledgered ${s.heartbeatsMissedLedgered}`,
     `Sleep/wake cycles: ${s.sleepWakeCycles}`,
@@ -102,7 +102,7 @@ export function computeDigestStats(args: {
       (/OpenClaw heartbeat poll/i.test(row.action) ||
         /OpenClaw heartbeat poll/i.test(row.metadata ?? ""))
     ) {
-      // Interval polls are not cron-window "kept" beats — skip for kept count.
+      // Interval polls are not cron-window "kept" beats - skip for kept count.
       continue
     }
     if (

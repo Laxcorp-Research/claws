@@ -1,4 +1,4 @@
-// PR-2d — fixture test for the CI BOM guard.
+// PR-2d - fixture test for the CI BOM guard.
 //
 // The actual guard lives in .github/workflows/ci.yml as a bash step
 // using `head -c 3 | od -An -tx1`. We can't directly assert against
@@ -7,7 +7,7 @@
 // breaks, the CI guard's detection has drifted.
 //
 // Cross-platform: skip on Windows runners (no /bin/sh, no od by default).
-// CI is Ubuntu, so the actual guard runs there — this fixture only
+// CI is Ubuntu, so the actual guard runs there - this fixture only
 // proves the SHELL SNIPPET works equivalently on any POSIX host.
 
 import { describe, it, expect } from "vitest";

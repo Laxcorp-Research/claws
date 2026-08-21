@@ -11,7 +11,7 @@ import type { ToolCredentialField } from "@/data/tool-catalog"
 export interface CredentialsModalProps {
   open: boolean
   onClose: () => void
-  /** Modal heading — e.g. "Connect Binance" or "Complete HubSpot credentials". */
+  /** Modal heading - e.g. "Connect Binance" or "Complete HubSpot credentials". */
   toolName: string
   /** Credential fields to render. 1 field = single-cred tool; 2–3 fields = multi-cred. */
   credentialFields: readonly ToolCredentialField[]
@@ -36,7 +36,7 @@ export interface CredentialsModalProps {
  * Renders 1–3 labeled text inputs (stacked, 480px/md modal) for the tool's
  * credential fields. The Validate button is disabled until every required
  * field is non-empty. Validation state (success/error) applies to the
- * entire record, not per-field — matching the backend's all-or-nothing
+ * entire record, not per-field - matching the backend's all-or-nothing
  * validator contract.
  *
  * Used by:
@@ -113,7 +113,7 @@ export function CredentialsModal({
 
   // PR2.7: defensive state for tools whose catalog entry is incomplete.
   // Both modal callers (setup/[workspaceId]/step/[n]/page.tsx and
-  // browse-tools-modal.tsx) route only API_KEY tools to this modal —
+  // browse-tools-modal.tsx) route only API_KEY tools to this modal -
   // OAuth tools go through a separate connection flow. So if this modal
   // opens with credentialFields=[], the catalog is missing a definition
   // (PR4-orphan, never-in-catalog tool, etc.). Replace the useless

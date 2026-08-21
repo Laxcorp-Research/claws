@@ -1,16 +1,16 @@
-// PR-3 — tests for /api/cron/health-monitor.
+// PR-3 - tests for /api/cron/health-monitor.
 //
 // This route owns workspace.healthStatus / lastHealthCheck / status /
 // consecutiveHealthFailures. The mapping table from the audit
 // (src/app/api/cron/health-monitor/route.ts top-of-file) is the spec
-// — these tests are the contract.
+// - these tests are the contract.
 //
 // MUTATION-anchored cases below double as regression locks:
 //   - "MUTATION-anchored UNHEALTHY threshold": breaking
 //     UNHEALTHY_THRESHOLD from 2 to 1 must make a specific test fail.
 //   - "MUTATION-anchored ERROR threshold": breaking ERROR_THRESHOLD
 //     from 5 to 4 must make a specific test fail.
-// Verified by deliberately patching the source and re-running — see
+// Verified by deliberately patching the source and re-running - see
 // the PR description.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -115,7 +115,7 @@ function mockProbeFetch(opts: { adminRpc: Response | (() => never); healthz?: Re
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET;
   vi.restoreAllMocks();
-  // P4 stranded adopter sibling pass — default empty (no stranded deploys).
+  // P4 stranded adopter sibling pass - default empty (no stranded deploys).
   ;(prismaMock.deployment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 });
 
@@ -311,7 +311,7 @@ describe("PR-4b: 404 disambiguation via /healthz", () => {
     if (r.result.kind === "degraded") expect(r.result.reason).toBe("plugin-not-loaded");
   });
 
-  // REGRESSION LOCK — the exact PR-4a WIRE-TEST heal path must still work.
+  // REGRESSION LOCK - the exact PR-4a WIRE-TEST heal path must still work.
   // text/plain "Not Found" on admin-rpc, 200 {"ok":true,"status":"live"} on
   // /healthz → plugin-not-loaded → (via decideUpdate) heals ERROR→RUNNING.
   it("REGRESSION: PR-4a WIRE-TEST path (404 'Not Found' + /healthz live 200) still heals", async () => {
@@ -390,7 +390,7 @@ describe("decideUpdate: healthy paths", () => {
       healthStatus: "HEALTHY",
       consecutiveHealthFailures: 0,
       lastHealthCheck: new Date(NOW),
-      // PR-4a: a fully-healthy probe records no reason (null) — nothing to flag.
+      // PR-4a: a fully-healthy probe records no reason (null) - nothing to flag.
       lastHealthReason: null,
     });
   });
@@ -407,7 +407,7 @@ describe("decideUpdate: healthy paths", () => {
     expect(u.lastHealthReason).toBeNull();
   });
 
-  // PR-4a — CANONICAL STATEMENT OF THE SYMMETRIC SELF-HEAL RULE.
+  // PR-4a - CANONICAL STATEMENT OF THE SYMMETRIC SELF-HEAL RULE.
   // Supersedes the PR-3/PR-4 "status=ERROR is NOT downgraded on recovery"
   // intent: ERROR now heals to RUNNING on ANY successful HTTP response. The
   // "what happened" trace is preserved by lastHealthReason + lastHealthCheck.
@@ -558,7 +558,7 @@ describe("decideStateSyncStale", () => {
   });
 
   // MUTATION: flagging on the FIRST stale probe (count>=1 instead of >=2)
-  // would make this assertion fail — locks in the 2-consecutive requirement.
+  // would make this assertion fail - locks in the 2-consecutive requirement.
   it("MUTATION-anchored: second CONSECUTIVE stale probe sets the flag", () => {
     const result = __internal.decideStateSyncStale({
       status: "RUNNING",
@@ -766,7 +766,7 @@ describe("PR-4 bulk-reclassify: ERROR+UNHEALTHY + any degraded response → RUNN
       NOW,
     );
     // If the reclassify guard is broken (status left as ws.status), this
-    // fails: status would stay "ERROR" — a wrongly-stuck row.
+    // fails: status would stay "ERROR" - a wrongly-stuck row.
     expect(u.status).toBe("RUNNING");
     expect(u.healthStatus).toBe("DEGRADED");
     expect(u.consecutiveHealthFailures).toBe(0);
@@ -784,20 +784,20 @@ describe("PR-4 bulk-reclassify: ERROR+UNHEALTHY + any degraded response → RUNN
     expect(u.healthStatus).toBe("DEGRADED");
   });
 
-  it("ALSO reclassifies a 200-degraded (plugin-errors) ERROR row — symmetric rule", () => {
+  it("ALSO reclassifies a 200-degraded (plugin-errors) ERROR row - symmetric rule", () => {
     const u = __internal.decideUpdate(
       { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
       { kind: "degraded", reason: "plugin-errors" },
       NOW,
     );
     // Symmetry rule (Q2.1 audit-correction): a 200-degraded response is MORE
-    // definitively "alive" than a 404 — it would be perverse to heal the 404
+    // definitively "alive" than a 404 - it would be perverse to heal the 404
     // case and not this one. Any degraded result heals a stuck ERROR row.
     expect(u.status).toBe("RUNNING");
     expect(u.healthStatus).toBe("DEGRADED");
   });
 
-  it("ALSO reclassifies a 200-degraded (no-agents) ERROR row — symmetric rule", () => {
+  it("ALSO reclassifies a 200-degraded (no-agents) ERROR row - symmetric rule", () => {
     const u = __internal.decideUpdate(
       { status: "ERROR", healthStatus: "UNHEALTHY", consecutiveHealthFailures: 6 },
       { kind: "degraded", reason: "no-agents" },
@@ -847,14 +847,14 @@ describe("decideUpdate: failure paths (no answer)", () => {
       { kind: "failure", reason: "no-container" },
       NOW,
     );
-    // NOT insta-ERROR — same path as everything else.
+    // NOT insta-ERROR - same path as everything else.
     expect(u.status).toBe("RUNNING");
     expect(u.healthStatus).toBe("HEALTHY");
     expect(u.consecutiveHealthFailures).toBe(1);
   });
 });
 
-// ─── Escalation thresholds — MUTATION ANCHORS ─────────────────────────
+// ─── Escalation thresholds - MUTATION ANCHORS ─────────────────────────
 
 describe("MUTATION-anchored UNHEALTHY threshold (>=2 escalates)", () => {
   it("counter 0→1 (first failure): healthStatus stays HEALTHY (must NOT escalate)", () => {
@@ -1170,7 +1170,7 @@ describe("GET end-to-end", () => {
     const cron = JSON.stringify([
       { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
     ]);
-    // Boot before expected — detector must ignore (boot lookup still returns it
+    // Boot before expected - detector must ignore (boot lookup still returns it
     // if gte expected is false... we only query gte expected, so pre-cron boot
     // is not returned → no flag).
     vi.useFakeTimers();
@@ -1228,7 +1228,7 @@ describe("GET end-to-end", () => {
     expect(update.data.activitySilenceDetectedAt).toBeInstanceOf(Date);
   });
 
-  // PR-C #13: cry-wolf guard — the FIRST stale probe must only bump the
+  // PR-C #13: cry-wolf guard - the FIRST stale probe must only bump the
   // consecutive counter, not set the flag.
   it("increments stateSyncStaleConsecutive (no flag yet) on the first stale probe", async () => {
     (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
@@ -1363,7 +1363,7 @@ describe("GET end-to-end", () => {
     expect(update.data.lastHealthCheck).toBeInstanceOf(Date);
   });
 
-  // PR-4a REGRESSION LOCK — the testing blind spot that hid the unreachable
+  // PR-4a REGRESSION LOCK - the testing blind spot that hid the unreachable
   // reclassify: the candidate query MUST include ERROR, or stuck ERROR rows
   // are never re-probed and can never self-heal. This asserts the real
   // `findMany` where-clause (the prior tests mocked findMany and so never

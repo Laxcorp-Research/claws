@@ -220,7 +220,7 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     const depCreateArgs = (prismaMock.deployment.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(depCreateArgs.data.containerImage).toBe(STABLE_DOCKER_IMAGE);
 
-    // Railway createService received it too — DB vs Railway can't drift.
+    // Railway createService received it too - DB vs Railway can't drift.
     expect(mockCreateService).toHaveBeenCalledTimes(1);
     const createServiceArgs = mockCreateService.mock.calls[0][0];
     expect(createServiceArgs.image).toBe(STABLE_DOCKER_IMAGE);
@@ -231,7 +231,7 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     // caller drops `include: { apiKeys: true }`, the real Prisma client returns
     // a user WITHOUT the relation and deriveContainerEnv throws at deploy time.
     // The prisma mock ignores query args, so the runtime throw can't surface
-    // here — instead we lock the include shape directly. Mutation: remove the
+    // here - instead we lock the include shape directly. Mutation: remove the
     // include from deployToCloud's user query -> this assertion fails.
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       workspaceStub({ containerId: null }),

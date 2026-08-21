@@ -53,7 +53,7 @@ describe("S1v2 predicate matrix", () => {
   })
 
   it("zero-balance regression with no key → not-done (accepted nudge)", () => {
-    // Edge: balance hits 0 with no key → S1v2 regresses — nav reappears as nudge.
+    // Edge: balance hits 0 with no key → S1v2 regresses - nav reappears as nudge.
     expect(isStep1Complete({ balanceCents: 0, providers: [] })).toBe(false)
     const state = deriveTrackerState({
       providers: [],
@@ -91,7 +91,7 @@ describe("isStep3Complete / S3 predicate", () => {
   })
 })
 
-describe("resolveStep3Action — picker always when S2 done", () => {
+describe("resolveStep3Action - picker always when S2 done", () => {
   it("no-workspace → need-claw", () => {
     expect(
       resolveStep3Action({

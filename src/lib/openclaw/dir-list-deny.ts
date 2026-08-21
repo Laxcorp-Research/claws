@@ -1,5 +1,5 @@
 /**
- * Lifecycle P6 — platform mitigation for OpenClaw boot noise:
+ * Lifecycle P6 - platform mitigation for OpenClaw boot noise:
  * agents call file-transfer `dir_list` with node id `gateway`/`local` when no
  * paired node is registered → upstream "unknown node: gateway".
  *
@@ -7,7 +7,7 @@
  * the agent gets an honest tool-policy error instead of gateway boot spam.
  *
  * Upstream filing (real fix): OpenClaw should no-op / clear error when
- * dir_list targets an unregistered node id — file against openclaw/openclaw
+ * dir_list targets an unregistered node id - file against openclaw/openclaw
  * (node registry / file-transfer tools), not LaxClaws overlay.
  */
 export const DIR_LIST_TOOL_DENY = ["dir_list"] as const

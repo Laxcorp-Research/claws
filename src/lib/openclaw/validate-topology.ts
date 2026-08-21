@@ -65,7 +65,7 @@ export function validateTopology(args: {
   if (!critic) {
     hardErrors.push({
       code: "CRITIC_MISSING",
-      message: "Every team needs a reviewer — the Critic agent is missing.",
+      message: "Every team needs a reviewer - the Critic agent is missing.",
     })
   }
 
@@ -77,7 +77,7 @@ export function validateTopology(args: {
     if (seen.has(key)) {
       hardErrors.push({
         code: "ILLEGAL_EDGE",
-        message: "Duplicate connection — remove the extra edge.",
+        message: "Duplicate connection - remove the extra edge.",
         edge,
       })
       continue
@@ -128,7 +128,7 @@ export function validateTopology(args: {
         softWarnings.push({
           code: "ORPHANED_WORKER",
           workerName: w.name,
-          message: `${w.name} is not connected — it won't receive work`,
+          message: `${w.name} is not connected - it won't receive work`,
         })
       }
     }
@@ -144,22 +144,22 @@ export function validateTopology(args: {
 /** Plain-language copy for draw-time toasts (PR-2) and deploy hard-errors. */
 export function illegalEdgeMessage(sourceRole: string, targetRole: string): string {
   if (targetRole === "CRITIC") {
-    return "Review is automatic — every worker's output goes through the reviewer before it reaches you."
+    return "Review is automatic - every worker's output goes through the reviewer before it reaches you."
   }
   if (sourceRole === "WORKER" && (targetRole === "WORKER" || targetRole === "ORCHESTRATOR")) {
-    return "Workers don't hand off directly — work flows through the Commander. Results return automatically."
+    return "Workers don't hand off directly - work flows through the Commander. Results return automatically."
   }
   if (sourceRole === "CRITIC") {
-    return "The reviewer doesn't delegate — review is automatic."
+    return "The reviewer doesn't delegate - review is automatic."
   }
   if (targetRole === "ORCHESTRATOR") {
-    return "Workers don't hand off directly — work flows through the Commander. Results return automatically."
+    return "Workers don't hand off directly - work flows through the Commander. Results return automatically."
   }
   return "Only Commander → Worker connections are allowed."
 }
 
 export const AUTO_PROCEED_DISABLED_COPY =
-  "Autonomous delivery needs action integrations connected — coming soon. Delivery stays on ask-before-acting."
+  "Autonomous delivery needs action integrations connected - coming soon. Delivery stays on ask-before-acting."
 
 export const EDGE_LEGEND_SOLID = "Delegates (you drew this)"
 export const EDGE_LEGEND_DOTTED = "Review (automatic)"

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// PR #4 Commit 7 — hook tests for useOAuthConnection. Guards the shared
+// PR #4 Commit 7 - hook tests for useOAuthConnection. Guards the shared
 // initiate+popup+poll flow that both the setup wizard's initial connect
 // and the dashboard-reconnect-for-EXPIRED-rows now run through.
 //
@@ -34,7 +34,7 @@ function jsonResponse<T>(body: T, init: ResponseInit = {}): Response {
 }
 
 function makeFakePopup(): Window {
-  // Mock of window.open return — we only use `closed` and `close()` in the
+  // Mock of window.open return - we only use `closed` and `close()` in the
   // hook's cleanup path. Using `let` + a mutable object so close() can flip
   // `closed` for any follow-up inspection in tests.
   const popup: { closed: boolean; close: ReturnType<typeof vi.fn> } = {
@@ -172,7 +172,7 @@ describe("useOAuthConnection", () => {
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ success: true, data: { redirectUrl: "https://composio/consent", connectionId: "ca_timeout" } }))
-      // Every poll returns PENDING — hook should eventually fire onTimeout.
+      // Every poll returns PENDING - hook should eventually fire onTimeout.
       .mockResolvedValue(jsonResponse({ success: true, data: { status: "PENDING" } }))
 
     const cb = makeCallbacks()
@@ -225,7 +225,7 @@ describe("useOAuthConnection", () => {
   it("BYOK response: initiate returns mode:byok → onApiKeyFormRequired fires, no popup, no polling", async () => {
     // PR2.9 contract: hook detects BYOK at the initiate-response layer
     // and bows out. The caller (wizard / browse-modal) opens the
-    // credentials modal and POSTs to /byok/submit on its own — that
+    // credentials modal and POSTs to /byok/submit on its own - that
     // submission flow does NOT go through this hook.
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>
     const apiKeyForm = {
@@ -264,7 +264,7 @@ describe("useOAuthConnection", () => {
   it("BYOK response without onApiKeyFormRequired wired → falls back to onInitiateError with BYOK_HANDLER_MISSING code", async () => {
     // Surfaces configuration bugs (caller didn't wire BYOK support) loudly
     // instead of silently no-op'ing. Wizard tests should NEVER exercise
-    // this branch — its presence is purely a safety net.
+    // this branch - its presence is purely a safety net.
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -415,7 +415,7 @@ describe("useOAuthConnection", () => {
     expect(cb.calls.onInitiated.length).toBe(2)
     expect(cb.calls.onInitiated[0]).toEqual(["gmail", "ca_repeat"])
     expect(cb.calls.onInitiated[1]).toEqual(["github", "ca_repeat"])
-    // No terminal state for first flow — cleanup happened silently.
+    // No terminal state for first flow - cleanup happened silently.
     expect(cb.calls.onSuccess).toEqual([])
     expect(cb.calls.onFailure).toEqual([])
   })

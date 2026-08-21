@@ -1,4 +1,4 @@
-// PR (version-ui-honesty): the admin Force-Update email must be TRUTHFUL — it
+// PR (version-ui-honesty): the admin Force-Update email must be TRUTHFUL - it
 // schedules a change that applies on the next redeploy; it must NOT claim a
 // security patch was already applied (the highest-risk falsehood: telling a
 // user a vulnerability is closed while the vulnerable container still runs).
@@ -55,7 +55,7 @@ beforeEach(() => {
   ;(prismaMock.deployment.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 })
 })
 
-describe("POST /api/admin/versions/[id]/force-update — truthful scheduled copy", () => {
+describe("POST /api/admin/versions/[id]/force-update - truthful scheduled copy", () => {
   it("emails a SCHEDULED notice that says the Claw has NOT been updated yet", async () => {
     const res = await callRoute()
     await new Promise((r) => setTimeout(r, 0)) // flush the fire-and-forget email promise

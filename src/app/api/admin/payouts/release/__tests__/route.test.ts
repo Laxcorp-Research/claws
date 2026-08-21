@@ -22,7 +22,7 @@ import { GET } from "@/app/api/admin/payouts/release/route"
 
 const CRON_SECRET = "test-cron-secret"
 
-describe("GET /api/admin/payouts/release — cron auth (D1/vercel.json)", () => {
+describe("GET /api/admin/payouts/release - cron auth (D1/vercel.json)", () => {
   let prevCronSecret: string | undefined
 
   beforeEach(() => {
@@ -56,7 +56,7 @@ describe("GET /api/admin/payouts/release — cron auth (D1/vercel.json)", () => 
   })
 
   it("MUTATION: dropping cron auth gate would 403 the scheduler", async () => {
-    // Lock the isCron short-circuit — without it, Bearer CRON_SECRET falls through to requireAdmin.
+    // Lock the isCron short-circuit - without it, Bearer CRON_SECRET falls through to requireAdmin.
     const source = GET.toString()
     expect(source).toContain("isCron")
     expect(source).toContain("CRON_SECRET")

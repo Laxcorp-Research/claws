@@ -22,6 +22,7 @@ type CatalogRow = {
   contextLength?: number | null
   pricingSnippet?: string | null
   costPer1kEst?: number | null
+  supportsReasoning?: boolean | null
 }
 
 function mockCatalog(models: CatalogRow[]) {
@@ -55,8 +56,15 @@ function nativePins(): CatalogRow[] {
       provider: "ANTHROPIC",
       isPinned: true,
       pricingSnippet: "$3.00/$15.00 per 1M tok",
+      supportsReasoning: true,
     },
-    { modelId: "openai/gpt-4o", displayName: "GPT-4o", provider: "OPENAI", isPinned: true },
+    {
+      modelId: "openai/gpt-4o",
+      displayName: "GPT-4o",
+      provider: "OPENAI",
+      isPinned: true,
+      supportsReasoning: false,
+    },
     {
       modelId: "openrouter/openai/gpt-4o-mini",
       displayName: "GPT-4o Mini",
@@ -87,7 +95,7 @@ async function openModal() {
   expect(await screen.findByRole("dialog")).toBeDefined()
 }
 
-describe("ModelPicker — button + modal", () => {
+describe("ModelPicker - button + modal", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetModelCatalogCache()
@@ -240,7 +248,33 @@ describe("ModelPicker — button + modal", () => {
     expect(onChange).toHaveBeenCalledWith("anthropic/claude-haiku-4-5-20251001", "high")
   })
 
-  it("thinking prop preselects its segment; row shows honest price or em dash", async () => {
+  it("closed trigger is name-only (no provider tag, no thinking chip); empty value says Select a model", async () => {
+    mockCatalog(nativePins())
+    const { unmount } = render(
+      <ModelPicker
+        value="anthropic/claude-sonnet-4-7"
+        thinkingDefault="medium"
+        onChange={() => {}}
+        creditMode
+      />,
+    )
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled())
+    const trigger = screen.getByTestId("model-picker-trigger")
+    expect(trigger.textContent).toContain("Claude Sonnet 4.7")
+    expect(trigger.textContent).toContain("Change")
+    // Founder ruling: the field says ONLY the model. Detail lives in the modal.
+    expect(trigger.textContent).not.toContain("Anthropic")
+    expect(trigger.textContent).not.toContain("Thinking:")
+    unmount()
+    resetModelCatalogCache()
+
+    mockCatalog(nativePins())
+    render(<ModelPicker value="" onChange={() => {}} creditMode />)
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled())
+    expect(screen.getByTestId("model-picker-trigger").textContent).toBe("Select a model")
+  })
+
+  it("thinking prop preselects its segment; row shows honest price or placeholder", async () => {
     mockCatalog(nativePins())
     render(
       <ModelPicker
@@ -250,22 +284,78 @@ describe("ModelPicker — button + modal", () => {
         creditMode
       />,
     )
-    // Closed trigger surfaces the configured thinking level.
     await waitFor(() => expect(global.fetch).toHaveBeenCalled())
-    expect(screen.getByTestId("model-picker-trigger").textContent).toContain("Thinking: Medium")
     await userEvent.click(screen.getByTestId("model-picker-trigger"))
     await screen.findByRole("dialog")
     expect(screen.getByTestId("thinking-level-medium").getAttribute("aria-checked")).toBe("true")
     const priced = screen.getByRole("option", { name: /Claude Sonnet 4\.7/ })
     expect(within(priced).getByText("$3.00/$15.00 per 1M tok")).toBeDefined()
     const unpriced = screen.getByRole("option", { name: /Claude Haiku 4\.5/ })
-    expect(within(unpriced).getByText("—")).toBeDefined()
+    expect(within(unpriced).getByText("-")).toBeDefined()
+  })
+
+  it("per-model thinking gate: non-reasoning model locks levels at Default and saves null", async () => {
+    mockCatalog(nativePins())
+    const onChange = vi.fn()
+    render(
+      <ModelPicker
+        value="openai/gpt-4o"
+        thinkingDefault="high"
+        onChange={onChange}
+        creditMode
+        configuredProviders={["OPENAI"]}
+      />,
+    )
+    await openModal()
+    // gpt-4o has supportsReasoning=false: pending thinking resets to Default.
+    await waitFor(() => {
+      expect(screen.getByTestId("thinking-level-default").getAttribute("aria-checked")).toBe("true")
+    })
+    expect((screen.getByTestId("thinking-level-high") as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByTestId("thinking-help").textContent).toContain(
+      "does not support adjustable thinking effort",
+    )
+    // Disabled level cannot be set; save emits null thinking.
+    await userEvent.click(screen.getByTestId("model-modal-save"))
+    expect(onChange).toHaveBeenCalledWith("openai/gpt-4o", null)
+
+    // Switching to a reasoning-capable model re-enables the control.
+    onChange.mockClear()
+    await userEvent.click(screen.getByTestId("model-picker-trigger"))
+    await screen.findByRole("dialog")
+    await userEvent.click(screen.getByTestId("model-modal-tab-ANTHROPIC"))
+    await userEvent.click(await screen.findByRole("option", { name: /Claude Sonnet 4\.7/ }))
+    expect((screen.getByTestId("thinking-level-high") as HTMLButtonElement).disabled).toBe(false)
+    await userEvent.click(screen.getByTestId("thinking-level-high"))
+    await userEvent.click(screen.getByTestId("model-modal-save"))
+    expect(onChange).toHaveBeenCalledWith("anthropic/claude-sonnet-4-7", "high")
+  })
+
+  it("rows badge reasoning-capable models; unknown/false rows get no chip", async () => {
+    mockCatalog(nativePins())
+    render(
+      <ModelPicker value="anthropic/claude-sonnet-4-7" onChange={() => {}} creditMode />,
+    )
+    await openModal()
+    expect(
+      screen.getByTestId("model-reasoning-chip-anthropic/claude-sonnet-4-7"),
+    ).toBeDefined()
+    // Unknown support (haiku fixture omits the field) renders no chip.
+    expect(
+      screen.queryByTestId("model-reasoning-chip-anthropic/claude-haiku-4-5-20251001"),
+    ).toBeNull()
+    await userEvent.click(screen.getByTestId("model-modal-tab-OPENAI"))
+    expect(screen.queryByTestId("model-reasoning-chip-openai/gpt-4o")).toBeNull()
   })
 
   it("MUTATION: inline dropdown, second search input, or static list restored → fails", () => {
     const src = readFileSync(join(process.cwd(), "src/components/shared/model-picker.tsx"), "utf8")
     expect(src).toContain("useModelCatalog")
     expect(src).toContain("ModelSelectModal")
+    // Founder ruling: closed trigger is name-only. No provider tag, no thinking chip.
+    expect(src).not.toContain("providerLabel(")
+    expect(src).not.toContain("Thinking:")
+    expect(src).toContain("Select a model")
     expect(src).not.toMatch(/import\s*\{[^}]*AI_MODELS/)
     expect(src).not.toMatch(/from ["']@\/lib\/models["']/)
     expect(src).not.toMatch(/from ["']@\/lib\/models\/seed-models["']/)

@@ -105,7 +105,7 @@ export default function AdminPayoutsPage() {
         setTransferRef("")
         await load()
       },
-      { message: "Marked PAID — creator notified", errorMessage: "Could not mark paid" },
+      { message: "Marked PAID - creator notified", errorMessage: "Could not mark paid" },
       showSnackbar,
     )
   }

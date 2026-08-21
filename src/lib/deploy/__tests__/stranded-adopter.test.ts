@@ -38,7 +38,7 @@ describe("DeploymentStatus census (P4.1)", () => {
       "ROLLED_BACK",
       "SUPERSEDED",
     ])
-    // Schema has no STARTING_GATEWAY — gateway boot uses STARTING.
+    // Schema has no STARTING_GATEWAY - gateway boot uses STARTING.
     expect(NON_TERMINAL_DEPLOYMENT_STATUSES).not.toContain("STARTING_GATEWAY")
     expect(NON_TERMINAL_DEPLOYMENT_STATUSES).toContain("HEALTH_CHECK")
   })
@@ -54,7 +54,7 @@ describe("DeploymentStatus census (P4.1)", () => {
 
   it("honest per-phase error names the stuck status", () => {
     expect(strandedDeployErrorMessage("HEALTH_CHECK")).toBe(
-      "Deployment stranded: stuck in HEALTH_CHECK beyond max age — marked FAILED for retry",
+      "Deployment stranded: stuck in HEALTH_CHECK beyond max age - marked FAILED for retry",
     )
     expect(strandedDeployErrorMessage("CONFIGURING")).toContain("CONFIGURING")
   })
@@ -322,7 +322,7 @@ describe("adoptStrandedDeployments", () => {
   })
 })
 
-describe("isOrphanRailwayServiceError — P4 NotAuthorized fall-through (source lock)", () => {
+describe("isOrphanRailwayServiceError - P4 NotAuthorized fall-through (source lock)", () => {
   const deployerSrc = readFileSync(join(process.cwd(), "src/lib/openclaw/deployer.ts"), "utf8")
 
   it("MUTATION: redeploy catch uses isOrphanRailwayServiceError (restore rethrow-missing-only → fail)", () => {

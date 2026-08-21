@@ -15,6 +15,8 @@ export type CatalogModel = {
   contextLength: number | null
   pricingSnippet: string | null
   costPer1kEst: number | null
+  /** true/false from provider metadata; null = unknown (control stays enabled). */
+  supportsReasoning: boolean | null
   isPinned: boolean
 }
 
@@ -66,6 +68,7 @@ export async function ensureSeedModels(): Promise<number> {
         contextLength: seed.contextLength ?? null,
         pricingSnippet: seed.pricingSnippet ?? null,
         costPer1kEst: seed.costPer1kEst ?? null,
+        supportsReasoning: seed.supportsReasoning ?? null,
         isPinned: seed.isPinned,
         isActive: true,
         source: "seed",
@@ -76,6 +79,7 @@ export async function ensureSeedModels(): Promise<number> {
         contextLength: seed.contextLength ?? null,
         pricingSnippet: seed.pricingSnippet ?? null,
         costPer1kEst: seed.costPer1kEst ?? null,
+        supportsReasoning: seed.supportsReasoning ?? null,
         isPinned: seed.isPinned,
         isActive: true,
         refreshedAt: new Date(),
@@ -91,6 +95,46 @@ type OpenRouterModel = {
   name?: string
   context_length?: number
   pricing?: { prompt?: string; completion?: string }
+  supported_parameters?: string[]
+  architecture?: {
+    modality?: string
+    input_modalities?: string[]
+    output_modalities?: string[]
+  }
+}
+
+/**
+ * Agents drive text conversations + tool calls; a model whose OUTPUT is not
+ * text-only (audio like GPT Audio/Lyria, image generators like Nano Banana /
+ * GPT-5 Image, the mixed-output Auto Router) cannot be an agent's brain and
+ * only invites misconfiguration. Input modalities are irrelevant: vision/audio
+ * INPUT chat models (GPT-4o, Gemini 2.5 Pro) reply in text and stay.
+ * Missing metadata keeps the row - never over-delete on unknown.
+ */
+export function isTextOnlyChatModel(m: OpenRouterModel): boolean {
+  const outs = m.architecture?.output_modalities
+  if (Array.isArray(outs) && outs.length > 0) {
+    return outs.every((o) => o === "text")
+  }
+  const modality = m.architecture?.modality
+  if (typeof modality === "string" && modality.includes("->")) {
+    const right = modality.split("->").pop()?.trim() ?? ""
+    return right === "text"
+  }
+  return true
+}
+
+/**
+ * OpenRouter's /models lists each model's accepted request params;
+ * "reasoning"/"include_reasoning" mark adjustable-effort models.
+ * Missing list = unknown (null), NOT false: the UI must not lock the
+ * thinking control on stale metadata.
+ */
+export function reasoningFromOpenRouter(m: OpenRouterModel): boolean | null {
+  if (!Array.isArray(m.supported_parameters)) return null
+  return m.supported_parameters.some(
+    (p) => p === "reasoning" || p === "include_reasoning",
+  )
 }
 
 /**
@@ -98,7 +142,7 @@ type OpenRouterModel = {
  * OpenRouter ids are exactly our native refs (`openai/gpt-4o`, `google/gemini-2.5-pro`),
  * so a BYOK key can call every derived row directly. The platform holds no
  * OpenAI/Google keys, so this public list is the only live source.
- * Variant suffixes (`:free`, `:extended`) are OpenRouter-only routes — skipped.
+ * Variant suffixes (`:free`, `:extended`) are OpenRouter-only routes - skipped.
  * Anthropic is NOT derived here: its native list comes from the live
  * Anthropic /v1/models refresh, which is authoritative.
  */
@@ -140,6 +184,10 @@ export async function refreshOpenRouterCatalog(): Promise<{
     const writes = chunk.flatMap((m) => {
       const modelId = `openrouter/${m.id}`
       const pinned = PINNED_SEED_MODELS.some((s) => s.modelId === modelId)
+      const supportsReasoning = reasoningFromOpenRouter(m)
+      // Non-text-output rows are upserted INACTIVE (not skipped) so rows that
+      // slipped in active before this rule self-heal on the next refresh.
+      const textChat = isTextOnlyChatModel(m)
       const ops = [
         prisma.modelCatalogEntry.upsert({
           where: { modelId },
@@ -150,8 +198,9 @@ export async function refreshOpenRouterCatalog(): Promise<{
             contextLength: m.context_length ?? null,
             pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+            supportsReasoning,
             isPinned: pinned,
-            isActive: true,
+            isActive: textChat,
             source: "openrouter",
             rawMeta: m as object,
             refreshedAt: now,
@@ -161,7 +210,8 @@ export async function refreshOpenRouterCatalog(): Promise<{
             contextLength: m.context_length ?? null,
             pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
-            isActive: true,
+            supportsReasoning,
+            isActive: textChat,
             source: "openrouter",
             rawMeta: m as object,
             refreshedAt: now,
@@ -186,8 +236,9 @@ export async function refreshOpenRouterCatalog(): Promise<{
               contextLength: m.context_length ?? null,
               pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
               costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+              supportsReasoning,
               isPinned: nativePinned,
-              isActive: true,
+              isActive: textChat,
               source: "openrouter-derived",
               rawMeta: m as object,
               refreshedAt: now,
@@ -197,7 +248,8 @@ export async function refreshOpenRouterCatalog(): Promise<{
               contextLength: m.context_length ?? null,
               pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
               costPer1kEst: costPer1kFromOpenRouter(m.pricing),
-              isActive: true,
+              supportsReasoning,
+              isActive: textChat,
               source: "openrouter-derived",
               rawMeta: m as object,
               refreshedAt: now,
@@ -224,7 +276,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
 /**
  * Native refresh: Anthropic has a live GET /v1/models (platform master key).
  * OpenAI GET /v1/models and Google GET /v1beta/models exist but the platform
- * holds no keys — pins remain the curated source until/if platform keys exist.
+ * holds no keys - pins remain the curated source until/if platform keys exist.
  * MUTATION: drop the Anthropic /v1/models call → anthropic-catalog tests fail.
  */
 export async function refreshNativeProviderLists(): Promise<{
@@ -269,7 +321,7 @@ export async function queryModelCatalog(params: {
   provider?: string
   pinnedOnly?: boolean
   limit?: number
-  /** Ignored — enablement is UI-only so locked providers stay visible. */
+  /** Ignored - enablement is UI-only so locked providers stay visible. */
   creditMode?: boolean
 }): Promise<CatalogModel[]> {
   const limit = Math.min(Math.max(params.limit ?? 40, 1), MODEL_CATALOG_MAX_LIMIT)
@@ -303,6 +355,7 @@ export async function queryModelCatalog(params: {
       contextLength: true,
       pricingSnippet: true,
       costPer1kEst: true,
+      supportsReasoning: true,
       isPinned: true,
     },
   })
@@ -324,6 +377,7 @@ export async function queryModelCatalog(params: {
         contextLength: s.contextLength ?? null,
         pricingSnippet: s.pricingSnippet ?? null,
         costPer1kEst: s.costPer1kEst ?? null,
+        supportsReasoning: s.supportsReasoning ?? null,
         isPinned: s.isPinned,
       })),
     )

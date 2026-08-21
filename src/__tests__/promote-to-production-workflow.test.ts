@@ -2,7 +2,7 @@
  * Contract tests for promote-to-production.yml.
  *
  * Ensures the six post-promote probe assertions remain present (markers are
- * intentional anchors — deleting one must fail this suite). No GitHub network.
+ * intentional anchors - deleting one must fail this suite). No GitHub network.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -49,7 +49,7 @@ const REQUIRED_STRUCTURAL = [
   "CHECKS_READ_PERMISSION_ASSERT",
   "STATUSES_READ_PERMISSION_ASSERT",
   "PERMISSIONS_PROBE_ASSERT: statusCheckRollup_readable",
-  // Wave-36: conflict-class ≠ PAT — fail fast + classify merge errors.
+  // Wave-36: conflict-class ≠ PAT - fail fast + classify merge errors.
   "PREFLIGHT_MERGEABLE_ASSERT: staging_main_not_dirty",
   "CONFLICT_NOT_PAT_ASSERT",
   "CONFLICT: merge origin/main into staging and re-dispatch",
@@ -259,7 +259,7 @@ describe("promote-to-production.yml contract", () => {
   it("candidate-drift passes without skip_candidate_check (CANDIDATE_DRIFT_OK)", () => {
     const yml = loadWorkflow();
     const preflight = jobBlock(yml, "preflight");
-    // Equality gate removed — drift is logged, never exits non-zero.
+    // Equality gate removed - drift is logged, never exits non-zero.
     expect(preflight).toMatch(/CANDIDATE_DRIFT_OK:[\s\S]*\(ignored\)/);
     expect(preflight).not.toContain("Verify :candidate matches :<version>");
     expect(preflight).not.toMatch(
@@ -429,7 +429,7 @@ describe("promote-to-production.yml contract", () => {
     );
     expect(mutated).not.toContain('echo "platform_mode=noop" >> "$GITHUB_OUTPUT"');
     expect(REQUIRED_STRUCTURAL.every((n) => mutated.includes(n))).toBe(true);
-    // Structural markers alone don't catch this — assert the success-path assignment is gone.
+    // Structural markers alone don't catch this - assert the success-path assignment is gone.
     expect(mutated).not.toMatch(/platform_mode=noop/);
   });
 
@@ -478,7 +478,7 @@ describe("promote-to-production.yml contract", () => {
   });
 
   /**
-   * Bash readonly builtins — assigning to these in `run: |` scripts aborts
+   * Bash readonly builtins - assigning to these in `run: |` scripts aborts
    * under `set -e` (maiden promote: UID= → "UID: readonly variable").
    * IFS= in `while IFS= read` is intentional and allowed (not readonly).
    * Boundary must not match DEPLOY_UID= (suffix collision).

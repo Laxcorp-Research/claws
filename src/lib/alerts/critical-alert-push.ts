@@ -1,5 +1,5 @@
 /**
- * PR-B: Critical alerts push — owner Telegram (fallback email), with
+ * PR-B: Critical alerts push - owner Telegram (fallback email), with
  * opt-out + 12h dedup.
  *
  * Emitted for six alert classes (see AlertKey below). Each call to
@@ -7,7 +7,7 @@
  * by default, or globally per alertKey when `dedup: "global"` (12h).
  * a SUCCESSFUL delivery (telegram or email) within the last COOLDOWN_MS
  * suppresses further pushes for that same key, even across process
- * restarts — the ledger lives in ActivityLog (SYSTEM rows,
+ * restarts - the ledger lives in ActivityLog (SYSTEM rows,
  * metadata.eventKind = "alert_pushed"; legacy rows used "critical_alert_push"),
  * not in memory.
  *
@@ -15,7 +15,7 @@
  * invoke this on a NEW transition into the bad state (e.g. `heartbeatMissedAt`
  * flips from null → Date). Once the underlying flag clears, the next raise is
  * a fresh transition and is eligible to send again as soon as the 12h
- * cooldown for that (workspaceId, alertKey) has elapsed — there is no
+ * cooldown for that (workspaceId, alertKey) has elapsed - there is no
  * separate "clear" push.
  */
 
@@ -48,12 +48,12 @@ export const COOLDOWN_MS = 12 * 60 * 60 * 1000
 
 /** Canonical ledger eventKind for critical-alert Telegram/email sends. */
 export const CRITICAL_ALERT_PUSH_EVENT_KIND = "alert_pushed"
-/** Pre-soak-followups rows — still count for 12h dedup. */
+/** Pre-soak-followups rows - still count for 12h dedup. */
 export const CRITICAL_ALERT_PUSH_EVENT_KIND_LEGACY = "critical_alert_push"
 
 type AlertCopy = { title: string; emoji: string }
 
-// Copy: never "paused" — these are health/ops signals, not lifecycle actions.
+// Copy: never "paused" - these are health/ops signals, not lifecycle actions.
 const ALERT_COPY: Record<AlertKey, AlertCopy> = {
   "container-unhealthy": { emoji: "\uD83D\uDD34", title: "Container unhealthy" },
   "cron-job-failed": { emoji: "\u26A0\uFE0F", title: "Cron job failing repeatedly" },
@@ -80,7 +80,7 @@ export type CriticalAlertDecision =
  * Pure planner: opt-out short-circuits; otherwise a successful delivery for
  * this (workspaceId, alertKey) within COOLDOWN_MS suppresses the send.
  * MUTATION: removing the COOLDOWN_MS comparison collapses dedup to "always
- * send" — the accompanying test asserts this stays gated.
+ * send" - the accompanying test asserts this stays gated.
  */
 export function decideCriticalAlertSend(args: {
   optOut: boolean
@@ -195,7 +195,7 @@ async function sendCriticalAlertEmail(args: {
     await getResend().emails.send({
       from: "Claws <noreply@buildclaws.ai>",
       to: args.email,
-      subject: `Claws critical alert: ${workspaceLabel} — ${copy.title}`,
+      subject: `Claws critical alert: ${workspaceLabel} - ${copy.title}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -316,7 +316,7 @@ export async function sendCriticalAlert(args: {
       })
       return { sent: true, channel: "telegram" }
     }
-    // Telegram send failed — fall back to email (per requirement) if we
+    // Telegram send failed - fall back to email (per requirement) if we
     // have an owner address.
     await ledgerCriticalAlertPush({
       workspaceId: args.workspaceId,

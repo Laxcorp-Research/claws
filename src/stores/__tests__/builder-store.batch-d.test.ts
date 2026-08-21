@@ -1,5 +1,5 @@
 /**
- * Batch D — builder data-loss / restore / load-error locks.
+ * Batch D - builder data-loss / restore / load-error locks.
  * MUTATION: reverse each fix → fail.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -40,7 +40,7 @@ function tempWorker(skillIds: string[]): Node<AgentNodeData> {
   }
 }
 
-describe("Batch D — builder store", () => {
+describe("Batch D - builder store", () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     useBuilderStore.setState({
@@ -200,7 +200,7 @@ describe("Batch D — builder store", () => {
     })
   })
 
-  describe("heartbeat picker — armed MD cron must not load as Off", () => {
+  describe("heartbeat picker - armed MD cron must not load as Off", () => {
     it("null heartbeatFrequency + HEARTBEAT.md cron → frequency times", async () => {
       global.fetch = vi.fn(async () =>
         jsonResponse({

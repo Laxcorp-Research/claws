@@ -1,7 +1,7 @@
 // Pure, client-safe version ordering for OpenClaw runtime versions.
 //
 // Version shape (from the image pipeline, register route VERSION_RE): a
-// date-based base "YYYY.M.D" with an optional "-N" overlay-rebuild suffix —
+// date-based base "YYYY.M.D" with an optional "-N" overlay-rebuild suffix -
 // e.g. "2026.5.22" or "2026.5.22-3".
 //
 // Ordering (newest first):
@@ -13,7 +13,7 @@
 // FAIL-SAFE: anything that doesn't parse (a non-pipeline tag like "latest",
 // "candidate", "unknown", an env-fallback image, or outright garbage) makes
 // compareOpenClawVersions() return 0. Callers therefore NEVER prompt or act on
-// an unknown-direction comparison — an unregistered/garbage image triggers no
+// an unknown-direction comparison - an unregistered/garbage image triggers no
 // update in either direction. This is intentional: the version-update banner
 // and the per-workspace update action must be safe on whatever image a
 // container happens to be running, registered or not.
@@ -37,7 +37,7 @@ export function parseOpenClawVersion(version: string): ParsedVersion | null {
 }
 
 /**
- * Extracts the version tag from a docker image reference — the segment after
+ * Extracts the version tag from a docker image reference - the segment after
  * the final ':'. e.g. "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-3"
  * -> "2026.5.22-3". Returns the input unchanged if there is no tag separator.
  * (An image tag never contains '/', so lastIndexOf(':') is correct for GHCR
@@ -51,7 +51,7 @@ export function extractVersionFromImage(image: string): string {
 
 /**
  * Total order on OpenClaw version strings. Returns a negative number if a<b,
- * 0 if equal OR either side is unparseable (FAIL-SAFE — never assert a
+ * 0 if equal OR either side is unparseable (FAIL-SAFE - never assert a
  * direction we can't trust), a positive number if a>b. Suitable for Array.sort
  * and sign-based comparisons.
  */

@@ -1,4 +1,4 @@
-// PR #5 — cheap-ops registry + classifier tests.
+// PR #5 - cheap-ops registry + classifier tests.
 //
 // Guards two kinds of regression:
 //   (1) Registry coverage: every OAUTH_COMPOSIO toolkit shipped in
@@ -39,7 +39,7 @@ describe("CHEAP_OPS registry coverage", () => {
     }
     expect(
       misses,
-      `Unregistered OAuth toolkits — add to CHEAP_OPS or UNSUPPORTED_TOOLKITS in src/lib/composio/cheap-ops.ts:\n  ${misses.join("\n  ")}`,
+      `Unregistered OAuth toolkits - add to CHEAP_OPS or UNSUPPORTED_TOOLKITS in src/lib/composio/cheap-ops.ts:\n  ${misses.join("\n  ")}`,
     ).toEqual([])
   })
 
@@ -50,7 +50,7 @@ describe("CHEAP_OPS registry coverage", () => {
     }
   })
 
-  it("asana is in UNSUPPORTED_TOOLKITS (sentinel — GH #41)", () => {
+  it("asana is in UNSUPPORTED_TOOLKITS (sentinel - GH #41)", () => {
     expect(UNSUPPORTED_TOOLKITS).toContain("asana")
     expect(CHEAP_OPS["asana" as keyof typeof CHEAP_OPS]).toBeUndefined()
   })
@@ -82,21 +82,21 @@ describe("isTestSupportedToolkit", () => {
 describe("classifyByMessage", () => {
   type Case = { msg: string; expected: ProbeCategory }
   const cases: Case[] = [
-    // Provider-401 variants — the one case where we flip DB to EXPIRED.
+    // Provider-401 variants - the one case where we flip DB to EXPIRED.
     { msg: "HTTP 401: Request had invalid authentication credentials.", expected: "provider_401" },
     { msg: "401 Unauthorized", expected: "provider_401" },
     { msg: "token has expired", expected: "provider_401" },
     { msg: "token was revoked", expected: "provider_401" },
     { msg: "invalid_grant", expected: "provider_401" },
     { msg: "invalid credentials", expected: "provider_401" },
-    // Provider-403 (forbidden) — also flips DB to EXPIRED.
+    // Provider-403 (forbidden) - also flips DB to EXPIRED.
     { msg: "403 Forbidden", expected: "provider_403" },
     { msg: "forbidden: insufficient scope", expected: "provider_403" },
     // Composio-side rejections (observed during 500-validate probe).
     { msg: "toolkit mismatch for connected account", expected: "toolkit_mismatch" },
     { msg: "no connected account for this toolkit", expected: "toolkit_mismatch" },
     { msg: "No connected account found for toolkit hubspot", expected: "toolkit_mismatch" },
-    // Registry-drift categories — code bugs, not connection failures.
+    // Registry-drift categories - code bugs, not connection failures.
     { msg: "tool not found", expected: "op_not_found" },
     { msg: "Unknown tool: FOO", expected: "op_not_found" },
     { msg: "Toolkit version not specified", expected: "version_broken" },

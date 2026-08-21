@@ -415,7 +415,7 @@ export function CreatorDashboard() {
           )}
         </div>
         <p className="text-[11px] text-[var(--tx2)] mb-3">
-          Encrypted at rest. We never show full account details after save — re-enter to change.
+          Encrypted at rest. We never show full account details after save - re-enter to change.
         </p>
         {payoutMeta?.hasDetails && !editingPayout ? (
           <div className="text-[12px] text-[var(--tx)] space-y-1">
@@ -428,7 +428,7 @@ export function CreatorDashboard() {
                     ? "Wise"
                     : payoutMeta.method === "PAYPAL"
                       ? "PayPal"
-                      : "—"}
+                      : "-"}
               </span>
             </p>
             <p>

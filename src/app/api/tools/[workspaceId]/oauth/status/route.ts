@@ -11,7 +11,7 @@ import { log } from "@/lib/logger"
  * the consent-complete wait; it switches on a narrow tri-state (ACTIVE =
  * user finished consent, FAILED = give up, PENDING = keep polling).
  * Additional granularity (EXPIRED vs REVOKED vs generic FAILED) is
- * irrelevant DURING consent — all three mean "not connected now". It
+ * irrelevant DURING consent - all three mean "not connected now". It
  * matters for the DB write below so downstream UI can differentiate.
  */
 type PollStatus = "PENDING" | "ACTIVE" | "FAILED"
@@ -29,7 +29,7 @@ function mapComposioStatus(raw: string): PollStatus {
  * PR #4 Commit 6: the third-consumer un-collapse. Before this commit,
  * Composio's EXPIRED state was coerced via mapComposioStatus → "FAILED"
  * → DB write `status: "ERROR"`. That meant the `EXPIRED` and `REVOKED`
- * values in our `ToolConnectionStatus` Prisma enum were dead — they
+ * values in our `ToolConnectionStatus` Prisma enum were dead - they
  * never got written by the primary OAuth-poll path regardless of what
  * Composio reported. Dashboard banner copy and ToolRow rendering for
  * expired OAuth tokens (Commit 6's D5 spec) would have been dead code.
@@ -38,7 +38,7 @@ function mapComposioStatus(raw: string): PollStatus {
  *   - EXPIRED connections surface with "Your OAuth token has expired"
  *     copy + Reconnect button rather than the generic "Connection failed".
  *   - REVOKED connections differ semantically from EXPIRED in audit logs
- *     even if the user-facing copy is the same ("Token expired —
+ *     even if the user-facing copy is the same ("Token expired -
  *     reconnect required").
  *   - Unknown / unrecognized Composio states fall through to ERROR,
  *     which is the safe default (generic error banner + Retry button).

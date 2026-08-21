@@ -45,7 +45,7 @@ describe("AgentLiveTile controls", () => {
       />,
     )
     expect(screen.getByText("PAUSE-PENDING")).toBeDefined()
-    expect(screen.getByText("Pause pending — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Pause pending - redeploy to apply")).toBeDefined()
   })
 
   it("renders the agent name through truncation-ready text", () => {

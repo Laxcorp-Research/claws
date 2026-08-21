@@ -11,7 +11,7 @@ const WORKFLOW_PATH = resolve(
   "../../.github/workflows/build-openclaw-image.yml",
 )
 
-describe("build-openclaw-image.yml — stop moving :candidate", () => {
+describe("build-openclaw-image.yml - stop moving :candidate", () => {
   it("STOP_MOVING_CANDIDATE_ASSERT: tags list has immutable version only", () => {
     const yml = readFileSync(WORKFLOW_PATH, "utf8")
     expect(yml).toContain("STOP_MOVING_CANDIDATE_ASSERT")

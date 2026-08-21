@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Batch D — version restore failure routes through mutateWithFeedback.
+ * Batch D - version restore failure routes through mutateWithFeedback.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"

@@ -32,8 +32,8 @@ export function getTemplateProductId(price: number): string {
 /**
  * One-time + platform-sub checkouts use Checkout Sessions.
  * Coupon field: feature_flags.allow_discount_code (one-time only).
- * Do NOT set discount_code — the buyer types it at checkout.
- * Do NOT pre-fill address or country — Dodo locks pre-filled address fields.
+ * Do NOT set discount_code - the buyer types it at checkout.
+ * Do NOT pre-fill address or country - Dodo locks pre-filled address fields.
  * The subscriptions.create API requires a country; we do not call it.
  */
 const EDITABLE_COUNTRY_FLAGS = { allow_customer_editing_country: true } as const
@@ -118,7 +118,7 @@ export async function createPlatformSubscription(params: {
 }
 
 export async function createCommunityCheckout(params: {
-  /** Stored Dodo product id from approve-time mint — never a Prisma cuid. */
+  /** Stored Dodo product id from approve-time mint - never a Prisma cuid. */
   dodoProductId: string
   price: number
   userEmail: string

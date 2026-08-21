@@ -24,7 +24,7 @@ const OPS = new Set<ToolRequirementOpName>([
 ])
 
 /**
- * GET — workspace tool requirement set via dual-read resolver.
+ * GET - workspace tool requirement set via dual-read resolver.
  * Returns partitioned required / recommended (dismissed excluded from recommended).
  */
 export async function GET(
@@ -58,7 +58,7 @@ export async function GET(
 }
 
 /**
- * PATCH — demote | restore | dismiss | undismiss | remove | swap.
+ * PATCH - demote | restore | dismiss | undismiss | remove | swap.
  * Never touches ToolConnection (disconnect is a separate explicit action).
  */
 export async function PATCH(

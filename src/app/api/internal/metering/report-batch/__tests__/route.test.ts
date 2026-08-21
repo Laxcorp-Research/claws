@@ -41,7 +41,7 @@ beforeEach(() => {
   ])
 })
 
-describe("POST /api/internal/metering/report-batch — exhaustion after()", () => {
+describe("POST /api/internal/metering/report-batch - exhaustion after()", () => {
   it("schedules onCreditsExhausted via after() when balance hits 0 (not setImmediate)", async () => {
     ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (fn: (tx: typeof prismaMock) => Promise<void>) => {

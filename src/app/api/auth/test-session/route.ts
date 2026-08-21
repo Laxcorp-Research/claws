@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   // Batch B: completed-mode users must clear the shown-once onboarding gate.
   // This route encodes the JWT directly (skips Auth.js jwt callback), so the
-  // claim must be on the cookie — otherwise proxy redirects /my-claws →
+  // claim must be on the cookie - otherwise proxy redirects /my-claws →
   // /onboarding and Playwright waitForURL('**/my-claws') times out.
   // Incomplete-mode users keep the flag false for the fresh-signup journey.
   const testUser = await prisma.user.upsert({
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     await prisma.workspace.deleteMany({
       where: { userId: testUser.id, name: 'My Claw 1', status: 'DRAFT' },
     });
-    // v2.1: seed starter credits — grantStarterCredits is gated on email
+    // v2.1: seed starter credits - grantStarterCredits is gated on email
     // verification / fingerprints and does not run for this fixture user.
     // Explicit CreditAccount upsert matches product "signup with credits".
     await prisma.creditAccount.upsert({

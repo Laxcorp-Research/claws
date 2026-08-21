@@ -57,7 +57,7 @@ function openMenu(status: string) {
   openWorkspaceOptionsMenu()
 }
 
-describe("WorkspaceContextMenu — STOPPED branch (PR #52 follow-up)", () => {
+describe("WorkspaceContextMenu - STOPPED branch (PR #52 follow-up)", () => {
   it("renders 'Open Dashboard' item for STOPPED workspaces", async () => {
     openMenu("STOPPED")
     expect(await screen.findByText("Open Dashboard")).toBeDefined()
@@ -78,7 +78,7 @@ describe("WorkspaceContextMenu — STOPPED branch (PR #52 follow-up)", () => {
   })
 })
 
-describe("WorkspaceContextMenu — PAUSED branch (Resume item removed)", () => {
+describe("WorkspaceContextMenu - PAUSED branch (Resume item removed)", () => {
   it("does NOT render Resume for PAUSED workspaces (dead post-PR-#52)", async () => {
     openMenu("PAUSED")
     await screen.findByText("Open Dashboard")
@@ -97,7 +97,7 @@ describe("WorkspaceContextMenu — PAUSED branch (Resume item removed)", () => {
   })
 })
 
-describe("WorkspaceContextMenu — RUNNING branch (Pause renamed to Stop)", () => {
+describe("WorkspaceContextMenu - RUNNING branch (Pause renamed to Stop)", () => {
   it("renders 'Stop' (not 'Pause') for RUNNING workspaces", async () => {
     openMenu("RUNNING")
     expect(await screen.findByRole("menuitem", { name: "Stop" })).toBeDefined()
@@ -116,7 +116,7 @@ describe("WorkspaceContextMenu — RUNNING branch (Pause renamed to Stop)", () =
   })
 })
 
-describe("WorkspaceContextMenu — Stop is confirm-gated (regression: no instant destructive fire)", () => {
+describe("WorkspaceContextMenu - Stop is confirm-gated (regression: no instant destructive fire)", () => {
   it("clicking 'Stop' opens the confirm dialog and does NOT call /stop on first click", async () => {
     openMenu("RUNNING")
     fireEvent.click(await screen.findByRole("menuitem", { name: "Stop" }))
@@ -145,7 +145,7 @@ describe("WorkspaceContextMenu — Stop is confirm-gated (regression: no instant
   })
 })
 
-describe("WorkspaceContextMenu — pre-deploy branches (unchanged by this PR)", () => {
+describe("WorkspaceContextMenu - pre-deploy branches (unchanged by this PR)", () => {
   it("DRAFT renders 'Setup & Deploy'", async () => {
     openMenu("DRAFT")
     expect(await screen.findByText("Setup & Deploy")).toBeDefined()

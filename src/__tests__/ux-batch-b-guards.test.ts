@@ -12,7 +12,7 @@ function read(rel: string): string {
 }
 
 describe("Batch B recurrence guards", () => {
-  it("shown-once: User.onboardingCompleted — no new migration field", () => {
+  it("shown-once: User.onboardingCompleted - no new migration field", () => {
     const schema = read("prisma/schema.prisma")
     expect(schema).toMatch(/onboardingCompleted\s+Boolean/)
     // Must not invent a second flag

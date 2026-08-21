@@ -40,7 +40,7 @@ export function VersionUpdateBanner({ currentImage, onRedeploy, showRedeployActi
   const stableVer = stableVersion.version
 
   // Only prompt when the stable row is genuinely NEWER than the deployed image.
-  // (Was: `stableVersion.dockerImage === currentImage` — string inequality,
+  // (Was: `stableVersion.dockerImage === currentImage` - string inequality,
   // which fired even when stable was OLDER, e.g. a -3 Claw shown "update to -2".
   // isNewerVersion is fail-safe: an unparseable/unregistered image -> no prompt.)
   if (!isNewerVersion(stableVer, currentVer)) return null
@@ -55,7 +55,7 @@ export function VersionUpdateBanner({ currentImage, onRedeploy, showRedeployActi
         </Button>
       ) : undefined}
     >
-      <p className="font-medium">A runtime update is available — redeploy to apply</p>
+      <p className="font-medium">A runtime update is available - redeploy to apply</p>
       <p className="mt-0.5 opacity-80">
         Your Claw is running {currentVer}; the current stable runtime is v{stableVer}.
       </p>

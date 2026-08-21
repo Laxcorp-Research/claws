@@ -65,7 +65,7 @@ function mockTxHappyPath() {
   prismaMock.marketplaceSkill.update.mockResolvedValue(skillPaid as never)
 }
 
-describe("POST /api/marketplace/skills/[slug]/install — REDEPLOY-CARRIES (PR-8)", () => {
+describe("POST /api/marketplace/skills/[slug]/install - REDEPLOY-CARRIES (PR-8)", () => {
   beforeEach(() => {
     vi.mocked(getSessionUser).mockResolvedValue({ id: "user-1", email: "u@test.com" } as never)
     mockBridge.mockResolvedValue({ id: "lib-skill-1", slug: "paid-skill" })

@@ -43,16 +43,16 @@ function stripCommentsAndImports(src: string): string {
     .replace(/^\s*import\s.+?;?\s*$/gm, "")
 }
 
-/** Discord product UI label — not our runtime "gateway" jargon. */
+/** Discord product UI label - not our runtime "gateway" jargon. */
 /** PR-5 locked Verified sandbox claim (Layer-2 live). */
 const ALLOWED_LITERAL_SUBSTRINGS = [
   "Privileged Gateway Intents",
-  "Verified — ran in an isolated sandbox (no credentials, network locked to the AI model)",
+  "Verified - ran in an isolated sandbox (no credentials, network locked to the AI model)",
 ] as const
 
 function userStringHits(src: string): string[] {
   const body = stripCommentsAndImports(src)
-  // Quoted / template literals only — prop names like composioOAuthAvailable stay out.
+  // Quoted / template literals only - prop names like composioOAuthAvailable stay out.
   const literals = body.match(/(["'`])(?:\\.|(?!\1)[\s\S])*\1/g) ?? []
   const hits: string[] = []
   for (const lit of literals) {

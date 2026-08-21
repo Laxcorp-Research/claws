@@ -39,7 +39,7 @@ describe("staleDestroyMaxAgeMs / isRuntimeStateStale", () => {
   })
 })
 
-describe("hibernateWorkspace — P3 refuse path", () => {
+describe("hibernateWorkspace - P3 refuse path", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({

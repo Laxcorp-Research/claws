@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ wo
   if (error) return error === "NOT_FOUND" ? ERRORS.NOT_FOUND("Workspace") : ERRORS.FORBIDDEN()
 
   const body = await req.json()
-  // WIRE-FULL: reportsTo is a read-only projection from edges — writers removed.
+  // WIRE-FULL: reportsTo is a read-only projection from edges - writers removed.
   const allowed = ["name", "color", "model", "fallbackModel", "thinkingDefault", "soulMd", "agentsMd", "heartbeatMd", "heartbeatFrequency", "heartbeatTime", "toolsMd", "userMd", "qualityThreshold", "maxRetries", "positionX", "positionY", "roleDescription", "description", "icon"]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {

@@ -9,9 +9,9 @@ export const maxDuration = 60
  * POST /api/deploy/[workspaceId]/stop
  *
  * Lifecycle P3:
- * - Default: destroy-anyway — sync fail surfaces syncWarning but Stop proceeds
+ * - Default: destroy-anyway - sync fail surfaces syncWarning but Stop proceeds
  *   (user's call, their claw).
- * - ?force=1 (or body.force): ops FORCE — destroyPolicy force (skip refuse gates).
+ * - ?force=1 (or body.force): ops FORCE - destroyPolicy force (skip refuse gates).
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
 
   try {
     const { syncThenDestroy } = await import("@/lib/openclaw/deployer")
-    // User Stop: serviceDelete is correct — operator asked to tear the box down.
+    // User Stop: serviceDelete is correct - operator asked to tear the box down.
     const result = await syncThenDestroy(workspaceId, {
       destroyPolicy: force ? "force" : "destroy-anyway",
     })

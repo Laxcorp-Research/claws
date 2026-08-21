@@ -4,7 +4,7 @@ interface StatCardProps {
   label: string;
   value: string | number;
   trend?: string;
-  // PR-4: "warn" (amber) added for DEGRADED — distinct from "down" (red/error)
+  // PR-4: "warn" (amber) added for DEGRADED - distinct from "down" (red/error)
   // and "up" (green/ok). DEGRADED is "alive but partially broken", which must
   // not read the same as a hard failure.
   trendType?: "up" | "down" | "warn";

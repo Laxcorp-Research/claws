@@ -267,7 +267,7 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
   })
 })
 
-describe("deployToCloud failure recovery — preserves live container pointers", () => {
+describe("deployToCloud failure recovery - preserves live container pointers", () => {
   it("does not delete or null the existing service when updateAndRedeployService fails before replacement", async () => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       workspaceStub({

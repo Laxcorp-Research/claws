@@ -56,7 +56,7 @@ describe("Full-text search", () => {
     })
 
     it("finds templates by name keyword", async () => {
-      expect(ftsReady, "ClawTemplate.searchVector missing — apply Prisma migrations").toBe(true)
+      expect(ftsReady, "ClawTemplate.searchVector missing - apply Prisma migrations").toBe(true)
       const results = (await prisma.$queryRawUnsafe(
         `
         SELECT "id", "name", ts_rank_cd("searchVector", to_tsquery('english', 'quant:*')) AS rank
@@ -73,7 +73,7 @@ describe("Full-text search", () => {
     })
 
     it("finds templates by description keyword", async () => {
-      expect(ftsReady, "ClawTemplate.searchVector missing — apply Prisma migrations").toBe(true)
+      expect(ftsReady, "ClawTemplate.searchVector missing - apply Prisma migrations").toBe(true)
       const results = (await prisma.$queryRawUnsafe(
         `
         SELECT "id", "name"
@@ -88,7 +88,7 @@ describe("Full-text search", () => {
     })
 
     it("returns empty for nonexistent terms", async () => {
-      expect(ftsReady, "ClawTemplate.searchVector missing — apply Prisma migrations").toBe(true)
+      expect(ftsReady, "ClawTemplate.searchVector missing - apply Prisma migrations").toBe(true)
       const results = (await prisma.$queryRawUnsafe(
         `
         SELECT "id"

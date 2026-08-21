@@ -19,7 +19,7 @@ interface ActivityLogEntryProps {
 export function ActivityLogEntry({ timestamp, agentName, agentColor, message, detail, channelId }: ActivityLogEntryProps) {
   const [expanded, setExpanded] = useState(false)
   // Only offer expand when there's genuinely MORE than the message already
-  // shows — a detail equal to the message is just noise.
+  // shows - a detail equal to the message is just noise.
   const trimmedDetail = typeof detail === "string" ? detail.trim() : ""
   const hasDetail = trimmedDetail.length > 0 && trimmedDetail !== message.trim()
   const viaBadge = <ProviderChannelBadge channelId={channelId} className="ml-1.5 align-middle" />
@@ -55,7 +55,7 @@ export function ActivityLogEntry({ timestamp, agentName, agentColor, message, de
             >
               {/* PR-4d: explicit chevron glyph instead of implicit
                   cursor:pointer + line-clamp affordance. The user reported the
-                  previous affordance wasn't discoverable enough — rows with
+                  previous affordance wasn't discoverable enough - rows with
                   hidden detail looked identical to rows without. The chevron
                   fixes that. aria-hidden because the button's aria-expanded
                   already conveys the state to assistive tech. */}

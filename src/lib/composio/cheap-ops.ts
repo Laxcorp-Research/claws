@@ -6,7 +6,7 @@
  *   (a) exists on Composio's SDK registry (validated against the 2026-04-19
  *       SDK snapshot at `C:\temp\composio-poc\90-oauth-tools-raw.json`
  *       and live-probed 2026-04-21 via
- *       `C:\temp\composio-poc\500-validate-cheap-ops.mjs` — 16/16 op names
+ *       `C:\temp\composio-poc\500-validate-cheap-ops.mjs` - 16/16 op names
  *       resolved cleanly; Gmail returned the expected provider-401 against
  *       a revoked test grant);
  *   (b) surfaces a clean 401/"token revoked" error from the provider when
@@ -14,7 +14,7 @@
  *       from transient-infra-error;
  *   (c) does NOT mutate state at the provider.
  *
- * Asana is intentionally excluded (tracked in GH #41) — no zero-arg whoami
+ * Asana is intentionally excluded (tracked in GH #41) - no zero-arg whoami
  * op exists in the SDK; all Asana list-ops require a qualifying param
  * (workspace/project/assignee) we don't have at Test-click time. Asana
  * rows render the Test button disabled with a "not yet supported" tooltip.
@@ -39,7 +39,7 @@ export const CHEAP_OPS: Record<string, CheapOp> = {
   // not "AUTHENTICATED_USER")
   github: { op: "GITHUB_GET_THE_AUTHENTICATED_USER", args: {} },
   // tool name per Composio SDK 2026-04-19 (note: "USER_LOOKUP_ME", not
-  // "GET_ME" — Twitter/X v2 API naming convention surfaced by Composio)
+  // "GET_ME" - Twitter/X v2 API naming convention surfaced by Composio)
   twitter: { op: "TWITTER_USER_LOOKUP_ME", args: {} },
   hubspot: { op: "HUBSPOT_HUBSPOT_LIST_CONTACTS", args: { limit: 1 } },
   salesforce: { op: "SALESFORCE_LIST_CONTACTS", args: { limit: 1 } },
@@ -60,7 +60,7 @@ export const CHEAP_OPS: Record<string, CheapOp> = {
  *
  * PR2.8a additions (19): all newly-added OAUTH_COMPOSIO catalog entries
  * start here rather than in CHEAP_OPS. Each needs a zero-arg whoami op
- * verified against Composio's SDK before it graduates — the verification
+ * verified against Composio's SDK before it graduates - the verification
  * procedure documented in the file header (500-validate-cheap-ops.mjs)
  * needs to run once per new toolkit. Deferred to a follow-up PR so PR2.8a
  * stays catalog-only. Users connecting these tools in the wizard see the
@@ -92,7 +92,7 @@ export const UNSUPPORTED_TOOLKITS: readonly string[] = [
 
 /**
  * Tooltip copy for the disabled-Test state on unsupported toolkits.
- * Note: "not yet" is intentional — implies this is a gap we're closing,
+ * Note: "not yet" is intentional - implies this is a gap we're closing,
  * not a permanent exclusion. Matches the asana issue's framing.
  */
 export const UNSUPPORTED_TOOLKIT_TOOLTIP = "Test not yet supported for this tool"
@@ -105,20 +105,20 @@ export function isTestSupportedToolkit(toolkitSlug: string): boolean {
 /**
  * Classification of a Composio `tools.execute` probe outcome.
  *
- * `working` — successful:true response. Token is alive.
- * `provider_401` / `provider_403` — terminal "token is dead at provider".
+ * `working` - successful:true response. Token is alive.
+ * `provider_401` / `provider_403` - terminal "token is dead at provider".
  *   The route transitions DB to EXPIRED on these.
- * `toolkit_mismatch` — Composio rejected because the connection's toolkit
+ * `toolkit_mismatch` - Composio rejected because the connection's toolkit
  *   doesn't match the requested op. Should not happen in production
  *   (we look up by toolkit), but observed during the 500-validate probe
  *   when we tested cross-toolkit ops. Logged but not a user-facing failure.
- * `invalid_args` — our registry's `args` shape is wrong for this op.
+ * `invalid_args` - our registry's `args` shape is wrong for this op.
  *   Code bug. Surfaces to the UI as a generic error.
- * `op_not_found` / `version_broken` — same category: our registry drifted
+ * `op_not_found` / `version_broken` - same category: our registry drifted
  *   from Composio's SDK. Code bug. Surfaces as generic error.
- * `timeout` — probe didn't complete inside `PROBE_TIMEOUT_MS`. Transient
+ * `timeout` - probe didn't complete inside `PROBE_TIMEOUT_MS`. Transient
  *   or Composio degradation; do NOT mutate DB.
- * `unknown` — anything we couldn't classify. Do NOT mutate DB.
+ * `unknown` - anything we couldn't classify. Do NOT mutate DB.
  */
 export type ProbeCategory =
   | "working"

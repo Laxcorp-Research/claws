@@ -11,7 +11,7 @@ vi.mock("@/lib/api/auth", () => ({ getSessionUser: () => mockGetSessionUser() })
 
 import { POST } from "../route"
 
-describe("POST /api/marketplace/templates/[slug]/reviews — own listing", () => {
+describe("POST /api/marketplace/templates/[slug]/reviews - own listing", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetSessionUser.mockResolvedValue({ id: "user-1" })

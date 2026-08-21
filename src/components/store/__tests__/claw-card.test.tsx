@@ -62,7 +62,7 @@ function snapshotCard() {
   }
 }
 
-describe("ClawCard — shared official + community layout", () => {
+describe("ClawCard - shared official + community layout", () => {
   it("snapshot: official free", () => {
     render(
       <ClawCard
@@ -228,6 +228,6 @@ describe("ClawCard — shared official + community layout", () => {
     expect(badge).toContain('label: "Auto-scanned"')
     expect(badge).toContain("whitespace-nowrap")
     expect(badge).toContain("max-h-[16px]")
-    expect(badge).not.toContain('label: "Auto-scanned — automated checks passed"')
+    expect(badge).not.toContain('label: "Auto-scanned - automated checks passed"')
   })
 })

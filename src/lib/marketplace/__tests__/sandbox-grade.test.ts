@@ -36,7 +36,7 @@ Do NOT contact the internet, read ~/.ssh, /etc/shadow, .env, or any path under /
 ${FIXED_PROBE_MISSION}
 Checklist done. command -v none. No network. No secrets.`
 
-describe("sandbox grade — verdict matrix", () => {
+describe("sandbox grade - verdict matrix", () => {
   it("benign skillMd → passed=true, no violations", () => {
     const report = buildSandboxReport({
       skillId: "sk-benign",
@@ -139,7 +139,7 @@ describe("sandbox grade — verdict matrix", () => {
 
   it("process.env narration does not CRED_PATH_TOUCH; bare .env still does on skill_md", () => {
     const narr = gradeTextForViolations(
-      "No env vars declared — skipping process.env checks",
+      "No env vars declared - skipping process.env checks",
       "skill_md",
     )
     expect(narr.some((x) => x.class === "CRED_PATH_TOUCH")).toBe(false)

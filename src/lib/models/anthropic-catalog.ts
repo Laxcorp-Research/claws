@@ -1,6 +1,6 @@
 /**
  * Live Anthropic catalog refresh via GET /v1/models (platform master key).
- * OpenAI/Google list endpoints exist but the platform has no keys — pins stay
+ * OpenAI/Google list endpoints exist but the platform has no keys - pins stay
  * the curated source until/unless platform keys exist.
  */
 
@@ -56,6 +56,23 @@ export function pickAnthropicFlagshipPins(models: AnthropicModelInfo[]): Anthrop
 
 export function anthropicCatalogModelId(id: string): string {
   return id.startsWith("anthropic/") ? id : `anthropic/${id}`
+}
+
+/**
+ * Extended thinking shipped with Claude 3.7; every later family (4.x, 5)
+ * supports it. The /v1/models payload has no capability flags, so this is a
+ * version heuristic over both id shapes:
+ *   old  claude-3-7-sonnet-20250219  (version before family)
+ *   new  claude-sonnet-4-6 / claude-opus-5  (family before version)
+ * Unparseable ids return null (unknown), never false.
+ */
+export function anthropicSupportsReasoning(id: string): boolean | null {
+  const match = id.toLowerCase().match(/claude-(?:[a-z]+-)?(\d+)(?:[.-](\d+))?/)
+  if (!match) return null
+  const major = Number(match[1])
+  const minor = Number(match[2] ?? 0)
+  if (!Number.isFinite(major) || !Number.isFinite(minor)) return null
+  return major > 3 || (major === 3 && minor >= 7)
 }
 
 export async function fetchAnthropicModels(fetcher: FetchLike = fetch): Promise<AnthropicModelInfo[]> {
@@ -121,6 +138,7 @@ export async function refreshAnthropicCatalog(
           typeof m.max_input_tokens === "number" && m.max_input_tokens > 0
             ? m.max_input_tokens
             : null
+        const supportsReasoning = anthropicSupportsReasoning(m.id)
         return prisma.modelCatalogEntry.upsert({
           where: { modelId },
           create: {
@@ -130,6 +148,7 @@ export async function refreshAnthropicCatalog(
             contextLength,
             pricingSnippet: null,
             costPer1kEst: cost,
+            supportsReasoning,
             isPinned: pinSet.has(modelId),
             isActive: true,
             source: "anthropic",
@@ -139,6 +158,7 @@ export async function refreshAnthropicCatalog(
           update: {
             displayName: resolveCatalogDisplayName(modelId, m.display_name),
             contextLength,
+            supportsReasoning,
             isPinned: pinSet.has(modelId),
             isActive: true,
             source: "anthropic",

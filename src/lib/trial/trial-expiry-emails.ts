@@ -60,7 +60,7 @@ export async function sendTrialExpiryNotifyEmail(args: {
     html: emailShell(`
                 <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">Hey ${greeting},</div>
                 <div style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.6;">
-                  Your 3-day trial has ended — subscribe to keep ${claws} running.
+                  Your 3-day trial has ended - subscribe to keep ${claws} running.
                   We'll stop them in 24 hours otherwise.
                 </div>
                 <a href="${BILLING_HREF}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
@@ -88,7 +88,7 @@ export async function sendTrialExpiryStoppedEmail(args: {
                 <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">Hey ${greeting},</div>
                 <div style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.6;">
                   We stopped ${countLabel} (${claws}) after your trial ended.
-                  Subscribe to redeploy — workspace configuration is kept;
+                  Subscribe to redeploy - workspace configuration is kept;
                   runtime memory restores on redeploy when a recent backup exists.
                 </div>
                 <a href="${BILLING_HREF}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">

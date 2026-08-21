@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
-describe("hibernation cron — P2.3 wake geometry", () => {
+describe("hibernation cron - P2.3 wake geometry", () => {
   it("uses wakeHibernatedWhere + isWakeEligible (no gt:now / 2m clamp)", () => {
     const src = readFileSync(
       join(process.cwd(), "src/app/api/cron/hibernation/route.ts"),

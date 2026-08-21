@@ -84,7 +84,7 @@ describe("computeWakeLeadMs", () => {
   })
 })
 
-describe("isWakeEligible — no upper cutoff", () => {
+describe("isWakeEligible - no upper cutoff", () => {
   it("past-due hint is eligible (late wake beats never)", () => {
     const next = new Date("2026-07-20T12:00:00.000Z")
     const now = new Date("2026-07-20T12:10:00.000Z")

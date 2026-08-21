@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils"
 
 export type ChatBubbleStatus = "sending" | "sent" | "failed"
 
-// PR-9/B polish — SECURITY: agent reply text is UNTRUSTED (LLM/container output,
+// PR-9/B polish - SECURITY: agent reply text is UNTRUSTED (LLM/container output,
 // potentially prompt-injected). We render it with react-markdown v10 whose
-// DEFAULT config does NOT parse raw HTML (no `rehype-raw` is added) — so an
+// DEFAULT config does NOT parse raw HTML (no `rehype-raw` is added) - so an
 // embedded `<script>`/`<img onerror>` is never turned into a DOM element, and
 // react-markdown's built-in url sanitizer strips `javascript:`/`vbscript:` hrefs.
 // Locked by the XSS test in chat-message.test.tsx (mutation: add rehype-raw →
@@ -48,7 +48,7 @@ const MD_PROSE = cn(
 function MarkdownBody({ content }: { content: string }): ReactElement {
   return (
     <div className={MD_PROSE}>
-      {/* SECURITY: never add rehype-raw — agent replies are untrusted; raw HTML = XSS.
+      {/* SECURITY: never add rehype-raw - agent replies are untrusted; raw HTML = XSS.
           The injection test in chat-message.test.tsx locks this. */}
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
         {content}
@@ -64,32 +64,32 @@ interface ChatMessageProps {
   // PR-9/B GRACEFUL-DEGRADATION GUARD (verified from the container reporter,
   // container/claws-activity-reporter/index.mjs handleAgentEnd):
   //
-  //   BUBBLE BODY = detail || action — NEVER `detail` alone.
+  //   BUBBLE BODY = detail || action - NEVER `detail` alone.
   //
   // An errored agent turn still yields a non-empty `detail`
   // ("[assistant turn failed before producing content]" or, via
   // extractAssistantReply's fallback, "(no reply produced)"). The ONLY
   // null-detail case (errored + empty text + empty errorMessage) still carries
   // a non-empty `action` ("Reply failed"). So `detail || action` guarantees a
-  // bubble is never blank — and the markdown layer below receives the already-
+  // bubble is never blank - and the markdown layer below receives the already-
   // guarded body, so it cannot reintroduce a blank bubble.
   detail: string | null
   action: string
   status?: ChatBubbleStatus
   // WORKING-INDICATOR FIX: the turn was sent (202) but no reply arrived within
-  // the timeout. Renders a SUBTLE, muted "No response" note — deliberately
+  // the timeout. Renders a SUBTLE, muted "No response" note - deliberately
   // DISTINCT from the red "Failed to send": the message DID send; the agent just
   // never replied. Same styling for both would be wrong information.
   noResponse?: boolean
   // PR-9/C: on a failed send, the panel passes the tailored per-state copy here
-  // (e.g. "Your Claw is asleep — wake it to chat.") to REPLACE the flat "Failed
+  // (e.g. "Your Claw is asleep - wake it to chat.") to REPLACE the flat "Failed
   // to send". Absent/empty → the legacy "Failed to send" (network errors, direct
   // callers).
   failureMessage?: string | null
-  // PR-9/C: present on a transient failure (502 unreachable, 429, network) — a
+  // PR-9/C: present on a transient failure (502 unreachable, 429, network) - a
   // Retry that re-POSTs the SAME text (the user never retypes).
   onRetry?: () => void
-  // PR-9/C: present when the failure reason is "wake" (a send-time HIBERNATED —
+  // PR-9/C: present when the failure reason is "wake" (a send-time HIBERNATED -
   // the mid-compose race). Renders a Wake button symmetric to Retry, reusing the
   // page's wake action so the failed bubble matches the pre-send disabled state.
   onWake?: () => void
@@ -97,7 +97,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
-  // NEVER `detail` alone — see the guard note above. Empty-string detail also
+  // NEVER `detail` alone - see the guard note above. Empty-string detail also
   // falls through to action.
   const body = (detail && detail.length > 0 ? detail : action) || ""
 
@@ -112,18 +112,18 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
           // overflow-wrap:anywhere (not `break-words`/break-word): only `anywhere`
           // collapses the bubble's min-content width so a long unbroken token (e.g. a
           // 100-char URL) wraps inside the max-w-[85%] bubble instead of overflowing
-          // the panel. `break-all` is wrong here — it would mid-word-break normal text.
+          // the panel. `break-all` is wrong here - it would mid-word-break normal text.
           "rounded-lg px-3 py-2 text-[12px] leading-snug [overflow-wrap:anywhere] text-[var(--tx)]",
           isUser ? "bg-[var(--acbg)]" : "bg-[var(--bg2)] border border-[var(--bd)]",
           status === "failed" && "opacity-70",
         )}
       >
         {/* User input is rendered as PLAIN text (typing "**hi**" shows "**hi**").
-            Only agent replies are markdown — and they are sanitized (see MD_COMPONENTS). */}
+            Only agent replies are markdown - and they are sanitized (see MD_COMPONENTS). */}
         {isUser ? <span className="whitespace-pre-wrap">{body}</span> : <MarkdownBody content={body} />}
       </div>
       {status === "sending" && <span className="text-[10px] text-[var(--tx3)]">Sending…</span>}
-      {/* PR-9/C: tailored per-state copy (e.g. "Your Claw is asleep — wake it to
+      {/* PR-9/C: tailored per-state copy (e.g. "Your Claw is asleep - wake it to
           chat.") replaces the flat "Failed to send" when the panel supplies it.
           A "wake" reason (send-time HIBERNATED) offers a Wake button; a transient
           reason offers a Retry that re-sends the same text. The two are mutually

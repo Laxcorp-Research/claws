@@ -59,7 +59,7 @@ export function isAiProviderSlug(slug: string): boolean {
 
 /**
  * Drop AI-provider entries from a template required set. Model keys / credits
- * are Step 1's domain — they must never block the deploy gate.
+ * are Step 1's domain - they must never block the deploy gate.
  */
 export function filterNonAiProviderRequiredEntries<T extends RequiredToolEntry>(
   entries: T[],
@@ -160,7 +160,7 @@ export function unverifiedToolsInfoLine(unverifiedCount: number): string | null 
 }
 
 export const REQUIRED_TOOLS_SECTION_SUBTITLE =
-  "Required for this template — you can add anything else via Browse or Custom API"
+  "Required for this template - you can add anything else via Browse or Custom API"
 
 export const MISSING_REQUIRED_TOOLS_BANNER_BODY =
   "Go back to Tools and connect the required services for this Claw."

@@ -132,7 +132,7 @@ export async function GET(
     if (snap.reason === "too_large") {
       return unavailable("too_large", {
         asOf: snap.asOf,
-        message: "too large — wake to view",
+        message: "too large - wake to view",
       })
     }
     if (snap.reason === "corrupt") {

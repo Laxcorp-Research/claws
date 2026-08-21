@@ -1,11 +1,11 @@
-// Shared runtime-state sync — single source of truth for bundling the OpenClaw
+// Shared runtime-state sync - single source of truth for bundling the OpenClaw
 // data dir and uploading it to the Claws control plane.
 //
 // Imported by BOTH:
 //   - container/process-manager.mjs  (image: /usr/local/bin/process-manager.mjs
-//     → `./state-sync.mjs`) — the periodic 5-min interval + SIGTERM final sync.
+//     → `./state-sync.mjs`) - the periodic 5-min interval + SIGTERM final sync.
 //   - container/claws-activity-reporter/index.mjs (image:
-//     /opt/claws-activity-reporter/index.mjs → `../state-sync.mjs`) — the
+//     /opt/claws-activity-reporter/index.mjs → `../state-sync.mjs`) - the
 //     on-demand POST /internal/sync-now route (backend-triggered pre-destroy
 //     sync for Stop/hibernate).
 // The Dockerfile copies THIS one source file to /usr/local/bin/state-sync.mjs
@@ -20,21 +20,21 @@
 // the other process. That residual race is ACCEPTED AS BENIGN, and stays benign
 // only because of one invariant:
 //   INVARIANT: /api/internal/state/finalize writes the snapshot with a SINGLE
-//   atomic `updateMany` (one-shot column write) — never a read-modify-write.
+//   atomic `updateMany` (one-shot column write) - never a read-modify-write.
 //   (Legacy /upload is reject-only 413 USE_BLOB.)
 // Given that invariant: concurrent uploads can't tear or partially-overwrite
 // the row; the worst case is an equal-or-fresher snapshot (last writer wins,
 // both bundles captured seconds apart). And on the Stop/hibernate path the
 // container is deleted right after sync-now's confirmed 200, so the interval
-// stops — there is no later writer to stale-overwrite what sync-now persisted.
+// stops - there is no later writer to stale-overwrite what sync-now persisted.
 // sync-now's 200 (count>=1) is the guarantee: "state as of Stop is persisted."
 // (A regression test locks the atomic-upload invariant; if anyone refactors the
 // upload into a read-modify-write, that test fails.)
 //
-// ── BLOB TRANSPORT (D2 / PR-1) — sole sync path ──
+// ── BLOB TRANSPORT (D2 / PR-1) - sole sync path ──
 //   1) POST /state/blob-token → clientToken
 //   2) PUT gzip bytes to Vercel Blob API (bypasses edge body cap)
-//   3) POST /state/finalize { blobUrl, sha256, sizes } — platform verifies hash
+//   3) POST /state/finalize { blobUrl, sha256, sizes } - platform verifies hash
 //      then atomic updateMany (+ idempotent noop + best-effort blob del).
 // Legacy /state/upload is reject-only (413 USE_BLOB) for old images.
 
@@ -56,7 +56,7 @@ const UUID_RE =
   /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
 
 // Config files are re-delivered via env vars at every boot (deriveContainerEnv),
-// so they are NOT runtime state — exclude them from the snapshot. Everything
+// so they are NOT runtime state - exclude them from the snapshot. Everything
 // else under the data dir (agents/<id>/sessions/*.jsonl, MEMORY.md, logs,
 // caches) IS runtime state.
 const CONFIG_FILES = new Set(["openclaw.json", ".env", "cron"])
@@ -131,7 +131,7 @@ export function shouldIncludeSessionArtifact(fileName, liveIds, opts = {}) {
   if (!isJsonlOrTrajectory) return true
 
   const m = fileName.match(UUID_RE)
-  if (!m) return true // unrecognized name — keep rather than drop live data
+  if (!m) return true // unrecognized name - keep rather than drop live data
   if (liveIds.has(m[1])) return true
   // Not in index: retain orphans (default) or drop (pre--9 / flag=false).
   return retainOrphans
@@ -402,7 +402,7 @@ export function evaluateNearCap(compressedBytes) {
 async function maybeEmitNearCapWarning(compressedBytes, sizeKb, fetchImpl) {
   const decision = evaluateNearCap(compressedBytes)
   if (!decision.emit) return
-  // Ingest ALLOWED has no WARNING type — use ERROR with class:"WARNING".
+  // Ingest ALLOWED has no WARNING type - use ERROR with class:"WARNING".
   await postActivityEvent(
     {
       type: "ERROR",
@@ -427,7 +427,7 @@ async function maybeEmitNearCapWarning(compressedBytes, sizeKb, fetchImpl) {
 
 /**
  * PUT gzip bytes to Vercel Blob using a server-issued client token.
- * Minimal protocol mirror of @vercel/blob put() — no SDK in the image.
+ * Minimal protocol mirror of @vercel/blob put() - no SDK in the image.
  */
 export async function putGzipToVercelBlob({
   apiUrl,
@@ -467,7 +467,7 @@ async function parseCount(res) {
     const body = await res.json()
     if (typeof body?.count === "number") count = body.count
   } catch {
-    // Older server / non-JSON — treat as accepted-unconfirmed when ok.
+    // Older server / non-JSON - treat as accepted-unconfirmed when ok.
   }
   return count
 }
@@ -578,12 +578,12 @@ async function uploadViaBlob({
 // One bundle + gzip + upload. Returns a STRUCTURED result; callers interpret it
 // (process-manager reproduces its existing log lines; the route maps to a
 // status code). status values:
-//   unconfigured         — missing endpoint/secret/workspace; nothing attempted
-//   empty                — no runtime files to sync (nothing to persist)
-//   persisted            — server confirmed count>=1 (the only "guaranteed" case)
-//   accepted-unconfirmed — HTTP ok but no numeric count (older server skew)
-//   rejected             — HTTP !ok, OR accepted with count===0 (row missing)
-//   error                — network/timeout/abort
+//   unconfigured         - missing endpoint/secret/workspace; nothing attempted
+//   empty                - no runtime files to sync (nothing to persist)
+//   persisted            - server confirmed count>=1 (the only "guaranteed" case)
+//   accepted-unconfirmed - HTTP ok but no numeric count (older server skew)
+//   rejected             - HTTP !ok, OR accepted with count===0 (row missing)
+//   error                - network/timeout/abort
 async function doStateSync({ bundleFn = bundleRuntimeState, fetchImpl } = {}) {
   const doFetch = fetchImpl ?? fetch
   const STATE_ENDPOINT = resolveStateEndpoint()
@@ -605,7 +605,7 @@ async function doStateSync({ bundleFn = bundleRuntimeState, fetchImpl } = {}) {
   const uncompressedSize = Buffer.byteLength(jsonStr)
   const sha256 = sha256Hex(compressed)
 
-  // Near-cap WARNING (pre-PUT) — does not block the upload attempt.
+  // Near-cap WARNING (pre-PUT) - does not block the upload attempt.
   await maybeEmitNearCapWarning(compressed.length, sizeKb, doFetch)
 
   return uploadViaBlob({
@@ -623,7 +623,7 @@ async function doStateSync({ bundleFn = bundleRuntimeState, fetchImpl } = {}) {
 
 // Per-process in-flight guard. A second caller in the SAME process awaits the
 // in-flight sync instead of starting a parallel bundle+upload (see the
-// cross-process note at the top — this guard is intentionally per-process).
+// cross-process note at the top - this guard is intentionally per-process).
 let inFlight = null
 
 export function runStateSync(opts) {

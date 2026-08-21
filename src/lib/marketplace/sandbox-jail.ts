@@ -1,7 +1,7 @@
 import type { SandboxReportV1 } from "@/lib/marketplace/sandbox-types"
 import { parseSandboxReport } from "@/lib/marketplace/sandbox-grade"
 
-/** Pinned openclaw-runtime family — never :latest / local-grade labels. */
+/** Pinned openclaw-runtime family - never :latest / local-grade labels. */
 const PINNED_RUNTIME_RE =
   /^ghcr\.io\/laxcorp-research\/openclaw-runtime:\d{4}\.\d+\.\d+(-\d+)?$/
 

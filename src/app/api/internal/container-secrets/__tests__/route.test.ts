@@ -2,7 +2,7 @@
 //
 // This route is the second emission path for container env vars (the first
 // being deployer.ts's buildRailwayEnvVars). Whatever env-var distribution
-// rules land in deployer.ts must also hold here — otherwise containers
+// rules land in deployer.ts must also hold here - otherwise containers
 // provisioned via the agent path drift from containers provisioned via the
 // direct Railway path.
 //
@@ -240,7 +240,7 @@ describe("POST /api/internal/container-secrets", () => {
       expect(body.error.message).toMatch(/METERING_ENDPOINT env var is required/)
     })
 
-    it("returns 500 on host mismatch — ACTIVITY_ENDPOINT host != NEXT_PUBLIC_APP_URL host", async () => {
+    it("returns 500 on host mismatch - ACTIVITY_ENDPOINT host != NEXT_PUBLIC_APP_URL host", async () => {
       process.env.ACTIVITY_ENDPOINT = "https://app.buildclaws.ai/api/internal/activity" // prod
       // METERING already matches staging host from beforeEach
       ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(wsMock)
@@ -250,7 +250,7 @@ describe("POST /api/internal/container-secrets", () => {
       expect(body.error.message).toMatch(/Host mismatch refusing deploy.*ACTIVITY_ENDPOINT/)
     })
 
-    it("returns 500 on host mismatch — METERING_ENDPOINT host != NEXT_PUBLIC_APP_URL host", async () => {
+    it("returns 500 on host mismatch - METERING_ENDPOINT host != NEXT_PUBLIC_APP_URL host", async () => {
       process.env.METERING_ENDPOINT = "https://app.buildclaws.ai/api/internal/metering" // prod
       ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(wsMock)
       const res = await callRoute({ workspaceId: "ws-guard" }, `Bearer ${AGENT_SECRET}`)
@@ -273,7 +273,7 @@ describe("POST /api/internal/container-secrets", () => {
   // PR-8a: this route and the deploy path (buildRailwayEnvVars) must derive the
   // credential env from the SAME source (deriveContainerEnv). These assert the
   // route's emitted credential subset equals the helper's output for the same
-  // input — so a future divergence (e.g. a hardcoded base URL) fails loudly.
+  // input - so a future divergence (e.g. a hardcoded base URL) fails loudly.
   describe("PR-8a: credential derivation unified with deriveContainerEnv", () => {
     it("non-credit user WITH a BYOK ANTHROPIC key → emits the decrypted key, matching the helper", async () => {
       const wsInput: DeriveWorkspaceInput = { apiKeySourceOverride: null }
@@ -321,7 +321,7 @@ describe("POST /api/internal/container-secrets", () => {
 
       const expected = deriveContainerEnv(wsInput, userInput)
       expect(env.ANTHROPIC_API_KEY).toBe(expected.ANTHROPIC_API_KEY) // master key
-      expect(env.ANTHROPIC_BASE_URL).toBe(expected.ANTHROPIC_BASE_URL) // ANTHROPIC_PROXY_URL — divergence-proof
+      expect(env.ANTHROPIC_BASE_URL).toBe(expected.ANTHROPIC_BASE_URL) // ANTHROPIC_PROXY_URL - divergence-proof
       expect(env.CLAWS_CREDIT_MODE).toBe("true")
     })
   })

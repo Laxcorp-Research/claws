@@ -175,7 +175,7 @@ describe("honest queue copy", () => {
     const eta = new Date(NOW.getTime() + 3 * 60 * 60 * 1000)
     expect(formatQueueEta(eta, NOW)).toBe("3h")
     expect(queuedUserMessage(eta, NOW)).toBe(
-      "High demand — your claw is queued to provision, ~3h. We'll notify you.",
+      "High demand - your claw is queued to provision, ~3h. We'll notify you.",
     )
   })
 })

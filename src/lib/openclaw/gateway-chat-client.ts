@@ -1,6 +1,6 @@
 // PR-9/A-vercel: connect-send-disconnect gateway chat client.
 //
-// Implements docs/OPENCLAW_GATEWAY_PROTOCOL.md §7 — the verified send
+// Implements docs/OPENCLAW_GATEWAY_PROTOCOL.md §7 - the verified send
 // mechanism for dashboard chat:
 //
 //   1. open  wss://<containerHost>            (root path, no subprotocol)
@@ -19,19 +19,19 @@
 //     signature is ~0ms, and the connect round trip happens regardless.
 //   - Lazy pairing is the NORMAL path, not an error (V5): every fresh
 //     container starts unpaired. NOT_PAIRED carries details.requestId
-//     directly — no device.pair.list scan needed.
+//     directly - no device.pair.list scan needed.
 //   - WebSocket factory is INJECTABLE and the default resolves
 //     globalThis.WebSocket LAZILY inside the send call (never at module
 //     import): Vercel runs Node 24 (native client WebSocket), but CI runs
-//     Node 20 (none) — tests must always inject a mock, and importing this
+//     Node 20 (none) - tests must always inject a mock, and importing this
 //     module must never touch the real implementation.
 //
 // TIMEOUTS AS THE HONESTY LINE (A6): every captured failure signature is
-// FAST — edge-404/non-101 against a destroyed container in ~440-670ms,
+// FAST - edge-404/non-101 against a destroyed container in ~440-670ms,
 // close 1008 (auth) and 1013 (gateway starting) sub-second. So a 5s
 // per-attempt connect timeout (matching the health monitor's
 // ADMIN_RPC_TIMEOUT_MS) cleanly separates "we got a definitive signature"
-// from "the host is silently hanging" — only the latter consumes the full
+// from "the host is silently hanging" - only the latter consumes the full
 // 5s, and both honestly map to `unreachable`. Anything still pending at the
 // ~10s total budget is aborted rather than left to Vercel's function
 // timeout, so the caller always gets a typed result.
@@ -54,7 +54,7 @@ const CLIENT_INFO = {
   mode: "backend",
 } as const
 
-// Minimal structural WebSocket surface — satisfied by both the native
+// Minimal structural WebSocket surface - satisfied by both the native
 // (undici) WebSocket and test doubles. Event objects are typed loosely on
 // purpose: the native implementation hands DOM-flavored events; mocks hand
 // plain objects.
@@ -67,7 +67,7 @@ export type ChatSocketFactory = (url: string) => ChatSocket
 
 export type SendChatFailureReason =
   | "unreachable" // edge-404 / non-101 / timeout / auth mismatch / no ack
-  | "transitioning" // close 1013 — container up, gateway still starting
+  | "transitioning" // close 1013 - container up, gateway still starting
 
 export type SendChatResult =
   | { ok: true; runId: string; status: string; paired: boolean; replyText?: string | null }
@@ -83,7 +83,7 @@ export interface SendChatMessageParams {
   /**
    * When true, ask the gateway to deliver the agent reply on the channel
    * session. Operator `chat.send` stamps webchat origin, so Telegram wake
-   * must NOT rely on this — use `awaitReplyMs` + platform Bot API instead.
+   * must NOT rely on this - use `awaitReplyMs` + platform Bot API instead.
    */
   deliver?: boolean
   /**
@@ -326,10 +326,10 @@ async function connectAttempt(params: SendChatMessageParams, factory: ChatSocket
         }
         if (detailCode === "AUTH_TOKEN_MISMATCH") {
           // Token drift: the DB token no longer matches the container's.
-          // Outside the reconciliation cron's 3-field contract — log loudly
+          // Outside the reconciliation cron's 3-field contract - log loudly
           // (docs/OPENCLAW_GATEWAY_PROTOCOL.md §8 risk 1) and report
           // unreachable; the user can't act on auth internals.
-          log.error("gateway-chat-client: gateway token mismatch — possible token drift", {
+          log.error("gateway-chat-client: gateway token mismatch - possible token drift", {
             wsUrl: params.wsUrl,
           })
           settle({ kind: "failure", reason: "unreachable", detail: "gateway token mismatch" })
@@ -356,7 +356,7 @@ async function connectAttempt(params: SendChatMessageParams, factory: ChatSocket
   })
 }
 
-/** Admin HTTP RPC device.pair.approve — same Bearer + AbortController pattern as the health monitor. */
+/** Admin HTTP RPC device.pair.approve - same Bearer + AbortController pattern as the health monitor. */
 async function approvePairing(params: SendChatMessageParams, requestId: string): Promise<boolean> {
   const fetchImpl = params.fetchImpl ?? fetch
   const httpsUrl = params.wsUrl.replace(/^wss:/, "https:")
@@ -383,10 +383,10 @@ async function approvePairing(params: SendChatMessageParams, requestId: string):
 }
 
 /**
- * Connect-send-disconnect. Resolves with a typed result — never throws for
+ * Connect-send-disconnect. Resolves with a typed result - never throws for
  * gateway-side failures. Lazy pairing: one NOT_PAIRED → approve → reconnect
  * cycle; an already-paired device skips pairing entirely (zero admin-RPC
- * calls — asserted by the V5 test).
+ * calls - asserted by the V5 test).
  */
 export async function sendChatMessage(params: SendChatMessageParams): Promise<SendChatResult> {
   const factory = params.socketFactory ?? resolveDefaultFactory()
@@ -404,7 +404,7 @@ export async function sendChatMessage(params: SendChatMessageParams): Promise<Se
     if (Date.now() - startedAt > TOTAL_BUDGET_MS - CONNECT_TIMEOUT_MS) {
       return { ok: false, reason: "unreachable", detail: "budget exhausted before reconnect" }
     }
-    // Exactly ONE reconnect after pairing (V5) — a second NOT_PAIRED here
+    // Exactly ONE reconnect after pairing (V5) - a second NOT_PAIRED here
     // means the gateway is misbehaving; fail honestly rather than loop.
     attempt = await connectAttempt(params, factory)
     if (attempt.kind === "not-paired") {
@@ -423,7 +423,7 @@ export async function sendChatMessage(params: SendChatMessageParams): Promise<Se
       typeof params.awaitReplyMs === "number" && params.awaitReplyMs > 0
         ? params.awaitReplyMs
         : 0
-    // Predicted runId equals idempotencyKey (protocol §4) — arm waiter before send.
+    // Predicted runId equals idempotencyKey (protocol §4) - arm waiter before send.
     const predictedRunId = params.idempotencyKey
     const replyWait =
       awaitReplyMs > 0 ? session.waitForChatFinal(predictedRunId, awaitReplyMs) : null

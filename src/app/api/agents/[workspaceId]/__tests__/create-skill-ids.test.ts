@@ -19,7 +19,7 @@ vi.mock("@/lib/api/ownership", () => ({
 
 import { POST } from "@/app/api/agents/[workspaceId]/route"
 
-describe("POST /api/agents — skillIds on create (Batch D)", () => {
+describe("POST /api/agents - skillIds on create (Batch D)", () => {
   beforeEach(() => {
     mockGetSessionUser.mockReset()
     mockVerifyOwnership.mockReset()

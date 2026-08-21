@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef } from "react"
  *     drives fetch, popup management, polling, cleanup; the caller owns
  *     UI state transitions (setting a row to "connecting", refreshing the
  *     tool list on success, etc.).
- *   - `connect(toolSlug)` is async but returns `void` — the hook signals
+ *   - `connect(toolSlug)` is async but returns `void` - the hook signals
  *     completion through callbacks, not the returned promise, because the
  *     full consent-to-active roundtrip spans seconds to minutes and the
  *     caller generally wants to update state incrementally rather than
@@ -39,7 +39,7 @@ import { useCallback, useEffect, useRef } from "react"
 export type OAuthPollStatus = "PENDING" | "ACTIVE" | "FAILED"
 
 /**
- * BYOK apiKeyForm payload — what the wizard renders when a toolkit is
+ * BYOK apiKeyForm payload - what the wizard renders when a toolkit is
  * API-key-brokered through Composio (typefully, jotform, toggl, shopify,
  * lever, metaads, pipedrive, webflow, follow_up_boss). The user provides
  * the key inline; no OAuth popup; submit POSTs to
@@ -49,7 +49,7 @@ export interface ApiKeyFormPayload {
   toolSlug: string
   authScheme?: "API_KEY" | "BEARER_TOKEN" | "BASIC"
   /**
-   * Optional — the route currently always sets it (sourced from
+   * Optional - the route currently always sets it (sourced from
    * `getToolBySlug(slug)?.name ?? slug`), but the wizard's
    * `resolveByokModalProps` fallback chain defends against missing /
    * empty values from a future server-side regression. Keeping it
@@ -98,7 +98,7 @@ export interface OAuthConnectionCallbacks {
   onTimeout: (toolSlug: string) => void
   /**
    * Initiate POST itself failed (network error, 4xx/5xx, Composio not
-   * configured, popup blocked, etc.) — fires before any polling starts.
+   * configured, popup blocked, etc.) - fires before any polling starts.
    *
    * `error.code` carries the server-side error code when present (e.g.
    * `COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH` for RED-state toolkits whose
@@ -108,7 +108,7 @@ export interface OAuthConnectionCallbacks {
    */
   onInitiateError: (toolSlug: string, error: { message: string; code?: string }) => void
   /**
-   * PR2.9: Initiate returned `mode: "byok"` — the toolkit is API-key-
+   * PR2.9: Initiate returned `mode: "byok"` - the toolkit is API-key-
    * brokered through Composio, not OAuth. The hook detects this from the
    * initiate response and short-circuits: no popup, no polling, no DB
    * write side effects on the client. Caller opens a credentials modal
@@ -138,7 +138,7 @@ interface Cleanup {
 
 /**
  * Center a popup on the user's primary monitor. Extracted so the setup
- * wizard and dashboard reconnect use the same geometry — avoids a
+ * wizard and dashboard reconnect use the same geometry - avoids a
  * "popup appeared in a different place than I expected" UX papercut.
  */
 function centerPopupGeometry(): { width: number; height: number; left: number; top: number } {
@@ -174,7 +174,7 @@ export function useOAuthConnection({
   // happens in useEffect to satisfy react-hooks/refs (writing to a ref
   // during render is a React-18+ anti-pattern). Because click handlers
   // fire after render, a click-triggered connect() always sees the latest
-  // callbacks — the one edge case to avoid is calling connect() inside
+  // callbacks - the one edge case to avoid is calling connect() inside
   // the same render pass that changed callbacks, which none of our call
   // sites do.
   const callbacksRef = useRef(callbacks)
@@ -194,7 +194,7 @@ export function useOAuthConnection({
         const cb = callbacksRef.current
         cb.onStart?.(toolSlug)
 
-        // 1. Initiate. On any failure here, bail via onInitiateError — no
+        // 1. Initiate. On any failure here, bail via onInitiateError - no
         //    popup, no polling, no DB write side effects from the client.
         let initiateRes: Response
         try {
@@ -245,7 +245,7 @@ export function useOAuthConnection({
             cb.onApiKeyFormRequired(toolSlug, initiateData.data.apiKeyForm)
           } else {
             // Caller didn't wire the BYOK callback. Treat as a configuration
-            // bug — surface via onInitiateError so the user sees something
+            // bug - surface via onInitiateError so the user sees something
             // rather than a silent no-op. Code lets the wizard branch on
             // it if desired (currently no special handling beyond the
             // generic error path).
@@ -337,7 +337,7 @@ export function useOAuthConnection({
               }
               // PENDING → keep polling; no-op here.
             } catch {
-              /* transient polling errors — next tick will retry */
+              /* transient polling errors - next tick will retry */
             }
           })()
         }, pollIntervalMs)

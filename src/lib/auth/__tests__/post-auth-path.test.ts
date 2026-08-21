@@ -4,7 +4,7 @@ import {
   resolvePostAuthPath,
 } from "@/lib/auth/post-auth-path"
 
-describe("resolvePostAuthPath (Batch B — shown-once)", () => {
+describe("resolvePostAuthPath (Batch B - shown-once)", () => {
   it("redirects first sign-in (!onboardingCompleted) to /onboarding", () => {
     expect(resolvePostAuthPath(false)).toBe("/onboarding")
     expect(resolvePostAuthPath(undefined)).toBe("/onboarding")

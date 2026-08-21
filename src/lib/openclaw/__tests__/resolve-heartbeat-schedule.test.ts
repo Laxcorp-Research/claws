@@ -8,7 +8,7 @@ const FIXTURE_MD = `- cron: "0 8 * * *"
   task: daily_analytics`
 
 describe("resolveHeartbeatSchedule", () => {
-  it("frequency daily wins — single cronJob, no mdCronJobs", () => {
+  it("frequency daily wins - single cronJob, no mdCronJobs", () => {
     const r = resolveHeartbeatSchedule("daily", "08:00", "UTC", SLUG, FIXTURE_MD)
     expect(r?.cronJob?.schedule.expr).toBe("0 8 * * *")
     expect(r?.mdCronJobs).toBeUndefined()

@@ -15,7 +15,7 @@ beforeEach(async () => {
 describe("emitProxySpawnStatus", () => {
   it("posts TASK_START when healthy and ERROR when failed", async () => {
     const events: unknown[] = []
-    // postActivityEvent is closed over from state-sync — spy via monkeypatch on module
+    // postActivityEvent is closed over from state-sync - spy via monkeypatch on module
     // by re-importing after mock is hard; instead assert source + call with stubbed fetch
     // through state-sync postActivityEvent by temporarily swapping global fetch.
     const bodies: string[] = []

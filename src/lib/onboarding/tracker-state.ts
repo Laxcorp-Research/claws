@@ -1,11 +1,11 @@
 /**
- * Getting-started tracker — pure predicates + step-3 routing.
+ * Getting-started tracker - pure predicates + step-3 routing.
  *
- * S3 ("has deployed") uses DeploymentStatus.COMPLETED — not Workspace.status —
+ * S3 ("has deployed") uses DeploymentStatus.COMPLETED - not Workspace.status -
  * so a claw that is STOPPED/PAUSED after a successful deploy still counts.
  *
  * S1v2 (D-v REFRAME): credit balanceCents > 0 OR any UserApiKey.
- * Edge: balance hits 0 with no key → S1v2 regresses to not-done — accepted
+ * Edge: balance hits 0 with no key → S1v2 regresses to not-done - accepted
  * (nav item reappearing is an actionable nudge, not a bug).
  */
 
@@ -95,7 +95,7 @@ export function isStep3Complete(input: {
 }
 
 /**
- * Top-bar "Getting started" visibility — incomplete tracker only.
+ * Top-bar "Getting started" visibility - incomplete tracker only.
  * MUTATION: always return true → visibility test fails.
  * Menu entry is unconditional (separate predicate).
  */

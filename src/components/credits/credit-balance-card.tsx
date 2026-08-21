@@ -80,7 +80,7 @@ export function CreditBalanceCard({
 
       {isLow && !isExhausted && (
         <p className="text-[11px] text-[var(--warn)] mb-2 leading-[1.5]">
-          Running low — add your API key soon to avoid interruption.
+          Running low - add your API key soon to avoid interruption.
         </p>
       )}
 

@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
-import { catalogToLegacyOptions, derivedNativeFromOpenRouter } from "@/lib/models/catalog"
+import {
+  catalogToLegacyOptions,
+  derivedNativeFromOpenRouter,
+  isTextOnlyChatModel,
+  reasoningFromOpenRouter,
+} from "@/lib/models/catalog"
 import { providerFromModelRef } from "@/lib/supported-providers"
 
 describe("model catalog (OpenRouter arc)", () => {
@@ -20,6 +25,7 @@ describe("model catalog (OpenRouter arc)", () => {
         contextLength: 128000,
         pricingSnippet: "est.",
         costPer1kEst: 0.003,
+        supportsReasoning: false,
         isPinned: true,
       },
     ])
@@ -88,7 +94,7 @@ describe("model catalog (OpenRouter arc)", () => {
   })
 
   it("does NOT derive natives for variants, Anthropic, or other vendors", () => {
-    // :variants are OpenRouter-only routes — not callable with a native key.
+    // :variants are OpenRouter-only routes - not callable with a native key.
     expect(derivedNativeFromOpenRouter({ id: "openai/gpt-4o:extended" })).toBeNull()
     expect(derivedNativeFromOpenRouter({ id: "google/gemini-2.0-flash-001:free" })).toBeNull()
     // Anthropic natives come from the live Anthropic /v1/models refresh only.
@@ -101,6 +107,70 @@ describe("model catalog (OpenRouter arc)", () => {
     expect(src).toContain("derivedNativeFromOpenRouter")
     expect(src).toContain("openrouter-derived")
     expect(src).toContain("stripVendorPrefix")
+  })
+
+  it("reasoningFromOpenRouter reads supported_parameters (founder: per-model effort)", () => {
+    expect(
+      reasoningFromOpenRouter({ id: "x", supported_parameters: ["temperature", "reasoning"] }),
+    ).toBe(true)
+    expect(
+      reasoningFromOpenRouter({ id: "x", supported_parameters: ["include_reasoning"] }),
+    ).toBe(true)
+    expect(
+      reasoningFromOpenRouter({ id: "x", supported_parameters: ["temperature", "top_p"] }),
+    ).toBe(false)
+    // Missing metadata = unknown, never false: the UI must not lock the control.
+    expect(reasoningFromOpenRouter({ id: "x" })).toBeNull()
+  })
+
+  it("isTextOnlyChatModel keeps chat models, culls audio/image-output rows (founder ruling)", () => {
+    // Real staging-census fixtures, 2026-08-21.
+    expect(
+      isTextOnlyChatModel({ id: "openai/gpt-audio", architecture: { output_modalities: ["text", "audio"] } }),
+    ).toBe(false)
+    expect(
+      isTextOnlyChatModel({ id: "google/lyria-3-pro-preview", architecture: { output_modalities: ["text", "audio"] } }),
+    ).toBe(false)
+    expect(
+      isTextOnlyChatModel({ id: "google/gemini-2.5-flash-image", architecture: { output_modalities: ["image", "text"] } }),
+    ).toBe(false)
+    expect(
+      isTextOnlyChatModel({ id: "openrouter/auto", architecture: { output_modalities: ["text", "image"] } }),
+    ).toBe(false)
+    // Vision INPUT chat models reply in text - they stay.
+    expect(
+      isTextOnlyChatModel({
+        id: "openai/gpt-4o",
+        architecture: { input_modalities: ["text", "image"], output_modalities: ["text"] },
+      }),
+    ).toBe(true)
+    // Legacy modality-string fallback.
+    expect(isTextOnlyChatModel({ id: "x", architecture: { modality: "text+image->text" } })).toBe(true)
+    expect(isTextOnlyChatModel({ id: "x", architecture: { modality: "text->text+image" } })).toBe(false)
+    // Missing metadata = keep. Never over-delete on unknown.
+    expect(isTextOnlyChatModel({ id: "x" })).toBe(true)
+    expect(isTextOnlyChatModel({ id: "x", architecture: { output_modalities: [] } })).toBe(true)
+  })
+
+  it("MUTATION: isActive decoupled from the text-only classifier → fails", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    expect(src).toContain("const textChat = isTextOnlyChatModel(m)")
+    // Both the OpenRouter row and its derived-native twin write it (create+update each).
+    expect((src.match(/isActive: textChat/g) ?? []).length).toBe(4)
+  })
+
+  it("MUTATION: supportsReasoning dropped from refresh or seed writes → fails", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    expect(src).toContain("const supportsReasoning = reasoningFromOpenRouter(m)")
+    expect(src).toContain("supportsReasoning: seed.supportsReasoning ?? null")
+    // Both the OpenRouter row and its derived-native twin persist the flag
+    // (create+update each), plus 2 seed writes and the query select.
+    expect((src.match(/supportsReasoning/g) ?? []).length).toBeGreaterThanOrEqual(8)
+    const anthropic = readFileSync(
+      join(process.cwd(), "src/lib/models/anthropic-catalog.ts"),
+      "utf8",
+    )
+    expect(anthropic).toContain("anthropicSupportsReasoning(m.id)")
   })
 
   it("MUTATION: refresh-returns-pins-only restored → fails", () => {

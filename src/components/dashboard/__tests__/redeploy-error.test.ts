@@ -29,7 +29,7 @@ describe("getRedeployApiErrorMessage", () => {
           error: {
             code: "TOPOLOGY_INVALID",
             message:
-              "Review is automatic — every worker's output goes through the reviewer before it reaches you.",
+              "Review is automatic - every worker's output goes through the reviewer before it reaches you.",
           },
         },
         "Could not restart Claw (400)",

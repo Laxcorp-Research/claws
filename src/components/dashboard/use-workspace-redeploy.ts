@@ -60,7 +60,7 @@ export function useWorkspaceRedeploy({ workspaceId, onCompleted }: UseWorkspaceR
     } catch {
       closeStream()
       setStatus("FAILED")
-      setError("Network error — could not reach the server")
+      setError("Network error - could not reach the server")
     }
   }, [workspaceId, closeStream])
 

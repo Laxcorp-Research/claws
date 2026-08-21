@@ -24,7 +24,7 @@ function stateCopy(view: AgentLiveView): { label: string; detail: string; classN
     }
   }
   if (state.kind === "paused") return { label: "PAUSED", detail: "Paused in deployed config", className: "text-[var(--warn)]" }
-  if (state.kind === "pause-pending") return { label: "PAUSE-PENDING", detail: "Pause pending — redeploy to apply", className: "text-[var(--warn)]" }
+  if (state.kind === "pause-pending") return { label: "PAUSE-PENDING", detail: "Pause pending - redeploy to apply", className: "text-[var(--warn)]" }
   if (state.kind === "error") return { label: "ERROR", detail: state.message, className: "text-[var(--err)]" }
   return {
     label: "IDLE",

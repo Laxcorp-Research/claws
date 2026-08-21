@@ -62,7 +62,7 @@ function extractCredentialInput(
   return username && password ? { authScheme, username, password } : null
 }
 
-// PR2.9 — BYOK submit. The wizard / browse-modal POSTs here with the
+// PR2.9 - BYOK submit. The wizard / browse-modal POSTs here with the
 // user's API key after the `oauth/initiate` route returned `mode: "byok"`
 // + apiKeyForm. This is the synchronous-creation counterpart to the
 // async OAuth flow:
@@ -77,7 +77,7 @@ function extractCredentialInput(
 //     (createBYOKConnectedAccount) enforces this; this route adds belt-
 //     and-suspenders by never including `apiKey` in any error or audit
 //     log line.
-//   - encryptedCredentials: null on the ToolConnection row — Composio holds
+//   - encryptedCredentials: null on the ToolConnection row - Composio holds
 //     the key, not us. Same posture as our existing OAUTH_COMPOSIO rows.
 //   - Auth-guarded identical to oauth/initiate.
 export async function POST(
@@ -126,7 +126,7 @@ export async function POST(
     // Composio at execute time, leaving a confusingly-CONNECTED row).
     //
     // Single toolkits.get call here (createBYOKConnectedAccount will do
-    // another one inside ensureBYOKAuthConfig — acceptable, classifier is
+    // another one inside ensureBYOKAuthConfig - acceptable, classifier is
     // cheap; could be optimized later by passing toolkit through).
     const { toolkit } = await fetchToolkitWithAuthMode(composio, toolkitSlug)
     const mode = classifyToolkitAuthMode(toolkit)
@@ -178,7 +178,7 @@ export async function POST(
         // the managed-OAuth path which goes PENDING → CONNECTED via the
         // status-polling loop.
         status: "CONNECTED",
-        // encryptedCredentials stays null — Composio holds the user's
+        // encryptedCredentials stays null - Composio holds the user's
         // key, not us. Same posture as every OAUTH_COMPOSIO row.
       },
       update: {

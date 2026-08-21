@@ -4,7 +4,7 @@
 // hello-ok, NOT_PAIRED + requestId, close 1008/1013, chat.send ack,
 // destroyed-container non-101 simulation).
 //
-// CI runs Node 20 (no native client WebSocket) — every test INJECTS the
+// CI runs Node 20 (no native client WebSocket) - every test INJECTS the
 // mock socket factory; nothing here may resolve the real implementation.
 //
 // Mutation-verified (PR-9/A-vercel V8):
@@ -85,7 +85,7 @@ class MockSocket implements ChatSocket {
             error: { code: "INVALID_REQUEST", message: "unauthorized: gateway token mismatch (provide gateway auth token)", details: { code: "AUTH_TOKEN_MISMATCH", authReason: "token_mismatch" } },
           }),
         })
-        // close is a SEPARATE IO event in reality — defer to a macrotask so
+        // close is a SEPARATE IO event in reality - defer to a macrotask so
         // the res frame is fully processed first (microtasks drain between).
         setTimeout(() => this.emit("close", { code: 1008, reason: "unauthorized" }), 0)
         return
@@ -160,7 +160,7 @@ function mockGateway(opts: Partial<MockGatewayOptions> = {}) {
     sockets.push(s)
     return s
   }
-  // Pairing approval endpoint (admin HTTP RPC) — approves the LAST device
+  // Pairing approval endpoint (admin HTTP RPC) - approves the LAST device
   // that attempted to connect... in reality approve is by requestId; the
   // mock pairs the identity under test.
   const approveCalls: string[] = []
@@ -223,7 +223,7 @@ describe("gateway-chat-client", () => {
     const result = await sendChatMessage(baseParams(gw))
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.paired).toBe(true)
-    expect(gw.approveCalls).toEqual(["req-abc"]) // requestId straight from details — no pair.list scan
+    expect(gw.approveCalls).toEqual(["req-abc"]) // requestId straight from details - no pair.list scan
     expect(gw.sockets).toHaveLength(2) // exactly one reconnect
   })
 

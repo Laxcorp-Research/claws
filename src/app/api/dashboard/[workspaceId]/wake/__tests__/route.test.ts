@@ -19,7 +19,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 // after() captures (does not run) the callback so we can assert the response
-// returns WITHOUT waiting on wakeWorkspace — mutation: bare promise → fail.
+// returns WITHOUT waiting on wakeWorkspace - mutation: bare promise → fail.
 const mockAfter = vi.fn()
 vi.mock("next/server", async (orig) => {
   const actual = await orig<typeof import("next/server")>()

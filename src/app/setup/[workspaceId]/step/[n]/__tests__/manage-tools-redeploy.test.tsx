@@ -160,7 +160,7 @@ describe("Manage Tools apply changes redeploy", () => {
     render(<SetupStepPage />)
 
     await waitFor(() => expect(screen.getByText("Manage Tools")).toBeDefined())
-    // Primary CTA (not the TextLink) — both say "Back to Builder" (nav, not commit).
+    // Primary CTA (not the TextLink) - both say "Back to Builder" (nav, not commit).
     const backButtons = screen.getAllByRole("button", { name: "Back to Builder" })
     fireEvent.click(backButtons[backButtons.length - 1])
 
@@ -195,7 +195,7 @@ describe("Manage Tools apply changes redeploy", () => {
     expect(await screen.findByText("Custom APIs")).toBeDefined()
     expect(screen.getByText("Internal CRM")).toBeDefined()
     expect(screen.getByText("crm.example.com · API key header")).toBeDefined()
-    expect(screen.getByText("Saved — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Saved - redeploy to apply")).toBeDefined()
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }))
     await waitFor(() => expect(screen.queryByText("Internal CRM")).toBeNull())
@@ -252,7 +252,7 @@ describe("Manage Tools apply changes redeploy", () => {
     render(<SetupStepPage />)
 
     await waitFor(() => expect(screen.getByText("Manage Tools")).toBeDefined())
-    expect(screen.queryByText("Configuration changed since last deploy — redeploy to apply")).toBeNull()
+    expect(screen.queryByText("Configuration changed since last deploy - redeploy to apply")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "+ Connect custom API" }))
     expect(screen.getByRole("button", { name: "Save" })).toBeDefined()
     expect(screen.queryByRole("button", { name: "Test & save" })).toBeNull()
@@ -272,7 +272,7 @@ describe("Manage Tools apply changes redeploy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
     expect(await screen.findByText("Internal CRM")).toBeDefined()
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     expect(screen.getByText("Changed: tools")).toBeDefined()
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/tools/ws-1/custom",
@@ -291,7 +291,7 @@ describe("Manage Tools apply changes redeploy", () => {
     render(<SetupStepPage />)
 
     await waitFor(() => expect(screen.getByText("Connect your tools")).toBeDefined())
-    expect(screen.queryByText("Configuration changed since last deploy — redeploy to apply")).toBeNull()
+    expect(screen.queryByText("Configuration changed since last deploy - redeploy to apply")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "+ Connect custom API" }))
     fireEvent.change(screen.getByPlaceholderText("e.g., Our Internal CRM"), {
       target: { value: "Internal CRM" },
@@ -304,7 +304,7 @@ describe("Manage Tools apply changes redeploy", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     expect(screen.getByText("Changed: tools")).toBeDefined()
     fireEvent.click(screen.getByRole("button", { name: "Go to deploy" }))
     expect(mockPush).toHaveBeenCalledWith("/setup/ws-1/step/4")

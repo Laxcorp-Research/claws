@@ -20,11 +20,11 @@ export function deleteBlockedCopy(counts: ListingTradeCounts): string {
   if (counts.installCount > 0) {
     const n = counts.installCount
     const people = n === 1 ? "1 person" : `${n} people`
-    return `${people} installed this — you can unpublish but not delete`
+    return `${people} installed this - you can unpublish but not delete`
   }
   if (counts.salesCount > 0) {
     const n = counts.salesCount
-    return `${n} ${n === 1 ? "sale" : "sales"} — you can unpublish but not delete`
+    return `${n} ${n === 1 ? "sale" : "sales"} - you can unpublish but not delete`
   }
   return "You can unpublish but not delete"
 }

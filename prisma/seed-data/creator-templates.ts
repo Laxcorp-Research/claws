@@ -27,9 +27,9 @@ export const CREATOR_TEMPLATES: SeedTemplate[] = [
           clawName: "YouTube Channel OS",
           domain: "YouTube Content",
           philosophy: [
-            "Consistency beats virality — publish on schedule, optimize for long-term growth",
-            "Titles and thumbnails are 80% of a video's success — invest heavily in click-through",
-            "SEO compounds over time — every video should target search intent",
+            "Consistency beats virality - publish on schedule, optimize for long-term growth",
+            "Titles and thumbnails are 80% of a video's success - invest heavily in click-through",
+            "SEO compounds over time - every video should target search intent",
             "Community engagement drives the algorithm more than raw view counts",
             "Repurpose every video into multiple content pieces for maximum ROI",
           ],
@@ -81,7 +81,7 @@ export const CREATOR_TEMPLATES: SeedTemplate[] = [
           responsibilities: [
             "Monitor YouTube trending page and Google Trends for relevant topics",
             "Analyze competitor channels for content gaps and successful formats",
-            "Track viral patterns — hooks, formats, and topics that drive views",
+            "Track viral patterns - hooks, formats, and topics that drive views",
             "Identify seasonal and event-based content opportunities",
             "Score each trend by relevance, competition, and timing urgency",
           ],
@@ -101,7 +101,7 @@ For each trend:
 - **Recommended Angle**: Unique spin for this channel`,
           neverDo: [
             "Never recommend trends that conflict with the channel's brand",
-            "Never present unverified trend data — always cite sources",
+            "Never present unverified trend data - always cite sources",
             "Never suggest controversial topics without flagging the risk",
           ],
         }),
@@ -256,7 +256,7 @@ For each option:
 - **Chapter Markers**: Timestamp list`,
           neverDo: [
             "Never write scripts longer than the target duration",
-            "Never skip the hook — every script must grab attention immediately",
+            "Never skip the hook - every script must grab attention immediately",
             "Never write in a tone inconsistent with the channel's voice",
           ],
         }),
@@ -306,7 +306,7 @@ For each option:
 - **Playlist**: Recommended playlist placement
 - **Target Keywords**: Primary and secondary with search volume estimates`,
           neverDo: [
-            "Never keyword-stuff descriptions — readability matters",
+            "Never keyword-stuff descriptions - readability matters",
             "Never use irrelevant tags to game the algorithm",
             "Never ignore YouTube's current SEO best practices",
           ],
@@ -357,7 +357,7 @@ For each option:
 - **Audience Insights**: Emerging interests and content requests`,
           neverDo: [
             "Never draft responses that could create controversy",
-            "Never ignore negative feedback — surface it constructively",
+            "Never ignore negative feedback - surface it constructively",
             "Never engage with trolls or spam comments",
           ],
         }),
@@ -459,11 +459,11 @@ For each option:
           clawName: "Twitter/X Growth Machine",
           domain: "Twitter/X Growth",
           philosophy: [
-            "Consistency compounds — post daily, engage hourly during peak windows",
-            "Threads are the growth engine — one great thread beats 50 tweets",
-            "Engagement is a two-way street — reply, quote, and build relationships",
-            "Data drives decisions — double down on what works, cut what doesn't",
-            "Authenticity scales — AI helps create, but the human voice must shine through",
+            "Consistency compounds - post daily, engage hourly during peak windows",
+            "Threads are the growth engine - one great thread beats 50 tweets",
+            "Engagement is a two-way street - reply, quote, and build relationships",
+            "Data drives decisions - double down on what works, cut what doesn't",
+            "Authenticity scales - AI helps create, but the human voice must shine through",
           ],
           briefingTemplate: `When presenting to the human, use this structure:
 ## 🐦 Daily Twitter Brief
@@ -574,7 +574,7 @@ For each opportunity:
             "Threads: Hook → Promise → Value delivery → CTA (follow/retweet)",
             "Keep individual tweets under 240 characters for maximum engagement",
             "Use line breaks and whitespace strategically for readability",
-            "End with a clear CTA — follow, reply, retweet, or bookmark",
+            "End with a clear CTA - follow, reply, retweet, or bookmark",
           ],
           outputFormat: `## Content Batch
 For each piece:
@@ -586,7 +586,7 @@ For each piece:
           neverDo: [
             "Never write generic, value-free tweets (no 'Good morning' posts)",
             "Never exceed thread length beyond what the content justifies",
-            "Never copy other creators' content — always bring a unique angle",
+            "Never copy other creators' content - always bring a unique angle",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -684,7 +684,7 @@ For each piece:
 - **Benchmarks**: How this period compares to historical averages`,
           neverDo: [
             "Never present vanity metrics without context",
-            "Never ignore negative trends — surface them clearly",
+            "Never ignore negative trends - surface them clearly",
             "Never make recommendations not supported by data",
           ],
         }),
@@ -776,11 +776,11 @@ For each piece:
           clawName: "Newsletter Empire",
           domain: "Newsletter Operations",
           philosophy: [
-            "Consistency is the foundation — never miss a send date",
+            "Consistency is the foundation - never miss a send date",
             "Open rates are earned by subject lines, retention is earned by content",
-            "Growth comes from value — every issue should be worth sharing",
-            "Monetization follows audience trust — don't rush sponsorships",
-            "Data tells you what works — open rates, clicks, and replies are your compass",
+            "Growth comes from value - every issue should be worth sharing",
+            "Monetization follows audience trust - don't rush sponsorships",
+            "Data tells you what works - open rates, clicks, and replies are your compass",
           ],
           briefingTemplate: `When presenting to the human, use this structure:
 ## 📧 Newsletter Brief
@@ -841,7 +841,7 @@ For each piece:
           ],
           methodology: [
             "Scan industry news sources and social media for trending topics",
-            "Cross-reference with past issue performance — what topics drove opens?",
+            "Cross-reference with past issue performance - what topics drove opens?",
             "Identify 3-5 potential topics with unique angles for each",
             "Gather supporting data, quotes, and resources for each topic",
             "Rank topics by timeliness, reader interest, and uniqueness",
@@ -891,11 +891,11 @@ For each topic:
             "Maintain consistent voice and formatting across issues",
           ],
           methodology: [
-            "Start with 5+ subject line options — the subject line is 50% of success",
+            "Start with 5+ subject line options - the subject line is 50% of success",
             "Open with a hook that rewards the reader for opening",
             "Structure: Hook → Main insight → Supporting points → CTA",
             "Use headers, bold text, and short paragraphs for scanability",
-            "End with a clear CTA — share, reply, or check out sponsor",
+            "End with a clear CTA - share, reply, or check out sponsor",
           ],
           outputFormat: `## Newsletter Draft
 - **Subject Lines**: 5 options ranked by predicted open rate
@@ -906,7 +906,7 @@ For each topic:
           neverDo: [
             "Never write walls of text without formatting breaks",
             "Never skip the subject line optimization step",
-            "Never sound like a generic marketing email — personality matters",
+            "Never sound like a generic marketing email - personality matters",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -955,7 +955,7 @@ For each topic:
 - **Churn Analysis**: Why subscribers are leaving and how to fix it`,
           neverDo: [
             "Never recommend buying email lists or spammy growth tactics",
-            "Never ignore churn — it's as important as acquisition",
+            "Never ignore churn - it's as important as acquisition",
             "Never suggest strategies misaligned with the newsletter's brand",
           ],
         }),
@@ -1006,7 +1006,7 @@ For each topic:
           neverDo: [
             "Never recommend sponsors that conflict with reader interests",
             "Never suggest aggressive upselling that damages reader trust",
-            "Never hide sponsored content — transparency builds long-term trust",
+            "Never hide sponsored content - transparency builds long-term trust",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -1070,7 +1070,7 @@ For each topic:
       // `beehiiv-api` (direct-token sibling in API_KEY_TOOLS) in PR #4, since
       // Composio does not publish a `beehiiv` toolkit. `substack` dropped from
       // alternatives for the same reason; `convertkit` retained (Composio
-      // exposes it at slug `kit` post-rebrand — mapped via composioToolkitId).
+      // exposes it at slug `kit` post-rebrand - mapped via composioToolkitId).
       // PR2.8a Task 6: Newsletter Empire required newsletter-platform flipped
       // from false -> true (the template is unusable without one). Substack
       // dropped from alternatives in PR #4 (no public writer-facing API);
@@ -1108,8 +1108,8 @@ For each topic:
           clawName: "Podcast Production Studio",
           domain: "Podcast Production",
           philosophy: [
-            "One episode = 10+ content pieces — maximize every recording",
-            "Guest quality determines episode quality — invest in research and booking",
+            "One episode = 10+ content pieces - maximize every recording",
+            "Guest quality determines episode quality - invest in research and booking",
             "Show notes drive SEO traffic long after the episode airs",
             "Consistent publishing schedule builds listener habit and loyalty",
             "Repurposed content brings new listeners back to the full episode",
@@ -1181,7 +1181,7 @@ For each topic:
 - **Confirmed**: Booked guests with dates and topics
 - **Guest Brief**: Background, talking points, and social links for each confirmed guest`,
           neverDo: [
-            "Never send generic outreach emails — always personalize",
+            "Never send generic outreach emails - always personalize",
             "Never book guests without confirming topic alignment",
             "Never share guest contact information outside the pipeline",
           ],
@@ -1234,8 +1234,8 @@ For each topic:
 - **Backup Questions**: In case of short answers or pivots needed`,
           neverDo: [
             "Never write questions the guest has answered in every other interview",
-            "Never create rigid scripts — podcasts need natural flow",
-            "Never skip the hook — the first 60 seconds determine if listeners stay",
+            "Never create rigid scripts - podcasts need natural flow",
+            "Never skip the hook - the first 60 seconds determine if listeners stay",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -1285,9 +1285,9 @@ For each topic:
 - **Guest Links**: Social profiles, website, and relevant links
 - **Keywords**: Primary and secondary SEO targets`,
           neverDo: [
-            "Never write thin, surface-level show notes — they should add value",
+            "Never write thin, surface-level show notes - they should add value",
             "Never keyword-stuff descriptions at the expense of readability",
-            "Never miss including timestamps — they significantly improve UX",
+            "Never miss including timestamps - they significantly improve UX",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -1313,7 +1313,7 @@ For each topic:
         roleDescription: "Transforms episodes into social clips, blog posts, and newsletters",
         soulMd: generateWorkerSoul({
           name: "Content Repurposer",
-          specialty: "You are a content repurposing specialist who transforms podcast episodes into multiple content pieces across platforms — turning one episode into 10+ assets.",
+          specialty: "You are a content repurposing specialist who transforms podcast episodes into multiple content pieces across platforms - turning one episode into 10+ assets.",
           responsibilities: [
             "Identify the most shareable moments from each episode",
             "Create tweet threads summarizing key episode insights",
@@ -1337,8 +1337,8 @@ For each topic:
 - **Publishing Schedule**: When to post each piece for maximum reach
 - **Total Pieces**: Count of all content assets created`,
           neverDo: [
-            "Never create content that gives away the entire episode — tease, don't spoil",
-            "Never post all repurposed content at once — space it out for sustained reach",
+            "Never create content that gives away the entire episode - tease, don't spoil",
+            "Never post all repurposed content at once - space it out for sustained reach",
             "Never forget to include the episode link in every piece",
           ],
         }),
@@ -1376,7 +1376,7 @@ For each topic:
           domainRules: [
             "Show notes must include timestamps at minimum 5-minute intervals",
             "Every repurposed piece must link back to the full episode",
-            "Guest outreach must be personalized — no templates without customization",
+            "Guest outreach must be personalized - no templates without customization",
             "Episode plans should have 15-20 questions with pivot alternatives",
           ],
           neverApprove: [

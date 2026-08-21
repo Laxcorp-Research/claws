@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// GH #127 fix — admin/layout gate. The layout calls GET /api/admin/check once:
+// GH #127 fix - admin/layout gate. The layout calls GET /api/admin/check once:
 //   - check in flight        → LoadingSkeleton (never flash children OR access-denied)
 //   - isAdmin: true          → renders children
 //   - isAdmin: false         → renders <AdminAccessDenied />, NOT children
@@ -42,7 +42,7 @@ beforeEach(() => {
 })
 
 describe("AdminLayout gate (GH #127)", () => {
-  it("shows a loading skeleton while the check is in flight — no children, no access-denied", () => {
+  it("shows a loading skeleton while the check is in flight - no children, no access-denied", () => {
     global.fetch = vi.fn(() => new Promise(() => {})) as unknown as typeof fetch // never resolves
 
     renderLayout()

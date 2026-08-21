@@ -61,7 +61,7 @@ describe("decideNearCapAlert", () => {
   })
 
   it("MUTATION: dropping the warning_required gate would show a phantom banner", () => {
-    // Detector must short-circuit on null warning — this assertion fails if that gate is removed.
+    // Detector must short-circuit on null warning - this assertion fails if that gate is removed.
     const source = decideNearCapAlert.toString()
     expect(source).toContain("NEAR_CAP_DETECT_ASSERT: warning_required")
     expect(

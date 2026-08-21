@@ -14,13 +14,13 @@ const TRUNCATION_TOLERANCE_PX = 1
 
 /**
  * Ephemeral measuring span (never ellipsized) vs container content-box width.
- * Tolerance 1px. Span is created, measured, and removed — not kept in the React
+ * Tolerance 1px. Span is created, measured, and removed - not kept in the React
  * tree (a permanent sibling duplicated visible text and broke getByText suites).
  *
  * HISTORY: #293 / SS2 forced always-on tips because detection read Chromium's
  * ellipsized-node metrics (`scrollWidth === clientWidth` while ellipsis painted).
  * The measuring span never gets `text-overflow: ellipsis`, so that failure mode
- * is gone — tips gate on this detector again.
+ * is gone - tips gate on this detector again.
  *
  * MUTATION: force always-false → truncated-tip specs fail;
  * force always-true → no-tip-on-fitting specs fail.

@@ -7,7 +7,7 @@ export type OnboardingGate =
 /**
  * Auth + mode only. Live S1/S2/S3 truth is loaded via loadGettingStartedTracker.
  *
- * Completed users no longer redirect away — they get revisit mode on /onboarding.
+ * Completed users no longer redirect away - they get revisit mode on /onboarding.
  * Stale-false JWT escape: proxy already allowlists /onboarding; the page renders
  * from DB truth and silently refreshes the JWT cookie (OnboardingJwtRefresh).
  */

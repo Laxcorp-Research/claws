@@ -1,9 +1,9 @@
-// PR2.8a-fix1 Task 9 — integration tests for POST /api/tools/[ws]/oauth/initiate.
+// PR2.8a-fix1 Task 9 - integration tests for POST /api/tools/[ws]/oauth/initiate.
 //
 // Coverage targets (locked, regress on change):
 //   - YELLOW toolkit (outlook): first request hits ensureAuthConfigForToolkit,
 //     SDK creates the auth config, route returns 200 with OAuth redirect URL.
-//   - GREEN toolkit (gmail): existing config short-circuits — no SDK create,
+//   - GREEN toolkit (gmail): existing config short-circuits - no SDK create,
 //     route returns 200.
 //   - RED-state toolkit at runtime: composioManagedAuthSchemes is empty;
 //     ensureAuthConfigForToolkit throws ComposioToolkitRequiresCustomOAuthError;
@@ -27,7 +27,7 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
-// Composio SDK mock — drives the ensureAuthConfigForToolkit helper indirectly.
+// Composio SDK mock - drives the ensureAuthConfigForToolkit helper indirectly.
 const mockToolkitsGet = vi.fn()
 const mockAuthConfigsList = vi.fn()
 const mockAuthConfigsCreate = vi.fn()
@@ -138,10 +138,10 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
-  it("RED toolkit (twitter — managed schemes empty + no API_KEY): returns 422 with COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH", async () => {
+  it("RED toolkit (twitter - managed schemes empty + no API_KEY): returns 422 with COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH", async () => {
     // PR2.9 update: this branch fires only for toolkits with NEITHER
     // managed-OAuth NOR API_KEY mode. With API_KEY present, BYOK fires
-    // instead — see the test below.
+    // instead - see the test below.
     mockToolkitsGet.mockResolvedValue({
       slug: "twitter",
       name: "Twitter",
@@ -159,10 +159,10 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
   })
 
-  it("BYOK toolkit (typefully — API_KEY-only): returns mode:byok + apiKeyForm, no OAuth init, no DB write", async () => {
+  it("BYOK toolkit (typefully - API_KEY-only): returns mode:byok + apiKeyForm, no OAuth init, no DB write", async () => {
     // PR2.9: the initiate route now branches three ways. BYOK toolkits
     // get an apiKeyForm payload and do NOT trigger composio.authConfigs
-    // .create OR connectedAccounts.initiate at this stage — those happen
+    // .create OR connectedAccounts.initiate at this stage - those happen
     // in the /byok/submit route AFTER the user supplies their key.
     mockToolkitsGet.mockResolvedValue({
       slug: "typefully",
@@ -186,7 +186,7 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     // connection at initiate time. Both must remain virgin.
     expect(mockAuthConfigsCreate).not.toHaveBeenCalled()
     expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
-    // And no toolConnection row written either — that comes from /byok/submit.
+    // And no toolConnection row written either - that comes from /byok/submit.
     expect(prismaMock.toolConnection.upsert).not.toHaveBeenCalled()
   })
 
@@ -283,7 +283,7 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
   })
 
-  it("dual-mode BYOK toolkit (shopify — OAUTH2 + API_KEY, no managed): BYOK takes precedence", async () => {
+  it("dual-mode BYOK toolkit (shopify - OAUTH2 + API_KEY, no managed): BYOK takes precedence", async () => {
     // PR2.9 design decision (Option 1, data-grounded): for the 6 dual-mode
     // RED-2 toolkits (shopify, lever, metaads, pipedrive, webflow,
     // follow_up_boss), BYOK is the shipping path. Custom OAuth

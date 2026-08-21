@@ -1,5 +1,5 @@
 /**
- * THE MISSING HANDSHAKE — credit-proxy.mjs emits a specific JSON body +
+ * THE MISSING HANDSHAKE - credit-proxy.mjs emits a specific JSON body +
  * X-Metering-Secret header. This test constructs that payload byte-exact
  * (via buildProxyUsageRecord / buildProxyReportBatchBody, mirrored from
  * container/credit-proxy.mjs) and asserts the route durable-writes + debits.
@@ -145,7 +145,7 @@ describe("report-batch ↔ credit-proxy handshake", () => {
     expect(redisDecrby).toHaveBeenCalledWith("credit:reservations:user-wire", 3)
   })
 
-  it("mutation: pre-proxy body (no provider/timestamp) is rejected — handshake must stay exact", async () => {
+  it("mutation: pre-proxy body (no provider/timestamp) is rejected - handshake must stay exact", async () => {
     const req = createMockRequest("http://localhost:3000/api/internal/metering/report-batch", {
       method: "POST",
       headers: { [METERING_SECRET_HEADER]: SECRET },
@@ -170,7 +170,7 @@ describe("report-batch ↔ credit-proxy handshake", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
-  it("mutation: Authorization Bearer is NOT the proxy header — 401", async () => {
+  it("mutation: Authorization Bearer is NOT the proxy header - 401", async () => {
     const record = buildProxyUsageRecord({
       workspaceId: "ws-wire",
       model: "claude-haiku-4-5",

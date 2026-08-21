@@ -38,7 +38,7 @@ export async function POST(
       return apiError('INVALID_STATE', hygieneReason, 400)
     }
 
-    // GHCR_MANIFEST_EXISTS_ASSERT — refuse promote when the image tag is absent.
+    // GHCR_MANIFEST_EXISTS_ASSERT - refuse promote when the image tag is absent.
     const tag = tagFromDockerImage(version.dockerImage, version.version)
     const manifest = await lookupGhcrManifest(tag)
     if (!manifest.exists) {

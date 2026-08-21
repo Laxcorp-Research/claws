@@ -1,4 +1,4 @@
-// deployer-redeploy.test.ts — redeployWorkspace uses the honest deploy path.
+// deployer-redeploy.test.ts - redeployWorkspace uses the honest deploy path.
 //
 // Regression locked here: the old private fast path did
 // updateServiceVariables → redeployService → COMPLETED without waiting for a
@@ -8,7 +8,7 @@
 //
 // Mock conventions mirror deployer-image-resolution / deployer-state-ordering,
 // with TWO deliberate differences:
-//   1. railway-client also mocks updateServiceVariables + redeployService — the
+//   1. railway-client also mocks updateServiceVariables + redeployService - the
 //      redeploy fast-path helpers the other files don't touch.
 //   2. @/lib/credits/api-key-source is intentionally NOT mocked. Test C
 //      exercises the REAL apiKeySource -> env derivation, which is the entire
@@ -160,7 +160,7 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_APP_URL = "https://staging.app.buildclaws.ai"
   process.env.METERING_ENDPOINT = "https://staging.app.buildclaws.ai/api/internal/metering"
   process.env.ACTIVITY_ENDPOINT = "https://staging.app.buildclaws.ai/api/internal/activity"
-  // Composio off — orthogonal to these tests (no platform-key pin to assert).
+  // Composio off - orthogonal to these tests (no platform-key pin to assert).
   delete process.env.COMPOSIO_API_KEY
   // Master key for the PLATFORM_CREDIT derivation variant (Test C1).
   process.env.CLAWS_MASTER_ANTHROPIC_KEY = "sk-ant-master-test"
@@ -183,7 +183,7 @@ afterEach(() => {
   }
 })
 
-describe("redeployWorkspace — honest deploy path", () => {
+describe("redeployWorkspace - honest deploy path", () => {
   it("loads user.apiKeys through deployToCloud and uses updateAndRedeployService for existing services", async () => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       workspaceStub({ gatewayToken: "enc-existing-gateway-token" }),
@@ -334,7 +334,7 @@ describe("redeployWorkspace — honest deploy path", () => {
   })
 })
 
-describe("deployToCloud — HWD wake never serviceCreate when containerId exists", () => {
+describe("deployToCloud - HWD wake never serviceCreate when containerId exists", () => {
   it("reuse branch calls updateAndRedeployService, never createService", async () => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       workspaceStub({

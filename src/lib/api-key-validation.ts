@@ -32,7 +32,7 @@ async function validateGoogleKey(apiKey: string): Promise<{ valid: boolean; erro
 }
 
 /**
- * OpenRouter: GET /models is PUBLIC (200 even with a bad key) — do NOT use it alone.
+ * OpenRouter: GET /models is PUBLIC (200 even with a bad key) - do NOT use it alone.
  * Real credential check = GET /api/v1/key (401 on invalid). Catalog stays /models.
  */
 async function validateOpenRouterKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {

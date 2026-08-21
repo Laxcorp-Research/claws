@@ -183,10 +183,10 @@ export function BillingDashboard() {
     : trialActive
       ? `Ends ${formatDate(data.trialEndsAt)} · $79/mo after`
       : data.hasActiveSubscription
-        ? "Subscribed — trial complete"
+        ? "Subscribed - trial complete"
         : data.trialStartedAt
           ? `Ended · started ${formatDate(data.trialStartedAt)}`
-          : "Trial ended — subscribe to redeploy"
+          : "Trial ended - subscribe to redeploy"
 
   return (
     <div>
@@ -258,7 +258,7 @@ export function BillingDashboard() {
 
       {data.hasActiveSubscription && stoppedWorkspaces.length > 0 && (
         <p className="text-[11px] text-[var(--tx2)] mb-[10px]">
-          {stoppedWorkspaces.length} stopped Claw{stoppedWorkspaces.length === 1 ? "" : "s"} — Redeploy is enabled.
+          {stoppedWorkspaces.length} stopped Claw{stoppedWorkspaces.length === 1 ? "" : "s"} - Redeploy is enabled.
         </p>
       )}
 

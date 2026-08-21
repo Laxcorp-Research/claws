@@ -8,7 +8,7 @@ import { join } from "node:path"
 
 const CLIENT_PATH = join(process.cwd(), "src/lib/openclaw/railway-client.ts")
 
-describe("domain-reuse — query-first ensureServiceDomain", () => {
+describe("domain-reuse - query-first ensureServiceDomain", () => {
   it("createService and updateAndRedeployService use ensureServiceDomain (DOMAIN_REUSE_QUERY_FIRST)", () => {
     const src = readFileSync(CLIENT_PATH, "utf8")
     expect(src).toContain("DOMAIN_REUSE_QUERY_FIRST")

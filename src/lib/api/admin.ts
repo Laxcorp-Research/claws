@@ -30,7 +30,7 @@ export async function requireAdminPage() {
     const configuredAdmins = getAdminEmails()
     if (configuredAdmins.length === 0) {
       console.warn(
-        'ADMIN_EMAILS unset — page admin enforcement DISABLED, falling back to API requireAdmin',
+        'ADMIN_EMAILS unset - page admin enforcement DISABLED, falling back to API requireAdmin',
       )
       return null
     }

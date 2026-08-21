@@ -1,4 +1,4 @@
-// mcp-longtail.test.ts — unit contracts for the C-engine B1 module.
+// mcp-longtail.test.ts - unit contracts for the C-engine B1 module.
 //
 // Covers (B1 test plan items d-merge + f):
 //   - mergeMcpDenyIntoAgentTools: merge-not-clobber semantics.
@@ -9,7 +9,7 @@
 //   - probeMcpEndpoint: ok on 2xx initialize + tools/list; failure detail on
 //     non-2xx / thrown fetch; mcp-session-id propagation between calls.
 //
-// The SDK is mocked at the object level (injectable `composio` param) — no
+// The SDK is mocked at the object level (injectable `composio` param) - no
 // network, no module-graph mocking needed.
 import { describe, it, expect, vi } from 'vitest';
 import type { Composio } from '@composio/core';
@@ -366,7 +366,7 @@ describe('probeMcpEndpoint', () => {
     expect(result.detail).toBe('tools/list returned HTTP 500');
   });
 
-  it('never throws — network errors become { ok:false, detail }', async () => {
+  it('never throws - network errors become { ok:false, detail }', async () => {
     const impl = vi.fn().mockRejectedValue(new Error('fetch failed')) as unknown as typeof fetch;
 
     const result = await probeMcpEndpoint({ url: 'https://x/mcp', headers: {}, fetchImpl: impl });

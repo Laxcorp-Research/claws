@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Batch E — AlertStack total order + N-more expander.
+ * Batch E - AlertStack total order + N-more expander.
  * MUTATION: swap any two adjacent priorities in TOTAL_ORDER → fail.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
@@ -50,7 +50,7 @@ describe("AlertStack", () => {
   })
 
   it("orders cockpit alerts by Batch E priorities with container-down first", () => {
-    // K1 eight + money insertions — shuffled input, container-down primary.
+    // K1 eight + money insertions - shuffled input, container-down primary.
     render(
       <AlertStack
         alerts={[

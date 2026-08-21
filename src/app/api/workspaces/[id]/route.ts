@@ -125,7 +125,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (error === "NOT_FOUND") return ERRORS.NOT_FOUND("Workspace")
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
-  // Workspace deletion: serviceDelete is correct — the claw is gone, release the Railway slot (HWD leftover empty service included).
+  // Workspace deletion: serviceDelete is correct - the claw is gone, release the Railway slot (HWD leftover empty service included).
   await destroyContainer(id)
   await prisma.workspace.delete({ where: { id } })
   return apiSuccess({ deleted: true })

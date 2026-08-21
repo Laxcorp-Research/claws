@@ -50,7 +50,7 @@ describe("mutateWithFeedback", () => {
         show,
       ),
     ).rejects.toThrow("nope")
-    // Callers must only mutate state inside op after res.ok — helper must not
+    // Callers must only mutate state inside op after res.ok - helper must not
     // claim success. This lock fails if we show success after a throw.
     expect(show).toHaveBeenCalledWith(
       expect.objectContaining({ variant: "error" }),

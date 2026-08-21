@@ -1,9 +1,9 @@
-// route.test.ts — PR-8a/C/A skeleton coverage for the env-reconciliation cron:
+// route.test.ts - PR-8a/C/A skeleton coverage for the env-reconciliation cron:
 // auth, per-tick Redis lock (acquire / held / Redis-down), scope query +
 // rotation stamping, summary shape, and ENV_RECONCILE_MODE handling.
 //
 // The route reads CRON_SECRET / ENV_RECONCILE_MODE at REQUEST time (inside GET),
-// so a static import + vi.stubEnv per test is sufficient — no dynamic import.
+// so a static import + vi.stubEnv per test is sufficient - no dynamic import.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import type { NextRequest } from "next/server"
 import { prismaMock } from "@/test/helpers/mock-prisma"
@@ -34,7 +34,7 @@ vi.mock("@/lib/openclaw/railway-client", async () => {
   return { ...actual, getServiceVariables: (...args: unknown[]) => mockGetServiceVariables(...args) }
 })
 
-// deriveContainerEnv (real) decrypts BYOK keys — deterministic mock.
+// deriveContainerEnv (real) decrypts BYOK keys - deterministic mock.
 vi.mock("@/lib/encryption", () => ({
   encrypt: (v: string) => `enc:${v}`,
   decrypt: (v: string) => v.replace(/^enc:/, ""),
@@ -103,7 +103,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe("reconcile-container-env cron — PR-8a/C/A skeleton", () => {
+describe("reconcile-container-env cron - PR-8a/C/A skeleton", () => {
   it("missing Bearer token → 401, no DB query, no Redis call", async () => {
     const res = await GET(req())
     expect(res.status).toBe(401)
@@ -192,7 +192,7 @@ describe("reconcile-container-env cron — PR-8a/C/A skeleton", () => {
     )
   })
 
-  // PR-8b/B: the PR-8a/C downgrade is GONE — auto_heal is real now.
+  // PR-8b/B: the PR-8a/C downgrade is GONE - auto_heal is real now.
   it('ENV_RECONCILE_MODE="auto_heal" → runs AUTO-HEAL, no downgrade warning', async () => {
     vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
     const res = await GET(req("Bearer test-cron-secret"))
@@ -209,7 +209,7 @@ describe("reconcile-container-env cron — PR-8a/C/A skeleton", () => {
     await expect(GET(req("Bearer test-cron-secret"))).rejects.toThrow(/Invalid ENV_RECONCILE_MODE/)
   })
 
-  // PR-8b/B — AUTO-HEAL wiring into the drift branch. Drift is produced with a
+  // PR-8b/B - AUTO-HEAL wiring into the drift branch. Drift is produced with a
   // PLATFORM_CREDIT workspace (expected credit_mode=true) vs the default actual
   // (credit_mode=false) → all three fields drift. healWorkspace is mocked.
   it("auto_heal + drift + cooldown free → healWorkspace called, summary.healed=1", async () => {
@@ -271,7 +271,7 @@ describe("reconcile-container-env cron — PR-8a/C/A skeleton", () => {
   })
 })
 
-describe("reconcile-container-env cron — PR-8a/C/B per-workspace comparison", () => {
+describe("reconcile-container-env cron - PR-8a/C/B per-workspace comparison", () => {
   const AUTH = "Bearer test-cron-secret"
 
   function driftCall() {
@@ -405,7 +405,7 @@ describe("reconcile-container-env cron — PR-8a/C/B per-workspace comparison", 
   })
 })
 
-describe("reconcile-container-env cron — PR-8a/C/C transient-window exclusions", () => {
+describe("reconcile-container-env cron - PR-8a/C/C transient-window exclusions", () => {
   const AUTH = "Bearer test-cron-secret"
   const setFindUnique = (val: unknown) =>
     (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(val)

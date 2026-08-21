@@ -73,6 +73,6 @@ export function scanSkillContent(skillMd: string): SkillScanResult {
   return { passed: !hasCritical, findings, hasCritical, hasWarnings }
 }
 
-/** Exported for mutation tests — skill criticals must include injection class. */
+/** Exported for mutation tests - skill criticals must include injection class. */
 export const SKILL_CRITICAL_PATTERN_DESCRIPTIONS = CRITICAL_PATTERNS.map((p) => p.description)
 export const SKILL_WARNING_PATTERN_DESCRIPTIONS = WARNING_PATTERNS.map((p) => p.description)

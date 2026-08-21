@@ -60,7 +60,7 @@ describe("requireAdminPage", () => {
 
     expect(mockNotFound).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledWith(
-      "ADMIN_EMAILS unset — page admin enforcement DISABLED, falling back to API requireAdmin",
+      "ADMIN_EMAILS unset - page admin enforcement DISABLED, falling back to API requireAdmin",
     )
   })
 })

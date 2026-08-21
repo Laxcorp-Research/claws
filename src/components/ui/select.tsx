@@ -43,7 +43,7 @@ function optionsFromChildren(children: ReactNode): SelectOption[] {
 }
 
 /**
- * Platform Select — portal-rendered listbox with collision flip so the menu
+ * Platform Select - portal-rendered listbox with collision flip so the menu
  * never extends document scroll height when space below is insufficient.
  */
 export function Select({

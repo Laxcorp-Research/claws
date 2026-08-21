@@ -14,7 +14,7 @@ export const maxDuration = 60
 
 /**
  * F3.iii: verify sha256 via bounded server-side Blob fetch (get), not metadata.
- * DI via createFinalizeHandler — never a second arg on the exported POST
+ * DI via createFinalizeHandler - never a second arg on the exported POST
  * (Next RouteHandlerConfig rejects non-framework context shapes).
  */
 export type FetchBlobBytes = (url: string) => Promise<Buffer>
@@ -131,7 +131,7 @@ export function createFinalizeHandler(
 
     const actual = sha256Hex(stateBuffer)
     if (!timingSafeEqualHex(actual, sha256)) {
-      log.warn("State finalize: sha256 mismatch — refusing persist", {
+      log.warn("State finalize: sha256 mismatch - refusing persist", {
         workspaceId,
         expected: sha256.slice(0, 8),
         actual: actual.slice(0, 8),
@@ -157,7 +157,7 @@ export function createFinalizeHandler(
     })
 
     if (count === 0) {
-      log.warn("State finalize: no ContainerState row — discarded", { workspaceId })
+      log.warn("State finalize: no ContainerState row - discarded", { workspaceId })
     } else {
       log.info("Runtime state snapshot stored (blob finalize)", {
         workspaceId,
@@ -175,5 +175,5 @@ export function createFinalizeHandler(
   }
 }
 
-/** Framework-conformant: exactly (req) — DI lives on createFinalizeHandler. */
+/** Framework-conformant: exactly (req) - DI lives on createFinalizeHandler. */
 export const POST = createFinalizeHandler()

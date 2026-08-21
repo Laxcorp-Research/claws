@@ -117,7 +117,7 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
       position: 1,
       etaAt: new Date('2026-08-20T12:00:00.000Z'),
       reason: 'budget',
-      message: "High demand — your claw is queued to provision, ~24h. We'll notify you.",
+      message: "High demand - your claw is queued to provision, ~24h. We'll notify you.",
     });
   });
 
@@ -428,7 +428,7 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
         position: 2,
         etaAt: new Date('2026-08-20T03:11:00.000Z'),
         reason: 'railway_quota',
-        message: "High demand — your claw is queued to provision, ~4h. We'll notify you.",
+        message: "High demand - your claw is queued to provision, ~4h. We'll notify you.",
       }),
     );
 

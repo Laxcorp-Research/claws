@@ -1,4 +1,4 @@
-// PR-3 — dashboard agentStatus derivation tests.
+// PR-3 - dashboard agentStatus derivation tests.
 //
 // The previous derivation was a tautology: any workspace with
 // status=RUNNING returned all agents as "healthy" regardless of actual
@@ -50,6 +50,8 @@ type WsOverrides = {
   query?: string;
   recentRows?: unknown[];
   deployedPausedWorkers?: string[];
+  /** Render the paused line with the pre-sweep em-dash separator. */
+  legacyPausedSeparator?: boolean;
   nearCapWarningAt?: Date | null;
   nearCapSnapshot?: { updatedAt: Date; compressedBytes: number } | null;
   alwaysOn?: boolean;
@@ -114,7 +116,10 @@ async function callRoute(opts: WsOverrides) {
       workspaces: {
         "workspace-test-commander": {
           "TOOLS.md": (opts.deployedPausedWorkers ?? [])
-            .map((name) => `- Worker ${name} is paused — do not delegate to it.`)
+            .map((name) => {
+              const sep = opts.legacyPausedSeparator ? "\u2014" : "-"
+              return `- Worker ${name} is paused ${sep} do not delegate to it.`
+            })
             .join("\n"),
         },
       },
@@ -200,7 +205,7 @@ describe("agentStatus derivation: precedence (PR-3 honest health)", () => {
   });
 });
 
-// PR-C #10: alwaysOn must round-trip through this endpoint — it is what the
+// PR-C #10: alwaysOn must round-trip through this endpoint - it is what the
 // dashboard's periodic poll uses to refresh workspace state, and a dropped
 // field here would silently revert the "Always on" toggle on the next poll.
 describe("alwaysOn passthrough (PR-C #10)", () => {
@@ -293,7 +298,7 @@ describe("K1 command strip data", () => {
     const firstTaskCount = (prismaMock.activityLog.count as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(firstTaskCount.where.actionType).toBe("TASK_COMPLETE");
     expect(data.stats.estimatedCostTodayCalls).toBe(4);
-    // model "claude" is unknown — getModelCost must not invent the old 0.015 fallback
+    // model "claude" is unknown - getModelCost must not invent the old 0.015 fallback
     expect(data.stats.estimatedCostToday).toBe(0);
     expect(data.stats.estimatedCostTodayIsEstimate).toBe(true);
   });
@@ -368,6 +373,17 @@ describe("K3 pause pending truth", () => {
     expect(pending.agents[1].pauseApplied).toBe(false);
 
     const applied = await callRoute({ status: "RUNNING", healthStatus: "HEALTHY", workerPaused: true, deployedPausedWorkers: ["Worker"] });
+    expect(applied.agents[1].pauseApplied).toBe(true);
+  });
+
+  it("still parses pre-sweep snapshots that use the em-dash separator (live containers)", async () => {
+    const applied = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      workerPaused: true,
+      deployedPausedWorkers: ["Worker"],
+      legacyPausedSeparator: true,
+    });
     expect(applied.agents[1].pauseApplied).toBe(true);
   });
 });

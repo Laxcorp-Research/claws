@@ -1,5 +1,5 @@
 /**
- * MANUAL-RAIL creator payout destination — encrypted at rest (AES-256-GCM).
+ * MANUAL-RAIL creator payout destination - encrypted at rest (AES-256-GCM).
  * Creators only ever see masked hints; admins decrypt on demand (audited).
  */
 import { encrypt, decrypt } from "@/lib/encryption"

@@ -63,12 +63,12 @@ describe("resolveProviderAuth enablement matrix", () => {
 })
 
 describe("human copy (founder ruling: no jargon, credits never read as a user action)", () => {
-  it("deploy warning explains missing credits and names the fix — never 'auth path'", () => {
+  it("deploy warning explains missing credits and names the fix - never 'auth path'", () => {
     const warning = modelDeployWarning("anthropic/claude-sonnet-5", {
       creditMode: false,
       configuredProviders: [],
     })
-    expect(warning).toBe("No active credits on this account — add an Anthropic API key before deploy")
+    expect(warning).toBe("No active credits on this account - add an Anthropic API key before deploy")
     expect(modelDeployWarning("openai/gpt-4o", { creditMode: false, configuredProviders: [] })).toBe(
       "Add an OpenAI API key before deploy",
     )

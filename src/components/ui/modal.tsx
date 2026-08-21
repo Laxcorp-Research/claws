@@ -35,13 +35,13 @@ export function Modal({ open, onClose, title, description, children, footer, siz
 
   // PR2.9-fix2: portal to document.body so modal-on-modal stacking is
   // deterministic and JSX-order-independent. Before this change, two
-  // open Modals at the same z-50 would stack by source-code order —
+  // open Modals at the same z-50 would stack by source-code order -
   // which was fragile and produced a real bug on staging where the
   // BYOK credentials modal opened from inside the Browse modal
   // rendered BENEATH Browse (different JSX-parent locations: BYOK at
   // Step2 level, Browse-internal CredentialsModal at Browse-fragment
   // level). Portaling to body makes mount order the only signal, and
-  // the latest-opened modal always wins — correct UX universally.
+  // the latest-opened modal always wins - correct UX universally.
   //
   // Audit confirmed (PR2.9-fix2 description, table of 16 call sites)
   // that no Modal call site has a transform-creating ancestor, so
@@ -58,7 +58,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   // the React team: createPortal cannot run during SSR, so we render
   // null on the server + first client paint, then flip `mounted` true
   // after hydration. The mount-effect is a deliberate one-shot
-  // initialization (deps=[]) and re-renders exactly once — not a
+  // initialization (deps=[]) and re-renders exactly once - not a
   // cascading update. Same pattern as src/components/ui/tooltip.tsx:28
   // (tooltip.tsx carries an identical pre-existing rule violation;
   // out-of-scope for this PR per minimum-scope rule).

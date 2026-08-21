@@ -17,7 +17,7 @@ export const ANTHROPIC_PROXY_URL = "http://localhost:3789"
  * that proves *change* without revealing the value. It is `string | null`
  * (always present; `null` when no key) rather than optional, so the cron's
  * comparison reads it uniformly and never confuses "no key" with "field
- * forgotten". The raw key is NEVER logged — only this fingerprint.
+ * forgotten". The raw key is NEVER logged - only this fingerprint.
  */
 export interface DerivedContainerEnv {
   /** Present only when a key applies (PLATFORM_CREDIT master, or a BYOK key). */
@@ -30,7 +30,7 @@ export interface DerivedContainerEnv {
   keyFingerprint: string | null
 }
 
-/** Minimal structural inputs — Prisma row subsets, so the helper stays pure. */
+/** Minimal structural inputs - Prisma row subsets, so the helper stays pure. */
 export interface DeriveWorkspaceInput {
   apiKeySourceOverride: ApiKeySource | null
 }
@@ -77,7 +77,7 @@ export function assertNoPlaceholderEnvValues(
 
 /**
  * Derive a container's credential env from current DB state. Pure: no DB or
- * network — callers pass row subsets.
+ * network - callers pass row subsets.
  *
  * Matrix (see CONTAINER_ENV_RECONCILIATION_CONTRACT.md §1–§3):
  *   PLATFORM_CREDIT            → platform master key + credit mode + proxy URL
@@ -93,7 +93,7 @@ export function deriveContainerEnv(
 
   let derived: DerivedContainerEnv
   if (source === "PLATFORM_CREDIT") {
-    // Platform master key — NOT the user's key. Matches deployer.ts:551.
+    // Platform master key - NOT the user's key. Matches deployer.ts:551.
     const masterKey = process.env.CLAWS_MASTER_ANTHROPIC_KEY || ""
     derived = {
       ANTHROPIC_API_KEY: masterKey,

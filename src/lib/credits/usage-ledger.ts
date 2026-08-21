@@ -5,7 +5,7 @@
  * Gap: aggregate-credit-usage only rolls up days strictly before UTC today
  * (`createdAt < startOfDayUTC(now - 1d)`). Today's live rows stay in
  * CreditUsageRecord. GET /api/credits/usage used to read CreditUsageDaily
- * (take: 30 rows, not 30 days) — so a credits account with only-today
+ * (take: 30 rows, not 30 days) - so a credits account with only-today
  * calls showed Recent activity and empty Daily / By model.
  *
  * MUTATION: restore yesterday-exclusive window or CreditUsageDaily-only

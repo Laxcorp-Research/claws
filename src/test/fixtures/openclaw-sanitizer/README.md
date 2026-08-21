@@ -8,7 +8,7 @@ runtime's tier-1 + tier-2 env-var sanitizer without triggering the
 `"Blocked skill env overrides for <slug>"` WARN.
 
 Testing against a vendored copy (instead of importing the runtime as an
-npm dep) because the OpenClaw runtime is not published as a package —
+npm dep) because the OpenClaw runtime is not published as a package -
 it ships only as the container image. The dist `plugin-sdk/` inside the
 image is container-internal, not a public surface.
 
@@ -29,7 +29,7 @@ image is container-internal, not a public surface.
 |---|---|
 | `sanitize-env-vars.ts` | `src/agents/sandbox/sanitize-env-vars.ts` (verbatim) |
 | `host-env-security.ts` | `src/infra/host-env-security.ts` (reconstructed from `dist/host-env-security-CJMD0__Z.js`; source TS not in extract) |
-| `skill-env-sanitizer.ts` | `src/agents/skills/env-overrides.ts` (partial — `sanitizeSkillEnvOverrides` + `isAlwaysBlockedSkillEnvKey` only; outer apply/revert/logger machinery elided) |
+| `skill-env-sanitizer.ts` | `src/agents/skills/env-overrides.ts` (partial - `sanitizeSkillEnvOverrides` + `isAlwaysBlockedSkillEnvKey` only; outer apply/revert/logger machinery elided) |
 
 Each vendored file has a leading comment pointing back here.
 
@@ -60,11 +60,11 @@ changed too. Re-sync steps:
 This vendor includes only the env-override decision (tier-1 block
 patterns + tier-2 allowlist merge). It intentionally skips:
 
-- `applySkillEnvOverrides` / `applySkillEnvOverridesFromSnapshot` — the
+- `applySkillEnvOverrides` / `applySkillEnvOverridesFromSnapshot` - the
   functions that actually mutate `process.env` and return a reverter.
   They wrap `sanitizeSkillEnvOverrides`; the wrap logic is runtime-
   specific. Our generator doesn't need to test it.
-- `resolveSkillConfig` / `resolveSkillKey` — config-graph navigation.
+- `resolveSkillConfig` / `resolveSkillKey` - config-graph navigation.
   The contract test constructs synthetic inputs directly.
 - The `log.warn('Blocked skill env overrides for ...')` call itself.
   The contract test asserts on `result.blocked.length > 0` (i.e. the

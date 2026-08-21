@@ -161,7 +161,7 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(call.data.chatDeviceKeyEncrypted).toEqual(expect.any(String))
   })
 
-  it("subsequent send (device key present) reuses it — no persist", async () => {
+  it("subsequent send (device key present) reuses it - no persist", async () => {
     const blob = encryptDeviceIdentity(generateDeviceIdentity())
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceRow({ chatDeviceKeyEncrypted: blob }))
     await post({ message: "hi" })

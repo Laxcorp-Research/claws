@@ -3,7 +3,7 @@
  * heartbeatMissedAt via isHeartbeatBeatEvidence (activity roller).
  *
  * Catch-up must ledger either typed HEARTBEAT ("Heartbeat tick") or
- * TASK_START with the OpenClaw poll marker — same as scheduled fires.
+ * TASK_START with the OpenClaw poll marker - same as scheduled fires.
  * MUTATION: narrowing evidence to HEARTBEAT-only breaks poll-marker catch-up.
  */
 import { describe, expect, it } from "vitest"

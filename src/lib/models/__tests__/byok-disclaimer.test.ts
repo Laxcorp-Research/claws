@@ -7,7 +7,7 @@ import {
 describe("BYOK cost disclaimer", () => {
   it("copy snapshot", () => {
     expect(BYOK_COST_DISCLAIMER).toMatchInlineSnapshot(
-      `"BYOK models: cost figures are estimates — billed by your provider."`,
+      `"BYOK models: cost figures are estimates - billed by your provider."`,
     )
   })
 
