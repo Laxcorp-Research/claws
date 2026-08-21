@@ -3,7 +3,7 @@
 import { AlertTriangle, CheckCircle, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
-  NO_AUTH_PATH_LABEL,
+  ANTHROPIC_NO_AUTH_LABEL,
   NO_KEY_LABEL,
   POWERED_BY_CLAWS_CREDITS,
   resolveProviderAuth,
@@ -23,7 +23,7 @@ export type ProviderKeyStatus = {
   effectiveSource: "override" | "global" | "none"
 }
 
-const PROVIDER_NAMES: Record<string, string> = {
+export const PROVIDER_CARD_NAMES: Record<string, string> = {
   ANTHROPIC: "Anthropic (Claude)",
   OPENAI: "OpenAI (GPT)",
   GOOGLE: "Google (Gemini)",
@@ -58,7 +58,7 @@ export function ProviderAuthCards({
     <div className="border border-[var(--bd)] rounded-xl mb-3.5 overflow-hidden">
       {SUPPORTED_PROVIDERS.map((provider) => {
         const status = keyStatus.find((k) => k.provider === provider)
-        const providerName = PROVIDER_NAMES[provider] || provider
+        const providerName = PROVIDER_CARD_NAMES[provider] || provider
         const usingAgents = agents.filter((a) => {
           const m = a.model || ""
           return m.startsWith(`${provider.toLowerCase()}/`)
@@ -156,7 +156,7 @@ export function ProviderAuthCards({
                       data-testid={`provider-auth-missing-${provider}`}
                       className="text-[11px] text-[var(--err)]"
                     >
-                      {auth.cardState === "no-auth-path" ? NO_AUTH_PATH_LABEL : NO_KEY_LABEL}
+                      {auth.cardState === "no-auth-path" ? ANTHROPIC_NO_AUTH_LABEL : NO_KEY_LABEL}
                     </span>
                   </div>
                   <button

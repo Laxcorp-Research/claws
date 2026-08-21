@@ -345,6 +345,24 @@ describe('generateWorkspace', () => {
     expect(critic!.model).toBe('anthropic/claude-opus-4-6');
   });
 
+  it('emits agents.list[].thinkingDefault only for a valid stored level', async () => {
+    const ws = buildMockWorkspace();
+    const agents = ws.agents as Array<Record<string, unknown>>;
+    agents[0].thinkingDefault = 'high';       // valid → emitted
+    agents[1].thinkingDefault = 'turbo';      // invalid → omitted
+    agents[2].thinkingDefault = null;         // null → omitted (runtime default)
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    const byName = (name: string) =>
+      config.agents.list.find((a: Record<string, unknown>) => a.name === name);
+
+    expect(byName('Test Commander').thinkingDefault).toBe('high');
+    expect(byName('Data Analyst')).not.toHaveProperty('thinkingDefault');
+    expect(byName('Quality Reviewer')).not.toHaveProperty('thinkingDefault');
+  });
+
   it('creates flat workspace directories per agent', async () => {
     const result = await generateWorkspace('ws-test-1');
 

@@ -2,8 +2,14 @@ import { providerFromModelRef, type SupportedProvider } from "@/lib/supported-pr
 import { providerLabel } from "@/lib/models/provider-labels"
 
 export const POWERED_BY_CLAWS_CREDITS = "Powered by Claws credits"
-export const NO_KEY_LABEL = "No key"
-export const NO_AUTH_PATH_LABEL = "No auth path"
+/**
+ * Human copy ruling (founder, post-picker-rebuild): never render auth jargon.
+ * "No auth path" is dead. A missing key reads "No API key"; Anthropic with
+ * neither credits nor key reads "No credits or API key". Credits are automatic
+ * when active — copy must never ask the user to "use" them.
+ */
+export const NO_KEY_LABEL = "No API key"
+export const ANTHROPIC_NO_AUTH_LABEL = "No credits or API key"
 
 export type CreditBalanceSlice = {
   hasCredits?: boolean
@@ -45,10 +51,10 @@ function articleFor(name: string): "a" | "an" {
   return /^[aeiou]/i.test(name) ? "an" : "a"
 }
 
+/** Shown on a locked provider section in the model modal. Plain instruction, no jargon. */
 export function providerUnlockReason(provider: string): string {
-  if (provider === "ANTHROPIC") return "Add an Anthropic key or use Claws credits"
   const pretty = providerLabel(provider)
-  return `Add ${articleFor(pretty)} ${pretty} key`
+  return `Add ${articleFor(pretty)} ${pretty} API key to unlock these models`
 }
 
 export function resolveProviderAuth(
@@ -80,7 +86,7 @@ export function resolveProviderAuth(
       kind: "none",
       unlockReason: providerUnlockReason(provider),
       cardState: "no-auth-path",
-      cardLabel: NO_AUTH_PATH_LABEL,
+      cardLabel: ANTHROPIC_NO_AUTH_LABEL,
     }
   }
   return {
@@ -102,8 +108,8 @@ export function isModelSelectable(
 }
 
 /**
- * Row warning for a selected model with no auth path.
- * Distinguishes "no auth path" (neither credits nor key) from "no key typed".
+ * Row warning for a selected model with no auth path. Human copy:
+ * Anthropic explains why credits are not covering it; others just name the key.
  */
 export function modelDeployWarning(
   modelId: string,
@@ -113,11 +119,11 @@ export function modelDeployWarning(
   if (!provider) return null
   const auth = resolveProviderAuth(provider, opts)
   if (auth.selectable) return null
-  if (auth.cardState === "no-auth-path") {
-    return "No auth path for Anthropic — add a key or use Claws credits"
-  }
   const pretty = providerLabel(provider)
-  return `Needs ${articleFor(pretty)} ${pretty} key before deploy`
+  if (auth.cardState === "no-auth-path") {
+    return `No active credits on this account — add an Anthropic API key before deploy`
+  }
+  return `Add ${articleFor(pretty)} ${pretty} API key before deploy`
 }
 
 export function providerFromRefOrNull(modelId: string): SupportedProvider | null {

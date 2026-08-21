@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
-import { catalogToLegacyOptions } from "@/lib/models/catalog"
+import { catalogToLegacyOptions, derivedNativeFromOpenRouter } from "@/lib/models/catalog"
 import { providerFromModelRef } from "@/lib/supported-providers"
 
 describe("model catalog (OpenRouter arc)", () => {
@@ -74,6 +74,33 @@ describe("model catalog (OpenRouter arc)", () => {
       "openrouter/google/gemini-2.0-flash-001",
       "openrouter/meta-llama/llama-3.3-70b-instruct",
     ])
+  })
+
+  it("derives native OPENAI/GOOGLE rows from OpenRouter ids (founder Q1: full native lists)", () => {
+    expect(derivedNativeFromOpenRouter({ id: "openai/gpt-4o" })).toEqual({
+      modelId: "openai/gpt-4o",
+      provider: "OPENAI",
+    })
+    expect(derivedNativeFromOpenRouter({ id: "google/gemini-2.5-pro" })).toEqual({
+      modelId: "google/gemini-2.5-pro",
+      provider: "GOOGLE",
+    })
+  })
+
+  it("does NOT derive natives for variants, Anthropic, or other vendors", () => {
+    // :variants are OpenRouter-only routes — not callable with a native key.
+    expect(derivedNativeFromOpenRouter({ id: "openai/gpt-4o:extended" })).toBeNull()
+    expect(derivedNativeFromOpenRouter({ id: "google/gemini-2.0-flash-001:free" })).toBeNull()
+    // Anthropic natives come from the live Anthropic /v1/models refresh only.
+    expect(derivedNativeFromOpenRouter({ id: "anthropic/claude-sonnet-5" })).toBeNull()
+    expect(derivedNativeFromOpenRouter({ id: "meta-llama/llama-3.3-70b-instruct" })).toBeNull()
+  })
+
+  it("MUTATION: derived-native upserts dropped from OpenRouter refresh → fails", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    expect(src).toContain("derivedNativeFromOpenRouter")
+    expect(src).toContain("openrouter-derived")
+    expect(src).toContain("stripVendorPrefix")
   })
 
   it("MUTATION: refresh-returns-pins-only restored → fails", () => {

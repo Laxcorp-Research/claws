@@ -11,6 +11,9 @@ export type ModelCatalogOption = {
   provider: string
   providerKey: string
   isPinned: boolean
+  contextLength: number | null
+  pricingSnippet: string | null
+  costPer1kEst: number | null
 }
 
 let cache: ModelCatalogOption[] | null = null
@@ -29,6 +32,9 @@ function parseCatalog(json: unknown): ModelCatalogOption[] {
       displayName?: string
       provider: string
       isPinned?: boolean
+      contextLength?: number | null
+      pricingSnippet?: string | null
+      costPer1kEst?: number | null
     }>
     options?: Array<{ value: string; label: string; provider?: string }>
   }
@@ -39,6 +45,9 @@ function parseCatalog(json: unknown): ModelCatalogOption[] {
       provider: providerLabel(m.provider),
       providerKey: m.provider,
       isPinned: Boolean(m.isPinned),
+      contextLength: m.contextLength ?? null,
+      pricingSnippet: m.pricingSnippet ?? null,
+      costPer1kEst: m.costPer1kEst ?? null,
     }))
   }
   return (payload.options ?? []).map((o) => ({
@@ -47,6 +56,9 @@ function parseCatalog(json: unknown): ModelCatalogOption[] {
     provider: o.provider ?? providerLabel(o.value.split("/")[0]?.toUpperCase() ?? ""),
     providerKey: (o.value.startsWith("openrouter/") ? "OPENROUTER" : o.value.split("/")[0]?.toUpperCase()) ?? "ANTHROPIC",
     isPinned: false,
+    contextLength: null,
+    pricingSnippet: null,
+    costPer1kEst: null,
   }))
 }
 
