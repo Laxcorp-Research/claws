@@ -6,10 +6,10 @@ import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 
 // PR-6: replaces the old <PendingApprovals> wrapper. Same behaviour (approve
-// inline, reject-with-optional-feedback via modal) but calm-by-default — the
+// inline, reject-with-optional-feedback via modal) but calm-by-default - the
 // whole section is absent when there's nothing waiting, so a quiet Claw shows
 // no "Needs you" chrome at all. (Today this is always empty: nothing produces
-// HUMAN_REQUEST yet — see the PR-6 audit. The section is built so it lights up
+// HUMAN_REQUEST yet - see the PR-6 audit. The section is built so it lights up
 // for free once a producer lands.)
 
 interface PendingApproval {

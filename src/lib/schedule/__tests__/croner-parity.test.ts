@@ -32,7 +32,7 @@ const EXPRESSIONS = [
   "0 21 * * *",
 ] as const
 
-describe("croner parity — preview vs runtime parser", () => {
+describe("croner parity - preview vs runtime parser", () => {
   it("covers 20 expressions including L, */15, and ranges", () => {
     expect(EXPRESSIONS).toHaveLength(20)
     expect(EXPRESSIONS.some((e) => e.includes("L"))).toBe(true)

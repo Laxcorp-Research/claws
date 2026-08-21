@@ -98,7 +98,7 @@ describe("ConversationsSection", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /agent:dev-commander:main/i }))
 
-    expect(screen.getByText("Read-only — reply from the channel itself.")).toBeTruthy()
+    expect(screen.getByText("Read-only - reply from the channel itself.")).toBeTruthy()
     await waitFor(() => expect(screen.getByText("hello from telegram")).toBeTruthy())
     expect(screen.getByText("· used web_search")).toBeTruthy()
     expect(screen.getByText("hello back")).toBeTruthy()

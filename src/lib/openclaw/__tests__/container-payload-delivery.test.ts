@@ -127,7 +127,7 @@ function generatedFromTemplate(template: SeedTemplate): GeneratedWorkspace {
         ? agent.heartbeatMd || `# HEARTBEAT.md\n\n# Periodic tasks for ${agent.name}\n# Add tasks below. The gateway will prompt you to check this file periodically.\n# Use checklist format:\n# - [ ] Task description\n`
         : "# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n",
       "BOOT.md": agent.role === "ORCHESTRATOR"
-        ? "# BOOT.md - Startup Checklist\n\nOn gateway startup:\n1. Read SOUL.md and USER.md to restore context\n2. Read today's dated memory file (memory/YYYY-MM-DD.md) and any agent-specific workspace memory files for recent activity — never `read` the memory/ directory itself (that yields EISDIR)\n3. Verify HEARTBEAT.md has your scheduled tasks\n4. If everything looks good, reply with NO_REPLY\n5. If something is wrong (missing files, corrupted memory), send a brief status message to the human\n"
+        ? "# BOOT.md - Startup Checklist\n\nOn gateway startup:\n1. Read SOUL.md and USER.md to restore context\n2. Read today's dated memory file (memory/YYYY-MM-DD.md) and any agent-specific workspace memory files for recent activity - never `read` the memory/ directory itself (that yields EISDIR)\n3. Verify HEARTBEAT.md has your scheduled tasks\n4. If everything looks good, reply with NO_REPLY\n5. If something is wrong (missing files, corrupted memory), send a brief status message to the human\n"
         : "# BOOT.md\n\n# No startup tasks for this agent.\n",
       skills: {},
     }
@@ -173,7 +173,7 @@ describe("container payload delivery", () => {
     }
   })
 
-  // Real child-process I/O (execFileSync + gzip unpack) — can exceed the
+  // Real child-process I/O (execFileSync + gzip unpack) - can exceed the
   // default 5s under full-suite parallel load. Not a timer race.
   it("round-trips gzipped payload vars through the actual UNPACK_NODE_SCRIPT", () => {
     const generated = minimalGenerated()
@@ -209,7 +209,7 @@ describe("container payload delivery", () => {
     generated.workspaces["workspace-commander"]["TOOLS.md"] = highEntropyText(160_000)
 
     expect(() => buildRailwayEnvVars(generated, workspace, user)).toThrow(
-      /Container payload CLAWS_FILES_GZ_B64 is \d+ chars — exceeds the 30,000 safety ceiling \(Railway hard limit 32,768\)\. Workspace too large to deploy\./,
+      /Container payload CLAWS_FILES_GZ_B64 is \d+ chars - exceeds the 30,000 safety ceiling \(Railway hard limit 32,768\)\. Workspace too large to deploy\./,
     )
   })
 

@@ -1,10 +1,10 @@
 /**
  * Single BYOK cost-honesty line for the model-selection table.
- * Per-row repetition is forbidden — render once under the table, only when relevant.
+ * Per-row repetition is forbidden - render once under the table, only when relevant.
  */
 
 export const BYOK_COST_DISCLAIMER =
-  "BYOK models: cost figures are estimates — billed by your provider."
+  "BYOK models: cost figures are estimates - billed by your provider."
 
 const BYOK_PROVIDERS = ["OPENAI", "GOOGLE", "OPENROUTER"] as const
 

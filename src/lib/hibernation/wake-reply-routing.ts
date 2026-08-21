@@ -1,5 +1,5 @@
 /**
- * Wake-on-channel reply routing — origin channel → delivery target.
+ * Wake-on-channel reply routing - origin channel → delivery target.
  *
  * P5 injects Telegram inbound via operator `chat.send`, which the gateway
  * stamps as webchat. Gateway `deliver:true` therefore cannot send the agent

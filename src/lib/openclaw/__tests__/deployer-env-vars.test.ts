@@ -1,4 +1,4 @@
-// deployer-env-vars.test.ts — regression coverage for buildRailwayEnvVars'
+// deployer-env-vars.test.ts - regression coverage for buildRailwayEnvVars'
 // Composio emission + PR-2b env-guards (fail-closed + host-match).
 //
 // Scope is intentionally narrow: this file tests ONLY the env-var-building
@@ -13,7 +13,7 @@
 //      agree on the user identity.
 //   3. Pre-PR #4 backward compatibility: when COMPOSIO_API_KEY is unset
 //      (dev/local, CI without the secret), the function silently omits
-//      Composio vars — no throw, no breakage.
+//      Composio vars - no throw, no breakage.
 //   4. PR-2b #1 fail-closed: throws when ACTIVITY_ENDPOINT or
 //      METERING_ENDPOINT is unset (no silent prod fallback).
 //   5. PR-2b #2 host-match: throws when endpoint host doesn't match
@@ -60,7 +60,7 @@ function setStagingLikeEnv() {
 // {creditMode,workspaceId,userId} shape, so this maps that onto the new
 // (workspace, user) objects: creditMode=true → a PLATFORM_CREDIT user (master
 // key path), creditMode=false → a USER_OWN_KEY user with no stored keys
-// (non-credit path). Both keep apiKeys=[] so no decrypt is exercised here —
+// (non-credit path). Both keep apiKeys=[] so no decrypt is exercised here -
 // decrypted-BYOK derivation is covered in derive-container-env.test.ts.
 function buildEnv(cfg: { creditMode: boolean; workspaceId: string; userId: string }) {
   return buildRailwayEnvVars(
@@ -70,7 +70,7 @@ function buildEnv(cfg: { creditMode: boolean; workspaceId: string; userId: strin
   );
 }
 
-describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', () => {
+describe('buildRailwayEnvVars - Composio security boundary (PR #4 Commit 2)', () => {
   // Vitest does not isolate process.env between tests. Stash + restore so
   // nothing leaks to other files in the same test run. PR-2b: also stash
   // the new required env vars (ACTIVITY_ENDPOINT, METERING_ENDPOINT,
@@ -109,7 +109,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
     expect(env.COMPOSIO_USER_ID).toBe('claws_user-abc');
   });
 
-  it('uses the getComposioUserId format (claws_<userId>) — matches generator skills.entries emission', () => {
+  it('uses the getComposioUserId format (claws_<userId>) - matches generator skills.entries emission', () => {
     // The container-level COMPOSIO_USER_ID MUST match what generator.ts
     // emits into skills.entries[slug].env.COMPOSIO_USER_ID. Both derive
     // from the same getComposioUserId helper, so this test guards against
@@ -140,7 +140,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
   // PR2: two tests deleted here because they passed `undefined` as
   // creditConfig to exercise the "creditConfig missing entirely" branch
   // of the security-boundary throw. PR2 tightened buildRailwayEnvVars's
-  // signature so creditConfig is REQUIRED — TypeScript now rejects
+  // signature so creditConfig is REQUIRED - TypeScript now rejects
   // those calls at compile time. The runtime throw remains as
   // defense-in-depth for `as any` bypasses, but is no longer reachable
   // via the type-safe test surface. The empty-userId case below still
@@ -179,7 +179,7 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
     expect(env.CLAWS_CREDIT_MODE).toBe('true');
     expect(env.CLAWS_USER_ID).toBe('user-mixed');
     expect(env.CLAWS_WORKSPACE_ID).toBe('ws-mixed');
-    // New Composio surface coexists — same source of truth for user id.
+    // New Composio surface coexists - same source of truth for user id.
     expect(env.COMPOSIO_USER_ID).toBe('claws_user-mixed');
     expect(env.COMPOSIO_API_KEY).toBe('ak_mixed');
   });
@@ -210,17 +210,17 @@ describe('buildRailwayEnvVars — Composio security boundary (PR #4 Commit 2)', 
 //
 // Before PR2, CLAWS_WORKSPACE_ID, CLAWS_METERING_ENDPOINT, and
 // CLAWS_METERING_SECRET were emitted ONLY when creditConfig.creditMode was
-// true — bundled with the credit-proxy-specific vars in the same conditional.
+// true - bundled with the credit-proxy-specific vars in the same conditional.
 // process-manager.mjs needs all three for syncState() and
 // restoreStateFromPlatform() to fire. So non-credit containers got no
 // state preservation despite the feature shipping.
 //
 // After PR2, the 3 state-sync vars are emitted whenever creditConfig is
-// passed (which all current callers do — deployer + redeployer always
+// passed (which all current callers do - deployer + redeployer always
 // provide it). Only credit-proxy-specific vars (CLAWS_USER_ID,
 // ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, NODE_OPTIONS) remain gated on
 // creditMode=true.
-describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution', () => {
+describe('buildRailwayEnvVars - PR2 universal state-sync env-var distribution', () => {
   let prevMeteringEndpoint: string | undefined;
   let prevMeteringSecret: string | undefined;
   let prevActivityEndpoint: string | undefined;
@@ -346,7 +346,7 @@ describe('buildRailwayEnvVars — PR2 universal state-sync env-var distribution'
 // Each test in this block targets a specific failure mode of the deploy
 // pipeline that the guard must catch loudly.
 // ─────────────────────────────────────────────────────────────────────────
-describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => {
+describe('buildRailwayEnvVars - PR-2b fail-closed + host-match guards', () => {
   let prev: Record<string, string | undefined>;
   beforeEach(() => {
     prev = {
@@ -399,11 +399,11 @@ describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => 
     expect(callIt).toThrow(/ACTIVITY_ENDPOINT env var is required but not set/);
   });
 
-  it('throws on host mismatch — ACTIVITY_ENDPOINT host != NEXT_PUBLIC_APP_URL host', () => {
+  it('throws on host mismatch - ACTIVITY_ENDPOINT host != NEXT_PUBLIC_APP_URL host', () => {
     // The exact misconfig we want to catch at deploy time, not at
     // request time. A staging deploy pointed at a prod endpoint URL
     // (or vice versa) silently routed traffic to the wrong control
-    // plane in PR-2 — visible only because the workspace ID didn't
+    // plane in PR-2 - visible only because the workspace ID didn't
     // exist in the wrong DB.
     process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
     process.env.METERING_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/metering';
@@ -411,7 +411,7 @@ describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => 
     expect(callIt).toThrow(/Host mismatch refusing deploy.*ACTIVITY_ENDPOINT/);
   });
 
-  it('throws on host mismatch — METERING_ENDPOINT host != NEXT_PUBLIC_APP_URL host', () => {
+  it('throws on host mismatch - METERING_ENDPOINT host != NEXT_PUBLIC_APP_URL host', () => {
     process.env.NEXT_PUBLIC_APP_URL = 'https://staging.app.buildclaws.ai';
     process.env.ACTIVITY_ENDPOINT = 'https://staging.app.buildclaws.ai/api/internal/activity';
     process.env.METERING_ENDPOINT = 'https://app.buildclaws.ai/api/internal/metering'; // prod
@@ -461,14 +461,14 @@ describe('buildRailwayEnvVars — PR-2b fail-closed + host-match guards', () => 
 // The signature change (creditConfig{userId} → user) moved the
 // COMPOSIO_USER_ID scope pin from creditConfig.userId to workspace.userId.
 // This block calls buildRailwayEnvVars DIRECTLY with explicit (workspace,
-// user) objects — NOT through the buildEnv() adapter — so the auth boundary
+// user) objects - NOT through the buildEnv() adapter - so the auth boundary
 // is locked to workspace.userId against a future caller refactor that forgets
 // to pass a userId-bearing workspace.
 //
 // Mutation coverage: hardcode COMPOSIO_USER_ID to a wrong value → the first
 // test fails; flip the `!workspace.userId` guard → the fail-closed test fails.
 // ─────────────────────────────────────────────────────────────────────────
-describe('buildRailwayEnvVars — Composio fail-closed pin sources workspace.userId (PR-8a signature-change regression)', () => {
+describe('buildRailwayEnvVars - Composio fail-closed pin sources workspace.userId (PR-8a signature-change regression)', () => {
   let prev: Record<string, string | undefined>;
   beforeEach(() => {
     prev = {
@@ -519,7 +519,7 @@ describe('buildRailwayEnvVars — Composio fail-closed pin sources workspace.use
   });
 });
 
-describe('buildRailwayEnvVars — TZ=UTC force (PR-2 rider 2)', () => {
+describe('buildRailwayEnvVars - TZ=UTC force (PR-2 rider 2)', () => {
   let prevActivityEndpoint: string | undefined;
   let prevMeteringEndpoint: string | undefined;
   let prevAppUrl: string | undefined;

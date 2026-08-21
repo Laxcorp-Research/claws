@@ -16,7 +16,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe("PricingPage Batch A / A4 — marketplace sole source", () => {
+describe("PricingPage Batch A / A4 - marketplace sole source", () => {
   it("renders free/paid names from marketplace API", async () => {
     vi.stubGlobal(
       "fetch",

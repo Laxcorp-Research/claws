@@ -140,7 +140,7 @@ export function validateSchedule(
 
   const creditWarning =
     firesPerDay >= FIRES_PER_DAY_CREDIT_WARN
-      ? `~${firesPerDay} runs/day — this will consume credits quickly`
+      ? `~${firesPerDay} runs/day - this will consume credits quickly`
       : null
 
   return {

@@ -20,7 +20,7 @@ async function main() {
   // Upsert by slug (PR2.8a Task 0.6). Previous version called deleteMany() +
   // create() which cascade-deleted every TemplateReview + TemplateInstall row
   // (both FKs are ON DELETE CASCADE per prisma/migrations/20260321102737_init
-  // and 20260326184130_marketplace_platform) — i.e. running seed on a
+  // and 20260326184130_marketplace_platform) - i.e. running seed on a
   // populated DB wiped every user-generated review and install of every seed
   // template. It also would have failed outright (Purchase.clawTemplateId is
   // ON DELETE RESTRICT) the moment a paid template had any Purchase row.
@@ -54,12 +54,12 @@ async function main() {
   //   4. Verify:
   //        SELECT COUNT(*) FROM "TemplateReview"
   //          WHERE title = 'MUTATION_TEST_SENTINEL';
-  //      Expect 1. If 0, the seed is destructive again — halt and investigate.
+  //      Expect 1. If 0, the seed is destructive again - halt and investigate.
   //   5. Clean up:
   //        DELETE FROM "TemplateReview"
   //          WHERE title = 'MUTATION_TEST_SENTINEL';
   for (const template of ALL_TEMPLATES) {
-    // Shared builder with community publish — never drift on parity keys.
+    // Shared builder with community publish - never drift on parity keys.
     const workspaceSnapshot = buildWorkspaceSnapshotFromSeedTemplate(template)
 
     const data = {
@@ -90,7 +90,7 @@ async function main() {
 
   // Upsert by slug (PR #3a). Previous version called deleteMany() + create(),
   // which cascade-deletes every AgentSkill row because Skill is the parent
-  // in that FK relation — i.e. running seed on a populated DB wiped skill
+  // in that FK relation - i.e. running seed on a populated DB wiped skill
   // assignments for every user. Upsert preserves agent->skill wiring and
   // still propagates field changes (skillMd, permissions, etc.) to existing
   // rows.
@@ -180,19 +180,19 @@ async function main() {
 
   // PR2.8a Task 0.6: converted from deleteMany() + create() to upsert-by-version
   // for consistency with the ClawTemplate + Skill upsert patterns. OpenClawVersion
-  // has no incoming FKs today (verified against prisma/schema.prisma — Workspace /
+  // has no incoming FKs today (verified against prisma/schema.prisma - Workspace /
   // Skill / ClawTemplate all carry minOpenClawVersion as a plain String, not an
   // FK), so the old deleteMany was safe on its own, but upsert-by-version is
   // idempotent and safer as a default pattern. `releasedAt` only sets on create;
   // updates preserve the original release timestamp.
   // GH #5: seed v2.5.0 ONLY on create. The previous `update: openClawVersionSeed`
   // re-asserted isStable/isLatest/dockerImage on every run, which (a) kept the
-  // stale "Latest" flag stuck on v2.5.0 in prod and (b) was a latent hazard — a
+  // stale "Latest" flag stuck on v2.5.0 in prod and (b) was a latent hazard - a
   // re-run would re-flag v2.5.0 as a SECOND isStable row and reintroduce a
   // moving-pointer ":latest" image record (the register endpoint forbids those).
   // An existing v2.5.0 row is now left untouched on re-run (update: {} no-op).
   //
-  // NOTE: the create still uses a ":latest" dockerImage — a bootstrap default so
+  // NOTE: the create still uses a ":latest" dockerImage - a bootstrap default so
   // a brand-new DB has a deployable isStable row before any real version is
   // registered. It is intentionally a moving pointer ONLY for this dev bootstrap
   // row; real versions arrive pinned via the register/promote pipeline.

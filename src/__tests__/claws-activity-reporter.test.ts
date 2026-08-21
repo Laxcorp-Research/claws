@@ -8,14 +8,14 @@
 //
 // Two contracts under test:
 //
-//   1. EVENT MAPPING — each of the 6 hook handlers produces the right
+//   1. EVENT MAPPING - each of the 6 hook handlers produces the right
 //      ActivityType + action shape from a representative hook payload.
 //      Payload shapes verified against upstream OpenClaw v2026.5.22 source
 //      (tmp/openclaw-src/src/plugins/hook-types.ts and hook-message.types.ts).
 //
-//   2. SYNC HANDLER INVARIANT — every handler must return SYNCHRONOUSLY
+//   2. SYNC HANDLER INVARIANT - every handler must return SYNCHRONOUSLY
 //      (not a Promise). The upstream void-hook runner wraps returns in
-//      Promise.resolve() and awaits all of them under per-hook timeouts —
+//      Promise.resolve() and awaits all of them under per-hook timeouts -
 //      so a handler that returns a pending Promise would delay the agent
 //      turn until the underlying buffer/network resolved. This test asserts
 //      that `handler(event, ctx)` returns `undefined`, not a Promise-like
@@ -62,7 +62,7 @@ interface PluginTestSurface {
 }
 
 // Module-scope singleton captured by all the handlers in index.mjs.
-// We don't try to swap it out — we just clear its buffer between tests.
+// We don't try to swap it out - we just clear its buffer between tests.
 let plugin: PluginTestSurface;
 
 beforeEach(async () => {
@@ -90,11 +90,11 @@ function expectSyncReturn(
 ) {
   const ret = handler(event, ctx);
   // A returned Promise (or thenable) means the handler is doing async
-  // work inside the hook call path — exactly the failure mode the
+  // work inside the hook call path - exactly the failure mode the
   // upstream hook runner would await and that we forbid by design.
   expect(
     ret === undefined,
-    `${handlerName} must return undefined (synchronously). Got: ${typeof ret} ${ret instanceof Promise ? "(a Promise — handler is doing async work inside the hook call path; refactor to enqueue then return)" : ""}`,
+    `${handlerName} must return undefined (synchronously). Got: ${typeof ret} ${ret instanceof Promise ? "(a Promise - handler is doing async work inside the hook call path; refactor to enqueue then return)" : ""}`,
   ).toBe(true);
   // Belt-and-suspenders: not a thenable.
   expect(
@@ -105,7 +105,7 @@ function expectSyncReturn(
   ).toBe(false);
 }
 
-describe("claws-activity-reporter — event mapping", () => {
+describe("claws-activity-reporter - event mapping", () => {
   describe("before_agent_run → TASK_START", () => {
     it("emits TASK_START with prompt preview", () => {
       plugin.handleBeforeAgentRun(
@@ -357,7 +357,7 @@ describe("claws-activity-reporter — event mapping", () => {
 
 // ─── PR-4: short human action + full detail + trigger classification ──────
 
-describe("claws-activity-reporter — PR-4 short action + detail", () => {
+describe("claws-activity-reporter - PR-4 short action + detail", () => {
   const HEARTBEAT_PROMPT =
     "[cron:heartbeat-dispatch-commander-daily orchestrator-heartbeat-daily] Heartbeat. " +
     "Read HEARTBEAT.md and follow it strictly. If nothing needs attention, reply HEARTBEAT_OK.";
@@ -407,7 +407,7 @@ describe("claws-activity-reporter — PR-4 short action + detail", () => {
     );
     const rec = plugin.reporter.pending[0];
     // If the shortening is reverted (action = `Task started: ${promptPreview}`),
-    // the action would contain the [cron:...] prefix and/or "HEARTBEAT.md" —
+    // the action would contain the [cron:...] prefix and/or "HEARTBEAT.md" -
     // exactly the engineer-output the dashboard must not show. This is the
     // mutation guard for the action-shortening behavior.
     expect(rec.action).not.toContain("[cron:");
@@ -468,7 +468,7 @@ describe("claws-activity-reporter — PR-4 short action + detail", () => {
   });
 });
 
-describe("claws-activity-reporter — UsageReporter buffer", () => {
+describe("claws-activity-reporter - UsageReporter buffer", () => {
   let r: InstanceType<PluginTestSurface["ActivityReporter"]>;
 
   beforeEach(async () => {
@@ -532,7 +532,7 @@ describe("claws-activity-reporter — UsageReporter buffer", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// PR-9/A-container — webchat reply-row emission (contract C1–C6)
+// PR-9/A-container - webchat reply-row emission (contract C1–C6)
 //
 // agent_end for a webchat turn must emit exactly ONE additional MESSAGE_SENT
 // row carrying the assistant reply + turn health, AFTER the unchanged
@@ -543,10 +543,10 @@ describe("claws-activity-reporter — UsageReporter buffer", () => {
 //   - truncation removed              → C3 boundary test fails
 //   - turnHealth from event.success   → C2 divergence test fails
 // ════════════════════════════════════════════════════════════════════════════
-describe("claws-activity-reporter — PR-9/A webchat reply rows", () => {
+describe("claws-activity-reporter - PR-9/A webchat reply rows", () => {
   // Cast once: isWebchatReplyTurn/extractAssistantReply/clipWithFlag are new
   // __test__ exports not in the PluginTestSurface interface above (kept
-  // narrow deliberately — the older blocks don't need them).
+  // narrow deliberately - the older blocks don't need them).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ext = () => plugin as any;
 
@@ -610,7 +610,7 @@ describe("claws-activity-reporter — PR-9/A webchat reply rows", () => {
       costTotal: 0.0259,
     });
     // channelId/sessionKey live as TOP-LEVEL record fields (the ingest route
-    // merges them into stored metadata server-side — contract v0.2).
+    // merges them into stored metadata server-side - contract v0.2).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((reply as any).channelId).toBe("webchat");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -657,7 +657,7 @@ describe("claws-activity-reporter — PR-9/A webchat reply rows", () => {
     expect(exact.metadata.truncated).toBe(false);
   });
 
-  it("C4: errored turn still emits the reply row — turnHealth 'error', error text in detail", () => {
+  it("C4: errored turn still emits the reply row - turnHealth 'error', error text in detail", () => {
     plugin.handleAgentEnd(
       {
         success: false,
@@ -770,7 +770,7 @@ describe("claws-activity-reporter — PR-9/A webchat reply rows", () => {
   });
 });
 
-describe("claws-activity-reporter — overlay boot emission-version (PR-2 -8)", () => {
+describe("claws-activity-reporter - overlay boot emission-version (PR-2 -8)", () => {
   it("boot event carries metadata.clawsOverlaySha from CLAWS_OVERLAY_SHA", async () => {
     vi.resetModules();
     process.env.CLAWS_OVERLAY_SHA = "abc123overlaysha";

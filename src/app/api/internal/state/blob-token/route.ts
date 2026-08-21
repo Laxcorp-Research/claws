@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   const rwToken = process.env.BLOB_READ_WRITE_TOKEN
   if (!rwToken) {
-    log.error("BLOB_READ_WRITE_TOKEN unset — cannot issue state blob token")
+    log.error("BLOB_READ_WRITE_TOKEN unset - cannot issue state blob token")
     return Response.json({ success: false, error: "Blob not configured" }, { status: 503 })
   }
 

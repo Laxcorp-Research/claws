@@ -1,5 +1,5 @@
 /**
- * Batch D4 — agent delete requires ConfirmDialog before deleteAgent.
+ * Batch D4 - agent delete requires ConfirmDialog before deleteAgent.
  * MUTATION: immediate deleteAgent without confirm → fail.
  */
 import { readFileSync } from "node:fs"

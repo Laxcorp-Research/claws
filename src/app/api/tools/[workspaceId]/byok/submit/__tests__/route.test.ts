@@ -1,4 +1,4 @@
-// PR2.9 — integration tests for POST /api/tools/[ws]/byok/submit.
+// PR2.9 - integration tests for POST /api/tools/[ws]/byok/submit.
 //
 // Coverage targets:
 //   - Auth-guard: 401 when unauthenticated, 403/404 on workspace ownership fail

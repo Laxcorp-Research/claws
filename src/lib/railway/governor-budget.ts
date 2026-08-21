@@ -4,7 +4,7 @@
  *
  * Ground truth: rolling 24h UTC window over RailwayCreateLedger rows.
  * Railway's own cap can still reject when our ledger is empty (deleted
- * creates still count on their side) — that's the reactive hold.
+ * creates still count on their side) - that's the reactive hold.
  */
 
 export const DEFAULT_RAILWAY_CREATE_DAILY_CAP = 25
@@ -105,7 +105,7 @@ export function computeQueueEta(args: {
   }
   if (candidates.length === 0) {
     // Ledger empty / under usable but we are still queuing (Railway hold with
-    // no timestamp yet) — next UTC day is the conservative floor.
+    // no timestamp yet) - next UTC day is the conservative floor.
     return nextUtcMidnight(args.now)
   }
   return new Date(Math.max(...candidates.map((d) => d.getTime())))
@@ -142,7 +142,7 @@ export function formatQueueEta(etaAt: Date, now: Date = new Date()): string {
 }
 
 export function queuedUserMessage(etaAt: Date, now: Date = new Date()): string {
-  return `High demand — your claw is queued to provision, ~${formatQueueEta(etaAt, now)}. We'll notify you.`
+  return `High demand - your claw is queued to provision, ~${formatQueueEta(etaAt, now)}. We'll notify you.`
 }
 
 export type QueueReason = "budget" | "railway_quota"

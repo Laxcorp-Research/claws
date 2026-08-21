@@ -2,7 +2,7 @@
  * Morning digest candidate selection.
  *
  * Default predicate (all must hold):
- *   - connected Telegram channel (botToken + allowFrom[0]) — post-query
+ *   - connected Telegram channel (botToken + allowFrom[0]) - post-query
  *   - heartbeat armed: ContainerState.nextHeartbeatAt IS NOT NULL
  *   - ever-deployed: Deployment status COMPLETED|SUPERSEDED (hibernate
  *     retires COMPLETED → SUPERSEDED; COMPLETED-only would drop sleepers)
@@ -10,7 +10,7 @@
  *   - HIBERNATED included (sleep is normal life)
  *
  * DAILY_DIGEST_WORKSPACE_IDS = optional debug override (restricts to those
- * ids); the predicate still applies — override is not a bypass.
+ * ids); the predicate still applies - override is not a bypass.
  */
 
 import type { ChannelConfigMap } from "@/lib/openclaw/channel-config"

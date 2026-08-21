@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     // empty / non-JSON still rejected the same way
   }
 
-  log.warn("Inline state /upload rejected — Blob transport required", {
+  log.warn("Inline state /upload rejected - Blob transport required", {
     code: "USE_BLOB",
   })
 

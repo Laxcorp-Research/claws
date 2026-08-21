@@ -14,7 +14,7 @@ vi.mock("@/lib/encryption", () => ({
 import { convertUserToByok } from "@/lib/credits/byok-recovery"
 import { deriveContainerEnv } from "@/lib/openclaw/derive-container-env"
 
-describe("convertUserToByok — BYOK recovery contract", () => {
+describe("convertUserToByok - BYOK recovery contract", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never)

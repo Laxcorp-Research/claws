@@ -4,7 +4,7 @@
 // is unavailable (Dodo mock mode / no dodoCustomerId) must surface the server
 // message instead of silently doing nothing, and the buttons must show a
 // loading/disabled state while the request is in flight. We do NOT assert
-// window.open (jsdom doesn't implement it) — only the message-surfacing path.
+// window.open (jsdom doesn't implement it) - only the message-surfacing path.
 
 import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react"
@@ -60,7 +60,7 @@ describe("BillingDashboard trial copy truth", () => {
   })
 })
 
-describe("BillingDashboard Batch A / A6 — runningClaws estimate", () => {
+describe("BillingDashboard Batch A / A6 - runningClaws estimate", () => {
   it("uses data.runningClaws for Est. monthly (PAUSED not billed as running)", async () => {
     const billing = {
       success: true,

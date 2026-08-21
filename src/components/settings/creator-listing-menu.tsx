@@ -138,7 +138,7 @@ export function CreatorListingMenu({
         onClose={() => setConfirm(null)}
         onConfirm={() => run(`${base}/unpublish`, "POST", "Unpublished")}
         title="Unpublish this listing?"
-        description="It leaves the store. No new buyers. People who already installed keep their copy — they own a snapshot."
+        description="It leaves the store. No new buyers. People who already installed keep their copy - they own a snapshot."
         confirmLabel="Unpublish"
         cancelLabel="Keep published"
         variant="warning"

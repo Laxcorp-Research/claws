@@ -29,7 +29,7 @@ describe("CreatorListingMenu", () => {
         isPublished
         reviewStatus="APPROVED"
         canDelete={false}
-        deleteBlockedReason="3 people installed this — you can unpublish but not delete"
+        deleteBlockedReason="3 people installed this - you can unpublish but not delete"
         onChanged={() => {}}
       />,
     )
@@ -38,7 +38,7 @@ describe("CreatorListingMenu", () => {
     expect(screen.queryByText("Publish again")).toBeNull()
     expect(screen.getByText("Delete")).toBeTruthy()
     expect(
-      screen.getByText("3 people installed this — you can unpublish but not delete"),
+      screen.getByText("3 people installed this - you can unpublish but not delete"),
     ).toBeTruthy()
   })
 

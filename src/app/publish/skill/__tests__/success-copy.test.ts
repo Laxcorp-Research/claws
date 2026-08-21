@@ -1,5 +1,5 @@
 /**
- * B5 — publish success copy must not claim a live marketplace listing.
+ * B5 - publish success copy must not claim a live marketplace listing.
  * MUTATION: restore "View in Marketplace" / store slug CTA → fail.
  */
 import { readFileSync } from "node:fs"
@@ -7,7 +7,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
 const ROOT = process.cwd()
-const TRUTH = "Submitted for review — you'll get an email when it's approved."
+const TRUTH = "Submitted for review - you'll get an email when it's approved."
 const DASHBOARD_CTA = "View in your creator dashboard"
 const DASHBOARD_HREF = "/settings?tab=creator"
 

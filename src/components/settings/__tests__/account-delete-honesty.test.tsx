@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Batch F — Account Delete: signOut ONLY on res.ok.
+ * Batch F - Account Delete: signOut ONLY on res.ok.
  * MUTATION: signOut on !ok → fail.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"

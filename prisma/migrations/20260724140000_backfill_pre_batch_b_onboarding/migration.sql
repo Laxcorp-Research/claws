@@ -2,7 +2,7 @@
 -- Pre-Batch-B accounts (created before 2026-07-16) that already have at least
 -- one workspace are marked complete so they are not imprisoned by the gate.
 -- Post-Batch-B users (including the staging verification account) are
--- deliberately excluded — they re-onboard through the fixed flow (D-ii).
+-- deliberately excluded - they re-onboard through the fixed flow (D-ii).
 --
 -- Schema note: Workspace owner column is "userId" (not "ownerId").
 

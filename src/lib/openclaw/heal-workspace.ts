@@ -6,7 +6,7 @@ import { resolveMode } from "@/lib/openclaw/reconcile-mode"
 // Per-workspace AUTO-HEAL cooldown (contract §4). Prevents the cron and the
 // event fast-path from double-redeploying the same workspace inside this window
 // (default 30 min). A heal also creates a fresh Deployment, so the cron's 60s
-// grace window suppresses the immediate next compare regardless — the cooldown
+// grace window suppresses the immediate next compare regardless - the cooldown
 // is the longer-horizon guard against redeploy churn.
 export const RECONCILE_COOLDOWN_SEC = 1800
 
@@ -32,7 +32,7 @@ export type HealResult =
  *   - If Redis is unreachable we do NOT heal (no lock ⇒ no heal); the cron
  *     backstops on a later tick. AUTO-HEAL must never redeploy lock-less.
  *
- * Total function: never throws — returns a HealResult the caller summarizes.
+ * Total function: never throws - returns a HealResult the caller summarizes.
  */
 export async function healWorkspace(workspaceId: string): Promise<HealResult> {
   if (resolveMode() === "detect_only") {
@@ -44,7 +44,7 @@ export async function healWorkspace(workspaceId: string): Promise<HealResult> {
     acquired = await redis.set(cooldownKey(workspaceId), "1", { nx: true, ex: RECONCILE_COOLDOWN_SEC })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    log.error("healWorkspace: cooldown acquire failed (Redis) — skipping heal (no lock, no heal)", {
+    log.error("healWorkspace: cooldown acquire failed (Redis) - skipping heal (no lock, no heal)", {
       category: "env_reconciliation",
       event: "heal_lock_error",
       workspaceId,
@@ -71,7 +71,7 @@ export async function healWorkspace(workspaceId: string): Promise<HealResult> {
     try {
       await redis.del(cooldownKey(workspaceId))
     } catch (delErr) {
-      log.error("healWorkspace: cooldown release failed after heal error — TTL will expire it", {
+      log.error("healWorkspace: cooldown release failed after heal error - TTL will expire it", {
         category: "env_reconciliation",
         event: "heal_lock_release_failed",
         workspaceId,

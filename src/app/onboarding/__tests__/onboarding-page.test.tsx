@@ -87,7 +87,7 @@ describe("OnboardingClient Batch B CTAs (v2.1 props)", () => {
     )
   })
 
-  it("marks step 1 done via key — Manage keys", () => {
+  it("marks step 1 done via key - Manage keys", () => {
     render(
       <OnboardingClient
         mode="gate"

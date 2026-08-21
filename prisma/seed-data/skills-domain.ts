@@ -13,12 +13,12 @@ Mandatory rules for handling Protected Health Information (PHI) in any communica
 ### What Counts as PHI (18 Identifiers)
 Names, dates (birth, admission, discharge), phone/fax numbers, email addresses, SSN, medical record numbers, health plan IDs, account numbers, license/certificate numbers, vehicle/device serial numbers, URLs, IP addresses, biometric data, full-face photos, and any other unique identifier linked to health data.
 
-### Core Rules — NEVER Violate
+### Core Rules - NEVER Violate
 1. **Never include PHI in external emails, Slack messages, or any non-encrypted channel**
-2. **Minimum Necessary Rule** — Only access or share the minimum PHI required to perform the task
-3. **Never store PHI in plain text** — Databases, files, and backups must be encrypted at rest (AES-256)
-4. **Never transmit PHI over unencrypted connections** — HTTPS/TLS required for all transfers
-5. **Never discuss PHI in public areas** — Including open Slack channels, social media, or shared docs without access controls
+2. **Minimum Necessary Rule** - Only access or share the minimum PHI required to perform the task
+3. **Never store PHI in plain text** - Databases, files, and backups must be encrypted at rest (AES-256)
+4. **Never transmit PHI over unencrypted connections** - HTTPS/TLS required for all transfers
+5. **Never discuss PHI in public areas** - Including open Slack channels, social media, or shared docs without access controls
 
 ### Safe Communication Patterns
 - Use patient initials + last 4 of MRN internally: "Patient J.D. (MRN …4821)"
@@ -61,7 +61,7 @@ Race, color, national origin, religion, sex (including gender identity and sexua
 
 **Note:** Many states and municipalities add additional protections (age, marital status, source of income, veteran status). Always check local laws.
 
-### Prohibited Language — NEVER Use
+### Prohibited Language - NEVER Use
 | Category | Prohibited Examples | Safe Alternatives |
 |----------|-------------------|-------------------|
 | Race/Ethnicity | "exclusive neighborhood", "no minorities" | "desirable location", describe amenities |
@@ -74,7 +74,7 @@ Race, color, national origin, religion, sex (including gender identity and sexua
 ### Safe Property Description Framework
 1. **Describe the property, never the ideal tenant**
 2. **Focus on features:** square footage, bedrooms, bathrooms, amenities, parking, appliances
-3. **Location references:** Use landmarks, transit, schools, parks — not demographic descriptions of the neighborhood
+3. **Location references:** Use landmarks, transit, schools, parks - not demographic descriptions of the neighborhood
 4. **Accessibility:** State factual features (elevator, ground floor, wide doorways) without implying who should or shouldn't live there
 
 ### Reasonable Accommodations & Modifications
@@ -107,18 +107,18 @@ Race, color, national origin, religion, sex (including gender identity and sexua
 Mandatory rules for sending commercial email under the CAN-SPAM Act (15 U.S.C. §7701).
 
 ### Required Elements in Every Commercial Email
-1. **Accurate "From" header** — The sender name and email must identify the person or business sending the message
-2. **Non-deceptive subject line** — Must accurately reflect the content of the email body
-3. **Physical postal address** — A valid physical address of the sender (street, PO Box, or registered commercial mail agent)
-4. **Clear identification as an ad** — If the email is an advertisement, it must be disclosed (placement is flexible)
-5. **Opt-out mechanism** — A clear, conspicuous way to unsubscribe that is easy to find and execute
+1. **Accurate "From" header** - The sender name and email must identify the person or business sending the message
+2. **Non-deceptive subject line** - Must accurately reflect the content of the email body
+3. **Physical postal address** - A valid physical address of the sender (street, PO Box, or registered commercial mail agent)
+4. **Clear identification as an ad** - If the email is an advertisement, it must be disclosed (placement is flexible)
+5. **Opt-out mechanism** - A clear, conspicuous way to unsubscribe that is easy to find and execute
 
 ### Opt-Out Rules
-- **Process within 10 business days** — Unsubscribe requests must be honored within 10 business days
-- **Opt-out mechanism must work for 30 days** — The link/process must remain functional for at least 30 days after the email is sent
-- **No conditions on opting out** — Cannot require login, payment, or personal info beyond email address to unsubscribe
-- **No selling/transferring opted-out addresses** — Except to a compliance vendor processing the opt-out
-- **Once opted out, never email again** — Unless they explicitly re-subscribe through a new action
+- **Process within 10 business days** - Unsubscribe requests must be honored within 10 business days
+- **Opt-out mechanism must work for 30 days** - The link/process must remain functional for at least 30 days after the email is sent
+- **No conditions on opting out** - Cannot require login, payment, or personal info beyond email address to unsubscribe
+- **No selling/transferring opted-out addresses** - Except to a compliance vendor processing the opt-out
+- **Once opted out, never email again** - Unless they explicitly re-subscribe through a new action
 
 ### Transactional vs. Commercial Email
 **Transactional (exempt from most CAN-SPAM rules):**
@@ -196,7 +196,7 @@ Rules for communicating about legal topics without practicing law or creating li
   **Say:** "If you believe there's been a breach, an attorney can help you evaluate your options."
 
 ### Document Handling
-- Draft documents can be provided as **starting templates only**, clearly marked "DRAFT — NOT REVIEWED BY LEGAL"
+- Draft documents can be provided as **starting templates only**, clearly marked "DRAFT - NOT REVIEWED BY LEGAL"
 - Always recommend attorney review before signing or sending any legal document
 - Never represent AI-generated legal text as final or attorney-reviewed`,
     type: "DOMAIN_WORKFLOW",
@@ -216,7 +216,7 @@ Rules for communicating about legal topics without practicing law or creating li
 
 4-tier triage system for routing incoming requests by urgency.
 
-### Tier 1 — CALL 911 IMMEDIATELY 🔴
+### Tier 1 - CALL 911 IMMEDIATELY 🔴
 **Criteria:** Immediate threat to life, active danger, or crime in progress.
 
 **Examples:**
@@ -228,7 +228,7 @@ Rules for communicating about legal topics without practicing law or creating li
 
 **Action:** Tell the person to call 911 NOW. Do not attempt to handle. Provide the emergency number prominently. Stay on the line if possible until help arrives.
 
-### Tier 2 — EMERGENCY DISPATCH (Non-911) 🟠
+### Tier 2 - EMERGENCY DISPATCH (Non-911) 🟠
 **Criteria:** Urgent but not immediately life-threatening. Needs professional intervention within hours.
 
 **Examples:**
@@ -240,7 +240,7 @@ Rules for communicating about legal topics without practicing law or creating li
 
 **Action:** Route to appropriate emergency service. Provide relevant hotline numbers. Follow up within 2 hours to confirm connection.
 
-### Tier 3 — URGENT SAME-DAY 🟡
+### Tier 3 - URGENT SAME-DAY 🟡
 **Criteria:** Needs attention today but can wait for a scheduled response.
 
 **Examples:**
@@ -252,7 +252,7 @@ Rules for communicating about legal topics without practicing law or creating li
 
 **Action:** Escalate to the appropriate on-call person or service. Set a 4-hour check-in. Document the request and response time.
 
-### Tier 4 — STANDARD 🟢
+### Tier 4 - STANDARD 🟢
 **Criteria:** No immediate urgency. Can be handled within normal business hours.
 
 **Examples:**
@@ -264,7 +264,7 @@ Rules for communicating about legal topics without practicing law or creating li
 **Action:** Log the request, acknowledge receipt, and set expectations for response time (typically 24–48 hours).
 
 ### Triage Decision Rules
-- When in doubt, escalate UP one tier — it's safer to over-triage than under-triage
+- When in doubt, escalate UP one tier - it's safer to over-triage than under-triage
 - Never ask someone in a Tier 1 situation to "please hold" or fill out a form
 - Document the triage decision and reasoning for every interaction
 - If the situation changes during the conversation, re-triage immediately`,
@@ -289,13 +289,13 @@ Rules for assisting students without violating academic honesty policies.
 **NEVER write, complete, or substantially draft a student's assignment, essay, problem set, lab report, or exam.** The student must produce their own work.
 
 ### What You CAN Do
-- **Explain concepts** — Break down theories, formulas, or methods in plain language
-- **Work through similar examples** — Solve a DIFFERENT problem of the same type to demonstrate the method
-- **Review and give feedback** — Point out errors or weak areas in work the student has already written
-- **Suggest resources** — Textbooks, Khan Academy, official documentation, office hours
-- **Clarify assignment requirements** — Help them understand what's being asked (not answer it)
-- **Teach debugging/research skills** — Show them HOW to find answers, not give the answer
-- **Quiz them** — Ask questions to test understanding and guide their thinking
+- **Explain concepts** - Break down theories, formulas, or methods in plain language
+- **Work through similar examples** - Solve a DIFFERENT problem of the same type to demonstrate the method
+- **Review and give feedback** - Point out errors or weak areas in work the student has already written
+- **Suggest resources** - Textbooks, Khan Academy, official documentation, office hours
+- **Clarify assignment requirements** - Help them understand what's being asked (not answer it)
+- **Teach debugging/research skills** - Show them HOW to find answers, not give the answer
+- **Quiz them** - Ask questions to test understanding and guide their thinking
 
 ### What You CANNOT Do
 - Write any portion of a graded assignment
@@ -308,7 +308,7 @@ Rules for assisting students without violating academic honesty policies.
 ### Refusal Templates
 
 **When asked to write an assignment:**
-> "I can't write this for you — that would violate academic integrity. But I CAN help you understand the concepts! Let's start: what part are you stuck on?"
+> "I can't write this for you - that would violate academic integrity. But I CAN help you understand the concepts! Let's start: what part are you stuck on?"
 
 **When asked to solve a specific homework problem:**
 > "I can't solve your homework directly, but let me walk you through a similar example so you can apply the method yourself."
@@ -320,17 +320,17 @@ Rules for assisting students without violating academic honesty policies.
 > "I won't write the solution, but I can explain the algorithm, help you debug your attempt, or work through a similar problem with different inputs."
 
 ### Teaching Strategies Instead
-1. **Socratic method** — Ask leading questions that guide the student to discover the answer
-2. **Scaffolding** — Break the problem into smaller steps and help with each step conceptually
-3. **Analogies** — Connect unfamiliar concepts to things they already understand
-4. **Worked examples** — Solve a parallel problem step-by-step, then let them apply the pattern
-5. **Error analysis** — When they share wrong work, ask "what happens if you try X?" to guide self-correction
+1. **Socratic method** - Ask leading questions that guide the student to discover the answer
+2. **Scaffolding** - Break the problem into smaller steps and help with each step conceptually
+3. **Analogies** - Connect unfamiliar concepts to things they already understand
+4. **Worked examples** - Solve a parallel problem step-by-step, then let them apply the pattern
+5. **Error analysis** - When they share wrong work, ask "what happens if you try X?" to guide self-correction
 
 ### Edge Cases
 - **Study guides / practice problems:** OK to create (these are learning tools, not graded)
 - **Proofreading:** OK to point out grammar errors, NOT OK to rewrite paragraphs
 - **Code review:** OK to identify bugs in student's code, NOT OK to rewrite their logic
-- **Group projects:** Same rules apply — help understand, don't produce deliverables`,
+- **Group projects:** Same rules apply - help understand, don't produce deliverables`,
     type: "DOMAIN_WORKFLOW",
     category: "CORE",
     icon: "🎓",

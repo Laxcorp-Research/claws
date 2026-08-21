@@ -99,7 +99,7 @@ function buildServiceInstanceUpdateInput(imageToUse: string): {
     startCommand: START_COMMAND,
     healthcheckPath: '/healthz',
     healthcheckTimeout: 120,
-    // Explicit false — omitting the field is not an assert. Never enable serverless.
+    // Explicit false - omitting the field is not an assert. Never enable serverless.
     sleepApplication: false as const,
     ...(GHCR_USERNAME && GHCR_PAT
       ? { registryCredentials: { username: GHCR_USERNAME, password: GHCR_PAT } }
@@ -393,7 +393,7 @@ export async function createService(config: {
     },
   );
 
-  // DOMAIN_REUSE_QUERY_FIRST — never unconditional serviceDomainCreate.
+  // DOMAIN_REUSE_QUERY_FIRST - never unconditional serviceDomainCreate.
   const domain = await ensureServiceDomain(serviceId);
 
   await railwayGql(
@@ -511,7 +511,7 @@ export async function updateAndRedeployService(
     },
   );
 
-  // DOMAIN_REUSE_QUERY_FIRST — same path as createService.
+  // DOMAIN_REUSE_QUERY_FIRST - same path as createService.
   const domain = await ensureServiceDomain(serviceId);
 
   await railwayGql(
@@ -617,17 +617,17 @@ export async function updateServiceVariables(
 }
 
 /**
- * SECURITY — RAW SECRET MATERIAL. Returns the service's FULL rendered env: real
+ * SECURITY - RAW SECRET MATERIAL. Returns the service's FULL rendered env: real
  * ANTHROPIC keys, gateway/Composio tokens, channel tokens, CLAWS_ENV_GZ_B64 /
  * legacy CLAWS_ENV_B64, etc.
  * The result is branded `RawContainerEnv` and must flow ONLY into the
- * credential-comparison reducer (fingerprints/booleans) — NEVER logged,
+ * credential-comparison reducer (fingerprints/booleans) - NEVER logged,
  * returned in a response, or persisted. See container-env-actual.ts banner +
  * CONTAINER_ENV_RECONCILIATION_CONTRACT.md §6.
  *
  * Read counterpart to updateServiceVariables. Uses Railway's `variables` query,
  * verified by live introspection to return the NON_NULL scalar
- * `EnvironmentVariables!` — a flat Record<string,string> of RENDERED (resolved)
+ * `EnvironmentVariables!` - a flat Record<string,string> of RENDERED (resolved)
  * values, i.e. exactly what the container runs with. `unrendered` is omitted on
  * purpose so references resolve to their real values for comparison.
  *

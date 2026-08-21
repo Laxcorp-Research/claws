@@ -166,7 +166,7 @@ describe('POST /api/api-keys', () => {
     expect(res.status).toBe(400);
   });
 
-  it('accepts OPENROUTER (real BYOK — validates then stores)', async () => {
+  it('accepts OPENROUTER (real BYOK - validates then stores)', async () => {
     mockValidateApiKey.mockResolvedValueOnce({ valid: true });
     (prismaMock.userApiKey.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (prismaMock.userApiKey.create as ReturnType<typeof vi.fn>).mockResolvedValue({

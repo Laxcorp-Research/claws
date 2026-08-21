@@ -9,7 +9,7 @@ export function isSandboxVettingEnabled(): boolean {
   return process.env.SANDBOX_VETTING_ENABLED === "true"
 }
 
-/** @deprecated Prefer isSandboxVettingEnabled() — kept for call-site grep stability. */
+/** @deprecated Prefer isSandboxVettingEnabled() - kept for call-site grep stability. */
 export const SANDBOX_VETTING_ENABLED: boolean =
   typeof process !== "undefined" && process.env.SANDBOX_VETTING_ENABLED === "true"
 
@@ -29,7 +29,7 @@ export function isPubliclyListable(item: PublicVisibilityFields): boolean {
   return item.reviewStatus === "APPROVED"
 }
 
-/** Owner-only store payload — not a public listing. */
+/** Owner-only store payload - not a public listing. */
 export const PENDING_REVIEW_LISTING_STATE = "pending_review" as const
 
 export type PendingReviewListing = {

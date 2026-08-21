@@ -116,7 +116,7 @@ export function reasoningFromOpenRouter(m: OpenRouterModel): boolean | null {
  * OpenRouter ids are exactly our native refs (`openai/gpt-4o`, `google/gemini-2.5-pro`),
  * so a BYOK key can call every derived row directly. The platform holds no
  * OpenAI/Google keys, so this public list is the only live source.
- * Variant suffixes (`:free`, `:extended`) are OpenRouter-only routes — skipped.
+ * Variant suffixes (`:free`, `:extended`) are OpenRouter-only routes - skipped.
  * Anthropic is NOT derived here: its native list comes from the live
  * Anthropic /v1/models refresh, which is authoritative.
  */
@@ -247,7 +247,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
 /**
  * Native refresh: Anthropic has a live GET /v1/models (platform master key).
  * OpenAI GET /v1/models and Google GET /v1beta/models exist but the platform
- * holds no keys — pins remain the curated source until/if platform keys exist.
+ * holds no keys - pins remain the curated source until/if platform keys exist.
  * MUTATION: drop the Anthropic /v1/models call → anthropic-catalog tests fail.
  */
 export async function refreshNativeProviderLists(): Promise<{
@@ -292,7 +292,7 @@ export async function queryModelCatalog(params: {
   provider?: string
   pinnedOnly?: boolean
   limit?: number
-  /** Ignored — enablement is UI-only so locked providers stay visible. */
+  /** Ignored - enablement is UI-only so locked providers stay visible. */
   creditMode?: boolean
 }): Promise<CatalogModel[]> {
   const limit = Math.min(Math.max(params.limit ?? 40, 1), MODEL_CATALOG_MAX_LIMIT)

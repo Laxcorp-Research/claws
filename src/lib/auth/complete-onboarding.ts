@@ -5,7 +5,7 @@
  * Call AFTER the workspace row is inserted. count === 1 means this create
  * was the user's first workspace.
  *
- * Returns whether this create was the first workspace — the sole definition
+ * Returns whether this create was the first workspace - the sole definition
  * of "first" for install landing (D-vi: /onboarding vs /builder).
  */
 export async function completeOnboardingAfterFirstWorkspace(

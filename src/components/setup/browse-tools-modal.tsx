@@ -26,14 +26,14 @@ interface BrowseToolsModalProps {
    * `useOAuthConnection.connect()` flow, which itself branches at the
    * initiate-response layer between true OAuth (popup + poll) and BYOK
    * (apiKeyForm via `onApiKeyFormRequired`). The modal does NOT
-   * differentiate the two at click time — detection is server-side per
+   * differentiate the two at click time - detection is server-side per
    * PR2.9 design (decision 3) to avoid duplicating it across surfaces.
    *
    * `onByokConnect` exists as a parallel prop for future-proofing: if
    * we later add a browse-time hint (catalog field, metadata cache),
    * the modal can route true-OAuth vs BYOK clicks separately without an
    * architecture change. Today both props can wire to the same wizard
-   * handler — the parallel prop is shape, not behavior.
+   * handler - the parallel prop is shape, not behavior.
    */
   onOAuthConnect: (tool: ToolDefinition) => void
   onByokConnect?: (tool: ToolDefinition) => void
@@ -44,11 +44,11 @@ interface BrowseToolsModalProps {
   mode?: BrowseToolsModalMode
   /** Pre-select category filter when opening (swap uses the row's category). */
   initialCategory?: string
-  /** Template-curated alternatives[] — pinned under "Suggested". */
+  /** Template-curated alternatives[] - pinned under "Suggested". */
   suggestedSlugs?: string[]
   /** Current row slug excluded from the list in swap mode. */
   excludeSlug?: string
-  /** Swap selection — requirement-set replace; not connect. */
+  /** Swap selection - requirement-set replace; not connect. */
   onSwapSelect?: (tool: ToolDefinition) => void
   /** Display name of the tool being replaced (swap title). */
   swapCurrentName?: string

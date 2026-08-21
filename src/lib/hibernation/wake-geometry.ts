@@ -1,5 +1,5 @@
 /**
- * P2.3 wake geometry — lead floor + past-due eligibility.
+ * P2.3 wake geometry - lead floor + past-due eligibility.
  *
  * Staging hibernation cron is GH Actions every-5-minutes (gaps + jitter). A lead
  * narrower than observed inter-tick gaps leaves the fixture ineligible on the
@@ -9,9 +9,9 @@
  * cadence.
  *
  * Env (ms, optional):
- *   HIBERNATION_CRON_CADENCE_MS  — trigger period (default 5m staging)
- *   HIBERNATION_WAKE_BUFFER_MS   — slack on top of cadence+avg (default 1m)
- *   HIBERNATION_WAKE_MIN_LEAD_MS — absolute floor (default 30m)
+ *   HIBERNATION_CRON_CADENCE_MS  - trigger period (default 5m staging)
+ *   HIBERNATION_WAKE_BUFFER_MS   - slack on top of cadence+avg (default 1m)
+ *   HIBERNATION_WAKE_MIN_LEAD_MS - absolute floor (default 30m)
  */
 
 /** Staging GH Actions hibernation cadence (every 5 minutes). Prod may set 60_000. */
@@ -21,7 +21,7 @@ export const DEFAULT_HIBERNATION_CRON_CADENCE_MS = 5 * 60 * 1000
 export const DEFAULT_WAKE_BUFFER_MS = 60 * 1000
 
 /**
- * Absolute minimum lead — never thinner than this.
+ * Absolute minimum lead - never thinner than this.
  * MUTATION: restore 8m → Aug-11 class (tick at T−11m ineligible, next tick
  * past-due after beat) fails the gap-floor tests.
  */
@@ -113,7 +113,7 @@ export function describeWakeEligibility(args: {
 
 /**
  * UTC wall-clock literal for `timestamp without time zone` columns.
- * ContainerState.nextHeartbeatAt is NOT timestamptz — writers in a non-UTC
+ * ContainerState.nextHeartbeatAt is NOT timestamptz - writers in a non-UTC
  * process TZ must not pass JS Date through node-pg (local wall skew).
  */
 export function utcWallTimestamp(d: Date): string {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { formatEstimatedMonthlyTotal } from "@/lib/marketplace/estimated-monthly-total"
 
-describe("formatEstimatedMonthlyTotal (Batch A / A5 — no-$NaN)", () => {
+describe("formatEstimatedMonthlyTotal (Batch A / A5 - no-$NaN)", () => {
   it("adds platform fee to a plain numeric estimate", () => {
     expect(formatEstimatedMonthlyTotal("40")).toBe("119")
     expect(formatEstimatedMonthlyTotal("40.5")).toBe("119.5")

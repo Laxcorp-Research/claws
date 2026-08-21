@@ -20,7 +20,7 @@ export type ToolConnectionType = "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
  * src/lib/composio-auth-config.ts) reads Composio metadata at request
  * time and is the runtime source of truth for the initiate route. The
  * catalog `authMode` field mirrors that classification statically so
- * client renders don't need a metadata round-trip per tool — kept in
+ * client renders don't need a metadata round-trip per tool - kept in
  * sync via `scripts/pr2.8a-composio-authconfig-probe.mjs --byok-eligibility`
  * and the `tool-catalog-slug-drift.test.ts` invariants.
  */
@@ -81,7 +81,7 @@ export interface ToolDefinition {
   /**
    * True for entries that exist only to preserve historical
    * `ToolConnection` rows under a legacy slug (see `youtube-data-api`
-   * after PR2.8a — replaced by `youtube` OAUTH_COMPOSIO). Templates
+   * after PR2.8a - replaced by `youtube` OAUTH_COMPOSIO). Templates
    * should not reference deprecated slugs; the slug-drift test flags
    * any references. Not rendered in the catalog browse UI.
    */
@@ -155,7 +155,7 @@ export const API_KEY_TOOLS: ToolDefinition[] = [
     connectionType: "API_KEY",
     category: "TRADING",
     helpUrl: "https://exchange.coinbase.com/profile/api",
-    description: "Coinbase Exchange (formerly Coinbase Pro) — key + secret + passphrase",
+    description: "Coinbase Exchange (formerly Coinbase Pro) - key + secret + passphrase",
     credentialFields: [
       { envVar: "COINBASE_API_KEY", label: "API Key", required: true, primary: true },
       { envVar: "COINBASE_API_SECRET", label: "API Secret", required: true, primary: false },
@@ -163,7 +163,7 @@ export const API_KEY_TOOLS: ToolDefinition[] = [
     ],
   },
   /**
-   * @deprecated PR2.8a. Use `youtube` (OAUTH_COMPOSIO) instead — it wraps
+   * @deprecated PR2.8a. Use `youtube` (OAUTH_COMPOSIO) instead - it wraps
    * the same YouTube Data API v3 scopes but authenticates via managed
    * OAuth rather than a raw API key, which eliminates the Google Cloud
    * project + quota management burden from the user.
@@ -227,24 +227,24 @@ export const API_KEY_TOOLS: ToolDefinition[] = [
 ]
 
 // OAuth-managed tools (via Composio). Each entry's `composioToolkitId` must be
-// a real toolkit slug on Composio's backend — verified by paginated audit of
+// a real toolkit slug on Composio's backend - verified by paginated audit of
 // Composio's toolkit list during PR #4's pre-flight
 // (C:\temp\composio-poc\21-scope-audit.mjs, raw results in
 //  21-scope-audit-raw.json).
 //
 // Four previously-listed OAuth tools (`buffer`, `beehiiv`, `substack`,
 // `wordpress`) were removed because Composio does not publish matching
-// toolkits — advertising a Connect button that 404s at
+// toolkits - advertising a Connect button that 404s at
 // `composio.toolkits.get(slug)` is worse than not offering the integration.
 // Users needing these integrations can connect via Custom API keys once
 // PR #6's Custom API pipeline ships (tracked in the umbrella GH issue
-// "Template seed data drift — multiple pre-existing inconsistencies").
+// "Template seed data drift - multiple pre-existing inconsistencies").
 // `beehiiv-api` remains available in API_KEY_TOOLS as a direct-token path.
 //
 // Two slug drifts were corrected:
 //   - google_calendar: catalog slug stays `google_calendar` (user-facing,
 //     already in DB rows); composioToolkitId fixed to `googlecalendar`
-//     (Composio's actual slug — no underscore).
+//     (Composio's actual slug - no underscore).
 //   - convertkit: catalog slug stays `convertkit` (ConvertKit is the
 //     brand name the user knows); composioToolkitId fixed to `kit`
 //     (Composio follows the 2024 vendor rebrand to "Kit").
@@ -274,7 +274,7 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   { slug: "clickup", name: "ClickUp", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "clickup", authMode: "managed-oauth", description: "Project management", credentialFields: [] },
   { slug: "notion", name: "Notion", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "notion", authMode: "managed-oauth", description: "Docs and wikis", credentialFields: [] },
   { slug: "linkedin", name: "LinkedIn", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "linkedin", authMode: "managed-oauth", description: "Professional networking", credentialFields: [] },
-  // OAuth-only on Composio (no API_KEY mode, no managed-OAuth available) —
+  // OAuth-only on Composio (no API_KEY mode, no managed-OAuth available) -
   // operator must register a custom OAuth app with Twitter/X Developer
   // before this toolkit becomes connectable. PR2.9 BYOK doesn't unblock
   // it because there's no API_KEY mode to broker. Tracked in
@@ -309,7 +309,7 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   //
   // All entries below remain `connectionType: "OAUTH_COMPOSIO"` because
   // Composio still brokers the credential at execute time regardless of
-  // the underlying auth scheme — the `_COMPOSIO` suffix names the
+  // the underlying auth scheme - the `_COMPOSIO` suffix names the
   // broker, not the protocol. The runtime route (`oauth/initiate`)
   // dispatches managed-oauth vs byok-api-key via the classifier.
   //
@@ -318,7 +318,7 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   // than invent new categories. PR2.8b revisit tracked in
   // docs/PR2.8_AUDIT_DECISIONS.md.
   { slug: "typefully", name: "Typefully", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "typefully", authMode: "byok-api-key", description: "Twitter/X content scheduling", credentialFields: [] },
-  // OAuth-only on Composio (no API_KEY mode). PR2.9 BYOK can't unblock —
+  // OAuth-only on Composio (no API_KEY mode). PR2.9 BYOK can't unblock -
   // operator must register a custom OAuth app at DocuSign Developer.
   { slug: "docusign", name: "DocuSign", connectionType: "OAUTH_COMPOSIO", category: "DOCS", composioToolkitId: "docusign", authMode: "custom-oauth-required", description: "E-signature and document workflows", comingSoon: true, comingSoonReason: "OAuth app registration in progress with DocuSign Developer", credentialFields: [] },
   { slug: "follow_up_boss", name: "Follow Up Boss", connectionType: "OAUTH_COMPOSIO", category: "CRM", composioToolkitId: "follow_up_boss", authMode: "byok-api-key", description: "Real estate CRM", credentialFields: [] },
@@ -387,7 +387,7 @@ export const ALL_TOOLS: ToolDefinition[] = [...API_KEY_TOOLS, ...OAUTH_TOOLS, ..
  * radius.
  */
 export const ALL_TOOL_SLUGS = [
-  // API_KEY_TOOLS (29) — keep ordering aligned with the declaration above
+  // API_KEY_TOOLS (29) - keep ordering aligned with the declaration above
   "anthropic_api",
   "tavily",
   "serp_api",

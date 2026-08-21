@@ -19,22 +19,22 @@ const SENDABLE_STATUSES: ReadonlySet<string> = new Set(["RUNNING", "ERROR"])
 
 // PR-9/C: rich per-state UX. Two surfaces resolve to ONE of these reasons so
 // they show the SAME words: (1) the disabled composer (pre-send, from the
-// workspace status) and (2) a failed send bubble (the mid-compose race — a
+// workspace status) and (2) a failed send bubble (the mid-compose race - a
 // RUNNING Claw that changed state between compose and send returns a 409/502,
 // surfaced from error.code). `cta` is the affordance the surface MAY offer:
-// "wake" (HIBERNATED — needs the page's onWake) or "retry" (transient — re-POST
+// "wake" (HIBERNATED - needs the page's onWake) or "retry" (transient - re-POST
 // the same text without retyping).
 export type ChatUnavailableReason =
   | "asleep" // HIBERNATED / WORKSPACE_HIBERNATED
   | "waking" // WAKING
   | "deploying" // DEPLOYING
-  | "paused" // PAUSED (defensive — no writer today, §audit)
+  | "paused" // PAUSED (defensive - no writer today, §audit)
   | "stopped" // WORKSPACE_STOPPED (send-time race; panel is hidden pre-send)
   | "queued" // PROVISIONING_QUEUED
   | "transitioning" // WORKSPACE_TRANSITIONING (send-time; status ambiguous)
   | "unreachable" // GATEWAY_UNREACHABLE (RUNNING but container down)
   | "rate_limited" // RATE_LIMITED (429)
-  | "unknown" // network error / unmapped — the legacy "Failed to send"
+  | "unknown" // network error / unmapped - the legacy "Failed to send"
 
 export interface ChatUnavailableCopy {
   message: string
@@ -42,15 +42,15 @@ export interface ChatUnavailableCopy {
 }
 
 const REASON_COPY: Record<ChatUnavailableReason, ChatUnavailableCopy> = {
-  asleep: { message: "Your Claw is asleep — wake it to chat.", cta: "wake" },
-  waking: { message: "Starting up — chat unlocks automatically." },
-  deploying: { message: "Deploying — chat unlocks when it's live." },
-  queued: { message: "High demand — your claw is queued to provision." },
+  asleep: { message: "Your Claw is asleep - wake it to chat.", cta: "wake" },
+  waking: { message: "Starting up - chat unlocks automatically." },
+  deploying: { message: "Deploying - chat unlocks when it's live." },
+  queued: { message: "High demand - your claw is queued to provision." },
   paused: { message: "Chat is paused." },
-  stopped: { message: "This Claw is stopped — redeploy it to chat." },
-  transitioning: { message: "Your Claw is starting up — try again shortly.", cta: "retry" },
+  stopped: { message: "This Claw is stopped - redeploy it to chat." },
+  transitioning: { message: "Your Claw is starting up - try again shortly.", cta: "retry" },
   unreachable: { message: "Can't reach your Claw.", cta: "retry" },
-  rate_limited: { message: "Too many messages — wait a moment, then retry.", cta: "retry" },
+  rate_limited: { message: "Too many messages - wait a moment, then retry.", cta: "retry" },
   unknown: { message: "Failed to send", cta: "retry" },
 }
 
@@ -152,7 +152,7 @@ export interface ChatMessageView {
   // optimistic send's runId or the streamed MESSAGE_RECEIVED.messageId; for an
   // agent view it's the streamed MESSAGE_SENT.runId. Drives per-turn pending.
   runId?: string | null
-  // PR-9/C: only on a failed optimistic send — the non-202 error.code, used to
+  // PR-9/C: only on a failed optimistic send - the non-202 error.code, used to
   // pick the failed bubble's tailored copy. Streamed rows never carry it.
   failureCode?: string
 }
@@ -172,12 +172,12 @@ function isNoReplyText(value: string | null | undefined): boolean {
  * MESSAGE_* rows into a single time-ordered list. The load-bearing rule:
  *
  *   An optimistic message whose `runId` matches a streamed
- *   MESSAGE_RECEIVED.messageId is DROPPED — the streamed row replaces it.
+ *   MESSAGE_RECEIVED.messageId is DROPPED - the streamed row replaces it.
  *
  * Because runId (from the 202) === the container's metadata.messageId, this is
  * the dedupe that stops the user's own message rendering twice (once optimistic,
  * once from the stream). Remove the filter and every reconciled message
- * double-renders — locked by the dedupe test.
+ * double-renders - locked by the dedupe test.
  */
 export function reconcileChatMessages(
   optimistic: OptimisticMessage[],
@@ -258,9 +258,9 @@ export function mergePersistedChatRows(historyRows: ChatRow[], liveRows: ChatRow
 export const PENDING_TURN_TIMEOUT_MS = 2 * 60 * 1000
 
 // How often the panel re-evaluates time-bounded pending state WITHOUT a new
-// message — long enough to be cheap, short enough that "no response" appears
+// message - long enough to be cheap, short enough that "no response" appears
 // promptly after the 2-min ceiling. The interval runs ONLY while a turn is
-// pending (see the effect in ChatPanel) — never on a quiet panel.
+// pending (see the effect in ChatPanel) - never on a quiet panel.
 export const PENDING_TICK_MS = 15 * 1000
 
 export type TurnState = "pending" | "no_response"
@@ -279,7 +279,7 @@ export type TurnState = "pending" | "no_response"
 //   - replied   → a MESSAGE_SENT with the SAME runId exists → not tracked.
 //   - pending   → no reply yet AND within PENDING_TURN_TIMEOUT_MS of turn start.
 //   - no_response → no reply AND past the timeout (stops the spinner; the bubble
-//                   gets a quiet "No response" note — distinct from a send
+//                   gets a quiet "No response" note - distinct from a send
 //                   failure, because the send SUCCEEDED).
 // Because it's per-runId and time-bounded: a later replied turn resolves on its
 // own, and an earlier orphan ages out instead of holding the indicator hostage.
@@ -390,7 +390,7 @@ interface ChatPanelProps {
   status: string
   rows: ChatRow[]
   orchestratorName: string
-  // PR-9/C: wakes a HIBERNATED Claw — wired from the dashboard page to its
+  // PR-9/C: wakes a HIBERNATED Claw - wired from the dashboard page to its
   // existing wake action (POST /api/dashboard/[id]/wake). Optional so the panel
   // degrades to copy-only if a caller doesn't provide it.
   onWake?: () => void
@@ -423,7 +423,7 @@ export function ChatPanel({
   const [optimistic, setOptimistic] = useState<OptimisticMessage[]>([])
   const [draft, setDraft] = useState("")
   // GAP #3: ref to the SCROLL CONTAINER (not a sentinel) so we move only this
-  // element's scrollTop — never the page viewport (scrollIntoView moved all
+  // element's scrollTop - never the page viewport (scrollIntoView moved all
   // scrollable ancestors and jumped the whole dashboard).
   const listRef = useRef<HTMLDivElement | null>(null)
   // Start pinned; recomputed on every user scroll. When the user scrolls up to
@@ -455,7 +455,7 @@ export function ChatPanel({
   )
 
   // Re-eval clock for time-bounded pending. Advanced ONLY by the tick effect
-  // below while a turn is pending — a quiet panel never touches it (no idle
+  // below while a turn is pending - a quiet panel never touches it (no idle
   // timer). Initialised lazily so SSR/first paint is stable.
   const [nowTick, setNowTick] = useState(() => Date.now())
 
@@ -463,7 +463,7 @@ export function ChatPanel({
   const turnStatuses = useMemo(() => computeTurnStatuses(messages, nowTick), [messages, nowTick])
 
   // GAP #2 (fixed): the agent is "working" only while a turn is GENUINELY
-  // pending — unreplied AND within PENDING_TURN_TIMEOUT_MS. Gated to a sendable
+  // pending - unreplied AND within PENDING_TURN_TIMEOUT_MS. Gated to a sendable
   // Claw. Per-turn + time-bounded means an orphaned turn ages out to
   // "No response" instead of sticking the indicator on forever.
   const pending = hasPendingTurn(turnStatuses)
@@ -534,7 +534,7 @@ export function ChatPanel({
   // created only while a turn is pending and torn down the instant none is (the
   // crossing turn recomputes `pending` → false → cleanup runs). No idle interval
   // on a quiet panel; cleared on unmount → no leak. (When a turn stays pending
-  // across ticks, `pending` is unchanged so the same interval persists — it does
+  // across ticks, `pending` is unchanged so the same interval persists - it does
   // not churn a new timer each tick.)
   useEffect(() => {
     if (!pending) return
@@ -542,7 +542,7 @@ export function ChatPanel({
     return () => clearInterval(id)
   }, [pending])
 
-  // PR-9/C: the core POST for ONE bubble + text — shared by a fresh send and
+  // PR-9/C: the core POST for ONE bubble + text - shared by a fresh send and
   // Retry. Marks the bubble failed (NEVER throws) and, on a non-202, captures
   // error.code so the failed bubble can render the matching per-state copy.
   const performSend = useCallback(
@@ -563,14 +563,14 @@ export function ChatPanel({
           mark({ status: "sent", runId: json?.data?.runId, failureCode: undefined })
         } else {
           // 409 (hibernated/stopped/transitioning) / 502 (gateway) / 429 (rate)
-          // / 4xx — mark failed (NEVER throw) and capture error.code so the
+          // / 4xx - mark failed (NEVER throw) and capture error.code so the
           // bubble shows the matching per-state copy (covers the mid-compose
           // race: a RUNNING Claw that changed state between compose and send).
           const json = (await res.json().catch(() => null)) as { error?: { code?: string } } | null
           mark({ status: "failed", failureCode: json?.error?.code ?? undefined })
         }
       } catch {
-        // Network error — no code; the "unknown" reason renders "Failed to send".
+        // Network error - no code; the "unknown" reason renders "Failed to send".
         mark({ status: "failed", failureCode: undefined })
       }
     },
@@ -588,7 +588,7 @@ export function ChatPanel({
 
   // PR-9/C: Retry re-POSTs the SAME text from the failed bubble (the user never
   // retypes). The first attempt genuinely failed, so a fresh server runId is
-  // correct — there is no accepted turn to dedupe against.
+  // correct - there is no accepted turn to dedupe against.
   const retry = useCallback(
     (tempId: string) => {
       const target = optimistic.find((m) => m.tempId === tempId)
@@ -699,7 +699,7 @@ export function ChatPanel({
               turnStatuses.get(m.runId) === "no_response"
             // PR-9/C: a failed send shows the SAME tailored per-state copy as the
             // disabled composer (keyed off the captured error.code) instead of a
-            // flat "Failed to send". The reason's `cta` drives the affordance —
+            // flat "Failed to send". The reason's `cta` drives the affordance -
             // "wake" (send-time HIBERNATED, the mid-compose race) reuses the page's
             // onWake; "retry" (transient) re-POSTs the same text. Symmetric to the
             // pre-send composer so the two surfaces behave identically.

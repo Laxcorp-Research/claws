@@ -24,10 +24,10 @@ import {
 } from "@/lib/onboarding/tracker-state"
 
 const ANTHROPIC_TEMPLATE_HINT =
-  "Templates are engineered for Claude models — add an Anthropic key, or switch individual agents' models in the builder."
+  "Templates are engineered for Claude models - add an Anthropic key, or switch individual agents' models in the builder."
 
 const NEED_CLAW_SNACKBAR =
-  "Create a Claw first — tools and deployment live in its setup wizard"
+  "Create a Claw first - tools and deployment live in its setup wizard"
 
 export interface OnboardingClientProps {
   mode: "gate" | "revisit"
@@ -165,7 +165,7 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
       return (
         <>
           <p className="text-[11px] text-[var(--tx2)] w-full text-left">
-            Powered by Claws Starter Credits — {formatCreditDollars(state.balanceCents)} remaining
+            Powered by Claws Starter Credits - {formatCreditDollars(state.balanceCents)} remaining
           </p>
           <TextLink href="/settings?tab=api-keys" direction="forward">
             Add your own key
@@ -174,7 +174,7 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
       )
     }
 
-    // key or both — key state wins the label; credits may append
+    // key or both - key state wins the label; credits may append
     const keyLabel =
       state.connectedProviders.length === 1
         ? `${state.connectedProviders[0]} key connected`
@@ -214,9 +214,9 @@ export function OnboardingClient({ mode, state, workspaces }: OnboardingClientPr
             description={
               state.s1Done
                 ? state.s1DoneVia === "credits"
-                  ? "Starter credits are active — add your own key anytime."
+                  ? "Starter credits are active - add your own key anytime."
                   : "Your agents have an AI model key."
-                : "Your agents need an AI model to think. Starter credits cover Claude models — or add your own key."
+                : "Your agents need an AI model to think. Starter credits cover Claude models - or add your own key."
             }
             completed={state.s1Done}
             actions={step1Actions}

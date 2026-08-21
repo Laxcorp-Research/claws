@@ -374,7 +374,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         </Button>
       </div>
 
-      {/* AI Provider Override Modal — uses CredentialsModal with a
+      {/* AI Provider Override Modal - uses CredentialsModal with a
           synthesized 1-field descriptor. The backend endpoint for AI
           provider keys is /api/workspaces/[id]/api-keys, which is a
           different path than the tool-connection endpoint and still
@@ -448,7 +448,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   /** Swap uses BrowseToolsModal's filtered library. */
   const [swapModal, setSwapModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   const [browseModal, setBrowseModal] = useState(false)
-  /** Template tools dropped from the workspace set — Restore via `restore` op. */
+  /** Template tools dropped from the workspace set - Restore via `restore` op. */
   const [removedFromTemplate, setRemovedFromTemplate] = useState<
     Array<{ slug: string; name: string }>
   >([])
@@ -572,15 +572,15 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const extraTools = useMemo(() => tools.filter((t) => t.extra), [tools])
   const connectedSlugs = useMemo(() => tools.filter((t) => t.status === "connected").map((t) => t.slug), [tools])
   const customApiStatusCopy = workspaceStatus === "RUNNING"
-    ? "Saved — redeploy to apply"
-    : "Saved — deploys with next redeploy"
+    ? "Saved - redeploy to apply"
+    : "Saved - deploys with next redeploy"
   const showToolsDrift = driftAfterTools?.isStale === true && (workspaceStatus === "RUNNING" || workspaceStatus === "PAUSED")
   const setupComplianceNotice = workspaceTemplateSlug === "medical-practice-manager"
     ? getComplianceNotice(workspaceTemplateSlug)
     : null
 
   // PR #5: OAuth Test button support is toolkit-specific. For toolkits in
-  // UNSUPPORTED_TOOLKITS (Asana — GH #41), ToolRow renders Test disabled
+  // UNSUPPORTED_TOOLKITS (Asana - GH #41), ToolRow renders Test disabled
   // with a tooltip. API_KEY rows are unaffected. Helper lives here (not
   // in tools-state.ts) because it's UI wiring, not state derivation.
   const getTestDisabledReason = useCallback((tool: ToolState): string | undefined => {
@@ -634,7 +634,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       // template rows (required/recommended) reset to "disconnected" so
       // the user can re-connect; extra rows (Browse-added non-template
       // tools) are dropped entirely. No optimistic local patch needed
-      // here — the primitive handles it.
+      // here - the primitive handles it.
       await refreshTools()
       setRevokeState({ tool: null, loading: false, error: null })
     } catch (err) {
@@ -644,7 +644,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   }, [workspaceId, revokeState.tool, refreshTools])
 
   /**
-   * PR-5: one reconcile pattern — apply server tool-requirements payload
+   * PR-5: one reconcile pattern - apply server tool-requirements payload
    * (+ live connections) after every customization op. No optimistic local
    * requirement edits.
    */
@@ -700,7 +700,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       if (!json.success) {
         throw new Error(json.error?.message || `Failed to ${op} tool`)
       }
-      // Server response is authoritative — reconcile immediately (not optimistic).
+      // Server response is authoritative - reconcile immediately (not optimistic).
       await applyToolRequirementsPayload(json.data)
     },
     [workspaceId, applyToolRequirementsPayload],
@@ -769,7 +769,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     [patchToolRequirement, showSnackbar],
   )
 
-  // Tool customization PR-2: REMOVE warning — requirement-set drop + optional disconnect.
+  // Tool customization PR-2: REMOVE warning - requirement-set drop + optional disconnect.
   const [removeState, setRemoveState] = useState<{
     tool: ToolState | null
     loading: boolean
@@ -968,7 +968,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         setOauthErrors((prev) => ({ ...prev, [toolSlug]: error.message }))
         // PR2.8a-fix1 Task 4: COMPOSIO_TOOLKIT_REQUIRES_CUSTOM_OAUTH is the
         // 422 the route returns when a toolkit has no Composio-managed auth
-        // scheme (RED-state — operator must register a custom OAuth/API_KEY
+        // scheme (RED-state - operator must register a custom OAuth/API_KEY
         // config in the Composio dashboard). Rendering this as a red error
         // misrepresents user-fixable failure; surface it as a yellow
         // "in-progress" warning on the row instead, leaving status
@@ -1029,7 +1029,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   useEffect(() => { toolsRef.current = tools }, [tools])
 
   // PR #4 Commit 7: Reconnect is the same POST /oauth/initiate + poll flow
-  // as a fresh connect — the user re-authorizes through Composio's consent
+  // as a fresh connect - the user re-authorizes through Composio's consent
   // screen and the existing oauth/status poll flips the DB row back to
   // CONNECTED on ACTIVE. No dialog (D5 spec: "Reconnect is non-destructive;
   // re-authorizing through Composio IS the confirmation surface").
@@ -1079,12 +1079,12 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   // because the body shape, endpoint, and post-submit state-transition
   // semantics are all different:
   //   - Endpoint: /api/tools/[wsId]/byok/submit (synchronous create)
-  //   - Body: { toolSlug, apiKey } — single key, not a Record
+  //   - Body: { toolSlug, apiKey } - single key, not a Record
   //   - Status: row goes CONNECTED immediately (no PENDING polling)
   //
   // Reduces the multi-field credentials Record from the existing
   // CredentialsModal contract to the single primary-field's value (which
-  // is all the BYOK route accepts — Composio takes one api_key).
+  // is all the BYOK route accepts - Composio takes one api_key).
   const handleByokSubmit = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
     // PR2.9-fix1 (Bug 1B): toolSlug is sourced from apiKeyForm (server-
     // canonical), not from byokModal.tool which may be null for non-
@@ -1111,7 +1111,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       if (data.success) {
         // BYOK is synchronous-CONNECTED. Refetch so the row picks up the
         // server's status + createdAt. After PR2.9-fix1, refreshTools is
-        // the authoritative path for non-template tools — it pulls the
+        // the authoritative path for non-template tools - it pulls the
         // new ToolConnection from DB and adds it as an "extra" row via
         // buildExtraToolsFromConnections (same code path the OAuth-from-
         // Browse-modal flow has always used).
@@ -1119,7 +1119,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         // Optimistic update covers the rare race where refetch hasn't
         // landed when the user closes the modal AND the tool was already
         // in `tools` state (template-row click). For Browse-clicked non-
-        // template tools, prev.map is a no-op — refreshTools handles it.
+        // template tools, prev.map is a no-op - refreshTools handles it.
         setTools((prev) =>
           prev.map((t) =>
             t.slug === toolSlug
@@ -1168,7 +1168,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       // modal stays open, the BYOK credentials modal stacks on top, and
       // the user's path-to-completion runs through the modal. After
       // submit, refreshTools() pulls the new connection from DB and adds
-      // it as an "extra" row via buildExtraToolsFromConnections —
+      // it as an "extra" row via buildExtraToolsFromConnections -
       // standard mechanism. Synthesizing a phantom `tools` entry here
       // would leave a stuck row if the user cancelled out of the modal.
       setTools((prev) =>
@@ -1190,7 +1190,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       try {
         await mutateWithFeedback(
           async () => {
-            // Requirement-set replace (carries required-ness) — not plain-add.
+            // Requirement-set replace (carries required-ness) - not plain-add.
             await patchToolRequirement("swap", oldTool.slug, newTool.slug)
             if (oldTool.connectionId && !oldTool.connectionId.startsWith("apikey-")) {
               await fetch(`/api/tools/${workspaceId}/${oldTool.connectionId}`, {
@@ -1202,7 +1202,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             message: `Swapped ${oldTool.name} → ${newTool.name}`,
             undo: async () => {
               await patchToolRequirement("swap", newTool.slug, oldTool.slug)
-              showSnackbar({ message: "Tool restored — reconnect required", variant: "success" })
+              showSnackbar({ message: "Tool restored - reconnect required", variant: "success" })
             },
           },
           showSnackbar,
@@ -1275,7 +1275,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     if (!tool.connectionId) return
     await fetch(`/api/tools/${workspaceId}/${tool.connectionId}`, { method: "DELETE" })
     // PR2.9-fix3: `refreshTools` is now authoritative via
-    // `mergeRefreshedTools` — the deleted row's local UI state is reset
+    // `mergeRefreshedTools` - the deleted row's local UI state is reset
     // to "disconnected" (template) or removed (extra). No optimistic
     // local patch needed.
     await refreshTools()
@@ -1445,7 +1445,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                 // will ultimately re-initiate the OAuth flow (Commit 7
                 // wires the actual mutation). For the immediate
                 // re-key-entry case on API_KEY errors the behavior is
-                // unchanged — re-open the credentials modal.
+                // unchanged - re-open the credentials modal.
                 tool.connectionType === "API_KEY"
                   ? () => setApiKeyModal({ open: true, tool })
                   : tool.status === "expired" || tool.status === "revoked"
@@ -1467,7 +1467,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       {recommendedTools.length > 0 && (
         <ToolConnectionList
           title="Recommended tools"
-          subtitle="Pre-selected. Connect, swap, or dismiss. Demoted required tools land here — Restore to put them back."
+          subtitle="Pre-selected. Connect, swap, or dismiss. Demoted required tools land here - Restore to put them back."
         >
           {recommendedTools.map((tool) => {
             // PR-3 affordances: unconnected recommended → × only; Remove on
@@ -1530,7 +1530,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             aria-expanded={removedExpanded}
           >
             <span>
-              Removed from this Claw ({removedFromTemplate.length}) — Restore
+              Removed from this Claw ({removedFromTemplate.length}) - Restore
             </span>
             <span className="text-[var(--tx3)]">{removedExpanded ? "▾" : "▸"}</span>
           </button>
@@ -1633,7 +1633,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         onSave={handleCredentialsSave}
       />
-      {/* PR2.9: BYOK credentials modal — same CredentialsModal component
+      {/* PR2.9: BYOK credentials modal - same CredentialsModal component
           as the direct API_KEY tools above, different endpoint + payload
           shape (POSTs to /byok/submit, not /api/tools/[wsId]).
           PR2.9-fix1 (Bug 1B): conditional + display-name resolution
@@ -1873,7 +1873,7 @@ const EMPTY_TOOL_PREREQS: RequiredToolsSatisfaction = {
 async function loadDeployToolPrerequisites(workspaceId: string): Promise<RequiredToolsSatisfaction> {
   try {
     const [reqRes, toolsRes] = await Promise.all([
-      // Tool customization PR-1: workspace set via resolver — never template JSON.
+      // Tool customization PR-1: workspace set via resolver - never template JSON.
       fetch(`/api/workspaces/${workspaceId}/tool-requirements`),
       fetch(`/api/tools/${workspaceId}`),
     ])
@@ -1887,7 +1887,7 @@ async function loadDeployToolPrerequisites(workspaceId: string): Promise<Require
       name?: string
       alternatives?: string[]
     }>
-    // Finding F: exclude isAIProvider (anthropic_api etc.) — Step 1 domain.
+    // Finding F: exclude isAIProvider (anthropic_api etc.) - Step 1 domain.
     const gatedRequired = filterNonAiProviderRequiredEntries(requiredEntries)
     if (gatedRequired.length === 0) return EMPTY_TOOL_PREREQS
 
@@ -1997,7 +1997,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
             setQueueMessage(
               etaAt
                 ? queuedUserMessage(new Date(etaAt))
-                : "High demand — your claw is queued to provision. We'll notify you.",
+                : "High demand - your claw is queued to provision. We'll notify you.",
             )
           }
         }
@@ -2074,7 +2074,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         setQueueMessage(
           typeof json.data?.message === "string"
             ? json.data.message
-            : "High demand — your claw is queued to provision. We'll notify you.",
+            : "High demand - your claw is queued to provision. We'll notify you.",
         )
         setDeploymentStatus("QUEUED")
         setIsDeploying(false)
@@ -2167,12 +2167,12 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
       {creditUser && (
         <p className="text-[10px] text-[var(--ac-text)] font-medium mb-1">
-          Powered by Claws Starter Credits — no payment needed.
+          Powered by Claws Starter Credits - no payment needed.
         </p>
       )}
       {(eligibility?.isFirstDeploy || eligibility?.reason === "trial_active") && (
         <p className="text-[10px] text-[var(--ac-text)] font-medium mb-3.5">
-          Includes your 3-day platform trial — $79/mo after, cancel anytime
+          Includes your 3-day platform trial - $79/mo after, cancel anytime
         </p>
       )}
       {!creditUser &&
@@ -2201,7 +2201,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
 
       {waitingForActivation && !deploymentStatus && (
         <AlertBanner variant="info" icon={<Loader2 className="w-4 h-4 animate-spin" />}>
-          <p className="font-medium">Payment received — activating your subscription</p>
+          <p className="font-medium">Payment received - activating your subscription</p>
           <p className="mt-0.5 opacity-80">This usually takes a few seconds. If it doesn&apos;t update, try refreshing the page.</p>
         </AlertBanner>
       )}
@@ -2217,7 +2217,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
           </Button>
         ) : (
           <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !eligibility || !toolPrereqsReady}>
-            {eligibility?.isFirstDeploy ? "Deploy — 3-day trial" : "Deploy"}
+            {eligibility?.isFirstDeploy ? "Deploy - 3-day trial" : "Deploy"}
           </Button>
         )
       )}
@@ -2264,7 +2264,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         <AlertBanner variant="info">
           <p className="font-medium">High demand</p>
           <p className="mt-0.5 opacity-80">
-            {queueMessage ?? "High demand — your claw is queued to provision. We'll notify you."}
+            {queueMessage ?? "High demand - your claw is queued to provision. We'll notify you."}
           </p>
         </AlertBanner>
       )}
@@ -2351,7 +2351,7 @@ const CHANNELS: ChannelDefinition[] = [
     id: "telegram",
     channelId: "telegram",
     name: "Telegram",
-    description: "Proven default — enter bot token from @BotFather",
+    description: "Proven default - enter bot token from @BotFather",
     icon: <Send className={ICON_CLASS} />,
     launch: true,
     fields: [
@@ -2415,8 +2415,8 @@ const CHANNELS: ChannelDefinition[] = [
       "Paste both.",
     ],
   },
-  { id: "whatsapp", channelId: "whatsapp", name: "WhatsApp", description: "QR pairing — coming soon", icon: <Smartphone className={ICON_CLASS} />, staged: true },
-  { id: "msteams", channelId: "msteams", name: "Microsoft Teams", description: "Requires Azure Bot Service setup — coming soon", icon: <Building2 className={ICON_CLASS} />, staged: true },
+  { id: "whatsapp", channelId: "whatsapp", name: "WhatsApp", description: "QR pairing - coming soon", icon: <Smartphone className={ICON_CLASS} />, staged: true },
+  { id: "msteams", channelId: "msteams", name: "Microsoft Teams", description: "Requires Azure Bot Service setup - coming soon", icon: <Building2 className={ICON_CLASS} />, staged: true },
 ]
 
 function isLaunchChannel(channelId: ChannelId): channelId is LaunchChannelId {
@@ -2438,7 +2438,7 @@ function channelDescription(channel: ChannelDefinition, summary: ChannelSummary 
   if (state.live === "error") return state.detail ? `${state.detail}. Check token and redeploy.` : "Runtime reported an error. Check token and redeploy."
   if (state.live === "connecting") return "Checking this channel"
   if (drift?.workspaceStatus !== "RUNNING" && drift?.workspaceStatus !== "PAUSED") return "Will connect when you deploy"
-  return "Configured — deploys with next redeploy"
+  return "Configured - deploys with next redeploy"
 }
 
 export function Step4({ workspaceId }: { workspaceId: string }) {
@@ -2920,7 +2920,7 @@ export function Step5({ workspaceId }: { workspaceId: string }) {
   // ActivityLog empty" state we hit during PR-2 staging validation; and
   // (2) the legit RUNNING transition is already handled by
   // /api/deploy/[id]/complete/route.ts:33-37 which runs at the end of
-  // the actual deploy. Step5 is the celebration page — it READS state,
+  // the actual deploy. Step5 is the celebration page - it READS state,
   // never writes it.
   useEffect(() => {
     async function loadName() {
@@ -3036,7 +3036,7 @@ export default function SetupStepPage() {
   // had "builder" (from a prior visit via /builder/...) but the URL
   // didn't carry `?from=builder`, server render produced
   // `isFromBuilder=false` and client re-rendered with `isFromBuilder=true`
-  // — different rendered text in the back-button (line ~1652) →
+  // - different rendered text in the back-button (line ~1652) →
   // React error #418 (hydration mismatch).
   //
   // Fix: first render uses ONLY searchParams (deterministic across
@@ -3046,7 +3046,7 @@ export default function SetupStepPage() {
   //
   // Trade-off: on slow client mounts, the back-button briefly says
   // "← Back to My Claws" then flips to "← Back to Builder". Acceptable
-  // — much better than #418 noise in console. The mounted-flag gate is
+  // - much better than #418 noise in console. The mounted-flag gate is
   // tracked at GH#78 as a follow-up UX polish.
   const fromQuery = searchParams.get("from") === "builder"
   const [isFromBuilder, setIsFromBuilder] = useState(fromQuery)

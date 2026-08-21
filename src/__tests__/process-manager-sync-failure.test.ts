@@ -11,7 +11,7 @@ beforeEach(async () => {
   pm = await import("../../container/process-manager.mjs")
 })
 
-describe("createSyncFailureTracker — consecutive non-2xx token/finalize", () => {
+describe("createSyncFailureTracker - consecutive non-2xx token/finalize", () => {
   it("MUTATION-anchored: 3 consecutive rejects emit once; 2 do not; second emit suppressed until recovery", async () => {
     const emitError = vi.fn(
       async (_args: {
@@ -31,12 +31,12 @@ describe("createSyncFailureTracker — consecutive non-2xx token/finalize", () =
       fileCount: 3,
     })
 
-    // 2 fails — no emit. Dropping the threshold gate (emit on first) fails.
+    // 2 fails - no emit. Dropping the threshold gate (emit on first) fails.
     expect((await tracker.noteResult(reject(1))).emitted).toBe(false)
     expect((await tracker.noteResult(reject(2))).emitted).toBe(false)
     expect(emitError).not.toHaveBeenCalled()
 
-    // 3rd — emit once.
+    // 3rd - emit once.
     expect((await tracker.noteResult(reject(3))).emitted).toBe(true)
     expect(emitError).toHaveBeenCalledTimes(1)
     expect(emitError).toHaveBeenCalledWith(
@@ -48,7 +48,7 @@ describe("createSyncFailureTracker — consecutive non-2xx token/finalize", () =
       }),
     )
 
-    // Further fails in the same streak — suppressed.
+    // Further fails in the same streak - suppressed.
     expect((await tracker.noteResult(reject(4))).emitted).toBe(false)
     expect((await tracker.noteResult(reject(5))).emitted).toBe(false)
     expect(emitError).toHaveBeenCalledTimes(1)

@@ -1,5 +1,5 @@
 /**
- * Railway deploy governor — budget gate, quota backstop, FIFO drain helpers.
+ * Railway deploy governor - budget gate, quota backstop, FIFO drain helpers.
  *
  * Does not import deployer (drain dynamically imports deployToCloud).
  */
@@ -206,7 +206,7 @@ export async function enqueueFromQuotaRejection(workspaceId: string): Promise<Qu
     update: { quotaHoldUntil: holdUntil },
   })
 
-  log.warn("governor: Railway create quota — marking hold + enqueue", {
+  log.warn("governor: Railway create quota - marking hold + enqueue", {
     workspaceId,
     quotaHoldUntil: holdUntil.toISOString(),
   })

@@ -151,7 +151,7 @@ export default function AdminVersionsPage() {
             error?: { message?: string }
           }
           if (!res.ok) {
-            // Surface API detail — do not swallow into a generic catch string.
+            // Surface API detail - do not swallow into a generic catch string.
             // MUTATION: `throw new Error("Could not promote version")` alone → honesty test fails.
             throw new Error(json.error?.message || "Could not promote version")
           }

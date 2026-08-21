@@ -9,7 +9,7 @@ interface UsageSummaryProps {
   loading?: boolean
 }
 
-// PR-7: defense-in-depth — never render "$NaN". A nullish/NaN/Infinity input
+// PR-7: defense-in-depth - never render "$NaN". A nullish/NaN/Infinity input
 // (e.g. an undefined totalConsumedCents that slipped past the hook) renders
 // "$0.00" instead of propagating a bad number into toFixed.
 export function formatDollars(cents?: number | null): string {

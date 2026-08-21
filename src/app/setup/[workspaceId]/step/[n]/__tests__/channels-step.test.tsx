@@ -167,11 +167,11 @@ describe("Setup Step 4 channel persistence UI", () => {
     expect(screen.getAllByText("beta")).toHaveLength(2)
     expect(screen.getByText("Discord")).toBeDefined()
     expect(screen.getByText("Slack")).toBeDefined()
-    expect(screen.getByText(/Proven default — enter bot token from @BotFather/i)).toBeDefined()
+    expect(screen.getByText(/Proven default - enter bot token from @BotFather/i)).toBeDefined()
     expect(screen.getByText("WhatsApp")).toBeDefined()
-    expect(screen.getByText("QR pairing — coming soon")).toBeDefined()
+    expect(screen.getByText("QR pairing - coming soon")).toBeDefined()
     expect(screen.getByText("Microsoft Teams")).toBeDefined()
-    expect(screen.getByText("Requires Azure Bot Service setup — coming soon")).toBeDefined()
+    expect(screen.getByText("Requires Azure Bot Service setup - coming soon")).toBeDefined()
 
     fireEvent.click((await enabledConnectButtons())[0])
     expect(await screen.findByRole("heading", { name: "Connect Telegram" })).toBeDefined()
@@ -192,8 +192,8 @@ describe("Setup Step 4 channel persistence UI", () => {
         }),
       )
     })
-    expect(await screen.findByText("Configured — deploys with next redeploy")).toBeDefined()
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configured - deploys with next redeploy")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     expect(screen.getByText("Changed: channels")).toBeDefined()
   })
 
@@ -395,7 +395,7 @@ describe("Setup Step 4 channel persistence UI", () => {
         }),
       )
     })
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     expect(screen.getByText("Changed: channels")).toBeDefined()
   })
 
@@ -404,9 +404,9 @@ describe("Setup Step 4 channel persistence UI", () => {
 
     render(<Step4 workspaceId="ws-1" />)
 
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     expect(screen.getByText("Changed: tools")).toBeDefined()
-    expect(screen.queryByText("Channel changes saved — redeploy to apply")).toBeNull()
+    expect(screen.queryByText("Channel changes saved - redeploy to apply")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Go to deploy" }))
     expect(push).toHaveBeenCalledWith("/setup/ws-1/step/4")
   })
@@ -520,7 +520,7 @@ describe("Setup Step 5 drift-aware go live", () => {
 
     render(<Step5 workspaceId="ws-1" />)
 
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     expect(screen.getByText("Changed: channels")).toBeDefined()
     expect(screen.queryByText("Message your Orchestrator anytime through the connected channels.")).toBeNull()
     expect(screen.getByRole("button", { name: "Go to deploy" })).toBeDefined()

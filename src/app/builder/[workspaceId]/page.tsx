@@ -70,7 +70,7 @@ export default function BuilderPage() {
     else if (loadError === 403 || loadError === 404) router.replace("/my-claws")
   }, [loadError, router])
 
-  // Batch D: 5xx / network — distinct NetworkError + Retry (not empty canvas).
+  // Batch D: 5xx / network - distinct NetworkError + Retry (not empty canvas).
   const isLoadNetworkError =
     loadError !== null && loadError !== 401 && loadError !== 403 && loadError !== 404
 

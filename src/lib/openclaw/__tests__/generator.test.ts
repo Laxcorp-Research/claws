@@ -180,7 +180,7 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
     toolConnections: [
       // Real Prisma ToolConnection shape post-PR #2. encryptedCredentials
       // holds a JSON string that the smart decrypt mock passes through
-      // unchanged — the generator then parses it and emits it as the
+      // unchanged - the generator then parses it and emits it as the
       // `env` map on the skills.entries slot keyed by toolSlug.
       {
         toolSlug: 'tavily',
@@ -215,7 +215,7 @@ describe('generateWorkspace', () => {
     // C-engine B1: the compatible-skills lookup widened from OAuth-only to
     // all emission-eligible connected tools, so the default fixture (one
     // API_KEY row) now triggers skill.findMany. Default to "no curated
-    // skills" — tests that need curated rows override per-case.
+    // skills" - tests that need curated rows override per-case.
     (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
 
@@ -500,7 +500,7 @@ describe('generateWorkspace', () => {
     });
   });
 
-  // L2 (PR-C #12): mandated final heartbeat step — write memory files even
+  // L2 (PR-C #12): mandated final heartbeat step - write memory files even
   // when nothing needed attention (closes the 21:00 analytics-job gap where
   // a heartbeat run left no memory trail).
   describe('L2: heartbeat protocol memory mandate', () => {
@@ -512,7 +512,7 @@ describe('generateWorkspace', () => {
       expect(md).toContain('# Heartbeat Protocol');
       const heartbeatSection = md.slice(md.indexOf('# Heartbeat Protocol'));
       expect(heartbeatSection).toContain(
-        '4. MANDATORY final step, every heartbeat run — including the step 3 no-op case: write memory/[today\'s date].md summarizing what happened this run, and update memory/MEMORY.md with any long-term learnings. Do not end a heartbeat run without writing memory — it is the human\'s only audit trail for unattended runs.',
+        '4. MANDATORY final step, every heartbeat run - including the step 3 no-op case: write memory/[today\'s date].md summarizing what happened this run, and update memory/MEMORY.md with any long-term learnings. Do not end a heartbeat run without writing memory - it is the human\'s only audit trail for unattended runs.',
       );
     });
 
@@ -526,7 +526,7 @@ describe('generateWorkspace', () => {
   });
 
   describe('BOOT.md memory path (EISDIR)', () => {
-    it('ORCHESTRATOR BOOT.md uses dated memory file — never Check memory/ directory', async () => {
+    it('ORCHESTRATOR BOOT.md uses dated memory file - never Check memory/ directory', async () => {
       const result = await generateWorkspace('ws-test-1');
       const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
       const boot = result.workspaces[orchKey!]['BOOT.md'];
@@ -618,7 +618,7 @@ describe('generateWorkspace', () => {
     expect(customSkill).toContain('## What this API is for');
     expect(customSkill).toContain('Lookup customer renewals.');
     expect(customSkill).toContain(`X-API-Key: $${envVar}`);
-    expect(customSkill).toContain('User-provided API — verify responses; report failures honestly');
+    expect(customSkill).toContain('User-provided API - verify responses; report failures honestly');
 
     const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
     expect(toolsMd).toContain('## Custom APIs');
@@ -879,14 +879,14 @@ describe('generateWorkspace', () => {
   });
 
   it('leaves tools.web.search enabled (no enabled:false) when a search backend is connected', async () => {
-    // Default fixture has CONNECTED tavily — wiring finding: only skills.entries,
+    // Default fixture has CONNECTED tavily - wiring finding: only skills.entries,
     // not tools.web.search provider/apiKey. We still leave web_search enabled.
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
     expect(config.tools?.web?.search?.enabled).not.toBe(false);
     expect(config.skills.entries.tavily.enabled).toBe(true);
     expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('real-tavily-key');
-    // Finding: connecting Tavily wires skills.entries only — nothing reaches tools.web.search.
+    // Finding: connecting Tavily wires skills.entries only - nothing reaches tools.web.search.
     expect(config.tools?.web?.search?.apiKey).toBeUndefined();
     expect(config.tools?.web?.search?.provider).toBeUndefined();
 
@@ -894,13 +894,13 @@ describe('generateWorkspace', () => {
     expect(result.workspaces[orchKey!]['TOOLS.md']).not.toContain('## Web Search');
   });
 
-  it('emits NO bindings key — Orchestrator routing is via default:true (#117, dead config removed)', async () => {
+  it('emits NO bindings key - Orchestrator routing is via default:true (#117, dead config removed)', async () => {
     // Regression guard: we used to emit
     //   bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]
     // believing it routed all channels to the Orchestrator. Upstream's binding
     // index is an exact-string map (channel:'*' matches nothing); routing
     // works via the default-agent fallback. The dead key misled readers, so
-    // the generator must not emit it — and the actual mechanism must hold.
+    // the generator must not emit it - and the actual mechanism must hold.
     // See docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 / §8 risk 2.
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
@@ -926,7 +926,7 @@ describe('generateWorkspace', () => {
 
     expect(worker).toBeUndefined();
     expect(orchestrator.subagents.allowAgents).not.toContain('data-analyst');
-    expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('Worker Data Analyst is paused — do not delegate to it.');
+    expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('Worker Data Analyst is paused - do not delegate to it.');
   });
 
   it('only orchestrator has meaningful HEARTBEAT.md', async () => {
@@ -1032,19 +1032,19 @@ describe('generateWorkspace', () => {
         );
         expect(config.skills.entries['github-issue-triage'].config.composio.toolkit).toBe('github');
         expect(config.skills.entries['github-repo-reader'].config.composio.toolkit).toBe('github');
-        // Both entries share the same connected account — they represent
+        // Both entries share the same connected account - they represent
         // different verbs against the same OAuth grant.
         expect(config.skills.entries['github-issue-triage'].env.COMPOSIO_CONNECTED_ACCOUNT_ID).toBe('ca_github_xyz');
         expect(config.skills.entries['github-repo-reader'].env.COMPOSIO_CONNECTED_ACCOUNT_ID).toBe('ca_github_xyz');
       });
     });
 
-    it('uses the catalog composioToolkitId (not the catalog slug) — verifies slug-drift fixes land correctly', async () => {
+    it('uses the catalog composioToolkitId (not the catalog slug) - verifies slug-drift fixes land correctly', async () => {
       await withComposioEnv(async () => {
         const ws = buildMockWorkspace();
         // `google_calendar` is our catalog slug; Composio's real toolkit slug
         // is `googlecalendar` (no underscore). The generator must emit the
-        // Composio slug in config.composio.toolkit — not the catalog slug.
+        // Composio slug in config.composio.toolkit - not the catalog slug.
         ws.toolConnections = [
           {
             toolSlug: 'google_calendar',
@@ -1121,7 +1121,7 @@ describe('generateWorkspace', () => {
           {
             // `buffer` was removed from the catalog in PR #4 Commit 1. Any
             // lingering ToolConnection row with this slug (from a prior seed
-            // run) must NOT produce emission — the generator has no
+            // run) must NOT produce emission - the generator has no
             // composioToolkitId to work with.
             toolSlug: 'buffer',
             displayName: 'Buffer',
@@ -1151,7 +1151,7 @@ describe('generateWorkspace', () => {
         ws.toolConnections = [];
         (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
         // If the generator does call findMany despite no eligible
-        // connections, this rejection surfaces as a failure — the canary.
+        // connections, this rejection surfaces as a failure - the canary.
         (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockRejectedValue(
           new Error('prisma.skill.findMany should not be called when no emission-eligible tools are connected'),
         );
@@ -1379,7 +1379,7 @@ describe('generateWorkspace', () => {
   // PR-3: enable the bundled `admin-http-rpc` plugin so the host-side
   // health-monitor cron can call POST /api/v1/admin/rpc on the gateway.
   // The plugin's configSchema is { properties: {}, additionalProperties:
-  // false }, so the entry MUST be exactly { enabled: true } — anything
+  // false }, so the entry MUST be exactly { enabled: true } - anything
   // extra fails the openclaw.json strict() validation and the gateway
   // refuses to boot.
   // ─────────────────────────────────────────────────────────────────────
@@ -1409,8 +1409,8 @@ describe('generateWorkspace', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // PR-2b #10: scheduledTasks cron emit (currently dormant — no Prisma
-  // column populated — but the code path exists and would emit the same
+  // PR-2b #10: scheduledTasks cron emit (currently dormant - no Prisma
+  // column populated - but the code path exists and would emit the same
   // platform-wide bug shape if/when wired. Lock the correct shape now.)
   // ─────────────────────────────────────────────────────────────────────
   describe('PR-2b #10: scheduledTasks cron emit shape', () => {

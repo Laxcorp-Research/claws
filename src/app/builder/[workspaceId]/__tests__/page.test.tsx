@@ -99,7 +99,7 @@ describe("BuilderPage drift banner", () => {
 
     render(<BuilderPage />)
 
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     expect(screen.getByText("Changed: tools, agents")).toBeDefined()
   })
 
@@ -109,7 +109,7 @@ describe("BuilderPage drift banner", () => {
     render(<BuilderPage />)
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled())
-    expect(screen.queryByText("Configuration changed since last deploy — redeploy to apply")).toBeNull()
+    expect(screen.queryByText("Configuration changed since last deploy - redeploy to apply")).toBeNull()
   })
 
   it("appears after a config save flips drift stale and Redeploy uses the shared flow", async () => {
@@ -136,14 +136,14 @@ describe("BuilderPage drift banner", () => {
     render(<BuilderPage />)
     fireEvent.click(screen.getByRole("button", { name: /Save/i }))
 
-    expect(await screen.findByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
+    expect(await screen.findByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
     fireEvent.click(screen.getByRole("button", { name: "Redeploy" }))
     expect(useWorkspaceRedeploy).toHaveBeenCalled()
     expect(mockStartRedeploy).toHaveBeenCalledTimes(1)
   })
 })
 
-describe("BuilderPage Batch D — load 5xx NetworkError", () => {
+describe("BuilderPage Batch D - load 5xx NetworkError", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     storeState.workspaceStatus = "DRAFT"

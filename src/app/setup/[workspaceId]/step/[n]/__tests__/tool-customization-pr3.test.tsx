@@ -1,5 +1,5 @@
 /**
- * Tool customization PR-3 — snackbar feedback, swap→browse, affordances, restore.
+ * Tool customization PR-3 - snackbar feedback, swap→browse, affordances, restore.
  */
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -305,7 +305,7 @@ describe("Tool customization PR-3", () => {
     expect(removeBlock).toContain("mutateWithFeedback")
     expect(swapBlock).toContain("mutateWithFeedback")
     expect(swapBlock).toContain('"swap"')
-    expect(swapBlock).toContain("Tool restored — reconnect required")
+    expect(swapBlock).toContain("Tool restored - reconnect required")
     // MUTATION: plain-add POST must not be the swap path.
     expect(swapBlock).not.toMatch(/method:\s*"POST"/)
   })
@@ -316,7 +316,7 @@ describe("Tool customization PR-3", () => {
     expect(screen.getByRole("button", { name: "Dismiss Tavily (Web Search)" })).toBeDefined()
     // Required twitter still has Remove; recommended tavily must not.
     const removeButtons = screen.queryAllByRole("button", { name: "Remove" })
-    // Only twitter (required) — not tavily.
+    // Only twitter (required) - not tavily.
     expect(removeButtons.length).toBeGreaterThanOrEqual(1)
     // Dismiss is present; no second destructive labeled Remove next to tavily row.
     fireEvent.click(screen.getByRole("button", { name: "Dismiss Tavily (Web Search)" }))
@@ -525,7 +525,7 @@ describe("Tool customization PR-3", () => {
     const callsBeforeUndo = fetchCalls.length
     fireEvent.click(screen.getByRole("button", { name: "Undo" }))
     await waitFor(() =>
-      expect(screen.getByText("Tool restored — reconnect required")).toBeDefined(),
+      expect(screen.getByText("Tool restored - reconnect required")).toBeDefined(),
     )
 
     const undoCalls = fetchCalls.slice(callsBeforeUndo)

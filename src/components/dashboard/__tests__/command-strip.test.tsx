@@ -48,7 +48,7 @@ describe("CommandStrip", () => {
   it("renders em dash instead of fabricated $0.00 when there are no attributable calls", () => {
     renderStrip({ estimatedCostToday: 0, estimatedCostTodayCalls: 0 })
 
-    expect(screen.getByText("—")).toBeDefined()
+    expect(screen.getByText("-")).toBeDefined()
     expect(screen.queryByText("$0.00")).toBeNull()
   })
 

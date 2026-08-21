@@ -19,7 +19,7 @@ function walkTsx(dir: string, acc: string[] = []): string[] {
 }
 
 describe("template-schedule user-facing copy snapshot", () => {
-  it("MUTATION: banner-restored fails — template-schedule copy is gone", () => {
+  it("MUTATION: banner-restored fails - template-schedule copy is gone", () => {
     const config = readFileSync(join(ROOT, "src/components/builder/heartbeat-config.tsx"), "utf8")
     const picker = readFileSync(join(ROOT, "src/lib/builder/heartbeat-picker.ts"), "utf8")
 

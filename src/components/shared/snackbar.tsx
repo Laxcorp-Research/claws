@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Platform Snackbar — single-slot bottom feedback for instant mutations.
+ * Platform Snackbar - single-slot bottom feedback for instant mutations.
  * See docs/DESIGN_SYSTEM.md § Snackbar.
  */
 import {

@@ -83,7 +83,7 @@ describe("evaluateWorkspaceDeployToolPrerequisites", () => {
         toolSlug: "tavily",
         status: "PENDING",
         connectionType: "API_KEY",
-        lastError: "Unverified — will validate on first use",
+        lastError: "Unverified - will validate on first use",
         keyHint: "tvly…",
         encryptedCredentials: "enc",
       },
@@ -102,7 +102,7 @@ describe("evaluateWorkspaceDeployToolPrerequisites", () => {
     expect(src).toContain("requiredToolsSatisfied")
     expect(src).toContain("filterNonAiProviderRequiredEntries")
     expect(src).toContain("resolveWorkspaceToolRequirements")
-    // Must project hasCredentials — never invent CONNECTED-only logic.
+    // Must project hasCredentials - never invent CONNECTED-only logic.
     expect(src).toContain("hasCredentials")
     expect(src).not.toMatch(/status\s*===\s*["']CONNECTED["']/)
   })

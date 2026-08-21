@@ -96,7 +96,7 @@ describe('calculateNextHeartbeat', () => {
     // Pick a daily-at-08:00 schedule and verify the parser doesn't blow up
     // when tz is supplied. Two different timezones should yield different
     // next-fire times (unless the test happens to run at exactly the boundary
-    // — extremely unlikely).
+    // - extremely unlikely).
     const utcJson = JSON.stringify([
       { schedule: { kind: 'cron', expr: '0 8 * * *', tz: 'UTC' } },
     ]);

@@ -1,5 +1,5 @@
 # Composio toolkit IDs referenced by OAUTH_COMPOSIO entries in
-# src/data/tool-catalog.ts. Every id here must exist on Composio's backend —
+# src/data/tool-catalog.ts. Every id here must exist on Composio's backend -
 # verified by paginated dump of composio.toolkits.list() (see
 # tmp/list-composio-toolkits.mjs). Guard: tool-catalog-slug-drift.test.ts
 # fails if the catalog references a toolkit not in this file, or if this

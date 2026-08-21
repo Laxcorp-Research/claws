@@ -1,5 +1,5 @@
 /**
- * Digest cost resolution — credit ledger for PLATFORM_CREDIT; ActivityLog
+ * Digest cost resolution - credit ledger for PLATFORM_CREDIT; ActivityLog
  * aggregator (dashboard Cost-today path) for BYOK / non-credit claws.
  */
 

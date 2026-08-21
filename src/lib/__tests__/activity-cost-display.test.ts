@@ -10,7 +10,7 @@ import {
 import { getModelCost } from "@/lib/models"
 
 describe("utcDayStart / sinceForCostRange (rule 18)", () => {
-  it("uses UTC midnight — not local Date(y,m,d)", () => {
+  it("uses UTC midnight - not local Date(y,m,d)", () => {
     const now = new Date("2026-07-14T03:15:00.000Z")
     expect(utcDayStart(now).toISOString()).toBe("2026-07-14T00:00:00.000Z")
     expect(sinceForCostRange("today", now)?.toISOString()).toBe("2026-07-14T00:00:00.000Z")
@@ -125,7 +125,7 @@ describe("formatCostDisplay", () => {
   it("renders em dash with no activity (K1 never-$0.00)", () => {
     expect(
       formatCostDisplay(0, { isEstimate: true, hasActivity: false, formatCurrency }),
-    ).toBe("—")
+    ).toBe("-")
   })
 
   it("omits est. label for fully-real windows", () => {

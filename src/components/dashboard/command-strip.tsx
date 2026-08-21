@@ -58,7 +58,7 @@ export function CommandStrip({
 }: CommandStripProps) {
   const hasActivity = estimatedCostTodayCalls > 0 || estimatedCostToday > 0
   const costValue = !hasActivity
-    ? "—"
+    ? "-"
     : estimatedCostTodayIsEstimate
       ? `~${formatCurrency(estimatedCostToday)} est.`
       : formatCurrency(estimatedCostToday)

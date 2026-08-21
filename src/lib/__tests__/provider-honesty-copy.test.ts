@@ -24,7 +24,7 @@ describe("provider honesty copy alignment", () => {
   it("pricing AI model costs is credits-honest", () => {
     const src = readFileSync(join(process.cwd(), "src/app/pricing/page.tsx"), "utf8")
     expect(src).toContain(
-      "Start with $50 free credits or bring your own API keys — pay your provider directly.",
+      "Start with $50 free credits or bring your own API keys - pay your provider directly.",
     )
   })
 
@@ -34,7 +34,7 @@ describe("provider honesty copy alignment", () => {
       "utf8",
     )
     expect(settings).toMatch(/key:\s*"OPENROUTER"/)
-    expect(settings).toContain("OpenRouter — one key, every model")
+    expect(settings).toContain("OpenRouter - one key, every model")
 
     const setup = readFileSync(
       join(process.cwd(), "src/app/setup/[workspaceId]/step/[n]/page.tsx"),
@@ -44,7 +44,7 @@ describe("provider honesty copy alignment", () => {
       join(process.cwd(), "src/components/setup/provider-auth-cards.tsx"),
       "utf8",
     )
-    expect(setupCards).toContain('OPENROUTER: "OpenRouter — one key, every model"')
+    expect(setupCards).toContain('OPENROUTER: "OpenRouter - one key, every model"')
     expect(setup).not.toMatch(/OLLAMA:\s*"Ollama/)
   })
 })

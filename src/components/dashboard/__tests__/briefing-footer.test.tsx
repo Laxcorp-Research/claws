@@ -38,8 +38,8 @@ describe("BriefingFooter", () => {
 
   it("PLATFORM_CREDIT + EXHAUSTED → calm 'Credits exhausted.' with no nag, beating the consumed amount", () => {
     render(<BriefingFooter apiKeySource="PLATFORM_CREDIT" creditStatus="EXHAUSTED" consumedCents={250} />)
-    // STRICT: exact text content — a reverted wording with a trailing
-    // "— add your own API key or top up" would NOT match this.
+    // STRICT: exact text content - a reverted wording with a trailing
+    // "- add your own API key or top up" would NOT match this.
     expect(screen.getByText("Credits exhausted.")).toBeTruthy()
     // the calm footer must NOT duplicate the loud banner's CTA
     expect(screen.queryByText(/add your own API key/)).toBeNull()

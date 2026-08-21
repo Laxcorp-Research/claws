@@ -29,7 +29,7 @@ const PROVIDERS = [
   { key: "GOOGLE", name: "Google (Gemini)", shortName: "Google", placeholder: "AIza...", helpUrl: "https://aistudio.google.com/apikey" },
   {
     key: "OPENROUTER",
-    name: "OpenRouter — one key, every model",
+    name: "OpenRouter - one key, every model",
     shortName: "OpenRouter",
     placeholder: "sk-or-v1-...",
     helpUrl: "https://openrouter.ai/keys",

@@ -97,7 +97,7 @@ describe("OnboardingClient v2.1", () => {
         workspaces={[]}
       />,
     )
-    expect(screen.getByText(/Powered by Claws Starter Credits — \$50\.00 remaining/)).toBeTruthy()
+    expect(screen.getByText(/Powered by Claws Starter Credits - \$50\.00 remaining/)).toBeTruthy()
     expect(screen.getByRole("link", { name: /Add your own key/ })).toBeTruthy()
   })
 

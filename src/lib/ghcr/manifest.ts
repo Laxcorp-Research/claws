@@ -1,6 +1,6 @@
 /**
  * GHCR manifest existence check (version-tag HEAD).
- * Used by admin promote guard — refuse promoting a DB row with no GHCR image.
+ * Used by admin promote guard - refuse promoting a DB row with no GHCR image.
  */
 
 const DEFAULT_IMAGE_NAME = "laxcorp-research/openclaw-runtime"

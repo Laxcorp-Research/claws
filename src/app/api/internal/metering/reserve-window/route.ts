@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
         const cachedRaw = typeof cached === "string" ? cached : String(cached)
         const redisCents = Number.parseInt(cachedRaw, 10)
         const dbCents = account.balanceCents
-        // ε = 0¢ — any mismatch (incl. non-numeric Redis) re-seeds from DB.
+        // ε = 0¢ - any mismatch (incl. non-numeric Redis) re-seeds from DB.
         if (!Number.isFinite(redisCents) || redisCents !== dbCents) {
           log.warn("reserve-window: balance divergence; re-seeding Redis from DB", {
             userId,
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
     const detail = err instanceof Error ? err.message : String(err)
     log.error("reserve-window: reserve failed", { userId, error: detail })
     // Include detail so staging ops can diagnose without Vercel log dig
-    // (still a 503 — proxy treats !ok as fail and degrades/closes).
+    // (still a 503 - proxy treats !ok as fail and degrades/closes).
     return apiError(
       "REDIS_UNAVAILABLE",
       `Credit reservation temporarily unavailable: ${detail.slice(0, 180)}`,

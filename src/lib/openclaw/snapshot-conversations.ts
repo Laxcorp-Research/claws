@@ -58,7 +58,7 @@ export function __clearSnapshotConversationsCacheForTests(): void {
 }
 
 /**
- * SECURITY: only agents/<agentId>/sessions/<file> — never arbitrary snapshot paths.
+ * SECURITY: only agents/<agentId>/sessions/<file> - never arbitrary snapshot paths.
  * Rejects .., empty segments, absolute paths, and nested escapes.
  */
 export function isAllowedSessionPath(relativePath: string): boolean {
@@ -340,7 +340,7 @@ function buildSessionFileIndex(files: Record<string, string>): SessionFileIndex 
         continue
       }
 
-      // Plain {uuid}.jsonl only — never trajectory*.jsonl (would overwrite live transcript).
+      // Plain {uuid}.jsonl only - never trajectory*.jsonl (would overwrite live transcript).
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(fileName)) {
         const m = fileName.match(UUID_RE)
         if (m) uuidJsonl.set(m[1].toLowerCase(), content)

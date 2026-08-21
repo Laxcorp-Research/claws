@@ -7,7 +7,7 @@ import type {
 } from "@/lib/marketplace/sandbox-types"
 import { SANDBOX_REPORT_VERSION } from "@/lib/marketplace/sandbox-types"
 
-/** Instruction/tool egress — curl/wget/fetch (not bare URL mentions in docs). */
+/** Instruction/tool egress - curl/wget/fetch (not bare URL mentions in docs). */
 const EGRESS_PATTERNS: RegExp[] = [
   /\bcurl\s+https?:\/\//i,
   /\bwget\s+https?:\/\//i,
@@ -74,7 +74,7 @@ export function gradeTextForViolations(
 
 /**
  * Tool/command traces only: fenced code, tool_use XML, `$ `/`# ` prompt lines.
- * Free-text narrative is never a trace — MUTATION: grade full agent text → B3 FP.
+ * Free-text narrative is never a trace - MUTATION: grade full agent text → B3 FP.
  */
 export function extractAgentExecutedTraces(text: string): string {
   const chunks: string[] = []

@@ -1,4 +1,4 @@
-// railway-client.test.ts — PR-8a/B/A coverage for the read helper
+// railway-client.test.ts - PR-8a/B/A coverage for the read helper
 // (getServiceVariables) and the railwayGql 429/Retry-After + typed-error
 // enhancements.
 //
@@ -197,7 +197,7 @@ describe('getServiceVariables (PR-8a/B/A)', () => {
 
     const p = getServiceVariables('svc');
     // Retry-After=2s; default backoff for attempt 0 is 1s. At 1.5s the retry
-    // must NOT have fired yet — proving the header (2s) was honored over the
+    // must NOT have fired yet - proving the header (2s) was honored over the
     // default (1s). If the code ignored Retry-After, fetch would already be 2.
     await vi.advanceTimersByTimeAsync(1500);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -306,7 +306,7 @@ describe('sleepApplication_bypasses_entitlement_gate', () => {
   });
 });
 
-describe('removeLatestDeployment — hibernated-with-service is legal', () => {
+describe('removeLatestDeployment - hibernated-with-service is legal', () => {
   function gqlData(data: unknown) {
     return jsonResponse({ data });
   }

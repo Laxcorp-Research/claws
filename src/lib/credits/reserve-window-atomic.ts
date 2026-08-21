@@ -2,7 +2,7 @@
  * Atomic credit-window reservation against Redis.
  *
  * Prefer Lua EVAL (single round-trip, race-safe). Some Upstash plan/API
- * combinations reject EVAL while GET/SET/INCRBY still work — that was the
+ * combinations reject EVAL while GET/SET/INCRBY still work - that was the
  * staging reserve-window HTTP 500 (uncaught eval throw). Fallback is a
  * best-effort GET+INCRBY path so metering stays fail-closed on balance,
  * not crash-open via proxy degrade.

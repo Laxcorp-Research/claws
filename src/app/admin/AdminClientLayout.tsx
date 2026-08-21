@@ -18,7 +18,7 @@ export default function AdminClientLayout({ children }: { children: React.ReactN
   const pathname = usePathname()
   // null = check still in flight. We never optimistically render children OR
   // the access-denied state until the check resolves (GH #127). A failed check
-  // is treated as NOT admin — fail-closed for an admin surface.
+  // is treated as NOT admin - fail-closed for an admin surface.
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
 
   useEffect(() => {

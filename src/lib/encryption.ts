@@ -75,7 +75,7 @@ export function encrypt(plaintext: string): string {
 // master key (if configured). Backward-compatible: with no previous key set,
 // this is identical to the original single-key decrypt (rethrows the current
 // error). A deliberate ENCRYPTION_MASTER_KEY rotation therefore no longer
-// instantly 500s every secret read — old secrets decrypt under the previous
+// instantly 500s every secret read - old secrets decrypt under the previous
 // key during the migration window.
 export function decrypt(encoded: string): string {
   const b = parseBlob(encoded)
@@ -116,7 +116,7 @@ export function decryptWithMigration(encoded: string): { plaintext: string; reen
 // Decrypt + (if the value was under the previous key) re-encrypt under the
 // current key via the caller-supplied `persist` (which owns the DB row). The
 // re-encrypt write is best-effort: a failure is swallowed so the read path is
-// NEVER broken — the decrypted value is always returned. Callers should log
+// NEVER broken - the decrypted value is always returned. Callers should log
 // inside `persist`.
 export async function decryptAndMaybeReencrypt(
   encoded: string,
@@ -135,7 +135,7 @@ export async function decryptAndMaybeReencrypt(
 
 // Pass/fail health probe over sample blobs. Uses decrypt() (so it passes during
 // a proper rotation where the previous key is configured). NEVER returns or logs
-// plaintext — only counts.
+// plaintext - only counts.
 export function assessDecryptHealth(blobs: string[]): { checked: number; failed: number; ok: boolean } {
   let failed = 0
   for (const b of blobs) {

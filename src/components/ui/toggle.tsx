@@ -9,7 +9,7 @@ interface ToggleProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onC
 
 /**
  * Minimal on/off pill switch. No dedicated spec exists in DESIGN_SYSTEM.md
- * (Section 2 has no Toggle entry) — sized/colored to match the rest of the
+ * (Section 2 has no Toggle entry) - sized/colored to match the rest of the
  * settings surface (Button/Badge use var(--tx)/var(--bd)/var(--bg2)).
  */
 export const Toggle = forwardRef<HTMLButtonElement, ToggleProps>(

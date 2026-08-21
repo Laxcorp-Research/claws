@@ -1,5 +1,5 @@
 /**
- * Version hygiene — which OpenClawVersion rows may never be promoted to stable.
+ * Version hygiene - which OpenClawVersion rows may never be promoted to stable.
  *
  * Raw-calendar upstream tags (bare YYYY.M.D, placeholders like 2026.6.x) and the
  * seed relic 2.5.0 are never-promotable. Claws rebuilds always carry a `-N`
@@ -10,7 +10,7 @@
 
 import { compareOpenClawVersions } from "@/lib/openclaw/version-order"
 
-/** Seed bootstrap row — never a real Claws runtime promote target. */
+/** Seed bootstrap row - never a real Claws runtime promote target. */
 export const SEED_RELIC_VERSION = "2.5.0"
 
 /**
@@ -43,15 +43,15 @@ export function neverPromotableReason(version: string): string | null {
   const v = version.trim()
   if (v.length === 0) return "empty version"
   if (v === SEED_RELIC_VERSION) {
-    return "seed relic (2.5.0) — never promotable"
+    return "seed relic (2.5.0) - never promotable"
   }
   // Placeholder raw-calendar junk (e.g. 2026.6.x)
   if (/\.x\b/i.test(v)) {
-    return "raw-calendar placeholder — never promotable"
+    return "raw-calendar placeholder - never promotable"
   }
   // Bare YYYY.M.D (no claws -N rebuild suffix) = upstream calendar tag
   if (/^\d{4}\.\d+\.\d+$/.test(v)) {
-    return "raw-calendar upstream tag — never promotable (needs claws -N rebuild)"
+    return "raw-calendar upstream tag - never promotable (needs claws -N rebuild)"
   }
   return null
 }

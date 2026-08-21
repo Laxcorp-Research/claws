@@ -1,5 +1,5 @@
 /**
- * Snackbar unit — variants, auto-dismiss, single-slot.
+ * Snackbar unit - variants, auto-dismiss, single-slot.
  */
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"

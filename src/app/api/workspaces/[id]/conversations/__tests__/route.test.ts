@@ -263,7 +263,7 @@ describe("GET /api/workspaces/[id]/conversations", () => {
     })
   })
 
-  it("size ceiling returns honest too large — wake to view payload", async () => {
+  it("size ceiling returns honest too large - wake to view payload", async () => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       runningWorkspace({ status: "STOPPED" }) as never,
     )
@@ -277,7 +277,7 @@ describe("GET /api/workspaces/[id]/conversations", () => {
     expect(data.data).toEqual({
       available: false,
       reason: "too_large",
-      message: "too large — wake to view",
+      message: "too large - wake to view",
       asOf: AS_OF.toISOString(),
       conversations: [],
       archived: [],

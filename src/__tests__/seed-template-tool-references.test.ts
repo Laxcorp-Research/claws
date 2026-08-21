@@ -9,7 +9,7 @@
 //      green, this is always true at commit time; the test locks it.
 //
 //   2. A plain (non-`alternatives`) required tool entry must NOT point at
-//      a `comingSoon: true` catalog entry. Hard rule — if it were
+//      a `comingSoon: true` catalog entry. Hard rule - if it were
 //      `comingSoon`, the wizard resolver would filter it out and the
 //      template would be un-deployable today.
 //
@@ -83,7 +83,7 @@ describe("seed template tool references (PR2.8a Task 9)", () => {
             undeployable.push({
               template: tmpl.slug,
               entry: tool,
-              reason: `plain required slug "${tool.slug}" is comingSoon — template un-deployable today`,
+              reason: `plain required slug "${tool.slug}" is comingSoon - template un-deployable today`,
             })
           }
           continue

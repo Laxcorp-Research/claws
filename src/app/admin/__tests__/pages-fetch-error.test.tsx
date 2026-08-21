@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Batch G — admin list fetch failures (non-403) must show NetworkError + Retry,
+ * Batch G - admin list fetch failures (non-403) must show NetworkError + Retry,
  * never a false-empty queue. MUTATION: empty-state on 500 → fail.
  */
 import { readFileSync } from "node:fs"

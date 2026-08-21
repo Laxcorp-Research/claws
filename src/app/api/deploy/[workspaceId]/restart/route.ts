@@ -17,8 +17,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   // Precondition: workspace must have a live Railway service (containerId set)
-  // AND be in a state where a restart is meaningful (RUNNING — kick the service;
-  // ERROR — recover from a failed deploy). Every other state needs a different
+  // AND be in a state where a restart is meaningful (RUNNING - kick the service;
+  // ERROR - recover from a failed deploy). Every other state needs a different
   // endpoint:
   //   - STOPPED / PAUSED with null containerId: use /cloud to redeploy from scratch
   //   - HIBERNATED: wake via the hibernation flow

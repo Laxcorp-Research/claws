@@ -20,7 +20,7 @@ function uploadReq(body: Record<string, unknown>, secret = SECRET): NextRequest 
   })
 }
 
-describe("POST /api/internal/state/upload — reject-only (USE_BLOB)", () => {
+describe("POST /api/internal/state/upload - reject-only (USE_BLOB)", () => {
   beforeEach(() => {
     process.env.METERING_MASTER_SECRET = SECRET
   })

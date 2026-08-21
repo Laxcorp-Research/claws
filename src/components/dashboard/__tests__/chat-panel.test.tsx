@@ -99,7 +99,7 @@ describe("ChatPanel header", () => {
   })
 })
 
-describe("reconcileChatMessages — optimistic dedupe by messageId === runId", () => {
+describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () => {
   it("drops the optimistic user bubble once the streamed MESSAGE_RECEIVED with the same messageId arrives (no double-render)", () => {
     const optimistic: OptimisticMessage[] = [
       { tempId: "tmp_1", text: "hello orchestrator", createdAt: 1000, status: "sent", runId: "run-X" },
@@ -117,7 +117,7 @@ describe("reconcileChatMessages — optimistic dedupe by messageId === runId", (
     ]
     const views = reconcileChatMessages(optimistic, rows, "Dev Commander")
     const userViews = views.filter((v) => v.sender === "user")
-    // Exactly ONE — not 2. MUTATION: remove the dedupe filter → 2 → fails.
+    // Exactly ONE - not 2. MUTATION: remove the dedupe filter → 2 → fails.
     expect(userViews).toHaveLength(1)
     // The streamed row wins (stable DB id, not the temp id).
     expect(userViews[0].key).toBe("log-1")
@@ -264,14 +264,14 @@ describe("reconcileChatMessages — optimistic dedupe by messageId === runId", (
   })
 })
 
-describe("ChatPanel — composer", () => {
+describe("ChatPanel - composer", () => {
   it("enables the composer when RUNNING", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
     const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement
     expect(textarea.disabled).toBe(false)
   })
 
-  it("marks the bubble failed via the catch path when fetch rejects (network error) — NO unhandled rejection", async () => {
+  it("marks the bubble failed via the catch path when fetch rejects (network error) - NO unhandled rejection", async () => {
     const onUnhandled = vi.fn()
     window.addEventListener("unhandledrejection", onUnhandled)
     const fetchMock = vi.fn().mockRejectedValue(new Error("network down"))
@@ -315,12 +315,12 @@ describe("ChatPanel — composer", () => {
         timestamp: "2026-06-22T08:00:05.000Z",
         agentName: "Dev Commander",
         action: "Replied: on it",
-        detail: "On it — pulling the latest now.",
+        detail: "On it - pulling the latest now.",
         messageId: null,
       },
     ]
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={rows} orchestratorName="Dev Commander" />)
-    expect(screen.getByText("On it — pulling the latest now.")).toBeTruthy()
+    expect(screen.getByText("On it - pulling the latest now.")).toBeTruthy()
     expect(screen.getByText("Dev Commander")).toBeTruthy()
   })
 
@@ -506,7 +506,7 @@ describe("ChatPanel — composer", () => {
   })
 })
 
-describe("ChatPanel — per-state disabled copy + inline Wake (9/C)", () => {
+describe("ChatPanel - per-state disabled copy + inline Wake (9/C)", () => {
   // Each non-sendable rendered status shows its OWN tailored copy (not the
   // generic 9/B line), composer disabled. Only HIBERNATED offers the inline
   // Wake CTA; WAKING/DEPLOYING self-resolve and PAUSED is unreachable.
@@ -563,9 +563,9 @@ describe("ChatPanel — per-state disabled copy + inline Wake (9/C)", () => {
   })
 })
 
-describe("ChatPanel — send-time per-code copy + Retry (9/C)", () => {
+describe("ChatPanel - send-time per-code copy + Retry (9/C)", () => {
   // A non-202 send renders the SAME tailored copy as the disabled composer,
-  // keyed off the response error.code — NOT a flat "Failed to send". This is the
+  // keyed off the response error.code - NOT a flat "Failed to send". This is the
   // mid-compose race (a RUNNING Claw that changed state between compose & send).
   // MUTATION: ignore error.code in performSend → reverts to the generic line →
   // every per-code assertion below fails.
@@ -634,7 +634,7 @@ describe("ChatPanel — send-time per-code copy + Retry (9/C)", () => {
 
     expect(await screen.findByText(/asleep/i)).toBeTruthy()
     const wakeBtn = await screen.findByRole("button", { name: "Wake" })
-    // Hibernated mid-compose is a Wake, NOT a Retry (a resend would 409 again) —
+    // Hibernated mid-compose is a Wake, NOT a Retry (a resend would 409 again) -
     // symmetric to the pre-send disabled state, reusing the SAME onWake.
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
     fireEvent.click(wakeBtn)
@@ -660,14 +660,14 @@ describe("ChatPanel — send-time per-code copy + Retry (9/C)", () => {
   })
 })
 
-describe("9/C reason mappers — one copy, two surfaces", () => {
+describe("9/C reason mappers - one copy, two surfaces", () => {
   it("maps each workspace status to its reason (pre-send)", () => {
     expect(statusToReason("HIBERNATED")).toBe("asleep")
     expect(statusToReason("WAKING")).toBe("waking")
     expect(statusToReason("DEPLOYING")).toBe("deploying")
     expect(statusToReason("PAUSED")).toBe("paused")
     expect(statusToReason("STOPPED")).toBe("stopped")
-    expect(statusToReason("RUNNING")).toBe("unknown") // sendable — never rendered
+    expect(statusToReason("RUNNING")).toBe("unknown") // sendable - never rendered
   })
 
   it("maps each send error.code to the SAME reason set (send-time)", () => {
@@ -709,7 +709,7 @@ describe("isNearBottom (GAP #3 scroll guard)", () => {
   })
 })
 
-describe("computeTurnStatuses — per-runId, time-bounded pending (working-indicator fix)", () => {
+describe("computeTurnStatuses - per-runId, time-bounded pending (working-indicator fix)", () => {
   const T = Date.parse("2026-06-22T08:00:00.000Z") // fixed "now"
   const within = T - 10_000 // 10s ago → inside the 2-min window
   const past = T - (PENDING_TURN_TIMEOUT_MS + 60_000) // well past the window
@@ -725,7 +725,7 @@ describe("computeTurnStatuses — per-runId, time-bounded pending (working-indic
     key: "a-" + runId, sender: "agent", senderName: "X", sortTs, detail: "", action: "", runId,
   })
 
-  // ORPHAN REGRESSION — the exact live bug. A started user turn with no
+  // ORPHAN REGRESSION - the exact live bug. A started user turn with no
   // MESSAGE_SENT, timestamped past the window, is "no_response" → indicator OFF.
   // The OLD count-based logic returned working=true here (started 1 > replied 0)
   // and stuck forever. This asserts the new behavior the old code FAILS.
@@ -735,7 +735,7 @@ describe("computeTurnStatuses — per-runId, time-bounded pending (working-indic
     expect(hasPendingTurn(st)).toBe(false)
   })
 
-  // PER-RUNID RESOLVE — a recent send is pending; the reply carrying the SAME
+  // PER-RUNID RESOLVE - a recent send is pending; the reply carrying the SAME
   // runId resolves it.
   it("recent send with no reply → pending; matching MESSAGE_SENT.runId → resolved", () => {
     expect(hasPendingTurn(computeTurnStatuses([userView("rB", within, "sent")], T))).toBe(true)
@@ -758,7 +758,7 @@ describe("computeTurnStatuses — per-runId, time-bounded pending (working-indic
     expect(hasPendingTurn(st)).toBe(true)
   })
 
-  // INDEPENDENCE — THE live bug: an earlier orphaned turn must not keep the
+  // INDEPENDENCE - THE live bug: an earlier orphaned turn must not keep the
   // indicator on once a later turn has replied.
   it("orphaned earlier turn + replied later turn → indicator OFF (independence)", () => {
     const st = computeTurnStatuses(
@@ -771,7 +771,7 @@ describe("computeTurnStatuses — per-runId, time-bounded pending (working-indic
     )
     expect(st.get("rA")).toBe("no_response")
     expect(st.has("rB")).toBe(false)
-    expect(hasPendingTurn(st)).toBe(false) // NOT stuck on rA — the old bug
+    expect(hasPendingTurn(st)).toBe(false) // NOT stuck on rA - the old bug
   })
 
   it("a genuinely-pending later turn keeps the indicator on via ITS OWN pending, not the orphan", () => {
@@ -784,7 +784,7 @@ describe("computeTurnStatuses — per-runId, time-bounded pending (working-indic
     expect(hasPendingTurn(st)).toBe(true)
   })
 
-  // TIMEOUT — same turn, evaluated before vs after the ceiling.
+  // TIMEOUT - same turn, evaluated before vs after the ceiling.
   it("pending within the window flips to no_response past PENDING_TURN_TIMEOUT_MS", () => {
     const views = [userView("rC", T, "sent")]
     expect(computeTurnStatuses(views, T + 10_000).get("rC")).toBe("pending")
@@ -803,7 +803,7 @@ describe("computeTurnStatuses — per-runId, time-bounded pending (working-indic
   })
 })
 
-describe("ChatPanel — working indicator (per-runId + timeout)", () => {
+describe("ChatPanel - working indicator (per-runId + timeout)", () => {
   // Rows are timestamped relative to a FAKED wall clock so the time-bounded
   // pending logic is deterministic. The user send carries the turn key as
   // messageId (=== runId); the agent reply carries it as runId.
@@ -850,7 +850,7 @@ describe("ChatPanel — working indicator (per-runId + timeout)", () => {
     }
   })
 
-  it("does NOT stick on a single OLD orphaned turn — indicator off, shows quiet 'No response'", () => {
+  it("does NOT stick on a single OLD orphaned turn - indicator off, shows quiet 'No response'", () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(BASE)
@@ -896,7 +896,7 @@ describe("ChatPanel — working indicator (per-runId + timeout)", () => {
       expect(screen.getByText(/is working/i)).toBeTruthy()
       expect(screen.queryByText("No response")).toBeNull()
 
-      // The re-eval tick fires across the ceiling and recomputes — no new row.
+      // The re-eval tick fires across the ceiling and recomputes - no new row.
       act(() => {
         vi.advanceTimersByTime(PENDING_TURN_TIMEOUT_MS + 30_000)
       })
@@ -909,7 +909,7 @@ describe("ChatPanel — working indicator (per-runId + timeout)", () => {
     }
   })
 
-  // A late reply (past the timeout) is NOT rejected — it renders and clears the
+  // A late reply (past the timeout) is NOT rejected - it renders and clears the
   // "No response" note when it finally streams in.
   it("a LATE reply after timeout still renders the reply bubble and clears 'No response'", () => {
     vi.useFakeTimers()
@@ -945,7 +945,7 @@ describe("ChatPanel — working indicator (per-runId + timeout)", () => {
   })
 })
 
-describe("ChatPanel — scroll (GAP #3: container only, near-bottom guard)", () => {
+describe("ChatPanel - scroll (GAP #3: container only, near-bottom guard)", () => {
   const userRow: ChatRow = {
     id: "u1", actionType: "MESSAGE_RECEIVED", timestamp: "2026-06-22T08:00:00.000Z",
     agentName: "System", action: "Received from : hi", detail: "hi", messageId: "r1",
@@ -986,7 +986,7 @@ describe("ChatPanel — scroll (GAP #3: container only, near-bottom guard)", () 
         <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow, replyRow]} orchestratorName="Dev Commander" />,
       )
       expect(writes).toContain(1000) // container scrolled to its own scrollHeight
-      expect(scrollIntoView).not.toHaveBeenCalled() // no page jump — MUTATION: use scrollIntoView → fails
+      expect(scrollIntoView).not.toHaveBeenCalled() // no page jump - MUTATION: use scrollIntoView → fails
     } finally {
       proto.scrollIntoView = orig
     }

@@ -1,5 +1,5 @@
 export const MEDICAL_HIPAA_RESPONSIBILITY_NOTICE =
-  "HIPAA responsibility: You are responsible for HIPAA compliance, including Business Associate Agreements (BAAs) with your communication vendors. Managed-OAuth connections route through Composio, which may not be BAA-covered — for PHI-adjacent channels, use direct API-key tools under your own BAAs (e.g., Twilio with a signed BAA)."
+  "HIPAA responsibility: You are responsible for HIPAA compliance, including Business Associate Agreements (BAAs) with your communication vendors. Managed-OAuth connections route through Composio, which may not be BAA-covered - for PHI-adjacent channels, use direct API-key tools under your own BAAs (e.g., Twilio with a signed BAA)."
 
 export const COMPLIANCE_NOTICES: Record<string, string> = {
   "medical-practice-manager": MEDICAL_HIPAA_RESPONSIBILITY_NOTICE,

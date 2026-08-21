@@ -10,7 +10,7 @@ import {
 
 const ROOT = process.cwd()
 
-describe("canDeleteCreatorListing — sales+installs predicate", () => {
+describe("canDeleteCreatorListing - sales+installs predicate", () => {
   it("0 sales delete ok", () => {
     expect(canDeleteCreatorListing({ salesCount: 0, installCount: 0 })).toBe(true)
   })
@@ -18,13 +18,13 @@ describe("canDeleteCreatorListing — sales+installs predicate", () => {
   it(">0 installs blocked", () => {
     expect(canDeleteCreatorListing({ salesCount: 0, installCount: 3 })).toBe(false)
     expect(deleteBlockedCopy({ salesCount: 0, installCount: 3 })).toBe(
-      "3 people installed this — you can unpublish but not delete",
+      "3 people installed this - you can unpublish but not delete",
     )
   })
 
   it("1 install uses singular copy", () => {
     expect(deleteBlockedCopy({ salesCount: 0, installCount: 1 })).toBe(
-      "1 person installed this — you can unpublish but not delete",
+      "1 person installed this - you can unpublish but not delete",
     )
   })
 

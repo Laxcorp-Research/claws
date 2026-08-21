@@ -106,12 +106,12 @@ describe("decideWakeOnChannel", () => {
 
 describe("WAKE_ON_CHANNEL_ACK copy lock", () => {
   it("locks exact ack string", () => {
-    expect(WAKE_ON_CHANNEL_ACK).toBe("Waking up — one moment")
+    expect(WAKE_ON_CHANNEL_ACK).toBe("Waking up - one moment")
     expect(WAKE_ON_CHANNEL_FAIL).toContain("Couldn't wake")
   })
 })
 
-describe("handleTelegramWakeOnChannel — dead-drop impossible", () => {
+describe("handleTelegramWakeOnChannel - dead-drop impossible", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockHibernatedWorkspace()

@@ -1,5 +1,5 @@
 /**
- * Tooltip grep-guard v2 — static enforcement that cannot rot.
+ * Tooltip grep-guard v2 - static enforcement that cannot rot.
  * MUTATION (manual/CI verification): inject one rogue of each class → matching it() fails → remove.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
@@ -13,7 +13,7 @@ const RADIX_PKG = ["@radix-ui", "react-tooltip"].join("/")
 
 /**
  * Explicit allowlist for DOM-element `title=` attrs on lowercase JSX tags.
- * Post PR-A this is EMPTY — component title PROPS (Modal/EmptyState/…) stay
+ * Post PR-A this is EMPTY - component title PROPS (Modal/EmptyState/…) stay
  * legal because they use PascalCase tags and are not matched.
  */
 const DOM_TITLE_ALLOWLIST: readonly string[] = []

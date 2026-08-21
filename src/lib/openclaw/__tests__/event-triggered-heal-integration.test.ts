@@ -1,4 +1,4 @@
-// PR-8b/D — cross-PR integration: the FULL event-triggered heal chain, real from
+// PR-8b/D - cross-PR integration: the FULL event-triggered heal chain, real from
 // the HTTP route down to the gate. Real: POST /api/api-keys, after() (captured),
 // requestReconcileForUser, healWorkspace, resolveMode. Mocked only at the I/O
 // boundary: prisma, redis, redeployWorkspace, encryption, getSessionUser, logger.
@@ -72,7 +72,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs())
 
-describe('event-triggered heal integration — POST /api/api-keys → after → requestReconcileForUser → healWorkspace → gate', () => {
+describe('event-triggered heal integration - POST /api/api-keys → after → requestReconcileForUser → healWorkspace → gate', () => {
   it('auto_heal: response returns first; the deferred fan-out heals BOTH running workspaces', async () => {
     vi.stubEnv('ENV_RECONCILE_MODE', 'auto_heal')
 

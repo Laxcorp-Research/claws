@@ -1,4 +1,4 @@
-// route.integration.test.ts — PR-8a/C/D full-route integration of the
+// route.integration.test.ts - PR-8a/C/D full-route integration of the
 // env-reconciliation cron. Exercises the REAL route handler + real comparison,
 // exclusion, logging, and summary logic, with only the I/O boundaries mocked
 // (Redis lock, Railway read, Prisma, encryption). Each scenario is one test
@@ -96,8 +96,8 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe("reconcile-container-env cron — PR-8a/C/D full-route integration", () => {
-  it("Scenario A — happy path: 2 match, 2 drift, 1 Railway 401", async () => {
+describe("reconcile-container-env cron - PR-8a/C/D full-route integration", () => {
+  it("Scenario A - happy path: 2 match, 2 drift, 1 Railway 401", async () => {
     vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
     ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       wsRow("a1"),
@@ -129,7 +129,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     expect(log.info).toHaveBeenCalledWith("env reconciliation complete", expect.objectContaining({ event: "run_complete" }))
   })
 
-  it("Scenario B — all-skipped tick: one of each transient reason", async () => {
+  it("Scenario B - all-skipped tick: one of each transient reason", async () => {
     ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       wsRow("b1"),
       wsRow("b2"),
@@ -171,7 +171,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     expect(prismaMock.workspace.findUnique).toHaveBeenCalledTimes(5)
   })
 
-  it("Scenario C — lock contention: NX returns null → skip, no workspace work", async () => {
+  it("Scenario C - lock contention: NX returns null → skip, no workspace work", async () => {
     mockRedisSet.mockResolvedValue(null)
     const res = await GET(req())
     const body = await res.json()
@@ -186,7 +186,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     )
   })
 
-  it("Scenario D — empty environment: zero workspaces", async () => {
+  it("Scenario D - empty environment: zero workspaces", async () => {
     ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
     const body = await (await GET(req())).json()
     expect(body.data.checked).toBe(0)
@@ -200,7 +200,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     )
   })
 
-  it("Scenario E — ENV_RECONCILE_MODE=auto_heal HEALS the drifted workspace (downgrade gone)", async () => {
+  it("Scenario E - ENV_RECONCILE_MODE=auto_heal HEALS the drifted workspace (downgrade gone)", async () => {
     vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
     vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
     ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
@@ -216,7 +216,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     const body = await (await GET(req())).json()
 
     expect(body.data.mode).toBe("auto_heal")
-    // The PR-8a/C downgrade is gone — no mode_downgraded warning.
+    // The PR-8a/C downgrade is gone - no mode_downgraded warning.
     expect(log.warn).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ event: "mode_downgraded" }),
@@ -229,7 +229,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     expect(mockRedeployWorkspace).toHaveBeenCalledWith("e2")
   })
 
-  it("Scenario F — AUTO-HEAL + cooldown chain: 3 drift, 2 cooldown-held → healed=1, cooldown_active=2", async () => {
+  it("Scenario F - AUTO-HEAL + cooldown chain: 3 drift, 2 cooldown-held → healed=1, cooldown_active=2", async () => {
     vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
     vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
     ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
@@ -256,7 +256,7 @@ describe("reconcile-container-env cron — PR-8a/C/D full-route integration", ()
     expect(mockRedeployWorkspace).toHaveBeenCalledWith("f1")
   })
 
-  it("Scenario G — AUTO-HEAL + heal error isolation: 3 drift, one redeploy throws → healed=2, heal_error=1", async () => {
+  it("Scenario G - AUTO-HEAL + heal error isolation: 3 drift, one redeploy throws → healed=2, heal_error=1", async () => {
     vi.stubEnv("ENV_RECONCILE_MODE", "auto_heal")
     vi.stubEnv("CLAWS_MASTER_ANTHROPIC_KEY", "sk-ant-master")
     ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([

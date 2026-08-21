@@ -1,5 +1,5 @@
 /**
- * UNIVERSAL WORKFLOW LANGUAGE — mechanical sentences only.
+ * UNIVERSAL WORKFLOW LANGUAGE - mechanical sentences only.
  *
  * HARD RULE: generated text references ONLY agent display names, optional
  * contextNote text, quality threshold number, revision-round count, and
@@ -44,7 +44,7 @@ export function normalizeContextNote(raw: string | null | undefined): string | n
 }
 
 /**
- * Per-edge delegation sentence (X1 — unconditional; ignores ConnectionCondition).
+ * Per-edge delegation sentence (X1 - unconditional; ignores ConnectionCondition).
  * MUTATION: condition-dependent phrasing → emission-identical-across-conditions test fails.
  */
 export function formatDelegationSentence(edge: WorkflowEdgeInput): string {
@@ -115,7 +115,7 @@ export function applyWorkflowFence(args: {
     return { text: next, corrected: previous !== fenceBody }
   }
 
-  // No fence — append (with leading newline if needed).
+  // No fence - append (with leading newline if needed).
   const sep = agentsMd.endsWith("\n") || agentsMd.length === 0 ? "" : "\n"
   return { text: `${agentsMd}${sep}\n${fenceBody}\n`, corrected: false }
 }

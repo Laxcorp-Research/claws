@@ -51,7 +51,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   const customIdentities = deriveCustomApiIdentities(customConnections)
 
   return apiSuccess({
-    // hasCredentials is a boolean projection — never return ciphertext.
+    // hasCredentials is a boolean projection - never return ciphertext.
     connections: connections.map(({ encryptedCredentials, ...conn }) => ({
       ...conn,
       hasCredentials: encryptedCredentials != null,
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
 
   if (connectionType === "API_KEY") {
     // Body must carry a credentials record. Old {apiKey: "..."} shape is
-    // rejected — callers must supply {credentials: {[ENVVAR]: value, ...}}
+    // rejected - callers must supply {credentials: {[ENVVAR]: value, ...}}
     // matching the tool's catalog declaration.
     if (!credentials || typeof credentials !== "object" || Array.isArray(credentials)) {
       return ERRORS.VALIDATION("API_KEY tools require a `credentials` object with one entry per catalog-declared field")
@@ -225,7 +225,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       data.lastTestedAt = new Date()
       if (validation.unverified) {
         data.status = "PENDING"
-        data.lastError = validation.message ?? "Connected but not verified — will be tested on first use."
+        data.lastError = validation.message ?? "Connected but not verified - will be tested on first use."
       } else if (validation.warning) {
         data.status = "PENDING"
         data.lastError = validation.warning

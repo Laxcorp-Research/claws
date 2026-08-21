@@ -42,7 +42,7 @@ async function ledgerSubscriptionLifecycle(args: {
       },
     })
   } catch (err) {
-    // Never fail the webhook over ledger write — Dodo retries on non-200.
+    // Never fail the webhook over ledger write - Dodo retries on non-200.
     log.error("dodo-webhook: failed to ledger subscription lifecycle", {
       userId: args.userId,
       eventType: args.eventType,
@@ -211,7 +211,7 @@ async function handlePaymentSucceeded(
 
     const paid = paidDollarsFromWebhook(data)
     if (paid == null) {
-      log.error("onPaymentSucceeded.skill: missing data.total_amount — refusing list-price sale", {
+      log.error("onPaymentSucceeded.skill: missing data.total_amount - refusing list-price sale", {
         paymentId,
         skillId: skill.id,
       })
@@ -287,7 +287,7 @@ async function handlePaymentSucceeded(
   if (metadata.type === "community_purchase" && metadata.creatorId && template?.creatorId) {
     const paid = paidDollarsFromWebhook(data)
     if (paid == null) {
-      log.error("onPaymentSucceeded: missing data.total_amount — refusing list-price sale", {
+      log.error("onPaymentSucceeded: missing data.total_amount - refusing list-price sale", {
         paymentId,
         templateId: metadata.templateId,
       })
@@ -408,7 +408,7 @@ async function handleSubscriptionCancelled(
 /**
  * Renewal dunning. Keep access (hasActiveSubscription=true) and stamp
  * subscriptionStatus=on_hold so trial-expiry stop SKIPSs (be82fa9 race).
- * ABSENT before GRACE-24 — webhook :206-:280 had no on_hold writer.
+ * ABSENT before GRACE-24 - webhook :206-:280 had no on_hold writer.
  */
 async function handleSubscriptionOnHold(
   data: Record<string, unknown> | undefined,
@@ -426,7 +426,7 @@ async function handleSubscriptionOnHold(
         ...(subscriptionId ? { subscriptionId } : {}),
       },
     })
-    log.info("Subscription on_hold (dunning) — trial-expiry stop will skip", {
+    log.info("Subscription on_hold (dunning) - trial-expiry stop will skip", {
       userId: user.id,
       subscriptionId: subscriptionId ?? null,
     })
@@ -464,7 +464,7 @@ async function handleSubscriptionFailed(
       // retry storms. Log and continue.
       try {
         await destroyContainer(metadata.workspaceId)
-        // Dodo enforcement: subscription.failed — serviceDelete is correct.
+        // Dodo enforcement: subscription.failed - serviceDelete is correct.
       } catch (err) {
         log.error("Failed to destroy container on subscription failure", {
           workspaceId: metadata.workspaceId,

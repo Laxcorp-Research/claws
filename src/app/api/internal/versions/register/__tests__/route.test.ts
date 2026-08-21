@@ -329,7 +329,7 @@ describe("POST /api/internal/versions/register", () => {
       expect("isLatest" in upsertArgs.update).toBe(false);
     });
 
-    // ─── MUTATION TEST — the canary that fails if a future change drops
+    // ─── MUTATION TEST - the canary that fails if a future change drops
     //     the "clear prior isStable" updateMany. Two rows with isStable=true
     //     would silently break the deployer's findFirst({ isStable: true })
     //     query (it'd return whichever row Postgres orders first, which is
@@ -419,7 +419,7 @@ describe("POST /api/internal/versions/register", () => {
       const res = await callRoute(buildCandidateBody(), PIPELINE_SECRET);
       expect(res.status).toBe(200);
 
-      // The route MUST use upsert, not create — a second call with the same
+      // The route MUST use upsert, not create - a second call with the same
       // version must not 409 / not error / not create a duplicate row.
       // (.unique on `version` would also surface this at the DB level, but
       // we want the route to be explicitly upsert-shaped.)

@@ -183,7 +183,7 @@ describe('buildHeartbeatSchedule', () => {
   // would cause real workspaces' heartbeats to silently fail to fire.
   // ───────────────────────────────────────────────────────────────────
 
-  describe('PR-2b #8: cron id field (required by load — missing-id check at upstream cron/persisted-shape.ts:13-16)', () => {
+  describe('PR-2b #8: cron id field (required by load - missing-id check at upstream cron/persisted-shape.ts:13-16)', () => {
     it('MUTATION-anchored: emits id as a non-empty string for daily', () => {
       // If we accidentally drop the id field, upstream
       // getInvalidPersistedCronJobReason() returns "missing-id" and the
@@ -324,7 +324,7 @@ describe('buildHeartbeatSchedule', () => {
       expect(a?.cronJob?.schedule).toEqual({ kind: 'cron', expr: '*/5 * * * *' });
       expect(b?.cronJob?.schedule).toEqual({ kind: 'cron', expr: '*/5 * * * *' });
       // Explicit assertion that we omitted the tz field (the cron expr
-      // is timezone-agnostic for */5 — but we still want the absence
+      // is timezone-agnostic for */5 - but we still want the absence
       // documented so a future refactor doesn't accidentally add it).
       expect(a?.cronJob?.schedule as unknown as Record<string, unknown>).not.toHaveProperty('tz');
     });

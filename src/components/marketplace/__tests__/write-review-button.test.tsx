@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // C4-a: outline (transparent + --tx2) still read as a gray label. CTA must be
-// filled DS primary at default 11px — never sm, never outline.
+// filled DS primary at default 11px - never sm, never outline.
 
 import { afterEach, describe, expect, it } from "vitest"
 import { cleanup, render, screen } from "@testing-library/react"
@@ -14,7 +14,7 @@ afterEach(() => cleanup())
 const DEFAULT_SIZE = "text-[11px]"
 const SM_SIZE = "text-[10px]"
 
-describe("WriteReviewButton — DS default size", () => {
+describe("WriteReviewButton - DS default size", () => {
   it("is visible at default 11px, not sm 10px", () => {
     render(<WriteReviewButton onClick={() => {}} />)
     const btn = screen.getByTestId("write-review-cta")

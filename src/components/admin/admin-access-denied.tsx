@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
  * Shown when a non-admin reaches an /admin surface. Distinct from a page's
  * "empty" state: it makes "you're not authorized" unmistakable instead of
  * looking like "there's no data here" (GH #127). The real access control is
- * the API's requireAdmin 403 (and, separately, server-side middleware — see
+ * the API's requireAdmin 403 (and, separately, server-side middleware - see
  * the middleware authorization-gap issue, GH #133); this is the honest client
  * surface, not the access control itself.
  */

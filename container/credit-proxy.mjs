@@ -306,7 +306,7 @@ async function handleApiCall(req, res, body, parsed) {
       return;
     }
 
-    // -11: buffered path — on thinking-signature reject, strip + retry ONCE.
+    // -11: buffered path - on thinking-signature reject, strip + retry ONCE.
     let responseBody = await anthropicRes.text();
     let bodyJson = null;
     try {
@@ -447,7 +447,7 @@ async function handleStreamingResponse(req, res, anthropicRes, model, estimatedC
             outputTokens = event.usage.output_tokens || 0;
           }
         } catch {
-          // Partial JSON or non-JSON data line — skip
+          // Partial JSON or non-JSON data line - skip
         }
       }
     }
@@ -662,7 +662,7 @@ export const __test__ = {
   healThinkingSignatureOnce,
 };
 
-// ─── Start Server (entrypoint only — vitest imports must not listen) ───
+// ─── Start Server (entrypoint only - vitest imports must not listen) ───
 
 if (isDirectEntrypoint()) {
   server.listen(PORT, HOST, () => {

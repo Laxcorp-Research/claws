@@ -1,5 +1,5 @@
 // PR-1: tests for the shared container state-sync module
-// (container/state-sync.mjs) — Blob-only transport (token → put → finalize).
+// (container/state-sync.mjs) - Blob-only transport (token → put → finalize).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import fs from "node:fs"
@@ -60,7 +60,7 @@ function blobHappyFetch(finalizeBody: Record<string, unknown> = { success: true,
       return { ok: true, status: 200, json: async () => finalizeBody }
     }
     if (u.includes("/state/upload")) {
-      throw new Error("legacy /upload must not be called — Blob-only transport")
+      throw new Error("legacy /upload must not be called - Blob-only transport")
     }
     throw new Error(`unexpected fetch ${u}`)
   })
@@ -95,7 +95,7 @@ describe("bundleRuntimeState", () => {
   })
 })
 
-describe("runStateSync — Blob-only status mapping", () => {
+describe("runStateSync - Blob-only status mapping", () => {
   const nonEmptyBundle = () => ({ files: { "agents/main/sessions/s1.jsonl": "e30=" }, totalSize: 2 })
 
   it("status 'persisted' when finalize confirms count>=1", async () => {
@@ -149,7 +149,7 @@ describe("runStateSync — Blob-only status mapping", () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it("status 'unconfigured' when env is missing — nothing attempted", async () => {
+  it("status 'unconfigured' when env is missing - nothing attempted", async () => {
     delete process.env.CLAWS_METERING_SECRET
     const fetchImpl = vi.fn()
     const r = await mod.runStateSync({ bundleFn: nonEmptyBundle, fetchImpl })
@@ -158,7 +158,7 @@ describe("runStateSync — Blob-only status mapping", () => {
   })
 })
 
-describe("runStateSync — per-process in-flight guard", () => {
+describe("runStateSync - per-process in-flight guard", () => {
   it("coalesces concurrent callers into ONE bundle/upload; both resolve identically", async () => {
     let releaseUpload: (v: unknown) => void = () => {}
     const uploadGate = new Promise((res) => {
@@ -194,7 +194,7 @@ describe("runStateSync — per-process in-flight guard", () => {
   })
 })
 
-describe("bundle hygiene — live-set filter (PR-2 -8)", () => {
+describe("bundle hygiene - live-set filter (PR-2 -8)", () => {
   const LIVE_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
   const LIVE_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
   const LIVE_C = "cccccccc-cccc-cccc-cccc-cccccccccccc"
@@ -272,7 +272,7 @@ describe("bundle hygiene — live-set filter (PR-2 -8)", () => {
       fs.mkdirSync(sess, { recursive: true })
       fs.writeFileSync(path.join(sess, `${ORPHAN}.jsonl`), "{}\n")
       fs.writeFileSync(path.join(sess, `${ORPHAN}.jsonl.reset.x`), "r")
-      // No sessions.json — dropping fail-open (treat as empty live set) fails.
+      // No sessions.json - dropping fail-open (treat as empty live set) fails.
       const { files } = mod.bundleRuntimeState(dir)
       const keys = Object.keys(files)
       expect(keys).toContain(`agents/orphan-agent/sessions/${ORPHAN}.jsonl`)
@@ -294,12 +294,12 @@ describe("near-cap WARNING hysteresis (PR-2 -8)", () => {
     expect(warnAt).toBe(Math.floor(mod.ABSOLUTE_MAX_COMPRESSED_BYTES * 0.8))
     expect(rearmBelow).toBe(Math.floor(mod.ABSOLUTE_MAX_COMPRESSED_BYTES * 0.7))
 
-    // Just under 80% — no emit. Dropping the ≥ check (always emit) would fail.
+    // Just under 80% - no emit. Dropping the ≥ check (always emit) would fail.
     expect(mod.evaluateNearCap(warnAt - 1).emit).toBe(false)
 
-    // Cross 80% — emit once.
+    // Cross 80% - emit once.
     expect(mod.evaluateNearCap(warnAt).emit).toBe(true)
-    // Still above rearm band — suppressed.
+    // Still above rearm band - suppressed.
     expect(mod.evaluateNearCap(warnAt + 1000).emit).toBe(false)
     expect(mod.evaluateNearCap(rearmBelow).emit).toBe(false)
 

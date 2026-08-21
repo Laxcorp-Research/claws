@@ -7,7 +7,7 @@ import {
   WAKE_REPLY_WAIT_MS,
 } from "@/lib/hibernation/wake-reply-routing"
 
-describe("resolveWakeReplyDelivery — origin channel → delivery target", () => {
+describe("resolveWakeReplyDelivery - origin channel → delivery target", () => {
   it("telegram origin → platform_telegram with same chatId", () => {
     expect(resolveWakeReplyDelivery({ channel: "telegram", chatId: 1227037949 })).toEqual({
       mode: "platform_telegram",

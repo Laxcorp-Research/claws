@@ -33,7 +33,7 @@ describe("credit usage retention", () => {
     expect(src).toContain("idempotencyKey")
   })
 
-  it("MUTATION: aggregate daily upsert SET (not increment) — drop → double-count class", () => {
+  it("MUTATION: aggregate daily upsert SET (not increment) - drop → double-count class", () => {
     const src = readFileSync(
       join(process.cwd(), "src/app/api/cron/aggregate-credit-usage/route.ts"),
       "utf8",

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   // src/lib/openclaw/env-guards.ts for full root-cause writeup.
   //
   // We run the guards up-front (before workspace lookup) so a misconfigured
-  // deploy fails the same way for every workspace — no per-workspace skew.
+  // deploy fails the same way for every workspace - no per-workspace skew.
   let activityEndpoint: string
   let meteringEndpoint: string
   try {
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   envVars.push(`CLAWS_METERING_ENDPOINT=${meteringEndpoint}`)
   envVars.push(`CLAWS_METERING_SECRET=${process.env.METERING_MASTER_SECRET}`)
 
-  // PR-2: Activity Wire — universal, mirrors the metering triplet above.
+  // PR-2: Activity Wire - universal, mirrors the metering triplet above.
   // The claws-activity-reporter overlay plugin (loaded by the OpenClaw
   // gateway from /opt/claws-activity-reporter) reads both and POSTs
   // batched events. Must match src/lib/openclaw/deployer.ts:buildRailwayEnvVars.

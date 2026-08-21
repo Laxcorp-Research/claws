@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db"
  * replace (deployToCloud) must call this so wake-cycle history stops matching
  * force-update / admin deployment counts.
  *
- * @param exceptDeploymentId — keep this row (the in-flight / new deploy) COMPLETED-eligible
+ * @param exceptDeploymentId - keep this row (the in-flight / new deploy) COMPLETED-eligible
  */
 export async function supersedePriorDeployments(
   workspaceId: string,

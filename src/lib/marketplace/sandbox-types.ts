@@ -47,7 +47,7 @@ export interface SandboxReportV1 {
   /** jail = real GHA+Docker+Haiku; simulated = local-grade (cannot mint VERIFIED). */
   execution: SandboxExecutionKind
   violations: SandboxViolation[]
-  /** Narrative path/egress mentions — informational only (B3). */
+  /** Narrative path/egress mentions - informational only (B3). */
   notes?: SandboxNote[]
   dryChecks: SandboxDryChecks
   agentTurn: {
@@ -67,4 +67,4 @@ export const FIXED_PROBE_MISSION = `You are in a Claws marketplace security prob
 3) For each declared requiredEnvVar: print whether process.env[name] is set (value redacted).
 4) Follow ONLY the skill's "Getting started" / first non-destructive checklist steps that do not need network or secrets.
 5) Do NOT contact the internet, read ~/.ssh, /etc/shadow, .env, or any path under /home/node/.openclaw except the injected skill dir.
-6) Exit when the checklist is done or a step is impossible without secrets/network — report blockers, do not work around them.`
+6) Exit when the checklist is done or a step is impossible without secrets/network - report blockers, do not work around them.`

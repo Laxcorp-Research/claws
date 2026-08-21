@@ -162,7 +162,7 @@ async function emitSkillMd(skillSlug: string, compatibleTools: string[]): Promis
 
 // ─── Tests ──────────────────────────────────────────────
 
-describe("PR #3a sanitizer contract — emitted frontmatter passes runtime sanitizer", () => {
+describe("PR #3a sanitizer contract - emitted frontmatter passes runtime sanitizer", () => {
   it("single-cred tool (tavily): generator emits primaryEnv + requires.env, runtime allows the key", async () => {
     const skillMd = await emitSkillMd("tavily-search", ["tavily"])
     const fm = parseEmittedFrontmatter(skillMd)
@@ -279,7 +279,7 @@ describe("PR #3a sanitizer contract — emitted frontmatter passes runtime sanit
     // Simulate what happens without PR #3a's catalog lookup: skill has
     // primaryEnv=FOO_API_KEY but the injected env var is TAVILY_API_KEY.
     // The runtime sanitizer blocks TAVILY_API_KEY because it's not in the
-    // allowlist. This test proves the WARN would fire on misconfiguration —
+    // allowlist. This test proves the WARN would fire on misconfiguration -
     // i.e. PR #3a's catalog-driven emission is what prevents this.
     const misconfiguredAllowlist = new Set(["FOO_API_KEY"])
     const sanitized = sanitizeSkillEnvOverrides({
@@ -302,7 +302,7 @@ describe("PR #3a sanitizer contract — emitted frontmatter passes runtime sanit
   })
 })
 
-describe("PR #3a sanitizer contract — catalog-wide integrity check", () => {
+describe("PR #3a sanitizer contract - catalog-wide integrity check", () => {
   it("every API_KEY catalog entry's envVars would pass the sanitizer when declared as allowlist", () => {
     const apiKeyTools = ALL_TOOLS.filter((t: ToolDefinition) => t.connectionType === "API_KEY")
     expect(apiKeyTools.length).toBeGreaterThan(0)

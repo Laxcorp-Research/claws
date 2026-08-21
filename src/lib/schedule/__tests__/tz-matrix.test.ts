@@ -5,7 +5,7 @@ import type { ScheduleValue } from "@/lib/schedule/types"
 
 const FROM = new Date("2026-08-17T12:00:00.000Z") // Monday
 
-describe("tz matrix — GST / UTC / US-west render, UTC instants", () => {
+describe("tz matrix - GST / UTC / US-west render, UTC instants", () => {
   const value: ScheduleValue = { mode: "daily", time: "08:00" }
 
   it("same wall-clock 08:00 yields distinct UTC instants per workspace tz", () => {

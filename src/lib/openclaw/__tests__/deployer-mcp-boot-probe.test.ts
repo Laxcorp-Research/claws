@@ -1,4 +1,4 @@
-// deployer-mcp-boot-probe.test.ts — C-engine B1 cold-boot surfacing contract.
+// deployer-mcp-boot-probe.test.ts - C-engine B1 cold-boot surfacing contract.
 //
 // surfaceMcpBootFailure is the deployer's minimal detection for the SILENT
 // in-container MCP connect failure (Probe 3 step 7): probe the Tool Router

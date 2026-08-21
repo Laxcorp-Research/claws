@@ -1,4 +1,4 @@
--- OpenRouter arc: dynamic model registry (OPENROUTER already in ApiProvider enum — no enum migrate).
+-- OpenRouter arc: dynamic model registry (OPENROUTER already in ApiProvider enum - no enum migrate).
 
 CREATE TABLE IF NOT EXISTS "ModelCatalogEntry" (
     "id" TEXT NOT NULL,

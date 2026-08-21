@@ -53,7 +53,7 @@ afterEach(() => {
   __clearSnapshotConversationsCacheForTests()
 })
 
-describe("isAllowedSessionPath — path allowlist", () => {
+describe("isAllowedSessionPath - path allowlist", () => {
   it("allows agents/<id>/sessions/<file> only", () => {
     expect(isAllowedSessionPath("agents/dev-commander/sessions/sessions.json")).toBe(true)
     expect(isAllowedSessionPath(`agents/dev-commander/sessions/${OLD_MAIN}.jsonl`)).toBe(true)
@@ -193,7 +193,7 @@ describe("response cache keyed (workspaceId, runtimeStateUpdatedAt)", () => {
     })
     const second = loadSnapshotConversationsFromGzip({
       workspaceId: "ws-cache",
-      gzipBytes: gzipB, // different bytes — must be ignored on cache hit
+      gzipBytes: gzipB, // different bytes - must be ignored on cache hit
       runtimeStateUpdatedAt: t1,
     })
     expect(first.ok && second.ok).toBe(true)
@@ -222,7 +222,7 @@ describe("response cache keyed (workspaceId, runtimeStateUpdatedAt)", () => {
     const t1 = new Date("2026-07-11T12:00:00.000Z")
     const t2 = new Date("2026-07-11T13:00:00.000Z")
     staleCache.set(badKey("ws", t1), "A")
-    // Under mutated keying, t2 overwrites nothing new — still serves A
+    // Under mutated keying, t2 overwrites nothing new - still serves A
     expect(staleCache.get(badKey("ws", t2))).toBe("A")
 
     const good = new Map<string, string>()

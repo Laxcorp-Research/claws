@@ -2,7 +2,7 @@
 // Only `sanitizeSkillEnvOverrides` + `isAlwaysBlockedSkillEnvKey` are needed
 // for the contract test; the outer apply/revert + logger/config machinery
 // (applySkillConfigEnvOverrides, createEnvReverter, createSubsystemLogger,
-// resolveSkillConfig, resolveSkillKey) is out of scope — we only test the
+// resolveSkillConfig, resolveSkillKey) is out of scope - we only test the
 // allow/block decision given an overrides record + an allowlist.
 //
 // See README.md in this directory for source provenance and re-sync.

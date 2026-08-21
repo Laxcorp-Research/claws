@@ -95,7 +95,7 @@ async function openModal() {
   expect(await screen.findByRole("dialog")).toBeDefined()
 }
 
-describe("ModelPicker — button + modal", () => {
+describe("ModelPicker - button + modal", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetModelCatalogCache()
@@ -291,7 +291,7 @@ describe("ModelPicker — button + modal", () => {
     const priced = screen.getByRole("option", { name: /Claude Sonnet 4\.7/ })
     expect(within(priced).getByText("$3.00/$15.00 per 1M tok")).toBeDefined()
     const unpriced = screen.getByRole("option", { name: /Claude Haiku 4\.5/ })
-    expect(within(unpriced).getByText("—")).toBeDefined()
+    expect(within(unpriced).getByText("-")).toBeDefined()
   })
 
   it("per-model thinking gate: non-reasoning model locks levels at Default and saves null", async () => {

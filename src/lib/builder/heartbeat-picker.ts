@@ -10,7 +10,7 @@ export type PickerHeartbeatSchedule = {
 /**
  * Map DB orchestrator heartbeat fields → Builder picker value.
  * Null/missing frequency + HEARTBEAT.md cron (or deployed cron exprs) hydrates
- * as the selected editor value (times / monthly / cron) — never silent "Off"
+ * as the selected editor value (times / monthly / cron) - never silent "Off"
  * for an armed claw, never a template-schedule banner.
  */
 export function resolvePickerHeartbeatSchedule(args: {

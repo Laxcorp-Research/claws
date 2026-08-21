@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS: a REMOTE gateway client authenticating with the shared
 // OPENCLAW_GATEWAY_TOKEN but presenting NO device identity gets its
-// requested scopes CLEARED by OpenClaw's connect policy — the connection is
+// requested scopes CLEARED by OpenClaw's connect policy - the connection is
 // allowed (role operator) but chat.send then fails "missing scope:
 // operator.write". Verified live in the PR-9/0 spike; full protocol
 // evidence in docs/OPENCLAW_GATEWAY_PROTOCOL.md §3. So every send presents
@@ -11,7 +11,7 @@
 //
 // Key material lives on Workspace.chatDeviceKeyEncrypted as ONE AES-256-GCM
 // blob (same pipeline as gatewayToken): {deviceId, publicKeyRawB64u,
-// privateKeyPem}. Generated lazily on first send — no backfill.
+// privateKeyPem}. Generated lazily on first send - no backfill.
 //
 // Wire formats (verified against upstream v2026.5.22 + live captures):
 //   deviceId       = sha256 hex of the RAW 32-byte Ed25519 public key
@@ -26,7 +26,7 @@
 import crypto from "node:crypto"
 import { encrypt, decrypt } from "@/lib/encryption"
 
-// SPKI prefix for Ed25519 public keys — strip it to get the raw 32 bytes
+// SPKI prefix for Ed25519 public keys - strip it to get the raw 32 bytes
 // (mirrors upstream src/infra/device-identity.ts).
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex")
 

@@ -8,7 +8,7 @@ import {
 } from "@/lib/tools/tool-dependents"
 
 /**
- * GET ?slug= — labeled agent dependents for REMOVE warning dialog.
+ * GET ?slug= - labeled agent dependents for REMOVE warning dialog.
  */
 export async function GET(
   req: NextRequest,

@@ -5,7 +5,7 @@
  * event, e.g.:
  *   'Sent to telegram: Cron job "orchestrator-heartbeat-md-0-12-16-20"
  *    failed: LLM request rejected: ...'
- * (this is the SAME text shape thinking-signature poison detects — poison
+ * (this is the SAME text shape thinking-signature poison detects - poison
  * is one specific cause of a cron job failing; this module fires on the
  * broader "same job failed repeatedly" signal regardless of cause.)
  *
@@ -19,7 +19,7 @@ export const CRON_JOB_FAILED_RE = /Cron job "([^"]+)" failed/i
 /** Repeat-failure lookback window for the same job name. */
 export const CRON_JOB_FAILED_WINDOW_MS = 6 * 60 * 60 * 1000
 
-/** "Same job 2+ consecutive" — the second failure in-window triggers the push. */
+/** "Same job 2+ consecutive" - the second failure in-window triggers the push. */
 export const CRON_JOB_FAILED_MIN_COUNT = 2
 
 export type CronJobFailedDetectInput = {

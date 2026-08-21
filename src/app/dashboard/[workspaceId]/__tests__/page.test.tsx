@@ -236,7 +236,7 @@ describe("DashboardPage MCP session banner", () => {
   it("renders the long-tail disconnected banner and uses the shared redeploy flow", async () => {
     render(<DashboardPage />)
 
-    expect(await screen.findByText("Long-tail tools disconnected — redeploy to restore")).toBeDefined()
+    expect(await screen.findByText("Long-tail tools disconnected - redeploy to restore")).toBeDefined()
     fireEvent.click(screen.getAllByRole("button", { name: "Redeploy" }).at(-1)!)
     fireEvent.click(screen.getByRole("button", { name: "Confirm Redeploy" }))
 
@@ -249,7 +249,7 @@ describe("DashboardPage MCP session banner", () => {
     render(<DashboardPage />)
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled())
-    expect(screen.queryByText("Long-tail tools disconnected — redeploy to restore")).toBeNull()
+    expect(screen.queryByText("Long-tail tools disconnected - redeploy to restore")).toBeNull()
   })
 
   it("shows trial-active banner for PLATFORM_CREDIT users (credit mode does not hide trial)", async () => {
@@ -264,7 +264,7 @@ describe("DashboardPage MCP session banner", () => {
 
     render(<DashboardPage />)
 
-    expect(await screen.findByText(/Free trial — \d+ days? remaining/)).toBeDefined()
+    expect(await screen.findByText(/Free trial - \d+ days? remaining/)).toBeDefined()
     expect(screen.getByText("Subscribe to keep your Claws running after the trial ends.")).toBeDefined()
   })
 
@@ -273,7 +273,7 @@ describe("DashboardPage MCP session banner", () => {
 
     render(<DashboardPage />)
 
-    expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
+    expect(await screen.findByText("Activity feed appears silent - agents may be running but not reporting.")).toBeDefined()
     fireEvent.click(screen.getByRole("button", { name: "Force restart" }))
 
     await waitFor(() => {
@@ -286,7 +286,7 @@ describe("DashboardPage MCP session banner", () => {
 
     render(<DashboardPage />)
 
-    expect(await screen.findByText("Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
+    expect(await screen.findByText("Agent memory backup is stale - recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
     fireEvent.click(screen.getByRole("button", { name: "Force restart" }))
 
     await waitFor(() => {
@@ -299,10 +299,10 @@ describe("DashboardPage MCP session banner", () => {
 
     render(<DashboardPage />)
 
-    await screen.findByText("Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.")
+    await screen.findByText("Agent memory backup is stale - recent memory may not survive a restart. Force-restart to restore syncing.")
     fireEvent.click(screen.getAllByRole("button", { name: "Redeploy" })[0])
 
-    expect(await screen.findByText("Memory backup is stale — recent agent memory may be lost.")).toBeDefined()
+    expect(await screen.findByText("Memory backup is stale - recent agent memory may be lost.")).toBeDefined()
   })
 
   it("syncs dashboard tabs to the URL", async () => {
@@ -328,7 +328,7 @@ describe("DashboardPage MCP session banner", () => {
     render(<DashboardPage />)
 
     const alwaysOnToggle = await screen.findByRole("switch", {
-      name: "Always on — never hibernate (higher hosting cost)",
+      name: "Always on - never hibernate (higher hosting cost)",
     })
     expect(alwaysOnToggle.getAttribute("aria-checked")).toBe("false")
 
@@ -452,18 +452,18 @@ describe("DashboardPage MCP session banner", () => {
 
     expect(await screen.findByText("Agent container is not responding")).toBeDefined()
     const expander = await screen.findByRole("button", { name: "7 more alerts" })
-    expect(screen.queryByText("A runtime update is available — redeploy to apply")).toBeNull()
+    expect(screen.queryByText("A runtime update is available - redeploy to apply")).toBeNull()
 
     fireEvent.click(expander)
 
-    expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
+    expect(await screen.findByText("Activity feed appears silent - agents may be running but not reporting.")).toBeDefined()
     expect(screen.getByText(/Memory bundle approaching size limit/)).toBeDefined()
     expect(screen.getByRole("button", { name: "Manage sessions" })).toBeDefined()
-    expect(screen.getByText("Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
+    expect(screen.getByText("Agent memory backup is stale - recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
     expect(screen.getByText("HubSpot connection expired")).toBeDefined()
-    expect(screen.getByText("Long-tail tools disconnected — redeploy to restore")).toBeDefined()
-    expect(screen.getByText("Configuration changed since last deploy — redeploy to apply")).toBeDefined()
-    expect(screen.getByText("A runtime update is available — redeploy to apply")).toBeDefined()
+    expect(screen.getByText("Long-tail tools disconnected - redeploy to restore")).toBeDefined()
+    expect(screen.getByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
+    expect(screen.getByText("A runtime update is available - redeploy to apply")).toBeDefined()
 
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }))
     expect(mockPush).toHaveBeenCalledWith("/setup/ws-1/step/2?mode=manage")
@@ -487,7 +487,7 @@ describe("DashboardPage MCP session banner", () => {
     mockFetch({ stateSyncNearCapActive: false, activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z" })
     render(<DashboardPage />)
 
-    expect(await screen.findByText("Activity feed appears silent — agents may be running but not reporting.")).toBeDefined()
+    expect(await screen.findByText("Activity feed appears silent - agents may be running but not reporting.")).toBeDefined()
     expect(screen.queryByText(/Memory bundle approaching size limit/)).toBeNull()
   })
 
@@ -521,11 +521,11 @@ describe("DashboardPage MCP session banner", () => {
 
     expect(await screen.findByText(/Monthly API spend limit reached/)).toBeDefined()
     expect(
-      screen.queryByText("Activity feed appears silent — agents may be running but not reporting."),
+      screen.queryByText("Activity feed appears silent - agents may be running but not reporting."),
     ).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "1 more alert" }))
     expect(
-      screen.getByText("Activity feed appears silent — agents may be running but not reporting."),
+      screen.getByText("Activity feed appears silent - agents may be running but not reporting."),
     ).toBeDefined()
   })
 

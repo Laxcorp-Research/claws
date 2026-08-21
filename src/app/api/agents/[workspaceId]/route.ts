@@ -55,7 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       soulMd: body.soulMd || "# New Agent\n\nDescribe this agent's identity.",
       agentsMd: body.agentsMd || "# Team\n\nDescribe how this agent works with others.",
       positionX: body.positionX ?? 300, positionY: body.positionY ?? 200,
-      // reportsTo is a read-only edge projection — never accept writers.
+      // reportsTo is a read-only edge projection - never accept writers.
       qualityThreshold: body.qualityThreshold ?? 8.0,
     },
   })

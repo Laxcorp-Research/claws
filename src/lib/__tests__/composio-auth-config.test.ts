@@ -1,4 +1,4 @@
-// PR2.8a-fix1 Task 9 — unit tests for `ensureAuthConfigForToolkit`.
+// PR2.8a-fix1 Task 9 - unit tests for `ensureAuthConfigForToolkit`.
 //
 // Coverage targets (locked, regress on change):
 //   1. Toolkit metadata returns empty composioManagedAuthSchemes → throws
@@ -181,8 +181,8 @@ describe("ensureAuthConfigForToolkit", () => {
     composio.toolkits.get.mockResolvedValue({
       slug: "freshbooks",
       name: "FreshBooks",
-      // Pretend Composio still claims managed-auth available — pre-check
-      // passes — but create rejects (the race scenario).
+      // Pretend Composio still claims managed-auth available - pre-check
+      // passes - but create rejects (the race scenario).
       composioManagedAuthSchemes: ["OAUTH2"],
     })
     composio.authConfigs.list
@@ -211,7 +211,7 @@ describe("ensureAuthConfigForToolkit", () => {
     ).rejects.toBeInstanceOf(ComposioToolkitRequiresCustomOAuthError)
   })
 
-  it("re-throws unrelated SDK errors (transient quota / 502 / network) — does not mask as RequiresCustomOAuth", async () => {
+  it("re-throws unrelated SDK errors (transient quota / 502 / network) - does not mask as RequiresCustomOAuth", async () => {
     const composio = makeComposio()
     composio.toolkits.get.mockResolvedValue({
       slug: "outlook",
@@ -245,7 +245,7 @@ describe("ensureAuthConfigForToolkit", () => {
     // Step 3 initial list is empty (we want to enter the lock path).
     composio.authConfigs.list
       .mockResolvedValueOnce({ items: [] })
-      // After 500ms sleep, the other caller has finished — config exists.
+      // After 500ms sleep, the other caller has finished - config exists.
       .mockResolvedValueOnce({ items: [{ id: "ac_other_created" }] })
 
     ;(prismaMock.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
@@ -265,7 +265,7 @@ describe("ensureAuthConfigForToolkit", () => {
       vi.useRealTimers()
     }
 
-    // We must NOT have called create — the other caller did.
+    // We must NOT have called create - the other caller did.
     expect(composio.authConfigs.create).not.toHaveBeenCalled()
     // We must NOT have unlocked something we never locked.
     expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(1)
@@ -293,7 +293,7 @@ describe("ensureAuthConfigForToolkit", () => {
         "outlook",
       )
       // Register the rejection handler synchronously BEFORE advancing the
-      // fake clock — otherwise vitest's unhandled-rejection detector flags
+      // fake clock - otherwise vitest's unhandled-rejection detector flags
       // the in-flight rejection during the 500ms tick window.
       const assertion = expect(promise).rejects.toThrow(
         /in flight by another caller/i,
@@ -316,7 +316,7 @@ describe("ensureAuthConfigForToolkit", () => {
 //   - ensureBYOKAuthConfig's create call uses use_custom_auth + API_KEY +
 //     a placeholder credential (real keys never flow through here)
 //   - createBYOKConnectedAccount calls connectedAccounts.initiate with
-//     AuthScheme.APIKey({ api_key })  — capital APIKey, api_key (snake) key
+//     AuthScheme.APIKey({ api_key })  - capital APIKey, api_key (snake) key
 //   - Empty/blank API keys are rejected client-of-helper-side before
 //     reaching Composio (avoid creating useless ACTIVE rows that always 401)
 describe("classifyToolkitAuthMode (PR2.9)", () => {
@@ -370,7 +370,7 @@ describe("classifyToolkitAuthMode (PR2.9)", () => {
   })
 
   it("returns requires-custom-oauth when no managed + no API_KEY", () => {
-    // twitter, docusign — pure OAuth-only toolkits.
+    // twitter, docusign - pure OAuth-only toolkits.
     expect(
       classifyToolkitAuthMode({
         name: "Twitter/X",
@@ -503,7 +503,7 @@ describe("ensureBYOKAuthConfig (PR2.9)", () => {
     })
   })
 
-  it("BYOK lock key is namespaced — won't collide with managed-OAuth lock on same slug", async () => {
+  it("BYOK lock key is namespaced - won't collide with managed-OAuth lock on same slug", async () => {
     const composio = makeComposio()
     composio.toolkits.get.mockResolvedValue({
       slug: "shopify",
@@ -518,7 +518,7 @@ describe("ensureBYOKAuthConfig (PR2.9)", () => {
 
     // Capture the raw-SQL call shape so we can assert hashtext arg is
     // namespaced. PrismaMock's $queryRaw is called with a template-string
-    // array shaped object — easiest is to spy.
+    // array shaped object - easiest is to spy.
     const queryRawMock = prismaMock.$queryRaw as ReturnType<typeof vi.fn>
     queryRawMock
       .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
@@ -529,7 +529,7 @@ describe("ensureBYOKAuthConfig (PR2.9)", () => {
     // Both calls should have used the BYOK-namespaced key. We can't easily
     // inspect prisma's tagged-template internals from the mock, but we
     // can assert prisma was hit exactly twice (lock + unlock) and that
-    // create was made — together this confirms the lock dance ran.
+    // create was made - together this confirms the lock dance ran.
     expect(queryRawMock).toHaveBeenCalledTimes(2)
     expect(composio.authConfigs.create).toHaveBeenCalledTimes(1)
   })
@@ -563,7 +563,7 @@ describe("createBYOKConnectedAccount (PR2.9)", () => {
       ),
     ).rejects.toThrow(/api key is required/i)
 
-    // Critically: never reached Composio with a blank key — that would
+    // Critically: never reached Composio with a blank key - that would
     // create a useless ACTIVE row that 401s at execute time.
     expect(composio.toolkits.get).not.toHaveBeenCalled()
     expect(composio.connectedAccounts.initiate).not.toHaveBeenCalled()
@@ -597,7 +597,7 @@ describe("createBYOKConnectedAccount (PR2.9)", () => {
       "claws_user-42",
       "ac_byok_typefully",
       {
-        // The mocked AuthScheme.APIKey returns this shape — proves
+        // The mocked AuthScheme.APIKey returns this shape - proves
         // capital APIKey + snake api_key were used and the user's key
         // flowed through (NOT the placeholder).
         config: {
@@ -698,7 +698,7 @@ describe("createBYOKConnectedAccount (PR2.9)", () => {
     )
 
     // Stringify all captured log call args and assert the literal key
-    // string never appears. Works for any shape — flat string, nested
+    // string never appears. Works for any shape - flat string, nested
     // object, error-message embed, accidental console.log redirect.
     const allLogArgs = [
       ...infoSpy.mock.calls,

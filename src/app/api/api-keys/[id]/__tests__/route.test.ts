@@ -1,4 +1,4 @@
-// PR-8b/C (E2): DELETE /api/api-keys/[id] — removing a BYOK key schedules a
+// PR-8b/C (E2): DELETE /api/api-keys/[id] - removing a BYOK key schedules a
 // fire-and-forget reconcile of the user's RUNNING containers.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { prismaMock } from '@/test/helpers/mock-prisma'
@@ -34,7 +34,7 @@ beforeEach(() => {
 })
 
 describe('DELETE /api/api-keys/[id]', () => {
-  it('returns 401 when not authenticated — no reconcile scheduled', async () => {
+  it('returns 401 when not authenticated - no reconcile scheduled', async () => {
     const { getSessionUser } = await import('@/lib/api/auth')
     ;(getSessionUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const res = await del('key-1')
@@ -42,7 +42,7 @@ describe('DELETE /api/api-keys/[id]', () => {
     expect(mockAfter).not.toHaveBeenCalled()
   })
 
-  it('returns 404 when key not found / not owned — no delete, no reconcile', async () => {
+  it('returns 404 when key not found / not owned - no delete, no reconcile', async () => {
     ;(prismaMock.userApiKey.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null)
     const res = await del('key-x')
     expect(res.status).toBe(404)

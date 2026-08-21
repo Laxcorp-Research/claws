@@ -16,7 +16,7 @@ export const authRateLimit = new Ratelimit({
 });
 
 // PR-9/A-vercel: per-workspace chat sends. Keyed `${userId}:${workspaceId}`
-// (checked INSIDE the chat route after ownership — the middleware can't
+// (checked INSIDE the chat route after ownership - the middleware can't
 // know the workspace cheaply). Each accepted send triggers an LLM turn on
 // the user's key/credits, so this is tighter than the global API limit.
 // Fail-open like the others (route catches Redis errors).

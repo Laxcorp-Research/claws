@@ -90,7 +90,7 @@ export async function GET(
             }
           }
         } catch {
-          // Redis unavailable — skip this tick
+          // Redis unavailable - skip this tick
         }
       }, POLL_MS)
 

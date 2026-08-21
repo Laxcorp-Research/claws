@@ -1,4 +1,4 @@
-// container-env-pipeline.test.ts — PR-8a/B/C end-to-end integration of the three
+// container-env-pipeline.test.ts - PR-8a/B/C end-to-end integration of the three
 // helpers the reconciliation cron will chain to detect credential drift:
 //
 //   getServiceVariables(serviceId)            // ACTUAL env off the live service
@@ -7,7 +7,7 @@
 //   vs deriveContainerEnv(workspace, user).keyFingerprint   // EXPECTED fingerprint
 //
 // These tests use the REAL getServiceVariables (fetch is mocked) so the whole
-// chain — Railway read + null coercion + decode + fingerprint — is exercised,
+// chain - Railway read + null coercion + decode + fingerprint - is exercised,
 // not a stub. deriveContainerEnv is real; only fetch + encryption + logger are
 // mocked. See the railway-client.test.ts header for the module-load env gotcha
 // (RAILWAY_* captured at import → stub before the dynamic import).
@@ -71,7 +71,7 @@ afterEach(() => {
 })
 
 describe("container-env reconciliation pipeline (PR-8a/B/C)", () => {
-  it("A — credit-mode happy path: actual fingerprint matches deriveContainerEnv (master key)", async () => {
+  it("A - credit-mode happy path: actual fingerprint matches deriveContainerEnv (master key)", async () => {
     process.env.CLAWS_MASTER_ANTHROPIC_KEY = "sk-ant-master-XYZ-123"
     mockRailwayVariables({
       CLAWS_CREDIT_MODE: "true",
@@ -95,7 +95,7 @@ describe("container-env reconciliation pipeline (PR-8a/B/C)", () => {
     expect(actual).not.toBe("sk-ant-master-XYZ-123")
   })
 
-  it("B — BYOK happy path: parse CLAWS_ENV_B64 → fingerprint matches deriveContainerEnv (user key)", async () => {
+  it("B - BYOK happy path: parse CLAWS_ENV_B64 → fingerprint matches deriveContainerEnv (user key)", async () => {
     mockRailwayVariables({
       CLAWS_CREDIT_MODE: "false",
       CLAWS_ENV_B64: b64("OPENCLAW_GATEWAY_TOKEN=tok\nANTHROPIC_API_KEY=sk-ant-byok-USER\n"),
@@ -113,7 +113,7 @@ describe("container-env reconciliation pipeline (PR-8a/B/C)", () => {
     expect(actual).toHaveLength(16)
   })
 
-  it("C — NONE: no key in Railway vars nor CLAWS_ENV_B64 → both fingerprints null", async () => {
+  it("C - NONE: no key in Railway vars nor CLAWS_ENV_B64 → both fingerprints null", async () => {
     mockRailwayVariables({
       CLAWS_CREDIT_MODE: "false",
       CLAWS_ENV_B64: b64("OPENCLAW_GATEWAY_TOKEN=tok\n"),
@@ -131,7 +131,7 @@ describe("container-env reconciliation pipeline (PR-8a/B/C)", () => {
     expect(expected).toBeNull()
   })
 
-  it("D — drift: container master key differs from current DB master → fingerprints DIFFER", async () => {
+  it("D - drift: container master key differs from current DB master → fingerprints DIFFER", async () => {
     process.env.CLAWS_MASTER_ANTHROPIC_KEY = "sk-ant-master-CURRENT"
     mockRailwayVariables({
       CLAWS_CREDIT_MODE: "true",
@@ -152,7 +152,7 @@ describe("container-env reconciliation pipeline (PR-8a/B/C)", () => {
     expect(actual).not.toBe(expected) // ← the drift signal
   })
 
-  it("E — stale BYOK drift: container key X vs DB key Y → fingerprints DIFFER", async () => {
+  it("E - stale BYOK drift: container key X vs DB key Y → fingerprints DIFFER", async () => {
     mockRailwayVariables({
       CLAWS_CREDIT_MODE: "false",
       CLAWS_ENV_B64: b64("ANTHROPIC_API_KEY=sk-ant-byok-X-on-container\n"),
@@ -171,7 +171,7 @@ describe("container-env reconciliation pipeline (PR-8a/B/C)", () => {
     expect(actual).not.toBe(expected) // ← the stale-BYOK drift signal
   })
 
-  it("F — Railway returns null variables → getServiceVariables coerces to {} → pipeline yields null (no throw)", async () => {
+  it("F - Railway returns null variables → getServiceVariables coerces to {} → pipeline yields null (no throw)", async () => {
     mockRailwayVariables(null)
     const getServiceVariables = await loadGetServiceVariables()
     const env = await getServiceVariables("svc")

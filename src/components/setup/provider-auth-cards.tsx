@@ -27,7 +27,7 @@ export const PROVIDER_CARD_NAMES: Record<string, string> = {
   ANTHROPIC: "Anthropic (Claude)",
   OPENAI: "OpenAI (GPT)",
   GOOGLE: "Google (Gemini)",
-  OPENROUTER: "OpenRouter — one key, every model",
+  OPENROUTER: "OpenRouter - one key, every model",
 }
 
 interface AgentRef {

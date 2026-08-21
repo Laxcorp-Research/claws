@@ -24,7 +24,7 @@ export async function convertUserToByok(userId: string): Promise<{
   })
 
   // Exhaustion mismatch: Workspace.status=STOPPED + containerPhase=HIBERNATED.
-  // Wake requires workspace HIBERNATED — converge only that shape (not user-Stops).
+  // Wake requires workspace HIBERNATED - converge only that shape (not user-Stops).
   const rearmed = await prisma.workspace.updateMany({
     where: {
       userId,

@@ -1,4 +1,4 @@
-// Claws Activity Reporter — OpenClaw overlay plugin.
+// Claws Activity Reporter - OpenClaw overlay plugin.
 //
 // Loaded by the OpenClaw gateway at /opt/claws-activity-reporter/ (path baked
 // into the Docker image; activated via openclaw.json plugins.load.paths +
@@ -15,7 +15,7 @@
 //                          ERROR          (when event.error)
 //   cron_changed         → HEARTBEAT      (only if event.action==='started' AND
 //                                          the job is a Claws-generated
-//                                          heartbeat cron — see filter below)
+//                                          heartbeat cron - see filter below)
 //
 // CRITICAL DESIGN INVARIANTS (regression-prone, do not break):
 //
@@ -23,13 +23,13 @@
 //      The OpenClaw void-hook runner (`hooks.ts:557-587` in upstream) wraps
 //      handler returns in `Promise.resolve(...)` and `await Promise.all(...)`s
 //      them under a per-hook timeout. If a handler `await`s a network POST,
-//      the caller of `runVoidHook` blocks for that duration — which is the
+//      the caller of `runVoidHook` blocks for that duration - which is the
 //      agent turn. So our handler does ONE thing: `reporter.add(record)`.
 //      That's an O(1) synchronous push. The actual HTTP POST happens later,
 //      from a setInterval flusher that runs outside the hook call path.
 //
 //   2. Every hook registration carries opts {timeoutMs: 100}.
-//      Defense-in-depth — even if a future regression introduces an `await`
+//      Defense-in-depth - even if a future regression introduces an `await`
 //      inside a handler, the OpenClaw runner kills it at 100ms and continues.
 //
 //   3. UsageReporter buffer is copied verbatim from credit-proxy.mjs.
@@ -42,11 +42,11 @@
 //
 // Auth: POST /api/internal/activity/<workspaceId> with header
 // `X-Activity-Secret`. Endpoint validates the secret and the event-type
-// subset (rejects SYSTEM / HUMAN_* / TRADE_* / REVIEW_* / etc. — those
+// subset (rejects SYSTEM / HUMAN_* / TRADE_* / REVIEW_* / etc. - those
 // belong to other code paths). See src/app/api/internal/activity/[workspaceId]/route.ts.
 
 // PR-1 (sync-now): on-demand runtime-state sync. Shared bundle/upload logic
-// lives in ../state-sync.mjs (image: /opt/state-sync.mjs — see Dockerfile),
+// lives in ../state-sync.mjs (image: /opt/state-sync.mjs - see Dockerfile),
 // the SAME module process-manager uses for its interval/SIGTERM syncs.
 import { runStateSync, OPENCLAW_DATA_DIR, postActivityEvent } from "../state-sync.mjs";
 import {
@@ -69,7 +69,7 @@ const FLUSH_INTERVAL_MS = 10_000;
 const BATCH_SIZE = 50;
 const REQUEST_TIMEOUT_MS = 10_000;
 
-// IMPORTANT — cross-reference to Claws generator.
+// IMPORTANT - cross-reference to Claws generator.
 // Heartbeat cron jobs are generated at
 //   src/lib/openclaw/generator.ts:1521 (`name: \`orchestrator-heartbeat-${frequency}\``)
 // If the name prefix is changed there, change it here too. The string is
@@ -79,7 +79,7 @@ const HEARTBEAT_CRON_NAME_PREFIX = "orchestrator-heartbeat-";
 function isHeartbeatJob(job) {
   // The `cron_changed` event delivers a `PluginHookGatewayCronJob` shape
   // (upstream hook-types.ts:706-738). We filter on the deterministic `name`
-  // prefix Claws sets when generating the heartbeat cron — template-defined
+  // prefix Claws sets when generating the heartbeat cron - template-defined
   // scheduled tasks never use this prefix.
   return (
     job != null &&
@@ -91,7 +91,7 @@ function isHeartbeatJob(job) {
 
 // ─── UsageReporter buffer (copied verbatim from container/credit-proxy.mjs) ───
 //
-// Behavior contract — must NOT be changed without updating credit-proxy.mjs
+// Behavior contract - must NOT be changed without updating credit-proxy.mjs
 // in lockstep:
 //   - `add(record)` is synchronous, O(1), and never awaits.
 //   - When pending crosses BATCH_SIZE/2 we attempt a flush opportunistically
@@ -113,7 +113,7 @@ class ActivityReporter {
   start() {
     if (this.flushInterval) return;
     this.flushInterval = setInterval(() => {
-      // setInterval callback runs OUT of the hook call path — this is the
+      // setInterval callback runs OUT of the hook call path - this is the
       // only place we actually await the network POST.
       void this.flush();
     }, FLUSH_INTERVAL_MS);
@@ -133,7 +133,7 @@ class ActivityReporter {
     }
     this.pending.push(record);
     // Mirror credit-proxy: opportunistic flush at ~half batch. Note we
-    // DON'T await — the flush runs as a microtask out of the hook path.
+    // DON'T await - the flush runs as a microtask out of the hook path.
     if (this.pending.length >= BATCH_SIZE) {
       void this.flush();
     }
@@ -141,7 +141,7 @@ class ActivityReporter {
 
   async flush() {
     if (!ENDPOINT_BASE || !ACTIVITY_SECRET || !WORKSPACE_ID) {
-      // Not configured — drop silently. Don't fill the buffer indefinitely.
+      // Not configured - drop silently. Don't fill the buffer indefinitely.
       this.pending.length = 0;
       return;
     }
@@ -165,7 +165,7 @@ class ActivityReporter {
         this.dropped = 0;
         return;
       }
-      // 4xx is OUR fault (malformed payload, bad secret). Don't re-queue —
+      // 4xx is OUR fault (malformed payload, bad secret). Don't re-queue -
       // re-queueing a malformed batch would loop forever. Log + drop.
       // 5xx / network errors → re-queue at the front for retry.
       if (res.status >= 400 && res.status < 500) {
@@ -176,7 +176,7 @@ class ActivityReporter {
       }
       this.pending.unshift(...batch);
     } catch (err) {
-      // Network/timeout/abort — re-queue and retry on the next interval.
+      // Network/timeout/abort - re-queue and retry on the next interval.
       this.pending.unshift(...batch);
       console.warn(
         `[claws-activity-reporter] flush failed (${err?.message ?? String(err)}); ${batch.length} records re-queued`,
@@ -229,7 +229,7 @@ export function emitOverlayBootEvent() {
 //
 // Each helper returns the ActivityLog-shaped record we POST. agentSlug is
 // resolved server-side from the workspace's Agent rows (the plugin doesn't
-// know agent slugs — only agentId from the hook ctx).
+// know agent slugs - only agentId from the hook ctx).
 
 function buildBaseRecord(actionType, ctx, extraMetadata) {
   return {
@@ -249,7 +249,7 @@ function buildBaseRecord(actionType, ctx, extraMetadata) {
 }
 
 // Truncate human-readable strings before posting. We never want the full
-// content of an agent prompt or model response in ActivityLog.action —
+// content of an agent prompt or model response in ActivityLog.action -
 // the activity feed shows a short preview, transcripts live elsewhere.
 // Collapses internal whitespace (single-line action text).
 function truncate(s, max = 240) {
@@ -263,7 +263,7 @@ const ACTION_PREVIEW_MAX = 100;
 // PR-4: detail cap (the endpoint hard-rejects > 4096; stay under it).
 const DETAIL_MAX = 4000;
 
-// Length-cap WITHOUT collapsing internal whitespace — `detail` preserves the
+// Length-cap WITHOUT collapsing internal whitespace - `detail` preserves the
 // original formatting (newlines, the [cron:...] trace prefix, stack traces).
 // Returns undefined for empty/non-string so the record omits the field.
 function clip(s, max = DETAIL_MAX) {
@@ -286,10 +286,10 @@ function clipWithFlag(s, max = DETAIL_MAX) {
 }
 
 // PR-4: the cron-JOB-ID prefix Claws' generator uses for the orchestrator
-// heartbeat — `heartbeat-${slug}-${frequency}` (and `...-test_5min`). Distinct
+// heartbeat - `heartbeat-${slug}-${frequency}` (and `...-test_5min`). Distinct
 // from HEARTBEAT_CRON_NAME_PREFIX above (the job NAME prefix). The
 // before_agent_run hook context carries ctx.jobId for cron-triggered runs
-// (upstream propagates it — verified against v2026.5.22
+// (upstream propagates it - verified against v2026.5.22
 // run.before-agent-reply-cron.test.ts), so we detect a heartbeat-triggered
 // agent turn STRUCTURALLY rather than string-matching the prompt.
 // CROSS-REFERENCE: src/lib/openclaw/generator.ts emits `id: heartbeat-...`.
@@ -327,7 +327,7 @@ function handleBeforeAgentRun(event, ctx) {
     jobId: typeof ctx?.jobId === "string" ? ctx.jobId : undefined,
   });
   // PR-4: SHORT human action. A heartbeat-triggered run is pure plumbing
-  // ("[cron:...] Read HEARTBEAT.md ...") — collapse it to a label and stash
+  // ("[cron:...] Read HEARTBEAT.md ...") - collapse it to a label and stash
   // the raw prompt in detail. A real channel/user task keeps a short preview.
   if (triggerKind === "heartbeat") {
     record.action = "Heartbeat check";
@@ -353,7 +353,7 @@ function handleBeforeAgentRun(event, ctx) {
 // C1 detection. Each leg is evidence-backed (PR-9/A-container Phase A audit):
 //   - channelId === "webchat": agent_end ctx carries the run's originating
 //     channel via upstream buildAgentHookContextChannelFields (derived from
-//     the run's own message params, NOT the session's lastChannel) — verified
+//     the run's own message params, NOT the session's lastChannel) - verified
 //     live: spike TASK_COMPLETE rows carried metadata.channelId "webchat".
 //   - trigger gates: cron-executor runs carry trigger "cron", interval
 //     heartbeats trigger "heartbeat" (upstream run-executor.ts:194,
@@ -361,7 +361,7 @@ function handleBeforeAgentRun(event, ctx) {
 //     must not look like a chat reply (C5).
 //   - subagent gate: sessions_spawn worker runs carry ":subagent:" in their
 //     session key (upstream subagent-registry.ts) and may inherit message
-//     context — only the top-level turn answers the user (C5).
+//     context - only the top-level turn answers the user (C5).
 function isWebchatReplyTurn(ctx) {
   return (
     ctx?.channelId === "webchat" &&
@@ -407,7 +407,7 @@ function extractAssistantReply(messages, event) {
 
 function handleAgentEnd(event, ctx) {
   // PR-2 stub (Finding B fidelity telemetry): servedModel is NOT overlay-reachable
-  // on agent_end today — ctx exposes agentId/runId/sessionKey/channelId/jobId/trigger
+  // on agent_end today - ctx exposes agentId/runId/sessionKey/channelId/jobId/trigger
   // only; assistant message snapshot used here carries text/stopReason/usage, not
   // modelId. Do NOT invent a field. Next PR: confirm upstream hook payload (or
   // session store) surfaces the resolved model, then emit servedModel into
@@ -436,7 +436,7 @@ function handleAgentEnd(event, ctx) {
   // -11 BYOK path: credit-proxy never sees Anthropic rejects when
   // CLAWS_CREDIT_MODE=false. On TASK_FAILED with thinking-signature poison,
   // schedule a session-file strip + heal ledger OUTSIDE the hook (setImmediate)
-  // so we keep the sync-handler invariant. Strip (not rotate) — see heal module.
+  // so we keep the sync-handler invariant. Strip (not rotate) - see heal module.
   if (!success && THINKING_SIGNATURE_POISON_RE.test(fullError)) {
     const sessionKey =
       typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
@@ -446,13 +446,13 @@ function handleAgentEnd(event, ctx) {
     });
   }
 
-  // PR-9/A: ONE additional MESSAGE_SENT reply row for webchat turns —
+  // PR-9/A: ONE additional MESSAGE_SENT reply row for webchat turns -
   // emitted AFTER the (unchanged) TASK_COMPLETE/TASK_FAILED record. agent_end
   // fires once per run, so C1's "exactly one" holds by construction.
   if (!isWebchatReplyTurn(ctx)) return;
 
   const reply = extractAssistantReply(event?.messages, event);
-  // C2 HARD REQUIREMENT: turn health from the transcript's error state —
+  // C2 HARD REQUIREMENT: turn health from the transcript's error state -
   // NEVER from event.success (which is true even for errored turns; captured
   // live in the PR-9/0 spike, doc §8 risk 4).
   const turnHealth =
@@ -460,7 +460,7 @@ function handleAgentEnd(event, ctx) {
   const { text: detail, truncated } = clipWithFlag(
     turnHealth === "error" && !reply.text ? reply.errorMessage ?? "" : reply.text,
   );
-  // C2: usage trimmed to exactly these four keys (metadata only — the ingest
+  // C2: usage trimmed to exactly these four keys (metadata only - the ingest
   // route owns apiCost and hard-codes it null; PR-2b scope).
   const usage = reply.usage
     ? {
@@ -599,7 +599,7 @@ function handleAfterToolCall(event, ctx) {
 function handleCronChanged(event, ctx) {
   // Only "started" + heartbeat jobs become HEARTBEAT activity. Other cron
   // events (added/updated/removed/finished, non-heartbeat jobs) are ignored
-  // by this plugin — they're not user-visible activity.
+  // by this plugin - they're not user-visible activity.
   if (event?.action !== "started") return;
   if (!isHeartbeatJob(event?.job)) return;
 
@@ -609,7 +609,7 @@ function handleCronChanged(event, ctx) {
     nextRunAtMs: typeof event?.nextRunAtMs === "number" ? event.nextRunAtMs : undefined,
   });
   // The agent context for cron_changed is PluginHookGatewayContext, not
-  // PluginHookAgentContext — so agentId may be missing. Use event.agentId
+  // PluginHookAgentContext - so agentId may be missing. Use event.agentId
   // (mirrored on the cron payload) as the fallback.
   if (!record.agentId && typeof event?.agentId === "string") {
     record.agentId = event.agentId;
@@ -618,25 +618,25 @@ function handleCronChanged(event, ctx) {
   reporter.add(record);
 }
 
-// ─── PR-1: POST /internal/sync-now — backend-triggered confirmed sync ─────
+// ─── PR-1: POST /internal/sync-now - backend-triggered confirmed sync ─────
 //
 // The Claws backend's syncThenDestroy (Stop + hibernate, PR-2) calls this
 // BEFORE deleting the container, so "your history is saved" is a guarantee, not
 // best-effort. Mechanism = a plugin HTTP route (registerHttpRoute, auth:"plugin")
-// on the gateway port — the only externally-reachable surface. auth:"plugin"
+// on the gateway port - the only externally-reachable surface. auth:"plugin"
 // means the gateway does NOT require its own token; we authenticate the request
 // ourselves with the shared CLAWS_METERING_SECRET (== backend METERING_MASTER_
-// SECRET, deployer.ts:525) — same secret family as /api/internal/state/upload.
+// SECRET, deployer.ts:525) - same secret family as /api/internal/state/upload.
 //
 // Returns 200 ONLY when the snapshot is CONFIRMED persisted (server count>=1),
-// or when there is genuinely nothing to sync (empty data dir — vacuously safe).
+// or when there is genuinely nothing to sync (empty data dir - vacuously safe).
 // Anything else is non-2xx so the backend knows the snapshot is NOT guaranteed
 // current and can surface "recent activity may not be saved" (it still completes
-// the Stop — see PR-2; we never trap the container).
+// the Stop - see PR-2; we never trap the container).
 //
 // ACCEPTED BENIGN RACE: runStateSync()'s in-flight guard is PER-PROCESS, so a
 // route-triggered sync here (gateway process) is not coordinated with
-// process-manager's 5-min interval (parent process). That's fine — uploads are
+// process-manager's 5-min interval (parent process). That's fine - uploads are
 // atomic single-column writes (no torn row; equal-or-fresher only), and on the
 // Stop path the container is deleted right after this 200, stopping the
 // interval. See the full invariant note in state-sync.mjs.
@@ -717,7 +717,7 @@ const pluginEntry = {
   register(api) {
     // Every void-hook handler MUST be synchronous. See the design invariant
     // at the top of this file. The 100ms registration timeout is
-    // defense-in-depth — if any handler ever does an `await`, the upstream
+    // defense-in-depth - if any handler ever does an `await`, the upstream
     // hook runner kills it instead of stalling the agent turn.
     api.on("before_agent_run", handleBeforeAgentRun, { timeoutMs: HANDLER_TIMEOUT_MS });
     api.on("agent_end", handleAgentEnd, { timeoutMs: HANDLER_TIMEOUT_MS });

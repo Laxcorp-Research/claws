@@ -5,7 +5,7 @@
 // The bug this guards against: PR-4 added `detail` to ActivityLog and the
 // regular GET endpoint serialized it, but the SSE stream's formatLog() was
 // not updated. The dashboard's live activity feed reads from the SSE
-// stream — so the component never received a populated `detail` prop and
+// stream - so the component never received a populated `detail` prop and
 // the click-to-expand affordance never lit up in production.
 //
 // The structural test below is the load-bearing protection: it asserts
@@ -13,7 +13,7 @@
 // SSE_EXCLUDED_FIELDS). Adding a new column to the schema without
 // updating either the serializer or the exclusion list MUST fail.
 // Same defense pattern as PR-2d's BOM-guard and PR-4c's clone-reference
-// guard — invariants over per-symptom tests.
+// guard - invariants over per-symptom tests.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { readFileSync } from "fs"
@@ -57,7 +57,7 @@ const baseRow = {
 } as const
 
 // Fields the SSE stream intentionally does NOT serialize. Each must be
-// justified — adding to this list is a deliberate decision, not a quiet
+// justified - adding to this list is a deliberate decision, not a quiet
 // omission. If you remove a field from this list it MUST appear in
 // formatLog's output and vice versa; the structural test enforces that.
 const SSE_EXCLUDED_FIELDS: ReadonlyArray<string> = [
@@ -65,7 +65,7 @@ const SSE_EXCLUDED_FIELDS: ReadonlyArray<string> = [
   // per-row would waste bytes on every event payload.
   "workspaceId",
   // structured JSON payload; the RAW blob is not consumed by the UI and can
-  // contain large arrays. Stays off the wire — but PR-9/B projects a small
+  // contain large arrays. Stays off the wire - but PR-9/B projects a small
   // whitelist out of it (see SSE_DERIVED_FIELDS) for the chat panel.
   "metadata",
   // per-row token counts are not surfaced in the live feed; aggregate
@@ -107,7 +107,7 @@ function getActivityLogScalarFields(): string[] {
   return fields
 }
 
-describe("SSE /api/activity/[workspaceId]/stream — formatLog", () => {
+describe("SSE /api/activity/[workspaceId]/stream - formatLog", () => {
   it("(c) serializes detail when populated", () => {
     const out = formatLog(baseRow)
     expect(out).toMatchObject({
@@ -115,7 +115,7 @@ describe("SSE /api/activity/[workspaceId]/stream — formatLog", () => {
     })
   })
 
-  it("(c) wires detail through sanitizeActivityDetail — null when absent", () => {
+  it("(c) wires detail through sanitizeActivityDetail - null when absent", () => {
     const out = formatLog({ ...baseRow, detail: null })
     expect(out.detail).toBeNull()
   })
@@ -155,7 +155,7 @@ describe("SSE /api/activity/[workspaceId]/stream — formatLog", () => {
 
   // PR-9/B: the reconciliation key + webchat filter must reach the wire.
   // A user send is persisted as MESSAGE_RECEIVED: the key is in metadata.messageId
-  // (runId is null until the orchestrator starts the turn — protocol §A.3).
+  // (runId is null until the orchestrator starts the turn - protocol §A.3).
   it("(PR-9/B) projects messageId/channelId/from out of metadata for the chat panel", () => {
     const out = formatLog({
       ...baseRow,
@@ -237,7 +237,7 @@ async function readNextNonHeartbeatEvent(
   throw new Error(`timed out after ${maxWaitMs}ms waiting for a non-heartbeat event`)
 }
 
-describe("SSE /api/activity/[workspaceId]/stream — events", () => {
+describe("SSE /api/activity/[workspaceId]/stream - events", () => {
   let abortController: AbortController
 
   beforeEach(() => {

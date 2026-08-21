@@ -26,7 +26,7 @@ interface SnapshotAgent {
   positionX?: number
   positionY?: number
   reportsTo?: string
-  /** Publish snapshot shape: { slug, name, configOverrides } — APPLY at install (D-AS). */
+  /** Publish snapshot shape: { slug, name, configOverrides } - APPLY at install (D-AS). */
   skills?: SnapshotSkill[]
 }
 
@@ -169,7 +169,7 @@ export async function createWorkspaceFromTemplate(
       }
     }
 
-    // WIRE-FULL: reportsTo writers removed — derive from edges at read time.
+    // WIRE-FULL: reportsTo writers removed - derive from edges at read time.
 
     for (const c of snapshot.connections ?? []) {
       const src = slugToId[c.sourceSlug]

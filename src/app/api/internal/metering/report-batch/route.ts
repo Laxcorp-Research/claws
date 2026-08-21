@@ -19,7 +19,7 @@ function verifyMeteringSecret(req: NextRequest): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  // Auth FIRST — same order as live probes (placeholder secret → 401 before body).
+  // Auth FIRST - same order as live probes (placeholder secret → 401 before body).
   if (!verifyMeteringSecret(req)) {
     return apiError("UNAUTHORIZED", "Invalid metering secret", 401)
   }
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
       totalProcessed += persisted
       totalHandled += handled
 
-      // Redis is a cache of the DB ledger — never fail the durable write if
+      // Redis is a cache of the DB ledger - never fail the durable write if
       // Upstash is down (that was a silent 200/processed:0 → proxy drop path).
       try {
         await redis.set(`credit:balance:${userId}`, newBalance.toString())
@@ -237,8 +237,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Proxy only requeues on !res.ok. A 200 with processed:0 after a non-empty
-  // batch would DROP the in-memory pending forever — return 503 so it retries.
-  // All-duplicate batches are handled (idempotent success) — do not 503.
+  // batch would DROP the in-memory pending forever - return 503 so it retries.
+  // All-duplicate batches are handled (idempotent success) - do not 503.
   if (records.length > 0 && totalHandled === 0 && totalProcessed === 0) {
     return apiError(
       "PROCESSING_FAILED",

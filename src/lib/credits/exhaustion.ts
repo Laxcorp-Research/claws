@@ -26,14 +26,14 @@ export async function onCreditsExhausted(userId: string) {
   )
 
   for (const ws of user.workspaces) {
-    // Resolved mode (override ?? user), not user-only — WIRE-TEST-style
+    // Resolved mode (override ?? user), not user-only - WIRE-TEST-style
     // fixtures set Workspace.apiKeySourceOverride=PLATFORM_CREDIT while
     // User.apiKeySource stays NONE.
     if (!isCreditUser(getApiKeySource(ws, user))) continue
 
     try {
       await syncThenDestroy(ws.id)
-      // Credit termination: serviceDelete is correct — this claw is not napping.
+      // Credit termination: serviceDelete is correct - this claw is not napping.
     } catch (err) {
       log.error("Failed to destroy container on credit exhaustion", {
         workspaceId: ws.id,

@@ -1,5 +1,5 @@
 /**
- * container-env-actual.ts — the "ACTUAL" (observed-from-the-container) side of
+ * container-env-actual.ts - the "ACTUAL" (observed-from-the-container) side of
  * the PR-8 reconciliation, the mirror of derive-container-env.ts's "EXPECTED"
  * (derived-from-DB) side. The reconciliation cron compares the two: actual env
  * read off the live Railway service vs. what deriveContainerEnv says it should
@@ -9,7 +9,7 @@
  * PR-8a/B/B adds parseClawsEnvB64 here.
  *
  * ╔══════════════════════════════════════════════════════════════════════════╗
- * ║ SECURITY — RAW SECRET MATERIAL                                             ║
+ * ║ SECURITY - RAW SECRET MATERIAL                                             ║
  * ║                                                                            ║
  * ║ A RawContainerEnv is a container's live, rendered environment: real        ║
  * ║ ANTHROPIC_API_KEY, OPENCLAW_GATEWAY_TOKEN, COMPOSIO_API_KEY, channel       ║
@@ -27,11 +27,11 @@
 import { gunzipSync } from "node:zlib"
 import { parse as parseDotenv } from "dotenv"
 
-// Phantom brand. Never present at runtime — purely a type-level marker so a
+// Phantom brand. Never present at runtime - purely a type-level marker so a
 // plain Record<string,string> cannot be assigned where RawContainerEnv is
 // expected without an explicit cast, and so the danger is visible in every
 // signature that touches it. (Structural typing means the brand is a signal,
-// not airtight enforcement — the architectural rule above is the guarantee.)
+// not airtight enforcement - the architectural rule above is the guarantee.)
 declare const __rawContainerEnvBrand: unique symbol
 
 /**
@@ -45,12 +45,12 @@ export type RawContainerEnv = Record<string, string> & {
 }
 
 /**
- * SECURITY — RAW SECRET MATERIAL (see module banner). Decodes a container's
- * `CLAWS_ENV_B64` (base64 of its baked `.env`) into a flat map — including any
+ * SECURITY - RAW SECRET MATERIAL (see module banner). Decodes a container's
+ * `CLAWS_ENV_B64` (base64 of its baked `.env`) into a flat map - including any
  * BYOK `ANTHROPIC_API_KEY`, channel tokens, etc. Pass ONLY to the credential
  * comparison reducer; NEVER log, return, or persist it.
  *
- * TOTAL function — never throws. Empty input, a non-string/undefined input
+ * TOTAL function - never throws. Empty input, a non-string/undefined input
  * (e.g. a missing CLAWS_ENV_B64), or unparseable content all yield `{}` (a
  * corrupt/absent env is "nothing to compare", which the reconciliation cron
  * reads as drift). Uses `dotenv.parse` for the `.env` grammar: `#` comments,
@@ -70,7 +70,7 @@ export function parseClawsEnvB64(envB64: string): RawContainerEnv {
 }
 
 /**
- * SECURITY — RAW SECRET MATERIAL (see module banner). Decodes the current
+ * SECURITY - RAW SECRET MATERIAL (see module banner). Decodes the current
  * gzipped env payload format emitted by deployer.ts. Kept separate from the
  * legacy parser so callers can explicitly prefer the new var and still fall
  * back to old running containers.

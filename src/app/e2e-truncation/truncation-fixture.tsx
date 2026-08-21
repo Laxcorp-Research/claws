@@ -7,10 +7,10 @@ import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 export const LONG_AGENT_NAME = "Extremely Long Strategic Research Agent Name That Must Ellipsize"
 const LONG_SESSION_KEY = "agent:twitter-commander:subagent:151eda19-a0c9-49de-969d-ed39d16fe21c"
 
-/** Short names that fit in the sidebar column — must NOT tip. */
+/** Short names that fit in the sidebar column - must NOT tip. */
 const FITTING_SIDEBAR_NAMES = ["Engagement Strategist", "Content Writer", "Trend Scout"] as const
 
-/** Long names that ellipsize in the same column — must tip. */
+/** Long names that ellipsize in the same column - must tip. */
 const TRUNCATED_SIDEBAR_NAMES = [
   "Extremely Long Engagement Strategist Name That Must Tip",
   "Content Writer With An Absurdly Long Display Label",
@@ -58,7 +58,7 @@ export function TruncationFixture() {
         </div>
       </div>
 
-      {/* Near-right viewport edge — collision must flip/shift; tip stays on-screen. */}
+      {/* Near-right viewport edge - collision must flip/shift; tip stays on-screen. */}
       <div
         className="fixed top-24 right-2 w-[160px]"
         data-testid="right-edge-fixture"

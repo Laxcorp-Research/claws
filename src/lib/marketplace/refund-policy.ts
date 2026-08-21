@@ -3,7 +3,7 @@
  *
  * Workspace may be deleted only when BOTH:
  *   1. purchase age ≤ 7 days (UTC calendar days via ms/86400000 floor)
- *   2. never-deployed — no Deployment with status COMPLETED or SUPERSEDED
+ *   2. never-deployed - no Deployment with status COMPLETED or SUPERSEDED
  *
  * Outside that window, or if ever successfully deployed: keep workspace,
  * still mark Purchase REFUNDED, ledger a note.
@@ -11,7 +11,7 @@
 
 export const REFUND_WORKSPACE_DELETE_WINDOW_DAYS = 7
 
-/** Successful deploy evidence — ever completed (incl. later superseded). */
+/** Successful deploy evidence - ever completed (incl. later superseded). */
 export const DEPLOYED_EVIDENCE_STATUSES = ["COMPLETED", "SUPERSEDED"] as const
 
 export type RefundWorkspaceDecision =

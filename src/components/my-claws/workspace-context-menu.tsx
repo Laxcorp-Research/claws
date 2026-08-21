@@ -214,7 +214,7 @@ export function WorkspaceContextMenu({
         onClose={() => setStopConfirmOpen(false)}
         onConfirm={handleStop}
         title="Stop this Claw?"
-        description="Agents will stop running. Your configuration and history are saved — redeploying takes about 2 minutes."
+        description="Agents will stop running. Your configuration and history are saved - redeploying takes about 2 minutes."
         confirmLabel="Stop"
         cancelLabel="Keep running"
         loading={stopping}

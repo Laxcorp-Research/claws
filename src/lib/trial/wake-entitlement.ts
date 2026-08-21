@@ -1,5 +1,5 @@
 /**
- * Wake entitlement — same truth as deploy eligibility.
+ * Wake entitlement - same truth as deploy eligibility.
  * Expired+ungrated / unsubscribed claws must not resurrect via any wake path.
  */
 
@@ -35,4 +35,4 @@ export function canWakeHibernatedWorkspace(
 
 /** Locked Telegram copy when wake is entitlement-denied. */
 export const WAKE_ON_CHANNEL_ENTITLEMENT_DENIED =
-  "Your trial has ended — subscribe in the dashboard to wake this Claw."
+  "Your trial has ended - subscribe in the dashboard to wake this Claw."

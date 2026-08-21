@@ -293,7 +293,7 @@ describe('buildWorkspaceConfigFingerprint', () => {
 
     expect(after.hash).not.toBe(before.hash);
     expect(after.areas.connections).not.toBe(before.areas.connections);
-    // v3 projection ignores contextNote — stays comparable for redeploy banner.
+    // v3 projection ignores contextNote - stays comparable for redeploy banner.
     expect(after.versionFingerprints[3]?.areas.connections).toBe(
       before.versionFingerprints[3]?.areas.connections,
     );
@@ -385,7 +385,7 @@ describe('buildWorkspaceConfigFingerprint', () => {
   });
 
   // PR-C #10: alwaysOn is a dashboard-only hibernation-sweep opt-out. It must
-  // NEVER enter the fingerprint — it does not change anything the generator
+  // NEVER enter the fingerprint - it does not change anything the generator
   // writes into the deployed container, so flipping it must not trigger a
   // config-drift banner or redeploy prompt.
   it('changing only alwaysOn does not change the hash (fingerprint exclusion, PR-C #10)', async () => {

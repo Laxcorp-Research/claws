@@ -7,26 +7,26 @@ import { OAUTH_TOOLS, getToolBySlug } from "@/data/tool-catalog"
  *
  * These tests protect the invariants that make the generator's catalog-
  * driven frontmatter (PR #3a, commit 0d21133) actually work at runtime:
- *   1. Seed bodies must not reference `$TOOL_API_KEY` — PR #1a rejected
+ *   1. Seed bodies must not reference `$TOOL_API_KEY` - PR #1a rejected
  *      that placeholder convention. Bodies should use catalog-named env
  *      vars (single/multi-cred) or `<OAUTH_TOKEN>` (OAUTH, Composio-
  *      managed).
  *   2. Any `$ENVVAR`-shaped reference in a body must correspond to an
- *      env var the runtime will actually set — either a catalog-declared
+ *      env var the runtime will actually set - either a catalog-declared
  *      credentialFields envVar for API_KEY tools, or one of the allowed
  *      placeholder sigils for OAUTH tools / URL markers.
  *   3. Multi-cred API_KEY seeds must mention ALL declared envVars in
  *      their bodies (otherwise the agent's self-doc is incomplete for
  *      the secondary credentials).
  *   4. OAUTH_COMPOSIO seed bodies may only reference the three runtime-
- *      injected `$COMPOSIO_*` env vars — any other `$FOO_API_KEY`-style
+ *      injected `$COMPOSIO_*` env vars - any other `$FOO_API_KEY`-style
  *      reference would imply an env var the runtime never sets and is
  *      banned (regression guard on PR #4). See PR #4 Commit 1 (generator
  *      OAuth emission) + Commit 2 (deployer container-env injection) for
  *      where the three allowlisted vars are populated.
  */
 
-// Matches `$SOME_VAR_NAME` — has to start uppercase to avoid matching
+// Matches `$SOME_VAR_NAME` - has to start uppercase to avoid matching
 // shell positional args or `${...}` template snippets that happen to
 // appear in docs. Not a perfect regex; tightened by per-test allowlists.
 const ENVVAR_REGEX = /\$[A-Z][A-Z0-9_]+/g
@@ -35,7 +35,7 @@ const ENVVAR_REGEX = /\$[A-Z][A-Z0-9_]+/g
  * $ENVVAR names the runtime legitimately injects into OAUTH_COMPOSIO
  * skill bodies. PR #4 Commit 1 emits the per-skill triple into
  * openclaw.json > skills.entries[slug].env; Commit 2 pins the first two
- * at container-env level (defense in depth — the third is per-tool and
+ * at container-env level (defense in depth - the third is per-tool and
  * therefore only per-skill). Seed bodies may reference any of these as
  * `$COMPOSIO_API_KEY` / `$COMPOSIO_USER_ID` / `$COMPOSIO_CONNECTED_ACCOUNT_ID`.
  * Any OTHER `$ENVVAR` ref in an OAUTH_COMPOSIO body is a bug because the
@@ -159,7 +159,7 @@ describe("PR #3b seed body invariants", () => {
     // tokens were expected to arrive as `<OAUTH_TOKEN>` placeholders, not env
     // vars). PR #4 changed the contract: the runtime now injects three
     // COMPOSIO_* vars, and OAuth skill bodies are expected to read them.
-    // Everything ELSE is still banned — no $HUBSPOT_API_KEY, no $GITHUB_TOKEN,
+    // Everything ELSE is still banned - no $HUBSPOT_API_KEY, no $GITHUB_TOKEN,
     // etc. in an OAUTH_COMPOSIO body.
     type OauthLeak = { skillSlug: string; disallowed: string[] }
     const leaks: OauthLeak[] = []
@@ -188,7 +188,7 @@ describe("PR #3b seed body invariants", () => {
   // Purpose: guard the allowlist check itself (the regex + the 3-var Set),
   // so a future edit that accidentally widens or narrows the allowlist
   // fails loud in tests rather than only at seed-review time. These tests
-  // run against synthetic bodies, not the actual seed data — no seed in
+  // run against synthetic bodies, not the actual seed data - no seed in
   // the repo has `$COMPOSIO_*` refs yet (that lands in PR #4 Commit 6's
   // skillMd rewrites) and no live OAuth seed still has the pre-PR #4
   // `$HUBSPOT_API_KEY`-style refs (Commit 1 removed the 4 dead tools).
@@ -215,7 +215,7 @@ curl -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL
       `body references only allowlisted COMPOSIO_* vars but findDisallowedEnvRefsInOauthBody flagged some as disallowed`,
     ).toEqual([])
 
-    // Sanity: the body DOES contain the 3 Composio refs — otherwise the
+    // Sanity: the body DOES contain the 3 Composio refs - otherwise the
     // assertion above is vacuously true.
     const allRefs = [...new Set(syntheticOauthBody.match(ENVVAR_REGEX) ?? [])].sort()
     expect(allRefs).toEqual([
@@ -228,7 +228,7 @@ curl -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL
   it("allowlist blocks: an OAuth body with $HUBSPOT_API_KEY or similar direct-token refs is flagged", () => {
     // Regression guard. PR #4 intentionally broadens what's allowed in
     // OAUTH_COMPOSIO bodies to include the 3 Composio vars. This test
-    // ensures we did not accidentally allowlist the world — non-Composio
+    // ensures we did not accidentally allowlist the world - non-Composio
     // direct-token env vars are STILL banned. If this ever passes silently
     // (zero disallowed refs on a body containing $HUBSPOT_API_KEY), the
     // allowlist logic has regressed and a future OAuth seed rewrite could
@@ -262,7 +262,7 @@ curl -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL
   // These three assertions guard against "forgot to rewrite" and "pasted
   // generic template" classes of bug across all OAUTH_COMPOSIO seeds:
   //
-  //  1. Every OAuth body must reference Composio's execute endpoint — either
+  //  1. Every OAuth body must reference Composio's execute endpoint - either
   //     as the literal path `/api/v3/tools/execute/` or the SDK call
   //     `composio.tools.execute` (we accept either for forward-compat).
   //  2. Every OAuth body must reference at least one toolkit-specific tool
@@ -271,7 +271,7 @@ curl -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL
   //     template but never customized with per-toolkit operations.
   //  3. Each of the 4 OAuth skills added in this PR (gmail, google_calendar,
   //     github, twitter) must have both a catalog entry AND a seed row in
-  //     lockstep — if one side is removed without the other, the test fails.
+  //     lockstep - if one side is removed without the other, the test fails.
   //
   // Test #5 (the $ENVVAR allowlist) runs first and catches different
   // regressions. These three stack on top of it.
@@ -334,7 +334,7 @@ curl -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL
     ).toEqual([])
   })
 
-  it("4 new OAuth skills (gmail, google_calendar, github, twitter) have both a catalog entry AND a seed row — lockstep", () => {
+  it("4 new OAuth skills (gmail, google_calendar, github, twitter) have both a catalog entry AND a seed row - lockstep", () => {
     // If either side is removed without the other, this test surfaces the
     // drift immediately. The 4 skills were added in PR #4 Commit 5 to fill
     // the gap left by the OAuth catalog entries that previously had no

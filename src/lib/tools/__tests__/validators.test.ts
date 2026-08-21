@@ -416,7 +416,7 @@ describe("alpaca validator (multi-cred)", () => {
 describe("coinbase validator (multi-cred with passphrase)", () => {
   const creds = {
     COINBASE_API_KEY: "cb-key",
-    // Base64 decode of "coinbase-secret-bytes" (placeholder — real secret
+    // Base64 decode of "coinbase-secret-bytes" (placeholder - real secret
     // must be base64-decodable for HMAC). Using an arbitrary valid base64.
     COINBASE_API_SECRET: Buffer.from("coinbase-raw-secret").toString("base64"),
     COINBASE_API_PASSPHRASE: "passphrase",

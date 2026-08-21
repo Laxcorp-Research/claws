@@ -28,14 +28,14 @@ describe("clawNarrative", () => {
 
   it("N tasks, up vs yesterday → calm count with up-trend", () => {
     expect(clawNarrative({ ...base, tasksToday: 47, tasksYesterday: 39 })).toEqual({
-      text: "47 tasks handled today — up from 39 yesterday.",
+      text: "47 tasks handled today - up from 39 yesterday.",
       tone: "calm",
     });
   });
 
   it("N tasks, down vs yesterday → calm count with down-trend", () => {
     expect(clawNarrative({ ...base, tasksToday: 12, tasksYesterday: 20 })).toEqual({
-      text: "12 tasks handled today — down from 20 yesterday.",
+      text: "12 tasks handled today - down from 20 yesterday.",
       tone: "calm",
     });
   });
@@ -74,15 +74,15 @@ describe("clawNarrative", () => {
   it("lifecycle states win over counts and render muted", () => {
     const counts = { tasksToday: 99, tasksYesterday: 50, agentsError: 4, pendingReview: 4 };
     expect(clawNarrative({ ...counts, status: "STOPPED" })).toEqual({
-      text: "Stopped — redeploy to bring it back.",
+      text: "Stopped - redeploy to bring it back.",
       tone: "muted",
     });
     expect(clawNarrative({ ...counts, status: "PAUSED" })).toEqual({
-      text: "Paused — nothing running right now.",
+      text: "Paused - nothing running right now.",
       tone: "muted",
     });
     expect(clawNarrative({ ...counts, status: "HIBERNATED" })).toEqual({
-      text: "Resting — will wake on the next scheduled beat.",
+      text: "Resting - will wake on the next scheduled beat.",
       tone: "muted",
     });
     expect(clawNarrative({ ...counts, status: "WAKING" })).toEqual({

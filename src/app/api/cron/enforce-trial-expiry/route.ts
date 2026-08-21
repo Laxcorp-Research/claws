@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
               workspaceId,
               action: "Trial expiry notify",
               detail:
-                "Trial expiry notification emailed — containers keep running for 24h grace.",
+                "Trial expiry notification emailed - containers keep running for 24h grace.",
               actionType: "SYSTEM",
               timestamp: now,
               metadata: JSON.stringify({
@@ -160,7 +160,7 @@ export async function GET(req: NextRequest) {
 
   for (const [userId, group] of stopsByUser) {
     try {
-      // Pre-stop re-check — MUTATION: remove → on_hold / resubscribe races stop.
+      // Pre-stop re-check - MUTATION: remove → on_hold / resubscribe races stop.
       const fresh = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -184,7 +184,7 @@ export async function GET(req: NextRequest) {
         try {
           if (action.enforceMode === "status_flip") {
             // HIBERNATED: no live replica. HWD still leaves an empty Railway
-            // service — trial termination must serviceDelete to release the slot.
+            // service - trial termination must serviceDelete to release the slot.
             await destroyContainer(action.workspaceId)
             await prisma.$transaction([
               prisma.workspace.update({
@@ -205,7 +205,7 @@ export async function GET(req: NextRequest) {
               }),
             ])
           } else {
-            // RUNNING / WAKING / PAUSED / ERROR / DEPLOYING — tear down container.
+            // RUNNING / WAKING / PAUSED / ERROR / DEPLOYING - tear down container.
             // Trial termination: serviceDelete is correct (syncThenDestroy).
             // syncThenDestroy → destroyContainer already writes STOPPED.
             // Do NOT rewrite to HIBERNATED (that re-opened the wake hole).

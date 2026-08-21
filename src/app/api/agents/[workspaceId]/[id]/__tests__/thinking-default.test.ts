@@ -1,5 +1,5 @@
 /**
- * PATCH /api/agents/[workspaceId]/[id] — thinkingDefault contract:
+ * PATCH /api/agents/[workspaceId]/[id] - thinkingDefault contract:
  * accepts a valid OpenClaw level or null, rejects anything else with 400.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"

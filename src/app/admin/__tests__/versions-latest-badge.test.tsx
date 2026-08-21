@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // GH #5: the "Latest" badge must be DERIVED from the data (newest by
-// releasedAt), not read from the stored isLatest flag — which drifts on prod
+// releasedAt), not read from the stored isLatest flag - which drifts on prod
 // (seed sets it on v2.5.0; the stable/promote path never updates it). This test
 // reproduces the prod bug: stored isLatest is on the WRONG (oldest) row, and we
 // prove the badge renders on the newest row instead.
@@ -55,7 +55,7 @@ beforeEach(() => {
 })
 
 describe("admin/versions Latest badge is derived from newest releasedAt (GH #5)", () => {
-  it("renders exactly one Latest badge, on the newest row — not the stale-flagged v2.5.0", async () => {
+  it("renders exactly one Latest badge, on the newest row - not the stale-flagged v2.5.0", async () => {
     render(<AdminVersionsPage />)
 
     const badge = await screen.findByText("Latest")

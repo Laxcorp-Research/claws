@@ -4,7 +4,7 @@ import { handleTelegramWakeOnChannel } from "@/lib/hibernation/wake-on-channel"
 export const maxDuration = 300
 
 /**
- * Telegram Bot API webhook — platform wake-on-channel ingress (P5).
+ * Telegram Bot API webhook - platform wake-on-channel ingress (P5).
  * Armed while HIBERNATED; cleared when the claw is RUNNING again.
  */
 export async function POST(
@@ -29,6 +29,6 @@ export async function POST(
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error }, { status: result.status })
   }
-  // Telegram retries on non-2xx — always 200 once authenticated + parsed.
+  // Telegram retries on non-2xx - always 200 once authenticated + parsed.
   return NextResponse.json({ ok: true, handled: result.handled })
 }

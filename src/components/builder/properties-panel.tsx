@@ -82,7 +82,7 @@ function ConnectionPanel() {
       <div className="mb-2.5">
         <Label
           text={`Note (${(note || "").length}/${CONTEXT_NOTE_MAX_CHARS})`}
-          tooltip="Optional hint woven into the Commander's Workflow sentence for this worker. Conditions are not used — every solid edge is an unconditional handoff."
+          tooltip="Optional hint woven into the Commander's Workflow sentence for this worker. Conditions are not used - every solid edge is an unconditional handoff."
         />
         <textarea
           value={note || ""}
@@ -388,7 +388,7 @@ export function PropertiesPanel() {
         <>
           <MarkdownEditor
             label="AGENTS.md (procedures)"
-            tooltip="Operating procedures outside the Workflow fence. The fenced Workflow block is generated from the canvas and knobs — edit those instead."
+            tooltip="Operating procedures outside the Workflow fence. The fenced Workflow block is generated from the canvas and knobs - edit those instead."
             value={fenceParts.before + fenceParts.after}
             onChange={(val) => {
               // Preserve existing fence (if any) between prose edits.
@@ -453,7 +453,7 @@ export function PropertiesPanel() {
           <>
             <Label text="Reports to" tooltip="Projected from your Commander → Worker edge. Read-only." />
             <p className="text-[11px] text-[var(--tx)] px-[8px] py-[5px] bg-[var(--bg2)] rounded-[6px]">
-              {reportsToName || "Not connected — draw an edge from the Commander"}
+              {reportsToName || "Not connected - draw an edge from the Commander"}
             </p>
           </>
         )}
@@ -474,7 +474,7 @@ export function PropertiesPanel() {
             onClose={() => setDeleteConfirmOpen(false)}
             onConfirm={handleDeleteConfirm}
             title={`Remove ${agent.name}?`}
-            description={`This removes ${agent.name} and ${connectionCount} connection${connectionCount === 1 ? "" : "s"}. There is no undo — restore from Version History if needed.`}
+            description={`This removes ${agent.name} and ${connectionCount} connection${connectionCount === 1 ? "" : "s"}. There is no undo - restore from Version History if needed.`}
             confirmLabel="Remove agent"
             cancelLabel="Cancel"
             loading={deleting}

@@ -133,7 +133,7 @@ describe("computeDeleteSet", () => {
     expect(withWalk.keptReferencedUntagged).toBe(1);
 
     // MUTATION: remove the walk (closure = tagged digests only). The child now
-    // leaks into the delete-set — proving the walk is the thing protecting it.
+    // leaks into the delete-set - proving the walk is the thing protecting it.
     const closureWithoutWalk = new Set<string>([indexDigest]);
     const withoutWalk = computeDeleteSet({ versions, closure: closureWithoutWalk, protectedDigests: noProtected, bufferDays: 14, now: NOW });
     expect(withoutWalk.toDelete.map((v) => v.id)).toContain(2);

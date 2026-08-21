@@ -69,7 +69,7 @@ describe("security-patch email dedup", () => {
     expect(html).toContain("2 Claws scheduled")
     expect(html).toContain("<li>Twitter/X Growth Machine (5)</li>")
     expect(html).toContain("<li>WIRE-TEST</li>")
-    // Duplicate lis must not appear — unique list is length 2
+    // Duplicate lis must not appear - unique list is length 2
     expect(html.match(/<li>/g)?.length).toBe(2)
     expect(html).toMatch(/NOT been updated yet/i)
   })

@@ -4,7 +4,7 @@
 // is deterministic regardless of JSX-source-order.
 //
 // Coverage:
-//   1. Portal assertion — Modal's overlay DOM lands directly under
+//   1. Portal assertion - Modal's overlay DOM lands directly under
 //      document.body (not nested inside whatever the test render
 //      container is). This is THE invariant that fixes the BYOK-form-
 //      stacks-below-Browse bug.
@@ -27,7 +27,7 @@ afterEach(() => {
   cleanup()
 })
 
-describe("Modal — PR2.9-fix2 portal behavior", () => {
+describe("Modal - PR2.9-fix2 portal behavior", () => {
   it("renders the overlay as a direct child of document.body (portal assertion)", () => {
     const { container } = render(
       <Modal open onClose={() => {}} title="Portal test">
@@ -39,7 +39,7 @@ describe("Modal — PR2.9-fix2 portal behavior", () => {
     const dialog = screen.getByRole("dialog")
     expect(dialog).toBeDefined()
 
-    // PR2.9-fix2 contract: the overlay (dialog's parent — the fixed-
+    // PR2.9-fix2 contract: the overlay (dialog's parent - the fixed-
     // inset-0 div) sits directly under document.body, NOT inside the
     // testing-library render container. That's how we know the portal
     // is active.
@@ -47,7 +47,7 @@ describe("Modal — PR2.9-fix2 portal behavior", () => {
     expect(overlay).not.toBeNull()
     expect(overlay!.parentElement).toBe(document.body)
 
-    // The render container should NOT contain the overlay — the testing-
+    // The render container should NOT contain the overlay - the testing-
     // library `container` is a child of body, but our portal target IS
     // body, so the overlay is a SIBLING of container.
     expect(container.contains(overlay)).toBe(false)
@@ -150,7 +150,7 @@ describe("Modal — PR2.9-fix2 portal behavior", () => {
     // Critical: this guarantee is INDEPENDENT of where each Modal was
     // declared in source code. If a future Modal-on-Modal scenario
     // mounts B from inside a deeply-nested component while A mounts at
-    // the root, B still wins by mount order — which is the correct
+    // the root, B still wins by mount order - which is the correct
     // UX everywhere.
     const bodyChildren = Array.from(document.body.children)
     const indexA = bodyChildren.indexOf(overlayA)
@@ -178,7 +178,7 @@ describe("Modal — PR2.9-fix2 portal behavior", () => {
       const [byokOpen, setByokOpen] = useState(false)
       return (
         <>
-          {/* DELIBERATELY declared FIRST — mirrors the Step2 JSX order
+          {/* DELIBERATELY declared FIRST - mirrors the Step2 JSX order
               that caused the original bug. */}
           <Modal open={byokOpen} onClose={() => setByokOpen(false)} title="BYOK form">
             <p data-testid="byok-body">Enter API key</p>
@@ -227,7 +227,7 @@ describe("Modal — PR2.9-fix2 portal behavior", () => {
     expect(browseIdx).toBeGreaterThanOrEqual(0)
     expect(byokIdx).toBeGreaterThan(browseIdx)
 
-    // And the BYOK content must be REACHABLE — it's now interactive
+    // And the BYOK content must be REACHABLE - it's now interactive
     // because it's on top.
     expect(screen.getByText("Enter API key")).toBeDefined()
   })
@@ -267,7 +267,7 @@ function ReviewModalHarness() {
   )
 }
 
-describe("Modal — C4 focus-once while open (inline onClose)", () => {
+describe("Modal - C4 focus-once while open (inline onClose)", () => {
   it("keeps Title/Review focused when inline onClose identity changes each keystroke", async () => {
     const user = userEvent.setup()
     render(<ReviewModalHarness />)

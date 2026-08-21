@@ -126,7 +126,7 @@ export async function POST(
     //                          can be used)
     //
     // Single `toolkits.get` call shared by both detection and the
-    // managed-OAuth path's downstream helper — saves one round-trip when
+    // managed-OAuth path's downstream helper - saves one round-trip when
     // managed is the chosen path.
     const { toolkit, mode } = await fetchToolkitWithAuthMode(composio, toolkitSlug)
     const displayName = firstNonEmpty(def?.name, toolkit.name) ?? titleCaseSlug(toolSlug)
@@ -141,13 +141,13 @@ export async function POST(
         throw new ComposioToolkitRequiresCustomOAuthError(toolkitSlug)
       }
       // The user supplies their own API key for this toolkit. No popup,
-      // no poll — the wizard renders an inline credentials form and POSTs
+      // no poll - the wizard renders an inline credentials form and POSTs
       // the key to /api/tools/[wsId]/byok/submit, which synchronously
       // creates the Composio connected account and marks the
       // ToolConnection row CONNECTED.
       //
       // Field shape: prefer catalog-declared `credentialFields` when
-      // present (so we can name the env var deterministically — e.g.
+      // present (so we can name the env var deterministically - e.g.
       // TYPEFULLY_API_KEY for runtime env injection); else synthesize a
       // single-field default (UPPER_SNAKE_<SLUG>_API_KEY).
       const fields = byokCredentialFields(toolSlug, def, authScheme)
@@ -164,7 +164,7 @@ export async function POST(
       })
     }
 
-    // mode === "managed-oauth" — existing PR2.8a-fix1 path.
+    // mode === "managed-oauth" - existing PR2.8a-fix1 path.
     const composioUserId = getComposioUserId(user.id)
     const authConfigId = await ensureAuthConfigForToolkit(composio, toolkitSlug)
 

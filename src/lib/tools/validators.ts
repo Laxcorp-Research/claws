@@ -19,11 +19,11 @@
  *   youtube-data-api, binance, alpaca, coinbase, salesforce-api, beehiiv-api,
  *   twilio (promoted to multi-cred in PR #3a)
  *
- * DEFERRED (16 — why each is hard to validate from whatever credentials we
+ * DEFERRED (16 - why each is hard to validate from whatever credentials we
  * persist today):
  *   mixpanel        service-account username + secret pair; our catalog
  *                   only stores the secret
- *   twitter-api     OAuth 1.0a (4 values) or OAuth 2.0 Bearer — unclear
+ *   twitter-api     OAuth 1.0a (4 values) or OAuth 2.0 Bearer - unclear
  *                   which one a single-field input represents
  *   google-search-console  OAuth-only; catalog is mislabeled as API_KEY
  *   mailgun         domain-scoped sending keys and a new token scheme; no
@@ -79,13 +79,13 @@ export type ToolValidator = (
 const TIMEOUT_MS = 10_000
 
 const TRANSIENT_WARNING =
-  "Couldn't verify right now — the provider returned a server error. Your key is saved but hasn't been tested."
+  "Couldn't verify right now - the provider returned a server error. Your key is saved but hasn't been tested."
 
 const RATE_LIMIT_WARNING =
-  "Couldn't verify right now — the provider rate-limited the check. Your key is saved but hasn't been tested."
+  "Couldn't verify right now - the provider rate-limited the check. Your key is saved but hasn't been tested."
 
 const UNVERIFIED_MESSAGE =
-  "Connected but not verified — will be tested on first use."
+  "Connected but not verified - will be tested on first use."
 
 /** Common post-fetch status mapping. */
 function classifyByStatus(

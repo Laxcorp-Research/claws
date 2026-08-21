@@ -1,4 +1,4 @@
-// GHCR retention cleanup — pure keep-set / delete-set logic.
+// GHCR retention cleanup - pure keep-set / delete-set logic.
 //
 // This module owns the SAFETY-CRITICAL computation for pruning untagged
 // `openclaw-runtime` manifests from GHCR. It contains NO IO (no network, no DB,
@@ -71,7 +71,7 @@ export function computeReferencedClosure(
     if (closure.has(digest)) continue;
     const node = graph.get(digest);
     if (node === undefined) {
-      // Referenced but unknown — cannot prove its children are safe.
+      // Referenced but unknown - cannot prove its children are safe.
       unresolved.add(digest);
       continue;
     }
@@ -100,7 +100,7 @@ export interface DeleteSetInput {
 }
 
 export interface DeleteSetResult {
-  /** Untagged, unreferenced, unprotected, older-than-buffer — safe to delete (oldest first). */
+  /** Untagged, unreferenced, unprotected, older-than-buffer - safe to delete (oldest first). */
   toDelete: PackageVersion[];
   keptTagged: number;
   /** Untagged but reachable from a tag (index children). */
@@ -133,7 +133,7 @@ export function computeDeleteSet(input: DeleteSetInput): DeleteSetResult {
     }
     totalUntagged++;
     if (closure.has(v.digest)) {
-      keptReferencedUntagged++; // index child — deleting would corrupt a tagged image.
+      keptReferencedUntagged++; // index child - deleting would corrupt a tagged image.
       continue;
     }
     if (protectedDigests.has(v.digest)) {
@@ -141,7 +141,7 @@ export function computeDeleteSet(input: DeleteSetInput): DeleteSetResult {
       continue;
     }
     if (ageInDays(v.createdAt, now) <= bufferDays) {
-      keptWithinBuffer++; // recent — might be mid-promotion.
+      keptWithinBuffer++; // recent - might be mid-promotion.
       continue;
     }
     toDelete.push(v);
@@ -195,14 +195,14 @@ export function assertAllTaggedInClosure(
 ): void {
   for (const d of taggedDigests) {
     if (!closure.has(d)) {
-      throw new Error("FAIL-CLOSED: tagged digest missing from closure — keep-set unprovable; refusing to delete");
+      throw new Error("FAIL-CLOSED: tagged digest missing from closure - keep-set unprovable; refusing to delete");
     }
   }
 }
 
 /**
  * Fail-closed invariant: every database-referenced digest MUST resolve to a kept
- * manifest — i.e. be present in the closure (a tagged manifest, or an index
+ * manifest - i.e. be present in the closure (a tagged manifest, or an index
  * child reachable from a tag). A DB digest that is untagged AND unreferenced
  * means our model of reality (every DB ref is a tagged image) is broken; we
  * abort the ENTIRE run rather than protect that one digest and prune the rest.
@@ -215,7 +215,7 @@ export function assertDbDigestsResolved(
   for (const d of protectedDigests) {
     if (!closure.has(d)) {
       throw new Error(
-        `FAIL-CLOSED: DB-referenced digest ${d} is untagged & unreferenced — keep-set assumption (every DB ref is tagged) is violated; refusing to delete`,
+        `FAIL-CLOSED: DB-referenced digest ${d} is untagged & unreferenced - keep-set assumption (every DB ref is tagged) is violated; refusing to delete`,
       );
     }
   }
@@ -268,7 +268,7 @@ export function resolveProtectedDigests(input: ResolveProtectedInput): {
       if (DIGEST_RE.test(dg)) protectedDigests.add(dg);
       continue;
     }
-    if (!ref.startsWith(tagPrefix)) continue; // different image — out of scope.
+    if (!ref.startsWith(tagPrefix)) continue; // different image - out of scope.
     const tag = ref.slice(tagPrefix.length);
     const dg = tagToDigest.get(tag);
     if (dg !== undefined) protectedDigests.add(dg);
@@ -371,7 +371,7 @@ export async function planGhcrCleanup(
   }
 
   // FAIL-CLOSED: a DB digest that does not resolve to a kept manifest means our
-  // keep-set model is broken — abort the whole run rather than prune the
+  // keep-set model is broken - abort the whole run rather than prune the
   // "safe-looking" remainder.
   assertDbDigestsResolved(protectedDigests, closure);
 

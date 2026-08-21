@@ -14,7 +14,7 @@ import { ChatMessage } from "@/components/dashboard/chat-message"
 
 afterEach(() => cleanup())
 
-describe("ChatMessage — never-blank bubble (detail || action)", () => {
+describe("ChatMessage - never-blank bubble (detail || action)", () => {
   it("renders the action text when detail is null (a failed turn is never blank)", () => {
     render(
       <ChatMessage
@@ -85,7 +85,7 @@ describe("ChatMessage — never-blank bubble (detail || action)", () => {
 
   // WORKING-INDICATOR FIX (Q2): a sent-but-unanswered turn shows a quiet
   // "No response" note that is VISUALLY DISTINCT from the red "Failed to send".
-  // The send SUCCEEDED — only the reply is missing — so styling it like a send
+  // The send SUCCEEDED - only the reply is missing - so styling it like a send
   // failure would be wrong information.
   it("renders a quiet 'No response' note (muted --tx3, NOT the red --err 'Failed to send')", () => {
     render(
@@ -122,14 +122,14 @@ describe("ChatMessage — never-blank bubble (detail || action)", () => {
         noResponse
       />,
     )
-    // A failed SEND is "Failed to send", never "No response" — the latter would
+    // A failed SEND is "Failed to send", never "No response" - the latter would
     // wrongly imply it sent.
     expect(screen.getByText("Failed to send")).toBeTruthy()
     expect(screen.queryByText("No response")).toBeNull()
   })
 })
 
-describe("ChatMessage — agent markdown (sanitized) vs user plain text (GAP #1)", () => {
+describe("ChatMessage - agent markdown (sanitized) vs user plain text (GAP #1)", () => {
   it("renders agent reply markdown as formatted elements (heading, bold, inline code)", () => {
     render(
       <ChatMessage
@@ -167,9 +167,9 @@ describe("ChatMessage — agent markdown (sanitized) vs user plain text (GAP #1)
     expect(container.querySelector("strong")).toBeNull()
   })
 
-  // SECURITY LOCK — agent text is untrusted. MUTATION: add rehype-raw / enable
+  // SECURITY LOCK - agent text is untrusted. MUTATION: add rehype-raw / enable
   // raw HTML and the <img>/<script> become real elements → this fails.
-  it("renders agent reply SAFELY — no raw HTML elements, no javascript: links", () => {
+  it("renders agent reply SAFELY - no raw HTML elements, no javascript: links", () => {
     const evil =
       '<img src=x onerror="alert(1)"> <script>alert(2)</script> [evil](javascript:alert(3)) [safe](https://example.com)'
     const { container } = render(
@@ -194,11 +194,11 @@ describe("ChatMessage — agent markdown (sanitized) vs user plain text (GAP #1)
   })
 })
 
-describe("ChatMessage — long-unbroken-token wrap (no horizontal overflow)", () => {
+describe("ChatMessage - long-unbroken-token wrap (no horizontal overflow)", () => {
   // A ~100-char unbroken query token, the case that overflowed the panel.
   const LONG = "https://example.com/x?token=" + "a".repeat(120)
 
-  // The bubble must carry overflow-wrap:anywhere — NOT `break-words`
+  // The bubble must carry overflow-wrap:anywhere - NOT `break-words`
   // (overflow-wrap:break-word leaves min-content = the whole token, so the
   // content-sized bubble grows past max-w-[85%] and runs off the panel). And
   // NOT break-all (that mid-word-breaks normal text). MUTATION: revert to

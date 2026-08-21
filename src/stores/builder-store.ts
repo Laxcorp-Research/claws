@@ -90,9 +90,9 @@ interface BuilderState {
   workspaceId: string | null
   workspaceName: string
   workspaceStatus: string
-  /** IANA tz from workspace row — used to render/preview schedule fires. */
+  /** IANA tz from workspace row - used to render/preview schedule fires. */
   workspaceTimezone: string
-  /** ClawTemplate slug when installed from marketplace — drives regulated floor UI. */
+  /** ClawTemplate slug when installed from marketplace - drives regulated floor UI. */
   templateSlug: string | null
   maxRevisionRounds: number
   deliveryMode: DeliveryModeUi
@@ -635,7 +635,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         if (!wsRes.ok) {
           // Batch D: any non-OK (incl. 5xx) sets loadError so the page can show
-          // NetworkError + Retry — never a silent empty canvas.
+          // NetworkError + Retry - never a silent empty canvas.
           set({ isLoading: false, loadError: wsRes.status })
           return
         }
@@ -806,7 +806,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         set({ _draftIntervalId: intervalId })
       } catch (err) {
         console.error("Failed to load workspace:", err)
-        // Network / parse failures — distinct from auth redirects (401/403/404).
+        // Network / parse failures - distinct from auth redirects (401/403/404).
         set({ isLoading: false, loadError: 0 })
       }
     },
@@ -851,7 +851,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           const isOrchestrator = d.role === "ORCHESTRATOR"
 
           if (isTemp) {
-            // Batch D: include skillIds on create — omitting drops selected skills
+            // Batch D: include skillIds on create - omitting drops selected skills
             // (PATCH-only path never runs for brand-new temp agents).
             const createRes = await fetch(`/api/agents/${wid}`, {
               method: "POST", headers: { "Content-Type": "application/json" },

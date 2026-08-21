@@ -12,7 +12,7 @@ import { validateToolKey, hasValidator } from "@/lib/tools/validators"
  *
  * Actually validates a stored API_KEY connection by calling the provider.
  * Before this endpoint existed, the UI's "Test" button called a PATCH that
- * the client itself populated with `status: "CONNECTED"` — the test was
+ * the client itself populated with `status: "CONNECTED"` - the test was
  * client-declared success, not a real provider round-trip.
  *
  * Response shape:
@@ -82,7 +82,7 @@ export async function POST(
     )
   }
 
-  // If there's no validator for this tool, don't change status — just
+  // If there's no validator for this tool, don't change status - just
   // report honestly that we can't actually verify it right now.
   if (!hasValidator(conn.toolSlug)) {
     await prisma.toolConnection.update({
@@ -93,7 +93,7 @@ export async function POST(
       valid: true,
       unverified: true,
       message:
-        "No validator implemented for this tool yet — we can't actually test it from here. The key is saved; the tool will fail at call time if it's wrong.",
+        "No validator implemented for this tool yet - we can't actually test it from here. The key is saved; the tool will fail at call time if it's wrong.",
       status: conn.status,
     })
   }
@@ -125,7 +125,7 @@ export async function POST(
     })
   }
 
-  // Transient provider error — treat as pending, not connected.
+  // Transient provider error - treat as pending, not connected.
   if (result.warning) {
     const updated = await prisma.toolConnection.update({
       where: { id },

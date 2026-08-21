@@ -2,7 +2,7 @@
  * Edge-derived subagents.allowAgents for the orchestrator.
  *
  * allowAgents = (ORCH→WORKER solid edge targets − paused) ∪ {critic}
- * Critic is always included (structural invariant — review is a product
+ * Critic is always included (structural invariant - review is a product
  * guarantee, not a canvas choice). Edge-orphaned workers are excluded.
  */
 
