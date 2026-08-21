@@ -13,14 +13,12 @@ export async function GET(request: NextRequest) {
   const q = sp.get("q") ?? undefined
   const provider = sp.get("provider") ?? undefined
   const pinnedOnly = sp.get("pinned") === "1" || sp.get("pinned") === "true"
-  const creditMode = sp.get("creditMode") === "1" || sp.get("creditMode") === "true"
   const limit = Number(sp.get("limit") ?? (pinnedOnly ? 30 : 40))
 
   const models = await queryModelCatalog({
     q,
     provider: provider || undefined,
     pinnedOnly,
-    creditMode,
     limit: Number.isFinite(limit) ? limit : 40,
   })
 

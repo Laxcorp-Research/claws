@@ -101,4 +101,21 @@ describe("refreshAnthropicCatalog", () => {
     expect(opus48?.create?.isPinned).toBe(false)
     expect(opus48?.create?.costPer1kEst).toBeNull()
   })
+
+  it("backfills a human displayName when Anthropic omits display_name", async () => {
+    const fetcher = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [{ id: "claude-mystery-9", display_name: "", created_at: "2026-01-01T00:00:00Z" }],
+        has_more: false,
+      }),
+    }))
+    await refreshAnthropicCatalog(fetcher)
+    const row = prismaMock.modelCatalogEntry.upsert.mock.calls.find(
+      (c) => c[0]?.where?.modelId === "anthropic/claude-mystery-9",
+    )?.[0]
+    expect(row?.create?.displayName).toBe("Claude Mystery 9")
+    expect(String(row?.create?.displayName)).not.toContain("/")
+  })
 })

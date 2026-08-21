@@ -5,6 +5,8 @@
  * second list. Adding a native pin is a one-line change in seed-models.ts.
  */
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
+import { resolveCatalogDisplayName } from "@/lib/models/humanize"
+import { isByokModelRef } from "@/lib/models/byok-disclaimer"
 
 const NATIVE_PROVIDER_LABEL: Record<string, string> = {
   ANTHROPIC: "Anthropic",
@@ -35,7 +37,8 @@ export const DEFAULT_MODEL: Record<string, string> = {
 }
 
 export function getModelLabel(value: string): string {
-  return PINNED_SEED_MODELS.find((m) => m.modelId === value)?.displayName ?? value
+  const seed = PINNED_SEED_MODELS.find((m) => m.modelId === value)?.displayName
+  return resolveCatalogDisplayName(value, seed)
 }
 
 /** Known seed price, or null — never invent a number for unpriced models. */
@@ -44,7 +47,7 @@ export function getModelCost(value: string): number | null {
 }
 
 export function formatModelEstCost(modelId: string): string {
-  if (modelId.startsWith("openrouter/")) return "est. (BYOK)"
+  if (isByokModelRef(modelId)) return "est. (BYOK)"
   const est = getModelCost(modelId)
   if (est == null) return "—"
   return `~$${est}/call`

@@ -7,6 +7,7 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
+import { resolveCatalogDisplayName } from "@/lib/models/humanize"
 
 export const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models"
 export const ANTHROPIC_VERSION = "2023-06-01"
@@ -125,7 +126,7 @@ export async function refreshAnthropicCatalog(
           create: {
             modelId,
             provider: "ANTHROPIC",
-            displayName: m.display_name || m.id,
+            displayName: resolveCatalogDisplayName(modelId, m.display_name),
             contextLength,
             pricingSnippet: null,
             costPer1kEst: cost,
@@ -136,7 +137,7 @@ export async function refreshAnthropicCatalog(
             refreshedAt: now,
           },
           update: {
-            displayName: m.display_name || m.id,
+            displayName: resolveCatalogDisplayName(modelId, m.display_name),
             contextLength,
             isPinned: pinSet.has(modelId),
             isActive: true,

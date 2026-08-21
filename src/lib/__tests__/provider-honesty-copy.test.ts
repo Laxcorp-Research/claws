@@ -40,7 +40,11 @@ describe("provider honesty copy alignment", () => {
       join(process.cwd(), "src/app/setup/[workspaceId]/step/[n]/page.tsx"),
       "utf8",
     )
-    expect(setup).toContain('OPENROUTER: "OpenRouter — one key, every model"')
+    const setupCards = readFileSync(
+      join(process.cwd(), "src/components/setup/provider-auth-cards.tsx"),
+      "utf8",
+    )
+    expect(setupCards).toContain('OPENROUTER: "OpenRouter — one key, every model"')
     expect(setup).not.toMatch(/OLLAMA:\s*"Ollama/)
   })
 })
