@@ -16,9 +16,11 @@ import {
 } from "@/lib/models/provider-auth"
 import {
   THINKING_HELP_TEXT,
+  THINKING_HELP_TEXT_UNKNOWN,
   THINKING_LEVELS,
   THINKING_LEVEL_LABEL,
   isThinkingLevel,
+  thinkingUnsupportedText,
 } from "@/lib/models/thinking"
 
 /** Virtualization contract — tests assert the window stays small at 400+ rows. */
@@ -140,6 +142,20 @@ export function ModelSelectModal({
     : null
   const canSave = Boolean(pendingModel) && (pendingAuth?.selectable ?? false)
 
+  // Per-model thinking gate: false = control locked at Default; null = unknown,
+  // control stays usable (the runtime ignores levels on non-reasoning models).
+  // Deps include `open`: the re-arm effect above re-injects the stored level on
+  // every open, so the reset must re-run even when reasoningLocked is unchanged.
+  const reasoningLocked = pendingOption?.supportsReasoning === false
+  useEffect(() => {
+    if (reasoningLocked) setPendingThinking(null)
+  }, [reasoningLocked, pendingModel, open])
+  const thinkingHelp = reasoningLocked
+    ? thinkingUnsupportedText(pendingLabel)
+    : pendingOption?.supportsReasoning === true
+      ? THINKING_HELP_TEXT
+      : THINKING_HELP_TEXT_UNKNOWN
+
   const openRouterConfigured = configuredProviders.includes("OPENROUTER")
 
   return (
@@ -160,7 +176,9 @@ export function ModelSelectModal({
           <Button
             data-testid="model-modal-save"
             onClick={() => {
-              onSave(pendingModel, pendingThinking)
+              // Hard guard: never persist a thinking level for a model that
+              // cannot reason, even if effect timing left stale UI state.
+              onSave(pendingModel, reasoningLocked ? null : pendingThinking)
               onClose()
             }}
             disabled={!canSave}
@@ -298,9 +316,19 @@ export function ModelSelectModal({
                       <Check className="w-[13px] h-[13px]" aria-hidden />
                     </span>
                     <span className="min-w-0">
-                      <TruncatedText className={`block text-[12px] leading-[16px] ${selected ? "font-semibold" : "font-medium"} text-[var(--tx)]`}>
-                        {option.label}
-                      </TruncatedText>
+                      <span className="flex items-center gap-[6px] min-w-0">
+                        <TruncatedText className={`block text-[12px] leading-[16px] ${selected ? "font-semibold" : "font-medium"} text-[var(--tx)]`}>
+                          {option.label}
+                        </TruncatedText>
+                        {option.supportsReasoning === true && (
+                          <span
+                            data-testid={`model-reasoning-chip-${option.value}`}
+                            className="shrink-0 text-[9px] leading-[13px] px-[5px] rounded-[5px] bg-[var(--acbg)] text-[var(--ac-text)]"
+                          >
+                            Reasoning
+                          </span>
+                        )}
+                      </span>
                       <span className="block text-[10px] leading-[13px] text-[var(--tx3)]">
                         {option.isPinned ? "Recommended" : option.value}
                       </span>
@@ -342,16 +370,21 @@ export function ModelSelectModal({
               role="radio"
               aria-checked={pendingThinking === level}
               data-testid={`thinking-level-${level}`}
+              disabled={reasoningLocked}
               onClick={() => setPendingThinking(level)}
-              className={`px-[10px] py-[4px] text-[11px] cursor-pointer border-none ${
-                pendingThinking === level ? "bg-[var(--tx)] text-white font-medium" : "bg-transparent text-[var(--tx2)] hover:bg-[var(--bg2)]"
-              }`}
+              className={`px-[10px] py-[4px] text-[11px] border-none ${
+                pendingThinking === level
+                  ? "bg-[var(--tx)] text-white font-medium"
+                  : `bg-transparent text-[var(--tx2)]${reasoningLocked ? "" : " hover:bg-[var(--bg2)]"}`
+              } ${reasoningLocked ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
             >
               {THINKING_LEVEL_LABEL[level]}
             </button>
           ))}
         </div>
-        <p className="text-[10px] text-[var(--tx3)] mt-[5px]">{THINKING_HELP_TEXT}</p>
+        <p data-testid="thinking-help" className="text-[10px] text-[var(--tx3)] mt-[5px]">
+          {thinkingHelp}
+        </p>
       </div>
     </Modal>
   )

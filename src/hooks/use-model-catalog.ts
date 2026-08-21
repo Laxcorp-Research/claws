@@ -14,6 +14,8 @@ export type ModelCatalogOption = {
   contextLength: number | null
   pricingSnippet: string | null
   costPer1kEst: number | null
+  /** true/false from provider metadata; null = unknown (control stays enabled). */
+  supportsReasoning: boolean | null
 }
 
 let cache: ModelCatalogOption[] | null = null
@@ -35,6 +37,7 @@ function parseCatalog(json: unknown): ModelCatalogOption[] {
       contextLength?: number | null
       pricingSnippet?: string | null
       costPer1kEst?: number | null
+      supportsReasoning?: boolean | null
     }>
     options?: Array<{ value: string; label: string; provider?: string }>
   }
@@ -48,6 +51,7 @@ function parseCatalog(json: unknown): ModelCatalogOption[] {
       contextLength: m.contextLength ?? null,
       pricingSnippet: m.pricingSnippet ?? null,
       costPer1kEst: m.costPer1kEst ?? null,
+      supportsReasoning: m.supportsReasoning ?? null,
     }))
   }
   return (payload.options ?? []).map((o) => ({
@@ -59,6 +63,7 @@ function parseCatalog(json: unknown): ModelCatalogOption[] {
     contextLength: null,
     pricingSnippet: null,
     costPer1kEst: null,
+    supportsReasoning: null,
   }))
 }
 

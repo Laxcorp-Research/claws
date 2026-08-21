@@ -67,4 +67,17 @@ describe("queryModelCatalog registry → picker", () => {
       expect.objectContaining({ take: 2000 }),
     )
   })
+
+  it("selects and passes supportsReasoning through to the picker payload", async () => {
+    prismaMock.modelCatalogEntry.findMany.mockResolvedValue([
+      { ...NEW_PIN, supportsReasoning: true },
+    ] as never)
+    const rows = await queryModelCatalog({ limit: 10 })
+    expect(prismaMock.modelCatalogEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ supportsReasoning: true }),
+      }),
+    )
+    expect(rows[0]?.supportsReasoning).toBe(true)
+  })
 })

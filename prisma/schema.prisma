@@ -172,6 +172,11 @@ model ModelCatalogEntry {
   pricingSnippet     String?
   /// Rough est. USD per 1k calls for legacy cost column (estimate-only for BYOK)
   costPer1kEst       Float?
+  /// Adjustable thinking/reasoning support. true/false from provider metadata
+  /// (OpenRouter supported_parameters, Anthropic version heuristic);
+  /// null = unknown (UI keeps the thinking control enabled; runtime ignores
+  /// the level on models that lack reasoning).
+  supportsReasoning  Boolean?
   isPinned           Boolean  @default(false)
   isActive           Boolean  @default(true)
   /// seed | openrouter | openai | google | anthropic

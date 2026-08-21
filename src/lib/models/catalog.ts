@@ -15,6 +15,8 @@ export type CatalogModel = {
   contextLength: number | null
   pricingSnippet: string | null
   costPer1kEst: number | null
+  /** true/false from provider metadata; null = unknown (control stays enabled). */
+  supportsReasoning: boolean | null
   isPinned: boolean
 }
 
@@ -66,6 +68,7 @@ export async function ensureSeedModels(): Promise<number> {
         contextLength: seed.contextLength ?? null,
         pricingSnippet: seed.pricingSnippet ?? null,
         costPer1kEst: seed.costPer1kEst ?? null,
+        supportsReasoning: seed.supportsReasoning ?? null,
         isPinned: seed.isPinned,
         isActive: true,
         source: "seed",
@@ -76,6 +79,7 @@ export async function ensureSeedModels(): Promise<number> {
         contextLength: seed.contextLength ?? null,
         pricingSnippet: seed.pricingSnippet ?? null,
         costPer1kEst: seed.costPer1kEst ?? null,
+        supportsReasoning: seed.supportsReasoning ?? null,
         isPinned: seed.isPinned,
         isActive: true,
         refreshedAt: new Date(),
@@ -91,6 +95,20 @@ type OpenRouterModel = {
   name?: string
   context_length?: number
   pricing?: { prompt?: string; completion?: string }
+  supported_parameters?: string[]
+}
+
+/**
+ * OpenRouter's /models lists each model's accepted request params;
+ * "reasoning"/"include_reasoning" mark adjustable-effort models.
+ * Missing list = unknown (null), NOT false: the UI must not lock the
+ * thinking control on stale metadata.
+ */
+export function reasoningFromOpenRouter(m: OpenRouterModel): boolean | null {
+  if (!Array.isArray(m.supported_parameters)) return null
+  return m.supported_parameters.some(
+    (p) => p === "reasoning" || p === "include_reasoning",
+  )
 }
 
 /**
@@ -140,6 +158,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
     const writes = chunk.flatMap((m) => {
       const modelId = `openrouter/${m.id}`
       const pinned = PINNED_SEED_MODELS.some((s) => s.modelId === modelId)
+      const supportsReasoning = reasoningFromOpenRouter(m)
       const ops = [
         prisma.modelCatalogEntry.upsert({
           where: { modelId },
@@ -150,6 +169,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
             contextLength: m.context_length ?? null,
             pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+            supportsReasoning,
             isPinned: pinned,
             isActive: true,
             source: "openrouter",
@@ -161,6 +181,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
             contextLength: m.context_length ?? null,
             pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+            supportsReasoning,
             isActive: true,
             source: "openrouter",
             rawMeta: m as object,
@@ -186,6 +207,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
               contextLength: m.context_length ?? null,
               pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
               costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+              supportsReasoning,
               isPinned: nativePinned,
               isActive: true,
               source: "openrouter-derived",
@@ -197,6 +219,7 @@ export async function refreshOpenRouterCatalog(): Promise<{
               contextLength: m.context_length ?? null,
               pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
               costPer1kEst: costPer1kFromOpenRouter(m.pricing),
+              supportsReasoning,
               isActive: true,
               source: "openrouter-derived",
               rawMeta: m as object,
@@ -303,6 +326,7 @@ export async function queryModelCatalog(params: {
       contextLength: true,
       pricingSnippet: true,
       costPer1kEst: true,
+      supportsReasoning: true,
       isPinned: true,
     },
   })
@@ -324,6 +348,7 @@ export async function queryModelCatalog(params: {
         contextLength: s.contextLength ?? null,
         pricingSnippet: s.pricingSnippet ?? null,
         costPer1kEst: s.costPer1kEst ?? null,
+        supportsReasoning: s.supportsReasoning ?? null,
         isPinned: s.isPinned,
       })),
     )
