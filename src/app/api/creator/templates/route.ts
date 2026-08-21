@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import {
+  canDeleteCreatorListing,
+  deleteBlockedCopy,
+} from "@/lib/marketplace/creator-listing-lifecycle"
 
 export async function GET() {
   const user = await getSessionUser()
@@ -49,12 +53,19 @@ export async function GET() {
     }])
   )
 
-  const items = templates.map((t) => ({
-    ...t,
-    revenue: salesMap.get(t.id)?.revenue ?? 0,
-    salesCount: salesMap.get(t.id)?.salesCount ?? 0,
-    createdAt: t.createdAt.toISOString(),
-  }))
+  const items = templates.map((t) => {
+    const salesCount = salesMap.get(t.id)?.salesCount ?? 0
+    const counts = { salesCount, installCount: t.installCount }
+    const canDelete = canDeleteCreatorListing(counts)
+    return {
+      ...t,
+      revenue: salesMap.get(t.id)?.revenue ?? 0,
+      salesCount,
+      canDelete,
+      deleteBlockedReason: canDelete ? null : deleteBlockedCopy(counts),
+      createdAt: t.createdAt.toISOString(),
+    }
+  })
 
   return apiSuccess({ templates: items })
 }

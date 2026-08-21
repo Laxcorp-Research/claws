@@ -18,6 +18,11 @@ import {
   isMarketplaceCreatorEnrollEnabled,
   isMarketplacePublishEnabled,
 } from "@/lib/marketplace/feature-flags"
+import {
+  creatorListingStatusClass,
+  creatorListingStatusLabel,
+} from "@/lib/marketplace/creator-listing-lifecycle"
+import { CreatorListingMenu } from "@/components/settings/creator-listing-menu"
 import type { TrustTier } from "@/types/marketplace"
 
 interface CreatorProfile {
@@ -76,6 +81,8 @@ interface PublishedTemplate {
   isFree: boolean
   revenue: number
   salesCount: number
+  canDelete: boolean
+  deleteBlockedReason: string | null
 }
 
 interface PublishedSkill {
@@ -92,6 +99,8 @@ interface PublishedSkill {
   isFree: boolean
   revenue: number
   salesCount: number
+  canDelete: boolean
+  deleteBlockedReason: string | null
 }
 
 export function CreatorDashboard() {
@@ -152,6 +161,17 @@ export function CreatorDashboard() {
       .catch(() => {})
   }, [])
 
+  const loadListings = useCallback(() => {
+    fetch("/api/creator/templates")
+      .then((r) => r.json())
+      .then((j) => setTemplates((j.data ?? j).templates ?? []))
+      .catch(() => {})
+    fetch("/api/creator/skills")
+      .then((r) => r.json())
+      .then((j) => setSkills((j.data ?? j).skills ?? []))
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     fetch("/api/creator/profile")
       .then((r) => r.json())
@@ -169,14 +189,13 @@ export function CreatorDashboard() {
         setIsLoadingProfile(false)
 
         if (d.enrolled) {
+          loadListings()
           fetch("/api/creator/earnings").then((r) => r.json()).then((j) => setEarnings(j.data ?? j)).catch(() => {})
-          fetch("/api/creator/templates").then((r) => r.json()).then((j) => setTemplates((j.data ?? j).templates ?? [])).catch(() => {})
-          fetch("/api/creator/skills").then((r) => r.json()).then((j) => setSkills((j.data ?? j).skills ?? [])).catch(() => {})
           loadPayoutDetails()
         }
       })
       .catch(() => setIsLoadingProfile(false))
-  }, [loadPayoutDetails])
+  }, [loadPayoutDetails, loadListings])
 
   const handleSavePayoutDetails = async () => {
     setSavingPayout(true)
@@ -531,6 +550,7 @@ export function CreatorDashboard() {
                   <th className="text-left p-[6px] text-[var(--tx2)] font-medium">Trust</th>
                   <th className="text-right p-[6px] text-[var(--tx2)] font-medium">Installs</th>
                   <th className="text-right p-[6px] text-[var(--tx2)] font-medium">Revenue</th>
+                  <th className="text-right p-[6px] text-[var(--tx2)] font-medium"> </th>
                 </tr>
               </thead>
               <tbody>
@@ -538,13 +558,25 @@ export function CreatorDashboard() {
                   <tr key={t.id} className="border-b border-[var(--bd)] last:border-0">
                     <td className="p-[6px] font-medium text-[var(--tx)]">{t.name}</td>
                     <td className="p-[6px]">
-                      <span className={`text-[10px] ${t.isPublished ? "text-[var(--ok)]" : t.reviewStatus === "REJECTED" ? "text-[var(--err)]" : "text-[var(--warn)]"}`}>
-                        {t.isPublished ? "Published" : t.reviewStatus === "REJECTED" ? "Rejected" : "Under Review"}
+                      <span className={`text-[10px] ${creatorListingStatusClass(t)}`}>
+                        {creatorListingStatusLabel(t)}
                       </span>
                     </td>
                     <td className="p-[6px]"><TrustBadge tier={t.trustTier} /></td>
                     <td className="p-[6px] text-right">{t.installCount}</td>
                     <td className="p-[6px] text-right font-medium">{formatCurrencyRounded(t.revenue)}</td>
+                    <td className="p-[6px] text-right">
+                      <CreatorListingMenu
+                        kind="template"
+                        slug={t.slug}
+                        name={t.name}
+                        isPublished={t.isPublished}
+                        reviewStatus={t.reviewStatus}
+                        canDelete={t.canDelete ?? (t.salesCount === 0 && t.installCount === 0)}
+                        deleteBlockedReason={t.deleteBlockedReason}
+                        onChanged={loadListings}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -576,6 +608,7 @@ export function CreatorDashboard() {
                   <th className="text-left p-[6px] text-[var(--tx2)] font-medium">Trust</th>
                   <th className="text-right p-[6px] text-[var(--tx2)] font-medium">Installs</th>
                   <th className="text-right p-[6px] text-[var(--tx2)] font-medium">Revenue</th>
+                  <th className="text-right p-[6px] text-[var(--tx2)] font-medium"> </th>
                 </tr>
               </thead>
               <tbody>
@@ -583,13 +616,25 @@ export function CreatorDashboard() {
                   <tr key={s.id} className="border-b border-[var(--bd)] last:border-0">
                     <td className="p-[6px] font-medium text-[var(--tx)]">{s.name}</td>
                     <td className="p-[6px]">
-                      <span className={`text-[10px] ${s.isPublished ? "text-[var(--ok)]" : s.reviewStatus === "REJECTED" ? "text-[var(--err)]" : "text-[var(--warn)]"}`}>
-                        {s.isPublished ? "Published" : s.reviewStatus === "REJECTED" ? "Rejected" : "Under Review"}
+                      <span className={`text-[10px] ${creatorListingStatusClass(s)}`}>
+                        {creatorListingStatusLabel(s)}
                       </span>
                     </td>
                     <td className="p-[6px]"><TrustBadge tier={s.trustTier} /></td>
                     <td className="p-[6px] text-right">{s.installCount}</td>
                     <td className="p-[6px] text-right font-medium">{formatCurrencyRounded(s.revenue ?? 0)}</td>
+                    <td className="p-[6px] text-right">
+                      <CreatorListingMenu
+                        kind="skill"
+                        slug={s.slug}
+                        name={s.name}
+                        isPublished={s.isPublished}
+                        reviewStatus={s.reviewStatus}
+                        canDelete={s.canDelete ?? (s.salesCount === 0 && s.installCount === 0)}
+                        deleteBlockedReason={s.deleteBlockedReason}
+                        onChanged={loadListings}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -7,7 +7,7 @@ import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
 import { AlertBanner } from "@/components/ui/alert-banner"
-import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState, WriteReviewButton } from "@/components/marketplace"
+import { TrustBadge, PriceDisplay, CreatorCard, ReviewCard, ReviewStars, PendingReviewEmptyState, UnpublishedEmptyState, WriteReviewButton } from "@/components/marketplace"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TextLink } from "@/components/ui/text-link"
@@ -74,6 +74,7 @@ export default function SkillDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pendingReview, setPendingReview] = useState(false)
+  const [unpublished, setUnpublished] = useState(false)
 
   const [reviews, setReviews] = useState<TemplateReviewData[]>([])
   const [showAllReviews, setShowAllReviews] = useState(false)
@@ -98,6 +99,7 @@ export default function SkillDetailPage() {
     setIsLoading(true)
     setError(null)
     setPendingReview(false)
+    setUnpublished(false)
     fetch(`/api/marketplace/skills/${slug}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.status === 404 ? "Skill not found" : "Failed to load")
@@ -107,6 +109,11 @@ export default function SkillDetailPage() {
         const payload = json.data ?? json
         if (payload?.listingState === "pending_review") {
           setPendingReview(true)
+          setIsLoading(false)
+          return
+        }
+        if (payload?.listingState === "unpublished") {
+          setUnpublished(true)
           setIsLoading(false)
           return
         }
@@ -267,6 +274,16 @@ export default function SkillDetailPage() {
       <PageShell background="secondary">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <PendingReviewEmptyState />
+        </div>
+      </PageShell>
+    )
+  }
+
+  if (unpublished) {
+    return (
+      <PageShell background="secondary">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <UnpublishedEmptyState />
         </div>
       </PageShell>
     )
