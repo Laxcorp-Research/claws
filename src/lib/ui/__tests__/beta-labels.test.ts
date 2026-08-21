@@ -47,20 +47,20 @@ describe("PR-0 beta honesty labels", () => {
   })
 
   it("MUTATION: setup + settings surface BYOK beta label for OpenAI/Google", () => {
-    const setup = readFileSync(
-      join(process.cwd(), "src/app/setup/[workspaceId]/step/[n]/page.tsx"),
+    const setupCards = readFileSync(
+      join(process.cwd(), "src/components/setup/provider-auth-cards.tsx"),
       "utf8",
     )
     const settings = readFileSync(
       join(process.cwd(), "src/components/settings/api-key-manager.tsx"),
       "utf8",
     )
-    expect(setup).toContain("PROVIDER_BYOK_BETA_LABEL")
-    expect(setup).toContain("isByokBetaProvider")
+    expect(setupCards).toContain("PROVIDER_BYOK_BETA_LABEL")
+    expect(setupCards).toContain("isByokBetaProvider")
     expect(settings).toContain("PROVIDER_BYOK_BETA_LABEL")
     expect(settings).toContain("isByokBetaProvider")
     // Proven default must stay labeled on Anthropic.
-    expect(setup).toContain('provider === "ANTHROPIC"')
+    expect(setupCards).toContain('provider === "ANTHROPIC"')
     expect(settings).toContain('provider.key === "ANTHROPIC"')
   })
 

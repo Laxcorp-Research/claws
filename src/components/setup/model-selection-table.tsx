@@ -41,14 +41,6 @@ export function ModelSelectionTable({
 
   return (
     <div className="mb-3.5">
-      {showByokDisclaimer && (
-        <p
-          data-testid="byok-cost-disclaimer"
-          className="text-[10px] text-[var(--tx3)] mb-[8px]"
-        >
-          {BYOK_COST_DISCLAIMER}
-        </p>
-      )}
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr>
@@ -82,6 +74,14 @@ export function ModelSelectionTable({
           })}
         </tbody>
       </table>
+      {showByokDisclaimer && (
+        <p
+          data-testid="byok-cost-disclaimer"
+          className="text-[10px] text-[var(--tx3)] mt-[8px]"
+        >
+          {BYOK_COST_DISCLAIMER}
+        </p>
+      )}
     </div>
   )
 }

@@ -41,4 +41,30 @@ describe("queryModelCatalog registry → picker", () => {
     expect(rows.map((r) => r.modelId)).toContain("anthropic/claude-sonnet-4-7")
     expect(rows.find((r) => r.modelId === NEW_PIN.modelId)?.displayName).toBe("Claude Sonnet 4.7")
   })
+
+  it("creditMode does not drop OpenRouter rows (locked in UI, not hidden)", async () => {
+    prismaMock.modelCatalogEntry.findMany.mockResolvedValue([
+      NEW_PIN,
+      {
+        modelId: "openrouter/openai/gpt-4o-mini",
+        provider: "OPENROUTER",
+        displayName: "GPT-4o Mini",
+        contextLength: 128000,
+        pricingSnippet: "est.",
+        costPer1kEst: 0.003,
+        isPinned: true,
+      },
+    ] as never)
+
+    const rows = await queryModelCatalog({ creditMode: true, limit: 50 })
+    expect(rows.some((r) => r.provider === "OPENROUTER")).toBe(true)
+  })
+
+  it("allows a full-catalog take up to 2000", async () => {
+    prismaMock.modelCatalogEntry.findMany.mockResolvedValue([] as never)
+    await queryModelCatalog({ limit: 2000 })
+    expect(prismaMock.modelCatalogEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 2000 }),
+    )
+  })
 })

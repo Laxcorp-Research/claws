@@ -2,6 +2,11 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
 import { refreshAnthropicCatalog } from "@/lib/models/anthropic-catalog"
+import { resolveCatalogDisplayName } from "@/lib/models/humanize"
+import { providerLabel } from "@/lib/models/provider-labels"
+import { MODEL_CATALOG_MAX_LIMIT } from "@/lib/models/catalog-limits"
+
+export { providerLabel, MODEL_CATALOG_MAX_LIMIT }
 
 export type CatalogModel = {
   modelId: string
@@ -20,13 +25,6 @@ export type LegacyModelRow = {
   provider: string
   tier: string
   costPer1kCalls: number
-}
-
-const PROVIDER_LABEL: Record<string, string> = {
-  ANTHROPIC: "Anthropic",
-  OPENAI: "OpenAI",
-  GOOGLE: "Google",
-  OPENROUTER: "OpenRouter",
 }
 
 function pricingSnippetFromOpenRouter(pricing: {
@@ -124,7 +122,7 @@ export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fe
           create: {
             modelId,
             provider: "OPENROUTER",
-            displayName: m.name || m.id,
+            displayName: resolveCatalogDisplayName(modelId, m.name),
             contextLength: m.context_length ?? null,
             pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
@@ -135,7 +133,7 @@ export async function refreshOpenRouterCatalog(): Promise<{ upserted: number; fe
             refreshedAt: now,
           },
           update: {
-            displayName: m.name || m.id,
+            displayName: resolveCatalogDisplayName(modelId, m.name),
             contextLength: m.context_length ?? null,
             pricingSnippet: pricingSnippetFromOpenRouter(m.pricing),
             costPer1kEst: costPer1kFromOpenRouter(m.pricing),
@@ -196,14 +194,22 @@ export async function refreshAllModelCatalogs(): Promise<{
   return { seed: native.seed, anthropic: native.anthropic, openrouter }
 }
 
+function withResolvedNames(rows: CatalogModel[]): CatalogModel[] {
+  return rows.map((row) => ({
+    ...row,
+    displayName: resolveCatalogDisplayName(row.modelId, row.displayName),
+  }))
+}
+
 export async function queryModelCatalog(params: {
   q?: string
   provider?: string
   pinnedOnly?: boolean
   limit?: number
+  /** Ignored — enablement is UI-only so locked providers stay visible. */
   creditMode?: boolean
 }): Promise<CatalogModel[]> {
-  const limit = Math.min(Math.max(params.limit ?? 40, 1), 100)
+  const limit = Math.min(Math.max(params.limit ?? 40, 1), MODEL_CATALOG_MAX_LIMIT)
   const where: {
     isActive: boolean
     isPinned?: boolean
@@ -212,9 +218,7 @@ export async function queryModelCatalog(params: {
   } = { isActive: true }
 
   if (params.pinnedOnly) where.isPinned = true
-  if (params.creditMode) {
-    where.provider = "ANTHROPIC"
-  } else if (params.provider) {
+  if (params.provider) {
     where.provider = params.provider
   }
   if (params.q?.trim()) {
@@ -242,38 +246,35 @@ export async function queryModelCatalog(params: {
 
   // If DB empty (pre-migrate / first boot), fall back to seeds in-memory.
   if (rows.length === 0) {
-    return PINNED_SEED_MODELS.filter((s) => {
-      if (params.creditMode && s.provider !== "ANTHROPIC") return false
-      if (params.provider && s.provider !== params.provider) return false
-      if (params.q) {
-        const q = params.q.toLowerCase()
-        return s.displayName.toLowerCase().includes(q) || s.modelId.toLowerCase().includes(q)
-      }
-      return true
-    }).map((s) => ({
-      modelId: s.modelId,
-      provider: s.provider,
-      displayName: s.displayName,
-      contextLength: s.contextLength ?? null,
-      pricingSnippet: s.pricingSnippet ?? null,
-      costPer1kEst: s.costPer1kEst ?? null,
-      isPinned: s.isPinned,
-    }))
+    return withResolvedNames(
+      PINNED_SEED_MODELS.filter((s) => {
+        if (params.provider && s.provider !== params.provider) return false
+        if (params.q) {
+          const q = params.q.toLowerCase()
+          return s.displayName.toLowerCase().includes(q) || s.modelId.toLowerCase().includes(q)
+        }
+        return true
+      }).map((s) => ({
+        modelId: s.modelId,
+        provider: s.provider,
+        displayName: s.displayName,
+        contextLength: s.contextLength ?? null,
+        pricingSnippet: s.pricingSnippet ?? null,
+        costPer1kEst: s.costPer1kEst ?? null,
+        isPinned: s.isPinned,
+      })),
+    )
   }
 
-  return rows
+  return withResolvedNames(rows)
 }
 
 export function catalogToLegacyOptions(models: CatalogModel[]): LegacyModelRow[] {
   return models.map((m) => ({
     value: m.modelId,
     label: m.displayName,
-    provider: PROVIDER_LABEL[m.provider] ?? m.provider,
+    provider: providerLabel(m.provider),
     tier: m.isPinned ? "recommended" : "catalog",
     costPer1kCalls: m.costPer1kEst ?? 0,
   }))
-}
-
-export function providerLabel(provider: string): string {
-  return PROVIDER_LABEL[provider] ?? provider
 }
