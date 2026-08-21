@@ -5,7 +5,7 @@
  * Prose: soulMd / agentsMd / heartbeatMd mention tool name or slug
  *
  * Honest limit: official templates often seed skills:[] and install never
- * creates AgentSkill — prose is the common signal. SOUL-only paraphrases
+ * creates AgentSkill - prose is the common signal. SOUL-only paraphrases
  * that omit the tool name/slug are undetectable.
  */
 import { prisma } from "@/lib/db"
@@ -24,7 +24,7 @@ export interface ToolDependentHit {
 
 export interface ResolveToolDependentsResult {
   hits: ToolDependentHit[]
-  /** structural | prose | both | none — drives honest-limit dialog copy. */
+  /** structural | prose | both | none - drives honest-limit dialog copy. */
   coverage: "structural" | "prose" | "both" | "none"
   honestLimitCopy: string
 }
@@ -60,9 +60,9 @@ export function honestLimitCopyForCoverage(
 ): string {
   switch (coverage) {
     case "none":
-      return "No agents reference this tool in assigned skills or SOUL/AGENTS/HEARTBEAT text. Prose-only paraphrases without the tool name may still exist — review agent files if unsure."
+      return "No agents reference this tool in assigned skills or SOUL/AGENTS/HEARTBEAT text. Prose-only paraphrases without the tool name may still exist - review agent files if unsure."
     case "prose":
-      return "Listed agents mention this tool in SOUL/AGENTS/HEARTBEAT text only — no assigned skills link it. Mentions that omit the tool name are not detected."
+      return "Listed agents mention this tool in SOUL/AGENTS/HEARTBEAT text only - no assigned skills link it. Mentions that omit the tool name are not detected."
     case "structural":
       return "Listed agents have skills compatible with this tool. SOUL/AGENTS prose that names the tool without a skill assignment is not listed separately when a structural hit already exists."
     case "both":

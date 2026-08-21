@@ -22,7 +22,7 @@ interface HealthPill {
 // Mirrors the dashboard alerts precedence (operator-intent lifecycle states
 // first, then genuine unreachability, then degraded/config-drift, then
 // healthy). Quiet tones (ok/muted) render text-only; loud tones (warn/error/
-// info) get a tinted background — "quiet when healthy, loud when not".
+// info) get a tinted background - "quiet when healthy, loud when not".
 export function healthPill(
   status: string,
   healthStatus: string,

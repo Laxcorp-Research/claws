@@ -136,7 +136,7 @@ export const authOptions: NextAuthOptions = {
           console.error("Failed to grant starter credits:", err)
         })
         // PR-8b/C (E4): reconcile the user's RUNNING containers after the grant.
-        // Synchronous (not after()) — this is a NextAuth event callback, not a
+        // Synchronous (not after()) - this is a NextAuth event callback, not a
         // route handler. At signup there are no running workspaces, so it's a
         // no-op; healWorkspace's ENV_RECONCILE_MODE gate keeps it dormant until
         // the auto_heal flag-flip regardless.

@@ -17,8 +17,8 @@ import {
 } from "@/lib/hibernation/wake-geometry"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 
-// before: 55 — Vercel FUNCTION_INVOCATION_TIMEOUT when wakes awaited inline.
-// after: 300 — belt for sleep-side syncThenRemoveDeployment + after() wake fan-out headroom.
+// before: 55 - Vercel FUNCTION_INVOCATION_TIMEOUT when wakes awaited inline.
+// after: 300 - belt for sleep-side syncThenRemoveDeployment + after() wake fan-out headroom.
 export const maxDuration = 300
 
 // Sleep side stays INLINE (budget-guarded). Each hibernate awaits syncThenRemoveDeployment
@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ─── WAKE CANDIDATES (P2.3 geometry) — decide inline, execute in after() ─
+  // ─── WAKE CANDIDATES (P2.3 geometry) - decide inline, execute in after() ─
 
   const ownerEntitlementSelect = {
     workspace: {
@@ -194,7 +194,7 @@ export async function GET(req: NextRequest) {
       continue
     }
 
-    // WAKE_AFTER_FANOUT_ASSERT — do not await wakeWorkspace here.
+    // WAKE_AFTER_FANOUT_ASSERT - do not await wakeWorkspace here.
     scheduleWake(candidate.workspaceId, "eligible")
     woke++
   }

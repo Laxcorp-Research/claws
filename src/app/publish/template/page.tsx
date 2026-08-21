@@ -358,7 +358,7 @@ function PublishContent() {
             <div className="text-center py-6">
               <Check size={32} className="mx-auto mb-3 text-[var(--ok)]" aria-hidden="true" />
               <h2 className="text-[18px] font-semibold text-[var(--tx)]">Template submitted</h2>
-              <p className="text-[12px] text-[var(--tx2)] mt-1">{"Submitted for review — you'll get an email when it's approved."}</p>
+              <p className="text-[12px] text-[var(--tx2)] mt-1">{"Submitted for review - you'll get an email when it's approved."}</p>
               <div className="flex justify-center gap-2 mt-4">
                 <Link href="/settings?tab=creator"><Button variant="primary">View in your creator dashboard</Button></Link>
               </div>

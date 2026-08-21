@@ -4,8 +4,8 @@ These files are baked into the custom OpenClaw Docker image at build time.
 
 ## Files
 
-- **process-manager.mjs** — Container entrypoint. Manages the credit proxy and OpenClaw gateway as child processes. Handles signal forwarding, proxy auto-restart, and graceful shutdown.
-- **credit-proxy.mjs** — HTTP proxy on port 3789 (localhost only). Intercepts Anthropic API calls for credit users, meters usage, reports in batches to the platform.
+- **process-manager.mjs** - Container entrypoint. Manages the credit proxy and OpenClaw gateway as child processes. Handles signal forwarding, proxy auto-restart, and graceful shutdown.
+- **credit-proxy.mjs** - HTTP proxy on port 3789 (localhost only). Intercepts Anthropic API calls for credit users, meters usage, reports in batches to the platform.
 
 ## How it works
 

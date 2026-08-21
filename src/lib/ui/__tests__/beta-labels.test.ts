@@ -13,7 +13,7 @@ import {
 describe("PR-0 beta honesty labels", () => {
   it("exports exact founder-locked label strings", () => {
     expect(CHANNEL_BETA_LABEL).toBe("beta")
-    expect(PROVIDER_BYOK_BETA_LABEL).toBe("beta — bring your own key")
+    expect(PROVIDER_BYOK_BETA_LABEL).toBe("beta - bring your own key")
     expect(CHANNELS_WITH_BETA).toEqual(["discord", "slack"])
     expect(PROVIDERS_WITH_BYOK_BETA).toEqual(["OPENAI", "GOOGLE", "OPENROUTER"])
   })
@@ -38,7 +38,7 @@ describe("PR-0 beta honesty labels", () => {
     )
     expect(src).toContain("CHANNEL_BETA_LABEL")
     expect(src).toContain('badgeLabel: CHANNEL_BETA_LABEL')
-    expect(src).toContain("Proven default — enter bot token from @BotFather")
+    expect(src).toContain("Proven default - enter bot token from @BotFather")
     // Removing Discord/Slack badgeLabel lines must fail this test.
     const discordBlock = src.slice(src.indexOf('id: "discord"'), src.indexOf('id: "slack"'))
     const slackBlock = src.slice(src.indexOf('id: "slack"'), src.indexOf('id: "whatsapp"'))

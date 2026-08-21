@@ -173,7 +173,7 @@ export default function SkillDetailPage() {
           fetchData()
         },
         {
-          message: "Purchase complete — you can install now",
+          message: "Purchase complete - you can install now",
           errorMessage: "Could not start purchase",
         },
         showSnackbar,
@@ -216,7 +216,7 @@ export default function SkillDetailPage() {
           }, 1500)
         },
         {
-          message: "Skill installed — applies on next redeploy",
+          message: "Skill installed - applies on next redeploy",
           errorMessage: "Could not install skill",
         },
         showSnackbar,
@@ -546,7 +546,7 @@ export default function SkillDetailPage() {
               {skill.requiredEnvVars.length > 0 && (
                 <p className="text-[11px] text-[var(--tx3)]">
                   Env required: {skill.requiredEnvVars.join(", ")}. Missing values show as PENDING until
-                  connected — then redeploy.
+                  connected - then redeploy.
                 </p>
               )}
               <p className="text-[11px] text-[var(--tx3)]">

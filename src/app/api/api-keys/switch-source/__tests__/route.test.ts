@@ -1,4 +1,4 @@
-// PR-8b/C (E3): switch-source — the canonical "30 seconds" TODO case. Now wires a
+// PR-8b/C (E3): switch-source - the canonical "30 seconds" TODO case. Now wires a
 // real fire-and-forget reconcile + a mode-aware, truthful message.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { prismaMock } from '@/test/helpers/mock-prisma'
@@ -44,7 +44,7 @@ describe('POST /api/api-keys/switch-source', () => {
     expect(mockAfter).not.toHaveBeenCalled()
   })
 
-  it('returns 400 when the user has no valid Anthropic key — no switch, no reconcile', async () => {
+  it('returns 400 when the user has no valid Anthropic key - no switch, no reconcile', async () => {
     ;(prismaMock.userApiKey.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null)
     const res = await POST()
     expect(res.status).toBe(400)
@@ -74,7 +74,7 @@ describe('POST /api/api-keys/switch-source', () => {
     const { data } = await parseResponse(res)
     expect(data.data.message).toContain('next sync')
     expect(data.data.message).not.toContain('30 seconds')
-    // Reconcile is still scheduled — it's a no-op under detect_only via the gate.
+    // Reconcile is still scheduled - it's a no-op under detect_only via the gate.
     expect(mockAfter).toHaveBeenCalledTimes(1)
   })
 })

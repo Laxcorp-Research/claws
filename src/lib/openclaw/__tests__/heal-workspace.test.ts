@@ -71,7 +71,7 @@ describe("healWorkspace", () => {
     expect(mockRedeploy).not.toHaveBeenCalled()
   })
 
-  it("NX semantics: first call heals, second (lock held) skips — redeploy once", async () => {
+  it("NX semantics: first call heals, second (lock held) skips - redeploy once", async () => {
     mockRedisSet.mockResolvedValueOnce("OK").mockResolvedValueOnce(null)
     const r1 = await healWorkspace("ws-9")
     const r2 = await healWorkspace("ws-9")

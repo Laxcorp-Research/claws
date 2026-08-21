@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 
-/** F3.ii: keep X-Metering-Secret — same as existing /state/upload (not activity). */
+/** F3.ii: keep X-Metering-Secret - same as existing /state/upload (not activity). */
 export function assertMeteringSecret(req: NextRequest): boolean {
   const expected = process.env.METERING_MASTER_SECRET
   if (!expected) return false

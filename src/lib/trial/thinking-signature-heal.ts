@@ -10,7 +10,7 @@
 export const THINKING_SIGNATURE_POISON_RE =
   /Invalid\s+`?signature`?\s+in\s+`?thinking`?\s+block/i
 
-/** Dedup window — cry-forever must not become ledger-forever. */
+/** Dedup window - cry-forever must not become ledger-forever. */
 export const THINKING_SIGNATURE_HEAL_DEDUP_MS = 24 * 60 * 60 * 1000
 
 export const THINKING_SIGNATURE_POISON_EVENT_KIND = "thinking_signature_poison"
@@ -49,7 +49,7 @@ export type HealLedgerDecision =
   | {
       kind: "ledger"
       sessionKey: string | null
-      /** Platform cannot rotate live sessions — -11 must strip/retry. */
+      /** Platform cannot rotate live sessions - -11 must strip/retry. */
       needsImageHeal: true
       platformRotated: false
     }

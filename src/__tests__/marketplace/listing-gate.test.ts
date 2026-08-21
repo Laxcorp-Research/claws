@@ -73,7 +73,7 @@ const officialTemplate = {
   creatorId: null,
 }
 
-describe("listing gate — public detail/install (Arc 1)", () => {
+describe("listing gate - public detail/install (Arc 1)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(getSessionUser).mockResolvedValue(null)

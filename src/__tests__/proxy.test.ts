@@ -142,7 +142,7 @@ describe('Proxy', () => {
       expect(res.status).toBe(200);
     });
 
-    it('Batch B: MUTATION always-redirect — completed users must reach /my-claws', async () => {
+    it('Batch B: MUTATION always-redirect - completed users must reach /my-claws', async () => {
       (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: true });
       const res = await proxy(createReq('/my-claws'));
       expect(res.status).toBe(200);

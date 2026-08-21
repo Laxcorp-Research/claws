@@ -134,12 +134,12 @@ function emptyCopy(args: {
       return "Saved conversation history is unreadable. Wake the Claw to rebuild history, or sync again."
     }
     if (args.load.reason === "too_large") {
-      return args.load.message ?? "Saved history too large — wake to view."
+      return args.load.message ?? "Saved history too large - wake to view."
     }
     if (args.load.reason === "unreachable") {
       return "Conversations are temporarily unreachable."
     }
-    // not_running — distinguish no saved history vs no sessions handled at ready+empty
+    // not_running - distinguish no saved history vs no sessions handled at ready+empty
     if (isLiveGatewayStatus(args.status)) {
       return "Conversations are readable while the Claw is running."
     }
@@ -266,7 +266,7 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
         {load.kind === "unavailable" && load.reason === "corrupt" && (
           <AlertBanner variant="error">
             <p data-testid="conversations-corrupt-banner">
-              Saved history is corrupt — cannot read conversation history.
+              Saved history is corrupt - cannot read conversation history.
             </p>
           </AlertBanner>
         )}
@@ -354,7 +354,7 @@ export function ConversationsSection({ workspaceId, status }: ConversationsSecti
                           <ProviderChannelBadge channelId={selected.channelHint} className="flex-none" />
                         )}
                       </div>
-                      <p className="text-[10px] text-[var(--tx3)]">Read-only — reply from the channel itself.</p>
+                      <p className="text-[10px] text-[var(--tx3)]">Read-only - reply from the channel itself.</p>
                     </div>
                   </div>
                   <div className="max-h-[470px] overflow-y-auto overflow-x-hidden flex flex-col gap-3">

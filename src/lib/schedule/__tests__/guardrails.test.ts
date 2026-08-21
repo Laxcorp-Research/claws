@@ -5,7 +5,7 @@ import {
   INTERVAL_FLOOR_MINUTES,
 } from "@/lib/schedule/types"
 
-describe("schedule guardrails — caps and floors", () => {
+describe("schedule guardrails - caps and floors", () => {
   it("names the 15-minute interval floor honestly", () => {
     const v = validateSchedule({ mode: "interval", everyMinutes: 5 }, "UTC")
     expect(v.ok).toBe(false)
@@ -17,7 +17,7 @@ describe("schedule guardrails — caps and floors", () => {
     const v = validateSchedule({ mode: "interval", everyMinutes: 15 }, "UTC")
     expect(v.ok).toBe(true)
     expect(v.firesPerDay).toBe(96)
-    expect(v.creditWarning).toBe("~96 runs/day — this will consume credits quickly")
+    expect(v.creditWarning).toBe("~96 runs/day - this will consume credits quickly")
   })
 
   it("blocks custom times over 24 slots", () => {

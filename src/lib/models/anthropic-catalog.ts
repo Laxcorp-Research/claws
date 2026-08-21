@@ -1,6 +1,6 @@
 /**
  * Live Anthropic catalog refresh via GET /v1/models (platform master key).
- * OpenAI/Google list endpoints exist but the platform has no keys — pins stay
+ * OpenAI/Google list endpoints exist but the platform has no keys - pins stay
  * the curated source until/unless platform keys exist.
  */
 

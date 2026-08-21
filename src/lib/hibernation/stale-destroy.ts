@@ -1,5 +1,5 @@
 /**
- * Lifecycle P3 — stale-destroy refusal helpers.
+ * Lifecycle P3 - stale-destroy refusal helpers.
  * Auto-hibernate MUST NOT destroy when sync fails or snapshot is too old.
  */
 

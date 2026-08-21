@@ -101,8 +101,8 @@ export async function GET(
 
 // PR-4d: `detail` was missing from this serializer. The regular
 // /api/activity/[workspaceId] GET endpoint (PR-4) added it, but the SSE
-// stream — which is what actually feeds the dashboard's live activity feed
-// — was not updated, so the activity-log-entry component never saw a
+// stream - which is what actually feeds the dashboard's live activity feed
+// - was not updated, so the activity-log-entry component never saw a
 // populated `detail` prop and the click-to-expand affordance never lit
 // up in production. The new test file in __tests__/route.test.ts asserts
 // every scalar field on the ActivityLog model is either in this output

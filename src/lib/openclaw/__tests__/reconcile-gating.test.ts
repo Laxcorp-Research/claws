@@ -2,7 +2,7 @@
 // requestReconcileForUser → healWorkspace, which is gated by ENV_RECONCILE_MODE.
 // Here BOTH are REAL (only redis / deployer / prisma / logger are mocked) so this
 // proves an event-triggered reconcile performs NO redeploy under detect_only and
-// DOES redeploy under auto_heal — the shared gate working at the event path.
+// DOES redeploy under auto_heal - the shared gate working at the event path.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { prismaMock } from '@/test/helpers/mock-prisma'
 

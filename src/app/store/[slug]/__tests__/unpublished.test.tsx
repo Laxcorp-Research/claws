@@ -46,7 +46,7 @@ describe("creator-views-unpublished store page", () => {
       expect(screen.getByText("Unpublished")).toBeTruthy()
     })
     expect(
-      screen.getByText(/Off the store — no new buyers/),
+      screen.getByText(/Off the store - no new buyers/),
     ).toBeTruthy()
     expect(screen.queryByText("Template not found")).toBeNull()
   })

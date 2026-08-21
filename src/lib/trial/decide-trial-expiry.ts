@@ -16,7 +16,7 @@
 
 export const TRIAL_EXPIRY_GRACE_MS = 24 * 60 * 60 * 1000
 
-/** Already terminal / never-runtime — skip stop enforcement. */
+/** Already terminal / never-runtime - skip stop enforcement. */
 export const TRIAL_STOP_TERMINAL_STATUSES = [
   "STOPPED",
   "DRAFT",
@@ -70,7 +70,7 @@ export type TrialExpiryPlan = {
   toStop: StopAction[]
 }
 
-/** True when Dodo reports dunning / on_hold — never stop these users. */
+/** True when Dodo reports dunning / on_hold - never stop these users. */
 export function isSubscriptionOnHold(
   user: Pick<TrialExpiryUser, "subscriptionStatus" | "hasActiveSubscription">,
 ): boolean {

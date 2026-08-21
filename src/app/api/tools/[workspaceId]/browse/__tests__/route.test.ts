@@ -1,4 +1,4 @@
-// B2 — integration test for GET /api/tools/[ws]/browse.
+// B2 - integration test for GET /api/tools/[ws]/browse.
 // Locks full catalog exposure: custom-OAuth blocked rows remain visible with
 // honest metadata, and live Composio catalog rows are merged without paging loss.
 
@@ -23,7 +23,7 @@ vi.mock("@/lib/composio-catalog", () => ({
 
 import { GET, __resetBrowseToolsCacheForTests } from "@/app/api/tools/[workspaceId]/browse/route"
 
-describe("GET /api/tools/[workspaceId]/browse — full catalog exposure (B2)", () => {
+describe("GET /api/tools/[workspaceId]/browse - full catalog exposure (B2)", () => {
   beforeEach(() => {
     __resetBrowseToolsCacheForTests()
     mockGetComposioCatalogTools.mockReset()

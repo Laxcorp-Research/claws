@@ -35,7 +35,7 @@ function usr(
 const anthropicKey = { provider: "ANTHROPIC" as const, encryptedKey: "ENC_ANTHROPIC" }
 const openaiKey = { provider: "OPENAI" as const, encryptedKey: "ENC_OPENAI" }
 
-describe("deriveContainerEnv — apiKeySource × hasKey matrix", () => {
+describe("deriveContainerEnv - apiKeySource × hasKey matrix", () => {
   let prevMaster: string | undefined
   beforeEach(() => {
     prevMaster = process.env.CLAWS_MASTER_ANTHROPIC_KEY
@@ -123,7 +123,7 @@ describe("deriveContainerEnv — apiKeySource × hasKey matrix", () => {
   })
 })
 
-describe("fingerprintKey — drift-detection surface", () => {
+describe("fingerprintKey - drift-detection surface", () => {
   it("is deterministic (same key → same fingerprint)", () => {
     expect(fingerprintKey("sk-ant-abc")).toBe(fingerprintKey("sk-ant-abc"))
   })

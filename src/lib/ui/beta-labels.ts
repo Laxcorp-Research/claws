@@ -4,7 +4,7 @@
  */
 
 export const CHANNEL_BETA_LABEL = "beta"
-export const PROVIDER_BYOK_BETA_LABEL = "beta — bring your own key"
+export const PROVIDER_BYOK_BETA_LABEL = "beta - bring your own key"
 
 /** Launch channels that are connectable but not yet the proven default. */
 export const CHANNELS_WITH_BETA = ["discord", "slack"] as const

@@ -27,7 +27,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe("TopBar session loading — no Sign-in flash", () => {
+describe("TopBar session loading - no Sign-in flash", () => {
   it("status===loading renders session skeleton, never Sign in", () => {
     useSession.mockReturnValue({ data: null, status: "loading" })
     render(<TopBar />)

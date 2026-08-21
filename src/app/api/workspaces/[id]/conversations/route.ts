@@ -158,7 +158,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (snap.result.reason === "too_large") {
       return unavailable("too_large", {
         asOf: snap.result.asOf,
-        message: "too large — wake to view",
+        message: "too large - wake to view",
       })
     }
     if (snap.result.reason === "corrupt") {

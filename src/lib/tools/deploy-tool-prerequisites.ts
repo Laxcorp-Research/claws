@@ -3,7 +3,7 @@
  *
  * Same predicate as Setup Step 3 client gate: resolve workspace tool
  * requirements → filter AI providers → requiredToolsSatisfied(connections).
- * One truth — no reimplementation of CONNECTED / credentialed-PENDING rules.
+ * One truth - no reimplementation of CONNECTED / credentialed-PENDING rules.
  */
 import { prisma } from "@/lib/db"
 import {

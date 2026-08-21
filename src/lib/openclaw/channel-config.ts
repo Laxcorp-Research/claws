@@ -339,7 +339,7 @@ export function isNumericTelegramAllowFromEntry(entry: string | number): boolean
  * default outbound target (allowFrom[0]) is never a bare @username when a
  * numeric id is stored alongside it.
  *
- * LIMITATION: username-only allowFrom is left unchanged — we cannot invent
+ * LIMITATION: username-only allowFrom is left unchanged - we cannot invent
  * a numeric id without a Telegram getChat round-trip.
  */
 export function preferNumericTelegramAllowFrom(

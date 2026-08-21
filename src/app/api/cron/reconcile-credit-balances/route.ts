@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db"
 import { redis } from "@/lib/redis"
 import { log } from "@/lib/logger"
 
-// before: 30 — after: 300 (belt with staging cron scheduler routes)
+// before: 30 - after: 300 (belt with staging cron scheduler routes)
 export const maxDuration = 300
 
 export async function GET(req: NextRequest) {

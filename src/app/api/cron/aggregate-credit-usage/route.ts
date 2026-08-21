@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
               model: r.model,
             },
           },
-          // SET absolute day totals (not increment) — re-runs / overlapping
+          // SET absolute day totals (not increment) - re-runs / overlapping
           // windows must not double-count into CreditUsageDaily.
           update: {
             totalCalls: r._count,

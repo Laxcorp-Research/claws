@@ -83,7 +83,7 @@ function expectFindableCta() {
   expect(btn.className).not.toContain("text-[var(--tx2)]")
 }
 
-describe("skill store page — write-review CTA", () => {
+describe("skill store page - write-review CTA", () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()

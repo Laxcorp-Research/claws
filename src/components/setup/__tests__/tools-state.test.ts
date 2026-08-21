@@ -1,4 +1,4 @@
-// PR #4 Commit 9 — unit tests for the Setup Wizard Step 2 state helpers.
+// PR #4 Commit 9 - unit tests for the Setup Wizard Step 2 state helpers.
 //
 // The bug this commit fixes (GH #39, moved into PR #4 scope) was that
 // `Step2.tools` was seeded from template required/recommended names only,
@@ -9,11 +9,11 @@
 // CONNECTED row.
 //
 // These tests lock the helpers that fix that:
-//   1. connectionUiState — DB status → UI tri-state mapping (was inline
+//   1. connectionUiState - DB status → UI tri-state mapping (was inline
 //      in page.tsx, now shared / tested).
-//   2. buildExtraToolState — turns a single non-template DB row into a
+//   2. buildExtraToolState - turns a single non-template DB row into a
 //      ToolState entry with extra=true.
-//   3. buildExtraToolsFromConnections — the merge function the page calls
+//   3. buildExtraToolsFromConnections - the merge function the page calls
 //      in initial-load AND refreshTools to append non-template rows.
 //      Must skip already-represented slugs, de-dupe, and exclude AI
 //      providers (those live on Step 1).
@@ -85,19 +85,19 @@ describe("connectionUiState", () => {
       conn({
         status: "PENDING",
         connectionType: "API_KEY",
-        lastError: "Connected but not verified — will be tested on first use.",
+        lastError: "Connected but not verified - will be tested on first use.",
       }),
     )
 
     expect(result).toEqual({
       status: "connected",
-      warningMessage: "Connected but not verified — will be tested on first use.",
+      warningMessage: "Connected but not verified - will be tested on first use.",
     })
   })
 
   it("treats OAuth PENDING as disconnected regardless of lastError", () => {
     // PR #4 Commit 6 note: OAuth PENDING means "Composio hasn't completed
-    // the handshake yet" — do not leak it as connected.
+    // the handshake yet" - do not leak it as connected.
     const result = connectionUiState(
       conn({
         status: "PENDING",
@@ -189,7 +189,7 @@ describe("buildExtraToolsFromConnections", () => {
     const result = buildExtraToolsFromConnections(
       [tavilyTemplateRow],
       [
-        conn({ toolSlug: "tavily", connectionType: "API_KEY" }), // template overlap — skip
+        conn({ toolSlug: "tavily", connectionType: "API_KEY" }), // template overlap - skip
         conn({ toolSlug: "gmail", connectionType: "OAUTH_COMPOSIO" }),
         conn({ toolSlug: "slack", connectionType: "OAUTH_COMPOSIO", id: "c2", displayName: "Slack" }),
       ],
@@ -213,7 +213,7 @@ describe("buildExtraToolsFromConnections", () => {
     // AI providers (anthropic_api, openai_api, etc.) live on Step 1 and
     // are explicitly filtered out of Step 2. An AI-provider connection
     // leaking into the "Additional tools" section would be confusing UX
-    // — the user would see "Anthropic (Claude)" as a tool they can
+    // - the user would see "Anthropic (Claude)" as a tool they can
     // disconnect via Step 2, when it's managed on Step 1.
     const result = buildExtraToolsFromConnections(
       [],
@@ -247,7 +247,7 @@ describe("buildExtraToolsFromConnections", () => {
   })
 })
 
-describe("PR-5 defect 1 — one requirement row per canonical slug", () => {
+describe("PR-5 defect 1 - one requirement row per canonical slug", () => {
   const isAi = (slug: string) => slug === "anthropic_api"
 
   it("demoted twitter with live connection → single Recommended row (not dual-source)", () => {
@@ -317,7 +317,7 @@ describe("PR-5 defect 1 — one requirement row per canonical slug", () => {
   })
 })
 
-describe("integration — non-template OAuth tool flows into connectedSlugs", () => {
+describe("integration - non-template OAuth tool flows into connectedSlugs", () => {
   // This is the UX-level contract the commit is about:
   //   "after a user connects Gmail via Browse Tools on a workspace whose
   //    template doesn't list Gmail, connectedSlugs includes 'gmail'."
@@ -326,7 +326,7 @@ describe("integration — non-template OAuth tool flows into connectedSlugs", ()
   //     setTools([...templateTools, ...buildExtraToolsFromConnections(templateTools, existing)])
   //     const connectedSlugs = tools.filter(t => t.status === "connected").map(t => t.slug)
   //
-  // Test just that pipeline directly — no page rendering needed.
+  // Test just that pipeline directly - no page rendering needed.
   it("a non-template CONNECTED gmail row surfaces in both tools AND connectedSlugs", () => {
     const templateTools: ToolState[] = [
       {
@@ -360,7 +360,7 @@ describe("integration — non-template OAuth tool flows into connectedSlugs", ()
 // The fix: `resolveByokModalProps` resolves the display name from a
 // 4-step fallback chain so the modal renders regardless of whether the
 // wizard's `tools` state knows about the toolkit. Test #4 below is the
-// regression guard for the non-template-tool path — if the JSX conditional
+// regression guard for the non-template-tool path - if the JSX conditional
 // is ever re-tightened or the fallback chain is reverted, this test fails.
 //
 // Mutation procedure (verify after editing resolveByokModalProps):
@@ -431,7 +431,7 @@ describe("resolveByokModalProps (PR2.9-fix1 Bug 1B regression guard)", () => {
   it("#5 fallback chain: tool null, displayName empty → falls back to client catalog lookup", () => {
     // Edge case: server's initiate response returned a degenerate
     // displayName (empty string). Defensively, the catalog lookup catches
-    // this — gmail isn't a BYOK toolkit in real life but we test with it
+    // this - gmail isn't a BYOK toolkit in real life but we test with it
     // because we know it's in the catalog with name "Gmail".
     const form: ApiKeyFormPayload = {
       ...baseApiKeyForm,
@@ -460,13 +460,13 @@ describe("resolveByokModalProps (PR2.9-fix1 Bug 1B regression guard)", () => {
 // PR2.9-fix3 regression guard for the stale-UI-after-revoke bug.
 //
 // Background: `refreshTools` in src/app/setup/[workspaceId]/step/[n]/page.tsx
-// was insert-only — `if (!conn) return t` kept the local row exactly as
+// was insert-only - `if (!conn) return t` kept the local row exactly as
 // it was when the server response omitted that slug. After a successful
 // revoke/disconnect the row UI still said "Connected" until a full page
 // reload. The fix moved the merge logic into this pure `mergeRefreshedTools`
 // function and made the server response genuinely authoritative.
 //
-// These tests are the FIRST tests of refreshTools' deletion behavior —
+// These tests are the FIRST tests of refreshTools' deletion behavior -
 // before this PR the invariant was completely unguarded. If any future
 // refactor reintroduces the insert-only behavior (e.g., to "optimize"
 // the function by skipping resets), these tests must fail loudly.
@@ -475,7 +475,7 @@ describe("resolveByokModalProps (PR2.9-fix1 Bug 1B regression guard)", () => {
 //   1. In mergeRefreshedTools, replace the `if (t.extra) return null`
 //      and the reset block with `return t` (the old broken behavior).
 //   2. Run this test file. Confirm tests #1, #2, and #4 fail. Test #3
-//      (the "connection present" happy path) should still pass — it's
+//      (the "connection present" happy path) should still pass - it's
 //      the no-regression guard for the working path.
 //   3. Restore the function. All tests pass.
 describe("mergeRefreshedTools (PR2.9-fix3 stale-UI-after-revoke regression guard)", () => {
@@ -535,7 +535,7 @@ describe("mergeRefreshedTools (PR2.9-fix3 stale-UI-after-revoke regression guard
     expect(result[0].connectedAt).toBeNull()
     expect(result[0].errorMessage).toBeUndefined()
     expect(result[0].warningMessage).toBeUndefined()
-    // Identity preserved — template metadata must survive the reset so
+    // Identity preserved - template metadata must survive the reset so
     // the row stays in its required/recommended bucket with the right
     // name, category, etc.
     expect(result[0].name).toBe("typefully")
@@ -546,11 +546,11 @@ describe("mergeRefreshedTools (PR2.9-fix3 stale-UI-after-revoke regression guard
   it("#2 BUG FIX: extra row whose server connection is REMOVED is dropped entirely from the list", () => {
     // The user opened Browse, connected Typefully (not in template), then
     // later clicked Revoke. Extra rows exist ONLY because of the server
-    // connection — when the server says it's gone, the row should vanish.
+    // connection - when the server says it's gone, the row should vanish.
     // Pre-fix: row stayed in `tools` as `extra: true, status: "connected"`
     // forever (until reload).
     const prev: ToolState[] = [
-      // Sibling template row that DOES have a server connection — used
+      // Sibling template row that DOES have a server connection - used
       // to confirm the drop is targeted, not a wholesale wipe.
       connectedTemplateRow("gmail"),
       connectedExtraRow("typefully"),
@@ -563,7 +563,7 @@ describe("mergeRefreshedTools (PR2.9-fix3 stale-UI-after-revoke regression guard
         connectionType: "OAUTH_COMPOSIO",
         createdAt: "2026-04-20T22:15:48.620Z",
       },
-      // typefully omitted — the user revoked it.
+      // typefully omitted - the user revoked it.
     ]
     const result = mergeRefreshedTools(prev, serverConnections)
 
@@ -635,7 +635,7 @@ describe("mergeRefreshedTools (PR2.9-fix3 stale-UI-after-revoke regression guard
     // After this PR, mergeRefreshedTools delegates the "server has a row
     // not in prev" case to buildExtraToolsFromConnections. Pin that
     // integration so a future refactor doesn't accidentally drop the
-    // append step (which would re-introduce GH #39 — non-template
+    // append step (which would re-introduce GH #39 - non-template
     // connections invisible to the wizard UI).
     const prev: ToolState[] = [connectedTemplateRow("gmail")]
     const serverConnections: ServerConnectionSummary[] = [
@@ -664,7 +664,7 @@ describe("mergeRefreshedTools (PR2.9-fix3 stale-UI-after-revoke regression guard
     expect(slackRow.connectionId).toBe("conn_slack")
   })
 
-  it("#6 the fix covers BOTH disconnect paths (OAuth + API_KEY) since both share refreshTools — exercise with an API_KEY row", () => {
+  it("#6 the fix covers BOTH disconnect paths (OAuth + API_KEY) since both share refreshTools - exercise with an API_KEY row", () => {
     // The diagnosis flagged that `handleDisconnect` (the API_KEY DELETE
     // path) had the same blind spot as `handleOauthRevokeConfirm`. This
     // test pins that the primitive-level fix handles API_KEY tools too,
@@ -709,7 +709,7 @@ describe("mergeRefreshedTools (PR2.9-fix3 stale-UI-after-revoke regression guard
         createdAt: "2026-04-20T22:15:48.620Z",
       },
     ])
-    // Original frozen array still has its original objects — no mutation.
+    // Original frozen array still has its original objects - no mutation.
     expect(frozen[0].connectionId).toBe("conn_gmail_old")
   })
 })

@@ -115,10 +115,10 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
   //   OAuth connected  → prefer "Connected N days ago" (relative time)
   //                      with graceful fallback to `description` if
   //                      `connectedAt` is missing/unparseable
-  //   OAuth expired/revoked → "Token expired — reconnect required"
+  //   OAuth expired/revoked → "Token expired - reconnect required"
   const relativeConnectedLabel = isOAuth && connectionStatus === "connected" ? daysAgoLabel(connectedAt) : null
   const effectiveDescription = isOAuth && isExpiredOrRevoked
-    ? "Token expired — reconnect required"
+    ? "Token expired - reconnect required"
     : relativeConnectedLabel ?? description
   const effectiveDescriptionTone = isOAuth && isExpiredOrRevoked ? "text-[var(--err)]" : "text-[var(--tx2)]"
 
@@ -219,7 +219,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
                       field exists so the client doesn't have to round-trip
                       to know the right label. Undefined authMode (e.g.,
                       dynamic Composio catalog) defaults to "Connect with
-                      OAuth" — safe for managed; if a BYOK toolkit ever
+                      OAuth" - safe for managed; if a BYOK toolkit ever
                       reaches here without authMode, the user sees an
                       OAuth label but the click still routes through the
                       server which detects BYOK and opens the API-key
@@ -248,7 +248,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
               Complete
             </button>
           )}
-          {/* Tool customization PR-2 — requirement-set actions (no connection side-effects). */}
+          {/* Tool customization PR-2 - requirement-set actions (no connection side-effects). */}
           {onDemote && (
             <button
               type="button"

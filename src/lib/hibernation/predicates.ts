@@ -1,12 +1,12 @@
 /**
- * Shared hibernation candidate predicates — cron route and agent candidates
+ * Shared hibernation candidate predicates - cron route and agent candidates
  * API MUST stay in lockstep (parity invariant).
  *
  * Wake eligibility (lead / past-due) is NOT expressed in Prisma `where` (lead
  * depends on per-row avgWakeDurationMs). Both callers MUST post-filter with
- * `isWakeEligible` from wake-geometry — never inline the old 2m clamp or `gt: now`.
+ * `isWakeEligible` from wake-geometry - never inline the old 2m clamp or `gt: now`.
  *
- * PR-C #10: `Workspace.alwaysOn` opts a claw out of the sweep entirely — both
+ * PR-C #10: `Workspace.alwaysOn` opts a claw out of the sweep entirely - both
  * SLEEP predicates (runningIdleWhere / warmIdleWhere) filter `alwaysOn: false`.
  * wakeHibernatedWhere is untouched: an alwaysOn claw should never reach
  * HIBERNATED in the first place, and even if it somehow did, waking it is the
@@ -19,7 +19,7 @@ export const CHANNEL_IDLE_MS = 24 * 60 * 60 * 1000
 /** Default: never hibernate a claw whose nextHeartbeatAt is within 15m. */
 export const DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS = 15 * 60 * 1000
 
-/** @deprecated alias — use HEARTBEAT_IMMINENT_EXEMPT_MS / resolveImminentExemptMs() */
+/** @deprecated alias - use HEARTBEAT_IMMINENT_EXEMPT_MS / resolveImminentExemptMs() */
 export const HEARTBEAT_FUTURE_MS = DEFAULT_HEARTBEAT_IMMINENT_EXEMPT_MS
 
 /**
@@ -42,9 +42,9 @@ function imminentExemptCutoff(now: Date): Date {
 
 /**
  * SLEEP-ONLY nextHeartbeatAt guard: null OR strictly beyond the imminent window.
- * Claws with a hint in (now, now+exempt] — or past-due — do not match *hibernate*.
+ * Claws with a hint in (now, now+exempt] - or past-due - do not match *hibernate*.
  *
- * MUST NOT be applied to wakeHibernatedWhere — sleep and wake are opposite intents:
+ * MUST NOT be applied to wakeHibernatedWhere - sleep and wake are opposite intents:
  * imminent / past-due claws are exactly who wake must consider.
  * MUTATION: spreading this into wakeHibernatedWhere → wake-window tests fail.
  */
@@ -79,7 +79,7 @@ export function runningIdleWhere(now: Date) {
  * Matches when either:
  *   (A) lastChannelMessageAt is NON-NULL and older than 24h, OR
  *   (B) lastChannelMessageAt is null AND channelsConnectedAt older than 24h
- *       (never-messaged but channel configured long enough — safe with P5
+ *       (never-messaged but channel configured long enough - safe with P5
  *       wake-on-channel).
  *
  * Imminent-beat exemption: never sleep a claw about to keep an appointment
@@ -115,7 +115,7 @@ export function warmIdleWhere(now: Date) {
  * Prisma `where` for HIBERNATED claws that may be wake-eligible.
  * Post-filter every row with `isWakeEligible` (wake-geometry).
  *
- * Intentionally has NO imminent-beat exemption — wake must INCLUDE imminent
+ * Intentionally has NO imminent-beat exemption - wake must INCLUDE imminent
  * and past-due claws (opposite of runningIdle/warmIdle sleep predicates).
  *
  * MUTATION: restoring `nextHeartbeatAt: { gt: now }` here → past-due never wakes.

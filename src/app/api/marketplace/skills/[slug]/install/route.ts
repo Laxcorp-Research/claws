@@ -9,7 +9,7 @@ import { bridgeMarketplaceSkillToSkill } from "@/lib/marketplace/skill-bridge"
 /**
  * PR-8 REDEPLOY-CARRIES: install clones Skill + attaches AgentSkill.
  * Runtime materializes on next redeploy (generator writes SKILL.md).
- * Live-container hot-add is a post-launch board item — not claimed here.
+ * Live-container hot-add is a post-launch board item - not claimed here.
  */
 export async function POST(
   request: NextRequest,
@@ -113,7 +113,7 @@ export async function POST(
   })
 
   log.info(
-    `Skill "${skill.slug}" installed — applies on next redeploy (AgentSkill attached)`,
+    `Skill "${skill.slug}" installed - applies on next redeploy (AgentSkill attached)`,
     {
       skillSlug: skill.slug,
       workspaceId: workspace.id,

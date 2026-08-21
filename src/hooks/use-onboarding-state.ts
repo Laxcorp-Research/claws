@@ -28,7 +28,7 @@ async function fetchSteps(): Promise<Steps | null> {
 
 /**
  * SWR-style cache (~60s) + revalidate-on-focus for top-bar nav visibility.
- * Eventual consistency is acceptable — no per-navigation DB reads.
+ * Eventual consistency is acceptable - no per-navigation DB reads.
  */
 export function useOnboardingNavVisible(enabled: boolean): boolean {
   const [steps, setSteps] = useState<Steps | null>(cache?.steps ?? null)

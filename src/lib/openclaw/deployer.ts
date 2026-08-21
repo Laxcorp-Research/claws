@@ -85,12 +85,12 @@ const CONTAINER_PAYLOAD_SAFETY_CEILING = 30_000;
 // PR-2 (syncThenDestroy): default upper bound for the pre-destroy
 // /internal/sync-now call. Tuned for the single-workspace Stop path
 // (route maxDuration=60). The hibernation cron passes a tighter value
-// (HIBERNATE_SYNC_TIMEOUT_MS) because it loops under a 55s ceiling — see
+// (HIBERNATE_SYNC_TIMEOUT_MS) because it loops under a 55s ceiling - see
 // src/app/api/cron/hibernation/route.ts.
 const DEFAULT_SYNC_TIMEOUT_MS = 18_000;
 
 /**
- * Missing Railway service (404 / not found) — safe to adopt-by-name or fresh-create.
+ * Missing Railway service (404 / not found) - safe to adopt-by-name or fresh-create.
  * BEFORE P4: only this shape fell through; NotAuthorized rethrew forever.
  */
 export function isMissingRailwayServiceError(err: unknown): boolean {
@@ -102,7 +102,7 @@ export function isMissingRailwayServiceError(err: unknown): boolean {
  * Lifecycle P4: orphan-class errors on an EXISTING service id during redeploy.
  * Includes missing-service AND NotAuthorized (stale ACL / deleted service
  * still referenced by our stored containerId). Fresh createService auth
- * outages are NOT orphan — they must fail loud (no infinite provision loop).
+ * outages are NOT orphan - they must fail loud (no infinite provision loop).
  */
 export function isOrphanRailwayServiceError(err: unknown): boolean {
   if (isMissingRailwayServiceError(err)) return true;
@@ -246,13 +246,13 @@ function withRailwayDeploymentId(
  * Resolves the container image to use for a deploy at deploy time.
  *
  * Priority:
- *   1. Current `isStable` OpenClawVersion row (canonical — set by the
+ *   1. Current `isStable` OpenClawVersion row (canonical - set by the
  *      promote-openclaw-image.yml workflow after manual QA). The row's
  *      `dockerImage` is an immutable `:<version>` reference per the
  *      register-route validator.
  *   2. `OPENCLAW_DOCKER_IMAGE` env var (Vercel-set; used as dev/bootstrap
  *      fallback before the first promote has happened).
- *   3. Hard-coded default at the railway-client level — last-resort safety
+ *   3. Hard-coded default at the railway-client level - last-resort safety
  *      net so a deploy never tries to pull an empty image string.
  *
  * Returning the string here (instead of mutating module state in
@@ -318,7 +318,7 @@ export async function deployToCloud(
   // PR-1: resolve once and persist on the Deployment row so the column
   // finally matches what Railway actually pulls. Previously the
   // `Deployment.containerImage` schema default ('ghcr.io/openclaw/openclaw:latest')
-  // was never overwritten — every Deployment row carried that string
+  // was never overwritten - every Deployment row carried that string
   // regardless of the real image used, which broke the admin
   // versions deployment-count query and the force-update WHERE clause.
   const image = await resolveDeployImage();
@@ -364,13 +364,13 @@ export async function deployToCloud(
     const completionData = buildDeploymentCompletionData(fingerprint, generated);
 
     if (!isRailwayConfigured()) {
-      log.warn('Railway not configured — running in simulation mode', { workspaceId });
+      log.warn('Railway not configured - running in simulation mode', { workspaceId });
       return simulateDeploy(workspaceId, deployment.id, workspace, completionData);
     }
 
     // Pre-populate ContainerState BEFORE any Railway call. The container's
     // first state sync (~30s after boot, per PR2) uses updateMany on this
-    // row — if the row doesn't exist yet, the sync is silently dropped
+    // row - if the row doesn't exist yet, the sync is silently dropped
     // (count=0 no-op). Creating the row first makes the write idempotent
     // and closes the race.
     //
@@ -416,7 +416,7 @@ export async function deployToCloud(
         heartbeatInterval: heartbeatIntervalMs,
         heartbeatCronExpressions: cronExprs,
         // PR-2: a fresh container makes any prior teardown's incomplete-sync
-        // marker moot — clear it so a stale flag never lingers across deploys.
+        // marker moot - clear it so a stale flag never lingers across deploys.
         lastSyncIncompleteAt: null,
         lastSyncIncompleteReason: null,
       },
@@ -500,7 +500,7 @@ export async function deployToCloud(
           try {
             result = await createServiceGoverned(workspaceId, { name: serviceName, envVars, image });
           } catch (freshErr) {
-            // Guard: auth outage on NEW provision fails loud — do not loop.
+            // Guard: auth outage on NEW provision fails loud - do not loop.
             if (isRailwayAuthOutageError(freshErr)) {
               throw new Error(
                 `Railway auth outage on fresh provision after orphan clear: ${
@@ -559,13 +559,13 @@ export async function deployToCloud(
       try {
         await waitForEndpoint(`https://${result.domain}/readyz`, 60_000);
       } catch {
-        log.warn('Readiness check timed out — channels may need configuration', { workspaceId });
+        log.warn('Readiness check timed out - channels may need configuration', { workspaceId });
       }
     }
 
     // C-engine B1: cold-boot MCP surfacing. The container's own MCP-connect
     // failure is SILENT (one gateway log line, and only on first agent run
-    // — the runtime connects lazily), so for MCP-enabled deploys we probe
+    // - the runtime connects lazily), so for MCP-enabled deploys we probe
     // the Tool Router endpoint directly from here and surface a failure as
     // an ActivityLog ERROR row. Best-effort and non-blocking by contract:
     // NEVER fails or delays the deploy.
@@ -594,7 +594,7 @@ export async function deployToCloud(
     };
   } catch (error: unknown) {
     if (isProvisioningQueuedError(error)) {
-      // Honest wait — never ERROR. Workspace is already PROVISIONING_QUEUED.
+      // Honest wait - never ERROR. Workspace is already PROVISIONING_QUEUED.
       await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', error.queued.message);
       throw error;
     }
@@ -603,7 +603,7 @@ export async function deployToCloud(
     // Atomically converge Workspace + ContainerState rows on deploy failure.
     // ContainerState.containerPhase='STOPPED' is correct here: the ContainerPhase
     // enum has no ERROR value, and on a failed deploy the container (if any)
-    // is non-functional and needs a rebuild — which is what STOPPED semantically
+    // is non-functional and needs a rebuild - which is what STOPPED semantically
     // means under the post-PR-#52 vocabulary. updateMany avoids throwing when
     // a first-time deploy failure happens before ContainerState is created.
     await prisma.$transaction([
@@ -627,7 +627,7 @@ export async function deployToCloud(
 /**
  * FAST, NON-THROWING teardown: deletes the Railway service (best-effort,
  * swallows errors) and converges the Workspace + ContainerState rows to a
- * STOPPED state. It does NOT flush the container's runtime state first — the
+ * STOPPED state. It does NOT flush the container's runtime state first - the
  * only pre-destroy persistence on this path is the container's own best-effort
  * SIGTERM sync (process-manager.mjs), which Railway may cut short with SIGKILL.
  *
@@ -643,7 +643,7 @@ export async function deployToCloud(
  * guaranteed-fresh snapshot: the Dodo webhook (must stay fast to avoid retry
  * storms) and credit exhaustion. For any user-/admin-initiated stop of a
  * RUNNING container whose history must be preserved (Stop button, and the
- * future force-update restart step), call syncThenDestroy instead — it
+ * future force-update restart step), call syncThenDestroy instead - it
  * confirms the snapshot before calling this.
  */
 export async function destroyContainer(workspaceId: string): Promise<void> {
@@ -652,7 +652,7 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
   });
 
   // When Railway delete fails for a reason other than "already gone", the
-  // service may still be alive — keep containerHost so hibernate/wake can
+  // service may still be alive - keep containerHost so hibernate/wake can
   // reuse the domain (DOMAIN_REUSE / service-survives).
   let serviceGone = !(isRailwayConfigured() && workspace.containerId);
   if (isRailwayConfigured() && workspace.containerId) {
@@ -663,10 +663,10 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
       const msg = err instanceof Error ? err.message : String(err);
       if (/not found|404|does not exist/i.test(msg)) {
         serviceGone = true;
-        log.warn('Failed to delete Railway service — may already be removed', { workspaceId });
+        log.warn('Failed to delete Railway service - may already be removed', { workspaceId });
       } else {
         serviceGone = false;
-        log.warn('Failed to delete Railway service — service may survive; keeping containerHost', {
+        log.warn('Failed to delete Railway service - service may survive; keeping containerHost', {
           workspaceId,
           error: msg,
         });
@@ -681,11 +681,11 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
   // being non-null so they skipped these drifted rows, but the divergence
   // was real and cost us a live Railway service in one incident
   // (service 00000000-0000-4000-8000-000000000001, cleaned up manually
-  // on 2026-04-27 — companion to this fix).
+  // on 2026-04-27 - companion to this fix).
   //
   // updateMany is used (not update) so we don't throw if a workspace has
   // never had a container and therefore has no ContainerState row. The
-  // Railway deleteService call stays OUTSIDE the transaction — we never
+  // Railway deleteService call stays OUTSIDE the transaction - we never
   // want to hold a DB transaction open across a network call.
   await prisma.$transaction([
     prisma.workspace.update({
@@ -710,7 +710,7 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
 /**
  * HWD hibernate teardown: remove the latest Railway deployment, keep the
  * Service (same id, same domain). Does NOT null containerId/containerHost and
- * does NOT write STOPPED — hibernateWorkspace then sets HIBERNATED.
+ * does NOT write STOPPED - hibernateWorkspace then sets HIBERNATED.
  */
 export async function removeDeploymentKeepService(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
@@ -724,9 +724,9 @@ export async function removeDeploymentKeepService(workspaceId: string): Promise<
 
 /**
  * Lifecycle P3 destroy policy:
- * - destroy-anyway (default): user Stop / exhaustion — sync fail → destroy + marker
- * - refuse-unsafe: auto-hibernate — sync fail OR stale snapshot → keep container
- * - force: ops override — destroy regardless of sync/stale
+ * - destroy-anyway (default): user Stop / exhaustion - sync fail → destroy + marker
+ * - refuse-unsafe: auto-hibernate - sync fail OR stale snapshot → keep container
+ * - force: ops override - destroy regardless of sync/stale
  */
 export type DestroyPolicy = 'destroy-anyway' | 'refuse-unsafe' | 'force';
 
@@ -754,7 +754,7 @@ type SyncNowOutcome = { synced: true } | { synced: false; reason: string };
  * /internal/sync-now route (the claws-activity-reporter overlay plugin).
  *
  * Returns synced:true ONLY on an HTTP 200 whose body confirms a persist
- * (persisted:true) or a genuinely empty data dir (empty:true) — the exact
+ * (persisted:true) or a genuinely empty data dir (empty:true) - the exact
  * contract enforced by container/claws-activity-reporter/index.mjs and locked
  * by src/__tests__/claws-sync-now-route.test.ts. Any non-200, unparseable
  * body, timeout, or network error → synced:false with a short reason for the
@@ -762,7 +762,7 @@ type SyncNowOutcome = { synced: true } | { synced: false; reason: string };
  */
 async function trySyncNow(containerHost: string, timeoutMs: number): Promise<SyncNowOutcome> {
   // The backend sends the value of METERING_MASTER_SECRET (the same value it
-  // injects into the container as CLAWS_METERING_SECRET — see
+  // injects into the container as CLAWS_METERING_SECRET - see
   // buildRailwayEnvVars). Do NOT read CLAWS_METERING_SECRET here: that name
   // exists only inside the container, never on the backend.
   const secret = process.env.METERING_MASTER_SECRET;
@@ -833,7 +833,7 @@ async function confirmedSyncThenTeardown(
   const enabled = process.env.SYNC_BEFORE_DESTROY !== 'false';
   if (!enabled || skipSync) {
     if (destroyPolicy === 'refuse-unsafe') {
-      log.warn(`${logLabel}: refuse-unsafe — skipSync/kill-switch will not teardown`, {
+      log.warn(`${logLabel}: refuse-unsafe - skipSync/kill-switch will not teardown`, {
         workspaceId,
         skipSync,
         syncBeforeDestroy: enabled,
@@ -890,7 +890,7 @@ async function confirmedSyncThenTeardown(
   const stale = isRuntimeStateStale(freshState?.runtimeStateUpdatedAt ?? null);
 
   if (stale && destroyPolicy === 'refuse-unsafe') {
-    log.warn(`${logLabel}: refuse-unsafe — runtime state stale beyond threshold`, {
+    log.warn(`${logLabel}: refuse-unsafe - runtime state stale beyond threshold`, {
       workspaceId,
       runtimeStateUpdatedAt: freshState?.runtimeStateUpdatedAt ?? null,
     });
@@ -922,7 +922,7 @@ async function confirmedSyncThenTeardown(
  * - destroy-anyway (default): sync fail → marker + destroy (user Stop / exhaustion)
  * - refuse-unsafe: sync fail OR runtimeStateUpdatedAt older than
  *   STALE_DESTROY_MAX_AGE_MIN (default 30) → keep container (auto-hibernate)
- * - force: ops override — destroy regardless
+ * - force: ops override - destroy regardless
  *
  * Gated by SYNC_BEFORE_DESTROY (default ON; "false" → bare destroy for
  * destroy-anyway/force; refuse-unsafe still refuses bare skip).
@@ -936,7 +936,7 @@ export async function syncThenDestroy(
 
 /**
  * Hibernate path: same sync/refuse-unsafe gates as syncThenDestroy, then
- * deploymentRemove(latest) — NEVER serviceDelete. containerId/containerHost persist.
+ * deploymentRemove(latest) - NEVER serviceDelete. containerId/containerHost persist.
  */
 export async function syncThenRemoveDeployment(
   workspaceId: string,
@@ -984,7 +984,7 @@ export async function redeployWorkspace(workspaceId: string): Promise<{ deployme
 }
 
 // ---------------------------------------------------------------------------
-// Health Monitoring — moved to src/app/api/cron/health-monitor/route.ts
+// Health Monitoring - moved to src/app/api/cron/health-monitor/route.ts
 // ---------------------------------------------------------------------------
 // PR-3 deleted the previous `healthCheckAllContainers` + `markUnhealthy`
 // pair that lived here. They had ZERO callers (verified via repo grep)
@@ -993,7 +993,7 @@ export async function redeployWorkspace(workspaceId: string): Promise<{ deployme
 //   - polls admin-http-rpc on the container directly (not just /healthz)
 //   - debounces failures (UNHEALTHY at 2, ERROR at 5)
 //   - logs every transition per workspace
-// Do NOT reintroduce a health check here — that would race the cron.
+// Do NOT reintroduce a health check here - that would race the cron.
 
 // ---------------------------------------------------------------------------
 // Gateway WebSocket Connection (for monitoring)
@@ -1010,7 +1010,7 @@ export async function getGatewayConnectionInfo(
 
   // Re-encrypt-on-read: if the token only decrypts under the PREVIOUS master key
   // (mid key-rotation), transparently migrate it to the current key. The write
-  // is best-effort — a failure must NOT break the read, so we always return the
+  // is best-effort - a failure must NOT break the read, so we always return the
   // decrypted token regardless.
   const token = await decryptAndMaybeReencrypt(workspace.gatewayToken, async (newBlob) => {
     try {
@@ -1033,8 +1033,8 @@ export async function getGatewayConnectionInfo(
 // ---------------------------------------------------------------------------
 // C-engine B1: cold-boot MCP surfacing (minimal detection; PR-R owns full
 // handling). Extracts the emitted mcp.servers.composio block from the
-// generated openclaw.json — its presence IS the "MCP-enabled deploy"
-// signal — and probes the Tool Router endpoint (initialize + tools/list).
+// generated openclaw.json - its presence IS the "MCP-enabled deploy"
+// signal - and probes the Tool Router endpoint (initialize + tools/list).
 // On failure, writes one ActivityLog ERROR row so the outage is visible in
 // the activity feed instead of only in a container log line nobody reads.
 // ---------------------------------------------------------------------------
@@ -1109,7 +1109,7 @@ function assertContainerPayloadEnvVarSizes(vars: Record<string, string>): void {
   for (const [name, value] of Object.entries(vars)) {
     if (value.length > CONTAINER_PAYLOAD_SAFETY_CEILING) {
       throw new Error(
-        `Container payload ${name} is ${value.length} chars — exceeds the 30,000 safety ceiling (Railway hard limit 32,768). Workspace too large to deploy.`,
+        `Container payload ${name} is ${value.length} chars - exceeds the 30,000 safety ceiling (Railway hard limit 32,768). Workspace too large to deploy.`,
       );
     }
   }
@@ -1120,7 +1120,7 @@ export function buildRailwayEnvVars(
   // PR-8a: workspace + user are passed explicitly so credit mode AND the
   // credential vars are derived from the SINGLE source of truth
   // (deriveContainerEnv) shared with the reconciliation cron and the
-  // container-secrets path — not from a precomputed creditMode boolean.
+  // container-secrets path - not from a precomputed creditMode boolean.
   // The runtime throw in the Composio section remains as defense-in-depth.
   workspace: DeriveWorkspaceInput & {
     id: string;
@@ -1160,7 +1160,7 @@ export function buildRailwayEnvVars(
   // credit-mode block below keeps credit-proxy-specific vars gated because
   // those genuinely require the proxy process (CLAWS_USER_ID, ANTHROPIC_*,
   // NODE_OPTIONS memory cap). creditConfig is now a required parameter,
-  // so these three emit unconditionally — no silent-no-op failure mode.
+  // so these three emit unconditionally - no silent-no-op failure mode.
   vars.CLAWS_WORKSPACE_ID = workspace.id;
   // PR-2b #1 + #2: fail-closed on unset/mismatched endpoint env. See
   // src/lib/openclaw/env-guards.ts for the full root-cause writeup.
@@ -1169,19 +1169,19 @@ export function buildRailwayEnvVars(
   vars.CLAWS_METERING_ENDPOINT = meteringEndpoint;
   vars.CLAWS_METERING_SECRET = process.env.METERING_MASTER_SECRET || '';
 
-  // PR-2: Activity Wire — universal, mirrors the metering triplet above.
+  // PR-2: Activity Wire - universal, mirrors the metering triplet above.
   // The claws-activity-reporter plugin (overlay at /opt/claws-activity-reporter)
   // reads both, then POSTs batched events to
   //   ${CLAWS_ACTIVITY_ENDPOINT}/${CLAWS_WORKSPACE_ID}
   // with header X-Activity-Secret: ${CLAWS_ACTIVITY_SECRET}.
   // The matching env var in Vercel is ACTIVITY_PIPELINE_SECRET (and
-  // ACTIVITY_ENDPOINT for the URL — REQUIRED, no fallback).
+  // ACTIVITY_ENDPOINT for the URL - REQUIRED, no fallback).
   const activityEndpoint = requireActivityEndpoint();
   assertEndpointHostMatchesApp({ endpointUrl: activityEndpoint, endpointName: 'ACTIVITY_ENDPOINT' });
   vars.CLAWS_ACTIVITY_ENDPOINT = activityEndpoint;
   vars.CLAWS_ACTIVITY_SECRET = process.env.ACTIVITY_PIPELINE_SECRET || '';
 
-  // PR-8a: credit mode + the credential vars come from deriveContainerEnv —
+  // PR-8a: credit mode + the credential vars come from deriveContainerEnv -
   // the single source of truth shared with the reconciliation cron and the
   // container-secrets path. Non-credit deploys still emit NO ANTHROPIC_API_KEY
   // here: the user's BYOK key is baked into CLAWS_ENV_GZ_B64 by the generator,
@@ -1209,11 +1209,11 @@ export function buildRailwayEnvVars(
   // Emission policy (defense-in-depth, two independent sources of
   // COMPOSIO_USER_ID inside the container):
   //   1. Per-skill: generator emits skills.entries[slug].env.COMPOSIO_USER_ID
-  //      — OpenClaw merges that into process.env when the skill runs.
+  //      - OpenClaw merges that into process.env when the skill runs.
   //   2. Container-level (this function): COMPOSIO_USER_ID is pinned at
   //      deploy time so any runtime code path reading process.env before
   //      the per-skill merge (or any accidental ad-hoc Composio call)
-  //      reads the correct user id — NOT undefined, NOT another user's.
+  //      reads the correct user id - NOT undefined, NOT another user's.
   //
   // Both landings are required. Without (2), a bug in the container (e.g.,
   // a skill that shells out to a helper that doesn't receive per-skill
@@ -1235,7 +1235,7 @@ export function buildRailwayEnvVars(
       // catches a future regression where a caller passes a workspace without
       // a userId. Error message is explicit so the fix is obvious.
       throw new Error(
-        'buildRailwayEnvVars: COMPOSIO_API_KEY is set but workspace.userId is missing; refusing to emit platform API key without a user-id scope pin (security boundary — see docs/COMPOSIO_RUNTIME_CONTRACT.md §"Security considerations")',
+        'buildRailwayEnvVars: COMPOSIO_API_KEY is set but workspace.userId is missing; refusing to emit platform API key without a user-id scope pin (security boundary - see docs/COMPOSIO_RUNTIME_CONTRACT.md §"Security considerations")',
       );
     }
     vars.COMPOSIO_API_KEY = composioApiKey;
@@ -1244,7 +1244,7 @@ export function buildRailwayEnvVars(
 
   assertContainerPayloadEnvVarSizes(vars);
   // WAKE-4: local placeholder stubs (esp. CLAWS_METERING_SECRET) must never
-  // reach Railway — same /^placeholder-/ gate as deriveContainerEnv.
+  // reach Railway - same /^placeholder-/ gate as deriveContainerEnv.
   assertNoPlaceholderEnvValues(vars, "buildRailwayEnvVars");
 
   return vars;

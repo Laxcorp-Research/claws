@@ -5,7 +5,7 @@ import {
   normalizeConversationSummaries,
 } from "@/lib/openclaw/conversations"
 
-describe("conversation summaries — human-facing session filter", () => {
+describe("conversation summaries - human-facing session filter", () => {
   it("returns main orchestrator and channel sessions while excluding subagent sessions", () => {
     const summaries = normalizeConversationSummaries({
       sessions: [
@@ -26,7 +26,7 @@ describe("conversation summaries — human-facing session filter", () => {
   })
 })
 
-describe("conversation messages — presentation mapper", () => {
+describe("conversation messages - presentation mapper", () => {
   it("maps captured live gateway history to user text, assistant text, and name-only tool chips", () => {
     const messages = normalizeConversationMessages({
       history: [

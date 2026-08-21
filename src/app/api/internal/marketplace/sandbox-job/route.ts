@@ -5,7 +5,7 @@ import { computeSkillContentDigest } from "@/lib/marketplace/sandbox-digest"
 import { log } from "@/lib/logger"
 
 /**
- * GHA sandbox worker fetches skill payload (zero creds — content only).
+ * GHA sandbox worker fetches skill payload (zero creds - content only).
  * Auth: X-Sandbox-Report-Token === SANDBOX_REPORT_TOKEN
  */
 export async function GET(req: NextRequest) {

@@ -65,7 +65,7 @@ export function AccountSettings({ user }: AccountSettingsProps) {
   const handleDelete = async () => {
     setDeleting(true)
     try {
-      // Batch F: signOut ONLY on res.ok — failure keeps session + error snackbar.
+      // Batch F: signOut ONLY on res.ok - failure keeps session + error snackbar.
       await mutateWithFeedback(
         async () => {
           const res = await fetch("/api/user/profile", { method: "DELETE" })

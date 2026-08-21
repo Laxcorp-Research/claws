@@ -48,7 +48,7 @@ export interface PartitionedToolRequirements {
   tools: WorkspaceToolRequirement[]
   /** required === true (AI providers not filtered here). */
   required: WorkspaceToolRequirement[]
-  /** required === false && !dismissed — Step-2 Recommended render-data. */
+  /** required === false && !dismissed - Step-2 Recommended render-data. */
   recommended: WorkspaceToolRequirement[]
 }
 

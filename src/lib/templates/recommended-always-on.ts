@@ -1,5 +1,5 @@
 /**
- * Template workspaceSnapshot may carry `recommendedAlwaysOn` (JSON blob —
+ * Template workspaceSnapshot may carry `recommendedAlwaysOn` (JSON blob -
  * no Prisma migration). Used by deploy UI + seed metadata for Quant Trader.
  */
 

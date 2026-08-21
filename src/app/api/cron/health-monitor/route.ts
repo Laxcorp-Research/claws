@@ -17,7 +17,7 @@ import {
 import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
 import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
 
-// PR-3 — Health Monitor cron.
+// PR-3 - Health Monitor cron.
 //
 // Replaces the long-standing tautology where the dashboard derived
 // agent "healthy" from `workspace.status === RUNNING` even when no cron
@@ -35,7 +35,7 @@ import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
 //        Authorization: Bearer ${decrypt(workspace.gatewayToken)}
 //        body: { "method": "health" }
 //      with a 5s timeout. The admin-http-rpc plugin is enabled by the
-//      generator (see src/lib/openclaw/generator.ts) — bundled with
+//      generator (see src/lib/openclaw/generator.ts) - bundled with
 //      OpenClaw, off by default upstream, enabled by us.
 //   3. Apply the audit-locked mapping table:
 //
@@ -46,7 +46,7 @@ import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
 //      | 200 ok:true, agents=0                          | unchanged| DEGRADED        | now             |
 //      | 200 ok:false (UNAVAILABLE)                     | unchanged| unchanged (++)  | unchanged       |
 //      | 401 (bad token)                                | unchanged| DEGRADED (++)   | unchanged       |
-//      | 404 (plugin disabled — image/config skew)      | unchanged| DEGRADED (++)   | unchanged       |
+//      | 404 (plugin disabled - image/config skew)      | unchanged| DEGRADED (++)   | unchanged       |
 //      | 5xx / timeout / network / no containerId       | unchanged| unchanged (++)  | unchanged       |
 //      | ≥2 consecutive failures (post-increment)       | unchanged| UNHEALTHY       | unchanged       |
 //      | ≥5 consecutive failures (post-increment)       | ERROR    | UNHEALTHY       | unchanged       |
@@ -58,7 +58,7 @@ import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
 // The decision flow is explicit (no early returns) so the structured
 // log at the bottom always records the full before→after transition.
 
-// before: 55 — after: 300 (belt with hibernation / reconcile cron routes)
+// before: 55 - after: 300 (belt with hibernation / reconcile cron routes)
 export const maxDuration = 300
 
 // Debounce thresholds. Mutation tests in
@@ -69,7 +69,7 @@ const UNHEALTHY_THRESHOLD = 2
 const ERROR_THRESHOLD = 5
 const ADMIN_RPC_TIMEOUT_MS = 5_000
 // PR-4b: the /healthz liveness confirmation (only fired on the ambiguous 404
-// branch) gets a tighter budget than the admin-rpc probe — it's a trivial
+// branch) gets a tighter budget than the admin-rpc probe - it's a trivial
 // plugin-independent endpoint, and we don't want the disambiguation to double
 // the worst-case per-workspace probe time.
 const HEALTHZ_TIMEOUT_MS = 3_000
@@ -125,12 +125,12 @@ async function isGatewayUnauthorized(res: Response): Promise<boolean> {
 
 // PR-4b: disambiguate an ambiguous 404 from POST /api/v1/admin/rpc. Our
 // gateway returns 404 text/plain "Not Found" when the admin-http-rpc plugin
-// is disabled (config drift — the container is ALIVE). But an edge/CDN/dead
+// is disabled (config drift - the container is ALIVE). But an edge/CDN/dead
 // service can also 404. /healthz is a plugin-independent, auth-free gateway
 // liveness route returning 200 {"ok":true,"status":"live"}. FAIL CLOSED: only
 // a clean HTTP 200 confirms our gateway is up; any non-200, timeout, network
 // error → not confirmed (caller treats the 404 as a no-route failure). We
-// intentionally check ONLY the status code, not the body — any 200 from
+// intentionally check ONLY the status code, not the body - any 200 from
 // /healthz is good enough (a dead service can't 200 this path).
 async function confirmGatewayLive(host: string): Promise<boolean> {
   const controller = new AbortController()
@@ -150,7 +150,7 @@ async function confirmGatewayLive(host: string): Promise<boolean> {
 
 // Audit-mapped probe. Pure(-ish): observable side effects are only the
 // HTTP call(s). Decision about DB writes happens in the caller.
-// PR-B: fire-and-forget critical-alert push — a delivery failure must never
+// PR-B: fire-and-forget critical-alert push - a delivery failure must never
 // fail (or slow down) the health-monitor pass for other workspaces.
 function pushCriticalAlert(
   workspaceId: string,
@@ -175,7 +175,7 @@ async function probeWorkspace(ws: WorkspaceRow): Promise<{ result: ProbeResult; 
   try {
     token = decrypt(ws.gatewayToken)
   } catch (err) {
-    log.error("health-monitor: gatewayToken decrypt failed — treating as network failure", {
+    log.error("health-monitor: gatewayToken decrypt failed - treating as network failure", {
       workspaceId: ws.id,
       error: String(err),
     })
@@ -334,7 +334,7 @@ export type StateSyncStaleDecision = {
 }
 
 /**
- * Cry-wolf guard (PR-C #13): a single stale-snapshot probe must NOT flag —
+ * Cry-wolf guard (PR-C #13): a single stale-snapshot probe must NOT flag -
  * mid-sync probe timing produces one-off false positives. Requires 2
  * CONSECUTIVE stale probes before stateSyncStaleDetectedAt is set. A fresh
  * snapshot on any probe clears both the counter and the flag immediately.
@@ -399,14 +399,14 @@ export function decideUpdate(
   if (result.kind === "healthy" || result.kind === "degraded") {
     // PR-4: ANY HTTP response (200 / 401 / 404) proves the container is
     // alive. So every healthy/degraded probe resets the failure counter to 0
-    // and refreshes lastHealthCheck=now — including the 4xx config-drift
+    // and refreshes lastHealthCheck=now - including the 4xx config-drift
     // cases (bad-token / plugin-not-loaded), which PR-3 wrongly counted
     // toward status=ERROR. A misconfigured-but-running container must never
     // read as "not responding".
     const nextHealth: HealthStatus = result.kind === "healthy" ? "HEALTHY" : "DEGRADED"
 
     // PR-4a SYMMETRIC SELF-HEAL: a workspace stuck at status=ERROR self-heals
-    // back to RUNNING on ANY successful HTTP response — healthy, 4xx config
+    // back to RUNNING on ANY successful HTTP response - healthy, 4xx config
     // drift (bad-token / plugin-not-loaded), or 200-degraded (plugin-errors /
     // no-agents). All of them prove the container is reachable. PR-4 healed
     // only degraded; that left a perverse asymmetry (a fully-healthy container
@@ -423,7 +423,7 @@ export function decideUpdate(
       healthStatus: nextHealth,
       consecutiveHealthFailures: 0,
       lastHealthCheck: new Date(nowMs),
-      // On full recovery (healthy) lastHealthReason is null — nothing left to
+      // On full recovery (healthy) lastHealthReason is null - nothing left to
       // flag. Degraded keeps its reason so the dashboard banner can explain.
       lastHealthReason,
     }
@@ -455,13 +455,13 @@ export async function GET(req: NextRequest) {
   // PR-4a: probe RUNNING **and** ERROR workspaces. ERROR is included so a
   // workspace stuck at ERROR can SELF-HEAL the moment its container is
   // reachable again (the PR-4 reclassify in decideUpdate is unreachable
-  // otherwise — an ERROR workspace would never be re-probed). PAUSED /
+  // otherwise - an ERROR workspace would never be re-probed). PAUSED /
   // HIBERNATED / STOPPED / DRAFT / SETUP_INCOMPLETE / DEPLOYING / WAKING /
-  // PROVISIONING_QUEUED stay excluded — those are deliberately off or waiting.
+  // PROVISIONING_QUEUED stay excluded - those are deliberately off or waiting.
   //
   // Cost note: genuinely-dead ERROR workspaces are now re-probed every 2 min
   // indefinitely (until redeployed or deleted). The cost is ~5s timeout + 1 DB
-  // write per workspace per pass — bounded and acceptable. Stop-probing-after-
+  // write per workspace per pass - bounded and acceptable. Stop-probing-after-
   // N-ERROR-passes is a possible optimization but not worth the complexity for
   // current scale.
   const candidates = await prisma.workspace.findMany({
@@ -550,7 +550,7 @@ export async function GET(req: NextRequest) {
     })
 
     // Lifecycle P2 Watchtower: missed cron heartbeat window (ops-gap).
-    // Distinct from activity-silence — both flags may coexist.
+    // Distinct from activity-silence - both flags may coexist.
     let heartbeatMissedAt: Date | null | undefined = undefined
     const phase = ws.containerState?.containerPhase
     const cronExprs = ws.containerState?.heartbeatCronExpressions
@@ -664,7 +664,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Lifecycle P2.1: missed-wake for HIBERNATED claws (fixture July shape).
-  // Distinct from RUNNING/WARM Watchtower — hibernated claws are not probed above.
+  // Distinct from RUNNING/WARM Watchtower - hibernated claws are not probed above.
   let missedWakeFlagged = 0
   const graceCutoff = new Date(startedAt - HEARTBEAT_MISS_GRACE_MS)
   try {
@@ -763,7 +763,7 @@ export async function GET(req: NextRequest) {
     errors.push(`missed-wake pass: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  // Lifecycle: WOKE-LATE-NEVER-BEAT — post-cron boot without beat by boot+grace′.
+  // Lifecycle: WOKE-LATE-NEVER-BEAT - post-cron boot without beat by boot+grace′.
   // Distinct from missed-wake (no boot) and Watchtower (RUNNING evidence window).
   let wokeLateNeverBeatFlagged = 0
   try {

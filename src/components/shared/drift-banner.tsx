@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { AlertBanner } from "@/components/ui/alert-banner"
 
-export const DRIFT_BANNER_HEADLINE = "Configuration changed since last deploy — redeploy to apply"
+export const DRIFT_BANNER_HEADLINE = "Configuration changed since last deploy - redeploy to apply"
 
 export function formatChangedAreas(areas: string[]): string {
   if (areas.length === 0) return "workspace configuration"

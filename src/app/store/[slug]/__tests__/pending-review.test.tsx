@@ -46,7 +46,7 @@ describe("creator-views-pending store page (B5)", () => {
       expect(screen.getByText("Pending review")).toBeTruthy()
     })
     expect(
-      screen.getByText("Submitted for review — you'll get an email when it's approved."),
+      screen.getByText("Submitted for review - you'll get an email when it's approved."),
     ).toBeTruthy()
     expect(screen.getByRole("link", { name: "View in your creator dashboard" }).getAttribute("href")).toBe(
       "/settings?tab=creator",

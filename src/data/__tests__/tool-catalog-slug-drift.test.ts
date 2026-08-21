@@ -17,7 +17,7 @@
 //   3. Every slug is unique.
 //
 // Historical GH #27 / #28 drift-migration tests were removed with PR2.8a
-// Task 9 — templates now reference catalog slugs directly via `ToolSlug`,
+// Task 9 - templates now reference catalog slugs directly via `ToolSlug`,
 // so the rename-migration harness has no surface area left to guard.
 //
 // Mutation test procedure (run manually after modifying any OAUTH_COMPOSIO
@@ -80,7 +80,7 @@ describe("tool catalog slug-drift guards (PR2.8a)", () => {
       if (tool.connectionType !== "OAUTH_COMPOSIO") continue
       const toolkitId = tool.composioToolkitId
       if (!toolkitId) {
-        // OAUTH_COMPOSIO without composioToolkitId is itself a bug — covered
+        // OAUTH_COMPOSIO without composioToolkitId is itself a bug - covered
         // by a separate invariant below.
         continue
       }

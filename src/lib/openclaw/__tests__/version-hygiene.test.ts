@@ -10,7 +10,7 @@ import {
 } from "@/lib/openclaw/version-hygiene"
 import { compareOpenClawVersions } from "@/lib/openclaw/version-order"
 
-describe("version-hygiene — never-promotable", () => {
+describe("version-hygiene - never-promotable", () => {
   it("marks 2.5.0 seed relic", () => {
     expect(SEED_RELIC_VERSION).toBe("2.5.0")
     expect(isNeverPromotableVersion("2.5.0")).toBe(true)
@@ -49,7 +49,7 @@ describe("version-hygiene — never-promotable", () => {
   })
 })
 
-describe("selectLatestVersionId — exclude never-promotable", () => {
+describe("selectLatestVersionId - exclude never-promotable", () => {
   it("picks highest claws rebuild even when bare-calendar ranks higher", () => {
     // 2026.7.1 > 2026.5.22-9 by comparator, but never-promotable.
     const id = selectLatestVersionId([

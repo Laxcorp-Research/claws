@@ -29,31 +29,31 @@ import { log } from "@/lib/logger"
  *      for `UNSUPPORTED_TOOLKITS` (currently: `asana`, tracked in GH #41)
  *      and for any catalog drift where the toolkit has no registry entry.
  *   4. Resolves the current tool version via `composio.getClient().tools.retrieve(op)`
- *      — Composio's v3 API rejects execute calls without `version` and
+ *      - Composio's v3 API rejects execute calls without `version` and
  *      per-toolkit versions drift on different cadences (POC §Step 3).
  *   5. Races `composio.tools.execute` against a 5 s soft timeout.
  *   6. Classifies the outcome via the pure `classifyProbeResult` helper
  *      so the same logic (401 detection, toolkit-mismatch detection,
  *      invalid-args detection) applies whether the SDK throws or resolves
- *      with `{ successful: false, error }` — both shapes were observed
+ *      with `{ successful: false, error }` - both shapes were observed
  *      during the 500-validate probe run on 2026-04-21.
  *   7. On `provider_401` or `provider_403`: transitions the DB row to
  *      `EXPIRED` with `lastError` populated. This is the one code path
  *      in the repo today (per GH #40) that can flip CONNECTED → EXPIRED
  *      from a user-triggered probe. On every other outcome the DB is
- *      NOT mutated — stale-CONNECTED is preferred to spurious-EXPIRED.
+ *      NOT mutated - stale-CONNECTED is preferred to spurious-EXPIRED.
  *   8. Emits a structured log event (`composio_test_probe_*`) with
- *      connection-id suffix only (last 8 chars — privacy) and the
+ *      connection-id suffix only (last 8 chars - privacy) and the
  *      classification category for future support triage.
  *
  * Response shape:
- *   200 { ok: true,  state: "working" }                      — probe succeeded
- *   200 { ok: false, state: "expired" }                      — token dead, DB updated
- *   200 { ok: false, state: "error", message: "…" }          — transient / unknown, DB unchanged
- *   400 apiError "TOOL_TEST_UNSUPPORTED"                     — asana-class toolkit
- *   400 apiError "TOOL_TEST_NOT_REGISTERED"                  — catalog drift
- *   400 apiError VALIDATION                                  — wrong connectionType / missing fields
- *   503 apiError "COMPOSIO_NOT_CONFIGURED"                   — no COMPOSIO_API_KEY
+ *   200 { ok: true,  state: "working" }                      - probe succeeded
+ *   200 { ok: false, state: "expired" }                      - token dead, DB updated
+ *   200 { ok: false, state: "error", message: "…" }          - transient / unknown, DB unchanged
+ *   400 apiError "TOOL_TEST_UNSUPPORTED"                     - asana-class toolkit
+ *   400 apiError "TOOL_TEST_NOT_REGISTERED"                  - catalog drift
+ *   400 apiError VALIDATION                                  - wrong connectionType / missing fields
+ *   503 apiError "COMPOSIO_NOT_CONFIGURED"                   - no COMPOSIO_API_KEY
  *
  * Cost: ~$0.001 per click (one Composio execute per test). Bounded by the
  * Test button's manual-click UX; no polling at this endpoint.
@@ -140,7 +140,7 @@ export async function POST(
   const connIdSuffix = conn.composioConnectionId.slice(-8)
 
   // Resolve version. The SDK's default (`"00000000_00"`) is rejected by
-  // Composio's v3 API — we MUST pass an explicit version. Each toolkit
+  // Composio's v3 API - we MUST pass an explicit version. Each toolkit
   // ships on a different version cadence (observed during 500-validate:
   // 4 distinct versions across 16 toolkits), so caching per-process is
   // brittle. Resolve on each call (~300 ms overhead) for v1 simplicity.
@@ -224,7 +224,7 @@ export async function POST(
   })
 
   // DB transition. ONLY fires on the unambiguous provider-dead cases
-  // (401 / 403). Every other category leaves the row alone — we prefer
+  // (401 / 403). Every other category leaves the row alone - we prefer
   // stale CONNECTED to spurious EXPIRED because an incorrect EXPIRED
   // surfaces a Reconnect prompt the user shouldn't have to act on.
   if (
@@ -236,7 +236,7 @@ export async function POST(
       data: {
         status: "EXPIRED",
         lastTestedAt: new Date(),
-        lastError: `Composio status: EXPIRED — test probe detected ${classification.category === "provider_401" ? "revoked" : "forbidden"} token`,
+        lastError: `Composio status: EXPIRED - test probe detected ${classification.category === "provider_401" ? "revoked" : "forbidden"} token`,
       },
     })
     log.toolEvent({

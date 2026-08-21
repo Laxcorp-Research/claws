@@ -14,7 +14,7 @@ export function strandedDeployMaxAgeMs(): number {
 }
 
 /**
- * DeploymentStatus enum (prisma) — terminal vs in-flight.
+ * DeploymentStatus enum (prisma) - terminal vs in-flight.
  * There is no STARTING_GATEWAY in the schema; gateway boot uses STARTING.
  *
  * Terminal: COMPLETED | FAILED | ROLLED_BACK | SUPERSEDED
@@ -40,9 +40,9 @@ export const NON_TERMINAL_DEPLOYMENT_STATUSES = [
 export type NonTerminalDeploymentStatus =
   (typeof NON_TERMINAL_DEPLOYMENT_STATUSES)[number]
 
-/** Honest per-phase error — mutation: drop HEALTH_CHECK from NON_TERMINAL → fail. */
+/** Honest per-phase error - mutation: drop HEALTH_CHECK from NON_TERMINAL → fail. */
 export function strandedDeployErrorMessage(status: string): string {
-  return `Deployment stranded: stuck in ${status} beyond max age — marked FAILED for retry`
+  return `Deployment stranded: stuck in ${status} beyond max age - marked FAILED for retry`
 }
 
 /** @deprecated Prefer strandedDeployErrorMessage(phase). Kept for older call sites. */

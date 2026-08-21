@@ -8,20 +8,20 @@ import { parseClawsEnvPayload, type RawContainerEnv } from "@/lib/openclaw/conta
 import { resolveMode } from "@/lib/openclaw/reconcile-mode"
 import { healWorkspace } from "@/lib/openclaw/heal-workspace"
 
-// PR-8a/C — Container env reconciliation cron (DETECT-ONLY).
+// PR-8a/C - Container env reconciliation cron (DETECT-ONLY).
 //
 // The PR-8 safety net: per RUNNING workspace, compare the container's ACTUAL
 // credential env (read off Railway, decoded from CLAWS_ENV_GZ_B64 / legacy
 // CLAWS_ENV_B64) against the
 // EXPECTED env derived from current DB state (deriveContainerEnv). When they
-// drift, log it — DETECT-ONLY does NOT auto-heal (PR-8b adds AUTO-HEAL behind
+// drift, log it - DETECT-ONLY does NOT auto-heal (PR-8b adds AUTO-HEAL behind
 // ENV_RECONCILE_MODE=auto_heal). See docs/CONTAINER_ENV_RECONCILIATION_CONTRACT.md.
 //
 // PR-8a/C/A (this file) is the skeleton: auth + per-tick lock + scope query +
 // rotation + summary accumulator + a no-op loop body. PR-8a/C/B fills in the
 // per-workspace comparison; PR-8a/C/C adds the transient-window exclusions.
 
-// before: 55 — after: 300 (belt with hibernation / health-monitor cron routes)
+// before: 55 - after: 300 (belt with hibernation / health-monitor cron routes)
 export const maxDuration = 300
 
 // Per-tick processing cap (contract §6). Bounds Railway reads + tick duration;
@@ -30,7 +30,7 @@ export const maxDuration = 300
 //
 // PR-8c: capped at 10 per tick to bound worst-case duration.
 // At */5 cadence with cap=10 = 120 workspaces/hr throughput
-// (vs */15 × 20 = 80/hr — higher cadence + smaller batch is net better).
+// (vs */15 × 20 = 80/hr - higher cadence + smaller batch is net better).
 // Bounds against: (a) Railway read timeouts (10s × cap), (b) heal triggers
 // (~2-3s × cap). Worst case 40-50s comfortably under maxDuration=300s.
 const RECONCILE_MAX_PER_RUN = 10
@@ -46,8 +46,8 @@ const TICK_LOCK_TTL_SEC = 65
 const RECONCILE_GRACE_MS = 60_000
 
 // PR-8b/B: resolveMode() + ReconcileMode moved to @/lib/openclaw/reconcile-mode
-// (the shared gate, imported above). The in-route copy — and its
-// auto_heal→detect_only downgrade-with-warning — is gone: auto_heal is REAL now.
+// (the shared gate, imported above). The in-route copy - and its
+// auto_heal→detect_only downgrade-with-warning - is gone: auto_heal is REAL now.
 // The shared resolveMode still fails closed (throws) on any invalid value.
 
 type RailwayErrorKind =
@@ -66,7 +66,7 @@ type SkipReason =
   | "workspace_deleted_midwindow"
   | "tick_capped"
   // PR-8b/B: AUTO-HEAL was suppressed because the per-workspace cooldown lock is
-  // held (a recent heal — cron or event fast-path). Counted under summary.skipped.
+  // held (a recent heal - cron or event fast-path). Counted under summary.skipped.
   | "cooldown_active"
 
 // railwayGql collapses timeouts into a status-0 "network error" RailwayApiError
@@ -116,14 +116,14 @@ export async function GET(req: NextRequest) {
   // Vercel generally won't overlap cron invocations, but we don't rely on
   // that). DETECT-ONLY is read-only + idempotent, so if Redis is unreachable
   // we log and proceed WITHOUT the lock rather than skip the safety net.
-  // PR-8b (AUTO-HEAL) will need stricter handling — no heal without a lock.
+  // PR-8b (AUTO-HEAL) will need stricter handling - no heal without a lock.
   let lockAcquired: unknown = null
   let lockSkipped = false
   try {
     lockAcquired = await redis.set(TICK_LOCK_KEY, "1", { nx: true, ex: TICK_LOCK_TTL_SEC })
   } catch (err) {
     lockSkipped = true
-    log.error("env reconciliation: lock acquisition failed (Redis) — proceeding lock-less (detect-only is idempotent)", {
+    log.error("env reconciliation: lock acquisition failed (Redis) - proceeding lock-less (detect-only is idempotent)", {
       category: "env_reconciliation",
       event: "lock_error",
       error: String(err),
@@ -275,7 +275,7 @@ export async function GET(req: NextRequest) {
 
       if (after === undefined) continue // re-read failed; error already counted. Retry next tick.
       if (after === null) {
-        // Deleted between the scope query and the re-read — no row left to stamp.
+        // Deleted between the scope query and the re-read - no row left to stamp.
         logSkip("workspace_deleted_midwindow", ws.id)
         continue
       }
@@ -303,7 +303,7 @@ export async function GET(req: NextRequest) {
       }
 
       // (c) ACTUAL key fingerprint. parseClawsEnvB64 is total, so this should
-      // never throw — the guard is defensive (closest errorKind: "decrypt").
+      // never throw - the guard is defensive (closest errorKind: "decrypt").
       let actualFingerprint: string | null
       try {
         actualFingerprint = extractActualKeyFingerprint(actual)
@@ -329,7 +329,7 @@ export async function GET(req: NextRequest) {
       if (expectedBaseUrl !== actualBaseUrl) driftFields.push("base_url")
       if (expected.keyFingerprint !== actualFingerprint) driftFields.push("key_fp")
 
-      // (e) Drift log — fingerprints/booleans only, never raw key material.
+      // (e) Drift log - fingerprints/booleans only, never raw key material.
       if (driftFields.length > 0) {
         summary.drifts++
         log.warn("env drift detected", {
@@ -404,9 +404,9 @@ export async function GET(req: NextRequest) {
       try {
         await redis.del(TICK_LOCK_KEY)
       } catch (err) {
-        // The EX TTL is the backstop — the lock auto-expires in TICK_LOCK_TTL_SEC
+        // The EX TTL is the backstop - the lock auto-expires in TICK_LOCK_TTL_SEC
         // even if this del fails. Log, don't fail the tick.
-        log.warn("env reconciliation: lock release failed — relying on TTL expiry", {
+        log.warn("env reconciliation: lock release failed - relying on TTL expiry", {
           category: "env_reconciliation",
           event: "lock_release_failed",
           error: String(err),

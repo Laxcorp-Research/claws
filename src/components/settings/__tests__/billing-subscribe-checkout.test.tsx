@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * P7: lapsed Subscribe must open Dodo platform checkout — not /pricing.
+ * P7: lapsed Subscribe must open Dodo platform checkout - not /pricing.
  * MUTATION: button-links-to-pricing restored → this file fails.
  */
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest"

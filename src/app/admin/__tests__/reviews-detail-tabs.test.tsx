@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Batch G — reviews detail×tabs:
+ * Batch G - reviews detail×tabs:
  * - tab switch clears detail
  * - skill item approve hits /skills/ endpoint (not templates)
  * MUTATION: template endpoint for skill item → fail

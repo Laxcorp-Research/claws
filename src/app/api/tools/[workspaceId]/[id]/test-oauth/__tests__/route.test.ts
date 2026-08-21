@@ -1,8 +1,8 @@
-// PR #5 — tests for POST /api/tools/[workspaceId]/[id]/test-oauth.
+// PR #5 - tests for POST /api/tools/[workspaceId]/[id]/test-oauth.
 //
 // Covers the classification paths the route branches on, plus the DB
 // transition contract (EXPIRED is the ONLY status the route writes on
-// its own — every other outcome leaves the row alone).
+// its own - every other outcome leaves the row alone).
 //
 // Composio SDK is mocked. Prisma is the shared prismaMock. Auth +
 // ownership are stubbed via vi.mock the same way the workspaces route
@@ -25,7 +25,7 @@ vi.mock("@/lib/api/ownership", () => ({
   verifyWorkspaceOwnership: vi.fn().mockResolvedValue({ error: null }),
 }))
 
-// Composio SDK mock — we control what tools.retrieve + tools.execute do
+// Composio SDK mock - we control what tools.retrieve + tools.execute do
 // per-test via the exported handles below.
 const mockToolsRetrieve = vi.fn()
 const mockToolsExecute = vi.fn()
@@ -79,7 +79,7 @@ beforeEach(() => {
   mockToolsRetrieve.mockResolvedValue({ available_versions: ["20260420_00"] })
 })
 
-describe("POST /api/tools/[workspaceId]/[id]/test-oauth — auth & validation", () => {
+describe("POST /api/tools/[workspaceId]/[id]/test-oauth - auth & validation", () => {
   it("returns 401 when not authenticated", async () => {
     const { getSessionUser } = await import("@/lib/api/auth")
     ;(getSessionUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
@@ -134,7 +134,7 @@ describe("POST /api/tools/[workspaceId]/[id]/test-oauth — auth & validation", 
   })
 })
 
-describe("POST /api/tools/[workspaceId]/[id]/test-oauth — probe outcomes", () => {
+describe("POST /api/tools/[workspaceId]/[id]/test-oauth - probe outcomes", () => {
   beforeEach(() => {
     ;(prismaMock.toolConnection.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
       baseOAuthConnection(),
@@ -203,7 +203,7 @@ describe("POST /api/tools/[workspaceId]/[id]/test-oauth — probe outcomes", () 
 
   it("returns error WITHOUT DB write on toolkit_mismatch", async () => {
     // toolkit_mismatch shouldn't happen in production (the route looks up
-    // by toolkit), but if it does, we MUST NOT write EXPIRED — that would
+    // by toolkit), but if it does, we MUST NOT write EXPIRED - that would
     // lie to the user about their connection health.
     mockToolsExecute.mockRejectedValue(
       Object.assign(new Error("Error executing the tool GMAIL_GET_PROFILE"), {

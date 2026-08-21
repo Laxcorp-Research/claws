@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 /**
  * Pass server session so first paint is authenticated|unauthenticated, not a
  * client fetch race (admin hard-load Sign-in flash after #389).
- * `null` is intentional for logged-out — !== undefined so next-auth skips loading.
+ * `null` is intentional for logged-out - !== undefined so next-auth skips loading.
  */
 export function Providers({
   children,

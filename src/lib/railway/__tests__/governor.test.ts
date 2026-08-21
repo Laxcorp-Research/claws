@@ -119,7 +119,7 @@ describe("reactive backstop", () => {
 })
 
 describe("drainProvisioningQueueHead", () => {
-  it("ineligible head is dequeued and STOPPED — deployToCloud never runs", async () => {
+  it("ineligible head is dequeued and STOPPED - deployToCloud never runs", async () => {
     ;(prismaMock.railwayCreateLedger.count as ReturnType<typeof vi.fn>).mockResolvedValue(0)
     ;(prismaMock.railwayCreateLedger.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
     ;(prismaMock.provisioningQueue.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({

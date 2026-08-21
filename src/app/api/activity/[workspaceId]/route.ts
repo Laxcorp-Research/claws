@@ -58,7 +58,9 @@ function parseDeployedPauseApplied(configSnapshotGzip: Uint8Array | Buffer | nul
       const toolsMd = workspaceFiles["TOOLS.md"]
       if (typeof toolsMd !== "string") continue
       for (const line of toolsMd.split("\n")) {
-        const match = line.match(/^- Worker (.+) is paused — do not delegate to it\.$/)
+        // [\u2014-]: snapshots generated before the em-dash copy sweep still
+        // carry the old separator; accept both so paused-state stays readable.
+        const match = line.match(/^- Worker (.+) is paused [\u2014-] do not delegate to it\.$/)
         if (match?.[1]) applied.add(match[1])
       }
     }
@@ -167,7 +169,7 @@ export async function GET(
   })
 
   const apiKeySource = getApiKeySource(workspace!, owner)
-  // Rule 18: UTC day boundaries only — never local `new Date(y, m, d)`.
+  // Rule 18: UTC day boundaries only - never local `new Date(y, m, d)`.
   const todayStart = utcDayStart(now)
   const yesterdayStart = new Date(todayStart.getTime() - 86_400_000)
   const costRange: CostRange = parseCostRange(searchParams.get("costRange"))
@@ -326,14 +328,14 @@ export async function GET(
   }
 
   // PR-3: status derivation depends on the workspace's REAL healthStatus
-  // (written by /api/cron/health-monitor every 2 min) — not the prior
+  // (written by /api/cron/health-monitor every 2 min) - not the prior
   // tautology that derived "healthy" purely from workspace.status===RUNNING.
   // Order of precedence is intentional:
   //   1. agent.isPaused or workspace.status===PAUSED → "paused" (operator intent)
   //   2. workspace.status !== RUNNING (HIBERNATED, ERROR, STOPPED, etc.) → "offline"
   //   3. workspace.healthStatus===UNHEALTHY → "error" (monitor saw 2+ failures)
   //   4. workspace.healthStatus===DEGRADED → "degraded" (gateway answered but reports
-  //      plugin errors / zero agents / bad token / plugin-not-loaded — reachable
+  //      plugin errors / zero agents / bad token / plugin-not-loaded - reachable
   //      but partially broken; surfaced distinctly so operators don't read
   //      "totally down" into a partial outage)
   //   5. otherwise → "healthy"
@@ -367,7 +369,7 @@ export async function GET(
   // PR-3: prior code returned `agents.length - pausedCount`, which counted
   // "running" agents even when workspace.healthStatus===UNHEALTHY. With
   // honest health data, count only agents that are actually contributing
-  // (healthy or degraded — degraded is still partially-working). UNHEALTHY
+  // (healthy or degraded - degraded is still partially-working). UNHEALTHY
   // / offline / paused agents are excluded.
   const agentsRunningCount = agentStatuses.filter(
     (a) => a.status === "healthy" || a.status === "degraded",
@@ -497,7 +499,7 @@ export async function GET(
       costAlertThreshold: workspace!.costAlertThreshold,
       // PR-B: critical alerts (Telegram/email) opt-out toggle.
       criticalAlertsOptOut: workspace!.criticalAlertsOptOut,
-      // PR-C #10: never-hibernate toggle. Must round-trip here — this
+      // PR-C #10: never-hibernate toggle. Must round-trip here - this
       // endpoint's periodic dashboard poll is what would otherwise silently
       // revert the optimistic toggle state back to false.
       alwaysOn: workspace!.alwaysOn,

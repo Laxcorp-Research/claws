@@ -1,4 +1,4 @@
-// container-env-actual.test.ts — PR-8a/B/B coverage for parseClawsEnvB64
+// container-env-actual.test.ts - PR-8a/B/B coverage for parseClawsEnvB64
 // (the CLAWS_ENV_B64 → flat-map decoder for the "actual" side of reconciliation).
 //
 // parseClawsEnvB64 is pure + total (never throws), so no mocks/timers needed.
@@ -28,7 +28,7 @@ describe("parseClawsEnvB64 (PR-8a/B/B)", () => {
 
   it("tolerates a missing CLAWS_ENV_B64 (undefined) → {} (total-function contract)", () => {
     // The cron reads env.CLAWS_ENV_B64; an absent var arrives as undefined.
-    // Buffer.from(undefined,'base64') throws — the try/catch turns it into {}.
+    // Buffer.from(undefined,'base64') throws - the try/catch turns it into {}.
     expect(() => parseClawsEnvB64(undefined as unknown as string)).not.toThrow()
     expect(parseClawsEnvB64(undefined as unknown as string)).toEqual({})
   })

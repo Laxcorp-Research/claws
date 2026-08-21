@@ -21,7 +21,7 @@ interface NavItem {
   label: string
   href: string
   external?: boolean
-  /** DS AI Gradient Accent — Getting started only. */
+  /** DS AI Gradient Accent - Getting started only. */
   aiAccent?: boolean
 }
 
@@ -37,7 +37,7 @@ const authNavItems: NavItem[] = [
   { label: "Docs", href: "https://docs.buildclaws.ai", external: true },
 ]
 
-/** Neutral nav while session resolves — never Pricing/Sign-in flash (#229). */
+/** Neutral nav while session resolves - never Pricing/Sign-in flash (#229). */
 const loadingNavItems: NavItem[] = [
   { label: "Store", href: "/store" },
   { label: "Docs", href: "https://docs.buildclaws.ai", external: true },
@@ -65,7 +65,7 @@ export function TopBar() {
   }, [sessionReady])
 
   // Only paint public/Sign-in on EXPLICIT unauthenticated. loading + any
-  // unknown status stay neutral — never fall through to Pricing/Sign-in while
+  // unknown status stay neutral - never fall through to Pricing/Sign-in while
   // session is still resolving (admin hard-load gap after #389).
   const baseNavItems = sessionReady
     ? authNavItems
@@ -162,7 +162,7 @@ export function TopBar() {
             </div>
 
             <div className="py-1">
-              {/* Menu entry ALWAYS visible — independent of tracker completeness. */}
+              {/* Menu entry ALWAYS visible - independent of tracker completeness. */}
               <MenuLink href="/onboarding" icon={Compass} label="Getting started" />
               <MenuLink href="/settings?tab=account" icon={User} label="Account" />
               <MenuLink href="/settings?tab=api-keys" icon={Key} label="API Keys" />

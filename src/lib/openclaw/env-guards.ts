@@ -1,4 +1,4 @@
-// PR-2b items #1 + #2 — fail-closed activity/metering endpoint guards.
+// PR-2b items #1 + #2 - fail-closed activity/metering endpoint guards.
 //
 // History: PR-2 shipped the activity wire with a hardcoded fallback to the
 // PROD endpoint URL (`'https://app.buildclaws.ai/api/internal/activity'`)

@@ -114,7 +114,7 @@ describe("HWD source contracts", () => {
     expect(mgr).not.toMatch(/containerHost:\s*null/)
   })
 
-  it("sleepApplication_bypasses_entitlement_gate — source never enables serverless", () => {
+  it("sleepApplication_bypasses_entitlement_gate - source never enables serverless", () => {
     const client = readFileSync(join(process.cwd(), "src/lib/openclaw/railway-client.ts"), "utf8")
     expect(client).toContain("sleepApplication_bypasses_entitlement_gate")
     expect(client).toContain("sleepApplication: false")
@@ -132,7 +132,7 @@ describe("HWD source contracts", () => {
   })
 })
 
-describe("syncThenRemoveDeployment — keep service", () => {
+describe("syncThenRemoveDeployment - keep service", () => {
   it("syncs then removeLatestDeployment; never deleteService; ids persist", async () => {
     mockWorkspace()
     fetchOk(200, { ok: true, persisted: true, count: 1, fileCount: 1 })
@@ -161,7 +161,7 @@ describe("syncThenRemoveDeployment — keep service", () => {
   })
 })
 
-describe("waitForDeploymentSuccess — REMOVED latest is not success", () => {
+describe("waitForDeploymentSuccess - REMOVED latest is not success", () => {
   it("polls past REMOVED then returns the new SUCCESS id", async () => {
     vi.useFakeTimers()
     mockGetServiceStatus
@@ -184,7 +184,7 @@ describe("waitForDeploymentSuccess — REMOVED latest is not success", () => {
     expect(mockGetServiceStatus).toHaveBeenCalledTimes(2)
   })
 
-  it("NO_DEPLOYMENT is hibernated-with-service — keep polling until SUCCESS", async () => {
+  it("NO_DEPLOYMENT is hibernated-with-service - keep polling until SUCCESS", async () => {
     vi.useFakeTimers()
     mockGetServiceStatus
       .mockResolvedValueOnce({

@@ -28,7 +28,7 @@ describe("prisma/seed.ts v2.5.0 upsert (GH #5)", () => {
     expect(createPart).toContain(":latest")
   })
 
-  it("update is a no-op {} — never re-asserts isStable/isLatest/dockerImage on re-run", () => {
+  it("update is a no-op {} - never re-asserts isStable/isLatest/dockerImage on re-run", () => {
     // Empty object literal catches both literal flag re-assertion AND the
     // `update: openClawVersionSeed` spread/variable form (the original bug).
     expect(updatePart).toMatch(/update:\s*\{\s*\}/)

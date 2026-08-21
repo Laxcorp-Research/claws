@@ -5,7 +5,7 @@
  * Card 18 / paying-user redeploy: pre-WIRE-FULL installs may still persist
  * WORKER→CRITIC "review" edges. Those edges are display-only under current
  * law (builder-topology preview) and must NOT hard-block deploy for claws
- * that already passed setup — ignore them at the deploy gate (Phase-C
+ * that already passed setup - ignore them at the deploy gate (Phase-C
  * precedent: normalize/ignore legacy review rows; do not strand a subscriber).
  */
 import { prisma } from "@/lib/db"

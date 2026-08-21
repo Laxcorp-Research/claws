@@ -6,11 +6,11 @@
 // the gateway ack is acceptance-time (<500ms live), the Orchestrator's reply
 // lands in ActivityLog minutes later via the PR-9/A-container reporter
 // extension and reaches the dashboard over the existing SSE stream. THIS
-// ROUTE WRITES NO ActivityLog ROW — the container's message_received hook
+// ROUTE WRITES NO ActivityLog ROW - the container's message_received hook
 // writes the canonical MESSAGE_RECEIVED (metadata.messageId = the runId we
 // return), and a route-side write would double-log every message (V3).
 //
-// Status gate (V2, amendment 2): Workspace.status is the primary gate —
+// Status gate (V2, amendment 2): Workspace.status is the primary gate -
 // matching every existing container-contact route (health-monitor, restart,
 // reconcile cron); ContainerPhase is the hibernation scheduler's domain and
 // deliberately NOT consulted. A RUNNING workspace missing containerHost or
@@ -73,10 +73,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { success } = await chatRateLimit.limit(`${user.id}:${id}`)
     if (!success) {
-      return apiError("RATE_LIMITED", "Too many chat messages — slow down a little.", 429)
+      return apiError("RATE_LIMITED", "Too many chat messages - slow down a little.", 429)
     }
   } catch {
-    // Redis unavailable — proceed (fail-open, consistent with middleware).
+    // Redis unavailable - proceed (fail-open, consistent with middleware).
   }
 
   let body: { message?: unknown }
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     case "DEPLOYING":
     case "WAKING":
     case "PROVISIONING_QUEUED":
-      return apiError("WORKSPACE_TRANSITIONING", "Your Claw is starting up — try again shortly.", 409)
+      return apiError("WORKSPACE_TRANSITIONING", "Your Claw is starting up - try again shortly.", 409)
     default:
       // DRAFT / SETUP_INCOMPLETE / PAUSED (reserved, no writer)
       return apiError("WORKSPACE_TRANSITIONING", `Cannot chat while the workspace is ${workspace.status}.`, 409)
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Session key: the Orchestrator's main session (routing is via the
-  // session key — bindings are not consulted; protocol doc §4).
+  // session key - bindings are not consulted; protocol doc §4).
   const orchestrator = await prisma.agent.findFirst({
     where: { workspaceId: id, role: "ORCHESTRATOR" },
     select: { agentSlug: true },
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const sessionKey = `agent:${orchestrator.agentSlug}:main`
 
-  // Server-generated idempotencyKey — it becomes the gateway runId AND the
+  // Server-generated idempotencyKey - it becomes the gateway runId AND the
   // container-side MESSAGE_RECEIVED metadata.messageId (the correlation
   // chain the dashboard uses to reconcile optimistic messages).
   const idempotencyKey = crypto.randomUUID()
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   let result: SendChatResult = await attempt()
 
-  // V6: at most ONE retry, SAME idempotencyKey (the gateway dedupes on it —
+  // V6: at most ONE retry, SAME idempotencyKey (the gateway dedupes on it -
   // verified by the spike's T5 double-send), and only when no ack was
   // received. A fresh key could double-deliver the message.
   if (!result.ok && result.reason === "unreachable") {
@@ -184,7 +184,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return apiError(
       code,
       result.reason === "transitioning"
-        ? "Your Claw's gateway is starting up — try again shortly."
+        ? "Your Claw's gateway is starting up - try again shortly."
         : "Could not reach your Claw. It may be restarting.",
       status,
     )

@@ -8,7 +8,7 @@ import { healWorkspace, type HealResult } from "@/lib/openclaw/heal-workspace"
 // workspace the user owns. Fan out to each (scope mirrors the cron: RUNNING +
 // containerId, which is also redeployWorkspace's Railway-branch guard).
 //
-// Designed to run inside `after()` (PR-8b/C) — fire-and-forget. Per-workspace
+// Designed to run inside `after()` (PR-8b/C) - fire-and-forget. Per-workspace
 // failures are logged, never thrown; the cron backstops anything missed.
 // healWorkspace is the shared gate: under detect_only every call is a no-op, so
 // wiring this in (PR-8b/C) ships dormant until the auto_heal flag-flip.

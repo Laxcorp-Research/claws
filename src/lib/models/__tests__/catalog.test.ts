@@ -93,7 +93,7 @@ describe("model catalog (OpenRouter arc)", () => {
   })
 
   it("does NOT derive natives for variants, Anthropic, or other vendors", () => {
-    // :variants are OpenRouter-only routes — not callable with a native key.
+    // :variants are OpenRouter-only routes - not callable with a native key.
     expect(derivedNativeFromOpenRouter({ id: "openai/gpt-4o:extended" })).toBeNull()
     expect(derivedNativeFromOpenRouter({ id: "google/gemini-2.0-flash-001:free" })).toBeNull()
     // Anthropic natives come from the live Anthropic /v1/models refresh only.

@@ -1,7 +1,7 @@
 // PR-2: Stop route contract. Stop now routes through syncThenDestroy (confirmed
-// pre-destroy sync). This is an INTEGRATION test — the REAL syncThenDestroy /
+// pre-destroy sync). This is an INTEGRATION test - the REAL syncThenDestroy /
 // destroyContainer run (only db, railway-client, logger, auth, ownership, and
-// fetch are mocked) — so the never-trap invariant is proven end-to-end:
+// fetch are mocked) - so the never-trap invariant is proven end-to-end:
 // even when the sync call fails, the Stop still succeeds ({stopped:true}).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"

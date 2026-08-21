@@ -1,4 +1,4 @@
-// PR-2: tests for syncThenDestroy — the confirmed-sync teardown wrapper.
+// PR-2: tests for syncThenDestroy - the confirmed-sync teardown wrapper.
 //
 // Invariants under test:
 //   - SYNCS BEFORE DESTROY: POSTs /internal/sync-now (with the metering secret)
@@ -125,7 +125,7 @@ function expectDestroyed() {
   )
 }
 
-describe("syncThenDestroy — syncs before destroy", () => {
+describe("syncThenDestroy - syncs before destroy", () => {
   it("POSTs /internal/sync-now with X-Metering-Secret before deleting the container", async () => {
     mockWorkspace()
     fetchOk(200, { ok: true, persisted: true, count: 3, fileCount: 5 })
@@ -169,7 +169,7 @@ describe("syncThenDestroy — syncs before destroy", () => {
   })
 })
 
-describe("syncThenDestroy — never-trap invariant (always destroys, records marker)", () => {
+describe("syncThenDestroy - never-trap invariant (always destroys, records marker)", () => {
   it("records reason 'rejected' on a 502 and destroys anyway", async () => {
     mockWorkspace()
     fetchOk(502, { ok: false, status: "rejected" })
@@ -258,7 +258,7 @@ describe("syncThenDestroy — never-trap invariant (always destroys, records mar
   })
 })
 
-describe("syncThenDestroy — no reachable container", () => {
+describe("syncThenDestroy - no reachable container", () => {
   it("destroys WITHOUT a network call when containerHost is null", async () => {
     mockWorkspace({ containerHost: null })
 
@@ -278,7 +278,7 @@ describe("syncThenDestroy — no reachable container", () => {
   })
 })
 
-describe("syncThenDestroy — SYNC_BEFORE_DESTROY kill-switch", () => {
+describe("syncThenDestroy - SYNC_BEFORE_DESTROY kill-switch", () => {
   it("flag=false → straight passthrough to destroyContainer (no sync, no marker)", async () => {
     process.env.SYNC_BEFORE_DESTROY = "false"
     mockWorkspace()
@@ -295,7 +295,7 @@ describe("syncThenDestroy — SYNC_BEFORE_DESTROY kill-switch", () => {
   })
 })
 
-describe("syncThenDestroy — Lifecycle P3 refuse-unsafe (auto-hibernate)", () => {
+describe("syncThenDestroy - Lifecycle P3 refuse-unsafe (auto-hibernate)", () => {
   it("sync-fail → container kept (not destroyed) + refused reason", async () => {
     mockWorkspace()
     fetchOk(503, { ok: false, status: "error" })

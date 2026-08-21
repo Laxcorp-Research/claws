@@ -68,7 +68,7 @@ export const SEARCH_BACKEND_TOOL_SLUGS = [
 /**
  * True when the workspace has a CONNECTED search-category tool from the
  * known slug set. We do not currently emit tools.web.search provider/apiKey
- * for these connections (skills.entries only) — see dead-tool honesty.
+ * for these connections (skills.entries only) - see dead-tool honesty.
  */
 export function workspaceHasSearchBackend(
   workspace: { toolConnections: Array<{ toolSlug: string; status: string }> },
@@ -241,7 +241,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 
   // 2b. Pre-load skills compatible with any connected tool in this
   // workspace. Kept separate from the main include because Skill is not a
-  // direct Workspace relation — the tool→skill map lives on
+  // direct Workspace relation - the tool→skill map lives on
   // Skill.compatibleTools. Loading here (once, before any sync config
   // generator runs) keeps generateSkillsEntriesConfig pure-sync and testable
   // without async plumbing. When no tools are connected, we skip the query.
@@ -295,7 +295,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   //    so preview and runtime share one parser. When Builder frequency is
   //    unset, template schedules embedded as HEARTBEAT.md `cron: "..."` lines
   //    become machine truth via the same jobs.json path (OpenClaw -9 cron store
-  //    reads jobs.json only — MD is prose the agent reads when a job fires).
+  //    reads jobs.json only - MD is prose the agent reads when a job fires).
   //    See resolveHeartbeatSchedule.
   //
   // PR-2b #8 + #9: orchestrator's slugified agent id is threaded into the
@@ -304,7 +304,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // `sessionTarget` shape (`session:agent:<slug>:main`, NOT the literal
   // "main" which is reserved for systemEvent payloads). We use
   // `toAgentId(orchestrator.name)` instead of reading
-  // `orchestrator.agentSlug` directly — both resolve to the same value
+  // `orchestrator.agentSlug` directly - both resolve to the same value
   // for current rows (slug stored at create-time by route.ts via the
   // same slugifier) but `toAgentId(name)` is the same source-of-truth
   // the rest of this generator uses (see agentsList build below at
@@ -337,7 +337,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 
   // 5b. Tool Router session for the uncurated long-tail (flag-gated).
   // Quiet no-op when the flag is off, nothing is uncurated, or
-  // COMPOSIO_API_KEY is unset — mirrors the OAuth branch's unconfigured
+  // COMPOSIO_API_KEY is unset - mirrors the OAuth branch's unconfigured
   // behavior. Runs INSIDE generateWorkspace so deploy AND redeploy both
   // flow through the same reuse-or-create (deployer.ts deployToCloud and
   // redeployWorkspace both call generateWorkspace).
@@ -376,7 +376,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 
   // 6. Build all outputs.
   // PR-2b #10: orchestrator agent slug also threaded into generateCronJobs
-  // so the scheduledTasks emit path (currently dormant — no Prisma column —
+  // so the scheduledTasks emit path (currently dormant - no Prisma column -
   // but kept fixed to avoid landing the same latent bug for a future
   // feature) uses the correct cron job shape too.
   const openclawConfig = generateOpenClawConfig(
@@ -475,11 +475,11 @@ function generateOpenClawConfig(
       // `default: true` is THE routing mechanism: OpenClaw's route resolution
       // falls back to the default agent for any inbound traffic without an
       // exact-channel binding, so all channel/webchat messages land on the
-      // Orchestrator. (A channel:'*' binding does NOT do this — see the
+      // Orchestrator. (A channel:'*' binding does NOT do this - see the
       // comment at the config assembly below and #117.)
       entry.default = true;
       // Allow orchestrator to spawn workers and critic as subagents.
-      // Do NOT set subagents.model — that latent default overrides the target
+      // Do NOT set subagents.model - that latent default overrides the target
       // worker's list model when sessions_spawn omits agentId (self-target →
       // commander model). requireAgentId forces explicit worker selection.
       entry.subagents = {
@@ -499,7 +499,7 @@ function generateOpenClawConfig(
 
     // C-engine B1 token-tax scoping: in an MCP-enabled workspace, only the
     // Orchestrator carries the Router's tool definitions. Every other agent
-    // denies `composio__*` — the runtime's allowlist gate then skips the
+    // denies `composio__*` - the runtime's allowlist gate then skips the
     // bundle-MCP runtime entirely for those agents' runs (verified against
     // upstream v2026.5.22 dist: shouldCreateBundleMcpRuntimeForAttempt +
     // makeToolPolicyMatcher glob deny). Merge, never clobber, any existing
@@ -550,7 +550,7 @@ function generateOpenClawConfig(
       },
       list: agentsList,
     },
-    // NO `bindings` key — deliberately (#117). We previously emitted
+    // NO `bindings` key - deliberately (#117). We previously emitted
     // `bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]`
     // believing it routed all channel traffic to the Orchestrator. It was a
     // no-op: OpenClaw's binding index is an exact-string map keyed by channel
@@ -574,7 +574,7 @@ function generateOpenClawConfig(
   // Dead-tool honesty: when no search backend is configured, disable the
   // built-in web_search tool (createWebSearchTool returns null when
   // tools.web.search.enabled === false). Connecting a SEARCH catalog tool
-  // today only emits skills.entries[<slug>] — it does NOT wire
+  // today only emits skills.entries[<slug>] - it does NOT wire
   // tools.web.search provider/apiKey. So "backend present" here means we
   // leave web_search enabled (agent may still fail at call time until a
   // future PR wires provider config); "backend absent" means we disable it.
@@ -604,7 +604,7 @@ function generateOpenClawConfig(
   // SECRET-HANDLING NOTE: the x-api-key header is the SAME platform
   // COMPOSIO_API_KEY already emitted into this very file at
   // skills.entries[slug].env.COMPOSIO_API_KEY (above) and into the
-  // container env by deployer.ts buildRailwayEnvVars — same
+  // container env by deployer.ts buildRailwayEnvVars - same
   // COMPOSIO_USER_ID scoping doctrine (see deployer.ts's Composio
   // coordinates block and docs/COMPOSIO_RUNTIME_CONTRACT.md). No new
   // secret material, no new delivery path. openclaw.json never leaves the
@@ -628,12 +628,12 @@ function generateOpenClawConfig(
 
   // Credit metering: route every anthropic/* model through the in-container
   // proxy. OpenClaw 2026.5.22-8 does NOT read process.env.ANTHROPIC_BASE_URL
-  // for the messages client — it uses model.baseUrl, which
+  // for the messages client - it uses model.baseUrl, which
   // applyConfiguredProviderOverrides sets from
   // models.providers.<id>.baseUrl (dist model-cgt_Zkgh.js). Schema:
   // ModelsConfigSchema.providers → ModelProviderSchema.baseUrl
   // (zod-schema.core-D7Y_eqdd.js). anthropic is a built-in overlay id, so
-  // models[] is optional. BYOK/NONE: omit — clients hit api.anthropic.com.
+  // models[] is optional. BYOK/NONE: omit - clients hit api.anthropic.com.
   // Credit metering: anthropic proxy only. OpenRouter is BYOK-only (no credit proxy).
   // When any agent uses openrouter/*, emit explicit provider overlay (baseUrl locked).
   const usesOpenRouter = runtimeAgents.some((a) =>
@@ -661,7 +661,7 @@ function generateOpenClawConfig(
   }
 
   // PR-2: Claws Activity Reporter plugin (overlay baked into the Docker
-  // image at /opt/claws-activity-reporter — see docker/Dockerfile + the
+  // image at /opt/claws-activity-reporter - see docker/Dockerfile + the
   // plugin source at container/claws-activity-reporter/). Always emit;
   // every workspace needs the reporter.
   //
@@ -681,16 +681,16 @@ function generateOpenClawConfig(
   // (per types.plugins.ts comment: "Controls access to raw conversation
   // content from conversation hooks including before_agent_run, ..., and
   // agent_end"). Without this, the plugin loads but TASK_START /
-  // TASK_COMPLETE / TASK_FAILED never reach ActivityLog — observed in the
+  // TASK_COMPLETE / TASK_FAILED never reach ActivityLog - observed in the
   // staging boot log as: "[gateway] [plugins] typed hook \"before_agent_run\"
   // blocked because non-bundled plugins must set
   // plugins.entries.claws-activity-reporter.hooks.allowConversationAccess=true".
   // Our plugin only USES conversation hooks for observation (build a record,
-  // push to buffer, return) — it does NOT mutate prompts or read raw
+  // push to buffer, return) - it does NOT mutate prompts or read raw
   // model output. Granting access is appropriate for the activity-tracking
   // use case.
   // PR-3: admin-http-rpc is a BUNDLED OpenClaw extension (ships at
-  // extensions/admin-http-rpc/ in the upstream image — NOT an overlay
+  // extensions/admin-http-rpc/ in the upstream image - NOT an overlay
   // we COPY in via Dockerfile). It is off by default upstream. We enable
   // it here so the host's health-monitor cron can call
   //   POST https://{containerHost}/api/v1/admin/rpc
@@ -698,7 +698,7 @@ function generateOpenClawConfig(
   //   body: { "method": "health" }
   // The plugin's configSchema declares
   // `{ properties: {}, additionalProperties: false }`, so `{ enabled: true }`
-  // is the entire permitted config — any other field would fail the
+  // is the entire permitted config - any other field would fail the
   // openclaw.json strict() validation and the gateway would refuse to boot.
   config.plugins = {
     load: { paths: ['/opt/claws-activity-reporter'] },
@@ -747,7 +747,7 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): JsonObject {
  *      column, decrypt the JSON payload (a `Record<envVar, value>`) and emit
  *      `skills.entries[toolSlug] = { enabled: true, env: <decrypted record> }`.
  *      Skipped when `status === 'NEEDS_CREDENTIALS'` (partial data) or the
- *      column is null/unparseable. Slot key matches the tool slug — the
+ *      column is null/unparseable. Slot key matches the tool slug - the
  *      catalog slug is the skill name for tool-backed API_KEY skills.
  *
  *   2. **OAUTH_COMPOSIO** (keyed by `skillSlug`):
@@ -761,7 +761,7 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): JsonObject {
  *      call Composio's REST endpoint at runtime. See
  *      docs/COMPOSIO_RUNTIME_CONTRACT.md §"Emission shape" for the canonical
  *      contract and the rationale for option (iv) per-request proxy.
- *      Skipped when `process.env.COMPOSIO_API_KEY` is unset (quiet no-op —
+ *      Skipped when `process.env.COMPOSIO_API_KEY` is unset (quiet no-op -
  *      builder/local-dev flows without Composio still succeed), when the
  *      row has no `composioConnectionId`, when the tool is not in the
  *      catalog, or when no Skill row has the tool in its `compatibleTools`.
@@ -772,7 +772,7 @@ function generateChannelsConfig(workspace: WorkspaceWithRelations): JsonObject {
  *     partial workspace is less harmful than a crashed generator).
  *
  * C-engine B1 return-contract change: alongside `entries`, this now
- * reports the UNCURATED connections — connected tools with no matching
+ * reports the UNCURATED connections - connected tools with no matching
  * Skill row (the long-tail):
  *   - `uncuratedToolSlugs`: OAUTH_COMPOSIO rows (Composio holds the
  *     credential → Tool Router CAN execute them). These drive the mcp
@@ -966,7 +966,7 @@ function generateSkillsEntriesConfig(
 
     entries[toolConn.toolSlug] = { enabled: true, env };
 
-    // C-engine B1: API_KEY row with no matching curated Skill row — the
+    // C-engine B1: API_KEY row with no matching curated Skill row - the
     // env entry above is dead weight (no SKILL.md consumes it) and the
     // tool is unusable by agents. Detected here, but NOT routable through
     // the Tool Router in B1: the key lives in OUR DB, and the Router only
@@ -1005,7 +1005,7 @@ function generateSkillsEntriesConfig(
 
     if (matchingSkills.length === 0) {
       // User connected the tool before a compatible Skill row was seeded,
-      // OR the tool is deliberately uncurated (long-tail). Not fatal — the
+      // OR the tool is deliberately uncurated (long-tail). Not fatal - the
       // tool connection persists; future seed runs pick it up.
       //
       // C-engine B1: this dead-end IS the uncurated-detection point. The
@@ -1037,7 +1037,7 @@ function generateSkillsEntriesConfig(
     const toolkitId = tool?.composioToolkitId;
     if (!toolkitId) {
       // Tool was removed from catalog (e.g., Composio dropped the toolkit)
-      // but the ToolConnection row lingered — yet a curated Skill row still
+      // but the ToolConnection row lingered - yet a curated Skill row still
       // matches it. Don't emit garbage; let the tool-management UI surface
       // the orphan on its own.
       console.warn(
@@ -1156,7 +1156,7 @@ function generateEnvFile(
   lines.push('');
 
   // AI Provider API keys (decrypted from our DB).
-  // PLATFORM_CREDIT: omit ANTHROPIC_API_KEY from the synced .env — the Railway
+  // PLATFORM_CREDIT: omit ANTHROPIC_API_KEY from the synced .env - the Railway
   // service env already carries the platform master key (deriveContainerEnv),
   // and baking the user's BYOK key here would let OpenClaw bypass the proxy
   // if baseUrl were ever missing. credit-proxy.mjs forwards upstream with
@@ -1177,7 +1177,7 @@ function generateEnvFile(
         lines.push(`GEMINI_API_KEY=${decrypted}`);
         break;
       case 'OPENROUTER':
-        // Bundled OpenClaw provider — baseUrl defaults to https://openrouter.ai/api/v1
+        // Bundled OpenClaw provider - baseUrl defaults to https://openrouter.ai/api/v1
         lines.push(`OPENROUTER_API_KEY=${decrypted}`);
         break;
     }
@@ -1192,7 +1192,7 @@ function generateEnvFile(
   }
   lines.push('');
 
-  // Timezone — container process TZ is always UTC (matches buildRailwayEnvVars).
+  // Timezone - container process TZ is always UTC (matches buildRailwayEnvVars).
   // Workspace timezone remains for cron schedule.tz + USER.md context only.
   lines.push('TZ=UTC');
 
@@ -1690,7 +1690,7 @@ The Worker will execute the task and the result will be returned to you automati
 
 **Important rules:**
 - Always specify the \`agentId\` of the target Worker
-- Never pass a \`model\` param on \`sessions_spawn\` — models are configured per-agent
+- Never pass a \`model\` param on \`sessions_spawn\` - models are configured per-agent
 - Provide a clear, complete task description with all necessary context
 - The Worker cannot see your conversation history - include everything they need
 - You can spawn multiple Workers in parallel for independent tasks
@@ -1725,7 +1725,7 @@ When triggered by heartbeat:
 1. Read HEARTBEAT.md for scheduled tasks
 2. For each due task: decompose, spawn Workers, collect results, review via Critic
 3. If nothing needs attention: respond HEARTBEAT_OK
-4. MANDATORY final step, every heartbeat run — including the step 3 no-op case: write memory/[today's date].md summarizing what happened this run, and update memory/MEMORY.md with any long-term learnings. Do not end a heartbeat run without writing memory — it is the human's only audit trail for unattended runs.
+4. MANDATORY final step, every heartbeat run - including the step 3 no-op case: write memory/[today's date].md summarizing what happened this run, and update memory/MEMORY.md with any long-term learnings. Do not end a heartbeat run without writing memory - it is the human's only audit trail for unattended runs.
 `;
 }
 
@@ -1865,7 +1865,7 @@ function generateIdentityMd(agent: AgentWithRelations): string {
 /**
  * C-engine B1: anti-fabrication guidance for MCP-enabled workspaces.
  * Appended to EVERY agent's TOOLS.md (TOOLS.md is injected into the system
- * prompt on every run — failure-honesty guidance must be always-present,
+ * prompt on every run - failure-honesty guidance must be always-present,
  * unlike on-demand SKILL.md bodies). Probe 3 observed a small model
  * fabricating a plausible answer after two consecutive composio__* tool
  * failures; this section is the mitigation.
@@ -1909,7 +1909,7 @@ function generateToolsMd(
     : `
 ## Web Search
 
-\`web_search\` is disabled — no search backend is connected for this Claw.
+\`web_search\` is disabled - no search backend is connected for this Claw.
 Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Search, Exa, or SerpAPI in Manage Tools and redeploy.
 `;
   const toolSections: string[] = [];
@@ -1931,7 +1931,7 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
       toolConn.status === 'CONNECTED'
         ? 'Connected'
         : toolConn.status === 'NEEDS_CREDENTIALS'
-          ? 'Needs credentials (partial data — agent should treat as unavailable)'
+          ? 'Needs credentials (partial data - agent should treat as unavailable)'
           : `${toolConn.status} (agent should treat as unavailable until reconnected)`;
 
     const section = `### ${name}
@@ -1995,7 +1995,7 @@ ${searchSection}
 ${mcpSection}`;
 }
 
-/** Belt-line for orchestrator TOOLS.md — closes omit-agentId / model-param spawn footguns. */
+/** Belt-line for orchestrator TOOLS.md - closes omit-agentId / model-param spawn footguns. */
 function generateOrchestratorSpawnToolsSection(): string {
   return `
 ## Subagent Spawn
@@ -2014,7 +2014,7 @@ function generatePausedWorkerToolsSection(agents: AgentWithRelations[]): string 
 ## Paused Workers
 
 The following Workers are paused in Claws and should not receive delegated work until the human resumes them and redeploys:
-${pausedWorkers.map((worker) => `- Worker ${worker.name} is paused — do not delegate to it.`).join('\n')}
+${pausedWorkers.map((worker) => `- Worker ${worker.name} is paused - do not delegate to it.`).join('\n')}
 `;
 }
 
@@ -2059,7 +2059,7 @@ function generateBootMd(agent: AgentWithRelations): string {
 
 On gateway startup:
 1. Read SOUL.md and USER.md to restore context
-2. Read today's dated memory file (memory/YYYY-MM-DD.md) and any agent-specific workspace memory files for recent activity — never \`read\` the memory/ directory itself (that yields EISDIR)
+2. Read today's dated memory file (memory/YYYY-MM-DD.md) and any agent-specific workspace memory files for recent activity - never \`read\` the memory/ directory itself (that yields EISDIR)
 3. Verify HEARTBEAT.md has your scheduled tasks
 4. If everything looks good, reply with NO_REPLY
 5. If something is wrong (missing files, corrupted memory), send a brief status message to the human
@@ -2111,7 +2111,7 @@ function stripLeadingFrontmatter(md: string): string {
  *     skills, but built-in or agnostic skills may legitimately have none).
  *   - OAUTH_COMPOSIO tools (credentials flow through Composio; no env
  *     declaration needed and declaring one is wrong).
- *   - Orphan slugs (not in catalog — logged warning at generator time so
+ *   - Orphan slugs (not in catalog - logged warning at generator time so
  *     tests catch this early).
  *
  * The returned `requiresEnv` array omits `primaryEnv` (single-cred tools
@@ -2210,7 +2210,7 @@ ${customAuthUsage(customConn.authType, customConn.baseUrl, envVar)}
 
 ## Caution
 
-User-provided API — verify responses; report failures honestly per Tool Connection Errors guidance.
+User-provided API - verify responses; report failures honestly per Tool Connection Errors guidance.
 `;
 }
 
@@ -2234,7 +2234,7 @@ function generateSkillFiles(
 
     // Build the `metadata.openclaw.requires` sub-object incrementally so we
     // emit `{ bins: [...] }`, `{ env: [...] }`, both, or neither as
-    // appropriate — Trello's bundled shape has both; a bin-only skill has
+    // appropriate - Trello's bundled shape has both; a bin-only skill has
     // only bins; a pure-env skill has only env.
     const requires: Record<string, string[]> = {};
     if (skill.requiredBins && skill.requiredBins.length > 0) {
@@ -2264,7 +2264,7 @@ function generateSkillFiles(
 
     const yamlStr = yaml.stringify(frontmatter, { lineWidth: 0 });
     const rawBody = skill.skillMd || `# ${skill.name}\n\nNo instructions provided.`;
-    // Strip any seed-carried frontmatter block — the generator-built
+    // Strip any seed-carried frontmatter block - the generator-built
     // frontmatter above is authoritative. See stripLeadingFrontmatter docs.
     const body = stripLeadingFrontmatter(rawBody);
 
@@ -2318,7 +2318,7 @@ type WorkspaceWithRelations = {
   /**
    * Skills whose `compatibleTools` array intersects this workspace's
    * emission-eligible connected tool slugs (OAUTH_COMPOSIO CONNECTED rows
-   * plus credentialed API_KEY rows — C-engine B1 widened this from
+   * plus credentialed API_KEY rows - C-engine B1 widened this from
    * OAuth-only so curated emission and uncurated long-tail detection share
    * one lookup). Pre-loaded in `generateWorkspace` (single
    * `prisma.skill.findMany`) so config generators stay sync. Empty when no
@@ -2390,7 +2390,7 @@ export type HeartbeatCronJob = {
   agentId: string;
   // PR-2b #9: was the literal "main" pre-PR-2b. Upstream
   // src/cron/service/jobs.ts:267-268 rejects sessionTarget="main" paired
-  // with payload.kind="agentTurn" — "main" is reserved for systemEvent
+  // with payload.kind="agentTurn" - "main" is reserved for systemEvent
   // payloads only. Use a session-keyed target instead so the agent's
   // main session context (transcripts, memory, HEARTBEAT.md) is loaded
   // when the cron fires. "isolated" would also pass validation but
@@ -2405,7 +2405,7 @@ export type HeartbeatCronJob = {
  * Output of `buildHeartbeatSchedule` / `resolveHeartbeatSchedule`.
  * All modes emit `cronJobs` (croner 5-field). `cronJob` is the first job for
  * callers that still read the singular field. `mdCronJobs` is the unset-
- * frequency HEARTBEAT.md path (same job ids as before — do not churn the
+ * frequency HEARTBEAT.md path (same job ids as before - do not churn the
  * founder-armed fixture). `intervalConfig` is no longer written.
  */
 export type HeartbeatScheduleResult = {
@@ -2420,7 +2420,7 @@ export type HeartbeatScheduleResult = {
  * Single schedule resolver for generator + backfill.
  * Prefer Builder frequency (all modes → cron/jobs.json via emitHeartbeatJobs).
  * Else emit OpenClaw-shaped jobs from HEARTBEAT.md schedule lines. HEARTBEAT.md
- * file content is unchanged — this only materializes machine config.
+ * file content is unchanged - this only materializes machine config.
  */
 export function resolveHeartbeatSchedule(
   frequency: string | null | undefined,
@@ -2451,10 +2451,10 @@ export function resolveHeartbeatSchedule(
 
 /**
  * Translates the Builder heartbeat value (frequency + optional JSON/time)
- * into cron/jobs.json descriptors via emitHeartbeatJobs — the same path
+ * into cron/jobs.json descriptors via emitHeartbeatJobs - the same path
  * computeNextOccurrences uses. Unknown / off / unset → null.
  *
- * CROSS-REFERENCE — DO NOT CHANGE WITHOUT UPDATING claws-activity-reporter.
+ * CROSS-REFERENCE - DO NOT CHANGE WITHOUT UPDATING claws-activity-reporter.
  * Job `name` keeps the `orchestrator-heartbeat-` prefix
  * (HEARTBEAT_CRON_NAME_PREFIX). `id` and `name` stay independent.
  *

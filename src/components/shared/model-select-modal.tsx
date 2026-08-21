@@ -23,7 +23,7 @@ import {
   thinkingUnsupportedText,
 } from "@/lib/models/thinking"
 
-/** Virtualization contract — tests assert the window stays small at 400+ rows. */
+/** Virtualization contract - tests assert the window stays small at 400+ rows. */
 export const MODEL_MODAL_ROW_HEIGHT = 44
 export const MODEL_MODAL_VIEWPORT = 264
 export const MODEL_MODAL_OVERSCAN = 6
@@ -55,9 +55,9 @@ function formatContext(context: number | null): string | null {
   return `${context} ctx`
 }
 
-/** Row price honesty: real snippet or an em dash — never an invented number. */
+/** Row price honesty: real snippet or an em dash - never an invented number. */
 function formatRowPrice(option: ModelCatalogOption): string {
-  return option.pricingSnippet ?? "—"
+  return option.pricingSnippet ?? "-"
 }
 
 function tabOf(providerKey: string): ProviderTab {
@@ -230,11 +230,11 @@ export function ModelSelectModal({
       <div className="mt-[10px]">
         {activeAuth.kind === "credits" ? (
           <p data-testid="model-modal-auth-line" className="text-[11px] text-[var(--ok)]">
-            {POWERED_BY_CLAWS_CREDITS} — every model below is ready to use.
+            {POWERED_BY_CLAWS_CREDITS} - every model below is ready to use.
           </p>
         ) : activeAuth.kind === "key" ? (
           <p data-testid="model-modal-auth-line" className="text-[11px] text-[var(--ok)]">
-            {providerLabel(activeTab)} API key connected — every model below is ready to use.
+            {providerLabel(activeTab)} API key connected - every model below is ready to use.
           </p>
         ) : (
           <div
@@ -251,7 +251,7 @@ export function ModelSelectModal({
             </div>
             {openRouterConfigured && activeTab !== "OPENROUTER" && (
               <p className="text-[10px] text-[var(--tx3)] mt-[4px]">
-                Tip: your OpenRouter key already runs {providerLabel(activeTab)} models — check the OpenRouter tab.
+                Tip: your OpenRouter key already runs {providerLabel(activeTab)} models - check the OpenRouter tab.
               </p>
             )}
           </div>
@@ -289,7 +289,7 @@ export function ModelSelectModal({
               ? "Loading catalog…"
               : query
                 ? `No ${providerLabel(activeTab)} models match “${query}”.`
-                : `No ${providerLabel(activeTab)} models in the catalog yet — it refreshes daily.`}
+                : `No ${providerLabel(activeTab)} models in the catalog yet - it refreshes daily.`}
           </p>
         ) : (
           <div className="relative" style={{ height: total * MODEL_MODAL_ROW_HEIGHT }}>

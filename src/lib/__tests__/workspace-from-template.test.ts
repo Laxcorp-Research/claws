@@ -103,7 +103,7 @@ describe('createWorkspaceFromTemplate', () => {
         }),
       }),
     );
-    // Template JSON must remain untouched — only installCount update on template.
+    // Template JSON must remain untouched - only installCount update on template.
     expect(prismaMock.clawTemplate.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { installCount: { increment: 1 } },

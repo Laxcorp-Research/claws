@@ -6,14 +6,14 @@ import { log } from "@/lib/logger"
  * Project-level placeholder credential value injected at BYOK auth-config
  * creation time. Composio requires `credentials.apiKey` non-empty when
  * creating a `use_custom_auth + API_KEY` config, but for BYOK the real
- * user keys never live at the config level — they're attached per-user
+ * user keys never live at the config level - they're attached per-user
  * at connection-creation time via `AuthScheme.APIKey({ api_key })`.
  *
  * Visible in the Composio dashboard's auth-config view. The literal
  * string is intentionally human-readable so an operator inspecting the
  * dashboard sees the design intent without having to dig through code.
  *
- * Never sent to the toolkit's API — Composio only uses connection-level
+ * Never sent to the toolkit's API - Composio only uses connection-level
  * creds at execute time. Confirmed by `--byok-probe` against staging
  * (the dummy key submitted at connection-level reached the toolkit;
  * the config-level value did not).
@@ -189,7 +189,7 @@ export async function fetchToolkitWithAuthMode(
  *
  * Replaces the old `resolveAuthConfigIdForToolkit`, which checked the wrong
  * field (`authConfigDetails`, non-empty for RED toolkits) and swallowed the
- * SDK error message in its catch — the operator's typefully-500 surfaced
+ * SDK error message in its catch - the operator's typefully-500 surfaced
  * the latter directly.
  */
 export async function ensureAuthConfigForToolkit(
@@ -215,7 +215,7 @@ export async function ensureAuthConfigForToolkit(
     throw err
   }
 
-  // 2. Structural pre-check — the actual fix for the typefully-500. If
+  // 2. Structural pre-check - the actual fix for the typefully-500. If
   //    Composio offers no managed auth scheme for this toolkit, we cannot
   //    auto-create; throw the typed error and let the route handler return
   //    422.
@@ -228,7 +228,7 @@ export async function ensureAuthConfigForToolkit(
     throw new ComposioToolkitRequiresCustomOAuthError(toolkitSlug)
   }
 
-  // 3. Early exit: existing config (no race window — read-only).
+  // 3. Early exit: existing config (no race window - read-only).
   const initialList = await composio.authConfigs.list({
     toolkit: toolkitSlug,
     limit: 25,
@@ -244,7 +244,7 @@ export async function ensureAuthConfigForToolkit(
   }
 
   // 4. Race-protected create. Two concurrent first-Connect calls on the
-  //    same toolkit must not both hit `composio.authConfigs.create` — at
+  //    same toolkit must not both hit `composio.authConfigs.create` - at
   //    best Composio dedupes (one config), at worst we get duplicates +
   //    inconsistent ids returned to the two callers. Postgres session-
   //    scope advisory lock keyed on hashtext(slug) gives us exactly-once
@@ -367,10 +367,10 @@ export async function ensureAuthConfigForToolkit(
 }
 
 // ───────────────────────────────────────────────────────────────────────
-//  BYOK (bring-your-own-API-key) path — PR2.9
+//  BYOK (bring-your-own-API-key) path - PR2.9
 //
 //  For toolkits Composio recognizes but doesn't have managed OAuth for
-//  (and that DO expose an API_KEY auth mode — `classifyToolkitAuthMode`
+//  (and that DO expose an API_KEY auth mode - `classifyToolkitAuthMode`
 //  returns `"byok-api-key"`), the user supplies their own API key and
 //  Composio brokers tool execution. Config-level credentials are an
 //  operator-controlled placeholder; per-user real keys live at the
@@ -395,7 +395,7 @@ export async function ensureAuthConfigForToolkit(
  *   - Filters list results to exclude managed configs (an operator may
  *     have created a managed-OAuth config for the same toolkit by hand;
  *     we want the BYOK one).
- *   - No "requires_custom_oauth" branch — caller is expected to have
+ *   - No "requires_custom_oauth" branch - caller is expected to have
  *     classified the toolkit first via `classifyToolkitAuthMode`.
  */
 export async function ensureBYOKAuthConfig(
@@ -422,7 +422,7 @@ export async function ensureBYOKAuthConfig(
   // 2. Early exit on existing custom-auth API_KEY config.
   //
   //    Filter: `isComposioManaged === false`. The toolkit might have BOTH
-  //    a managed config (created via the OAuth path elsewhere — e.g. if
+  //    a managed config (created via the OAuth path elsewhere - e.g. if
   //    Composio later adds managed-auth support) AND a BYOK config; we
   //    explicitly want the BYOK one.
   const initialList = await composio.authConfigs.list({
@@ -444,7 +444,7 @@ export async function ensureBYOKAuthConfig(
   }
 
   // 3. Race-protected create. Same advisory-lock pattern as the managed
-  //    helper — Postgres session-scope lock keyed on hashtext(slug),
+  //    helper - Postgres session-scope lock keyed on hashtext(slug),
   //    inside a $transaction for connection-pinning under Neon pgbouncer.
   return await prisma.$transaction(async (tx) => {
     let lockAcquired = false
@@ -643,7 +643,7 @@ export async function createBYOKConnectedAccount(
   try {
     assertBYOKCredentialInput(credentials)
   } catch (err) {
-    // Bail before reaching Composio — empty keys would create a connection
+    // Bail before reaching Composio - empty keys would create a connection
     // that always 401s at execute time, leaving an unusable row.
     log.warn("composio.byok.connect rejected empty key", { toolkitSlug, composioUserId })
     throw err
@@ -684,8 +684,8 @@ export async function createBYOKConnectedAccount(
   }
 
   // Status check: BYOK initiate returns `ACTIVE` immediately (no OAuth
-  // redirect — verified by --byok-probe). If we get anything else
-  // (INITIATED, PENDING, FAILED), surface that — something has changed
+  // redirect - verified by --byok-probe). If we get anything else
+  // (INITIATED, PENDING, FAILED), surface that - something has changed
   // on Composio's side that we should know about.
   const status = (connectionRequest as { status?: string }).status
   if (status && status !== "ACTIVE") {

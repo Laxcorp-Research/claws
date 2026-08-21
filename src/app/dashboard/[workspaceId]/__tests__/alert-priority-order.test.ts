@@ -1,5 +1,5 @@
 /**
- * Batch E — page priority assignments must match the unique total order.
+ * Batch E - page priority assignments must match the unique total order.
  * MUTATION: swap any two adjacent key priorities in page.tsx → fail.
  */
 import { readFileSync } from "node:fs"

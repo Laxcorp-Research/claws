@@ -33,7 +33,7 @@ describe("measureTruncation", () => {
     const fontSource = document.createElement("span")
     document.body.appendChild(fontSource)
 
-    // jsdom reports 0 for layout — stub the ephemeral measure span width.
+    // jsdom reports 0 for layout - stub the ephemeral measure span width.
     const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")
     Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
       configurable: true,

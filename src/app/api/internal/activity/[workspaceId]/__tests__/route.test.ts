@@ -4,7 +4,7 @@
 // rows. The critical contracts under test:
 //   1. Auth: X-Activity-Secret must match; unset env fails closed.
 //   2. Validation: rejects unknown / out-of-subset actionTypes (esp.
-//      SYSTEM / HUMAN_* — those are user-action sources, not container).
+//      SYSTEM / HUMAN_* - those are user-action sources, not container).
 //   3. Workspace scoping: workspaceId comes from URL path, never body.
 //   4. agentSlug resolution: server joins Agent rows by agentSlug + workspaceId.
 //   5. Batch shape: 1..50 events, atomic-validate.
@@ -96,9 +96,9 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
     // MUTATION-anchored: this test fails if the "unset env → 401" branch
     // is removed or weakened (e.g., compared to a literal empty string
     // instead of failing closed). The fail-closed posture is the
-    // difference between "secret rotation breaks auth" (good — visible
+    // difference between "secret rotation breaks auth" (good - visible
     // incident) and "secret rotation accidentally allows any header"
-    // (catastrophic — silent forgery).
+    // (catastrophic - silent forgery).
     it("MUTATION-anchored: fail-closed when ACTIVITY_PIPELINE_SECRET env is unset", async () => {
       defaultMocks();
       delete process.env.ACTIVITY_PIPELINE_SECRET;
@@ -138,7 +138,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       const req = createMockRequest(`http://localhost:3000/api/internal/activity/${WORKSPACE_ID}`, {
         method: "POST",
         headers: { "X-Activity-Secret": SECRET },
-        // no body — req.json() throws
+        // no body - req.json() throws
       });
       const res = await POST(req, { params: Promise.resolve({ workspaceId: WORKSPACE_ID }) });
       expect(res.status).toBe(400);
@@ -179,7 +179,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       });
     }
 
-    // The disallowed types — these are user-action / template-internal
+    // The disallowed types - these are user-action / template-internal
     // sources that the container has no business forging.
     for (const type of [
       "SYSTEM",
@@ -280,7 +280,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       expect(calls[1][0].data.agentSlug).toBe("trend-scout");
       expect(calls[1][0].data.agentName).toBe("Trend Scout");
 
-      // Single batch query, scoped by workspaceId — proves no cross-tenant leak.
+      // Single batch query, scoped by workspaceId - proves no cross-tenant leak.
       const findManyCall = (prismaMock.agent.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(findManyCall.where.workspaceId).toBe(WORKSPACE_ID);
       expect(findManyCall.where.agentSlug.in).toEqual(["orchestrator", "trend-scout"]);
@@ -290,7 +290,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: WORKSPACE_ID,
       });
-      (prismaMock.agent.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]); // empty — slug doesn't match
+      (prismaMock.agent.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]); // empty - slug doesn't match
       (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
       await callRoute(

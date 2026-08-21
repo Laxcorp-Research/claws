@@ -55,7 +55,7 @@ function hydrateFromExprs(exprs: string[], tz: string): ScheduleValue {
 /**
  * DB + HEARTBEAT.md + deployed jobs → canonical editor value.
  * Persisted frequency wins. Null frequency hydrates MD/deployed cron as the
- * selected value (times rows when expandable) — never a banner, never silent Off
+ * selected value (times rows when expandable) - never a banner, never silent Off
  * for an armed claw.
  */
 export function hydrateSchedule(args: {

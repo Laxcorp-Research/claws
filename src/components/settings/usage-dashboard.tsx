@@ -43,7 +43,7 @@ export function UsageDashboard() {
     <div>
       <h2 className="text-[14px] font-semibold mb-[2px]">Credit usage</h2>
       <p className="text-[11px] text-[var(--tx2)] mb-[12px]">
-        See where your Claws Starter Credits are going — by day, by model, and
+        See where your Claws Starter Credits are going - by day, by model, and
         per API call.
       </p>
 

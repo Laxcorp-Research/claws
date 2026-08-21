@@ -83,7 +83,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   }
 
   // Existing-service reuse (HWD wake / redeploy with containerId) bypasses
-  // the create governor — those paths never serviceCreate.
+  // the create governor - those paths never serviceCreate.
   if (!workspace?.containerId) {
     const budget = await evaluateCreateBudget()
     if (!budget.allowed) {

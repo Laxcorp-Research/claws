@@ -129,7 +129,7 @@ describe("creator unpublish / publish-again / delete", () => {
     expect(status).toBe(409)
     expect(data.error.code).toBe("DELETE_BLOCKED")
     expect(data.error.message).toBe(
-      "5 people installed this — you can unpublish but not delete",
+      "5 people installed this - you can unpublish but not delete",
     )
     expect(prismaMock.clawTemplate.delete).not.toHaveBeenCalled()
   })

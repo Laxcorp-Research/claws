@@ -30,7 +30,7 @@ export function StarterCreditBanner({ balanceCents }: StarterCreditBannerProps) 
       <div>
         <p className="text-[13px] font-medium mb-0.5">AI models powered by Claws Starter Credits</p>
         <p className="text-[11px] text-[var(--tx2)]">
-          You have {formatCreditDollars(cents)} in free credits — no API key needed.
+          You have {formatCreditDollars(cents)} in free credits - no API key needed.
         </p>
       </div>
     </div>

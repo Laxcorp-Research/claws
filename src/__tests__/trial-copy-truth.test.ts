@@ -1,5 +1,5 @@
 /**
- * PR-2 — honest trial copy for credit × trial-state.
+ * PR-2 - honest trial copy for credit × trial-state.
  * MUTATION: hide trial behind creditUser → fail.
  */
 import { describe, it, expect } from "vitest"
@@ -20,9 +20,9 @@ describe("trial copy truth (credit × trial-state)", () => {
   const exhaustion = read("src/lib/credits/exhaustion.ts")
 
   it("step-4 credit-mode shows BOTH starter-credits AND 3-day platform trial lines", () => {
-    expect(setup).toContain("Powered by Claws Starter Credits — no payment needed.")
+    expect(setup).toContain("Powered by Claws Starter Credits - no payment needed.")
     expect(setup).toContain(
-      "Includes your 3-day platform trial — $79/mo after, cancel anytime",
+      "Includes your 3-day platform trial - $79/mo after, cancel anytime",
     )
     // Credits line is gated on creditUser; trial line is NOT.
     expect(setup).toMatch(/\{creditUser && \([\s\S]*?Starter Credits/)

@@ -218,7 +218,7 @@ export async function proxy(request: NextRequest) {
 
     // #133: server-side admin authorization at the edge. Admin is the
     // ADMIN_EMAILS env var (not a DB field), so we can enforce here without a
-    // DB call — a non-admin never receives the admin route HTML.
+    // DB call - a non-admin never receives the admin route HTML.
     if (pathname.startsWith("/admin")) {
       const configuredAdmins = getAdminEmails();
       if (configuredAdmins.length === 0) {
@@ -227,13 +227,13 @@ export async function proxy(request: NextRequest) {
         // the API's requireAdmin 403s still protect every operation) and log
         // loudly so the misconfig is visible.
         console.warn(
-          "ADMIN_EMAILS unset — edge admin enforcement DISABLED, falling back to API requireAdmin",
+          "ADMIN_EMAILS unset - edge admin enforcement DISABLED, falling back to API requireAdmin",
         );
       } else {
         const email = typeof token.email === "string" ? token.email : "";
         if (!email || !isAdminEmail(email)) {
           // Fail-CLOSED on the USER: rewrite (not redirect) to the styled
-          // not-found for information-hiding — the URL stays /admin/* and the
+          // not-found for information-hiding - the URL stays /admin/* and the
           // response reveals nothing about /admin existing.
           return addSecurityHeaders(
             NextResponse.rewrite(new URL("/_not-found", request.url)),

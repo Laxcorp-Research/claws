@@ -103,7 +103,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       const { armTelegramWakeWebhook } = await import("@/lib/hibernation/wake-on-channel")
       await armTelegramWakeWebhook(workspaceId)
     } catch {
-      // non-fatal — hibernate path also arms
+      // non-fatal - hibernate path also arms
     }
   }
 

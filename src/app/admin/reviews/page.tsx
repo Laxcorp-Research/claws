@@ -387,7 +387,7 @@ function DetailPanel({ item, onClose, onApprove, onReject, onSandboxRerun, actio
             </div>
           )}
 
-          {/* Skill: Sandbox (always show for skills — pending or graded) */}
+          {/* Skill: Sandbox (always show for skills - pending or graded) */}
           {skill && (
             <SandboxReportViewer
               passed={skill.sandboxPassed}

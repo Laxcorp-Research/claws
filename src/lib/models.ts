@@ -1,7 +1,7 @@
 /**
  * Static pinned fallbacks + helpers.
  * Live catalog lives in ModelCatalogEntry (see src/lib/models/catalog.ts).
- * AI_MODELS is derived from PINNED_SEED_MODELS natives — do not hardcode a
+ * AI_MODELS is derived from PINNED_SEED_MODELS natives - do not hardcode a
  * second list. Adding a native pin is a one-line change in seed-models.ts.
  */
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
@@ -41,7 +41,7 @@ export function getModelLabel(value: string): string {
   return resolveCatalogDisplayName(value, seed)
 }
 
-/** Known seed price, or null — never invent a number for unpriced models. */
+/** Known seed price, or null - never invent a number for unpriced models. */
 export function getModelCost(value: string): number | null {
   return PINNED_SEED_MODELS.find((m) => m.modelId === value)?.costPer1kEst ?? null
 }
@@ -49,6 +49,6 @@ export function getModelCost(value: string): number | null {
 export function formatModelEstCost(modelId: string): string {
   if (isByokModelRef(modelId)) return "est. (BYOK)"
   const est = getModelCost(modelId)
-  if (est == null) return "—"
+  if (est == null) return "-"
   return `~$${est}/call`
 }

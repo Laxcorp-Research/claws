@@ -64,7 +64,7 @@ describe("PATCH /api/workspaces/[id]", () => {
   })
 
   // MUTATION: dropping "alwaysOn" from the PATCH allowlist would silently no-op
-  // this call — the toggle would then always regress to false on next load.
+  // this call - the toggle would then always regress to false on next load.
   it("MUTATION: does not silently drop alwaysOn from the update payload", async () => {
     const req = createMockRequest("http://localhost:3000/api/workspaces/ws-1", {
       method: "PATCH",

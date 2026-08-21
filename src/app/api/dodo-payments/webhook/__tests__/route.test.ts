@@ -224,7 +224,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       expect(saleCall.data.creatorPayout + saleCall.data.processingFee).toBeCloseTo(49, 1);
     });
 
-    it('ignores community self-sale (creator.userId === buyer) — no workspace/sale/install', async () => {
+    it('ignores community self-sale (creator.userId === buyer) - no workspace/sale/install', async () => {
       mockUserLookup('user-founder');
       (prismaMock.purchase.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -254,7 +254,7 @@ describe('POST /api/dodo-payments/webhook', () => {
       expect(prismaMock.templateInstall.upsert).not.toHaveBeenCalled();
     });
 
-    it('ignores community skill self-sale — no sale/install', async () => {
+    it('ignores community skill self-sale - no sale/install', async () => {
       mockUserLookup('user-founder');
       (prismaMock.marketplaceSale.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (prismaMock.marketplaceSkill.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -688,7 +688,7 @@ describe('POST /api/dodo-payments/webhook', () => {
           data: expect.objectContaining({ status: 'REFUNDED' }),
         }),
       );
-      // cancelPayout uses update (by sale id), not updateMany — status-aware clawback.
+      // cancelPayout uses update (by sale id), not updateMany - status-aware clawback.
       expect(prismaMock.marketplaceSale.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'sale-refund' },

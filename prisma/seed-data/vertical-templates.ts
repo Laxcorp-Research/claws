@@ -18,7 +18,7 @@ import {
   MODEL_OPUS,
 } from "./soul-generators"
 
-const MEDICAL_HIPAA_COMPLIANCE_RULES = `# HIPAA Compliance Rules (CRITICAL — applies to ALL agents)
+const MEDICAL_HIPAA_COMPLIANCE_RULES = `# HIPAA Compliance Rules (CRITICAL - applies to ALL agents)
 - NEVER include specific diagnoses, treatments, or health conditions in any communication
 - NEVER mention medications, test results, or clinical notes
 - Appointment reminders may include: date, time, provider name, practice name, phone number
@@ -26,12 +26,12 @@ const MEDICAL_HIPAA_COMPLIANCE_RULES = `# HIPAA Compliance Rules (CRITICAL — a
 - All patient data must be handled through HIPAA-compliant channels only
 - When in doubt about whether something is PHI (Protected Health Information): DON'T include it`
 
-const MEDICAL_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+const MEDICAL_CRITIC_INSTANT_REJECT = `## CRITICAL - INSTANT REJECT:
 - ANY message containing PHI beyond appointment basics
 - ANY message providing medical advice or diagnosis
 - ANY message guaranteeing treatment outcomes
 - ANY message sharing patient information with unauthorized parties
-- Review response that confirms a patient visited the practice (HIPAA violation — even acknowledging
+- Review response that confirms a patient visited the practice (HIPAA violation - even acknowledging
   someone is a patient is PHI in certain contexts)
 - For negative review responses: acknowledge the concern generally, invite them to call the office,
   NEVER reference their specific visit or treatment`
@@ -49,16 +49,16 @@ const LAW_FIRST_CONTACT_COMPLIANCE = `# Legal Compliance (CRITICAL)
 - Recommend specific legal strategies
 - Make promises about attorney availability or case acceptance
 - Guarantee confidentiality before attorney-client relationship is established
-  (Note: intake conversations may have limited privilege — varies by jurisdiction)
+  (Note: intake conversations may have limited privilege - varies by jurisdiction)
 ## Standard Disclaimer (include at start of every intake):
-'I want to help connect you with the right attorney. I'll ask a few questions about your situation —
+'I want to help connect you with the right attorney. I'll ask a few questions about your situation -
 this is for intake purposes only and doesn't constitute legal advice. An attorney will review your
 information and follow up.'`
 
 const LAW_EMERGENCY_TRIAGE_LINE =
   "IMMEDIATE: Currently in custody, ICE detention, domestic violence situation, emergency custody → Flag to Orchestrator with EMERGENCY tag. Human must be notified within 15 minutes."
 
-const LAW_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+const LAW_CRITIC_INSTANT_REJECT = `## CRITICAL - INSTANT REJECT:
 - ANY communication that constitutes legal advice
 - ANY prediction of case outcomes
 - ANY guarantee about the firm accepting a case
@@ -67,7 +67,7 @@ const LAW_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
 - Negative review response that acknowledges attorney-client relationship
 - ANY communication during an active case that could waive privilege`
 
-const REAL_ESTATE_FAIR_HOUSING_CRITICAL = `## CRITICAL — Fair Housing Compliance:
+const REAL_ESTATE_FAIR_HOUSING_CRITICAL = `## CRITICAL - Fair Housing Compliance:
 INSTANTLY REJECT any communication that:
 - Mentions race, religion, national origin, sex, familial status, or disability in property descriptions
 - Steers clients toward or away from neighborhoods based on demographics
@@ -75,15 +75,15 @@ INSTANTLY REJECT any communication that:
 - Uses phrases like 'family neighborhood' (familial status), 'executive area' (could imply
   racial/economic steering)`
 
-const RECRUITER_ANTI_DISCRIMINATION_CRITICAL = `## CRITICAL — Anti-Discrimination:
+const RECRUITER_ANTI_DISCRIMINATION_CRITICAL = `## CRITICAL - Anti-Discrimination:
 INSTANTLY REJECT any assessment that:
-- Uses age as a factor (even indirectly — 'overqualified' is often age proxy)
+- Uses age as a factor (even indirectly - 'overqualified' is often age proxy)
 - Evaluates based on school prestige alone
 - Makes assumptions based on candidate's name or photo
 - Uses 'culture fit' as a rejection reason without specific behavioral evidence
 - Penalizes employment gaps without context`
 
-const HOME_SERVICES_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+const HOME_SERVICES_CRITIC_INSTANT_REJECT = `## CRITICAL - INSTANT REJECT:
 - Any message that doesn't direct a safety emergency to 911 first
 - Any price quote not authorized by the company
 - Any DIY repair suggestion (liability risk)
@@ -119,11 +119,11 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           clawName: "Real Estate Agent OS",
           domain: "Real Estate Operations",
           philosophy: [
-            "Speed to lead is everything — respond to new inquiries within 5 minutes",
-            "Every interaction builds or breaks trust — professionalism in every message",
-            "Data-driven pricing wins listings — always back recommendations with comps",
-            "Fair Housing compliance is non-negotiable — zero tolerance for violations",
-            "Consistent follow-up converts — the fortune is in the follow-up",
+            "Speed to lead is everything - respond to new inquiries within 5 minutes",
+            "Every interaction builds or breaks trust - professionalism in every message",
+            "Data-driven pricing wins listings - always back recommendations with comps",
+            "Fair Housing compliance is non-negotiable - zero tolerance for violations",
+            "Consistent follow-up converts - the fortune is in the follow-up",
           ],
           briefingTemplate: `## Daily Briefing Format
 - **New Leads**: Count and quality scores from Lead Qualifier
@@ -132,10 +132,10 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
 - **Follow-Up Queue**: Upcoming nurture touches from Client Communicator
 - **Compliance Notes**: Any flags from Real Estate Quality Gate`,
           alertTemplate: `## Alert Triggers
-- Hot lead (score ≥ 8) — immediate notification
-- Showing cancellation — notify within 15 minutes
-- Price change on competing listing — same-day alert
-- Compliance flag — immediate escalation`,
+- Hot lead (score ≥ 8) - immediate notification
+- Showing cancellation - notify within 15 minutes
+- Price change on competing listing - same-day alert
+- Compliance flag - immediate escalation`,
         }),
         agentsMd: generateOrchestratorAgentsMd({
           workers: [
@@ -374,7 +374,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
             },
           ],
           domainRules: [
-            "Fair Housing Act compliance — no language about protected classes",
+            "Fair Housing Act compliance - no language about protected classes",
             "No pricing guarantees",
             "No property condition claims without inspection",
           ],
@@ -428,11 +428,11 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           clawName: "Recruiter OS",
           domain: "Talent Acquisition",
           philosophy: [
-            "Skills and outcomes over pedigree — evaluate what candidates can do, not where they went to school",
-            "Speed without sacrificing quality — top candidates are off the market in 10 days",
-            "Every candidate is a future client — treat rejections with the same respect as offers",
-            "Anti-bias is not optional — structured evaluation eliminates unconscious bias",
-            "Data-driven decisions — track conversion rates at every funnel stage",
+            "Skills and outcomes over pedigree - evaluate what candidates can do, not where they went to school",
+            "Speed without sacrificing quality - top candidates are off the market in 10 days",
+            "Every candidate is a future client - treat rejections with the same respect as offers",
+            "Anti-bias is not optional - structured evaluation eliminates unconscious bias",
+            "Data-driven decisions - track conversion rates at every funnel stage",
           ],
           briefingTemplate: `## Daily Briefing Format
 - **Pipeline Summary**: Active roles, candidates per stage
@@ -441,10 +441,10 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
 - **Client Updates**: Pending reports and feedback loops
 - **Compliance Notes**: Any bias flags from Recruiting Quality Gate`,
           alertTemplate: `## Alert Triggers
-- High-match candidate (score ≥ 9) — immediate notification
-- Client feedback received — same-day processing
-- Candidate withdrawal — immediate notification with replacement plan
-- Bias flag from Quality Gate — immediate escalation`,
+- High-match candidate (score ≥ 9) - immediate notification
+- Client feedback received - same-day processing
+- Candidate withdrawal - immediate notification with replacement plan
+- Bias flag from Quality Gate - immediate escalation`,
         }),
         agentsMd: generateOrchestratorAgentsMd({
           workers: [
@@ -735,11 +735,11 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           clawName: "Medical Practice Manager",
           domain: "Healthcare Practice Operations",
           philosophy: [
-            "HIPAA compliance is absolute — never store, log, or transmit Protected Health Information",
-            "Patient experience drives retention — every touchpoint should feel personal and caring",
-            "No-shows cost the practice — proactive reminders and recall campaigns are critical",
-            "Online reputation is the new referral network — reviews drive new patient acquisition",
-            "Efficiency serves care — automation frees staff to focus on patients, not paperwork",
+            "HIPAA compliance is absolute - never store, log, or transmit Protected Health Information",
+            "Patient experience drives retention - every touchpoint should feel personal and caring",
+            "No-shows cost the practice - proactive reminders and recall campaigns are critical",
+            "Online reputation is the new referral network - reviews drive new patient acquisition",
+            "Efficiency serves care - automation frees staff to focus on patients, not paperwork",
           ],
           briefingTemplate: `## Daily Briefing Format
 - **New Patients**: Intake forms received and processing status
@@ -748,10 +748,10 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
 - **Review Metrics**: New reviews, average rating, response status
 - **Compliance Status**: Any HIPAA flags from Healthcare Communication Gate`,
           alertTemplate: `## Alert Triggers
-- HIPAA compliance flag — immediate escalation, halt affected communication
-- Same-day cancellation — trigger backfill protocol
-- Negative review (≤2 stars) — immediate response queue
-- New patient intake incomplete — follow-up within 24 hours`,
+- HIPAA compliance flag - immediate escalation, halt affected communication
+- Same-day cancellation - trigger backfill protocol
+- Negative review (≤2 stars) - immediate response queue
+- New patient intake incomplete - follow-up within 24 hours`,
         })}\n\n${MEDICAL_HIPAA_COMPLIANCE_RULES}`,
         agentsMd: generateOrchestratorAgentsMd({
           workers: [
@@ -918,8 +918,8 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           ],
           methodology: [
             "Send review requests 24-48 hours after appointment while experience is fresh",
-            "Respond to all reviews within 24 hours — positive with gratitude, negative with empathy",
-            "Never argue with reviewers — acknowledge, empathize, offer offline resolution",
+            "Respond to all reviews within 24 hours - positive with gratitude, negative with empathy",
+            "Never argue with reviewers - acknowledge, empathize, offer offline resolution",
             "Keep responses professional and HIPAA-compliant",
           ],
           neverDo: [
@@ -1039,11 +1039,11 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           clawName: "Law Firm Intake OS",
           domain: "Legal Intake Operations",
           philosophy: [
-            "Never provide legal advice — this system handles intake logistics, not legal counsel",
-            "Emergency triage saves lives — arrests, ICE detention, and DV get immediate escalation",
-            "Conflict checking protects the firm — run conflicts before any substantive discussion",
-            "Every prospect is a potential client — professional, empathetic communication at every stage",
-            "Speed matters — potential clients contact multiple firms; first response often wins",
+            "Never provide legal advice - this system handles intake logistics, not legal counsel",
+            "Emergency triage saves lives - arrests, ICE detention, and DV get immediate escalation",
+            "Conflict checking protects the firm - run conflicts before any substantive discussion",
+            "Every prospect is a potential client - professional, empathetic communication at every stage",
+            "Speed matters - potential clients contact multiple firms; first response often wins",
           ],
           briefingTemplate: `## Daily Briefing Format
 - **New Inquiries**: Count and urgency classification
@@ -1052,10 +1052,10 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
 - **Conflict Checks**: Pending and completed conflict results
 - **Compliance Notes**: Any flags from Legal Communication Gate`,
           alertTemplate: `## Alert Triggers
-- Emergency triage (arrest, ICE detention, DV) — IMMEDIATE human escalation
-- High-value case inquiry — notify within 30 minutes
-- Conflict identified — halt intake, notify attorney immediately
-- Consultation no-show — trigger follow-up within 1 hour`,
+- Emergency triage (arrest, ICE detention, DV) - IMMEDIATE human escalation
+- High-value case inquiry - notify within 30 minutes
+- Conflict identified - halt intake, notify attorney immediately
+- Consultation no-show - trigger follow-up within 1 hour`,
         }),
         agentsMd: generateOrchestratorAgentsMd({
           workers: [
@@ -1094,7 +1094,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
             "Set expectations about next steps and response timelines",
           ],
           methodology: [
-            "Lead with empathy — acknowledge the person's situation before gathering information",
+            "Lead with empathy - acknowledge the person's situation before gathering information",
             "Use the emergency triage checklist: arrest → immediate; ICE detention → immediate; DV → immediate + safety resources",
             LAW_EMERGENCY_TRIAGE_LINE,
             "Gather only non-privileged preliminary information at this stage",
@@ -1142,7 +1142,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
             "Generate qualification report with recommendation: accept, decline, or attorney-review",
           ],
           methodology: [
-            "Check jurisdiction first — this is a hard filter",
+            "Check jurisdiction first - this is a hard filter",
             "Verify statute of limitations is not expired or imminently expiring",
             "Match case type to firm practice areas",
             "Flag cases that need subject-matter expert review",
@@ -1339,11 +1339,11 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           clawName: "Home Services Dispatcher",
           domain: "Home Services Operations",
           philosophy: [
-            "Safety first — gas leaks, CO alarms, and flooding get emergency protocol immediately",
-            "Every call is someone's urgent problem — treat it with urgency and empathy",
-            "Efficient dispatch maximizes jobs per day — minimize windshield time between jobs",
-            "Follow-up drives reviews — happy customers leave reviews when asked at the right time",
-            "No call goes unanswered — missed calls are lost revenue",
+            "Safety first - gas leaks, CO alarms, and flooding get emergency protocol immediately",
+            "Every call is someone's urgent problem - treat it with urgency and empathy",
+            "Efficient dispatch maximizes jobs per day - minimize windshield time between jobs",
+            "Follow-up drives reviews - happy customers leave reviews when asked at the right time",
+            "No call goes unanswered - missed calls are lost revenue",
           ],
           briefingTemplate: `## Daily Briefing Format
 - **Jobs Scheduled**: Today's dispatch board with technician assignments
@@ -1405,14 +1405,14 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
             "Never delay emergency protocol to gather customer information",
             "Never provide DIY repair advice for safety-related issues",
             "Never guarantee specific arrival times without dispatcher confirmation",
-            "Never dispatch a technician to a gas leak or CO alarm — 911 only",
+            "Never dispatch a technician to a gas leak or CO alarm - 911 only",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
           name: "Call Handler",
           executionSteps: [
             "Receive incoming service request from Dispatch Commander",
-            "Run emergency triage checklist — if life safety, return IMMEDIATE ESCALATION",
+            "Run emergency triage checklist - if life safety, return IMMEDIATE ESCALATION",
             "Capture full service request details",
             "Classify urgency and generate service request summary",
             "Return request to Dispatch Commander for dispatching",
@@ -1449,7 +1449,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           neverDo: [
             "Never assign a technician to a job outside their certification",
             "Never overbook a technician beyond safe working hours",
-            "Never dispatch to a gas leak or CO situation — those are 911 calls",
+            "Never dispatch to a gas leak or CO situation - those are 911 calls",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -1486,7 +1486,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           ],
           methodology: [
             "Follow up 24 hours after service completion",
-            "Ask satisfaction question first — only request review if customer is happy",
+            "Ask satisfaction question first - only request review if customer is happy",
             "For dissatisfied customers: apologize, capture details, escalate to service manager",
             "Keep messages short, friendly, and easy to act on",
           ],

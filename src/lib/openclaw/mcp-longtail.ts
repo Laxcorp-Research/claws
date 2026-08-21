@@ -4,8 +4,8 @@
 //
 // A workspace is "MCP long-tail enabled" when it has at least one CONNECTED
 // tool with NO matching curated Skill row (the uncurated case detected by
-// generator.ts > generateSkillsEntriesConfig). For those workspaces — and
-// ONLY behind the CLAWS_MCP_LONGTAIL_ENABLED kill-switch — the generator
+// generator.ts > generateSkillsEntriesConfig). For those workspaces - and
+// ONLY behind the CLAWS_MCP_LONGTAIL_ENABLED kill-switch - the generator
 // emits an `mcp.servers.composio` block pointing at a Composio Tool Router
 // session, so agents can reach the uncurated tools through the Router's
 // meta-tools (COMPOSIO_SEARCH_TOOLS / COMPOSIO_MULTI_EXECUTE_TOOL / ...).
@@ -38,7 +38,7 @@ export function isMcpLongtailEnabled(): boolean {
  * `composio__COMPOSIO_SEARCH_TOOLS`); the runtime's tool-policy matcher
  * compiles deny entries as globs (upstream v2026.5.22
  * dist/tool-policy-match: makeToolPolicyMatcher → compileGlobPatterns), so
- * this one pattern removes every Router tool from workers/critic — the
+ * this one pattern removes every Router tool from workers/critic - the
  * token-tax scoping half of the Probe 3 constraints.
  */
 export const MCP_TOOL_DENY_GLOB = 'composio__*';
@@ -73,8 +73,8 @@ export interface ResolvedToolRouterSession {
  * check. `Composio.client` is typed `protected` in @composio/core 0.6.8 but
  * is a plain public property at runtime; the public `toolRouter.use()`
  * wrapper drops the session's toolkit config (returns only sessionId+mcp),
- * so the raw `session.retrieve` — whose response carries
- * `config.toolkits.{enabled,disabled}` and `config.connected_accounts` —
+ * so the raw `session.retrieve` - whose response carries
+ * `config.toolkits.{enabled,disabled}` and `config.connected_accounts` -
  * is the only way to compare the stored session's toolkit/account binding
  * against the current uncurated set without a paginated round-trip per
  * toolkit.
@@ -114,17 +114,17 @@ interface ToolRouterSessionRetrieveClient {
  *     ToolRouterV2_NoActiveConnection for googledocs; Probe B with this map
  *     created a real Google Doc. The default Tool Router auth-config lookup
  *     does not resolve accounts provisioned by our OAuth flow reliably.
- *   - workbench.enable: false — COMPOSIO_REMOTE_WORKBENCH +
+ *   - workbench.enable: false - COMPOSIO_REMOTE_WORKBENCH +
  *     COMPOSIO_REMOTE_BASH_TOOL are ~10.8KB of the 26.7KB advertised
  *     payload (Probe 3); disabling them roughly halves the token tax.
- *   - manageConnections: false — connections are managed by the Claws
+ *   - manageConnections: false - connections are managed by the Claws
  *     connect flow, never by the agent.
  *
- * Returns null when Composio is not configured (no COMPOSIO_API_KEY) —
+ * Returns null when Composio is not configured (no COMPOSIO_API_KEY) -
  * quiet no-op mirroring the generator's curated OAuth branch.
  */
 export async function resolveToolRouterSession(params: {
-  /** Claws User.id (NOT the composio external id — mapped internally). */
+  /** Claws User.id (NOT the composio external id - mapped internally). */
   userId: string;
   storedSessionId: string | null;
   /** Composio toolkit slug → connected account id for uncurated tools. */
@@ -213,7 +213,7 @@ const MCP_PROBE_TIMEOUT_MS = 2_500;
 
 /**
  * Direct MCP endpoint probe: initialize + tools/list over streamable-http.
- * Used by the deployer's best-effort cold-boot surfacing — the in-container
+ * Used by the deployer's best-effort cold-boot surfacing - the in-container
  * MCP connect failure is SILENT (one gateway log line, Probe 3 step 7), so
  * the deploy function probes the same endpoint itself and writes an
  * ActivityLog warning on failure. Probes Vercel→Composio directly (the

@@ -11,7 +11,7 @@ function roundCost(n: number): number {
 }
 
 /**
- * UTC midnight for the calendar day containing `now` (rule 18 — no local Date parsing).
+ * UTC midnight for the calendar day containing `now` (rule 18 - no local Date parsing).
  * MUTATION: use `new Date(y, m, d)` local constructor → UTC boundary tests fail.
  */
 export function utcDayStart(now = new Date()): Date {
@@ -115,12 +115,12 @@ export function resolveAgentCostWindow(args: {
   })
 }
 
-/** Format a cost for StatChip / table cells. Zero-activity windows stay "—". */
+/** Format a cost for StatChip / table cells. Zero-activity windows stay "-". */
 export function formatCostDisplay(
   cost: number,
   opts: { isEstimate: boolean; hasActivity: boolean; formatCurrency: (n: number) => string },
 ): string {
-  if (!opts.hasActivity) return "—"
+  if (!opts.hasActivity) return "-"
   const formatted = opts.formatCurrency(cost)
   return opts.isEstimate ? `~${formatted} est.` : formatted
 }

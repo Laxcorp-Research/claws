@@ -13,7 +13,7 @@ COPY container/credit-proxy.mjs /usr/local/bin/credit-proxy.mjs
 COPY container/heartbeat-catchup.mjs /usr/local/bin/heartbeat-catchup.mjs
 COPY container/thinking-signature-heal.mjs /usr/local/bin/thinking-signature-heal.mjs
 
-# PR-1 (sync-now): shared runtime-state sync module — ONE source file copied to
+# PR-1 (sync-now): shared runtime-state sync module - ONE source file copied to
 # two runtime locations so both importers resolve a clean relative path:
 #   - /usr/local/bin/process-manager.mjs imports ./state-sync.mjs
 #   - /opt/claws-activity-reporter/index.mjs imports ../state-sync.mjs (→ /opt)

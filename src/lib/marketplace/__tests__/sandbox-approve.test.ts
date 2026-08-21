@@ -93,7 +93,7 @@ describe("sandbox approve / VERIFIED mint (PR-4/PR-5 + jail gate)", () => {
   it("MUTATION: TrustBadgeLegend Verified copy locked", () => {
     const src = readFileSync(join(ROOT, "src/components/marketplace/trust-badge.tsx"), "utf8")
     expect(src).toContain(
-      "Verified — ran in an isolated sandbox (no credentials, network locked to the AI model)",
+      "Verified - ran in an isolated sandbox (no credentials, network locked to the AI model)",
     )
   })
 })

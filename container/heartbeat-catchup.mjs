@@ -4,17 +4,17 @@
  * Boot order: wait for jobs file readable AND gateway healthy (bounded wait,
  * same poll pattern as process-manager waitForProxyHealth / -9 rebuild-index
  * readiness) BEFORE the catch-up decision. Every exit path ledgers a reason
- * (eventKind=heartbeat_catchup_skip) or fires the beat — silent no-ops die here.
+ * (eventKind=heartbeat_catchup_skip) or fires the beat - silent no-ops die here.
  * process-manager wraps the ledger with retries (boot race vs activity reporter).
  *
  * -12 stdout ground truth (fixture v72): catch-up invoked but threw
- * "cron-parser unavailable" before any finishSkip — OpenClaw base ships
+ * "cron-parser unavailable" before any finishSkip - OpenClaw base ships
  * `croner`, not `cron-parser`. -13 loads croner via createRequire(/app) and
  * never exits the decision path without a ledger row.
  *
  * After readiness: if the most recent heartbeat cron moment is in the past
  * within CATCHUP_GRACE, fire ONE immediate cron.run (force). OpenClaw's
- * enqueueRun rolls nextRunAt — no double-fire at the next wall-clock slot.
+ * enqueueRun rolls nextRunAt - no double-fire at the next wall-clock slot.
  *
  * Pure helpers are exported for repo-side contract tests (no live gateway).
  */
@@ -24,7 +24,7 @@ import path from "node:path"
 import { createRequire } from "node:module"
 import { pathToFileURL } from "node:url"
 
-/** Default 30m — covers observed ~19.5m GH late-wake with margin. */
+/** Default 30m - covers observed ~19.5m GH late-wake with margin. */
 export const DEFAULT_CATCHUP_GRACE_MS = 30 * 60 * 1000
 
 /** Marker logged / stamped so -13 boots are distinguishable in telemetry. */
@@ -137,7 +137,7 @@ function asCronExpressionParser(mod) {
  * Load a CronExpressionParser-compatible API.
  * Prefer cron-parser (repo tests / future vendor); fall back to OpenClaw's
  * bundled `croner` via createRequire("/app/package.json").
- * Returns null when nothing loads — callers MUST ledger (no throw).
+ * Returns null when nothing loads - callers MUST ledger (no throw).
  * MUTATION: throw here again → silent catch in process-manager (class C).
  */
 export async function loadCronParser() {
@@ -192,7 +192,7 @@ export function cronJobsFilePath(dataDir) {
 
 /**
  * True when cron/jobs.json exists and parses to an array (possibly empty).
- * Empty array is "readable" — decision layer maps to no-due-job / no-jobs.
+ * Empty array is "readable" - decision layer maps to no-due-job / no-jobs.
  */
 export function isCronJobsFileReadable(dataDir) {
   const p = cronJobsFilePath(dataDir)
@@ -410,7 +410,7 @@ function skipResult(reason, fields = {}) {
 
 /**
  * Full catch-up path. Returns a structured result for logs/tests.
- * Does not throw — callers log failures.
+ * Does not throw - callers log failures.
  *
  * Exit reasons (spec): disabled | no-jobs | gateway-unhealthy | beyond-grace |
  * no-due-job | rpc-fail | cron-parser-unavailable | catchup-fired
@@ -483,7 +483,7 @@ export async function runHeartbeatCatchupOnBoot(args) {
       return await finishSkip("no-jobs", { expectedAt: null })
     }
 
-    // Resolve parser before decision — never throw past finishSkip (-12 class C).
+    // Resolve parser before decision - never throw past finishSkip (-12 class C).
     const Parser = CronExpressionParser || (await loadCronParserImpl())
     if (!Parser) {
       return await finishSkip("cron-parser-unavailable", {
@@ -570,7 +570,7 @@ export async function runHeartbeatCatchupOnBoot(args) {
       },
     }
   } catch (err) {
-    // Last-resort ledger — closes the -12 throw→console.error silence.
+    // Last-resort ledger - closes the -12 throw→console.error silence.
     const message = err instanceof Error ? err.message : String(err)
     const reason = /cron-parser unavailable|croner:/i.test(message)
       ? "cron-parser-unavailable"

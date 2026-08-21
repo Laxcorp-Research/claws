@@ -63,7 +63,7 @@ describe("grantStarterCredits", () => {
       id: "user-existing",
       email: "existing@example.com",
       emailVerifiedForCredits: true,
-      // Legacy $25 account — must be left untouched, never topped up or re-granted.
+      // Legacy $25 account - must be left untouched, never topped up or re-granted.
       creditAccount: { id: "ca-existing", balanceCents: 2500, initialGrantCents: 2500, status: "ACTIVE" },
     })
 

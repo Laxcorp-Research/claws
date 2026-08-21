@@ -41,7 +41,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       agentIdMap[a.agentSlug] = agent.id
     }
 
-    // WIRE-FULL: reportsTo writers removed — edge projection only.
+    // WIRE-FULL: reportsTo writers removed - edge projection only.
 
     for (const c of data.connections) {
       const src = agentIdMap[c.sourceSlug]

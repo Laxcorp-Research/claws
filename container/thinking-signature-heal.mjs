@@ -6,7 +6,7 @@
  * ledger eventKind=thinking_signature_heal. Heal-once per sessionKey / 24h
  * (aligned with platform THINKING_SIGNATURE_HEAL_DEDUP_MS).
  *
- * Justification vs rotate: strip is safer against the -10 dist — OpenClaw
+ * Justification vs rotate: strip is safer against the -10 dist - OpenClaw
  * rotation orphans main (observed f7efb24d→69364845) and drops continuity;
  * strip keeps the cron-bound session identity and removes only the parts
  * Anthropic rejects on replay.

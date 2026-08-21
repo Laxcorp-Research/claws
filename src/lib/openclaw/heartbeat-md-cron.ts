@@ -3,12 +3,12 @@
  *
  * Templates (e.g. Twitter/X Growth Machine) store wall-clock schedules as
  * prose checklist lines (`- cron: "0 8 * * *"`). Those lines are NOT consumed
- * by the OpenClaw -9 cron store — only `cron/jobs.json` (and
+ * by the OpenClaw -9 cron store - only `cron/jobs.json` (and
  * `agents.defaults.heartbeat.every` for intervals) are. This module turns
  * MD schedule lines into the verified persisted job shape so generator +
  * backfill share one source of machine truth. HEARTBEAT.md itself stays prose.
  *
- * OpenClaw load contract (upstream cron/persisted-shape.ts — quoted in
+ * OpenClaw load contract (upstream cron/persisted-shape.ts - quoted in
  * generator HeartbeatCronJob): jobs missing `id` are dropped ("missing-id");
  * `sessionTarget:"main"` + `payload.kind:"agentTurn"` is rejected at fire.
  */

@@ -61,7 +61,7 @@ beforeEach(async () => {
   pluginEntry = m.default
 })
 
-describe("/internal/sync-now — auth", () => {
+describe("/internal/sync-now - auth", () => {
   it("rejects a missing secret with 401 and does NOT trigger a sync", async () => {
     const res = mockRes()
     await handleSyncNow(mockReq("POST"), res)
@@ -84,7 +84,7 @@ describe("/internal/sync-now — auth", () => {
   })
 })
 
-describe("/internal/sync-now — status → HTTP mapping (200 only on confirmed persist)", () => {
+describe("/internal/sync-now - status → HTTP mapping (200 only on confirmed persist)", () => {
   it("200 + persisted:true when the sync confirms count>=1", async () => {
     mockRunStateSync.mockResolvedValue({ status: "persisted", count: 3, fileCount: 5 })
     const res = mockRes()
@@ -126,7 +126,7 @@ describe("/internal/sync-now — status → HTTP mapping (200 only on confirmed 
   })
 })
 
-describe("/internal/sync-now — route registration", () => {
+describe("/internal/sync-now - route registration", () => {
   it("registers an exact, auth:plugin route at /internal/sync-now", () => {
     const registerHttpRoute = vi.fn()
     pluginEntry.register({ on: vi.fn(), registerHttpRoute })

@@ -9,7 +9,7 @@ interface OnboardingStepProps {
   actions?: ReactNode
   completed?: boolean
   disabled?: boolean
-  /** Brief DS emphasis (ring) — used when step 3 needs step 2 attention. */
+  /** Brief DS emphasis (ring) - used when step 3 needs step 2 attention. */
   emphasized?: boolean
   children?: ReactNode
 }

@@ -9,7 +9,7 @@ interface WriteReviewButtonProps {
 
 /**
  * Store Reviews empty-state CTA. Outline on this surface is transparent +
- * --tx2 on a --bd hairline — it reads as a gray label, not a control.
+ * --tx2 on a --bd hairline - it reads as a gray label, not a control.
  * Filled DS primary (default 11px) matches other empty-state actions.
  */
 export function WriteReviewButton({ onClick, className }: WriteReviewButtonProps) {

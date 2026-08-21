@@ -137,7 +137,7 @@ describe("CredentialsModal", () => {
     const inputs = screen.getAllByRole("textbox") as HTMLInputElement[]
     // API Key field is prefilled from NEEDS_CREDENTIALS carry-over
     expect(inputs[0].value).toBe("carried-over-key")
-    // API Secret field is blank — user needs to provide it
+    // API Secret field is blank - user needs to provide it
     expect(inputs[1].value).toBe("")
     // Validate button stays disabled until the secret field is filled too
     const button = screen.getByRole("button", { name: /Validate all & save/i })

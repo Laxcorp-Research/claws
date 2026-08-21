@@ -31,7 +31,7 @@ describe("parseHeartbeatEveryToMs / extract from openclaw.json", () => {
   })
 })
 
-describe("computeNextHeartbeatAt — rolling hint", () => {
+describe("computeNextHeartbeatAt - rolling hint", () => {
   it("returns next cron fire for cron-scheduled claws", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-07-19T10:00:00.000Z"))
@@ -74,7 +74,7 @@ describe("computeNextHeartbeatAt — rolling hint", () => {
     expect(rolled!.toISOString()).toBe("2026-07-21T08:00:00.000Z")
   })
 
-  it("MUTATION: one-shot (no roll) would fail continuity — activity route must call computeNextHeartbeatAt", () => {
+  it("MUTATION: one-shot (no roll) would fail continuity - activity route must call computeNextHeartbeatAt", () => {
     const src = readFileSync(
       join(process.cwd(), "src/app/api/internal/activity/[workspaceId]/route.ts"),
       "utf8",
@@ -107,7 +107,7 @@ describe("computeNextHeartbeatAt — rolling hint", () => {
   })
 })
 
-describe("decideHeartbeatMissed — Watchtower window", () => {
+describe("decideHeartbeatMissed - Watchtower window", () => {
   const cron = JSON.stringify([
     { schedule: { kind: "cron", expr: "0 8 * * *", tz: "UTC" } },
   ])
@@ -181,7 +181,7 @@ describe("decideHeartbeatMissed — Watchtower window", () => {
 
   it("MUTATION: drop grace → false-positive when evidence is slightly late", () => {
     // Evidence at expected+30s; with grace=0 this is outside [expected, expected+0]
-    // so decideHeartbeatMissed would flag — production grace prevents that.
+    // so decideHeartbeatMissed would flag - production grace prevents that.
     const nowMs = new Date("2026-07-20T08:00:30.000Z").getTime()
     const withGrace = decideHeartbeatMissed({
       containerPhase: "WARM",
@@ -284,12 +284,12 @@ describe("isHeartbeatShapedActivity", () => {
       action: `Task started: ${OPENCLAW_HEARTBEAT_POLL_MARKER}`,
     }
     expect(isHeartbeatShapedActivity(poll)).toBe(true)
-    // HEARTBEAT-only (pre-P2.1) would reject this — lock that gap closed.
+    // HEARTBEAT-only (pre-P2.1) would reject this - lock that gap closed.
     expect(poll.type === "HEARTBEAT").toBe(false)
   })
 })
 
-describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
+describe("decideMissedWake - HIBERNATED past nextHeartbeatAt", () => {
   it("fires on July fixture shape (HIBERNATED + past hint + no boot)", () => {
     // Fixture: armed for 08:00Z, still HIBERNATED at 08:20Z, never woke.
     const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z")
@@ -339,7 +339,7 @@ describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
       currentFlag: flag,
       nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
     })
-    // No-op — keep sticky flag (beat evidence clears via activity roller only).
+    // No-op - keep sticky flag (beat evidence clears via activity roller only).
     expect(result).toBeUndefined()
   })
 
@@ -387,7 +387,7 @@ describe("decideMissedWake — HIBERNATED past nextHeartbeatAt", () => {
   })
 })
 
-describe("decideWokeLateNeverBeat — post-cron boot without beat", () => {
+describe("decideWokeLateNeverBeat - post-cron boot without beat", () => {
   const expectedAt = new Date("2026-07-24T08:00:00.000Z")
   const bootAt = new Date("2026-07-24T08:20:02.000Z")
 

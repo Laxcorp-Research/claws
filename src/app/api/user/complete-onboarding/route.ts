@@ -7,7 +7,7 @@ import { apiSuccess, ERRORS } from "@/lib/api/response"
 /**
  * Atomically: set User.onboardingCompleted=true AND re-issue the JWT cookie
  * with the claim flipped. Client-side useSession().update() is unreliable with
- * forged E2E cookies and can silently return null — this route is the
+ * forged E2E cookies and can silently return null - this route is the
  * authoritative escape from the edge onboarding gate.
  */
 export async function POST(req: NextRequest) {

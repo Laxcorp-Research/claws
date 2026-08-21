@@ -11,7 +11,7 @@ export function PendingReviewEmptyState() {
     <EmptyState
       icon={<Clock className="h-10 w-10 text-[var(--tx3)]" aria-hidden="true" />}
       title="Pending review"
-      description="Submitted for review — you'll get an email when it's approved."
+      description="Submitted for review - you'll get an email when it's approved."
       actions={
         <Link href="/settings?tab=creator">
           <Button variant="primary">View in your creator dashboard</Button>

@@ -49,7 +49,7 @@ describe("usage ledger window", () => {
       "ANTHROPIC::anthropic/claude-haiku-4-5-20251001",
     )
 
-    // The cron window: createdAt < UTC yesterday midnight — today's 6 rows vanish.
+    // The cron window: createdAt < UTC yesterday midnight - today's 6 rows vanish.
     const cronCutoff = startOfUtcDay(new Date(now.getTime() - 86400000))
     const cronVisible = records.filter((r) => {
       const t = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)

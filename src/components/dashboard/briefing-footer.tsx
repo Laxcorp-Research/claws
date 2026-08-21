@@ -26,7 +26,7 @@ interface BriefingFooterProps {
 }
 
 export function BriefingFooter({ apiKeySource, consumedCents, creditStatus }: BriefingFooterProps) {
-  // BYOK: the user supplies their own provider key — we have no spend figure,
+  // BYOK: the user supplies their own provider key - we have no spend figure,
   // so point them at their provider console instead.
   if (apiKeySource === "USER_OWN_KEY") {
     return (
@@ -44,7 +44,7 @@ export function BriefingFooter({ apiKeySource, consumedCents, creditStatus }: Br
     )
   }
 
-  // Platform credits. Exhausted takes precedence over the consumed amount —
+  // Platform credits. Exhausted takes precedence over the consumed amount -
   // the calm line just states the fact; the loud top-of-page banner owns the
   // "add a key / top up" CTA, so the footer doesn't duplicate the nag.
   if (apiKeySource === "PLATFORM_CREDIT") {

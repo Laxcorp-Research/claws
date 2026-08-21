@@ -1,13 +1,13 @@
-// generator-mcp-longtail.test.ts — C-engine B1 contract tests (regression armor).
+// generator-mcp-longtail.test.ts - C-engine B1 contract tests (regression armor).
 //
 // B1 test plan mapping:
 //   (a) curated-only → NO mcp block, with MUTATION-VERIFY (adding an
-//       uncurated slug to the same fixture makes the block appear — the
+//       uncurated slug to the same fixture makes the block appear - the
 //       guard is the conditional, not dead code).
 //   (b) uncurated OAuth + flag ON → exact url/transport/header shape.
 //   (c) flag OFF + uncurated → NO block (kill-switch).
 //   (d) workers + critic carry composio__* in tools.deny; Orchestrator does
-//       not. (Merge-not-clobber is unit-locked in mcp-longtail.test.ts —
+//       not. (Merge-not-clobber is unit-locked in mcp-longtail.test.ts -
 //       generator-built entries never carry a pre-existing tools policy.)
 //   (e) TOOLS.md carries the anti-fabrication section iff MCP-enabled.
 //   (f) session lifecycle at the generator level: reuse (no persist write),

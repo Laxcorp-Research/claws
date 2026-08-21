@@ -1,4 +1,4 @@
-// PR-6: deterministic per-Claw narrative for the briefing dashboard. No LLM —
+// PR-6: deterministic per-Claw narrative for the briefing dashboard. No LLM -
 // the line is derived purely from the workspace-level stats already in the
 // /api/activity/[workspaceId] payload, using a fixed precedence:
 //
@@ -36,11 +36,11 @@ export function clawNarrative(s: NarrativeInput): Narrative {
   const t = s.tasksToday;
   const tasks = `${t} ${pluralize(t, "task", "tasks")}`;
 
-  // 1. Lifecycle wins — the Claw isn't actively working, so say so calmly
+  // 1. Lifecycle wins - the Claw isn't actively working, so say so calmly
   //    rather than reporting a (likely stale) task count.
-  if (s.status === "STOPPED") return { text: "Stopped — redeploy to bring it back.", tone: "muted" };
-  if (s.status === "PAUSED") return { text: "Paused — nothing running right now.", tone: "muted" };
-  if (s.status === "HIBERNATED") return { text: "Resting — will wake on the next scheduled beat.", tone: "muted" };
+  if (s.status === "STOPPED") return { text: "Stopped - redeploy to bring it back.", tone: "muted" };
+  if (s.status === "PAUSED") return { text: "Paused - nothing running right now.", tone: "muted" };
+  if (s.status === "HIBERNATED") return { text: "Resting - will wake on the next scheduled beat.", tone: "muted" };
   if (s.status === "WAKING") return { text: "Waking up…", tone: "muted" };
 
   // 2. Problems beat routine counts (loudest first: errors, then pending).
@@ -60,8 +60,8 @@ export function clawNarrative(s: NarrativeInput): Narrative {
   const trend =
     s.tasksYesterday > 0 && Math.abs(delta) >= 1
       ? delta > 0
-        ? ` — up from ${s.tasksYesterday} yesterday`
-        : ` — down from ${s.tasksYesterday} yesterday`
+        ? ` - up from ${s.tasksYesterday} yesterday`
+        : ` - down from ${s.tasksYesterday} yesterday`
       : "";
   return { text: `${tasks} handled today${trend}.`, tone: "calm" };
 }

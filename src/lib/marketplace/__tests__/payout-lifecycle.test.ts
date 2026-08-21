@@ -114,7 +114,7 @@ describe.skipIf(skipMarketplaceIntegration())("payout lifecycle e2e + clawback m
         ],
       },
     })
-    // Adjustments reference sales — delete adjustments first.
+    // Adjustments reference sales - delete adjustments first.
     await prisma.marketplaceSale.deleteMany({
       where: { adjustmentOfSaleId: { in: cleanup.saleIds } },
     })

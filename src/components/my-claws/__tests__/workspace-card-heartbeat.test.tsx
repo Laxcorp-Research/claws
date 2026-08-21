@@ -21,7 +21,7 @@ const base = {
   onDelete: vi.fn(),
 }
 
-describe("WorkspaceCard — sticky heartbeat visibility", () => {
+describe("WorkspaceCard - sticky heartbeat visibility", () => {
   it("WIRE-TEST-shaped STOPPED sticky shows quiet Heartbeat missed line", () => {
     render(
       <WorkspaceCard

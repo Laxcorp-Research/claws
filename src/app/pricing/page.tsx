@@ -158,7 +158,7 @@ export default function PricingPage() {
     {
       num: "3",
       label: "AI model costs",
-      text: "Start with $50 free credits or bring your own API keys — pay your provider directly.",
+      text: "Start with $50 free credits or bring your own API keys - pay your provider directly.",
     },
     {
       num: "4",

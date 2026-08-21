@@ -5,7 +5,7 @@ import { FilterPills } from "@/components/ui/filter-pills"
 
 describe("FilterPills", () => {
   beforeEach(() => {
-    // jsdom lacks scrollIntoView — stub for PR-5 preselect scroll.
+    // jsdom lacks scrollIntoView - stub for PR-5 preselect scroll.
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       writable: true,

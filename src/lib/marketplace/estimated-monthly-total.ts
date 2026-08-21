@@ -1,6 +1,6 @@
 /**
  * Batch A (A5): safe estimated monthly total for template detail.
- * Never Number(free-text) + 79 — non-numeric ranges must fall back.
+ * Never Number(free-text) + 79 - non-numeric ranges must fall back.
  */
 const PLATFORM_FEE = 79
 const FALLBACK_TOTAL = "120–160"

@@ -10,7 +10,7 @@ interface ApiKeyRowProps {
   keyHint?: string
   lastUsedAt?: string
   lastError?: string
-  /** Optional honesty badge (e.g. "beta — bring your own key"). */
+  /** Optional honesty badge (e.g. "beta - bring your own key"). */
   badge?: ReactNode
   onAdd: () => void
   onTest: () => void

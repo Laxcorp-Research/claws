@@ -10,7 +10,7 @@
  * never made it into the page's `tools` state, so `connectedSlugs`
  * stayed blind to them and the modal kept showing "Connect OAuth".
  *
- * See GH #39 (closed — moved into PR #4 scope) + PR #4 Commit 9.
+ * See GH #39 (closed - moved into PR #4 scope) + PR #4 Commit 9.
  */
 import type { ToolRowStatus } from "@/components/setup/tool-row"
 import { getToolBySlug } from "@/data/tool-catalog"
@@ -134,7 +134,7 @@ export function connectionUiState(conn: ServerConnectionSummary): {
 /**
  * Build a single `ToolState` row for a connection the user added outside
  * the workspace template. Falls back gracefully when the tool isn't in
- * the static catalog (category = "OTHER", no helpUrl) — that case is
+ * the static catalog (category = "OTHER", no helpUrl) - that case is
  * rare in practice but possible for dynamic Composio toolkits.
  */
 export function buildExtraToolState(conn: ServerConnectionSummary): ToolState {
@@ -182,16 +182,16 @@ export interface BYOKModalState {
  *
  * Existence: extracted from the JSX conditional in
  * `src/app/setup/[workspaceId]/step/[n]/page.tsx` so it can be unit-tested
- * — Bug 1B was specifically that the inline conditional required
+ * - Bug 1B was specifically that the inline conditional required
  * `state.tool` non-null, which blocked the modal for Browse-clicked
  * non-template tools. The test suite for this function asserts the
  * `state.tool === null` branch returns valid props, locking the fix.
  *
  * Display-name fallback chain (highest priority first):
- *   1. state.tool.name              — wizard template-row click
- *   2. state.apiKeyForm.displayName — server-provided (initiate response)
- *   3. getToolBySlug(slug)?.name    — client catalog lookup
- *   4. title-cased state.apiKeyForm.toolSlug — last-ditch display fallback
+ *   1. state.tool.name              - wizard template-row click
+ *   2. state.apiKeyForm.displayName - server-provided (initiate response)
+ *   3. getToolBySlug(slug)?.name    - client catalog lookup
+ *   4. title-cased state.apiKeyForm.toolSlug - last-ditch display fallback
  *
  * The route's initiate response always sets displayName, so #2 is the
  * common case for Browse-clicked tools. #3 + #4 are belt-and-suspenders.
@@ -233,7 +233,7 @@ export interface RequirementToolEntry {
  * Resolve one requirement entry → one ToolState row.
  * Canonical identity is the oneOf-resolved slug (entry.slug or a connected
  * alternative). Connection state decorates that row. Open category-wide
- * "swap match" is intentionally NOT used — it orphaned the requirement
+ * "swap match" is intentionally NOT used - it orphaned the requirement
  * slug's connection as a second "Additional tools" row (PR-5 defect 1).
  */
 export function resolveRequirementToolState(
@@ -290,7 +290,7 @@ export function resolveRequirementToolState(
   }
 }
 
-/** OneOf set for a requirement entry — used to claim connections so extras can't duplicate. */
+/** OneOf set for a requirement entry - used to claim connections so extras can't duplicate. */
 export function requirementClaimedSlugs(entry: RequirementToolEntry): string[] {
   return [entry.slug, ...(entry.alternatives ?? [])]
 }
@@ -366,7 +366,7 @@ export function buildExtraToolsFromConnections(
  * The server response is the source of truth; this function makes the
  * client match it.
  *
- * Bug fixed: pre-fix the merge was insert-only — slugs present locally
+ * Bug fixed: pre-fix the merge was insert-only - slugs present locally
  * but ABSENT on the server kept their stale `status: "connected"` and
  * `connectionId`. After a successful revoke or disconnect the row UI
  * still said "Connected" until a full page reload. The connect path
@@ -383,7 +383,7 @@ export function buildExtraToolsFromConnections(
  *   1. Server has a connection for the slug → apply server state
  *      (status, errorMessage, warningMessage, connectionId, connectedAt).
  *   2. Server has NO connection for an "extra" row (came from a non-
- *      template connection — `extra: true`) → drop the row entirely.
+ *      template connection - `extra: true`) → drop the row entirely.
  *      Extras exist ONLY because of a server connection; without that
  *      backing row they shouldn't be displayed.
  *   3. Server has NO connection for a template row (required /
@@ -396,7 +396,7 @@ export function buildExtraToolsFromConnections(
  * @param prev        Current local `tools` array (template rows + any
  *                    previously-loaded extras).
  * @param connections Authoritative server connection list (full, not
- *                    paginated — see GET /api/tools/{ws}).
+ *                    paginated - see GET /api/tools/{ws}).
  */
 export function mergeRefreshedTools(
   prev: ToolState[],

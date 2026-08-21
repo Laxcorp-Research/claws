@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
         agentIdMap[a.agentSlug] = agent.id
       }
 
-      // WIRE-FULL: reportsTo writers removed — projection from edges only.
+      // WIRE-FULL: reportsTo writers removed - projection from edges only.
 
       for (const c of snapshot.connections) {
         const src = agentIdMap[c.sourceSlug]

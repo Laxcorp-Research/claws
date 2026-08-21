@@ -1,4 +1,4 @@
-// PR #4 Commit 7 — disconnect helper tests. The helper is the unit the
+// PR #4 Commit 7 - disconnect helper tests. The helper is the unit the
 // Revoke ConfirmDialog's confirm handler calls. Tests cover the three
 // response shapes the server can return:
 //   - success: { success: true, data: { disconnected: true } } → resolves

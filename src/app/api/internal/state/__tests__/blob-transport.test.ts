@@ -22,7 +22,7 @@ function req(url: string, body: Record<string, unknown>, secret = SECRET): NextR
   })
 }
 
-describe("POST /api/internal/state/finalize — persist + idempotency + del", () => {
+describe("POST /api/internal/state/finalize - persist + idempotency + del", () => {
   beforeEach(() => {
     process.env.METERING_MASTER_SECRET = SECRET
     ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({

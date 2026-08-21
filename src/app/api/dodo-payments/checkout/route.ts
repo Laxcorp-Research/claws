@@ -165,7 +165,7 @@ async function handleCommunityTemplatePurchase(
   if (!template.dodoProductId) {
     return apiError(
       "PRODUCT_NOT_READY",
-      "This listing has no Dodo product yet — re-approve after DYNAMIC-AT-APPROVAL mint",
+      "This listing has no Dodo product yet - re-approve after DYNAMIC-AT-APPROVAL mint",
       400,
     )
   }
@@ -250,7 +250,7 @@ async function handleCommunitySkillPurchase(
   if (!skill.dodoProductId) {
     return apiError(
       "PRODUCT_NOT_READY",
-      "This listing has no Dodo product yet — re-approve after DYNAMIC-AT-APPROVAL mint",
+      "This listing has no Dodo product yet - re-approve after DYNAMIC-AT-APPROVAL mint",
       400,
     )
   }
@@ -318,7 +318,7 @@ async function handleClawPlatform(
     returnUrl?: string
   }
 
-  // Billing / lapsed-subscribe may omit workspaceId — entitlement is user-level;
+  // Billing / lapsed-subscribe may omit workspaceId - entitlement is user-level;
   // metadata.workspaceId is best-effort for failed-sub destroy targeting.
   let workspaceId = bodyWorkspaceId
   if (workspaceId) {

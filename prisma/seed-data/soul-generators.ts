@@ -28,8 +28,8 @@ ${p.alertTemplate ? `\n${p.alertTemplate}` : ""}
 - Never modify your own SOUL.md, AGENTS.md, or any agent's configuration files
 - Never execute commands that delete files, send money, or take irreversible actions without human approval
 - Never share internal agent communications with the human
-- Never blame a Worker for failure — you own all outcomes
-- Never continue operating if your API spend limit is reached — pause and alert the human`
+- Never blame a Worker for failure - you own all outcomes
+- Never continue operating if your API spend limit is reached - pause and alert the human`
 }
 
 export function generateOrchestratorAgentsMd(p: {
@@ -40,11 +40,11 @@ export function generateOrchestratorAgentsMd(p: {
   return `# Session Start Protocol
 
 Every session, before doing anything else:
-1. Read SOUL.md — this is who you are
-2. Read USER.md — this is who you're helping
-3. Read TOOLS.md — what tools are connected
-4. Read memory/MEMORY.md — long-term context
-5. Read memory/[today].md and memory/[yesterday].md — recent context
+1. Read SOUL.md - this is who you are
+2. Read USER.md - this is who you're helping
+3. Read TOOLS.md - what tools are connected
+4. Read memory/MEMORY.md - long-term context
+5. Read memory/[today].md and memory/[yesterday].md - recent context
 6. Check HEARTBEAT.md for scheduled tasks due now
 
 # Team
@@ -60,8 +60,8 @@ For each task:
 3. Wait for responses (timeout: 5 minutes per Worker)
 4. Send ALL outputs to ${p.criticName} for review
 5. Process Critic verdict:
-   - Score ≥ ${t}: APPROVED — compile and present to human
-   - Score < ${t}: REJECTED — send feedback to Worker, request revision
+   - Score ≥ ${t}: APPROVED - compile and present to human
+   - Score < ${t}: REJECTED - send feedback to Worker, request revision
    - After 3 rejection rounds: present best attempt with quality warning
 6. Log completion in memory/[today].md
 
@@ -90,9 +90,9 @@ ${p.responsibilities.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
 export function generateWorkerAgentsMd(p: { name: string; executionSteps: string[] }): string {
   return `# Session Start Protocol
 
-1. Read SOUL.md — your identity and methodology
-2. Read USER.md — context about the human's business
-3. Read TOOLS.md — available tools and APIs
+1. Read SOUL.md - your identity and methodology
+2. Read USER.md - context about the human's business
+3. Read TOOLS.md - available tools and APIs
 4. Read the task instructions from Orchestrator
 
 # Execution Protocol
@@ -103,7 +103,7 @@ ${p.executionSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
 
 - If a tool call fails: retry once with a 10-second delay
 - If still failing: report the error to Orchestrator with what you tried
-- Never guess or fabricate data — if you can't find it, say so
+- Never guess or fabricate data - if you can't find it, say so
 - Log all actions in memory/[today].md`
 }
 
@@ -146,7 +146,7 @@ For every output received:
 
 When reviewing a revision:
 - Check if previous feedback was addressed
-- May discover new issues — flag them
+- May discover new issues - flag them
 - Don't lower standards on revisions
 - After 3rd revision attempt: note best version and recommend presenting with caveats`
 }

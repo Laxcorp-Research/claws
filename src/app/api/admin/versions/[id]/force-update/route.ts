@@ -72,7 +72,7 @@ export async function POST(
 
     // TODO (PR-1b restart): When the live image-swap restart is built, the
     // STOP step MUST go through syncThenDestroy(workspaceId) (PR-2), NOT bare
-    // destroyContainer — otherwise a forced security update silently discards
+    // destroyContainer - otherwise a forced security update silently discards
     // the latest session/MEMORY state. Per the PR-2 plan, PR-1b should add a
     // stopForReplace(workspaceId) wrapper around syncThenDestroy so bare
     // destroy is structurally unreachable on the restart path.
@@ -120,7 +120,7 @@ export async function POST(
     logAdminAction({ action: 'version.force-update', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'version', details: { affectedCount: affectedDeployments.length, targetVersion: targetVersion.version }, ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
 
     return apiSuccess({
-      message: `Queued v${targetVersion.version} for ${affectedDeployments.length} deployment(s) — applies on each Claw's next redeploy`,
+      message: `Queued v${targetVersion.version} for ${affectedDeployments.length} deployment(s) - applies on each Claw's next redeploy`,
       affectedCount: affectedDeployments.length,
       targetVersion: targetVersion.version,
     })

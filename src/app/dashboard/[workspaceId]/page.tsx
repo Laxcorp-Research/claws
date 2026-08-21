@@ -72,7 +72,7 @@ interface WorkspaceInfo {
   apiSpendLimit: number
   costAlertThreshold: number
   lastHealthCheck?: string | null
-  // PR-4: health monitor's last probe classification — drives the 3-state banner.
+  // PR-4: health monitor's last probe classification - drives the 3-state banner.
   lastHealthReason?: string | null
   mcpSessionHealthStatus?: "HEALTHY" | "DEAD" | "UNREACHABLE" | null
   mcpSessionCheckedAt?: string | null
@@ -81,14 +81,14 @@ interface WorkspaceInfo {
   stateSyncStaleDetectedAt?: string | null
   /** Lifecycle P2: Watchtower missed cron-heartbeat window (ops-gap). */
   heartbeatMissedAt?: string | null
-  /** Lifecycle P3: auto-hibernate refused (unsynced/stale) — DATA class. */
+  /** Lifecycle P3: auto-hibernate refused (unsynced/stale) - DATA class. */
   hibernationRefusedAt?: string | null
   /** PR-3: true while newest near-cap WARNING is unresolved (no post-warn sync below re-arm). */
   stateSyncNearCapActive?: boolean
   apiKeySource?: ApiKeySource
   /** PR-B: opt out of critical-alert pushes (Telegram, fallback email). Default false (alerts ON). */
   criticalAlertsOptOut?: boolean
-  /** PR-C #10: never hibernate this Claw — trades hosting cost for zero cold-start latency. */
+  /** PR-C #10: never hibernate this Claw - trades hosting cost for zero cold-start latency. */
   alwaysOn?: boolean
   provisioningQueue?: { position: number; etaAt: string; reason: string } | null
 }
@@ -273,7 +273,7 @@ export function ChannelStatusSection({ channelStatus }: { channelStatus: Channel
 function formatTime(isoStr: string) {
   // PR-4d: render in UTC with an explicit " UTC" suffix. The activity log is a
   // log surface that gets cross-correlated with Railway logs, OpenClawVersion
-  // records, GitHub Actions runs — all of which are UTC. Showing local time
+  // records, GitHub Actions runs - all of which are UTC. Showing local time
   // without a tz label here forced operators to do mental tz math; the user
   // hit this when staging WIRE-TEST events at 14:10 UTC were rendering as
   // 18:10 (Dubai local) with no indication of which tz was shown.
@@ -359,7 +359,7 @@ export default function DashboardPage() {
       } else if (json.data?.mockMode) {
         setTrialInfo((prev) => prev ? { ...prev, hasActiveSubscription: true } : prev)
       }
-    } catch { /* network error — button re-enables */ }
+    } catch { /* network error - button re-enables */ }
     setSubscribing(false)
   }, [workspaceId])
 
@@ -462,7 +462,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (searchParams.get("redeployed") !== "changes-applied") return
-    setRedeployBanner({ variant: "info", message: "Redeployment successful — changes applied" })
+    setRedeployBanner({ variant: "info", message: "Redeployment successful - changes applied" })
     router.replace(`/dashboard/${workspaceId}`)
   }, [searchParams, router, workspaceId])
 
@@ -481,7 +481,7 @@ export default function DashboardPage() {
     return () => window.removeEventListener("message", onMessage)
   }, [fetchStats, fetchChannelStatus])
 
-  // PR-9/pre: connection + listener lifecycle lives in useActivityStream —
+  // PR-9/pre: connection + listener lifecycle lives in useActivityStream -
   // the old inline effect's reconnect path created a bare EventSource with
   // no listeners attached (see the hook's header comment).
   useActivityStream<LogEntry>(workspaceId, {
@@ -571,8 +571,8 @@ export default function DashboardPage() {
         },
         {
           message: nextEnabled
-            ? "Always on — this Claw will never hibernate (higher hosting cost)"
-            : "Always on turned off — this Claw can hibernate again",
+            ? "Always on - this Claw will never hibernate (higher hosting cost)"
+            : "Always on turned off - this Claw can hibernate again",
           errorMessage: "Could not update always-on setting",
         },
         showSnackbar,
@@ -605,7 +605,7 @@ export default function DashboardPage() {
   }
 
   const handleResumeAll = useCallback(async () => {
-    // STOPPED workspaces have no container — /restart would 400. Route them
+    // STOPPED workspaces have no container - /restart would 400. Route them
     // through the confirm dialog below, which hits /cloud (full redeploy, ~2m).
     if (workspace?.status === "STOPPED") {
       setRedeployFromStoppedConfirmOpen(true)
@@ -637,7 +637,7 @@ export default function DashboardPage() {
         : undefined
       if (res.status === 202 || queued?.queued) {
         showSnackbar({
-          message: queued?.message ?? "High demand — your claw is queued to provision. We'll notify you.",
+          message: queued?.message ?? "High demand - your claw is queued to provision. We'll notify you.",
           variant: "info",
         })
         fetchStats()
@@ -791,7 +791,7 @@ export default function DashboardPage() {
     const list: DashboardAlert[] = []
 
     // PR-4: 3-state health banner. The pre-PR-4 single banner said "not
-    // responding" for every unhealthy state — false for a container that's
+    // responding" for every unhealthy state - false for a container that's
     // alive but running a stale config (the health monitor now classifies
     // those as DEGRADED via lastHealthReason, never UNHEALTHY/ERROR).
     if (isError) {
@@ -851,7 +851,7 @@ export default function DashboardPage() {
         icon: <RefreshCw className="w-4 h-4" />,
         content: (
           <>
-            <p className="font-medium">Long-tail tools disconnected — redeploy to restore</p>
+            <p className="font-medium">Long-tail tools disconnected - redeploy to restore</p>
             <p className="mt-0.5 opacity-80">
               The Tool Router session for long-tail tools is no longer available. Redeploy to bind a fresh session.
             </p>
@@ -883,7 +883,7 @@ export default function DashboardPage() {
               {workspace?.heartbeatMissedAt
                 ? timeAgo(workspace.heartbeatMissedAt)
                 : "recently"}{" "}
-              — agents may have skipped a run.
+              - agents may have skipped a run.
             </p>
             <p className="mt-0.5 opacity-80">Check Activity for the miss event, or restart to re-arm the schedule.</p>
           </>
@@ -903,7 +903,7 @@ export default function DashboardPage() {
         variant: "warning",
         content: (
           <>
-            <p className="font-medium">Activity feed appears silent — agents may be running but not reporting.</p>
+            <p className="font-medium">Activity feed appears silent - agents may be running but not reporting.</p>
             <p className="mt-0.5 opacity-80">Restart to restore activity reporting.</p>
           </>
         ),
@@ -922,7 +922,7 @@ export default function DashboardPage() {
         variant: "warning",
         content: (
           <p className="font-medium">
-            Memory bundle approaching size limit —{" "}
+            Memory bundle approaching size limit -{" "}
             <button
               type="button"
               className="underline underline-offset-2 hover:opacity-80"
@@ -942,7 +942,7 @@ export default function DashboardPage() {
         variant: "warning",
         content: (
           <>
-            <p className="font-medium">Hibernation refused — runtime state was not safely synced.</p>
+            <p className="font-medium">Hibernation refused - runtime state was not safely synced.</p>
             <p className="mt-0.5 opacity-80">
               The claw stayed running to protect history. Retry after activity resumes, or Stop
               manually if you accept possible data loss.
@@ -958,7 +958,7 @@ export default function DashboardPage() {
         priority: 6,
         variant: "warning",
         content: (
-          <p className="font-medium">Agent memory backup is stale — recent memory may not survive a restart. Force-restart to restore syncing.</p>
+          <p className="font-medium">Agent memory backup is stale - recent memory may not survive a restart. Force-restart to restore syncing.</p>
         ),
         actions: (
           <Button variant="danger" size="xs" onClick={handleResumeAll}>
@@ -1022,7 +1022,7 @@ export default function DashboardPage() {
       // connection is OAUTH_COMPOSIO the D5 copy applies verbatim ("Your
       // OAuth token has expired"); otherwise fall back to the generic
       // "connection stopped working" wording. Mixed cases pick the
-      // generic prose — telling an API_KEY user their OAuth token
+      // generic prose - telling an API_KEY user their OAuth token
       // expired is worse than saying nothing specific.
       const allOauth = expiredTools.every((t) => t.connectionType === "OAUTH_COMPOSIO")
       const primary = expiredTools[0]
@@ -1090,7 +1090,7 @@ export default function DashboardPage() {
           icon: <ArrowUpCircle className="w-4 h-4" />,
           content: (
             <>
-              <p className="font-medium">A runtime update is available — redeploy to apply</p>
+              <p className="font-medium">A runtime update is available - redeploy to apply</p>
               <p className="mt-0.5 opacity-80">Your Claw is running {currentVer}; the current stable runtime is v{stableVer}.</p>
             </>
           ),
@@ -1103,7 +1103,7 @@ export default function DashboardPage() {
       }
     }
 
-    // Trial banners apply to credit users too — starter credits ≠ platform trial.
+    // Trial banners apply to credit users too - starter credits ≠ platform trial.
     // MUTATION: restoring `!creditUser &&` hides truth for PLATFORM_CREDIT.
     if (trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
       const trialEnd = trialInfo.trialEndsAt ? new Date(trialInfo.trialEndsAt) : null
@@ -1120,7 +1120,7 @@ export default function DashboardPage() {
           icon: <Clock className="w-4 h-4" />,
           content: (
             <>
-              <p className="font-medium">Free trial — {daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</p>
+              <p className="font-medium">Free trial - {daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</p>
               <p className="mt-0.5 opacity-80">Subscribe to keep your Claws running after the trial ends.</p>
             </>
           ),
@@ -1151,7 +1151,7 @@ export default function DashboardPage() {
       }
     }
 
-    // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today — do not remove
+    // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today - do not remove
     if (isPaused) {
       list.push({
         key: "paused",
@@ -1233,7 +1233,7 @@ export default function DashboardPage() {
             <p className="mt-0.5 opacity-80">
               {workspace.provisioningQueue?.etaAt
                 ? queuedUserMessage(new Date(workspace.provisioningQueue.etaAt))
-                : `High demand — your claw is queued to provision, ~${eta}. We'll notify you.`}
+                : `High demand - your claw is queued to provision, ~${eta}. We'll notify you.`}
             </p>
           </>
         ),
@@ -1248,7 +1248,7 @@ export default function DashboardPage() {
         content: (
           <>
             <p className="font-medium">Your Claw is waking up</p>
-            <p className="mt-0.5 opacity-80">Restarting agents — this usually takes 15-30 seconds.</p>
+            <p className="mt-0.5 opacity-80">Restarting agents - this usually takes 15-30 seconds.</p>
           </>
         ),
       })
@@ -1290,7 +1290,7 @@ export default function DashboardPage() {
   )
 
   if (loading) {
-    // PR-6: calm placeholder matching the briefing layout — a serif-height
+    // PR-6: calm placeholder matching the briefing layout - a serif-height
     // greeting line, a health-pill stub, then 3 narrative-row placeholders.
     // Uses a gentle animate-pulse (no shimmer sweep) per the briefing aesthetic.
     return (
@@ -1355,7 +1355,7 @@ export default function DashboardPage() {
   }))
 
   // PR-9/B: the dashboard chat reuses the SAME activity stream (no second
-  // EventSource). Filter the live logs to webchat MESSAGE_* rows — channelId
+  // EventSource). Filter the live logs to webchat MESSAGE_* rows - channelId
   // keeps external-channel sends/receives (Slack, etc.) out of dashboard chat.
   const orchestratorName = agents.find((a) => a.role === "ORCHESTRATOR")?.name ?? "Orchestrator"
   const requestedTab = searchParams.get("tab") ?? "overview"
@@ -1444,7 +1444,7 @@ export default function DashboardPage() {
       {isStopped ? (
         <Button variant="primary" size="sm" onClick={handleResumeAll}>Redeploy</Button>
       ) : isPaused ? (
-        // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today — do not remove
+        // dead/reserved: read-side scaffolding for a future reversible pause (PR #52, 4fdf0a8); no writer today - do not remove
         <Button variant="primary" size="sm" onClick={handleResumeAll}>Resume All</Button>
       ) : workspace?.status === "PROVISIONING_QUEUED" ? null : (
         <Button variant="outline" size="sm" onClick={() => setStopConfirmOpen(true)}>
@@ -1560,7 +1560,7 @@ export default function DashboardPage() {
                               ? `${formatCurrency(topCostAgent.cost)} est.`
                               : formatCurrency(topCostAgent.cost)
                           })`
-                        : "—"}
+                        : "-"}
                     </p>
                   </div>
                 ) : (
@@ -1587,13 +1587,13 @@ export default function DashboardPage() {
             <section id="always-on" className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Always on">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-[12px] font-semibold text-[var(--tx)]">Always on — never hibernate (higher hosting cost)</h2>
+                  <h2 className="text-[12px] font-semibold text-[var(--tx)]">Always on - never hibernate (higher hosting cost)</h2>
                   <p className="mt-0.5 text-[11px] text-[var(--tx3)]">
                     Skips the hibernation sweep entirely, so this Claw stays warm and never has a cold-start delay. You pay for hosting the whole time it&apos;s on.
                   </p>
                 </div>
                 <Toggle
-                  aria-label="Always on — never hibernate (higher hosting cost)"
+                  aria-label="Always on - never hibernate (higher hosting cost)"
                   checked={workspace?.alwaysOn ?? false}
                   onCheckedChange={handleAlwaysOnToggle}
                   disabled={alwaysOnSaving}
@@ -1694,7 +1694,7 @@ export default function DashboardPage() {
                               ? row.isEstimate
                                 ? `${formatCurrency(row.cost)} est.`
                                 : formatCurrency(row.cost)
-                              : "—"}
+                              : "-"}
                           </td>
                         </tr>
                       ))}
@@ -1717,7 +1717,7 @@ export default function DashboardPage() {
         onConfirm={handleRedeploy}
         title="Redeploy Claw"
         description="This will update your Claw with the latest configuration and redeploy. Continue?"
-        warningText={showStateSyncStale ? "Memory backup is stale — recent agent memory may be lost." : undefined}
+        warningText={showStateSyncStale ? "Memory backup is stale - recent agent memory may be lost." : undefined}
         confirmLabel="Redeploy"
         variant="warning"
       />
@@ -1727,7 +1727,7 @@ export default function DashboardPage() {
         onClose={() => setRedeployFromStoppedConfirmOpen(false)}
         onConfirm={handleRedeployFromStopped}
         title="Redeploy this Claw?"
-        description="The container was stopped and destroyed. Redeploying recreates it from scratch — this usually takes ~2 minutes. Continue?"
+        description="The container was stopped and destroyed. Redeploying recreates it from scratch - this usually takes ~2 minutes. Continue?"
         confirmLabel="Redeploy"
         variant="warning"
       />
@@ -1737,7 +1737,7 @@ export default function DashboardPage() {
         onClose={() => setStopConfirmOpen(false)}
         onConfirm={handleStopConfirmed}
         title="Stop this Claw?"
-        description="Agents will stop running. Your configuration and history are saved — redeploying takes about 2 minutes."
+        description="Agents will stop running. Your configuration and history are saved - redeploying takes about 2 minutes."
         confirmLabel="Stop"
         cancelLabel="Keep running"
         loading={stopping}

@@ -29,7 +29,7 @@ const ACTIVE_OWNER = {
   hasActiveSubscription: false,
 }
 
-describe("wakeWorkspace — late-wake semantics (P2.3)", () => {
+describe("wakeWorkspace - late-wake semantics (P2.3)", () => {
   beforeEach(() => {
     mockDeploy.mockReset()
     mockDeploy.mockResolvedValue({

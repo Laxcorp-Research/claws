@@ -30,17 +30,17 @@ import {
 } from "@/lib/trial/wake-entitlement"
 import crypto from "node:crypto"
 
-/** Locked ack copy — mutation: change string → contract fails. */
-export const WAKE_ON_CHANNEL_ACK = "Waking up — one moment"
+/** Locked ack copy - mutation: change string → contract fails. */
+export const WAKE_ON_CHANNEL_ACK = "Waking up - one moment"
 
 /** ActivityLog eventKind for wake-ack Telegram sends (soak ledger completeness). */
 export const WAKE_ACK_SENT_EVENT_KIND = "wake_ack_sent"
 
 export const WAKE_ON_CHANNEL_FAIL =
-  "Couldn't wake your Claw — try again or open the dashboard."
+  "Couldn't wake your Claw - try again or open the dashboard."
 
 export const WAKE_ON_CHANNEL_STILL =
-  "Still waking up — hang tight, I'll reply when I'm online."
+  "Still waking up - hang tight, I'll reply when I'm online."
 
 export type WakeOnChannelDecision =
   | { action: "ack_and_wake" }
@@ -50,7 +50,7 @@ export type WakeOnChannelDecision =
 
 /**
  * Decide how a Telegram inbound should be handled for a workspace status.
- * RUNNING is "untouched" — platform webhook should not own live traffic
+ * RUNNING is "untouched" - platform webhook should not own live traffic
  * (OpenClaw polls); if an update arrives anyway we do not wake.
  */
 export function decideWakeOnChannel(status: string): WakeOnChannelDecision {
@@ -190,7 +190,7 @@ export async function handleTelegramWakeOnChannel(
   const decision = decideWakeOnChannel(workspace.status)
 
   if (decision.action === "running_untouched") {
-    // Live claw owns Telegram via polling — clear stray platform webhook.
+    // Live claw owns Telegram via polling - clear stray platform webhook.
     await deps.deleteWebhook(botToken)
     return { ok: true, handled: "running_untouched" }
   }
@@ -214,7 +214,7 @@ export async function handleTelegramWakeOnChannel(
     return { ok: true, handled: "ack_still_waking" }
   }
 
-  // ack_and_wake — entitlement gate before ack / WAKING flip.
+  // ack_and_wake - entitlement gate before ack / WAKING flip.
   const entitlement = canWakeHibernatedWorkspace(workspace.user)
   if (!entitlement.allowed) {
     const delivered = await deps.sendMessage({
@@ -338,7 +338,7 @@ async function runWakeDeliver(args: {
     })
   }
 
-  // Origin for reply routing. Operator chat.send stamps webchat — gateway
+  // Origin for reply routing. Operator chat.send stamps webchat - gateway
   // channel-deliver cannot send the reply home (RELAY-STRIPS-ORIGIN). Hold the
   // WS for the agent final, then platform-send via the same Bot API as the ack.
   const origin = { channel: "telegram" as const, chatId }

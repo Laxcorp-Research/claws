@@ -30,7 +30,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe("HeartbeatConfig — hydrated template is the selected value", () => {
+describe("HeartbeatConfig - hydrated template is the selected value", () => {
   beforeEach(() => {
     const ser = serializeSchedule({
       mode: "times",
@@ -49,7 +49,7 @@ describe("HeartbeatConfig — hydrated template is the selected value", () => {
     })
   })
 
-  it("selects Custom times — not Off, no template-schedule banner", () => {
+  it("selects Custom times - not Off, no template-schedule banner", () => {
     render(<HeartbeatConfig />)
     expect(screen.queryByText(/Runs on its template schedule/)).toBeNull()
     expect(screen.queryByText(/HEARTBEAT\.md/)).toBeNull()

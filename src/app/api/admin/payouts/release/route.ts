@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // PR-10: daily cron was GET-only and never released — sweep first.
+  // PR-10: daily cron was GET-only and never released - sweep first.
   const released = await releaseEligiblePayouts()
   const batches = await getReleasablePayoutBatches()
   const processing = await getProcessingPayoutBatches()

@@ -22,7 +22,7 @@ describe("parseOpenClawVersion", () => {
   })
 })
 
-describe("compareOpenClawVersions — ordering", () => {
+describe("compareOpenClawVersions - ordering", () => {
   it("ranks a higher date-base as newer", () => {
     expect(compareOpenClawVersions("2026.6.6", "2026.5.22-4")).toBeGreaterThan(0)
     expect(compareOpenClawVersions("2026.5.22-4", "2026.6.6")).toBeLessThan(0)
@@ -55,7 +55,7 @@ describe("compareOpenClawVersions — ordering", () => {
   })
 })
 
-describe("compareOpenClawVersions — FAIL-SAFE (unparseable → 0)", () => {
+describe("compareOpenClawVersions - FAIL-SAFE (unparseable → 0)", () => {
   it("returns exactly 0 when either side is unparseable (both directions)", () => {
     expect(compareOpenClawVersions("latest", "2026.5.22")).toBe(0)
     expect(compareOpenClawVersions("2026.5.22", "latest")).toBe(0)

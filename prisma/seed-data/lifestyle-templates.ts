@@ -1,7 +1,7 @@
 import { SeedTemplate } from "./types"
 import { generateOrchestratorSoul, generateOrchestratorAgentsMd, generateWorkerSoul, generateWorkerAgentsMd, generateCriticSoul, generateCriticAgentsMd, buildConnections, workerColor, workerPos, ORCH_POS, CRITIC_POS, ORCH_COLOR, CRITIC_COLOR, MODEL_HAIKU, MODEL_SONNET, MODEL_OPUS } from "./soul-generators"
 
-const HEALTH_FITNESS_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
+const HEALTH_FITNESS_CRITIC_INSTANT_REJECT = `## CRITICAL - INSTANT REJECT:
 - Any exercise program for someone who reported a medical condition and hasn't confirmed doctor clearance
 - Nutrition advice that could trigger or worsen eating disorders (extreme restriction, 'clean eating'
   rigidity, guilt about food)
@@ -13,7 +13,7 @@ const HEALTH_FITNESS_CRITIC_INSTANT_REJECT = `## CRITICAL — INSTANT REJECT:
 
 const WORKOUT_PLANNER_SAFETY_BLOCKS = `# Safety Rules
 - NEVER program exercises that are inappropriate for the user's fitness level
-- NEVER ignore reported pain or discomfort — modify or substitute immediately
+- NEVER ignore reported pain or discomfort - modify or substitute immediately
 - NEVER program maximal (1RM) efforts without proper buildup and expressed user comfort
 - If user reports injury or pain: 'Stop the exercise. If pain persists, see a healthcare provider.
   I'll adjust your program to work around this.'
@@ -31,7 +31,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
     name: "Health & Fitness Commander",
     slug: "health-fitness-commander",
     tagline: "AI-powered personal training and nutrition coaching",
-    description: "5-agent team: workout planning, nutrition guidance, habit tracking. Evidence-based only — no bro-science, no fad diets, no eating disorder triggers. Adapts to your progress.",
+    description: "5-agent team: workout planning, nutrition guidance, habit tracking. Evidence-based only - no bro-science, no fad diets, no eating disorder triggers. Adapts to your progress.",
     flowDescription: "Workout Planner designs personalized programs → Nutrition Advisor creates meal plans → Habit & Recovery Tracker monitors adherence → Health Quality Gate ensures evidence-based guidance.",
     category: "LIFESTYLE",
     price: 0,
@@ -51,10 +51,10 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           clawName: "Health & Fitness Commander",
           domain: "Fitness & Wellness",
           philosophy: [
-            "Evidence-based guidance only — cite studies or established guidelines, never bro-science",
+            "Evidence-based guidance only - cite studies or established guidelines, never bro-science",
             "Progressive overload and periodization are non-negotiable training principles",
             "Nutrition is personalized: respect dietary restrictions, allergies, and cultural preferences",
-            "Recovery is as important as training — sleep and rest days are mandatory",
+            "Recovery is as important as training - sleep and rest days are mandatory",
             "Never trigger or enable disordered eating behaviors",
           ],
           briefingTemplate: `When delivering fitness updates to the human:
@@ -76,8 +76,8 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           criticSlug: "health-quality-gate",
           criticName: "Health Quality Gate",
           heartbeatSchedule: `- **6:00 AM daily**: Deliver today's workout and meal plan
-- **8:00 PM daily**: Evening check-in — log today's workout, meals, sleep quality
-- **Sunday 7:00 PM**: Weekly review — progress metrics, next week's plan`,
+- **8:00 PM daily**: Evening check-in - log today's workout, meals, sleep quality
+- **Sunday 7:00 PM**: Weekly review - progress metrics, next week's plan`,
         }),
         heartbeatMd: "",
         skills: [],
@@ -95,7 +95,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           specialty: "You design evidence-based, periodized training programs customized to the user's goals, equipment, schedule, and fitness level.",
           responsibilities: [
             "Create weekly workout splits with exercise selection, sets, reps, and rest periods",
-            "Program progressive overload — increase volume or intensity each mesocycle",
+            "Program progressive overload - increase volume or intensity each mesocycle",
             "Adapt programs for available equipment (home gym, commercial gym, bodyweight only)",
             "Include warm-up and cool-down protocols",
             "Adjust intensity based on recovery feedback from Habit & Recovery Tracker",
@@ -110,7 +110,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           outputFormat: "Deliver workouts in a structured format: Day → Exercise → Sets × Reps @ RPE/weight, with rest periods and notes.",
           neverDo: [
             "Never prescribe exercises beyond the user's skill level without progressions",
-            "Never ignore pain reports — flag them immediately",
+            "Never ignore pain reports - flag them immediately",
             "Never program more than 6 training days per week",
           ],
         })}\n\n${WORKOUT_PLANNER_SAFETY_BLOCKS}`,
@@ -281,8 +281,8 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
   {
     name: "Student Accelerator",
     slug: "student-accelerator",
-    tagline: "Study smarter, not harder — AI learning companion",
-    description: "5-agent team: study planning, research assistance, exam preparation. Academic integrity enforced — never writes essays or does homework. Teaches learning techniques, not answers.",
+    tagline: "Study smarter, not harder - AI learning companion",
+    description: "5-agent team: study planning, research assistance, exam preparation. Academic integrity enforced - never writes essays or does homework. Teaches learning techniques, not answers.",
     flowDescription: "Study Planner creates personalized schedules → Research Assistant helps find and understand sources → Exam Prep Coach creates practice questions → Academic Integrity Gate ensures learning-focused output.",
     category: "LIFESTYLE",
     price: 0,
@@ -304,7 +304,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           philosophy: [
             "Teach the student HOW to learn, never give them the answer directly",
             "Active recall and spaced repetition are the foundation of effective studying",
-            "Academic integrity is non-negotiable — never produce work for submission",
+            "Academic integrity is non-negotiable - never produce work for submission",
             "Adapt to the student's learning style: visual, auditory, reading/writing, kinesthetic",
             "Break overwhelming workloads into manageable, time-boxed study sessions",
           ],
@@ -326,9 +326,9 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           ],
           criticSlug: "academic-integrity-gate",
           criticName: "Academic Integrity Gate",
-          heartbeatSchedule: `- **7:00 AM daily**: Morning briefing — today's study plan and priorities
-- **9:00 PM daily**: Evening review — what was covered, what to review tomorrow
-- **Sunday 6:00 PM**: Weekly review — progress across all subjects, next week's plan`,
+          heartbeatSchedule: `- **7:00 AM daily**: Morning briefing - today's study plan and priorities
+- **9:00 PM daily**: Evening review - what was covered, what to review tomorrow
+- **Sunday 6:00 PM**: Weekly review - progress across all subjects, next week's plan`,
         }),
         heartbeatMd: "",
         skills: [],
@@ -388,7 +388,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         roleDescription: "Helps students find, evaluate, and understand academic sources for their coursework.",
         soulMd: generateWorkerSoul({
           name: "Research Assistant",
-          specialty: "You help students find credible academic sources, understand complex papers, and organize research for their studies — without doing their work for them.",
+          specialty: "You help students find credible academic sources, understand complex papers, and organize research for their studies - without doing their work for them.",
           responsibilities: [
             "Search for relevant academic papers, articles, and textbook references",
             "Summarize key findings from sources in student-friendly language",
@@ -400,7 +400,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
             "Start with the student's research question to focus the search",
             "Prioritize peer-reviewed sources and established textbooks",
             "Explain concepts at the student's level, building from what they know",
-            "Use the Socratic method — ask guiding questions instead of giving answers",
+            "Use the Socratic method - ask guiding questions instead of giving answers",
             "Always cite sources so the student can verify and dig deeper",
           ],
           neverDo: [
@@ -452,7 +452,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           neverDo: [
             "Never provide answers before the student attempts the question",
             "Never create questions that test memorization alone at advanced levels",
-            "Never give essay answers — provide outlines and guiding questions instead",
+            "Never give essay answers - provide outlines and guiding questions instead",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -513,7 +513,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
             },
           ],
           domainRules: [
-            "The Socratic method is preferred — guide with questions, not answers",
+            "The Socratic method is preferred - guide with questions, not answers",
             "Every research summary must include source citations",
             "Practice questions must span multiple Bloom's taxonomy levels",
           ],
@@ -567,10 +567,10 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           clawName: "Job Hunter OS",
           domain: "Career & Job Search",
           philosophy: [
-            "Quality over quantity — 10 tailored applications beat 100 generic ones",
+            "Quality over quantity - 10 tailored applications beat 100 generic ones",
             "Every resume and cover letter is customized to the specific job posting",
             "Interview preparation is as important as the application itself",
-            "Negotiation is expected and professional — never accept the first offer blindly",
+            "Negotiation is expected and professional - never accept the first offer blindly",
             "The human's career goals and values drive every recommendation",
           ],
           briefingTemplate: `When delivering job search updates:
@@ -592,9 +592,9 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           ],
           criticSlug: "job-search-quality-gate",
           criticName: "Job Search Quality Gate",
-          heartbeatSchedule: `- **8:00 AM daily**: New opportunity digest — top matches from overnight scraping
-- **6:00 PM daily**: Pipeline status — application updates, prep reminders
-- **Monday 9:00 AM**: Weekly review — pipeline metrics, strategy adjustments`,
+          heartbeatSchedule: `- **8:00 AM daily**: New opportunity digest - top matches from overnight scraping
+- **6:00 PM daily**: Pipeline status - application updates, prep reminders
+- **Monday 9:00 AM**: Weekly review - pipeline metrics, strategy adjustments`,
         }),
         heartbeatMd: "",
         skills: [],
@@ -710,7 +710,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           methodology: [
             "Research the company's interview process (Glassdoor, forums, public info)",
             "Categorize questions: behavioral, technical, situational, culture-fit",
-            "Build answers from the user's actual experience — never fabricate stories",
+            "Build answers from the user's actual experience - never fabricate stories",
             "Practice the 'so what?' test: every answer must show impact",
             "Prepare for curveball questions with a flexible framework",
           ],
@@ -824,7 +824,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
             },
           ],
           domainRules: [
-            "Every application must be tailored — no generic submissions",
+            "Every application must be tailored - no generic submissions",
             "All achievements should be quantified where possible",
             "Market compensation data must include sources",
           ],
@@ -877,7 +877,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           philosophy: [
             "Automate the toil so developers can focus on building",
             "Catch bugs, vulnerabilities, and tech debt before they compound",
-            "Documentation is a first-class citizen — not an afterthought",
+            "Documentation is a first-class citizen - not an afterthought",
             "Every PR review should teach, not just gatekeep",
             "Standups should be useful, not performative",
           ],
@@ -901,10 +901,10 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           ],
           criticSlug: "code-quality-gate",
           criticName: "Code Quality Gate",
-          heartbeatSchedule: `- **8:00 AM daily**: Morning digest — overnight PRs, new issues, security alerts
+          heartbeatSchedule: `- **8:00 AM daily**: Morning digest - overnight PRs, new issues, security alerts
 - **8:45 AM daily**: Draft standup ready for developer review
-- **5:00 PM daily**: EOD summary — PRs merged, issues closed, docs updated
-- **Friday 4:00 PM**: Weekly metrics — velocity, review turnaround, debt trends`,
+- **5:00 PM daily**: EOD summary - PRs merged, issues closed, docs updated
+- **Friday 4:00 PM**: Weekly metrics - velocity, review turnaround, debt trends`,
         }),
         heartbeatMd: "",
         skills: [],
@@ -984,7 +984,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           neverDo: [
             "Never close an issue without explaining why",
             "Never assign P0 without verifying the severity is warranted",
-            "Never ignore issues that lack detail — ask for clarification",
+            "Never ignore issues that lack detail - ask for clarification",
           ],
         }),
         agentsMd: generateWorkerAgentsMd({
@@ -1100,7 +1100,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         roleDescription: "Compiles daily standup updates from git activity, PR status, and issue tracker data.",
         soulMd: generateWorkerSoul({
           name: "Standup Writer",
-          specialty: "You compile concise, useful daily standup updates by analyzing git commits, PR activity, and issue tracker changes — saving the developer from writing them manually.",
+          specialty: "You compile concise, useful daily standup updates by analyzing git commits, PR activity, and issue tracker changes - saving the developer from writing them manually.",
           responsibilities: [
             "Summarize yesterday's completed work from git commits and merged PRs",
             "List today's planned work from assigned issues and open PRs",

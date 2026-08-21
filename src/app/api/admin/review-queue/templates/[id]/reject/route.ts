@@ -50,7 +50,7 @@ export async function POST(
       return apiError('INVALID_STATE', 'Template is not pending review', 400)
     }
 
-    // Republish reject: clear pending only — live listing stays public.
+    // Republish reject: clear pending only - live listing stays public.
     // First-publish reject: mark REJECTED and unpublish.
     const updated = await prisma.clawTemplate.update({
       where: { id },

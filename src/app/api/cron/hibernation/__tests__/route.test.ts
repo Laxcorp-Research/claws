@@ -99,7 +99,7 @@ afterEach(() => {
   else process.env.CRON_SECRET = prevCronSecret
 })
 
-describe("hibernation cron — budget guard (sleep inline)", () => {
+describe("hibernation cron - budget guard (sleep inline)", () => {
   it("forwards the 10s sync timeout and flips skipSync once the 300s cutoff is crossed", async () => {
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([candidate("a"), candidate("b"), candidate("c")])
@@ -175,7 +175,7 @@ describe("hibernation cron — budget guard (sleep inline)", () => {
   })
 })
 
-describe("hibernation cron — wake after() fan-out", () => {
+describe("hibernation cron - wake after() fan-out", () => {
   it("past-due hint schedules wake via after() (not awaited in tick)", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-07-20T12:10:00.000Z"))
@@ -346,7 +346,7 @@ describe("hibernation cron — wake after() fan-out", () => {
   })
 })
 
-describe("hibernation cron — RUNNING+channels → WARM heal", () => {
+describe("hibernation cron - RUNNING+channels → WARM heal", () => {
   it("reconciles lagging RUNNING+hasActiveChannels before sleep predicates", async () => {
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([])
@@ -370,7 +370,7 @@ describe("hibernation cron — RUNNING+channels → WARM heal", () => {
   })
 })
 
-describe("hibernation cron — warmIdle honesty (P1.1)", () => {
+describe("hibernation cron - warmIdle honesty (P1.1)", () => {
   it("null stamp + fresh channelsConnectedAt is protected (predicate requires connected>24h)", async () => {
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([])

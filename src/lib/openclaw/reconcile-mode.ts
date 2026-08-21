@@ -16,7 +16,7 @@ export type ReconcileMode = "detect_only" | "auto_heal"
 /**
  * Resolve the reconciliation mode from the environment. Defaults to detect_only;
  * any value other than "detect_only" | "auto_heal" is a misconfiguration and
- * throws (fail closed — never silently guess at a healing posture).
+ * throws (fail closed - never silently guess at a healing posture).
  */
 export function resolveMode(): ReconcileMode {
   const raw = process.env.ENV_RECONCILE_MODE

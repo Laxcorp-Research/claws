@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// PR #4 Commit 6 — rendering-surface contract for OAUTH_COMPOSIO ToolRow
+// PR #4 Commit 6 - rendering-surface contract for OAUTH_COMPOSIO ToolRow
 // states. Click handlers are stubbed; we assert only that the rendering
 // differs correctly. Click-to-mutation wiring lands in PR #4 Commit 7.
 //
@@ -8,13 +8,13 @@
 //   1. OAuth CONNECTED rows show relative "Connected N days ago" (not
 //      the static category description) when connectedAt is supplied.
 //   2. OAuth CONNECTED rows surface a Revoke button (outline danger) when
-//      onRevoke is supplied — NOT the legacy generic "Disconnect" text
+//      onRevoke is supplied - NOT the legacy generic "Disconnect" text
 //      button. API_KEY rows continue to show "Disconnect".
-//   3. OAuth EXPIRED/REVOKED rows render "Token expired — reconnect
+//   3. OAuth EXPIRED/REVOKED rows render "Token expired - reconnect
 //      required" description, a red StatusDot, and a Reconnect button
 //      replacing Revoke.
 //   4. Non-OAuth (API_KEY) rows are unaffected by the OAuth-specific
-//      rendering — category description + Test + Disconnect as before.
+//      rendering - category description + Test + Disconnect as before.
 
 import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react"
@@ -30,7 +30,7 @@ function fixedDate(daysAgo: number): Date {
   return d
 }
 
-describe("ToolRow — OAUTH_COMPOSIO CONNECTED rendering (PR #4 Commit 6)", () => {
+describe("ToolRow - OAUTH_COMPOSIO CONNECTED rendering (PR #4 Commit 6)", () => {
   it("renders 'Connected N days ago' instead of the static description when connectedAt is supplied", () => {
     render(
       <ToolRow
@@ -137,8 +137,8 @@ describe("ToolRow — OAUTH_COMPOSIO CONNECTED rendering (PR #4 Commit 6)", () =
   })
 })
 
-describe("ToolRow — OAUTH_COMPOSIO EXPIRED / REVOKED rendering (PR #4 Commit 6)", () => {
-  it("EXPIRED: renders red dot, 'Token expired — reconnect required', and Reconnect button", () => {
+describe("ToolRow - OAUTH_COMPOSIO EXPIRED / REVOKED rendering (PR #4 Commit 6)", () => {
+  it("EXPIRED: renders red dot, 'Token expired - reconnect required', and Reconnect button", () => {
     const onReconnect = vi.fn()
     const { container } = render(
       <ToolRow
@@ -149,7 +149,7 @@ describe("ToolRow — OAUTH_COMPOSIO EXPIRED / REVOKED rendering (PR #4 Commit 6
         onReconnect={onReconnect}
       />,
     )
-    expect(screen.getByText("Token expired — reconnect required")).toBeDefined()
+    expect(screen.getByText("Token expired - reconnect required")).toBeDefined()
     expect(screen.getByRole("button", { name: "Reconnect" })).toBeDefined()
     // StatusDot with aria-label for expired state (see status-dot.tsx)
     const dot = within(container).getByRole("img", {
@@ -169,7 +169,7 @@ describe("ToolRow — OAUTH_COMPOSIO EXPIRED / REVOKED rendering (PR #4 Commit 6
         onReconnect={onReconnect}
       />,
     )
-    expect(screen.getByText("Token expired — reconnect required")).toBeDefined()
+    expect(screen.getByText("Token expired - reconnect required")).toBeDefined()
     expect(screen.getByRole("button", { name: "Reconnect" })).toBeDefined()
   })
 
@@ -207,7 +207,7 @@ describe("ToolRow — OAUTH_COMPOSIO EXPIRED / REVOKED rendering (PR #4 Commit 6
   })
 })
 
-describe("ToolRow — Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () => {
+describe("ToolRow - Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () => {
   it("renders an enabled Test button when onTest is supplied and no testDisabledReason", () => {
     const onTest = vi.fn()
     render(
@@ -227,7 +227,7 @@ describe("ToolRow — Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () 
   })
 
   it("renders a disabled Test button with tooltip when testDisabledReason is supplied", async () => {
-    // Guards GH #41 — Asana rows get a clear "not yet" tooltip rather
+    // Guards GH #41 - Asana rows get a clear "not yet" tooltip rather
     // than a working Test button that would 400 at the server.
     const onTest = vi.fn()
     render(
@@ -243,7 +243,7 @@ describe("ToolRow — Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () 
     )
     const btn = screen.getByRole("button", { name: /Test not yet supported for this tool/i })
     expect((btn as HTMLButtonElement).disabled).toBe(true)
-    // DS Tooltip (not native title=) — content available on hover.
+    // DS Tooltip (not native title=) - content available on hover.
     expect(btn.getAttribute("title")).toBeNull()
     // Radix opens on pointermove (mouse); trigger is the Tooltip wrapper div.
     const trigger = btn.closest("[data-state]") ?? btn.parentElement!.parentElement!
@@ -270,7 +270,7 @@ describe("ToolRow — Test button on OAUTH_COMPOSIO CONNECTED rows (PR #5)", () 
   })
 })
 
-describe("ToolRow — API_KEY rows unaffected by OAuth-specific rendering (PR #4 Commit 6 regression guard)", () => {
+describe("ToolRow - API_KEY rows unaffected by OAuth-specific rendering (PR #4 Commit 6 regression guard)", () => {
   it("API_KEY CONNECTED: keeps the static category description even when connectedAt is supplied", () => {
     render(
       <ToolRow
@@ -304,7 +304,7 @@ describe("ToolRow — API_KEY rows unaffected by OAuth-specific rendering (PR #4
   })
 })
 
-describe("ToolRow — tool customization PR-2 affordances", () => {
+describe("ToolRow - tool customization PR-2 affordances", () => {
   it("renders Make optional / Restore / Remove / Dismiss when handlers provided", () => {
     const onDemote = vi.fn()
     const onRestore = vi.fn()
@@ -362,17 +362,17 @@ describe("ToolRow — tool customization PR-2 affordances", () => {
     )
     // Primary right-side action is Retry (outline danger), same as pre-PR #4.
     // Note: API_KEY error also renders an inline underlined "Reconnect" link
-    // inside the error message paragraph — that's pre-existing behavior,
+    // inside the error message paragraph - that's pre-existing behavior,
     // separate from the new OAuth EXPIRED/REVOKED primary Reconnect button,
     // and we're not guarding against it here. The regression we DO care
     // about is: API_KEY error must not start using the new primary
-    // button (`rounded-md bg-[var(--tx)] text-white`) — only OAuth
+    // button (`rounded-md bg-[var(--tx)] text-white`) - only OAuth
     // EXPIRED/REVOKED does.
     const retry = screen.getByRole("button", { name: "Retry" })
     expect(retry).toBeDefined()
     // The new OAuth Reconnect primary button would have background var(--tx)
     // + white text. The inline error-link has `font-semibold underline`
-    // classes — distinct enough to detect the regression.
+    // classes - distinct enough to detect the regression.
     const reconnectButtons = screen.getAllByRole("button", { name: "Reconnect" })
     for (const btn of reconnectButtons) {
       expect(btn.className).toContain("underline") // pre-existing inline link

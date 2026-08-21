@@ -1,4 +1,4 @@
-// PR-2: Activity Wire bridge — receives batched events from the in-container
+// PR-2: Activity Wire bridge - receives batched events from the in-container
 // `claws-activity-reporter` OpenClaw plugin and writes them to `ActivityLog`.
 //
 // Path: POST /api/internal/activity/[workspaceId]
@@ -10,9 +10,9 @@
 // HUMAN_APPROVE / HUMAN_REJECT). We deliberately reject those `actionType`
 // values here so a compromised container secret can't forge them.
 //
-// Allowed actionType subset (8 of 21 — see ALLOWED_ACTION_TYPES below).
+// Allowed actionType subset (8 of 21 - see ALLOWED_ACTION_TYPES below).
 // apiCost: written from metadata.usage.costTotal when present (finite ≥ 0,
-// ≤ $50/event). No pricing-table fallback here — costTotal is the truth
+// ≤ $50/event). No pricing-table fallback here - costTotal is the truth
 // source; client-side models.ts estimation covers historical null rows.
 // Backfill: NOT in this PR. Staging had 11 ActivityLog rows with costTotal
 // in metadata that WOULD be eligible for a later backfill script.
@@ -100,7 +100,7 @@ interface ValidatedEvent {
 
 // PR-4: `detail` holds the full expand-on-click context behind the short
 // `action`. The plugin caps at ~4000; we enforce a hard ceiling so a runaway
-// payload can't bloat a DB row. Optional — most rows have no detail.
+// payload can't bloat a DB row. Optional - most rows have no detail.
 const MAX_DETAIL_LEN = 4096;
 
 function isAllowedActionType(value: unknown): value is ActivityType {
@@ -240,7 +240,7 @@ function toolConnectionToolkitSlug(toolSlug: string): string {
 
 /**
  * DETECT + LEDGER for Anthropic thinking-signature poison (cry-forever crons).
- * Platform cannot rotate live sessions while RUNNING/WARM — ledger flags
+ * Platform cannot rotate live sessions while RUNNING/WARM - ledger flags
  * needsImageHeal for the -11 overlay half. Dedup per sessionKey / 24h.
  */
 export async function ledgerThinkingSignaturePoison(
@@ -288,7 +288,7 @@ export async function ledgerThinkingSignaturePoison(
       agentSlug: event.agentId,
       action: "Thinking signature poison detected",
       detail:
-        "Cron/LLM rejected for invalid thinking signature. Platform cannot rotate live sessions — flagged for -11 image self-heal (strip/retry).",
+        "Cron/LLM rejected for invalid thinking signature. Platform cannot rotate live sessions - flagged for -11 image self-heal (strip/retry).",
       actionType: "SYSTEM",
       timestamp: new Date(),
       metadata: JSON.stringify({
@@ -309,7 +309,7 @@ export async function ledgerThinkingSignaturePoison(
 
 /**
  * PR-B: critical-alert push for a cron job failing repeatedly (same job
- * name, 2+ MESSAGE_SENT failures within CRON_JOB_FAILED_WINDOW_MS —
+ * name, 2+ MESSAGE_SENT failures within CRON_JOB_FAILED_WINDOW_MS -
  * includes the row just written by this request). Fire-and-forget: a push
  * failure must not fail the activity-wire batch.
  */
@@ -467,7 +467,7 @@ export async function POST(
   //
   // The container sends `agentId` as the value of OpenClaw's hook
   // `ctx.agentId`. That value is built by
-  // src/lib/openclaw/generator.ts:toAgentId(name) — which slugifies the
+  // src/lib/openclaw/generator.ts:toAgentId(name) - which slugifies the
   // agent name with the SAME rule we use for Agent.agentSlug (see
   // toAgentId at generator.ts:116-122 vs the agentSlug values set by
   // src/app/api/workspaces/route.ts when creating template agents).
@@ -491,7 +491,7 @@ export async function POST(
   // ─── Insert ──────────────────────────────────────────────────────────
   // One row per event. Could use createMany for slightly better throughput
   // but createMany doesn't return the created rows and we don't need a
-  // transaction for the batch (each event is independent — if one insert
+  // transaction for the batch (each event is independent - if one insert
   // fails, the others are still legitimate writes). Stay with per-event
   // for simplicity; revisit if throughput becomes an issue.
   let processed = 0;
@@ -504,7 +504,7 @@ export async function POST(
     try {
       await prisma.activityLog.create({
         data: {
-          workspaceId, // from URL path — NOT from payload, prevents cross-tenant writes
+          workspaceId, // from URL path - NOT from payload, prevents cross-tenant writes
           agentName: agent?.name ?? null,
           // Persist the slug even when the workspace doesn't have a matching
           // Agent row (the plugin saw an agentId we no longer have). The
@@ -551,7 +551,7 @@ export async function POST(
         });
       }
       // warmIdle honesty: stamp lastChannelMessageAt on external-channel inbound
-      // (CHANNEL_IDS + webchat). Lands here — claws-activity-reporter → this route.
+      // (CHANNEL_IDS + webchat). Lands here - claws-activity-reporter → this route.
       if (isExternalChannelInbound(ev.type, ev.channelId)) {
         try {
           await touchLastChannelMessageAt(workspaceId, ev.timestamp);
@@ -562,7 +562,7 @@ export async function POST(
           });
         }
       }
-      // Lifecycle P2.1: roll nextHeartbeatAt on heartbeat-shaped activity —
+      // Lifecycle P2.1: roll nextHeartbeatAt on heartbeat-shaped activity -
       // typed HEARTBEAT, overlay_boot, or TASK_START with OpenClaw poll marker.
       // Sticky miss: clear heartbeatMissedAt ONLY on beat evidence (not boot).
       const shaped = {

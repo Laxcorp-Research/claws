@@ -21,7 +21,7 @@ export async function GET() {
 
   // Decrypt canary: if existing secrets can't be decrypted under the current
   // ENCRYPTION_MASTER_KEY (key mismatch), this flips health to degraded AND logs
-  // loudly — so a bad/rotated key is obvious at deploy time instead of silently
+  // loudly - so a bad/rotated key is obvious at deploy time instead of silently
   // 500ing every secret operation. runDecryptCanary never throws / never false-
   // alarms on a DB issue (the database check above owns that).
   const enc = await runDecryptCanary()
