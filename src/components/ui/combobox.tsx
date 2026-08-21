@@ -309,7 +309,9 @@ export function Combobox({
                           row.item.value === value && !row.item.disabled && "bg-[var(--bg2)] font-medium text-[var(--tx)]",
                         )}
                       >
-                        <span className="min-w-0 flex-1 truncate">{row.item.label}</span>
+                        <span className="min-w-0 flex-1">
+                          <TruncatedText>{row.item.label}</TruncatedText>
+                        </span>
                         {row.item.tag ? (
                           <span className="shrink-0 rounded-[6px] bg-[var(--bg2)] px-[6px] py-[2px] text-[10px] text-[var(--tx2)]">
                             {row.item.tag}
