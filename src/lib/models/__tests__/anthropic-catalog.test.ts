@@ -7,6 +7,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 import {
+  anthropicSupportsReasoning,
   pickAnthropicFlagshipPins,
   refreshAnthropicCatalog,
   type AnthropicModelInfo,
@@ -32,6 +33,29 @@ describe("pickAnthropicFlagshipPins", () => {
     expect(pins.haiku?.id).toBe("claude-haiku-4-5-20251001")
     expect(pins.sonnet?.id).toBe("claude-sonnet-5")
     expect(pins.opus?.id).toBe("claude-opus-5")
+  })
+})
+
+describe("anthropicSupportsReasoning", () => {
+  it("marks 3.7+ and every 4.x/5 family as reasoning-capable, older as not", () => {
+    // Old shape: version before family.
+    expect(anthropicSupportsReasoning("claude-3-7-sonnet-20250219")).toBe(true)
+    expect(anthropicSupportsReasoning("claude-3-5-haiku-20241022")).toBe(false)
+    expect(anthropicSupportsReasoning("claude-3-sonnet-20240229")).toBe(false)
+    expect(anthropicSupportsReasoning("claude-2.1")).toBe(false)
+    // New shape: family before version.
+    expect(anthropicSupportsReasoning("claude-sonnet-4-6")).toBe(true)
+    expect(anthropicSupportsReasoning("claude-opus-4-5-20251101")).toBe(true)
+    expect(anthropicSupportsReasoning("claude-haiku-4-5-20251001")).toBe(true)
+    expect(anthropicSupportsReasoning("claude-sonnet-5")).toBe(true)
+    expect(anthropicSupportsReasoning("claude-fable-5")).toBe(true)
+    // Prefixed refs parse the same way.
+    expect(anthropicSupportsReasoning("anthropic/claude-opus-5")).toBe(true)
+  })
+
+  it("returns null (unknown) for ids it cannot parse, never false", () => {
+    expect(anthropicSupportsReasoning("gpt-4o")).toBeNull()
+    expect(anthropicSupportsReasoning("claude-next")).toBeNull()
   })
 })
 
@@ -94,6 +118,9 @@ describe("refreshAnthropicCatalog", () => {
     )?.[0]
     expect(opus5?.create?.isPinned).toBe(true)
     expect(opus5?.create?.costPer1kEst).toBeNull()
+    // Reasoning capability persists on both write paths.
+    expect(opus5?.create?.supportsReasoning).toBe(true)
+    expect(opus5?.update?.supportsReasoning).toBe(true)
 
     const opus48 = prismaMock.modelCatalogEntry.upsert.mock.calls.find(
       (c) => c[0]?.where?.modelId === "anthropic/claude-opus-4-8",

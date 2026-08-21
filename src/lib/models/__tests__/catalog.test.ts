@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { PINNED_SEED_MODELS } from "@/lib/models/seed-models"
-import { catalogToLegacyOptions, derivedNativeFromOpenRouter } from "@/lib/models/catalog"
+import {
+  catalogToLegacyOptions,
+  derivedNativeFromOpenRouter,
+  reasoningFromOpenRouter,
+} from "@/lib/models/catalog"
 import { providerFromModelRef } from "@/lib/supported-providers"
 
 describe("model catalog (OpenRouter arc)", () => {
@@ -20,6 +24,7 @@ describe("model catalog (OpenRouter arc)", () => {
         contextLength: 128000,
         pricingSnippet: "est.",
         costPer1kEst: 0.003,
+        supportsReasoning: false,
         isPinned: true,
       },
     ])
@@ -101,6 +106,34 @@ describe("model catalog (OpenRouter arc)", () => {
     expect(src).toContain("derivedNativeFromOpenRouter")
     expect(src).toContain("openrouter-derived")
     expect(src).toContain("stripVendorPrefix")
+  })
+
+  it("reasoningFromOpenRouter reads supported_parameters (founder: per-model effort)", () => {
+    expect(
+      reasoningFromOpenRouter({ id: "x", supported_parameters: ["temperature", "reasoning"] }),
+    ).toBe(true)
+    expect(
+      reasoningFromOpenRouter({ id: "x", supported_parameters: ["include_reasoning"] }),
+    ).toBe(true)
+    expect(
+      reasoningFromOpenRouter({ id: "x", supported_parameters: ["temperature", "top_p"] }),
+    ).toBe(false)
+    // Missing metadata = unknown, never false: the UI must not lock the control.
+    expect(reasoningFromOpenRouter({ id: "x" })).toBeNull()
+  })
+
+  it("MUTATION: supportsReasoning dropped from refresh or seed writes → fails", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/models/catalog.ts"), "utf8")
+    expect(src).toContain("const supportsReasoning = reasoningFromOpenRouter(m)")
+    expect(src).toContain("supportsReasoning: seed.supportsReasoning ?? null")
+    // Both the OpenRouter row and its derived-native twin persist the flag
+    // (create+update each), plus 2 seed writes and the query select.
+    expect((src.match(/supportsReasoning/g) ?? []).length).toBeGreaterThanOrEqual(8)
+    const anthropic = readFileSync(
+      join(process.cwd(), "src/lib/models/anthropic-catalog.ts"),
+      "utf8",
+    )
+    expect(anthropic).toContain("anthropicSupportsReasoning(m.id)")
   })
 
   it("MUTATION: refresh-returns-pins-only restored → fails", () => {
