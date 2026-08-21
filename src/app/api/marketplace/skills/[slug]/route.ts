@@ -2,6 +2,12 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getSessionUser } from "@/lib/api/auth"
+import { deleteSkill } from "@/lib/marketplace/creator-listing-actions"
+import {
+  ownerMaySeeUnpublished,
+  unpublishedListing,
+} from "@/lib/marketplace/creator-listing-lifecycle"
+import { listingActionResponse } from "@/lib/marketplace/listing-action-response"
 import {
   isPubliclyListable,
   ownerMaySeePendingReview,
@@ -68,6 +74,16 @@ export async function GET(
       })
     ) {
       return apiSuccess(pendingReviewListing(skill.name, skill.slug))
+    }
+    if (
+      ownerMaySeeUnpublished({
+        publiclyListable: false,
+        reviewStatus: skill.reviewStatus,
+        viewerUserId,
+        creatorUserId,
+      })
+    ) {
+      return apiSuccess(unpublishedListing(skill.name, skill.slug))
     }
     return ERRORS.NOT_FOUND("skill")
   }
@@ -177,3 +193,14 @@ export async function GET(
     isOwner,
   })
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  const user = await getSessionUser()
+  if (!user) return ERRORS.UNAUTHORIZED()
+  const { slug } = await params
+  return listingActionResponse(await deleteSkill(user.id, slug))
+}
+

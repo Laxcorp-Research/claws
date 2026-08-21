@@ -229,6 +229,23 @@ describe('generateWorkspace', () => {
     expect(result).toHaveProperty('gatewayToken');
   });
 
+  it('buyer-independence: unpublished sold template still generates from workspace snapshot', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({
+        clawTemplate: {
+          name: 'Sold Template',
+          slug: 'sold-template',
+          isPublished: false,
+          reviewStatus: 'APPROVED',
+        },
+      }),
+    )
+    const result = await generateWorkspace('ws-test-1')
+    expect(result).toHaveProperty('openclaw.json')
+    const config = JSON.parse(result['openclaw.json']) as { agents: { list: unknown[] } }
+    expect(config.agents.list).toHaveLength(3)
+  })
+
   it('generates valid JSON for openclaw.json', async () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
