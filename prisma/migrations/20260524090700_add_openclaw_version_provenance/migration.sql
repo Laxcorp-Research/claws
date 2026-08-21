@@ -4,7 +4,7 @@
 -- The image pipeline (.github/workflows/build-openclaw-image.yml +
 -- promote-openclaw-image.yml) POSTs to /api/internal/versions/register and
 -- writes these fields. Existing rows pre-date the pipeline and have NULL for
--- both - no backfill, both columns are nullable. No indexes (these are
+-- both — no backfill, both columns are nullable. No indexes (these are
 -- audit/provenance fields, not query keys).
 
 -- AlterTable

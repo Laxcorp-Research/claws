@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest"
  * The sweep replaced 2115 of them. This walk keeps every swept scope clean.
  * Legitimate legacy-content parsers use the \u2014 escape (e.g. the activity
  * route's paused-worker regex), which this literal-character scan ignores.
+ * prisma/migrations is EXCLUDED: applied migration files are checksummed in
+ * _prisma_migrations and must never be edited, em dashes included.
  */
 const EM_DASH = "\u2014"
 const SCOPES = ["src", "container", "prisma", "docker"]
@@ -15,6 +17,7 @@ const EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|json|md|sql|prisma|yml|yaml|css)$/
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     if (entry === "node_modules" || entry === "generated" || entry === ".next") return []
+    if (entry === "migrations") return []
     const path = join(dir, entry)
     const stat = statSync(path)
     if (stat.isDirectory()) return walk(path)
