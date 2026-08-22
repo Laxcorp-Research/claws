@@ -13,6 +13,7 @@ import {
   serializeSchedule,
   validateSchedule,
 } from "@/lib/schedule"
+import { convertSlotWall } from "@/lib/schedule/wall-time"
 import type { ScheduleMode, ScheduleValue, TimeSlot, Weekday } from "@/lib/schedule/types"
 
 const FREQUENCY_OPTIONS: Array<{ value: ScheduleMode; label: string }> = [
@@ -187,7 +188,7 @@ export function HeartbeatConfig() {
         )}
 
         {value.mode === "times" && (
-          <TimesEditor value={value} onChange={commit} />
+          <TimesEditor value={value} onChange={commit} browserTz={displayTz} />
         )}
 
         {value.mode === "interval" && (
@@ -252,17 +253,30 @@ export function HeartbeatConfig() {
 function TimesEditor({
   value,
   onChange,
+  browserTz,
 }: {
   value: Extract<ScheduleValue, { mode: "times" }>
   onChange: (v: ScheduleValue) => void
+  browserTz: string
 }) {
+  // Users type wall-clock times in THEIR timezone. Stored slots are wall-clock
+  // in value.tz (legacy rows carry the workspace tz), so render converts
+  // stored → browser-local and every commit normalizes browser-local → UTC.
+  // D6: without this, a Dubai founder's typed 19:00 was stored as 19:00Z.
+  const localSlots = value.slots.map((s) => convertSlotWall(s, value.tz, browserTz))
+  const commitLocal = (nextLocal: TimeSlot[]) => {
+    onChange({
+      ...value,
+      tz: "UTC",
+      slots: nextLocal.map((s) => convertSlotWall(s, browserTz, "UTC")),
+    })
+  }
   const updateSlot = (idx: number, patch: Partial<TimeSlot>) => {
-    const slots = value.slots.map((s, i) => (i === idx ? { ...s, ...patch } : s))
-    onChange({ ...value, slots })
+    commitLocal(localSlots.map((s, i) => (i === idx ? { ...s, ...patch } : s)))
   }
   return (
     <div className="flex flex-col gap-[6px]">
-      {value.slots.map((slot, idx) => (
+      {localSlots.map((slot, idx) => (
         <div key={`${idx}-${slot.hour}-${slot.minute}`} className="flex flex-col gap-[4px]">
           <div className="flex items-center gap-[6px]">
             <Input
@@ -281,7 +295,7 @@ function TimesEditor({
               type="button"
               variant="ghost"
               size="xs"
-              onClick={() => onChange({ ...value, slots: value.slots.filter((_, i) => i !== idx) })}
+              onClick={() => commitLocal(localSlots.filter((_, i) => i !== idx))}
             >
               Remove
             </Button>
@@ -312,21 +326,19 @@ function TimesEditor({
           </div>
         </div>
       ))}
-      {value.slots.length < 24 && (
+      {localSlots.length < 24 && (
         <Button
           type="button"
           variant="outline"
           size="xs"
-          onClick={() =>
-            onChange({
-              ...value,
-              slots: [...value.slots, { hour: 8, minute: 0, weekdays: [...WEEKDAYS] }],
-            })
-          }
+          onClick={() => commitLocal([...localSlots, { hour: 8, minute: 0, weekdays: [...WEEKDAYS] }])}
         >
           Add time
         </Button>
       )}
+      <p className="text-[10px] text-[var(--tx3)] leading-[1.4]">
+        Times are in your local timezone ({browserTz}).
+      </p>
     </div>
   )
 }
