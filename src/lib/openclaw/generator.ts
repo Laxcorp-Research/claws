@@ -18,7 +18,7 @@
 // ============================================================================
 
 import { prisma } from '@/lib/db';
-import { decrypt } from '@/lib/encryption';
+import { decrypt, encrypt } from '@/lib/encryption';
 import { generateSecureToken } from '@/lib/crypto';
 import { getToolBySlug } from '@/data/tool-catalog';
 import { getComposio, getComposioUserId } from '@/lib/composio';
@@ -202,6 +202,27 @@ export function toAgentId(name: string): string {
 // Main Generator
 // ---------------------------------------------------------------------------
 
+/**
+ * First-deploy gateway-token claim. Exactly one token may ever be persisted
+ * for a workspace: the conditional updateMany only lands when the column is
+ * still null, and every caller then re-reads and uses whatever is persisted -
+ * so concurrent deploys all bake the SAME token into their container env.
+ */
+export async function claimGatewayToken(workspaceId: string): Promise<string> {
+  const fresh = generateSecureToken();
+  await prisma.workspace.updateMany({
+    where: { id: workspaceId, gatewayToken: null },
+    data: { gatewayToken: encrypt(fresh) },
+  });
+  const row = await prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
+    select: { gatewayToken: true },
+  });
+  // Null only if a concurrent writer cleared the column between the claim and
+  // the re-read; fall back to our mint so generation still succeeds.
+  return row.gatewayToken ? decrypt(row.gatewayToken) : fresh;
+}
+
 export async function generateWorkspace(workspaceId: string): Promise<GeneratedWorkspace> {
   // 1. Load full workspace graph from DB
   const workspace = await prisma.workspace.findUniqueOrThrow({
@@ -287,9 +308,19 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // breaks paired dashboard-chat devices. Explicit token rotation can be a
   // future operator action. A workspace that already drifted self-heals on its
   // next redeploy because the DB token is baked back into the container env.
+  //
+  // First deploy mints via an ATOMIC claim, not a bare read-then-mint. D6
+  // incident 2026-08-22 (ws cmt14iixu000004lcaeqvea04): two deploys started
+  // 13s apart, both read gatewayToken=null, each minted a DIFFERENT token,
+  // and the losing token ended up in the running container while the winner
+  // landed in the DB - every health probe then 401'd (bad-token) and the
+  // dashboard showed "running an older configuration" on a fresh deploy.
+  // The claim guarantees all concurrent deploys converge on ONE persisted
+  // token. MUTATION: restoring the bare generateSecureToken() mint revives
+  // the split-brain race.
   const gatewayToken = workspace.gatewayToken
     ? decrypt(workspace.gatewayToken)
-    : generateSecureToken();
+    : await claimGatewayToken(workspaceId);
 
   // 4. Resolve heartbeat once. Every mode emits cron/jobs.json (croner-shaped)
   //    so preview and runtime share one parser. When Builder frequency is

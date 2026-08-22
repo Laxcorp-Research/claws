@@ -414,6 +414,40 @@ describe('generateWorkspace', () => {
     expect(generateSecureToken).toHaveBeenCalledTimes(1);
   });
 
+  it('first deploy claims the token atomically (conditional write on gatewayToken=null)', async () => {
+    await generateWorkspace('ws-test-1');
+
+    // D6 2026-08-22: two concurrent first deploys each minted a different
+    // token via a bare read-then-mint; DB and container ended up with
+    // different tokens and every health probe 401'd (bad-token).
+    // MUTATION: restoring the bare mint removes this write entirely.
+    expect(prismaMock.workspace.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ws-test-1', gatewayToken: null },
+      data: { gatewayToken: 'encrypted-mock-gateway-token-abc123' },
+    });
+  });
+
+  it('losing the first-deploy race adopts the winner token (never its own mint)', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(buildMockWorkspace()) // workspace graph: token null
+      .mockResolvedValueOnce({ gatewayToken: 'enc-winner-token' } as never); // claim re-read
+
+    const result = await generateWorkspace('ws-test-1');
+
+    expect(result.gatewayToken).toBe('decrypted-enc-winner-token');
+    expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=decrypted-enc-winner-token');
+  });
+
+  it('existing token skips the claim write entirely', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({ gatewayToken: 'enc-existing-gateway-token' }),
+    );
+
+    await generateWorkspace('ws-test-1');
+
+    expect(prismaMock.workspace.updateMany).not.toHaveBeenCalled();
+  });
+
   it('includes skill files for agents with assigned skills', async () => {
     const result = await generateWorkspace('ws-test-1');
 
