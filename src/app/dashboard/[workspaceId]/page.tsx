@@ -829,7 +829,11 @@ export default function DashboardPage() {
         content: isConfigDrift ? (
           <>
             <p className="font-medium">Agent is running an older configuration</p>
-            <p className="mt-0.5 opacity-80">Redeploy to update it to the latest runtime.</p>
+            {/* D6: the detector behind this branch is bad-token / plugin-not-loaded
+                - config/env drift, NOT runtime-version staleness. Saying "latest
+                runtime" here misled a founder into reading a fresh deploy as a
+                stale image. Keep the copy about configuration. */}
+            <p className="mt-0.5 opacity-80">Redeploy to sync it with your latest configuration.</p>
           </>
         ) : (
           <>

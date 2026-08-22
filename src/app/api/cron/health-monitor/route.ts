@@ -575,6 +575,8 @@ export async function GET(req: NextRequest) {
         hasHeartbeatEvidenceInWindow: hasEvidence,
         currentFlag: ws.heartbeatMissedAt,
         nowMs: startedAt,
+        // D6: never flag expected fires that predate the container's config.
+        scheduleActivatedAt: ws.deployments?.[0]?.completedAt ?? null,
       })
       // First transition into miss → ActivityLog ERROR (Watchtower signal).
       if (
@@ -779,6 +781,12 @@ export async function GET(req: NextRequest) {
         containerState: {
           select: { heartbeatCronExpressions: true },
         },
+        deployments: {
+          where: { completedAt: { not: null } },
+          orderBy: { completedAt: "desc" },
+          select: { completedAt: true },
+          take: 1,
+        },
       },
     })
 
@@ -836,6 +844,9 @@ export async function GET(req: NextRequest) {
         currentFlag: ws.heartbeatMissedAt,
         nowMs: startedAt,
         graceMs,
+        // D6: deploy boots always postdate a back-projected expected fire -
+        // without this guard every fresh deploy of a past-today cron flags.
+        scheduleActivatedAt: ws.deployments?.[0]?.completedAt ?? null,
       })
 
       if (heartbeatMissedAt === undefined) continue

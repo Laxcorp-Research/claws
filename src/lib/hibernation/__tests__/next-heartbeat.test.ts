@@ -217,6 +217,97 @@ describe("decideHeartbeatMissed - Watchtower window", () => {
   })
 })
 
+describe("decideHeartbeatMissed - activation guard (D6 2026-08-22 incident)", () => {
+  // Exact incident shape: first-ever deploy completed 14:44:47Z carrying
+  // "0 19 * * *"; health-monitor pass one second later back-projected
+  // expectedAt=Aug-21T19:00Z (20h BEFORE any container existed) and flagged.
+  const cron = JSON.stringify([
+    { schedule: { kind: "cron", expr: "0 19 * * *", tz: "UTC" } },
+  ])
+  const deployCompletedAt = new Date("2026-08-22T14:44:47.000Z")
+  const monitorNowMs = new Date("2026-08-22T14:44:48.000Z").getTime()
+
+  it("expected fire predating deployment completedAt → no instant miss (undefined)", () => {
+    const expected = lastExpectedCronFire(cron, new Date(monitorNowMs))
+    expect(expected!.toISOString()).toBe("2026-08-21T19:00:00.000Z")
+
+    const result = decideHeartbeatMissed({
+      containerPhase: "RUNNING",
+      heartbeatCronExpressions: cron,
+      hasHeartbeatEvidenceInWindow: false,
+      currentFlag: null,
+      nowMs: monitorNowMs,
+      scheduleActivatedAt: deployCompletedAt,
+    })
+    expect(result).toBeUndefined()
+  })
+
+  it("MUTATION: guard dropped (no scheduleActivatedAt) → the incident's false flag returns", () => {
+    const result = decideHeartbeatMissed({
+      containerPhase: "RUNNING",
+      heartbeatCronExpressions: cron,
+      hasHeartbeatEvidenceInWindow: false,
+      currentFlag: null,
+      nowMs: monitorNowMs,
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
+  it("expected fire after activation with no evidence past grace → still flags (real misses kept)", () => {
+    // Tonight's fire 19:00Z came and went with no beat: 19:15Z > 19:00 + 10m grace.
+    const nowMs = new Date("2026-08-22T19:15:00.000Z").getTime()
+    const result = decideHeartbeatMissed({
+      containerPhase: "RUNNING",
+      heartbeatCronExpressions: cron,
+      hasHeartbeatEvidenceInWindow: false,
+      currentFlag: null,
+      nowMs,
+      scheduleActivatedAt: deployCompletedAt,
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
+  it("guard no-ops sticky flags (never clears via pre-activation window)", () => {
+    const sticky = new Date("2026-08-22T14:44:48.000Z")
+    const result = decideHeartbeatMissed({
+      containerPhase: "RUNNING",
+      heartbeatCronExpressions: cron,
+      hasHeartbeatEvidenceInWindow: false,
+      currentFlag: sticky,
+      nowMs: monitorNowMs,
+      scheduleActivatedAt: deployCompletedAt,
+    })
+    expect(result).toBeUndefined()
+  })
+})
+
+describe("arming never targets the past (authoring a time earlier than now)", () => {
+  it("cron authored at a time already past today arms tomorrow's occurrence", () => {
+    // Authored "0 13 * * *" at 14:44Z (13:00Z already gone) → next = tomorrow 13:00Z.
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 13 * * *", tz: "UTC" } },
+    ])
+    const next = computeNextHeartbeatAt({
+      now: new Date("2026-08-22T14:44:47.000Z"),
+      heartbeatCronExpressions: cron,
+      heartbeatIntervalMs: null,
+    })
+    expect(next!.toISOString()).toBe("2026-08-23T13:00:00.000Z")
+  })
+
+  it("cron authored at a time still ahead today arms today's occurrence (D6: 19:00Z)", () => {
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 19 * * *", tz: "UTC" } },
+    ])
+    const next = computeNextHeartbeatAt({
+      now: new Date("2026-08-22T14:44:47.000Z"),
+      heartbeatCronExpressions: cron,
+      heartbeatIntervalMs: null,
+    })
+    expect(next!.toISOString()).toBe("2026-08-22T19:00:00.000Z")
+  })
+})
+
 describe("isHeartbeatShapedActivity", () => {
   it("matches HEARTBEAT and overlay_boot TASK_START", () => {
     expect(isHeartbeatShapedActivity({ type: "HEARTBEAT" })).toBe(true)
@@ -454,6 +545,33 @@ describe("decideWokeLateNeverBeat - post-cron boot without beat", () => {
   it("grace′ is 5 minutes (exceeds catch-up fire time)", () => {
     expect(WOKE_LATE_CATCHUP_GRACE_MS).toBe(5 * 60 * 1000)
     expect(WOKE_LATE_CATCHUP_GRACE_MS).toBeLessThan(HEARTBEAT_MISS_GRACE_MS)
+  })
+
+  it("activation guard: expected fire predating deployment completedAt → no flag (fresh-deploy boot is not a late wake)", () => {
+    // D6 shape: deploy boot 14:44:33Z postdates the back-projected Aug-21T19:00Z
+    // occurrence, so without the guard this detector flags every fresh deploy
+    // of a cron whose occurrence already passed.
+    const backProjected = new Date("2026-08-21T19:00:00.000Z")
+    const deployBoot = new Date("2026-08-22T14:44:33.000Z")
+    const guarded = decideWokeLateNeverBeat({
+      expectedAt: backProjected,
+      bootAt: deployBoot,
+      hasBeatEvidenceByDeadline: false,
+      currentFlag: null,
+      nowMs: deployBoot.getTime() + WOKE_LATE_CATCHUP_GRACE_MS,
+      scheduleActivatedAt: new Date("2026-08-22T14:44:47.000Z"),
+    })
+    expect(guarded).toBeUndefined()
+
+    // MUTATION: guard dropped → the same shape flags.
+    const unguarded = decideWokeLateNeverBeat({
+      expectedAt: backProjected,
+      bootAt: deployBoot,
+      hasBeatEvidenceByDeadline: false,
+      currentFlag: null,
+      nowMs: deployBoot.getTime() + WOKE_LATE_CATCHUP_GRACE_MS,
+    })
+    expect(unguarded).toBeInstanceOf(Date)
   })
 })
 

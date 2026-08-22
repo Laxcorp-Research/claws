@@ -83,6 +83,7 @@ function activityPayload(opts: {
   stateSyncStaleDetectedAt?: string | null;
   stateSyncNearCapActive?: boolean;
   healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
+  lastHealthReason?: string | null;
   lastHealthCheck?: string | null;
   expiredTools?: Array<{ name: string; status: "ERROR" | "EXPIRED" | "REVOKED"; connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "CHANNEL_NATIVE" }>;
   spend?: { thisMonth: number; limit: number; percent: number };
@@ -93,6 +94,7 @@ function activityPayload(opts: {
     stateSyncStaleDetectedAt = null,
     stateSyncNearCapActive = false,
     healthStatus = "HEALTHY",
+    lastHealthReason = null,
     lastHealthCheck = null,
     expiredTools = [],
     spend = { thisMonth: 0, limit: 50, percent: 0 },
@@ -106,7 +108,7 @@ function activityPayload(opts: {
         status: "RUNNING",
         healthStatus,
         lastHealthCheck,
-        lastHealthReason: null,
+        lastHealthReason,
         mcpSessionHealthStatus,
         mcpSessionCheckedAt: mcpSessionHealthStatus ? "2026-07-04T21:20:00.000Z" : null,
         mcpSessionLastError: mcpSessionHealthStatus === "DEAD" ? "session not found" : null,
@@ -177,6 +179,8 @@ function mockFetch(opts: {
   activitySilenceDetectedAt?: string | null;
   stateSyncStaleDetectedAt?: string | null;
   stateSyncNearCapActive?: boolean;
+  healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
+  lastHealthReason?: string | null;
   apiKeySource?: string;
   trialUsed?: boolean;
   trialEndsAt?: string | null;
@@ -188,6 +192,8 @@ function mockFetch(opts: {
     activitySilenceDetectedAt: opts.activitySilenceDetectedAt ?? null,
     stateSyncStaleDetectedAt: opts.stateSyncStaleDetectedAt ?? null,
     stateSyncNearCapActive: opts.stateSyncNearCapActive ?? false,
+    healthStatus: opts.healthStatus ?? ("HEALTHY" as const),
+    lastHealthReason: opts.lastHealthReason ?? null,
   }
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -266,6 +272,29 @@ describe("DashboardPage MCP session banner", () => {
 
     expect(await screen.findByText(/Free trial - \d+ days? remaining/)).toBeDefined()
     expect(screen.getByText("Subscribe to keep your Claws running after the trial ends.")).toBeDefined()
+  })
+
+  it("config-drift banner (bad-token) talks configuration, never 'latest runtime'", async () => {
+    // D6 2026-08-22: a racing double deploy left the container with a stale
+    // gateway token; the banner's old sub-copy "Redeploy to update it to the
+    // latest runtime" misread as image staleness on a fresh deploy.
+    mockFetch({ healthStatus: "DEGRADED", lastHealthReason: "bad-token" })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("Agent is running an older configuration")).toBeDefined()
+    expect(screen.getByText("Redeploy to sync it with your latest configuration.")).toBeDefined()
+    // MUTATION: restoring the runtime phrasing fails here.
+    expect(screen.queryByText(/latest runtime/i)).toBeNull()
+  })
+
+  it("degraded for non-drift reasons (plugin-errors) keeps the issues copy, not the drift banner", async () => {
+    mockFetch({ healthStatus: "DEGRADED", lastHealthReason: "plugin-errors" })
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("Agent is running but reports issues")).toBeDefined()
+    expect(screen.queryByText("Agent is running an older configuration")).toBeNull()
   })
 
   it("renders the activity silence warning and reuses the Force-restart action", async () => {

@@ -1012,6 +1012,60 @@ describe("GET end-to-end", () => {
     }
   });
 
+  it("D6 regression: fresh deploy of a past-today cron does NOT instant-flag Heartbeat missed", async () => {
+    // 2026-08-22 incident: first deploy completed 14:44:47Z carrying
+    // "0 19 * * *"; the 14:44:48Z monitor pass back-projected
+    // expectedAt=Aug-21T19:00Z and flagged a miss for a window in which no
+    // container existed. The activation guard must suppress it.
+    const cron = JSON.stringify([
+      { schedule: { kind: "cron", expr: "0 19 * * *", tz: "UTC" } },
+    ]);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-22T14:44:48.000Z"));
+    try {
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown; containerState?: unknown } }) => {
+          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (args?.where && "containerState" in args.where && !("status" in args.where)) {
+            return Promise.resolve([]);
+          }
+          return Promise.resolve([
+            makeWs({
+              id: "ws-fresh-deploy",
+              heartbeatMissedAt: null,
+              containerState: {
+                runtimeStateUpdatedAt: new Date(),
+                containerPhase: "RUNNING",
+                heartbeatCronExpressions: cron,
+              },
+              deployments: [{ completedAt: new Date("2026-08-22T14:44:47.000Z") }],
+            }),
+          ]);
+        },
+      );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+
+      const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      // MUTATION: route stops passing deployments[0].completedAt into
+      // decideHeartbeatMissed → heartbeatMissedAt lands in this write and the
+      // ERROR row below appears.
+      expect(update.data).not.toHaveProperty("heartbeatMissedAt");
+      expect(prismaMock.activityLog.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: "Heartbeat missed" }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("P2.1 missed-wake: HIBERNATED past nextHeartbeatAt + no boot → flag + ERROR", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-20T08:20:00.000Z"));

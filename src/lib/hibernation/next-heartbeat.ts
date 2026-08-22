@@ -190,6 +190,14 @@ export function lastExpectedCronFire(
  * Window: [expected, expected+grace]. Miss when now ≥ expected+grace and
  * no HEARTBEAT evidence in that window (P2.3: ≤ boundary so grace-edge flags).
  * MUTATION: grace=0 → false-positive when evidence arrives slightly after expected.
+ *
+ * `scheduleActivatedAt` (latest deployment completedAt): expected fires that
+ * predate it are back-projections onto a schedule the container never carried.
+ * D6 incident 2026-08-22: first-ever deploy at 14:44:47Z with cron "0 19 * * *"
+ * flagged expectedAt=Aug-21T19:00Z one second later - a window 20h before the
+ * workspace was first deployed. No container existed to beat; never flag those.
+ * MUTATION: drop the guard → every first deploy of a daily cron whose
+ * occurrence already passed today instant-flags "Heartbeat missed".
  */
 export function decideHeartbeatMissed(args: {
   containerPhase: string
@@ -198,6 +206,7 @@ export function decideHeartbeatMissed(args: {
   currentFlag: Date | null
   nowMs: number
   graceMs?: number
+  scheduleActivatedAt?: Date | null
 }): Date | null | undefined {
   // Sticky miss: clear ONLY on beat evidence in-window. Every other early exit
   // is a no-op (undefined) - never clearIfSet during grace / wrong phase / etc.
@@ -211,6 +220,13 @@ export function decideHeartbeatMissed(args: {
     new Date(args.nowMs),
   )
   if (!expected) return undefined
+
+  if (
+    args.scheduleActivatedAt &&
+    expected.getTime() < args.scheduleActivatedAt.getTime()
+  ) {
+    return undefined
+  }
 
   const graceMs = args.graceMs ?? HEARTBEAT_MISS_GRACE_MS
   const windowEnd = expected.getTime() + graceMs
@@ -291,8 +307,18 @@ export function decideWokeLateNeverBeat(args: {
   currentFlag: Date | null
   nowMs: number
   graceMs?: number
+  /** Same activation guard as decideHeartbeatMissed: a deploy boot always
+   * postdates a back-projected expected fire, so this detector flags fresh
+   * deploys too without it. */
+  scheduleActivatedAt?: Date | null
 }): Date | undefined {
   if (!args.expectedAt || !args.bootAt) return undefined
+  if (
+    args.scheduleActivatedAt &&
+    args.expectedAt.getTime() < args.scheduleActivatedAt.getTime()
+  ) {
+    return undefined
+  }
 
   const expectedMs = args.expectedAt.getTime()
   const bootMs = args.bootAt.getTime()
