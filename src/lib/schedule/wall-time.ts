@@ -97,3 +97,30 @@ export function convertSlotWall(
   ].sort((a, b) => a - b)
   return { hour: conv.hour, minute: conv.minute, weekdays }
 }
+
+/** True when Intl recognizes the string as an IANA timezone. */
+export function isValidIanaTimeZone(tz: string): boolean {
+  if (!tz || !tz.trim()) return false
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Short ICU zone label for slot receipts: "GMT+4" (Dubai - CLDR English has
+ * no GST abbreviation), "PST"/"PDT" (DST-aware at `ref`), "UTC". Falls back
+ * to the IANA id for zones Intl rejects.
+ */
+export function tzShortLabel(tz: string, ref: Date = new Date()): string {
+  try {
+    const part = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" })
+      .formatToParts(ref)
+      .find((p) => p.type === "timeZoneName")
+    return part?.value ?? tz
+  } catch {
+    return tz
+  }
+}

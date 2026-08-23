@@ -1,4 +1,5 @@
 import type { ScheduleValue, Weekday } from "@/lib/schedule/types"
+import { isValidIanaTimeZone } from "@/lib/schedule/wall-time"
 
 const TIME_RE = /^\d{1,2}:\d{2}$/
 
@@ -48,6 +49,9 @@ function payloadFor(
       return {
         slots: value.slots,
         tz: value.tz,
+        ...(value.authoredTz && isValidIanaTimeZone(value.authoredTz)
+          ? { authoredTz: value.authoredTz }
+          : {}),
         ...(value.extraExpressions?.length
           ? { extraExpressions: value.extraExpressions }
           : {}),
@@ -102,6 +106,12 @@ export function deserializeSchedule(
   if (frequency === "times") {
     if (!Array.isArray(raw.slots)) return null
     const tz = typeof raw.tz === "string" && raw.tz.length > 0 ? raw.tz : "UTC"
+    // Invalid pins are dropped rather than propagated: display code feeds
+    // authoredTz straight into Intl, which throws on junk zones.
+    const authoredTz =
+      typeof raw.authoredTz === "string" && isValidIanaTimeZone(raw.authoredTz)
+        ? raw.authoredTz
+        : undefined
     const slots = raw.slots.flatMap((s) => {
       if (!isRecord(s)) return []
       const hour = s.hour
@@ -115,7 +125,13 @@ export function deserializeSchedule(
         : [0, 1, 2, 3, 4, 5, 6]
       return [{ hour, minute, weekdays }]
     })
-    return { mode: "times", slots, tz, extraExpressions: extraFrom(raw) }
+    return {
+      mode: "times",
+      slots,
+      tz,
+      ...(authoredTz ? { authoredTz } : {}),
+      extraExpressions: extraFrom(raw),
+    }
   }
   if (frequency === "interval") {
     const n = raw.everyMinutes

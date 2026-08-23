@@ -40,7 +40,10 @@ export type ScheduleValue =
   | { mode: "every_12h" }
   | { mode: "daily"; time: string }
   | { mode: "weekday"; time: string }
-  | { mode: "times"; slots: TimeSlot[]; tz: string; extraExpressions?: string[] }
+  // times: slots are wall-clock in `tz` (UTC for editor-authored values).
+  // `authoredTz` pins the timezone the user typed the times in - display-only
+  // metadata (emit ignores it), so a traveling user's schedule never shifts.
+  | { mode: "times"; slots: TimeSlot[]; tz: string; authoredTz?: string; extraExpressions?: string[] }
   | { mode: "interval"; everyMinutes: number; extraExpressions?: string[] }
   | { mode: "monthly"; day: number | "last"; hour: number; minute: number; tz: string; extraExpressions?: string[] }
   | { mode: "cron"; expressions: string[]; tz: string }
