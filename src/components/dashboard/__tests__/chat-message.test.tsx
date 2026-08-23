@@ -8,8 +8,8 @@
 // MUTATION: change ChatMessage's body to `detail` (alone) and the first test
 // renders an empty bubble → getByText("Reply failed") throws → fails.
 
-import { describe, it, expect, afterEach } from "vitest"
-import { render, screen, cleanup } from "@testing-library/react"
+import { describe, it, expect, afterEach, vi } from "vitest"
+import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { ChatMessage } from "@/components/dashboard/chat-message"
 
 afterEach(() => cleanup())
@@ -108,6 +108,43 @@ describe("ChatMessage - never-blank bubble (detail || action)", () => {
     expect(note.className).not.toContain("var(--err)")
     // And it is NOT the send-failure note.
     expect(screen.queryByText("Failed to send")).toBeNull()
+  })
+
+  // D6 2026-08-23 webchat-silent polish: the timeout state is retryable.
+  it("renders a Retry button on 'No response' when onRetry is provided; clicking fires it", () => {
+    const onRetry = vi.fn()
+    render(
+      <ChatMessage
+        sender="user"
+        senderName="You"
+        timestamp="08:23 UTC"
+        detail="hello"
+        action="hello"
+        status="sent"
+        noResponse
+        onRetry={onRetry}
+      />,
+    )
+    expect(screen.getByText("No response")).toBeTruthy()
+    const retry = screen.getByRole("button", { name: "Retry" })
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it("'No response' without onRetry renders no Retry button (graceful degradation)", () => {
+    render(
+      <ChatMessage
+        sender="user"
+        senderName="You"
+        timestamp="08:23 UTC"
+        detail="hello"
+        action="hello"
+        status="sent"
+        noResponse
+      />,
+    )
+    expect(screen.getByText("No response")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
   })
 
   it("does NOT render 'No response' when the send itself failed (mutually exclusive)", () => {

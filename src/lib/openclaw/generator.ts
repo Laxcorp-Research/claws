@@ -239,6 +239,11 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
       toolConnections: true,
       customToolConnections: { orderBy: { createdAt: 'asc' } },
       clawTemplate: true,
+      // D6 2026-08-23 webchat-silent: the setup wizard's per-workspace "Add
+      // key" writes WorkspaceApiKey rows and the deploy gate counts them as
+      // an auth path - so the generator MUST bake them too, or the container
+      // fails every turn with 'No API key found for provider ...'.
+      apiKeyOverrides: true,
       user: {
         include: {
           apiKeys: true,
@@ -1192,25 +1197,33 @@ function generateEnvFile(
   // and baking the user's BYOK key here would let OpenClaw bypass the proxy
   // if baseUrl were ever missing. credit-proxy.mjs forwards upstream with
   // its own MASTER_KEY (x-api-key), ignoring inbound Authorization.
+  //
+  // D6 2026-08-23 webchat-silent: OPENAI / GOOGLE / OPENROUTER resolve
+  // override-first (WorkspaceApiKey beats UserApiKey), mirroring the api-keys
+  // route's effectiveSource - the deploy gate unlocked these models from the
+  // override row, so the container must receive the same key. ANTHROPIC stays
+  // user-key-only here on purpose: its key also rides deriveContainerEnv
+  // (Railway env + reconciliation-cron fingerprint + credit proxy), and
+  // moving only the .env half would let the two surfaces serve different
+  // keys. Widening Anthropic to overrides must change both surfaces at once.
   const creditMode = getApiKeySource(workspace, workspace.user) === 'PLATFORM_CREDIT';
-  for (const apiKey of workspace.user.apiKeys) {
-    const decrypted = decrypt(apiKey.encryptedKey);
-    switch (apiKey.provider) {
-      case 'ANTHROPIC':
-        if (!creditMode) {
-          lines.push(`ANTHROPIC_API_KEY=${decrypted}`);
-        }
-        break;
-      case 'OPENAI':
-        lines.push(`OPENAI_API_KEY=${decrypted}`);
-        break;
-      case 'GOOGLE':
-        lines.push(`GEMINI_API_KEY=${decrypted}`);
-        break;
-      case 'OPENROUTER':
-        // Bundled OpenClaw provider - baseUrl defaults to https://openrouter.ai/api/v1
-        lines.push(`OPENROUTER_API_KEY=${decrypted}`);
-        break;
+  const anthropicUserKey = workspace.user.apiKeys.find((k) => k.provider === 'ANTHROPIC');
+  if (anthropicUserKey && !creditMode) {
+    lines.push(`ANTHROPIC_API_KEY=${decrypt(anthropicUserKey.encryptedKey)}`);
+  }
+  const OVERRIDABLE_PROVIDER_ENV = {
+    OPENAI: 'OPENAI_API_KEY',
+    GOOGLE: 'GEMINI_API_KEY',
+    // Bundled OpenClaw provider - baseUrl defaults to https://openrouter.ai/api/v1
+    OPENROUTER: 'OPENROUTER_API_KEY',
+  } as const;
+  const overrides = workspace.apiKeyOverrides ?? [];
+  for (const [provider, envName] of Object.entries(OVERRIDABLE_PROVIDER_ENV)) {
+    const effective =
+      overrides.find((k) => k.provider === provider) ??
+      workspace.user.apiKeys.find((k) => k.provider === provider);
+    if (effective) {
+      lines.push(`${envName}=${decrypt(effective.encryptedKey)}`);
     }
   }
   lines.push('');
@@ -2337,6 +2350,9 @@ type WorkspaceWithRelations = {
   customToolConnections?: CustomToolConnectionRecord[];
   channelConfig: ChannelConfigMap;
   clawTemplate: { name: string; slug: string } | null;
+  /** WorkspaceApiKey rows (setup wizard "Add key" overrides). Optional so
+   *  older fixtures omit it; generateEnvFile treats absent as []. */
+  apiKeyOverrides?: { provider: string; encryptedKey: string }[];
   user: {
     /** Needed for Composio user id (`claws_${user.id}`). Populated by the
      *  top-level `user: { include: { apiKeys: true } }` in generateWorkspace. */
