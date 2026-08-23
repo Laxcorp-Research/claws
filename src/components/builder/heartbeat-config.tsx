@@ -13,7 +13,7 @@ import {
   serializeSchedule,
   validateSchedule,
 } from "@/lib/schedule"
-import { convertSlotWall } from "@/lib/schedule/wall-time"
+import { convertSlotWall, convertWallTime, tzShortLabel } from "@/lib/schedule/wall-time"
 import type { ScheduleMode, ScheduleValue, TimeSlot, Weekday } from "@/lib/schedule/types"
 
 const FREQUENCY_OPTIONS: Array<{ value: ScheduleMode; label: string }> = [
@@ -55,7 +55,12 @@ function parseTimeInput(raw: string): { hour: number; minute: number } | null {
   return { hour, minute }
 }
 
-function defaultValue(mode: ScheduleMode, tz: string, prev: ScheduleValue): ScheduleValue {
+function defaultValue(
+  mode: ScheduleMode,
+  tz: string,
+  prev: ScheduleValue,
+  browserTz: string,
+): ScheduleValue {
   switch (mode) {
     case "off":
       return { mode: "off" }
@@ -78,29 +83,36 @@ function defaultValue(mode: ScheduleMode, tz: string, prev: ScheduleValue): Sche
             : undefined
       if (prev.mode === "times") return prev
       if (prev.mode === "daily" || prev.mode === "weekday") {
+        // Daily/weekday times are wall-clock in the workspace tz; carry the
+        // instant over by converting that wall time to UTC storage.
         const t = parseTimeInput(prev.time) ?? { hour: 8, minute: 0 }
-        return {
-          mode: "times",
+        const carried = convertSlotWall(
+          { ...t, weekdays: prev.mode === "weekday" ? [...WEEKDAYS] : [...ALL_DAYS] },
           tz,
-          slots: [{ ...t, weekdays: prev.mode === "weekday" ? [...WEEKDAYS] : [...ALL_DAYS] }],
-          extraExpressions: extras,
-        }
+          "UTC",
+        )
+        return { mode: "times", tz: "UTC", authoredTz: browserTz, slots: [carried], extraExpressions: extras }
       }
       return {
         mode: "times",
-        tz,
-        slots: [{ hour: 8, minute: 0, weekdays: [...WEEKDAYS] }],
+        tz: "UTC",
+        authoredTz: browserTz,
+        slots: [convertSlotWall({ hour: 8, minute: 0, weekdays: [...WEEKDAYS] }, browserTz, "UTC")],
         extraExpressions: extras,
       }
     }
     case "interval":
       return { mode: "interval", everyMinutes: 60 }
     case "monthly":
-      return { mode: "monthly", day: 1, hour: 9, minute: 0, tz }
+      // Pinned to the authoring (browser) tz: converting a monthly wall time
+      // to UTC can cross midnight and shift the day-of-month ("last day at
+      // 01:00" has no UTC cron equivalent), so monthly stores the local wall
+      // time and fires in that zone. The receipt shows the UTC pair.
+      return { mode: "monthly", day: 1, hour: 9, minute: 0, tz: browserTz }
     case "cron":
       return {
         mode: "cron",
-        tz,
+        tz: "UTC",
         expressions: prev.mode === "cron" ? prev.expressions : prev.mode === "times" ? (prev.extraExpressions ?? [""]) : [""],
       }
     case "test_5min":
@@ -172,7 +184,7 @@ export function HeartbeatConfig() {
       <div className="flex flex-col gap-[6px]">
         <CustomSelect
           value={value.mode}
-          onChange={(val) => commit(defaultValue(val as ScheduleMode, tz, value))}
+          onChange={(val) => commit(defaultValue(val as ScheduleMode, tz, value, displayTz))}
           options={freqOptions}
         />
 
@@ -212,6 +224,11 @@ export function HeartbeatConfig() {
               <CronExprsEditor
                 expressions={extras.length > 0 ? extras : [""]}
                 onChange={(next) => commit(withExtras(value, next))}
+                runTz={
+                  value.mode === "times" || value.mode === "monthly" || value.mode === "cron"
+                    ? value.tz
+                    : tz
+                }
               />
             )}
           </div>
@@ -250,6 +267,19 @@ export function HeartbeatConfig() {
   )
 }
 
+const WEEKDAY_SET = "1,2,3,4,5"
+
+/** Chip copy: "Daily at 19:00 GMT+4" / "Weekdays at 09:00 GMT+4" / "At 09:00, 19:00 GMT+4". */
+function timesChipText(localSlots: TimeSlot[], tzLabel: string): string {
+  const times = [...new Set(localSlots.map((s) => padTime(s.hour, s.minute)))].sort()
+  if (localSlots.length === 1) {
+    const days = [...new Set(localSlots[0].weekdays)].sort((a, b) => a - b)
+    if (days.length === 7) return `Daily at ${times[0]} ${tzLabel}`
+    if (days.join(",") === WEEKDAY_SET) return `Weekdays at ${times[0]} ${tzLabel}`
+  }
+  return `At ${times.join(", ")} ${tzLabel}`
+}
+
 function TimesEditor({
   value,
   onChange,
@@ -259,16 +289,20 @@ function TimesEditor({
   onChange: (v: ScheduleValue) => void
   browserTz: string
 }) {
-  // Users type wall-clock times in THEIR timezone. Stored slots are wall-clock
-  // in value.tz (legacy rows carry the workspace tz), so render converts
-  // stored → browser-local and every commit normalizes browser-local → UTC.
-  // D6: without this, a Dubai founder's typed 19:00 was stored as 19:00Z.
-  const localSlots = value.slots.map((s) => convertSlotWall(s, value.tz, browserTz))
+  // Users type wall-clock times in a HUMAN timezone; storage is UTC. The
+  // schedule stays pinned to the tz it was authored in (authoredTz) so a
+  // traveling user's claw never silently shifts; unpinned/legacy values speak
+  // the browser tz. D6: without any of this, a Dubai founder's typed 19:00
+  // was stored as 19:00Z (23:00 his time).
+  const inputTz = value.authoredTz ?? browserTz
+  const tzLabel = tzShortLabel(inputTz)
+  const localSlots = value.slots.map((s) => convertSlotWall(s, value.tz, inputTz))
   const commitLocal = (nextLocal: TimeSlot[]) => {
     onChange({
       ...value,
       tz: "UTC",
-      slots: nextLocal.map((s) => convertSlotWall(s, browserTz, "UTC")),
+      authoredTz: inputTz,
+      slots: nextLocal.map((s) => convertSlotWall(s, inputTz, "UTC")),
     })
   }
   const updateSlot = (idx: number, patch: Partial<TimeSlot>) => {
@@ -276,7 +310,19 @@ function TimesEditor({
   }
   return (
     <div className="flex flex-col gap-[6px]">
-      {localSlots.map((slot, idx) => (
+      <div
+        data-testid="schedule-chip"
+        className="self-start px-[8px] h-[22px] inline-flex items-center rounded-[6px] border border-[var(--bd)] text-[10px] text-[var(--tx2)]"
+      >
+        {timesChipText(localSlots, tzLabel)}
+      </div>
+      {localSlots.map((slot, idx) => {
+        const utcSlot = convertSlotWall(slot, inputTz, "UTC")
+        const receipt =
+          tzLabel === "UTC"
+            ? `${padTime(slot.hour, slot.minute)} UTC`
+            : `${padTime(slot.hour, slot.minute)} ${tzLabel} · ${padTime(utcSlot.hour, utcSlot.minute)} UTC`
+        return (
         <div key={`${idx}-${slot.hour}-${slot.minute}`} className="flex flex-col gap-[4px]">
           <div className="flex items-center gap-[6px]">
             <Input
@@ -291,6 +337,12 @@ function TimesEditor({
               }}
               aria-label={`Custom time ${idx + 1}`}
             />
+            <span
+              data-testid={`slot-receipt-${idx}`}
+              className="text-[10px] text-[var(--tx3)] whitespace-nowrap"
+            >
+              {receipt}
+            </span>
             <Button
               type="button"
               variant="ghost"
@@ -325,7 +377,8 @@ function TimesEditor({
             })}
           </div>
         </div>
-      ))}
+        )
+      })}
       {localSlots.length < 24 && (
         <Button
           type="button"
@@ -337,7 +390,8 @@ function TimesEditor({
         </Button>
       )}
       <p className="text-[10px] text-[var(--tx3)] leading-[1.4]">
-        Times are in your local timezone ({browserTz}).
+        Times are in {inputTz}
+        {inputTz === browserTz ? " (your local timezone)." : " (the timezone this schedule was authored in)."}
       </p>
     </div>
   )
@@ -400,6 +454,15 @@ function MonthlyEditor({
     ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: `Day ${i + 1}` })),
     { value: "last", label: "Last day" },
   ]
+  // Monthly stays pinned to value.tz (the authoring tz for new values): a
+  // UTC conversion could cross midnight and shift the day-of-month. The
+  // receipt keeps the UTC pair visible.
+  const tzLabel = tzShortLabel(value.tz)
+  const utc = convertWallTime({ hour: value.hour, minute: value.minute, fromTz: value.tz, toTz: "UTC" })
+  const receipt =
+    tzLabel === "UTC"
+      ? `${padTime(value.hour, value.minute)} UTC`
+      : `${padTime(value.hour, value.minute)} ${tzLabel} · ${padTime(utc.hour, utc.minute)} UTC`
   return (
     <div className="flex flex-col gap-[6px]">
       <CustomSelect
@@ -409,17 +472,24 @@ function MonthlyEditor({
         }
         options={dayOptions}
       />
-      <Input
-        type="time"
-        step={60}
-        variant="compact"
-        value={padTime(value.hour, value.minute)}
-        onChange={(e) => {
-          const t = parseTimeInput(e.target.value)
-          if (t) onChange({ ...value, ...t })
-        }}
-        aria-label="Monthly time"
-      />
+      <div className="flex items-center gap-[6px]">
+        <Input
+          type="time"
+          step={60}
+          variant="compact"
+          className="flex-1"
+          value={padTime(value.hour, value.minute)}
+          onChange={(e) => {
+            const t = parseTimeInput(e.target.value)
+            if (t) onChange({ ...value, ...t })
+          }}
+          aria-label="Monthly time"
+        />
+        <span data-testid="monthly-receipt" className="text-[10px] text-[var(--tx3)] whitespace-nowrap">
+          {receipt}
+        </span>
+      </div>
+      <p className="text-[10px] text-[var(--tx3)] leading-[1.4]">Fires in {value.tz}.</p>
     </div>
   )
 }
@@ -427,9 +497,11 @@ function MonthlyEditor({
 function CronExprsEditor({
   expressions,
   onChange,
+  runTz,
 }: {
   expressions: string[]
   onChange: (next: string[]) => void
+  runTz: string
 }) {
   return (
     <div className="flex flex-col gap-[6px] mt-[6px]">
@@ -464,6 +536,7 @@ function CronExprsEditor({
       >
         Add cron
       </Button>
+      <p className="text-[10px] text-[var(--tx3)] leading-[1.4]">Expressions run in {runTz}.</p>
     </div>
   )
 }
