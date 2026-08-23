@@ -144,3 +144,190 @@ describe("HeartbeatConfig - custom times are typed in the browser's local tz, st
     expect(storedTimes().slots[0].hour).toBe(15)
   })
 })
+
+type StoredTimesPayload = {
+  slots: Array<{ hour: number; minute: number; weekdays: number[] }>
+  tz: string
+  authoredTz?: string
+}
+
+function seedTimesJson(payload: StoredTimesPayload) {
+  useBuilderStore.setState({
+    workspaceTimezone: "UTC",
+    heartbeatSchedule: { frequency: "times", time: JSON.stringify(payload) },
+  })
+}
+
+function storedTimesJson(): StoredTimesPayload {
+  return JSON.parse(useBuilderStore.getState().heartbeatSchedule.time)
+}
+
+describe("HeartbeatConfig - local-time matrix (browser in, UTC stored, local out)", () => {
+  it("UTC browser: typed 19:00 stores hour:19 tz UTC authoredTz UTC and re-renders 19:00", () => {
+    pinBrowserTz("UTC")
+    seedTimesJson({ slots: [{ hour: 12, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }], tz: "UTC" })
+    render(<HeartbeatConfig />)
+
+    fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "19:00" } })
+
+    const stored = storedTimesJson()
+    expect(stored.tz).toBe("UTC")
+    expect(stored.authoredTz).toBe("UTC")
+    expect(stored.slots[0].hour).toBe(19)
+    expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("19:00")
+  })
+
+  it("America/Los_Angeles (PDT, Aug): typed 19:00 stores hour:2 UTC next day and re-renders 19:00", () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-08-23T12:00:00Z") })
+    try {
+      pinBrowserTz("America/Los_Angeles")
+      seedTimesJson({ slots: [{ hour: 12, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }], tz: "UTC" })
+      render(<HeartbeatConfig />)
+
+      fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "19:00" } })
+
+      const stored = storedTimesJson()
+      expect(stored.tz).toBe("UTC")
+      expect(stored.authoredTz).toBe("America/Los_Angeles")
+      // 19:00 PDT = 02:00Z the NEXT day; all-days weekday set is rotation-invariant.
+      expect(stored.slots[0].hour).toBe(2)
+      expect(stored.slots[0].weekdays).toEqual([0, 1, 2, 3, 4, 5, 6])
+      expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("19:00")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe("HeartbeatConfig - inline slot receipts (local · UTC pair)", () => {
+  it("Dubai: slot receipt reads '19:00 GMT+4 · 15:00 UTC'", () => {
+    pinBrowserTz("Asia/Dubai")
+    seedTimesJson({
+      slots: [{ hour: 15, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }],
+      tz: "UTC",
+      authoredTz: "Asia/Dubai",
+    })
+    render(<HeartbeatConfig />)
+    expect(screen.getByTestId("slot-receipt-0").textContent).toBe("19:00 GMT+4 · 15:00 UTC")
+  })
+
+  it("UTC browser: receipt collapses to '19:00 UTC' (no duplicate pair)", () => {
+    pinBrowserTz("UTC")
+    seedTimesJson({
+      slots: [{ hour: 19, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }],
+      tz: "UTC",
+      authoredTz: "UTC",
+    })
+    render(<HeartbeatConfig />)
+    expect(screen.getByTestId("slot-receipt-0").textContent).toBe("19:00 UTC")
+  })
+})
+
+describe("HeartbeatConfig - authored-tz pinning (a traveling user's claw never silently shifts)", () => {
+  const dubaiAuthored: StoredTimesPayload = {
+    slots: [{ hour: 15, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }],
+    tz: "UTC",
+    authoredTz: "Asia/Dubai",
+  }
+
+  it("Dubai-authored schedule opened in LA still speaks Dubai: input 19:00, chip 'Daily at 19:00 GMT+4'", () => {
+    pinBrowserTz("America/Los_Angeles")
+    seedTimesJson(dubaiAuthored)
+    render(<HeartbeatConfig />)
+
+    expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("19:00")
+    expect(screen.getByTestId("schedule-chip").textContent).toBe("Daily at 19:00 GMT+4")
+    expect(screen.getByText(/Times are in Asia\/Dubai/)).toBeTruthy()
+  })
+
+  it("editing while traveling keeps the authored tz: typing 20:00 in LA stores 16:00Z with authoredTz Asia/Dubai", () => {
+    pinBrowserTz("America/Los_Angeles")
+    seedTimesJson(dubaiAuthored)
+    render(<HeartbeatConfig />)
+
+    fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "20:00" } })
+
+    const stored = storedTimesJson()
+    expect(stored.authoredTz).toBe("Asia/Dubai")
+    expect(stored.tz).toBe("UTC")
+    expect(stored.slots[0].hour).toBe(16)
+    expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("20:00")
+  })
+})
+
+describe("HeartbeatConfig - schedule chip wording", () => {
+  it("Mon-Fri slot reads 'Weekdays at 09:00 GMT+4'", () => {
+    pinBrowserTz("Asia/Dubai")
+    seedTimesJson({
+      slots: [{ hour: 5, minute: 0, weekdays: [1, 2, 3, 4, 5] }],
+      tz: "UTC",
+      authoredTz: "Asia/Dubai",
+    })
+    render(<HeartbeatConfig />)
+    expect(screen.getByTestId("schedule-chip").textContent).toBe("Weekdays at 09:00 GMT+4")
+  })
+
+  it("multi-slot schedules list the times: 'At 09:00, 19:00 GMT+4'", () => {
+    pinBrowserTz("Asia/Dubai")
+    seedTimesJson({
+      slots: [
+        { hour: 5, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] },
+        { hour: 15, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] },
+      ],
+      tz: "UTC",
+      authoredTz: "Asia/Dubai",
+    })
+    render(<HeartbeatConfig />)
+    expect(screen.getByTestId("schedule-chip").textContent).toBe("At 09:00, 19:00 GMT+4")
+  })
+})
+
+describe("HeartbeatConfig - monthly pins the authoring tz (exact day-of-month semantics)", () => {
+  it("switching to Monthly in Dubai pins tz Asia/Dubai; typed 09:30 stays 09:30 in that tz with a UTC receipt", () => {
+    pinBrowserTz("Asia/Dubai")
+    useBuilderStore.setState({
+      workspaceTimezone: "UTC",
+      heartbeatSchedule: { frequency: "off", time: "08:00" },
+    })
+    render(<HeartbeatConfig />)
+
+    fireEvent.click(screen.getByText("Monthly"))
+    let stored = JSON.parse(useBuilderStore.getState().heartbeatSchedule.time)
+    expect(stored.tz).toBe("Asia/Dubai")
+
+    fireEvent.change(screen.getByLabelText("Monthly time"), { target: { value: "09:30" } })
+    stored = JSON.parse(useBuilderStore.getState().heartbeatSchedule.time)
+    expect(stored.tz).toBe("Asia/Dubai")
+    expect(stored.hour).toBe(9)
+    expect(stored.minute).toBe(30)
+    expect(screen.getByTestId("monthly-receipt").textContent).toBe("09:30 GMT+4 · 05:30 UTC")
+  })
+})
+
+describe("HeartbeatConfig - raw cron speaks UTC", () => {
+  it("new Raw cron values pin tz UTC and the editor says expressions run in UTC", () => {
+    pinBrowserTz("Asia/Dubai")
+    useBuilderStore.setState({
+      workspaceTimezone: "Asia/Dubai",
+      heartbeatSchedule: { frequency: "off", time: "08:00" },
+    })
+    render(<HeartbeatConfig />)
+
+    fireEvent.click(screen.getByText("Raw cron"))
+    const stored = JSON.parse(useBuilderStore.getState().heartbeatSchedule.time)
+    expect(stored.tz).toBe("UTC")
+    expect(screen.getByText(/Expressions run in UTC/)).toBeTruthy()
+  })
+
+  it("times-mode advanced extras caption names the schedule tz (UTC post-fix)", () => {
+    pinBrowserTz("Asia/Dubai")
+    seedTimesJson({
+      slots: [{ hour: 15, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }],
+      tz: "UTC",
+      authoredTz: "Asia/Dubai",
+      extraExpressions: ["30 6 * * *"],
+    } as StoredTimesPayload & { extraExpressions: string[] })
+    render(<HeartbeatConfig />)
+    expect(screen.getByText(/Expressions run in UTC/)).toBeTruthy()
+  })
+})

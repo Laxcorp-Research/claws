@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { convertSlotWall, convertWallTime } from "@/lib/schedule/wall-time"
+import {
+  convertSlotWall,
+  convertWallTime,
+  isValidIanaTimeZone,
+  tzShortLabel,
+} from "@/lib/schedule/wall-time"
 import type { TimeSlot } from "@/lib/schedule/types"
 
 const ALL_DAYS: TimeSlot["weekdays"] = [0, 1, 2, 3, 4, 5, 6]
@@ -77,5 +82,46 @@ describe("convertSlotWall - weekday sets rotate with the midnight crossing", () 
   it("same-zone slots pass through untouched", () => {
     const slot: TimeSlot = { hour: 8, minute: 0, weekdays: [1, 2] }
     expect(convertSlotWall(slot, "UTC", "UTC")).toBe(slot)
+  })
+
+  it("crosses the spring-forward boundary: 19:00 London is 19:00Z on Mar 28 2026 but 18:00Z on Mar 30 2026", () => {
+    const before = convertWallTime({
+      hour: 19, minute: 0, fromTz: "Europe/London", toTz: "UTC",
+      ref: new Date("2026-03-28T12:00:00Z"),
+    })
+    const after = convertWallTime({
+      hour: 19, minute: 0, fromTz: "Europe/London", toTz: "UTC",
+      ref: new Date("2026-03-30T12:00:00Z"),
+    })
+    expect(before.hour).toBe(19)
+    expect(after.hour).toBe(18)
+  })
+})
+
+describe("tzShortLabel - ICU short zone names for receipts", () => {
+  it("Asia/Dubai labels GMT+4 (CLDR has no GST abbreviation in English)", () => {
+    expect(tzShortLabel("Asia/Dubai")).toBe("GMT+4")
+  })
+
+  it("UTC labels UTC", () => {
+    expect(tzShortLabel("UTC")).toBe("UTC")
+  })
+
+  it("America/Los_Angeles labels PST in January, PDT in August (DST-aware)", () => {
+    expect(tzShortLabel("America/Los_Angeles", new Date("2026-01-15T12:00:00Z"))).toBe("PST")
+    expect(tzShortLabel("America/Los_Angeles", new Date("2026-08-15T12:00:00Z"))).toBe("PDT")
+  })
+
+  it("falls back to the IANA id when the zone is invalid", () => {
+    expect(tzShortLabel("Not/AZone")).toBe("Not/AZone")
+  })
+})
+
+describe("isValidIanaTimeZone", () => {
+  it("accepts real zones, rejects junk and blanks", () => {
+    expect(isValidIanaTimeZone("Asia/Dubai")).toBe(true)
+    expect(isValidIanaTimeZone("UTC")).toBe(true)
+    expect(isValidIanaTimeZone("Not/AZone")).toBe(false)
+    expect(isValidIanaTimeZone("")).toBe(false)
   })
 })

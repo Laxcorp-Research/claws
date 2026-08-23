@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { computeNextOccurrences } from "@/lib/schedule/occurrences"
-import { serializeSchedule } from "@/lib/schedule/persist"
+import { deserializeSchedule, serializeSchedule } from "@/lib/schedule/persist"
 import type { ScheduleValue } from "@/lib/schedule/types"
 
 const FROM = new Date("2026-08-17T12:00:00.000Z") // Monday
@@ -48,5 +48,30 @@ describe("tz matrix - GST / UTC / US-west render, UTC instants", () => {
     })[0]
     expect(row.utcIso.endsWith("Z")).toBe(true)
     expect(row.localIso).toMatch(/08:00:00/)
+  })
+})
+
+describe("authoredTz persistence - the pin survives the DB round trip", () => {
+  const slots = [{ hour: 15, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] as Array<0 | 1 | 2 | 3 | 4 | 5 | 6> }]
+
+  it("times serializes authoredTz and deserializes it back", () => {
+    const ser = serializeSchedule({ mode: "times", tz: "UTC", authoredTz: "Asia/Dubai", slots })
+    expect(JSON.parse(ser.heartbeatTime ?? "{}").authoredTz).toBe("Asia/Dubai")
+
+    const value = deserializeSchedule("times", ser.heartbeatTime)
+    expect(value?.mode).toBe("times")
+    if (value?.mode === "times") expect(value.authoredTz).toBe("Asia/Dubai")
+  })
+
+  it("invalid authoredTz in stored JSON is dropped, not propagated", () => {
+    const raw = JSON.stringify({ slots, tz: "UTC", authoredTz: "Not/AZone" })
+    const value = deserializeSchedule("times", raw)
+    if (value?.mode === "times") expect(value.authoredTz).toBeUndefined()
+  })
+
+  it("legacy payloads without authoredTz deserialize with the field absent", () => {
+    const raw = JSON.stringify({ slots, tz: "UTC" })
+    const value = deserializeSchedule("times", raw)
+    if (value?.mode === "times") expect(value.authoredTz).toBeUndefined()
   })
 })
