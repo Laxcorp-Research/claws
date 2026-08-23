@@ -87,7 +87,10 @@ interface ChatMessageProps {
   // callers).
   failureMessage?: string | null
   // PR-9/C: present on a transient failure (502 unreachable, 429, network) - a
-  // Retry that re-POSTs the SAME text (the user never retypes).
+  // Retry that re-POSTs the SAME text (the user never retypes). D6 webchat-
+  // silent polish: ALSO rendered on the "No response" timeout state (the send
+  // succeeded but the turn died container-side) - there Retry starts a fresh
+  // turn with the same text.
   onRetry?: () => void
   // PR-9/C: present when the failure reason is "wake" (a send-time HIBERNATED -
   // the mid-compose race). Renders a Wake button symmetric to Retry, reusing the
@@ -153,9 +156,23 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
       )}
       {/* Muted (--tx3), NOT red (--err): the send succeeded; only the reply is
           missing. `status === "failed"` and `noResponse` are mutually exclusive
-          by construction (a failed send never starts a tracked turn). */}
+          by construction (a failed send never starts a tracked turn).
+          D6 webchat-silent: a timed-out turn is retryable - the panel passes
+          onRetry, which re-sends the SAME text as a NEW turn (the dead turn's
+          runId is never reused). */}
       {noResponse && status !== "failed" && (
-        <span className="text-[10px] italic text-[var(--tx3)]">No response</span>
+        <span className="inline-flex items-center gap-2 text-[10px]">
+          <span className="italic text-[var(--tx3)]">No response</span>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="font-medium text-[var(--ac-text)] underline cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
+        </span>
       )}
     </div>
   )

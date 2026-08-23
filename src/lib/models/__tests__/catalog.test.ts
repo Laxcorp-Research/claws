@@ -40,9 +40,12 @@ describe("model catalog (OpenRouter arc)", () => {
 
   it("MUTATION: generator emits OPENROUTER_API_KEY + openrouter baseUrl", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/openclaw/generator.ts"), "utf8")
-    expect(src).toContain("OPENROUTER_API_KEY=")
+    // D6 2026-08-23 webchat-silent: emission is map-driven (provider →
+    // env name) and resolves WorkspaceApiKey overrides before user keys.
+    // Dropping either the OpenRouter mapping or the override read fails here.
+    expect(src).toContain("OPENROUTER: 'OPENROUTER_API_KEY'")
     expect(src).toContain("https://openrouter.ai/api/v1")
-    expect(src).toContain("case 'OPENROUTER'")
+    expect(src).toContain("apiKeyOverrides")
   })
 
   it("MUTATION: cron refresh-model-catalog is wired", () => {

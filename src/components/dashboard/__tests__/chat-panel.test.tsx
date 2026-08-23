@@ -932,6 +932,75 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
     }
   })
 
+  // D6 2026-08-23 webchat-silent polish: a TIMED-OUT turn (202 accepted,
+  // container-side turn died - the founder's missing-OpenRouter-key incident)
+  // must offer Retry. Retry re-sends the SAME text as a NEW send (fresh
+  // idempotencyKey server-side). MUTATION: reusing the dead turn's runId
+  // would make the gateway dedupe the retry into the dead run - the new
+  // pending turn asserted here would never exist.
+  it("timed-out turn offers Retry that re-sends the SAME text as a NEW turn (D6 webchat-silent)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 202,
+      json: async () => ({ success: true, data: { runId: "run-retry-1" } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    // Real timers: the row is simply timestamped past the pending ceiling.
+    const dead: ChatRow = {
+      id: "u-dead",
+      actionType: "MESSAGE_RECEIVED",
+      timestamp: new Date(Date.now() - PENDING_TURN_TIMEOUT_MS - 60_000).toISOString(),
+      agentName: "System",
+      action: "Received from : hello",
+      detail: "hello",
+      messageId: "run-dead",
+    }
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[dead]} orchestratorName="Dev Commander" />)
+    expect(screen.getByText("No response")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/workspaces/ws-1/chat",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ message: "hello" }) }),
+      )
+    })
+    // The retry renders its own bubble (same text, second instance) and
+    // re-arms the working indicator for the NEW verified in-flight turn.
+    expect(await screen.findByText(/is working/i)).toBeTruthy()
+    expect(screen.getAllByText("hello").length).toBe(2)
+  })
+
+  it("a timed-out turn's Retry is wired even for streamed rows with empty detail (falls back to action text)", async () => {
+    // Defensive: detail null → the panel resends `action`. A blank resend
+    // would 400 server-side; resend() guards the empty string.
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 202,
+      json: async () => ({ success: true, data: { runId: "run-retry-2" } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const dead: ChatRow = {
+      id: "u-dead2",
+      actionType: "MESSAGE_RECEIVED",
+      timestamp: new Date(Date.now() - PENDING_TURN_TIMEOUT_MS - 60_000).toISOString(),
+      agentName: "System",
+      action: "ping",
+      detail: null,
+      messageId: "run-dead2",
+    }
+
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[dead]} orchestratorName="Dev Commander" />)
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/workspaces/ws-1/chat",
+        expect.objectContaining({ body: JSON.stringify({ message: "ping" }) }),
+      )
+    })
+  })
+
   it("does NOT show the indicator on a non-sendable Claw (no false 'working' on stale history)", () => {
     vi.useFakeTimers()
     try {

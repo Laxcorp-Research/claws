@@ -601,6 +601,22 @@ export function ChatPanel({
     [optimistic, performSend],
   )
 
+  // D6 webchat-silent polish: Retry on a TIMED-OUT turn ("No response"). The
+  // original send was accepted (202) but the turn died container-side, so this
+  // is a fresh send of the same text - a NEW bubble, NEW idempotencyKey, NEW
+  // runId. Never reuse the dead turn's runId: the gateway dedupes on it and
+  // would swallow the retry. Works for optimistic AND streamed (post-reload)
+  // user rows because it needs only the text.
+  const resend = useCallback(
+    (text: string) => {
+      if (!text) return
+      const tempId = makeTempId()
+      setOptimistic((prev) => [...prev, { tempId, text, createdAt: Date.now(), status: "sending" }])
+      void performSend(tempId, text)
+    },
+    [performSend],
+  )
+
   const loadOlder = useCallback(async () => {
     if (!nextHistoryCursor || olderLoading) return
     const el = listRef.current
@@ -721,7 +737,13 @@ export function ChatPanel({
                   status={m.status}
                   noResponse={noResponse}
                   failureMessage={failure?.message ?? null}
-                  onRetry={failure?.cta === "retry" ? () => retry(m.key) : undefined}
+                  onRetry={
+                    failure?.cta === "retry"
+                      ? () => retry(m.key)
+                      : noResponse
+                        ? () => resend(m.detail ?? m.action)
+                        : undefined
+                  }
                   onWake={failure?.cta === "wake" ? onWake : undefined}
                 />
               </div>

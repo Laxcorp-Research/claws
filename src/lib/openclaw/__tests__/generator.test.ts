@@ -99,6 +99,9 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
     hostPort: null,
     containerName: null,
     apiKeySourceOverride: null,
+    // WorkspaceApiKey rows (the setup wizard's per-workspace "Add key"
+    // overrides). Default empty; the D6 webchat-silent tests override it.
+    apiKeyOverrides: [] as { provider: string; encryptedKey: string }[],
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -387,6 +390,76 @@ describe('generateWorkspace', () => {
 
     expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
     expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=mock-gateway-token-abc123');
+  });
+
+  // ─── D6 2026-08-23 webchat-silent regression ──────────────────────────
+  //
+  // Founder's workspace: OpenRouter key stored ONLY as a WorkspaceApiKey
+  // (the setup wizard's "Add key" override), zero UserApiKey rows. The old
+  // generateEnvFile iterated workspace.user.apiKeys exclusively, so the
+  // container .env had no OPENROUTER_API_KEY - every agent turn died with
+  // 'No API key found for provider "openrouter"' before replying (gateway
+  // acked chat.send, then silence). These tests fail if the override read
+  // is ever stripped again.
+  describe('workspace override keys reach .env (D6 webchat-silent)', () => {
+    it('override-only OpenRouter key is baked when the user has no global keys', async () => {
+      const ws = buildMockWorkspace({
+        apiKeyOverrides: [{ provider: 'OPENROUTER', encryptedKey: 'enc-ws-openrouter' }],
+      });
+      ws.user.apiKeys = [];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+
+      expect(result['.env']).toContain('OPENROUTER_API_KEY=decrypted-enc-ws-openrouter');
+    });
+
+    it('workspace override wins over the user-level key for the same provider', async () => {
+      const ws = buildMockWorkspace({
+        apiKeyOverrides: [{ provider: 'OPENROUTER', encryptedKey: 'enc-ws-or' }],
+      });
+      ws.user.apiKeys = [{ provider: 'OPENROUTER', encryptedKey: 'enc-user-or' }];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+
+      expect(result['.env']).toContain('OPENROUTER_API_KEY=decrypted-enc-ws-or');
+      expect(result['.env']).not.toContain('decrypted-enc-user-or');
+    });
+
+    it('OPENAI and GOOGLE overrides emit OPENAI_API_KEY / GEMINI_API_KEY', async () => {
+      const ws = buildMockWorkspace({
+        apiKeyOverrides: [
+          { provider: 'OPENAI', encryptedKey: 'enc-ws-openai' },
+          { provider: 'GOOGLE', encryptedKey: 'enc-ws-google' },
+        ],
+      });
+      ws.user.apiKeys = [];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+
+      expect(result['.env']).toContain('OPENAI_API_KEY=decrypted-enc-ws-openai');
+      expect(result['.env']).toContain('GEMINI_API_KEY=decrypted-enc-ws-google');
+    });
+
+    it('ANTHROPIC seam: a workspace ANTHROPIC override is NOT emitted (user-key path unchanged)', async () => {
+      // Anthropic is deliberately out of scope here: its key rides TWO
+      // surfaces (generator .env AND deriveContainerEnv → Railway env +
+      // reconciliation-cron fingerprints + the credit proxy). Moving only
+      // the .env half would let the two surfaces disagree about which key
+      // wins. This test locks the seam so widening it is a conscious,
+      // both-surfaces change.
+      const ws = buildMockWorkspace({
+        apiKeyOverrides: [{ provider: 'ANTHROPIC', encryptedKey: 'enc-ws-anthropic' }],
+      });
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1');
+
+      expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
+      expect(result['.env']).not.toContain('decrypted-enc-ws-anthropic');
+    });
   });
 
   it('generates a gateway token', async () => {
