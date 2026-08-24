@@ -268,6 +268,64 @@ describe('generateWorkspace', () => {
     expect(config.tools?.deny).toContain('dir_list');
   });
 
+  it('D6-b: zero-channel claw denies the message tool globally (CLI-leak source removed)', async () => {
+    // Default fixture has no channelConfigEncrypted = zero external channels.
+    // The runtime message tool can only fail there, and its error text tells
+    // the HUMAN to run "openclaw channels add" - which the model parrots.
+    // Denied tools never reach the model's tool list. Mutation: drop the
+    // mergeMessageDenyIntoTools call → this fails.
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']) as { tools?: { deny?: string[] } };
+    expect(config.tools?.deny).toContain('message');
+    expect(config.tools?.deny).toContain('dir_list');
+  });
+
+  it('D6-b: connected-channel claw keeps the message tool available', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({
+        channelConfigEncrypted: JSON.stringify({
+          telegram: { botToken: '123456789:telegram-token', allowFrom: ['424242'] },
+        }),
+      }),
+    );
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']) as { tools?: { deny?: string[] } };
+    expect(config.tools?.deny).not.toContain('message');
+    expect(config.tools?.deny).toContain('dir_list');
+  });
+
+  it('D6-b: every agent TOOLS.md teaches webchat delivery; zero-channel prose never mentions channel CLI', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const workspaces = Object.values(result.workspaces);
+    expect(workspaces.length).toBeGreaterThan(0);
+    for (const files of workspaces) {
+      const toolsMd = files['TOOLS.md'];
+      expect(toolsMd).toContain('## Message Delivery');
+      expect(toolsMd).toContain('Claws dashboard web chat');
+      expect(toolsMd).toContain('built in and always active');
+      // The exact CLI strings the founder saw in the D6-b reply.
+      expect(toolsMd).not.toContain('channels add');
+      expect(toolsMd).not.toContain('channels list');
+    }
+  });
+
+  it('D6-b: connected claw TOOLS.md names the connected channels', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({
+        channelConfigEncrypted: JSON.stringify({
+          telegram: { botToken: '123456789:telegram-token', allowFrom: ['424242'] },
+          slack: { mode: 'socket', botToken: 'xoxb-slack-bot', appToken: 'xapp-slack-app' },
+        }),
+      }),
+    );
+    const result = await generateWorkspace('ws-test-1');
+    const workspaces = Object.values(result.workspaces);
+    for (const files of workspaces) {
+      const toolsMd = files['TOOLS.md'];
+      expect(toolsMd).toContain('Connected external channels: Telegram, Slack');
+    }
+  });
+
   it('round-trips route-written channel config into the 2026.5.22-6 runtime channel schema', async () => {
     const routeWrittenPlaintext = JSON.stringify({
       telegram: { botToken: '123456789:telegram-token', allowFrom: ['424242'] },
