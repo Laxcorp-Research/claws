@@ -35,10 +35,15 @@ import {
   mergeMcpDenyIntoAgentTools,
 } from '@/lib/openclaw/mcp-longtail';
 import { mergeDirListDenyIntoTools } from '@/lib/openclaw/dir-list-deny';
+import {
+  buildMessageDeliverySection,
+  mergeMessageDenyIntoTools,
+} from '@/lib/openclaw/message-delivery';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
   buildOpenClawChannelsConfig,
+  configuredChannelIds,
   parseChannelConfigBlob,
   type ChannelConfigMap,
 } from '@/lib/openclaw/channel-config';
@@ -632,6 +637,16 @@ function generateOpenClawConfig(
       ? (config.tools as Record<string, unknown>)
       : undefined,
   );
+
+  // D6-b: zero external channels → deny the `message` tool globally. Webchat
+  // replies ride the normal turn reply (no channel needed), so here the tool
+  // can only fail - and its runtime error tells the HUMAN to run
+  // "openclaw channels add", which the model parrots into the chat. Denied
+  // tools are filtered out of the model's tool list entirely, so that CLI
+  // text can never enter the context. Channel-connected claws keep the tool.
+  if (configuredChannelIds(workspace.channelConfig).length === 0) {
+    config.tools = mergeMessageDenyIntoTools(config.tools as Record<string, unknown>);
+  }
 
   // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
   // non-null when CLAWS_MCP_LONGTAIL_ENABLED=true AND the workspace has
@@ -1942,6 +1957,12 @@ function generateToolsMd(
   mcpEnabled: boolean,
 ): string {
   const mcpSection = mcpEnabled ? MCP_LONGTAIL_TOOLS_MD_SECTION : '';
+  // D6-b: every agent learns its real delivery surfaces (dashboard web chat
+  // always; external channels only when connected) so a zero-channel claw
+  // never reports "missing channel" or CLI commands to the human.
+  const deliverySection = buildMessageDeliverySection(
+    configuredChannelIds(workspace.channelConfig),
+  );
   const pauseSection = agent.role === 'ORCHESTRATOR'
     ? generatePausedWorkerToolsSection(workspace.agents)
     : '';
@@ -1989,7 +2010,7 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
     return `# TOOLS.md - Environment Notes
 
 No external tools are connected yet. The human can connect tools in the Claws setup wizard.
-
+${deliverySection}
 ## Tool Connection Errors
 If a tool call fails because a connection is missing, expired, revoked, unauthorized, or needs credentials:
 - Tell the human to open this Claw in the Claws platform and use Manage Tools to reconnect or update that tool.
@@ -2021,7 +2042,7 @@ ${customApiLines.join('\n')}`
   return `# TOOLS.md - Environment Notes
 
 ${connectedToolsSection}${customApisSection}
-
+${deliverySection}
 ## Notes
 
 - Tool credentials and Custom API credentials are configured automatically via openclaw.json skills.entries. Use the corresponding skills to interact with these tools.
