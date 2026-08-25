@@ -3,6 +3,13 @@ import { isValidIanaTimeZone } from "@/lib/schedule/wall-time"
 
 const TIME_RE = /^\d{1,2}:\d{2}$/
 
+/** Range-checked HH:MM (TIME_RE alone matches "99:99"). New-format use only. */
+function isValidWallTime(time: string): boolean {
+  if (!TIME_RE.test(time)) return false
+  const [h, m] = time.split(":").map((n) => parseInt(n, 10))
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v)
 }
@@ -29,7 +36,17 @@ export function serializeSchedule(value: ScheduleValue): {
       return { heartbeatFrequency: value.mode, heartbeatTime: null }
     case "daily":
     case "weekday":
-      return { heartbeatFrequency: value.mode, heartbeatTime: value.time }
+      // Dual-format: rows the editor stamped with an authored tz persist as
+      // JSON {time, tz}; unstamped values keep the legacy plain "HH:MM"
+      // string BYTE-IDENTICAL, so hydrating and re-saving an untouched
+      // legacy row never rewrites its format (or its workspace-tz emission).
+      return {
+        heartbeatFrequency: value.mode,
+        heartbeatTime:
+          value.tz && isValidIanaTimeZone(value.tz)
+            ? JSON.stringify({ time: value.time, tz: value.tz })
+            : value.time,
+      }
     case "times":
     case "interval":
     case "monthly":
@@ -89,11 +106,26 @@ export function deserializeSchedule(
   if (frequency === "every_6h") return { mode: "every_6h" }
   if (frequency === "every_12h") return { mode: "every_12h" }
   if (frequency === "test_5min") return { mode: "test_5min" }
-  if (frequency === "daily") {
-    return { mode: "daily", time: time && TIME_RE.test(time) ? time : "08:00" }
-  }
-  if (frequency === "weekday") {
-    return { mode: "weekday", time: time && TIME_RE.test(time) ? time : "08:00" }
+  if (frequency === "daily" || frequency === "weekday") {
+    const mode = frequency
+    // Stamped format: JSON {time, tz}. Invalid tz is dropped (not propagated)
+    // so the row degrades to legacy workspace-tz semantics instead of feeding
+    // junk zones into croner/Intl.
+    if (time && time.trim().startsWith("{")) {
+      try {
+        const raw: unknown = JSON.parse(time)
+        if (isRecord(raw)) {
+          const t = typeof raw.time === "string" && isValidWallTime(raw.time) ? raw.time : "08:00"
+          const tz =
+            typeof raw.tz === "string" && isValidIanaTimeZone(raw.tz) ? raw.tz : undefined
+          return { mode, time: t, ...(tz ? { tz } : {}) }
+        }
+      } catch {
+        // fall through to the legacy default below
+      }
+      return { mode, time: "08:00" }
+    }
+    return { mode, time: time && TIME_RE.test(time) ? time : "08:00" }
   }
   if (!time || !time.trim().startsWith("{")) return null
   let raw: unknown

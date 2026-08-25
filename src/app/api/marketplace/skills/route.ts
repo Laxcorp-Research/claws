@@ -13,6 +13,7 @@ import { searchSkills } from "@/lib/marketplace/search"
 import { publicListingWhere } from "@/lib/marketplace/public-visibility"
 import { isMarketplacePublishEnabled } from "@/lib/marketplace/feature-flags"
 import { enqueueSkillSandbox } from "@/lib/marketplace/sandbox-enqueue"
+import { isSingleEmoji } from "@/lib/marketplace/emoji"
 
 export const maxDuration = 30
 
@@ -161,7 +162,11 @@ export async function POST(request: NextRequest) {
 
     if (!name || name.trim().length < 2) return ERRORS.VALIDATION("Name is required (minimum 2 characters)")
     if (name.trim().length > 80) return ERRORS.VALIDATION("Name must be 80 characters or less")
-    if (emoji && emoji.length > 4) return ERRORS.VALIDATION("Emoji must be a single emoji character")
+    // A UTF-16 length check is wrong for emoji: ZWJ families are 11 units
+    // (falsely rejected) and "ab!?" is 4 (falsely accepted). RGI-set match.
+    if (emoji && emoji.trim() && !isSingleEmoji(emoji.trim())) {
+      return ERRORS.VALIDATION("Emoji must be a single emoji character")
+    }
     if (!description || description.trim().length < 10) return ERRORS.VALIDATION("Description is required (minimum 10 characters)")
     if (description.length > 1000) return ERRORS.VALIDATION("Description must be 1000 characters or less")
     if (!category || typeof category !== "string" || category.trim().length === 0) return ERRORS.VALIDATION("Category is required")

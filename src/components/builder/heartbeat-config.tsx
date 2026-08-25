@@ -70,10 +70,19 @@ function defaultValue(
       return { mode: "every_6h" }
     case "every_12h":
       return { mode: "every_12h" }
+    // Daily/weekday follow-up to #454: fresh selections stamp the browser tz
+    // (authored-tz local-input semantics). Toggling daily<->weekday carries
+    // the previous time AND stamp unchanged; a LEGACY row (no stamp) stays
+    // unstamped on toggle so its workspace-tz emission never silently shifts -
+    // it only gets stamped when the user actually types a new time.
     case "daily":
-      return { mode: "daily", time: prev.mode === "daily" || prev.mode === "weekday" ? prev.time : "08:00" }
+      return prev.mode === "daily" || prev.mode === "weekday"
+        ? { mode: "daily", time: prev.time, ...(prev.tz ? { tz: prev.tz } : {}) }
+        : { mode: "daily", time: "08:00", tz: browserTz }
     case "weekday":
-      return { mode: "weekday", time: prev.mode === "daily" || prev.mode === "weekday" ? prev.time : "08:00" }
+      return prev.mode === "daily" || prev.mode === "weekday"
+        ? { mode: "weekday", time: prev.time, ...(prev.tz ? { tz: prev.tz } : {}) }
+        : { mode: "weekday", time: "08:00", tz: browserTz }
     case "times": {
       const extras =
         prev.mode === "times"
@@ -83,15 +92,18 @@ function defaultValue(
             : undefined
       if (prev.mode === "times") return prev
       if (prev.mode === "daily" || prev.mode === "weekday") {
-        // Daily/weekday times are wall-clock in the workspace tz; carry the
-        // instant over by converting that wall time to UTC storage.
+        // Carry the instant over by converting the preset's wall time to UTC
+        // storage. Stamped rows are wall-clock in their authored tz; legacy
+        // rows are wall-clock in the workspace tz. Pinning authoredTz to the
+        // same source zone keeps the displayed number identical post-switch.
+        const sourceTz = prev.tz ?? tz
         const t = parseTimeInput(prev.time) ?? { hour: 8, minute: 0 }
         const carried = convertSlotWall(
           { ...t, weekdays: prev.mode === "weekday" ? [...WEEKDAYS] : [...ALL_DAYS] },
-          tz,
+          sourceTz,
           "UTC",
         )
-        return { mode: "times", tz: "UTC", authoredTz: browserTz, slots: [carried], extraExpressions: extras }
+        return { mode: "times", tz: "UTC", authoredTz: sourceTz, slots: [carried], extraExpressions: extras }
       }
       return {
         mode: "times",
@@ -189,14 +201,7 @@ export function HeartbeatConfig() {
         />
 
         {(value.mode === "daily" || value.mode === "weekday") && (
-          <Input
-            type="time"
-            step={60}
-            variant="compact"
-            value={value.time.length === 5 ? value.time : "08:00"}
-            onChange={(e) => commit({ mode: value.mode, time: e.target.value || "08:00" })}
-            aria-label="Heartbeat time"
-          />
+          <PresetTimeEditor value={value} onChange={commit} browserTz={displayTz} workspaceTz={tz} />
         )}
 
         {value.mode === "times" && (
@@ -263,6 +268,50 @@ export function HeartbeatConfig() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function PresetTimeEditor({
+  value,
+  onChange,
+  browserTz,
+  workspaceTz,
+}: {
+  value: Extract<ScheduleValue, { mode: "daily" | "weekday" }>
+  onChange: (v: ScheduleValue) => void
+  browserTz: string
+  workspaceTz: string
+}) {
+  // #454 follow-up: typing a time is AUTHORING it, so every edit stamps the
+  // browser tz - same local-input semantics as the times editor. A legacy
+  // unstamped row keeps workspace-tz semantics until the user types; the
+  // receipt names whichever zone actually applies so the difference is
+  // visible, never silent.
+  const effectiveTz = value.tz ?? workspaceTz
+  const tzLabel = tzShortLabel(effectiveTz)
+  const t = parseTimeInput(value.time) ?? { hour: 8, minute: 0 }
+  const utc = convertWallTime({ hour: t.hour, minute: t.minute, fromTz: effectiveTz, toTz: "UTC" })
+  const receipt =
+    tzLabel === "UTC"
+      ? `${padTime(t.hour, t.minute)} UTC`
+      : `${padTime(t.hour, t.minute)} ${tzLabel} · ${padTime(utc.hour, utc.minute)} UTC`
+  return (
+    <div className="flex flex-col gap-[4px]">
+      <Input
+        type="time"
+        step={60}
+        variant="compact"
+        value={value.time.length === 5 ? value.time : "08:00"}
+        onChange={(e) =>
+          onChange({ mode: value.mode, time: e.target.value || "08:00", tz: browserTz })
+        }
+        aria-label="Heartbeat time"
+      />
+      <p className="text-[10px] text-[var(--tx3)] leading-[1.4]" data-testid="preset-time-receipt">
+        {receipt}
+        {!value.tz && " · workspace timezone"}
+      </p>
     </div>
   )
 }

@@ -331,3 +331,73 @@ describe("HeartbeatConfig - raw cron speaks UTC", () => {
     expect(screen.getByText(/Expressions run in UTC/)).toBeTruthy()
   })
 })
+
+// #454 follow-up: daily/weekday presets adopt authored-tz local-input
+// semantics for NEW input while legacy rows stay untouched.
+describe("HeartbeatConfig - daily/weekday presets stamp the authored tz", () => {
+  function storedPreset(): { frequency: string; time: string } {
+    return useBuilderStore.getState().heartbeatSchedule
+  }
+
+  it("fresh Daily selection in a Dubai browser stamps tz Asia/Dubai", () => {
+    pinBrowserTz("Asia/Dubai")
+    useBuilderStore.setState({
+      workspaceTimezone: "UTC",
+      heartbeatSchedule: { frequency: "off", time: "08:00" },
+    })
+    render(<HeartbeatConfig />)
+
+    fireEvent.click(screen.getByText("Daily"))
+
+    const stored = storedPreset()
+    expect(stored.frequency).toBe("daily")
+    expect(JSON.parse(stored.time)).toEqual({ time: "08:00", tz: "Asia/Dubai" })
+  })
+
+  it("typing a time on a LEGACY daily row stamps the browser tz (authoring = local input)", () => {
+    pinBrowserTz("Asia/Dubai")
+    useBuilderStore.setState({
+      workspaceTimezone: "UTC",
+      heartbeatSchedule: { frequency: "daily", time: "19:00" },
+    })
+    render(<HeartbeatConfig />)
+
+    fireEvent.change(screen.getByLabelText("Heartbeat time"), { target: { value: "19:05" } })
+
+    expect(JSON.parse(storedPreset().time)).toEqual({ time: "19:05", tz: "Asia/Dubai" })
+  })
+
+  it("LEGACY LOCK: toggling daily->weekday without typing keeps the plain string unstamped", () => {
+    pinBrowserTz("Asia/Dubai")
+    useBuilderStore.setState({
+      workspaceTimezone: "UTC",
+      heartbeatSchedule: { frequency: "daily", time: "19:00" },
+    })
+    render(<HeartbeatConfig />)
+
+    fireEvent.click(screen.getByText("Weekdays only"))
+
+    const stored = storedPreset()
+    expect(stored.frequency).toBe("weekday")
+    // Still the legacy plain format - the mere toggle must not reinterpret
+    // the 19:00 from workspace tz to browser tz.
+    expect(stored.time).toBe("19:00")
+  })
+
+  it("receipt names the zone that applies: workspace tz for legacy, GMT+4 pair for stamped", () => {
+    pinBrowserTz("Asia/Dubai")
+    useBuilderStore.setState({
+      workspaceTimezone: "UTC",
+      heartbeatSchedule: { frequency: "daily", time: "19:00" },
+    })
+    render(<HeartbeatConfig />)
+
+    expect(screen.getByTestId("preset-time-receipt").textContent).toBe(
+      "19:00 UTC · workspace timezone",
+    )
+
+    // Type a DIFFERENT time (React dedupes same-value change events).
+    fireEvent.change(screen.getByLabelText("Heartbeat time"), { target: { value: "19:30" } })
+    expect(screen.getByTestId("preset-time-receipt").textContent).toBe("19:30 GMT+4 · 15:30 UTC")
+  })
+})
