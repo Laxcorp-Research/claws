@@ -5,7 +5,7 @@ import GitHubProvider from "next-auth/providers/github"
 import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
 import { prisma } from "@/lib/db"
-import { getResend } from "./resend"
+import { sendEmail } from "./email/send-email"
 import { grantStarterCredits } from "@/lib/credits/grant"
 import { requestReconcileForUser } from "@/lib/openclaw/request-reconcile"
 
@@ -86,12 +86,16 @@ export const authOptions: NextAuthOptions = {
       server: { host: "unused", port: 0, auth: { user: "", pass: "" } },
       from: "Claws <noreply@buildclaws.ai>",
       sendVerificationRequest: async ({ identifier: email, url }) => {
-        try {
-          await getResend().emails.send({
-            from: "Claws <noreply@buildclaws.ai>",
-            to: email,
-            subject: "Sign in to Claws",
-            html: `
+        // RESEND ERROR HONESTY: the old try/catch only saw THROWN errors,
+        // but the SDK resolves { error } on failure - NextAuth then told the
+        // user "check your email" for a mail that never left. The wrapper
+        // checks the error field; a failed send throws so NextAuth surfaces
+        // the EmailSignin error instead of a dead-end sent state.
+        const result = await sendEmail({
+          kind: "magic_link",
+          to: email,
+          subject: "Sign in to Claws",
+          html: `
               <!DOCTYPE html>
               <html>
               <head>
@@ -117,9 +121,8 @@ export const authOptions: NextAuthOptions = {
               </body>
               </html>
             `,
-          });
-        } catch (error) {
-          console.error("Failed to send magic link email:", error);
+        });
+        if (!result.ok) {
           throw new Error("Failed to send verification email");
         }
       },

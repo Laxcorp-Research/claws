@@ -92,11 +92,23 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      await sendTrialExpiryNotifyEmail({
+      const emailResult = await sendTrialExpiryNotifyEmail({
         to: action.email,
         name: action.name,
         clawNames: action.clawNames,
+        workspaceIds: action.workspaceIds,
       })
+      // RESEND HONESTY: the SDK resolves { error } instead of throwing, so
+      // the old await could "succeed" for a dead email and the stamp below
+      // silenced the warning forever. Only stamp on a confirmed send.
+      if (!emailResult.ok) {
+        errors++
+        log.error("Trial-expiry cron: notify email failed - retrying next tick", {
+          userId: action.userId,
+          reason: emailResult.reason,
+        })
+        continue
+      }
 
       // Stamp AFTER successful send so a Resend failure retries next hour.
       await prisma.user.update({
@@ -180,6 +192,7 @@ export async function GET(req: NextRequest) {
       }
 
       const stoppedNames: string[] = []
+      const stoppedIds: string[] = []
       for (const action of group.items) {
         try {
           if (action.enforceMode === "status_flip") {
@@ -234,6 +247,7 @@ export async function GET(req: NextRequest) {
           })
 
           stoppedNames.push(action.workspaceName)
+          stoppedIds.push(action.workspaceId)
           stopped++
         } catch (err) {
           errors++
@@ -246,17 +260,20 @@ export async function GET(req: NextRequest) {
       }
 
       if (stoppedNames.length > 0) {
-        try {
-          await sendTrialExpiryStoppedEmail({
-            to: group.email,
-            name: group.name,
-            stoppedNames,
-          })
-        } catch (err) {
+        // Critical send (retry + owner-Telegram escalation live in the
+        // wrapper); the typed result is counted here so the cron summary
+        // stays honest.
+        const stopEmailResult = await sendTrialExpiryStoppedEmail({
+          to: group.email,
+          name: group.name,
+          stoppedNames,
+          workspaceIds: stoppedIds,
+        })
+        if (!stopEmailResult.ok) {
           errors++
           log.error("Trial-expiry cron: stopped email failed", {
             userId,
-            error: String(err),
+            reason: stopEmailResult.reason,
           })
         }
       }

@@ -58,8 +58,10 @@ describe("GET /api/cron/enforce-trial-expiry (GRACE-24)", () => {
     vi.useFakeTimers({ now: NOW_MS })
     mockSyncThenDestroy.mockReset().mockResolvedValue(undefined)
     mockDestroyContainer.mockReset()
-    mockNotify.mockReset().mockResolvedValue(undefined)
-    mockStopped.mockReset().mockResolvedValue(undefined)
+    // RESEND HONESTY: the senders return a typed SendEmailResult the route
+    // branches on (only stamps/counts on ok).
+    mockNotify.mockReset().mockResolvedValue({ ok: true, attempts: 1 })
+    mockStopped.mockReset().mockResolvedValue({ ok: true, attempts: 1 })
     ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (ops: unknown) => {
         if (Array.isArray(ops)) return Promise.all(ops as Promise<unknown>[])

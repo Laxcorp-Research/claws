@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db"
-import { getResend } from "@/lib/resend"
+import { sendEmail } from "@/lib/email/send-email"
 import { log } from "@/lib/logger"
 import { syncThenDestroy } from "@/lib/openclaw/deployer"
 import { getApiKeySource, isCreditUser } from "@/lib/credits/api-key-source"
@@ -60,11 +60,13 @@ export async function onCreditsExhausted(userId: string) {
     ])
   }
 
-  try {
-    await getResend().emails.send({
-      from: "Claws <noreply@buildclaws.ai>",
-      to: user.email,
-      subject: "Your Claws starter credits have been used",
+  // RESEND HONESTY: wrapper checks the SDK's resolved error field and
+  // ledgers email_sent/email_failed on each stopped workspace's activity.
+  const emailResult = await sendEmail({
+    kind: "credits_exhausted_stop",
+    workspaceIds: user.workspaces.map((ws) => ws.id),
+    to: user.email,
+    subject: "Your Claws starter credits have been used",
       html: `
         <!DOCTYPE html>
         <html>
@@ -92,9 +94,9 @@ export async function onCreditsExhausted(userId: string) {
         </body>
         </html>
       `,
-    })
-  } catch (err) {
-    log.error("Failed to send credits-exhausted email", { userId, error: String(err) })
+  })
+  if (!emailResult.ok) {
+    log.error("Failed to send credits-exhausted email", { userId, error: emailResult.reason })
   }
 
   log.info("Credits exhausted, workspaces paused", {

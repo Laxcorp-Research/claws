@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
-import { getResend } from '@/lib/resend'
+import { sendEmail } from '@/lib/email/send-email'
 import { resolveCommunityApprovedTrustTier } from '@/lib/marketplace/public-visibility'
 import { ensureCommunityDodoProduct } from '@/lib/marketplace/dodo-community-product'
 
@@ -81,12 +81,13 @@ export async function POST(
     logAdminAction({ action: 'template.approve', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'template', ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
 
     if (process.env.RESEND_API_KEY && template.creator?.user?.email) {
-      try {
-        const creatorName = template.creator.user.name || template.creator.displayName
-        await getResend().emails.send({
-          from: 'Claws <noreply@buildclaws.ai>',
-          to: template.creator.user.email,
-          subject: `Your template "${template.name}" has been approved`,
+      const creatorName = template.creator.user.name || template.creator.displayName
+      // Wrapper checks the SDK's resolved error field and logs failures;
+      // approval itself already succeeded, so the response stays 200.
+      await sendEmail({
+        kind: 'template_approved',
+        to: template.creator.user.email,
+        subject: `Your template "${template.name}" has been approved`,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto;">
               <h2 style="font-size: 18px; font-weight: 600;">Template approved</h2>
@@ -108,10 +109,7 @@ export async function POST(
               </p>
             </div>
           `,
-        })
-      } catch (emailError) {
-        console.error('Failed to send template approval email:', emailError)
-      }
+      })
     }
 
     return apiSuccess(updated)

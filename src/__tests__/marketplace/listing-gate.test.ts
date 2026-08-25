@@ -492,10 +492,14 @@ describe("admin approve/reject listing gate (Arc 1)", () => {
       join(ROOT, "src/app/api/admin/review-queue/templates/[id]/approve/route.ts"),
       "utf8",
     )
-    expect(skillApprove).toContain("getResend().emails.send")
+    // RESEND HONESTY: raw getResend().emails.send is banned (wrapper checks
+    // the SDK's resolved error field); approval emails go through sendEmail.
+    expect(skillApprove).toContain("sendEmail({")
+    expect(skillApprove).toContain("kind: 'skill_approved'")
     expect(skillApprove).toContain("https://app.buildclaws.ai/store/skills/${skill.slug}")
     expect(skillApprove).toContain("View in marketplace")
-    expect(templateApprove).toContain("getResend().emails.send")
+    expect(templateApprove).toContain("sendEmail({")
+    expect(templateApprove).toContain("kind: 'template_approved'")
     expect(templateApprove).toContain("https://app.buildclaws.ai/store/${template.slug}")
     expect(templateApprove).toContain("View in marketplace")
   })
