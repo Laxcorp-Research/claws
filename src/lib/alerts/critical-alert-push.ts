@@ -22,7 +22,7 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
-import { getResend } from "@/lib/resend"
+import { sendEmail } from "@/lib/email/send-email"
 import {
   parseChannelConfigBlob,
   preferNumericTelegramAllowFrom,
@@ -39,6 +39,9 @@ export const ALERT_KEYS = [
   "state-sync-stale",
   "railway-create-budget",
   "provisioning-queued",
+  // RESEND ERROR HONESTY: raised by the sendEmail wrapper when a critical
+  // email (trial stop, etc.) is still failed after its retry.
+  "email-delivery-failed",
 ] as const
 
 export type AlertKey = (typeof ALERT_KEYS)[number]
@@ -61,6 +64,7 @@ const ALERT_COPY: Record<AlertKey, AlertCopy> = {
   "state-sync-stale": { emoji: "\uD83D\uDD04", title: "State sync stale" },
   "railway-create-budget": { emoji: "\uD83D\uDEA8", title: "Railway create budget at 80%" },
   "provisioning-queued": { emoji: "\u23F3", title: "Claw queued to provision" },
+  "email-delivery-failed": { emoji: "\uD83D\uDCE7", title: "Email delivery failed" },
 }
 
 export function buildAlertMessage(alertKey: AlertKey, detail?: string | null): string {
@@ -184,6 +188,7 @@ async function findLastDeliveredAt(
 }
 
 async function sendCriticalAlertEmail(args: {
+  workspaceId: string
   email: string
   alertKey: AlertKey
   workspaceName: string
@@ -191,12 +196,17 @@ async function sendCriticalAlertEmail(args: {
 }): Promise<boolean> {
   const copy = ALERT_COPY[args.alertKey]
   const workspaceLabel = args.workspaceName.trim() || "Unnamed Claw"
-  try {
-    await getResend().emails.send({
-      from: "Claws <noreply@buildclaws.ai>",
-      to: args.email,
-      subject: `Claws critical alert: ${workspaceLabel} - ${copy.title}`,
-      html: `
+  // RESEND ERROR HONESTY: this used to return true whenever the promise
+  // resolved - but the SDK resolves { error } on failure, so a dead email
+  // was ledgered delivered:true and the 12h dedup suppressed every retry.
+  // The wrapper checks the error field; `ok` is now the real outcome.
+  // kind critical_alert_fallback never re-escalates (loop guard in wrapper).
+  const result = await sendEmail({
+    kind: "critical_alert_fallback",
+    workspaceIds: [args.workspaceId],
+    to: args.email,
+    subject: `Claws critical alert: ${workspaceLabel} - ${copy.title}`,
+    html: `
         <!DOCTYPE html>
         <html>
         <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -217,16 +227,15 @@ async function sendCriticalAlertEmail(args: {
         </body>
         </html>
       `,
-    })
-    return true
-  } catch (err) {
+  })
+  if (!result.ok) {
     log.error("critical-alert-push: email send failed", {
       email: args.email,
       alertKey: args.alertKey,
-      error: err instanceof Error ? err.message : String(err),
+      error: result.reason,
     })
-    return false
   }
+  return result.ok
 }
 
 export type SendCriticalAlertResult = {
@@ -327,6 +336,7 @@ export async function sendCriticalAlert(args: {
     })
     if (ownerEmail) {
       const emailOk = await sendCriticalAlertEmail({
+        workspaceId: args.workspaceId,
         email: ownerEmail,
         alertKey: args.alertKey,
         workspaceName,
@@ -346,6 +356,7 @@ export async function sendCriticalAlert(args: {
 
   if (target.channel === "email") {
     const ok = await sendCriticalAlertEmail({
+      workspaceId: args.workspaceId,
       email: target.email,
       alertKey: args.alertKey,
       workspaceName,

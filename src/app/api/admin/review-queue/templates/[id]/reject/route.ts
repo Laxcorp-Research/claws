@@ -3,11 +3,7 @@ import { prisma } from '@/lib/db'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
-import { Resend } from 'resend'
-
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY)
-}
+import { sendEmail } from '@/lib/email/send-email'
 
 export async function POST(
   request: NextRequest,
@@ -74,11 +70,11 @@ export async function POST(
     })
 
     if (template.creator?.user?.email) {
-      try {
-        await getResend().emails.send({
-          from: 'Claws <noreply@buildclaws.ai>',
-          to: template.creator.user.email,
-          subject: `Your template "${template.name}" needs changes`,
+      // Wrapper checks the SDK's resolved error field and logs failures.
+      await sendEmail({
+        kind: 'template_rejected',
+        to: template.creator.user.email,
+        subject: `Your template "${template.name}" needs changes`,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto;">
               <h2 style="font-size: 18px; font-weight: 600;">Template Review Update</h2>
@@ -100,10 +96,7 @@ export async function POST(
               </p>
             </div>
           `,
-        })
-      } catch (emailError) {
-        console.error('Failed to send rejection email:', emailError)
-      }
+      })
     }
 
     logAdminAction({ action: 'template.reject', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'template', details: { reason: reason.trim() }, ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })

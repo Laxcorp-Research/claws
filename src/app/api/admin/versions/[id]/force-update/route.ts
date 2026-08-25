@@ -3,17 +3,13 @@ import { prisma } from '@/lib/db'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
-import { Resend } from 'resend'
+import { sendEmail } from '@/lib/email/send-email'
 import {
   FORCE_UPDATE_CURRENT_STATUSES,
   buildSecurityPatchEmailHtml,
   selectCurrentDeploymentsPerWorkspace,
   uniqueSortedWorkspaceNames,
 } from '@/lib/deploy/force-update-targets'
-
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY)
-}
 
 export async function POST(
   request: NextRequest,
@@ -95,27 +91,26 @@ export async function POST(
       }
     }
 
-    const resend = getResend()
     const emailPromises = Array.from(uniqueUsers.values()).map(async (user) => {
-      try {
-        const uniqueNames = uniqueSortedWorkspaceNames(user.workspaceNames)
-        await resend.emails.send({
-          from: 'Claws <noreply@buildclaws.ai>',
-          to: user.email,
-          subject: `Security update scheduled for your Claw${uniqueNames.length > 1 ? 's' : ''}`,
-          html: buildSecurityPatchEmailHtml({
-            userName: user.name,
-            version: targetVersion.version,
-            workspaceNames: user.workspaceNames,
-            releaseNotes: targetVersion.releaseNotes,
-          }),
-        })
-      } catch (emailError) {
-        console.error(`Failed to send security update email to ${user.email}:`, emailError)
-      }
+      const uniqueNames = uniqueSortedWorkspaceNames(user.workspaceNames)
+      // Wrapper checks the SDK's resolved error field and logs failures.
+      await sendEmail({
+        kind: 'security_update',
+        to: user.email,
+        subject: `Security update scheduled for your Claw${uniqueNames.length > 1 ? 's' : ''}`,
+        html: buildSecurityPatchEmailHtml({
+          userName: user.name,
+          version: targetVersion.version,
+          workspaceNames: user.workspaceNames,
+          releaseNotes: targetVersion.releaseNotes,
+        }),
+      })
     })
 
-    Promise.allSettled(emailPromises)
+    // Awaited (was fire-and-forget): a serverless response ends the
+    // invocation, so unawaited sends could be killed mid-flight - none of
+    // the wrapper's honesty matters if the process dies first.
+    await Promise.allSettled(emailPromises)
 
     logAdminAction({ action: 'version.force-update', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'version', details: { affectedCount: affectedDeployments.length, targetVersion: targetVersion.version }, ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
 

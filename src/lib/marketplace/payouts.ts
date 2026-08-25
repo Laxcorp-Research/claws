@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
-import { getResend } from "@/lib/resend"
+import { sendEmail } from "@/lib/email/send-email"
 import { randomBytes } from "node:crypto"
 
 export const PAYOUT_HOLD_DAYS = 7
@@ -241,11 +241,19 @@ export async function markPayoutProcessing(saleIds: string[], batchId?: string):
 
 /**
  * PROCESSING → PAID only. Sends Resend notification when possible.
+ *
+ * `notifyEmail` surfaces the send outcome to the admin who clicked "mark
+ * paid" - a payout has no workspace so there is no Telegram escalation
+ * target; the human actor in the response IS the escalation path.
  */
 export async function markPayoutPaid(params: {
   batchId: string
   transferRef: string
-}): Promise<{ paidCount: number; totalPayout: number }> {
+}): Promise<{
+  paidCount: number
+  totalPayout: number
+  notifyEmail: "sent" | "failed" | "skipped"
+}> {
   const ref = params.transferRef.trim()
   if (!ref) throw new Error("PAYOUT_TRANSFER_REF_REQUIRED")
 
@@ -279,12 +287,15 @@ export async function markPayoutPaid(params: {
 
   const totalPayout = Math.round(sales.reduce((s, r) => s + r.creatorPayout, 0) * 100) / 100
   const creator = sales[0]?.creator
+  let notifyEmail: "sent" | "failed" | "skipped" = "skipped"
   if (creator?.user?.email && process.env.RESEND_API_KEY) {
-    try {
-      await getResend().emails.send({
-        from: "Claws <noreply@buildclaws.ai>",
-        to: creator.user.email,
-        subject: `Your payout of $${totalPayout.toFixed(2)} was sent`,
+    // CRITICAL send (one retry in the wrapper): the money moved - the
+    // creator must hear about it, or the admin must see that they didn't.
+    const emailResult = await sendEmail({
+      kind: "payout_paid",
+      critical: true,
+      to: creator.user.email,
+      subject: `Your payout of $${totalPayout.toFixed(2)} was sent`,
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto;">
             <h2 style="font-size: 18px; font-weight: 600;">Payout sent</h2>
@@ -295,15 +306,16 @@ export async function markPayoutPaid(params: {
               Your payout of <strong>$${totalPayout.toFixed(2)}</strong> was sent
               (ref: <strong>${escapeHtml(ref)}</strong>).
             </p>
-            <p style="font-size: 13px; color: #999; margin-top: 24px;">&mdash; The Claws Team</p>
-          </div>
+          <p style="font-size: 13px; color: #999; margin-top: 24px;">&mdash; The Claws Team</p>
+        </div>
         `,
-      })
-    } catch (err) {
+    })
+    notifyEmail = emailResult.ok ? "sent" : "failed"
+    if (!emailResult.ok) {
       log.warn("Failed to send payout PAID email", {
         category: "payout",
         batchId: params.batchId,
-        error: err instanceof Error ? err.message : String(err),
+        error: emailResult.reason,
       })
     }
   }
@@ -313,9 +325,10 @@ export async function markPayoutPaid(params: {
     batchId: params.batchId,
     paidCount: result.count,
     transferRef: ref,
+    notifyEmail,
   })
 
-  return { paidCount: result.count, totalPayout }
+  return { paidCount: result.count, totalPayout, notifyEmail }
 }
 
 /**

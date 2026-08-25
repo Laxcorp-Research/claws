@@ -8,7 +8,7 @@
  * Email therefore says "subscribe to redeploy", not "data auto-restored".
  */
 
-import { getResend } from "@/lib/resend"
+import { sendEmail, type SendEmailResult } from "@/lib/email/send-email"
 
 const APP_ORIGIN = "https://app.buildclaws.ai"
 const BILLING_HREF = `${APP_ORIGIN}/settings?tab=billing`
@@ -50,11 +50,15 @@ export async function sendTrialExpiryNotifyEmail(args: {
   to: string
   name: string | null
   clawNames: string[]
-}): Promise<void> {
+  workspaceIds?: string[]
+}): Promise<SendEmailResult> {
   const greeting = escapeHtml(args.name || "there")
   const claws = clawListHtml(args.clawNames)
-  await getResend().emails.send({
-    from: "Claws <noreply@buildclaws.ai>",
+  // RESEND HONESTY: result propagates to the cron, which only stamps
+  // trialExpiryNotifiedAt on ok - a failed send retries next hourly tick.
+  return sendEmail({
+    kind: "trial_expiry_notify",
+    workspaceIds: args.workspaceIds,
     to: args.to,
     subject: "Your 3-day trial has ended",
     html: emailShell(`
@@ -74,14 +78,21 @@ export async function sendTrialExpiryStoppedEmail(args: {
   to: string
   name: string | null
   stoppedNames: string[]
-}): Promise<void> {
+  workspaceIds?: string[]
+}): Promise<SendEmailResult> {
   const greeting = escapeHtml(args.name || "there")
   const claws = clawListHtml(args.stoppedNames)
   const count = args.stoppedNames.length
   const countLabel =
     count === 1 ? "1 Claw" : `${count} Claws`
-  await getResend().emails.send({
-    from: "Claws <noreply@buildclaws.ai>",
+  // CRITICAL send: the user's claws were just stopped - this mail must not
+  // die silently. One retry, then the email-delivery-failed critical alert
+  // (owner Telegram) on the first stopped workspace.
+  return sendEmail({
+    kind: "trial_expiry_stop",
+    critical: true,
+    workspaceIds: args.workspaceIds,
+    escalateWorkspaceId: args.workspaceIds?.[0],
     to: args.to,
     subject: "Your trial Claws have been stopped",
     html: emailShell(`

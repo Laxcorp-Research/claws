@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
-import { getResend } from "@/lib/resend"
+import { sendEmail } from "@/lib/email/send-email"
 
 export const maxDuration = 30
 
@@ -94,11 +94,12 @@ async function sendPoolAlert(to: string, level: "INFO" | "WARNING" | "CRITICAL",
         ? `[WARNING] Claws credit pool at ${stats.percentUsed}%`
         : `Claws credit pool status: ${stats.percentUsed}% used`
 
-  try {
-    await getResend().emails.send({
-      from: "Claws <noreply@buildclaws.ai>",
-      to,
-      subject,
+  // Wrapper checks the SDK's resolved error field - a rejected send now
+  // logs email_failed instead of "Pool alert sent".
+  const result = await sendEmail({
+    kind: "credit_pool_alert",
+    to,
+    subject,
       html: `
         <h2>Credit Pool ${level}</h2>
         <p>Pool usage: <strong>${stats.percentUsed}%</strong></p>
@@ -113,10 +114,10 @@ async function sendPoolAlert(to: string, level: "INFO" | "WARNING" | "CRITICAL",
           <li>Flagged for review: ${stats.accounts.flagged}</li>
         </ul>
       `,
-    })
-
+  })
+  if (result.ok) {
     log.info("Pool alert sent", { level, to, percentUsed: stats.percentUsed })
-  } catch (err) {
-    log.error("Failed to send pool alert email", { level, to, error: String(err) })
+  } else {
+    log.error("Failed to send pool alert email", { level, to, error: result.reason })
   }
 }

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { requireAdmin } from '@/lib/api/admin'
 import { logAdminAction } from '@/lib/security/audit-log'
-import { getResend } from '@/lib/resend'
+import { sendEmail } from '@/lib/email/send-email'
 import {
   assertSandboxPassedForApprove,
   assertVerifiedMintAllowed,
@@ -99,12 +99,13 @@ export async function POST(
     logAdminAction({ action: 'skill.approve', adminId: admin.id, adminEmail: admin.email || '', targetId: id, targetType: 'skill', ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() })
 
     if (process.env.RESEND_API_KEY && skill.creator?.user?.email) {
-      try {
-        const creatorName = skill.creator.user.name || skill.creator.displayName
-        await getResend().emails.send({
-          from: 'Claws <noreply@buildclaws.ai>',
-          to: skill.creator.user.email,
-          subject: `Your skill "${skill.name}" has been approved`,
+      const creatorName = skill.creator.user.name || skill.creator.displayName
+      // Wrapper checks the SDK's resolved error field and logs failures;
+      // approval itself already succeeded, so the response stays 200.
+      await sendEmail({
+        kind: 'skill_approved',
+        to: skill.creator.user.email,
+        subject: `Your skill "${skill.name}" has been approved`,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto;">
               <h2 style="font-size: 18px; font-weight: 600;">Skill approved</h2>
@@ -125,10 +126,7 @@ export async function POST(
               </p>
             </div>
           `,
-        })
-      } catch (emailError) {
-        console.error('Failed to send skill approval email:', emailError)
-      }
+      })
     }
 
     return apiSuccess(updated)

@@ -85,6 +85,9 @@ describe("buildAlertMessage - class matrix", () => {
       "state-sync-stale",
       "railway-create-budget",
       "provisioning-queued",
+      // RESEND HONESTY: raised by the sendEmail wrapper on sustained
+      // critical email failure.
+      "email-delivery-failed",
     ])
     const messages = ALERT_KEYS.map((key) => buildAlertMessage(key))
     expect(new Set(messages).size).toBe(ALERT_KEYS.length)
@@ -278,8 +281,9 @@ describe("sendCriticalAlert - integration", () => {
     expect(result).toEqual({ sent: true, channel: "email" })
     expect(mockTelegramSend).toHaveBeenCalledTimes(1)
     expect(mockResendSend).toHaveBeenCalledTimes(1)
-    // Two ledger rows: the failed telegram attempt + the email attempt.
-    expect(prismaMock.activityLog.create).toHaveBeenCalledTimes(2)
+    // Three ledger rows: failed telegram attempt + the sendEmail wrapper's
+    // email_sent row (RESEND HONESTY) + the alert_pushed email attempt.
+    expect(prismaMock.activityLog.create).toHaveBeenCalledTimes(3)
   })
 
   it("skips with no-channel-configured when neither Telegram nor email is available", async () => {
@@ -303,7 +307,7 @@ describe("sendCriticalAlert - integration", () => {
 
   it("MUTATION: every alertKey is a valid AlertKey the sender accepts", () => {
     const keys: AlertKey[] = [...ALERT_KEYS]
-    expect(keys).toHaveLength(6)
+    expect(keys).toHaveLength(7)
   })
 
   it("global dedup omits workspaceId from the 12h lookup (80% budget class)", async () => {

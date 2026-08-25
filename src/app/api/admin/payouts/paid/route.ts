@@ -47,6 +47,9 @@ export async function POST(request: NextRequest) {
           transferRef: body.transferRef.trim(),
           paidCount: result.paidCount,
           totalPayout: result.totalPayout,
+          // Durable record of the creator-notification outcome (payouts have
+          // no workspace, so this AuditLog row is their email ledger).
+          notifyEmail: result.notifyEmail,
         }),
         ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
       },
