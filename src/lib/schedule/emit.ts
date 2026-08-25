@@ -65,13 +65,16 @@ export function scheduleToCronExprs(
       return [{ expr: "0 */6 * * *", tz: wsTz, idSuffix: "every_6h" }]
     case "every_12h":
       return [{ expr: "0 */12 * * *", tz: wsTz, idSuffix: "every_12h" }]
+    // daily/weekday: authored tz (stamped by the editor) wins; legacy rows
+    // without a stamp keep the workspace tz, so pre-existing schedules never
+    // shift on this change.
     case "daily": {
       const t = parseHhMm(value.time) ?? { hour: 8, minute: 0 }
-      return [{ expr: `${t.minute} ${t.hour} * * *`, tz: wsTz, idSuffix: "daily" }]
+      return [{ expr: `${t.minute} ${t.hour} * * *`, tz: tzOrUndef(value.tz) ?? wsTz, idSuffix: "daily" }]
     }
     case "weekday": {
       const t = parseHhMm(value.time) ?? { hour: 8, minute: 0 }
-      return [{ expr: `${t.minute} ${t.hour} * * 1-5`, tz: wsTz, idSuffix: "weekday" }]
+      return [{ expr: `${t.minute} ${t.hour} * * 1-5`, tz: tzOrUndef(value.tz) ?? wsTz, idSuffix: "weekday" }]
     }
     case "times": {
       const tz = tzOrUndef(value.tz) ?? wsTz

@@ -75,3 +75,72 @@ describe("authoredTz persistence - the pin survives the DB round trip", () => {
     if (value?.mode === "times") expect(value.authoredTz).toBeUndefined()
   })
 })
+
+// #454 follow-up: daily/weekday presets used to be workspace-tz only. New
+// saves stamp the authored tz; legacy rows keep workspace-tz emission. These
+// tests fail if either side of that contract is broken.
+describe("daily/weekday authored-tz stamp", () => {
+  it("stamped daily fires in the authored tz, not the workspace tz", () => {
+    const row = computeNextOccurrences({
+      value: { mode: "daily", time: "08:00", tz: "Asia/Dubai" },
+      timezone: "America/Los_Angeles", // workspace tz must NOT win
+      from: FROM,
+      n: 1,
+    })[0]
+    // 08:00 GST = 04:00 UTC
+    expect(row.utcIso).toBe("2026-08-18T04:00:00.000Z")
+  })
+
+  it("LEGACY LOCK: unstamped daily keeps firing in the workspace tz (existing rows never shift)", () => {
+    const row = computeNextOccurrences({
+      value: { mode: "daily", time: "08:00" },
+      timezone: "Asia/Dubai",
+      from: FROM,
+      n: 1,
+    })[0]
+    expect(row.utcIso).toBe("2026-08-18T04:00:00.000Z")
+  })
+
+  it("stamped weekday fires in the authored tz", () => {
+    const row = computeNextOccurrences({
+      value: { mode: "weekday", time: "09:30", tz: "Asia/Dubai" },
+      timezone: "UTC",
+      from: FROM, // Monday
+      n: 1,
+    })[0]
+    expect(row.utcIso).toBe("2026-08-18T05:30:00.000Z")
+  })
+
+  it("stamped daily persists as JSON {time, tz} and round-trips", () => {
+    const ser = serializeSchedule({ mode: "daily", time: "19:00", tz: "Asia/Dubai" })
+    expect(ser.heartbeatFrequency).toBe("daily")
+    expect(JSON.parse(ser.heartbeatTime ?? "{}")).toEqual({ time: "19:00", tz: "Asia/Dubai" })
+
+    const value = deserializeSchedule("daily", ser.heartbeatTime)
+    expect(value).toEqual({ mode: "daily", time: "19:00", tz: "Asia/Dubai" })
+  })
+
+  it("FORMAT LOCK: unstamped daily serializes to the plain legacy string byte-identical", () => {
+    // Hydrate -> re-save of an untouched legacy row must not rewrite its
+    // format (that WOULD change nothing today but would break rollback and
+    // dirty every row it passes through).
+    const value = deserializeSchedule("daily", "19:00")
+    expect(value).toEqual({ mode: "daily", time: "19:00" })
+    const ser = serializeSchedule(value as ScheduleValue)
+    expect(ser.heartbeatTime).toBe("19:00")
+  })
+
+  it("invalid tz in a stamped payload is dropped -> legacy workspace-tz semantics", () => {
+    const value = deserializeSchedule("weekday", JSON.stringify({ time: "07:15", tz: "Not/AZone" }))
+    expect(value).toEqual({ mode: "weekday", time: "07:15" })
+  })
+
+  it("malformed stamped payload degrades to the 08:00 default, never throws", () => {
+    expect(deserializeSchedule("daily", "{nope")).toEqual({ mode: "daily", time: "08:00" })
+    expect(deserializeSchedule("daily", JSON.stringify({ time: "99:99", tz: "UTC" }))).toEqual({
+      mode: "daily",
+      time: "08:00",
+      tz: "UTC",
+    })
+  })
+})

@@ -12,6 +12,7 @@ import { CustomSelect } from "@/components/ui/custom-select"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { formatCurrency } from "@/lib/utils/format"
 import { commitChipDraft, isEnvChipToken } from "@/lib/marketplace/chip-commit"
+import { isSingleEmoji } from "@/lib/marketplace/emoji"
 
 const STEPS = ["Details", "SKILL.md", "Pricing", "Submit"] as const
 
@@ -143,7 +144,7 @@ function PublishSkillContent() {
 
   const canProceed = (): boolean => {
     switch (currentStep) {
-      case 0: return name.trim().length >= 2 && description.trim().length >= 10 && !!category
+      case 0: return name.trim().length >= 2 && description.trim().length >= 10 && !!category && (!emoji.trim() || isSingleEmoji(emoji.trim()))
       case 1: return skillMd.trim().length >= 20
       case 2: return isFree || (typeof price === "number" && price >= 5)
       case 3: return !isPublishing
@@ -220,7 +221,16 @@ function PublishSkillContent() {
             </div>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Emoji <span className="text-[var(--tx3)]">(optional)</span></label>
-              <Input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="e.g., a relevant emoji" maxLength={4} className="max-w-[80px]" />
+              <div className="flex items-center gap-2">
+                {/* maxLength 16, not 4: ZWJ sequences are up to ~14 UTF-16 units. */}
+                <Input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="e.g., a relevant emoji" maxLength={16} className="max-w-[80px]" aria-label="Skill emoji" />
+                {emoji.trim() && isSingleEmoji(emoji.trim()) && (
+                  <span className="text-[22px] leading-none" data-testid="emoji-preview" aria-hidden="true">{emoji.trim()}</span>
+                )}
+              </div>
+              {emoji.trim() && !isSingleEmoji(emoji.trim()) && (
+                <p className="text-[10px] text-[var(--err)] mt-1">Must be a single emoji (one glyph, no text).</p>
+              )}
             </div>
             <div>
               <label className="text-[11px] font-medium text-[var(--tx2)] mb-1 block">Description *</label>
@@ -477,6 +487,7 @@ function PublishSkillContent() {
                 {name.trim().length < 2 && "Name must be at least 2 characters. "}
                 {description.trim().length < 10 && "Description must be at least 10 characters. "}
                 {!category && "Select a category. "}
+                {!!emoji.trim() && !isSingleEmoji(emoji.trim()) && "Emoji must be a single emoji. "}
               </p>
             )}
             {attemptedNext && !canProceed() && currentStep === 1 && (
