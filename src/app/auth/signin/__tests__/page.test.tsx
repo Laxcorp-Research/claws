@@ -56,3 +56,67 @@ describe("SignInPage magic link honesty", () => {
     expect(screen.queryByText(/Check your email/)).toBeNull()
   })
 })
+
+// Founder screenshot 2026-08-25: the sent-state banner overflowed the 540px
+// column (whitespace-nowrap) and the page dead-ended - form gone, no resend,
+// no way back. These lock the fixed sent-state.
+describe("SignInPage sent-state layout and escape hatches", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSignIn.mockResolvedValue({ ok: true, error: null })
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  async function sendLink() {
+    render(<SignInPage />)
+    fireEvent.change(screen.getByPlaceholderText("Email address"), {
+      target: { value: "user@example.com" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Send magic link" }))
+    await waitFor(() => {
+      expect(screen.getByText(/We sent a magic link/)).toBeTruthy()
+    })
+  }
+
+  it("REGRESSION: banner text wraps - no whitespace-nowrap (it overflowed the column)", async () => {
+    await sendLink()
+    const p = document.querySelector('[role="status"] p')
+    expect(p).toBeTruthy()
+    expect(p?.className ?? "").not.toContain("whitespace-nowrap")
+  })
+
+  it("sent state offers 'Send again' which re-fires the email signIn", async () => {
+    await sendLink()
+    fireEvent.click(screen.getByRole("button", { name: "Didn't get it? Send again" }))
+    await waitFor(() => {
+      expect(mockSignIn).toHaveBeenCalledTimes(2)
+    })
+    expect(mockSignIn).toHaveBeenLastCalledWith(
+      "email",
+      expect.objectContaining({ email: "user@example.com", redirect: false }),
+    )
+  })
+
+  it("'Use a different email' returns to the form with the address preserved (no dead end)", async () => {
+    await sendLink()
+    fireEvent.click(screen.getByRole("button", { name: "Use a different email" }))
+    const input = screen.getByPlaceholderText("Email address") as HTMLInputElement
+    expect(input.value).toBe("user@example.com")
+    expect(screen.getByRole("button", { name: "Send magic link" })).toBeTruthy()
+    expect(screen.queryByText(/We sent a magic link/)).toBeNull()
+  })
+
+  it("a failed resend surfaces the error inside the sent state (previously invisible)", async () => {
+    await sendLink()
+    mockSignIn.mockResolvedValue({ ok: false, error: "EmailSignin" })
+    fireEvent.click(screen.getByRole("button", { name: "Didn't get it? Send again" }))
+    expect(
+      await screen.findByText("Could not send magic link. Check the email and try again."),
+    ).toBeTruthy()
+    // Still in the sent state - the banner remains visible alongside the error.
+    expect(screen.getByText(/We sent a magic link/)).toBeTruthy()
+  })
+})

@@ -72,9 +72,35 @@ function SignInContent() {
         )}
 
         {magicLinkSent ? (
-          <AlertBanner variant="info" icon={<Mail className="w-4 h-4" />}>
-            <p className="whitespace-nowrap"><strong>Check your email.</strong> We sent a magic link to {email}. Click it to sign in.</p>
-          </AlertBanner>
+          <>
+            {/* No whitespace-nowrap: the single-line banner overflowed the
+                540px column (founder screenshot, Aug-25). Wrap + left-align. */}
+            <AlertBanner variant="info" icon={<Mail className="w-4 h-4" />}>
+              <p className="text-left"><strong>Check your email.</strong> We sent a magic link to {email}. Click it to sign in.</p>
+            </AlertBanner>
+            {magicLinkError && (
+              <AlertBanner variant="error">
+                <span>{magicLinkError}</span>
+              </AlertBanner>
+            )}
+            <div className="flex items-center justify-center gap-4 mt-1">
+              <button
+                type="button"
+                onClick={handleMagicLink}
+                disabled={loading}
+                className="text-[12px] text-[var(--ac-text)] hover:text-[var(--tx)] underline-offset-2 hover:underline bg-transparent border-0 p-0 cursor-pointer disabled:opacity-50"
+              >
+                {loading ? "Sending..." : "Didn't get it? Send again"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMagicLinkSent(false); setMagicLinkError(null) }}
+                className="text-[12px] text-[var(--tx3)] hover:text-[var(--tx)] underline-offset-2 hover:underline bg-transparent border-0 p-0 cursor-pointer"
+              >
+                Use a different email
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <button
