@@ -1,16 +1,19 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { X } from "lucide-react"
 import { useBuilderStore } from "@/stores/builder-store"
 import { CustomSelect } from "./custom-select"
 import { HelpTooltip } from "@/components/ui/help-tooltip"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { TimePicker } from "@/components/ui/time-picker"
 import {
   computeNextOccurrences,
   deserializeSchedule,
   serializeSchedule,
+  tryParseCroner,
   validateSchedule,
 } from "@/lib/schedule"
 import { convertSlotWall, convertWallTime, tzShortLabel } from "@/lib/schedule/wall-time"
@@ -44,6 +47,12 @@ const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5]
 
 function padTime(hour: number, minute: number): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+}
+
+function compactFireLabels(row: { localIso: string; utcIso: string }): { local: string; utc: string } {
+  const local = row.localIso.replace(/(\d{2}:\d{2}):\d{2}/, "$1")
+  const utc = row.utcIso.match(/T(\d{2}:\d{2})/)?.[1]
+  return { local, utc: utc ? `${utc} UTC` : `${row.utcIso.replace(".000Z", "Z")} UTC` }
 }
 
 function parseTimeInput(raw: string): { hour: number; minute: number } | null {
@@ -187,8 +196,10 @@ export function HeartbeatConfig() {
   const showAdvanced = value.mode !== "off"
   const advancedExpanded = advancedOpen || value.mode === "cron" || extras.length > 0
 
+  const scheduleErrors = gate.errors.filter((err) => !err.startsWith("Invalid cron"))
+
   return (
-    <div>
+    <div className="min-w-0">
       <div className="flex items-center gap-[4px] mb-[6px]">
         <div className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Heartbeat</div>
         <HelpTooltip text="How often the Orchestrator wakes up and runs its task checklist. Times are stored in UTC and shown in your local timezone. Daily at 8 AM is a good default for most business Claws." />
@@ -217,7 +228,7 @@ export function HeartbeatConfig() {
         )}
 
         {showAdvanced && (
-          <div className="border border-[var(--bd)] rounded-[8px] px-[8px] py-[6px]">
+          <div className="border border-[var(--bd)] rounded-[8px] px-[8px] py-[6px] min-w-0 overflow-hidden">
             <button
               type="button"
               className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider w-full text-left"
@@ -227,6 +238,7 @@ export function HeartbeatConfig() {
             </button>
             {advancedExpanded && (
               <CronExprsEditor
+                key={value.mode}
                 expressions={extras.length > 0 ? extras : [""]}
                 onChange={(next) => commit(withExtras(value, next))}
                 runTz={
@@ -239,8 +251,8 @@ export function HeartbeatConfig() {
           </div>
         )}
 
-        {gate.errors.map((err) => (
-          <p key={err} className="text-[10px] text-[var(--err)] leading-[1.4]" role="alert">
+        {scheduleErrors.map((err) => (
+          <p key={err} className="text-[10px] text-[var(--err)] leading-[1.4] break-words" role="alert">
             {err}
           </p>
         ))}
@@ -256,14 +268,16 @@ export function HeartbeatConfig() {
             <div className="text-[10px] font-semibold text-[var(--tx3)] uppercase tracking-[0.04em] mb-[4px]">
               Next 5 fires
             </div>
-            <ul className="flex flex-col gap-[3px]">
-              {preview.map((row) => (
-                <li key={`${row.utcIso}-${row.expr}`} className="text-[10px] text-[var(--tx2)] leading-[1.4]">
-                  <span className="text-[var(--tx)]">{row.localIso}</span>
-                  {" · "}
-                  <span>{row.utcIso.replace(".000Z", "Z")} UTC</span>
-                </li>
-              ))}
+            <ul className="flex flex-col gap-[3px] min-w-0">
+              {preview.map((row) => {
+                const labels = compactFireLabels(row)
+                return (
+                  <li key={`${row.utcIso}-${row.expr}`} className="min-w-0 text-[10px] leading-[1.4]">
+                    <div className="text-[var(--tx)] break-words">{labels.local}</div>
+                    <div className="text-[var(--tx3)]">{labels.utc}</div>
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )}
@@ -297,18 +311,13 @@ function PresetTimeEditor({
       ? `${padTime(t.hour, t.minute)} UTC`
       : `${padTime(t.hour, t.minute)} ${tzLabel} · ${padTime(utc.hour, utc.minute)} UTC`
   return (
-    <div className="flex flex-col gap-[4px]">
-      <Input
-        type="time"
-        step={60}
-        variant="compact"
+    <div className="flex flex-col gap-[4px] min-w-0">
+      <TimePicker
         value={value.time.length === 5 ? value.time : "08:00"}
-        onChange={(e) =>
-          onChange({ mode: value.mode, time: e.target.value || "08:00", tz: browserTz })
-        }
+        onChange={(time) => onChange({ mode: value.mode, time: time || "08:00", tz: browserTz })}
         aria-label="Heartbeat time"
       />
-      <p className="text-[10px] text-[var(--tx3)] leading-[1.4]" data-testid="preset-time-receipt">
+      <p className="text-[10px] text-[var(--tx3)] leading-[1.4] break-words" data-testid="preset-time-receipt">
         {receipt}
         {!value.tz && " · workspace timezone"}
       </p>
@@ -358,12 +367,12 @@ function TimesEditor({
     commitLocal(localSlots.map((s, i) => (i === idx ? { ...s, ...patch } : s)))
   }
   return (
-    <div className="flex flex-col gap-[6px]">
+    <div className="flex flex-col gap-[6px] min-w-0">
       <div
         data-testid="schedule-chip"
-        className="self-start px-[8px] h-[22px] inline-flex items-center rounded-[6px] border border-[var(--bd)] text-[10px] text-[var(--tx2)]"
+        className="max-w-full min-w-0 self-stretch px-[8px] min-h-[22px] inline-flex items-center rounded-[6px] border border-[var(--bd)] text-[10px] text-[var(--tx2)]"
       >
-        {timesChipText(localSlots, tzLabel)}
+        <span className="min-w-0 break-words">{timesChipText(localSlots, tzLabel)}</span>
       </div>
       {localSlots.map((slot, idx) => {
         const utcSlot = convertSlotWall(slot, inputTz, "UTC")
@@ -372,35 +381,34 @@ function TimesEditor({
             ? `${padTime(slot.hour, slot.minute)} UTC`
             : `${padTime(slot.hour, slot.minute)} ${tzLabel} · ${padTime(utcSlot.hour, utcSlot.minute)} UTC`
         return (
-        <div key={`${idx}-${slot.hour}-${slot.minute}`} className="flex flex-col gap-[4px]">
-          <div className="flex items-center gap-[6px]">
-            <Input
-              type="time"
-              step={60}
-              variant="compact"
-              className="flex-1"
+        <div key={idx} className="flex flex-col gap-[4px] min-w-0">
+          <div className="flex items-center gap-[6px] min-w-0">
+            <TimePicker
+              className="min-w-0 flex-1"
               value={padTime(slot.hour, slot.minute)}
-              onChange={(e) => {
-                const t = parseTimeInput(e.target.value)
+              onChange={(raw) => {
+                const t = parseTimeInput(raw)
                 if (t) updateSlot(idx, t)
               }}
               aria-label={`Custom time ${idx + 1}`}
             />
-            <span
-              data-testid={`slot-receipt-${idx}`}
-              className="text-[10px] text-[var(--tx3)] whitespace-nowrap"
-            >
-              {receipt}
-            </span>
             <Button
               type="button"
               variant="ghost"
               size="xs"
+              className="shrink-0 px-[6px]"
+              aria-label={`Remove time ${idx + 1}`}
               onClick={() => commitLocal(localSlots.filter((_, i) => i !== idx))}
             >
-              Remove
+              <X className="h-3 w-3" />
             </Button>
           </div>
+          <p
+            data-testid={`slot-receipt-${idx}`}
+            className="text-[10px] text-[var(--tx3)] leading-[1.4] break-words"
+          >
+            {receipt}
+          </p>
           <div className="flex flex-wrap gap-[4px]">
             {DOW.map(({ d, label }) => {
               const on = slot.weekdays.includes(d)
@@ -438,7 +446,7 @@ function TimesEditor({
           Add time
         </Button>
       )}
-      <p className="text-[10px] text-[var(--tx3)] leading-[1.4]">
+      <p className="text-[10px] text-[var(--tx3)] leading-[1.4] break-words">
         Times are in {inputTz}
         {inputTz === browserTz ? " (your local timezone)." : " (the timezone this schedule was authored in)."}
       </p>
@@ -521,22 +529,18 @@ function MonthlyEditor({
         }
         options={dayOptions}
       />
-      <div className="flex items-center gap-[6px]">
-        <Input
-          type="time"
-          step={60}
-          variant="compact"
-          className="flex-1"
+      <div className="flex flex-col gap-[4px] min-w-0">
+        <TimePicker
           value={padTime(value.hour, value.minute)}
-          onChange={(e) => {
-            const t = parseTimeInput(e.target.value)
+          onChange={(raw) => {
+            const t = parseTimeInput(raw)
             if (t) onChange({ ...value, ...t })
           }}
           aria-label="Monthly time"
         />
-        <span data-testid="monthly-receipt" className="text-[10px] text-[var(--tx3)] whitespace-nowrap">
+        <p data-testid="monthly-receipt" className="text-[10px] text-[var(--tx3)] leading-[1.4] break-words">
           {receipt}
-        </span>
+        </p>
       </div>
       <p className="text-[10px] text-[var(--tx3)] leading-[1.4]">Fires in {value.tz}.</p>
     </div>
@@ -552,40 +556,65 @@ function CronExprsEditor({
   onChange: (next: string[]) => void
   runTz: string
 }) {
+  // Drafts stay in the editor (including empty rows). The store round-trip
+  // strips empties, so binding the input to extras would drop the row mid-edit
+  // and leave stale Invalid cron lines from prior keystrokes.
+  const [drafts, setDrafts] = useState(() => (expressions.length > 0 ? expressions : [""]))
+
+  const commitDrafts = (next: string[]) => {
+    const rows = next.length > 0 ? next : [""]
+    setDrafts(rows)
+    onChange(rows)
+  }
+
   return (
-    <div className="flex flex-col gap-[6px] mt-[6px]">
-      {expressions.map((expr, idx) => (
-        <div key={idx} className="flex items-center gap-[6px]">
-          <Input
-            variant="compact"
-            className="font-mono flex-1"
-            placeholder="43 14 * * *"
-            value={expr}
-            onChange={(e) => {
-              const next = expressions.map((x, i) => (i === idx ? e.target.value : x))
-              onChange(next)
-            }}
-            aria-label={`Cron expression ${idx + 1}`}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => onChange(expressions.filter((_, i) => i !== idx))}
-          >
-            Remove
-          </Button>
-        </div>
-      ))}
+    <div className="flex flex-col gap-[6px] mt-[6px] min-w-0">
+      {drafts.map((expr, idx) => {
+        const trimmed = expr.trim()
+        const parsed = trimmed.length > 0 ? tryParseCroner(trimmed, runTz) : { ok: true as const }
+        return (
+          <div key={idx} className="flex flex-col gap-[4px] min-w-0">
+            <div className="flex items-center gap-[6px] min-w-0">
+              <Input
+                variant="compact"
+                className="font-mono min-w-0 flex-1"
+                placeholder="43 14 * * *"
+                value={expr}
+                onChange={(e) => {
+                  const next = drafts.map((x, i) => (i === idx ? e.target.value : x))
+                  commitDrafts(next)
+                }}
+                aria-label={`Cron expression ${idx + 1}`}
+                aria-invalid={trimmed.length > 0 && !parsed.ok}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="shrink-0 px-[6px]"
+                aria-label={`Remove cron ${idx + 1}`}
+                onClick={() => commitDrafts(drafts.filter((_, i) => i !== idx))}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            {trimmed.length > 0 && !parsed.ok && (
+              <p className="text-[10px] text-[var(--err)] leading-[1.4] break-words" role="alert">
+                {`Invalid cron "${trimmed}": ${parsed.message}`}
+              </p>
+            )}
+          </div>
+        )
+      })}
       <Button
         type="button"
         variant="outline"
         size="xs"
-        onClick={() => onChange([...expressions, ""])}
+        onClick={() => commitDrafts([...drafts, ""])}
       >
         Add cron
       </Button>
-      <p className="text-[10px] text-[var(--tx3)] leading-[1.4]">Expressions run in {runTz}.</p>
+      <p className="text-[10px] text-[var(--tx3)] leading-[1.4] break-words">Expressions run in {runTz}.</p>
     </div>
   )
 }

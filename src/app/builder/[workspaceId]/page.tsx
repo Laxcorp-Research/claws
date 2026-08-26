@@ -247,11 +247,11 @@ export default function BuilderPage() {
         </div>
       ) : (
         <div className="flex-1 grid grid-cols-[220px_1fr_260px] gap-2.5 p-2.5 min-h-0 overflow-hidden">
-          <div className="flex flex-col gap-2.5 min-h-0">
+          <div className="flex flex-col gap-2.5 min-h-0 min-w-0">
             <div className="flex-1 min-h-0 overflow-hidden">
               <AgentSidebar />
             </div>
-            <div className="border border-[var(--bd)] rounded-lg p-2.5 flex-shrink-0">
+            <div className="border border-[var(--bd)] rounded-lg p-2.5 flex-shrink-0 min-w-0 overflow-hidden">
               <HeartbeatConfig />
             </div>
           </div>

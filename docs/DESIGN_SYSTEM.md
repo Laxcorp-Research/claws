@@ -34,6 +34,15 @@
 - Option: `px-[10px]`, `py-[6px]`, text `11px`; selected option uses `bg-[var(--bg2)]`, `font-medium`; active option uses `bg-[var(--acbg)]`.
 - Keyboard: ArrowUp/ArrowDown moves active option, Enter/Space selects, Escape closes, type-ahead jumps by label prefix. Uses `role="listbox"` / `role="option"`.
 
+### TimePicker
+
+- Purpose: platform-styled hours/minutes picker. Replaces native browser time inputs.
+- File: `src/components/ui/time-picker.tsx`.
+- Trigger: `h-[30px]`, `px-[8px]`, `rounded-[8px]`, `border border-[var(--bd)]`, `bg-[var(--bg)]`, text `11px`, Clock icon `12px` (`h-3 w-3`). Same hover/focus as Select.
+- Popover: portal to `document.body`, `z-50`, `rounded-[8px]`, `border border-[var(--bd)]`, `bg-[var(--bg)]`, `shadow-modal`, width `168px`, two columns (hours | minutes). Collision flip like Select. Each column `max-h-[220px]`, scrollable.
+- Option: `px-[10px]`, `py-[6px]`, text `11px`; selected uses `bg-[var(--bg3)]`, `font-medium`. Hours `00–23`, minutes `00–59` (odd minutes like `:43` stay authorable).
+- Keyboard: Enter/Space toggles, Escape closes. Clicking a minute commits and closes; clicking an hour updates and stays open.
+
 ### Tabs
 
 - Purpose: dashboard-level navigation without long scrolling.
