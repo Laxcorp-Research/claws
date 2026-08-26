@@ -49,6 +49,12 @@
 - Agents pane: `flex-1 min-h-0 overflow-hidden`. `AgentSidebar` is `h-full min-h-0 overflow-y-auto` so extra workers/skills scroll inside the card.
 - Heartbeat pane: sizes to content up to `max-h-[65%]`, then `overflow-y-auto`. Do not use unbounded `flex-shrink-0` - that lets Heartbeat crush Agents.
 
+### Builder properties panel
+
+- Agent header: agent name only (`text-[10px]`, uppercase, `tracking-wider`). No `Properties -` prefix.
+- Workflow knobs (quality / revision / delivery) live only on the unselected **Workspace** view. Commander and Critic panels do not repeat them.
+- Orchestrator locked Workflow card: no jump link; copy must not say Cursor. Explain that the block is generated on deploy and edited via canvas + workspace workflow settings.
+
 ### Tabs
 
 - Purpose: dashboard-level navigation without long scrolling.

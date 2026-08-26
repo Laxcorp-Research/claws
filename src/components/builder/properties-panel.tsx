@@ -118,8 +118,6 @@ function WorkflowKnobsPanel() {
     setMaxRevisionRounds,
     setDeliveryMode,
     updateAgentProperty,
-    focusWorkflowKnobs,
-    clearFocusWorkflowKnobs,
   } = useBuilderStore()
 
   const critic = nodes.find((n) => (n.data as AgentNodeData).role === "CRITIC")
@@ -129,12 +127,6 @@ function WorkflowKnobsPanel() {
   const regulated = isRegulatedTemplateSlug(templateSlug)
   const thresholdMin = regulated ? REGULATED_QUALITY_THRESHOLD_FLOOR : 1
   const threshold = Math.max(thresholdMin, criticData?.qualityThreshold ?? 8)
-
-  useEffect(() => {
-    if (focusWorkflowKnobs) {
-      clearFocusWorkflowKnobs()
-    }
-  }, [focusWorkflowKnobs, clearFocusWorkflowKnobs])
 
   const lawPreview = useMemo(
     () =>
@@ -150,10 +142,7 @@ function WorkflowKnobsPanel() {
 
   return (
     <div
-      className={cn(
-        "mb-2.5 rounded-[6px] border border-[var(--bd)] p-2",
-        focusWorkflowKnobs && "ring-1 ring-[var(--ac)]",
-      )}
+      className="mb-2.5 rounded-[6px] border border-[var(--bd)] p-2"
       data-testid="workflow-knobs-panel"
     >
       <h5 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">
@@ -238,7 +227,6 @@ export function PropertiesPanel() {
     updateAgent,
     updateAgentProperty,
     deleteAgent,
-    jumpToWorkflowKnobs,
   } = useBuilderStore()
   const workspaceId = useBuilderStore((s) => s.workspaceId)
   const credit = useCreditBalance()
@@ -328,7 +316,7 @@ export function PropertiesPanel() {
   return (
     <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px]">
       <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">
-        Properties - {agent.name}
+        {agent.name}
       </h4>
 
       <div className="mb-2.5">
@@ -403,20 +391,13 @@ export function PropertiesPanel() {
             className="mb-2.5 rounded-[6px] border border-[var(--bd)] bg-[var(--bg2)] p-2 cursor-default select-none"
             data-testid="workflow-fence-card"
           >
-            <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="mb-1">
               <span className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">
                 Workflow (locked)
               </span>
-              <button
-                type="button"
-                onClick={() => jumpToWorkflowKnobs()}
-                className="text-[10px] text-[var(--ac-text)] underline bg-transparent border-0 cursor-pointer p-0"
-              >
-                Jump to settings
-              </button>
             </div>
             <p className="text-[10px] text-[var(--tx3)] mb-1.5">
-              Regenerated on deploy from canvas edges + knobs. Cursor entry disabled.
+              Generated on deploy from canvas connections and workspace workflow settings. Not editable here.
             </p>
             <pre className="whitespace-pre-wrap text-[10px] text-[var(--tx2)] font-mono max-h-[140px] overflow-y-auto">
               {fenceParts.fence || "(Will be generated on deploy from your connections.)"}
@@ -458,8 +439,6 @@ export function PropertiesPanel() {
           </>
         )}
       </div>
-
-      {(isOrch || isCritic) && <WorkflowKnobsPanel />}
 
       {canDelete && (
         <>
