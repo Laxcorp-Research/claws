@@ -43,6 +43,12 @@
 - Option: `px-[10px]`, `py-[6px]`, text `11px`; selected uses `bg-[var(--bg3)]`, `font-medium`. Hours `00–23`, minutes `00–59` (odd minutes like `:43` stay authorable).
 - Keyboard: Enter/Space toggles, Escape closes. Clicking a minute commits and closes; clicking an hour updates and stays open.
 
+### Builder left column (Agents + Heartbeat)
+
+- Column: `220px`, `flex flex-col`, `h-full`, `gap-2.5`, `min-h-0`.
+- Agents pane: `flex-1 min-h-0 overflow-hidden`. `AgentSidebar` is `h-full min-h-0 overflow-y-auto` so extra workers/skills scroll inside the card.
+- Heartbeat pane: sizes to content up to `max-h-[65%]`, then `overflow-y-auto`. Do not use unbounded `flex-shrink-0` - that lets Heartbeat crush Agents.
+
 ### Tabs
 
 - Purpose: dashboard-level navigation without long scrolling.

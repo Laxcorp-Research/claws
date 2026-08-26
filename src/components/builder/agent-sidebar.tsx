@@ -24,7 +24,7 @@ export function AgentSidebar() {
 
   if (nodes.length === 0) {
     return (
-      <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px] h-full">
+      <div className="h-full min-h-0 overflow-y-auto rounded-lg border border-[var(--bd)] p-2.5 text-[11px]">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider mb-2">Agents</h4>
         <div className="py-3 text-center">
           <p className="text-[12px] text-[var(--tx2)]">No agents yet</p>
@@ -38,7 +38,7 @@ export function AgentSidebar() {
   }
 
   return (
-    <div className="border border-[var(--bd)] rounded-lg p-2.5 overflow-y-auto text-[11px] h-full">
+    <div className="h-full min-h-0 overflow-y-auto rounded-lg border border-[var(--bd)] p-2.5 text-[11px]">
       <div className="flex items-center gap-[4px] mb-2">
         <h4 className="text-[10px] font-semibold text-[var(--tx2)] uppercase tracking-wider">Agents</h4>
         <HelpTooltip text="Your AI team. Every Claw has 1 Orchestrator (manager), Workers (task executors), and 1 Critic (quality reviewer)." />

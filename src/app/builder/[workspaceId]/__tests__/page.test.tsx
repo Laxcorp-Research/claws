@@ -184,3 +184,50 @@ describe("BuilderPage Batch D - load 5xx NetworkError", () => {
     expect(src).toContain("isLoadNetworkError")
   })
 })
+
+describe("BuilderPage left column panes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    storeState.isLoading = false
+    storeState.loadError = null
+    mockDriftResponse(false)
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("caps Heartbeat at 65% with inner scroll and keeps Agents as the flex remainder", () => {
+    render(<BuilderPage />)
+    const heartbeat = screen.getByTestId("builder-heartbeat-pane")
+    const agents = screen.getByTestId("builder-agents-pane")
+    expect(heartbeat.className).toContain("max-h-[65%]")
+    expect(heartbeat.className).toContain("overflow-y-auto")
+    expect(heartbeat.className).not.toContain("flex-shrink-0")
+    expect(agents.className).toContain("flex-1")
+    expect(agents.className).toContain("min-h-0")
+  })
+
+  it("MUTATION: unbounded flex-shrink-0 Heartbeat wrapper that crushes Agents → fail", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/builder/[workspaceId]/page.tsx"),
+      "utf8",
+    )
+    const heartbeatClass = src.match(
+      /data-testid="builder-heartbeat-pane"[\s\S]*?className="([^"]+)"/,
+    )?.[1]
+    expect(heartbeatClass).toContain("max-h-[65%]")
+    expect(heartbeatClass).toContain("overflow-y-auto")
+    expect(heartbeatClass).not.toMatch(/flex-shrink-0/)
+    expect(src).toContain('data-testid="builder-agents-pane"')
+
+    const sidebarSrc = readFileSync(
+      join(process.cwd(), "src/components/builder/agent-sidebar.tsx"),
+      "utf8",
+    )
+    expect(sidebarSrc).toContain("overflow-y-auto")
+    expect(sidebarSrc).toContain("h-full")
+    expect(sidebarSrc).toContain("min-h-0")
+  })
+})
