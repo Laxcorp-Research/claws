@@ -14,7 +14,7 @@
 //   - openclaw.json → gzip → base64 → CLAWS_CONFIG_GZ_B64 env var
 //   - .env content → gzip → base64 → CLAWS_ENV_GZ_B64 env var
 //   - Workspace files (SOUL.md etc.) → JSON → gzip → base64 → CLAWS_FILES_GZ_B64
-//   - Birth stubs (MEMORY.md, VOICE.md, …) → JSON → gzip → base64 → CLAWS_SEED_FILES_GZ_B64
+//   - Birth stubs (shared/VOICE.md once, workspace-*/memory/MEMORY.md per agent) → JSON → gzip → base64 → CLAWS_SEED_FILES_GZ_B64
 //     unpacked IF-ABSENT so agent/hibernation writes survive redeploy
 //   - Railway start command decodes these to /home/node/.openclaw/ on boot
 // ============================================================================

@@ -78,8 +78,8 @@ export interface SeedTemplate {
   /** Defaults applied when omitted: rounds=3, APPROVAL_REQUIRED. */
   knobs?: SeedWorkspaceKnobs
   /**
-   * INFRA-2: logical shared files (path relative to each agent workspace).
-   * Applied by applySharedFiles - not authored inline in the 20 template files.
+   * INFRA-2: logical shared files. memory/MEMORY.md is per-agent;
+   * coordination files use shared/*. Applied by applySharedFiles.
    */
   files?: SeedSharedFile[]
 }

@@ -233,7 +233,7 @@ describe('generateWorkspace', () => {
     expect(result.seedFiles).toEqual({});
   });
 
-  it('fans workspace.seedFiles into every agent dir (MUTATION: mix into CLAWS_FILES workspaces → fail)', async () => {
+  it('emits MEMORY.md per agent and VOICE.md once at shared/ (MUTATION: mix into CLAWS_FILES workspaces → fail)', async () => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       buildMockWorkspace({
         seedFiles: [
@@ -245,9 +245,13 @@ describe('generateWorkspace', () => {
     const result = await generateWorkspace('ws-test-1');
     const dirs = Object.keys(result.workspaces);
     expect(dirs.length).toBeGreaterThanOrEqual(3);
+    expect(result.seedFiles?.['shared/VOICE.md']).toContain('content-writer');
+    expect(Object.keys(result.seedFiles ?? {}).filter((k) => k.endsWith('/VOICE.md') || k === 'VOICE.md')).toEqual([
+      'shared/VOICE.md',
+    ]);
     for (const dir of dirs) {
       expect(result.seedFiles?.[`${dir}/memory/MEMORY.md`]).toContain('Maintained by this agent');
-      expect(result.seedFiles?.[`${dir}/VOICE.md`]).toContain('content-writer');
+      expect(result.seedFiles?.[`${dir}/VOICE.md`]).toBeUndefined();
       expect(result.workspaces[dir]).not.toHaveProperty('VOICE.md');
       expect(result.workspaces[dir]).not.toHaveProperty('memory/MEMORY.md');
     }

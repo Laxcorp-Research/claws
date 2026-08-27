@@ -5,44 +5,46 @@ import { isSafeSeedRelativePath } from "@/lib/workspace-seed-files"
 import { toAgentId } from "@/lib/openclaw/generator"
 import { expandSeedFilesForAgents } from "@/lib/workspace-seed-files"
 
+const SHARED = "/home/node/.openclaw/shared"
+
 const EXPECTED_NAMED: Record<string, string[]> = {
-  "quant-trader": ["PORTFOLIO.md"],
+  "quant-trader": ["shared/PORTFOLIO.md"],
   "freelancer-revenue-engine": [],
   "ecommerce-profit-maximizer": [],
-  "youtube-channel-os": ["VOICE.md"],
-  "twitter-growth-machine": ["VOICE.md"],
-  "newsletter-empire": ["VOICE.md"],
-  "podcast-production-studio": ["GUEST_PIPELINE.md"],
-  "b2b-sales-machine": ["ICP.md", "SEQUENCE.md"],
-  "agency-operations-os": ["CAPACITY.md"],
-  "founders-chief-of-staff": ["ACTION_LOG.md"],
-  "seo-empire-builder": ["CONTENT_CAL.md"],
-  "real-estate-agent-os": ["MARKET.md", "LISTINGS.md"],
+  "youtube-channel-os": ["shared/VOICE.md"],
+  "twitter-growth-machine": ["shared/VOICE.md"],
+  "newsletter-empire": ["shared/VOICE.md"],
+  "podcast-production-studio": ["shared/GUEST_PIPELINE.md"],
+  "b2b-sales-machine": ["shared/ICP.md", "shared/SEQUENCE.md"],
+  "agency-operations-os": ["shared/CAPACITY.md"],
+  "founders-chief-of-staff": ["shared/ACTION_LOG.md"],
+  "seo-empire-builder": ["shared/CONTENT_CAL.md"],
+  "real-estate-agent-os": ["shared/MARKET.md", "shared/LISTINGS.md"],
   "recruiter-os": [],
   "medical-practice-manager": [],
   "law-firm-intake-os": [],
   "home-services-dispatcher": [],
-  "health-fitness-commander": ["PROGRAM.md", "LOG.md"],
+  "health-fitness-commander": ["shared/PROGRAM.md", "shared/LOG.md"],
   "student-accelerator": [],
   "job-hunter-os": [],
   "developer-productivity-os": [],
 }
 
 const PROSE_BINDS: Array<{ slug: string; agentSlug: string; needle: string }> = [
-  { slug: "quant-trader", agentSlug: "portfolio-tracker", needle: "PORTFOLIO.md" },
-  { slug: "twitter-growth-machine", agentSlug: "content-writer", needle: "VOICE.md" },
-  { slug: "youtube-channel-os", agentSlug: "script-builder", needle: "VOICE.md" },
-  { slug: "newsletter-empire", agentSlug: "draft-writer", needle: "VOICE.md" },
-  { slug: "podcast-production-studio", agentSlug: "guest-researcher-booker", needle: "GUEST_PIPELINE.md" },
-  { slug: "b2b-sales-machine", agentSlug: "icp-researcher", needle: "ICP.md" },
-  { slug: "b2b-sales-machine", agentSlug: "sequence-writer", needle: "SEQUENCE.md" },
-  { slug: "agency-operations-os", agentSlug: "resource-allocator", needle: "CAPACITY.md" },
-  { slug: "founders-chief-of-staff", agentSlug: "action-tracker", needle: "ACTION_LOG.md" },
-  { slug: "seo-empire-builder", agentSlug: "keyword-strategist", needle: "CONTENT_CAL.md" },
-  { slug: "real-estate-agent-os", agentSlug: "market-intel-agent", needle: "MARKET.md" },
-  { slug: "real-estate-agent-os", agentSlug: "client-communicator", needle: "LISTINGS.md" },
-  { slug: "health-fitness-commander", agentSlug: "workout-planner", needle: "PROGRAM.md" },
-  { slug: "health-fitness-commander", agentSlug: "habit-recovery-tracker", needle: "LOG.md" },
+  { slug: "quant-trader", agentSlug: "portfolio-tracker", needle: `${SHARED}/PORTFOLIO.md` },
+  { slug: "twitter-growth-machine", agentSlug: "content-writer", needle: `${SHARED}/VOICE.md` },
+  { slug: "youtube-channel-os", agentSlug: "script-builder", needle: `${SHARED}/VOICE.md` },
+  { slug: "newsletter-empire", agentSlug: "draft-writer", needle: `${SHARED}/VOICE.md` },
+  { slug: "podcast-production-studio", agentSlug: "guest-researcher-booker", needle: `${SHARED}/GUEST_PIPELINE.md` },
+  { slug: "b2b-sales-machine", agentSlug: "icp-researcher", needle: `${SHARED}/ICP.md` },
+  { slug: "b2b-sales-machine", agentSlug: "sequence-writer", needle: `${SHARED}/SEQUENCE.md` },
+  { slug: "agency-operations-os", agentSlug: "resource-allocator", needle: `${SHARED}/CAPACITY.md` },
+  { slug: "founders-chief-of-staff", agentSlug: "action-tracker", needle: `${SHARED}/ACTION_LOG.md` },
+  { slug: "seo-empire-builder", agentSlug: "keyword-strategist", needle: `${SHARED}/CONTENT_CAL.md` },
+  { slug: "real-estate-agent-os", agentSlug: "market-intel-agent", needle: `${SHARED}/MARKET.md` },
+  { slug: "real-estate-agent-os", agentSlug: "client-communicator", needle: `${SHARED}/LISTINGS.md` },
+  { slug: "health-fitness-commander", agentSlug: "workout-planner", needle: `${SHARED}/PROGRAM.md` },
+  { slug: "health-fitness-commander", agentSlug: "habit-recovery-tracker", needle: `${SHARED}/LOG.md` },
 ]
 
 describe("INFRA-2 seed shared-file manifests", () => {
@@ -74,10 +76,10 @@ describe("INFRA-2 seed shared-file manifests", () => {
     const snap = JSON.parse(buildWorkspaceSnapshotFromSeedTemplate(twitter)) as {
       files?: Array<{ path: string; content: string }>
     }
-    expect(snap.files?.map((f) => f.path).sort()).toEqual(["VOICE.md", "memory/MEMORY.md"])
+    expect(snap.files?.map((f) => f.path).sort()).toEqual(["memory/MEMORY.md", "shared/VOICE.md"])
   })
 
-  it("prose execution steps name-match the seeded files", () => {
+  it("prose execution steps bind to the shared host path", () => {
     for (const bind of PROSE_BINDS) {
       const template = ALL_TEMPLATES.find((t) => t.slug === bind.slug)!
       const agent = template.agents.find((a) => a.agentSlug === bind.agentSlug)
@@ -86,17 +88,19 @@ describe("INFRA-2 seed shared-file manifests", () => {
     }
   })
 
-  it("Twitter/X generated file tree fans MEMORY.md + VOICE.md into every agent workspace", () => {
+  it("Twitter/X generated tree: VOICE.md once at shared/; MEMORY.md per agent", () => {
     const twitter = ALL_TEMPLATES.find((t) => t.slug === "twitter-growth-machine")!
     const dirs = twitter.agents.map((a) => `workspace-${toAgentId(a.name)}`)
     const tree = expandSeedFilesForAgents(twitter.files ?? [], dirs)
     const keys = Object.keys(tree).sort()
     expect(dirs.length).toBe(6)
-    expect(keys).toHaveLength(12)
+    expect(keys).toHaveLength(7)
+    expect(keys).toContain("shared/VOICE.md")
+    expect(tree["shared/VOICE.md"]).toContain("Maintained by content-writer")
+    expect(keys.filter((k) => k.endsWith("/VOICE.md") || k === "VOICE.md")).toEqual(["shared/VOICE.md"])
     for (const dir of dirs) {
       expect(keys).toContain(`${dir}/memory/MEMORY.md`)
-      expect(keys).toContain(`${dir}/VOICE.md`)
-      expect(tree[`${dir}/VOICE.md`]).toContain("Maintained by content-writer")
+      expect(keys).not.toContain(`${dir}/VOICE.md`)
     }
   })
 })

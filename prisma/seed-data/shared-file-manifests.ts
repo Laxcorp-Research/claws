@@ -42,7 +42,7 @@ function memoryMd(): SeedSharedFile {
 }
 
 const PORTFOLIO = stub({
-  path: "PORTFOLIO.md",
+  path: "shared/PORTFOLIO.md",
   title: "PORTFOLIO.md",
   maintainedBy: "portfolio-tracker",
   schema: [
@@ -56,7 +56,7 @@ const PORTFOLIO = stub({
 })
 
 const VOICE_TWITTER = stub({
-  path: "VOICE.md",
+  path: "shared/VOICE.md",
   title: "VOICE.md",
   maintainedBy: "content-writer",
   schema: [
@@ -69,7 +69,7 @@ const VOICE_TWITTER = stub({
 })
 
 const VOICE_YOUTUBE = stub({
-  path: "VOICE.md",
+  path: "shared/VOICE.md",
   title: "VOICE.md",
   maintainedBy: "script-builder",
   schema: [
@@ -82,7 +82,7 @@ const VOICE_YOUTUBE = stub({
 })
 
 const VOICE_NEWSLETTER = stub({
-  path: "VOICE.md",
+  path: "shared/VOICE.md",
   title: "VOICE.md",
   maintainedBy: "draft-writer",
   schema: [
@@ -95,7 +95,7 @@ const VOICE_NEWSLETTER = stub({
 })
 
 const GUEST_PIPELINE = stub({
-  path: "GUEST_PIPELINE.md",
+  path: "shared/GUEST_PIPELINE.md",
   title: "GUEST_PIPELINE.md",
   maintainedBy: "guest-researcher-booker",
   schema: [
@@ -108,7 +108,7 @@ const GUEST_PIPELINE = stub({
 })
 
 const ICP = stub({
-  path: "ICP.md",
+  path: "shared/ICP.md",
   title: "ICP.md",
   maintainedBy: "icp-researcher",
   schema: [
@@ -121,7 +121,7 @@ const ICP = stub({
 })
 
 const SEQUENCE = stub({
-  path: "SEQUENCE.md",
+  path: "shared/SEQUENCE.md",
   title: "SEQUENCE.md",
   maintainedBy: "sequence-writer",
   schema: [
@@ -134,7 +134,7 @@ const SEQUENCE = stub({
 })
 
 const CAPACITY = stub({
-  path: "CAPACITY.md",
+  path: "shared/CAPACITY.md",
   title: "CAPACITY.md",
   maintainedBy: "resource-allocator",
   schema: [
@@ -147,7 +147,7 @@ const CAPACITY = stub({
 })
 
 const ACTION_LOG = stub({
-  path: "ACTION_LOG.md",
+  path: "shared/ACTION_LOG.md",
   title: "ACTION_LOG.md",
   maintainedBy: "action-tracker",
   schema: [
@@ -160,7 +160,7 @@ const ACTION_LOG = stub({
 })
 
 const CONTENT_CAL = stub({
-  path: "CONTENT_CAL.md",
+  path: "shared/CONTENT_CAL.md",
   title: "CONTENT_CAL.md",
   maintainedBy: "keyword-strategist",
   schema: [
@@ -173,7 +173,7 @@ const CONTENT_CAL = stub({
 })
 
 const MARKET = stub({
-  path: "MARKET.md",
+  path: "shared/MARKET.md",
   title: "MARKET.md",
   maintainedBy: "market-intel-agent",
   schema: [
@@ -186,7 +186,7 @@ const MARKET = stub({
 })
 
 const LISTINGS = stub({
-  path: "LISTINGS.md",
+  path: "shared/LISTINGS.md",
   title: "LISTINGS.md",
   maintainedBy: "listing-commander",
   schema: [
@@ -199,7 +199,7 @@ const LISTINGS = stub({
 })
 
 const PROGRAM = stub({
-  path: "PROGRAM.md",
+  path: "shared/PROGRAM.md",
   title: "PROGRAM.md",
   maintainedBy: "workout-planner",
   schema: [
@@ -212,7 +212,7 @@ const PROGRAM = stub({
 })
 
 const LOG = stub({
-  path: "LOG.md",
+  path: "shared/LOG.md",
   title: "LOG.md",
   maintainedBy: "habit-recovery-tracker",
   schema: [

@@ -149,7 +149,8 @@ export interface GeneratedWorkspace {
 
   /**
    * INFRA-2 birth stubs unpacked IF-ABSENT (not mixed into CLAWS_FILES).
-   * Keys are paths under /home/node/.openclaw/ (workspace-{id}/VOICE.md).
+   * Keys are paths under /home/node/.openclaw/
+   * (shared/VOICE.md once; workspace-{id}/memory/MEMORY.md per agent).
    */
   seedFiles?: Record<string, string>;
 }

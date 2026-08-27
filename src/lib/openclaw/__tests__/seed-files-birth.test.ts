@@ -50,6 +50,8 @@ function generatedWithSeeds(): GeneratedWorkspace {
     seedFiles: {
       "workspace-twitter-commander/memory/MEMORY.md":
         "# MEMORY.md\n\nMaintained by this agent.\n\n## Schema\n- date\n\n## Entries\n_stub_\n",
+      "shared/VOICE.md":
+        "# VOICE.md\n\nMaintained by content-writer.\n\n## Schema\n- tone\n\n## Entries\n_voice stub_\n",
     },
   }
 }
@@ -130,30 +132,38 @@ describe("INFRA-2 birth-only seed files (the trap)", () => {
       gunzipSync(Buffer.from(env.CLAWS_FILES_GZ_B64, "base64")).toString("utf8"),
     ) as Record<string, string>
     expect(packedFiles).not.toHaveProperty("workspace-twitter-commander/memory/MEMORY.md")
+    expect(packedFiles).not.toHaveProperty("shared/VOICE.md")
 
     const outputDir = executeUnpack(env)
     const memoryPath = path.join(outputDir, "workspace-twitter-commander/memory/MEMORY.md")
     const soulPath = path.join(outputDir, "workspace-twitter-commander/SOUL.md")
+    const voicePath = path.join(outputDir, "shared/VOICE.md")
 
     try {
       expect(readFileSync(memoryPath, "utf8")).toContain("_stub_")
       expect(readFileSync(soulPath, "utf8")).toBe("# SOUL stub\n")
+      expect(readFileSync(voicePath, "utf8")).toContain("_voice stub_")
 
       const agentMemory =
         "# MEMORY.md\n\nAGENT WROTE THIS during the session. Must survive redeploy.\n"
+      const agentVoice =
+        "# VOICE.md\n\nAGENT WROTE THIS voice. Must survive redeploy.\n"
       writeFileSync(memoryPath, agentMemory)
+      writeFileSync(voicePath, agentVoice)
       writeFileSync(soulPath, "# SOUL.md\nagent edited soul - should NOT survive\n")
 
       generated.workspaces["workspace-twitter-commander"]["SOUL.md"] = "# SOUL.md\nredeployed soul\n"
       generated.seedFiles = {
         "workspace-twitter-commander/memory/MEMORY.md":
           "# MEMORY.md\n\nBIRTH STUB - must not clobber agent write.\n",
+        "shared/VOICE.md": "# VOICE.md\n\nBIRTH STUB - must not clobber agent voice.\n",
       }
       const redeployEnv = buildRailwayEnvVars(generated, workspace, user)
       executeUnpack(redeployEnv, outputDir)
 
       expect(readFileSync(memoryPath, "utf8")).toBe(agentMemory)
       expect(readFileSync(soulPath, "utf8")).toBe("# SOUL.md\nredeployed soul\n")
+      expect(readFileSync(voicePath, "utf8")).toBe(agentVoice)
     } finally {
       rmSync(outputDir, { recursive: true, force: true })
     }
@@ -185,5 +195,6 @@ describe("INFRA-2 birth-only seed files (the trap)", () => {
       gunzipSync(Buffer.from(env.CLAWS_SEED_FILES_GZ_B64, "base64")).toString("utf8"),
     ) as Record<string, string>
     expect(decoded["workspace-twitter-commander/memory/MEMORY.md"]).toContain("Maintained by")
+    expect(decoded["shared/VOICE.md"]).toContain("content-writer")
   })
 })
