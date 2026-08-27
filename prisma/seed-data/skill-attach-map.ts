@@ -78,7 +78,7 @@ export const TEMPLATE_SKILL_ATTACH: Record<string, Record<string, string[]>> = {
     "newsletter-commander": [],
     "topic-researcher": ["twitter-oauth", "linkedin-api"],
     // convertkit is the catalog alternative on beehiiv-api. Missing beehiiv
-    // SKILL.md is WAVE-2 — do not pretend convertkit is beehiiv.
+    // SKILL.md is WAVE-2 - do not pretend convertkit is beehiiv.
     "draft-writer": ["convertkit-newsletter"],
     "growth-strategist": ["twitter-oauth", "linkedin-api"],
     "monetization-optimizer": [],

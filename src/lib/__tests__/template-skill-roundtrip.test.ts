@@ -281,7 +281,7 @@ describe("INFRA-3 install → generate skill round-trip", () => {
 
     expect(
       live.agents.every((a) => a.skills.length === 0),
-      "twitter-growth-machine seed must not be skills:[] — restoring empty fails this test",
+      "twitter-growth-machine seed must not be skills:[] - restoring empty fails this test",
     ).toBe(false)
   })
 })

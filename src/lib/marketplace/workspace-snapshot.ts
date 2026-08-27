@@ -105,7 +105,7 @@ export function buildWorkspaceSnapshotJson(payload: WorkspaceSnapshotPayload): s
 
 /**
  * Seed authoring is `string[]`. Install's snapshotSkillSlug only reads
- * `{ slug | skillSlug }` on objects — a bare string was silently skipped.
+ * `{ slug | skillSlug }` on objects - a bare string was silently skipped.
  * Normalize here so reseeded templates materialize AgentSkill rows.
  */
 export function normalizeSeedAgentSkills(skills: unknown): Array<{ slug: string }> {

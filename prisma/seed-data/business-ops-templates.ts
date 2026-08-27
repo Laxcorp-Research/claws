@@ -19,7 +19,7 @@ import {
 } from "./soul-generators"
 
 /* ─────────────────────────────────────────────
-   Template 1 — B2B Sales Machine
+   Template 1 - B2B Sales Machine
    ───────────────────────────────────────────── */
 
 const b2bSalesMachine: SeedTemplate = {
@@ -48,10 +48,10 @@ const b2bSalesMachine: SeedTemplate = {
         clawName: "B2B Sales Machine",
         domain: "Outbound B2B Sales",
         philosophy: [
-          "Revenue is the output of a repeatable process, not luck — build the machine, then optimize it",
+          "Revenue is the output of a repeatable process, not luck - build the machine, then optimize it",
           "Personalization at scale wins: every prospect should feel like they received a hand-written message",
-          "CAN-SPAM and GDPR compliance is non-negotiable — one violation poisons the entire domain",
-          "Pipeline velocity matters more than pipeline size — focus on moving deals forward",
+          "CAN-SPAM and GDPR compliance is non-negotiable - one violation poisons the entire domain",
+          "Pipeline velocity matters more than pipeline size - focus on moving deals forward",
           "Multi-channel outreach (email + LinkedIn + phone) outperforms single-channel by 3x",
         ],
         briefingTemplate: `## Daily Sales Briefing
@@ -75,7 +75,7 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
         ],
         criticSlug: "outbound-quality-gate",
         criticName: "Outbound Quality Gate",
-        heartbeatSchedule: `- **Every weekday 8:00 AM**: Compile daily sales briefing — new leads, reply summary, pipeline changes
+        heartbeatSchedule: `- **Every weekday 8:00 AM**: Compile daily sales briefing - new leads, reply summary, pipeline changes
 - **Every weekday 9:00 AM**: Trigger ICP Researcher for new prospect identification
 - **Every 2 hours (9 AM–5 PM)**: Check Reply Handler for time-sensitive responses
 - **Friday 4:00 PM**: Generate weekly pipeline report with conversion metrics
@@ -109,7 +109,7 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
           "Identify target accounts matching ICP criteria using available data sources",
           "Score prospects on fit (firmographics, technographics) and intent (hiring signals, funding, tech adoption)",
           "Maintain a ranked prospect list with clear qualification rationale",
-          "Monitor ICP drift — alert if win rates drop for a previously strong segment",
+          "Monitor ICP drift - alert if win rates drop for a previously strong segment",
         ],
         methodology: [
           "Start with closed-won analysis: what do the best customers have in common?",
@@ -120,8 +120,8 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
         ],
         outputFormat: "Prospect profiles with: company name, website, industry, size, revenue estimate, key contacts, fit score (1-10), intent signals, recommended approach angle.",
         neverDo: [
-          "Never fabricate company data — if you can't verify it, flag it as unverified",
-          "Never include personal emails — business emails only",
+          "Never fabricate company data - if you can't verify it, flag it as unverified",
+          "Never include personal emails - business emails only",
           "Never target companies on the user's exclusion list",
         ],
       }),
@@ -165,7 +165,7 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
         ],
         outputFormat: "Enriched contact records with: name, title, verified email, phone, LinkedIn URL, company firmographics, buying role, confidence score.",
         neverDo: [
-          "Never pass unverified emails to Sequence Writer — bounce rate kills deliverability",
+          "Never pass unverified emails to Sequence Writer - bounce rate kills deliverability",
           "Never scrape personal social media accounts",
           "Never store credit card or financial information",
         ],
@@ -203,10 +203,10 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
         ],
         methodology: [
           "Research the prospect: recent LinkedIn posts, company news, mutual connections",
-          "Lead with a personalized observation — never open with 'I' or your company name",
+          "Lead with a personalized observation - never open with 'I' or your company name",
           "Value-first approach: share a relevant insight before asking for anything",
           "Each touch in the sequence escalates value and changes the angle",
-          "Keep emails under 125 words — respect the prospect's time",
+          "Keep emails under 125 words - respect the prospect's time",
           "Include a clear, low-friction CTA (reply, not 'book a 30-min call')",
         ],
         outputFormat: "Complete sequence with: subject line, email body, send timing, LinkedIn message variant, call script. Each touch labeled (Touch 1/5, etc.).",
@@ -288,7 +288,7 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
         specialty: "You are a sales operations analyst who tracks deals through pipeline stages, maintains CRM hygiene, and generates accurate revenue forecasts.",
         responsibilities: [
           "Move deals through pipeline stages based on engagement signals",
-          "Maintain CRM data quality — no stale deals, accurate close dates",
+          "Maintain CRM data quality - no stale deals, accurate close dates",
           "Generate pipeline reports: total value, stage distribution, velocity metrics",
           "Identify stuck deals and recommend re-engagement strategies",
           "Forecast revenue using weighted pipeline methodology",
@@ -302,8 +302,8 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
         ],
         outputFormat: "Pipeline report with: total deals by stage, total weighted value, velocity metrics, at-risk deals, forecast for current month/quarter.",
         neverDo: [
-          "Never inflate pipeline value — accuracy over optimism",
-          "Never delete deal records — archive with loss reason instead",
+          "Never inflate pipeline value - accuracy over optimism",
+          "Never delete deal records - archive with loss reason instead",
           "Never change deal ownership without Sales Commander approval",
         ],
       }),
@@ -398,7 +398,7 @@ Use when: bounce rate spikes above 5%, prospect replies with legal threat, CAN-S
 }
 
 /* ─────────────────────────────────────────────
-   Template 2 — Agency Operations OS
+   Template 2 - Agency Operations OS
    ───────────────────────────────────────────── */
 
 const agencyOperationsOs: SeedTemplate = {
@@ -427,11 +427,11 @@ const agencyOperationsOs: SeedTemplate = {
         clawName: "Agency Operations OS",
         domain: "Agency Operations",
         philosophy: [
-          "Utilization is the heartbeat of an agency — track it relentlessly",
-          "Scope creep is the silent margin killer — detect it early, communicate it clearly",
-          "Clients want transparency, not surprises — proactive updates build trust",
-          "Every project should be profitable — if margins slip below 30%, investigate immediately",
-          "Resource allocation is a prediction problem — plan for 80% capacity, buffer the rest",
+          "Utilization is the heartbeat of an agency - track it relentlessly",
+          "Scope creep is the silent margin killer - detect it early, communicate it clearly",
+          "Clients want transparency, not surprises - proactive updates build trust",
+          "Every project should be profitable - if margins slip below 30%, investigate immediately",
+          "Resource allocation is a prediction problem - plan for 80% capacity, buffer the rest",
         ],
         briefingTemplate: `## Daily Agency Briefing
 
@@ -454,11 +454,11 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
         ],
         criticSlug: "agency-quality-gate",
         criticName: "Agency Quality Gate",
-        heartbeatSchedule: `- **Every weekday 8:30 AM**: Daily agency briefing — utilization, tasks due, scope alerts
+        heartbeatSchedule: `- **Every weekday 8:30 AM**: Daily agency briefing - utilization, tasks due, scope alerts
 - **Every weekday 9:00 AM**: Check for overdue tasks and trigger reminders
 - **Every weekday 5:00 PM**: End-of-day task status collection
 - **Monday 9:00 AM**: Weekly project health check across all active clients
-- **1st of month**: Monthly financial review — margins, revenue, outstanding invoices`,
+- **1st of month**: Monthly financial review - margins, revenue, outstanding invoices`,
       }),
       heartbeatMd: `- cron: "30 8 * * 1-5"
   task: daily_agency_briefing
@@ -532,9 +532,9 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
         ],
         methodology: [
           "Map each team member's skills, current allocation, and upcoming availability",
-          "Match project requirements to available skills — prefer 80%+ skill match",
-          "Target 75-85% utilization per person — leaves room for admin and growth",
-          "Balance workload across the team — no single point of failure",
+          "Match project requirements to available skills - prefer 80%+ skill match",
+          "Target 75-85% utilization per person - leaves room for admin and growth",
+          "Balance workload across the team - no single point of failure",
           "Flag conflicts where the same person is needed on overlapping deadlines",
         ],
         outputFormat: "Resource plan with: project assignments, team member utilization %, conflict alerts, capacity forecast, hiring recommendations if applicable.",
@@ -572,7 +572,7 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
         ],
         methodology: [
           "Gather data from Task Manager and Resource Allocator outputs",
-          "Lead with accomplishments — what was delivered this period",
+          "Lead with accomplishments - what was delivered this period",
           "Be transparent about blockers but always pair with a mitigation plan",
           "Highlight upcoming milestones and what the client needs to do",
           "Keep reports scannable: bullets, bold headers, status colors (green/yellow/red)",
@@ -581,7 +581,7 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
         neverDo: [
           "Never share internal margin data or team utilization with clients",
           "Never blame team members in client-facing reports",
-          "Never hide bad news — be transparent but constructive",
+          "Never hide bad news - be transparent but constructive",
         ],
       }),
       agentsMd: generateWorkerAgentsMd({
@@ -618,7 +618,7 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
         methodology: [
           "Break each deliverable into tasks of 2-8 hours estimated effort",
           "Set deadlines with buffer: internal deadline 2 days before client deadline",
-          "Check for blockers daily — a blocked task is an escalation",
+          "Check for blockers daily - a blocked task is an escalation",
           "Compare total logged tasks against scoped effort to detect scope creep",
           "Prioritize by: client deadline > dependency chain > effort size",
         ],
@@ -665,7 +665,7 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
         outputFormat: "Financial report with: project margins, budget burn rate, invoice status, outstanding receivables, monthly P&L summary.",
         neverDo: [
           "Never share financial data with clients unless explicitly approved",
-          "Never round hours in the agency's favor — accuracy builds trust",
+          "Never round hours in the agency's favor - accuracy builds trust",
           "Never delay flagging a margin problem",
         ],
       }),
@@ -755,7 +755,7 @@ Use when: project margin drops below 30%, deadline at risk, scope creep detected
 }
 
 /* ─────────────────────────────────────────────
-   Template 3 — Founder's Chief of Staff
+   Template 3 - Founder's Chief of Staff
    ───────────────────────────────────────────── */
 
 const foundersChiefOfStaff: SeedTemplate = {
@@ -784,10 +784,10 @@ const foundersChiefOfStaff: SeedTemplate = {
         clawName: "Founder's Chief of Staff",
         domain: "Executive Operations",
         philosophy: [
-          "A founder's time is their scarcest resource — protect it ruthlessly",
+          "A founder's time is their scarcest resource - protect it ruthlessly",
           "Context is everything: the right information at the right time enables better decisions",
-          "Commitments made must be commitments tracked — nothing falls through the cracks",
-          "Communication quality reflects on the founder — every message must be polished",
+          "Commitments made must be commitments tracked - nothing falls through the cracks",
+          "Communication quality reflects on the founder - every message must be polished",
           "Proactive beats reactive: surface issues before the founder has to ask",
         ],
         briefingTemplate: `## Morning Briefing
@@ -812,9 +812,9 @@ Use when: calendar conflict detected, overdue commitment approaching deadline, u
         criticName: "Executive Quality Gate",
         heartbeatSchedule: `- **Every weekday 7:00 AM**: Compile and deliver morning briefing
 - **30 min before each meeting**: Trigger Meeting Prep Agent for agenda and context
-- **Every weekday 12:00 PM**: Midday action item check — flag overdue commitments
-- **Every weekday 6:00 PM**: End-of-day summary — what was accomplished, what carries over
-- **Sunday 7:00 PM**: Compile weekly ahead preview — key meetings and deadlines`,
+- **Every weekday 12:00 PM**: Midday action item check - flag overdue commitments
+- **Every weekday 6:00 PM**: End-of-day summary - what was accomplished, what carries over
+- **Sunday 7:00 PM**: Compile weekly ahead preview - key meetings and deadlines`,
       }),
       heartbeatMd: `- cron: "0 7 * * 1-5"
   task: morning_briefing
@@ -888,7 +888,7 @@ Use when: calendar conflict detected, overdue commitment approaching deadline, u
           "Start with the meeting invite: who, what, why, how long",
           "Pull last 3 interactions with each attendee from email and calendar",
           "Check Action Tracker for open items involving attendees",
-          "Draft agenda that fits the time slot — leave 5 min buffer",
+          "Draft agenda that fits the time slot - leave 5 min buffer",
           "Prepare 3 key talking points and 2 questions to ask",
         ],
         outputFormat: "Meeting prep packet with: attendee profiles, suggested agenda, context summary, talking points, open items with attendees, recommended follow-ups.",
@@ -973,7 +973,7 @@ Use when: calendar conflict detected, overdue commitment approaching deadline, u
         ],
         outputFormat: "Draft communication with: recipient, subject line (for email), body text, tone note, and any suggested attachments or links to include.",
         neverDo: [
-          "Never send communications without founder approval — always draft, never send",
+          "Never send communications without founder approval - always draft, never send",
           "Never use a tone that contradicts the founder's established voice",
           "Never include confidential information without explicit approval",
         ],
@@ -1070,7 +1070,7 @@ Use when: calendar conflict detected, overdue commitment approaching deadline, u
 }
 
 /* ─────────────────────────────────────────────
-   Template 4 — SEO Empire Builder
+   Template 4 - SEO Empire Builder
    ───────────────────────────────────────────── */
 
 const seoEmpireBuilder: SeedTemplate = {
@@ -1099,12 +1099,12 @@ const seoEmpireBuilder: SeedTemplate = {
         clawName: "SEO Empire Builder",
         domain: "Search Engine Optimization",
         philosophy: [
-          "SEO is a compounding investment — consistent quality content beats sporadic bursts",
-          "E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness) is not optional — it's the foundation",
-          "Technical SEO is the infrastructure — content can't rank on a broken site",
-          "YMYL (Your Money or Your Life) content carries extra responsibility — always flag for human review",
+          "SEO is a compounding investment - consistent quality content beats sporadic bursts",
+          "E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness) is not optional - it's the foundation",
+          "Technical SEO is the infrastructure - content can't rank on a broken site",
+          "YMYL (Your Money or Your Life) content carries extra responsibility - always flag for human review",
           "Backlinks are earned through value, not manipulated through schemes",
-          "Rankings are a lagging indicator — focus on content quality and technical health as leading indicators",
+          "Rankings are a lagging indicator - focus on content quality and technical health as leading indicators",
         ],
         briefingTemplate: `## Weekly SEO Briefing
 
@@ -1128,7 +1128,7 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
         criticSlug: "seo-quality-gate",
         criticName: "SEO Quality Gate",
         heartbeatSchedule: `- **Every weekday 9:00 AM**: Check for ranking changes on target keywords
-- **Monday 9:00 AM**: Weekly SEO briefing — rankings, content, technical health
+- **Monday 9:00 AM**: Weekly SEO briefing - rankings, content, technical health
 - **Wednesday 10:00 AM**: Trigger Technical SEO Monitor for mid-week site audit
 - **Thursday 2:00 PM**: Review content pipeline and publishing schedule
 - **1st of month**: Monthly SEO performance review with trend analysis`,
@@ -1173,7 +1173,7 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
         outputFormat: "Keyword strategy with: target keywords (volume, difficulty, intent), topical clusters, content gap analysis, prioritized publishing calendar, SERP feature opportunities.",
         neverDo: [
           "Never recommend targeting keywords without analyzing SERP intent",
-          "Never ignore keyword cannibalization — check existing content first",
+          "Never ignore keyword cannibalization - check existing content first",
           "Never prioritize volume over intent alignment",
         ],
       }),
@@ -1209,16 +1209,16 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
           "Flag YMYL content for mandatory human expert review before publishing",
         ],
         methodology: [
-          "Analyze top 10 SERP results for the target keyword — identify content gaps to fill",
+          "Analyze top 10 SERP results for the target keyword - identify content gaps to fill",
           "Create a detailed outline with H2/H3 structure before writing",
-          "Write for the reader first, search engines second — natural keyword integration",
+          "Write for the reader first, search engines second - natural keyword integration",
           "Include unique insights, data, or examples that competitors lack",
           "Optimize on-page: title tag, meta description, URL slug, internal links, image alt text",
           "Add schema markup recommendations (FAQ, HowTo, Article) where applicable",
         ],
         outputFormat: "Complete article with: meta title, meta description, URL slug, full article body (markdown), internal link suggestions, schema markup recommendations, YMYL flag if applicable.",
         neverDo: [
-          "Never keyword-stuff — if it doesn't read naturally, rewrite it",
+          "Never keyword-stuff - if it doesn't read naturally, rewrite it",
           "Never publish YMYL content without flagging for human expert review",
           "Never plagiarize or closely paraphrase competitor content",
           "Never fabricate statistics or expert quotes",
@@ -1266,7 +1266,7 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
         neverDo: [
           "Never recommend disavowing backlinks without strong evidence of spam",
           "Never suggest blocking pages from crawling without understanding the SEO impact",
-          "Never ignore mobile performance — Google uses mobile-first indexing",
+          "Never ignore mobile performance - Google uses mobile-first indexing",
         ],
       }),
       agentsMd: generateWorkerAgentsMd({
@@ -1302,16 +1302,16 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
         ],
         methodology: [
           "Analyze competitor backlink profiles for patterns and opportunities",
-          "Focus on relevance first, authority second — a DR 40 niche site beats a DR 70 generic site",
+          "Focus on relevance first, authority second - a DR 40 niche site beats a DR 70 generic site",
           "Broken link building: find 404s on target sites, suggest our content as replacement",
           "Resource page outreach: identify resource pages in our niche, pitch for inclusion",
           "HARO/journalist outreach: monitor queries where our expertise adds value",
         ],
         outputFormat: "Link prospect list with: target URL, Domain Rating, relevance score, outreach angle, contact info, estimated success probability.",
         neverDo: [
-          "Never recommend buying links — Google penalizes paid link schemes",
+          "Never recommend buying links - Google penalizes paid link schemes",
           "Never suggest link exchanges or PBN (Private Blog Network) tactics",
-          "Never spam outreach — quality over quantity",
+          "Never spam outreach - quality over quantity",
         ],
       }),
       agentsMd: generateWorkerAgentsMd({
@@ -1423,7 +1423,7 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
         ],
         domainRules: [
           "YMYL content must be flagged for human expert review",
-          "No keyword stuffing — content must read naturally",
+          "No keyword stuffing - content must read naturally",
           "E-E-A-T compliance required on all content",
         ],
       }),
