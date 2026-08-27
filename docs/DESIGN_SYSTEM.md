@@ -55,6 +55,13 @@
 - Workflow knobs (quality / revision / delivery) live only on the unselected **Workspace** view. Commander and Critic panels do not repeat them.
 - Orchestrator locked Workflow card: no jump link; copy must not say Cursor. Explain that the block is generated on deploy and edited via canvas + workspace workflow settings.
 
+### Builder canvas legend
+
+- Solid line: `Delegates: Commander to worker`. Never `you drew this` - templates and + Add worker already create that edge.
+- Dashed line: `Review: automatic` (worker to Critic, display-only preview).
+- Solid delegate edges are not React Flow `animated` (animation reads as a dashed line).
+- Only the Commander source handle and worker target handles are connectable.
+
 ### Tabs
 
 - Purpose: dashboard-level navigation without long scrolling.

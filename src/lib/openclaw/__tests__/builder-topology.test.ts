@@ -76,6 +76,20 @@ describe("builder-topology", () => {
     expect(src).toContain("EDGE_LEGEND_SOLID")
     expect(src).toContain("deriveAutomaticPreviewEdges")
     expect(src).toContain("tryConnect")
+    expect(src).toContain("solidEdgeStyle")
+    expect(src).not.toContain("animated: !prefersReducedMotion")
+  })
+
+  it("MUTATION: you drew this legend / animated solids restored → fail", () => {
+    const legend = readFileSync(join(process.cwd(), "src/lib/openclaw/validate-topology.ts"), "utf8")
+    const canvas = readFileSync(join(process.cwd(), "src/components/builder/agent-canvas.tsx"), "utf8")
+    const node = readFileSync(join(process.cwd(), "src/components/builder/agent-node.tsx"), "utf8")
+    expect(legend).not.toContain("you drew this")
+    expect(legend).toContain("Delegates: Commander to worker")
+    expect(legend).toContain("Review: automatic")
+    expect(canvas).toContain("animated: false")
+    expect(node).toContain("isConnectable={isOrchestrator}")
+    expect(node).toContain("isConnectable={isWorker}")
   })
 
   it("MUTATION: properties panel must use formatWorkflowLawSection + contextNote (bypass → fail)", () => {

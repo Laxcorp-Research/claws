@@ -360,7 +360,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         type: "default",
         data: { condition: "ON_COMPLETE", label: "Delegates", contextNote: null },
         label: undefined,
-        animated: true,
+        animated: false,
         style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
       }
       set((s2) => ({ edges: addEdge(newEdge, s2.edges) as Edge<ConnectionEdgeData>[] }))
@@ -426,7 +426,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           type: "default",
           data: { condition: "ON_COMPLETE", label: "Delegates", contextNote: null },
           label: undefined,
-          animated: true,
+          animated: false,
           style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
         })
       }
@@ -677,7 +677,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           target: c.targetAgentId as string,
           label: undefined,
           type: "default",
-          animated: true,
+          animated: false,
           style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
           data: {
             condition: "ON_COMPLETE",

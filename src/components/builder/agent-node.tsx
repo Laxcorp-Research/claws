@@ -31,6 +31,7 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
       <Handle
         type="target"
         position={Position.Top}
+        isConnectable={isWorker}
         className="!w-2 !h-2 !bg-[var(--bd2)] !border-none"
       />
 
@@ -92,7 +93,11 @@ function AgentNodeComponent({ data, selected }: NodeProps & { data: AgentNodeDat
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!w-2 !h-2 !bg-[var(--bd2)] !border-none"
+        isConnectable={isOrchestrator}
+        className={cn(
+          "!border-none",
+          isOrchestrator ? "!h-3 !w-3 !bg-[var(--ac)]" : "!h-2 !w-2 !bg-[var(--bd2)]",
+        )}
       />
     </div>
   )

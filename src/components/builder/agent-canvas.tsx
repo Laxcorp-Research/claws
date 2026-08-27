@@ -15,6 +15,7 @@ import {
   deriveAutomaticPreviewEdges,
   evaluateConnectAttempt,
   isPreviewEdgeId,
+  solidEdgeStyle,
 } from "@/lib/openclaw/builder-topology"
 import {
   EDGE_LEGEND_DOTTED,
@@ -42,23 +43,22 @@ export function AgentCanvas() {
   } = useBuilderStore()
   const snackbar = useSnackbarOptional()
 
-  const prefersReducedMotion = useMemo(() =>
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  , [])
-
   const previewEdges = useMemo(
     () => deriveAutomaticPreviewEdges(nodes),
     [nodes],
   )
 
   const displayEdges = useMemo(() => {
+    // Solids stay un-animated so they read as solid vs the dashed review previews.
+    // React Flow `animated` looks like a dashed marching line - that made every
+    // template delegate look like "Review (automatic)".
     const solid = edges.map((e) => ({
       ...e,
-      animated: !prefersReducedMotion,
-      style: { stroke: "var(--bd2)", strokeWidth: 1.5, ...(e.style ?? {}) },
+      animated: false,
+      style: solidEdgeStyle(),
     }))
     return [...solid, ...previewEdges] as Edge<ConnectionEdgeData>[]
-  }, [edges, previewEdges, prefersReducedMotion])
+  }, [edges, previewEdges])
 
   const isValidConnection = useCallback<IsValidConnection>(
     (connection) => {
@@ -140,8 +140,8 @@ export function AgentCanvas() {
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{
-          animated: !prefersReducedMotion,
-          style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
+          animated: false,
+          style: solidEdgeStyle(),
         }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--bd)" />
@@ -178,6 +178,9 @@ export function AgentCanvas() {
           />
           <span>{EDGE_LEGEND_DOTTED}</span>
         </div>
+        <p className="text-[9px] leading-[1.4] text-[var(--tx3)] max-w-[168px]">
+          Commander-to-worker lines come with the team. Review lines are added automatically.
+        </p>
       </div>
 
       {nodes.length > 0 && (
