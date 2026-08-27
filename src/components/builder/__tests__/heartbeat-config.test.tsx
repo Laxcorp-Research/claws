@@ -26,6 +26,17 @@ function pinBrowserTz(tz: string) {
   } as never)
 }
 
+function setPickedTime(label: string, hhmm: string) {
+  fireEvent.click(screen.getByLabelText(label))
+  const [h, m] = hhmm.split(":")
+  fireEvent.click(screen.getByRole("option", { name: `Hour ${h}` }))
+  fireEvent.click(screen.getByRole("option", { name: `Minute ${m}` }))
+}
+
+function pickedTime(label: string): string | null {
+  return screen.getByLabelText(label).getAttribute("data-value")
+}
+
 vi.mock("@/components/builder/custom-select", () => ({
   CustomSelect: ({
     value,
@@ -80,11 +91,13 @@ describe("HeartbeatConfig - hydrated template is the selected value", () => {
     expect(freq.getAttribute("data-value")).not.toBe("off")
   })
 
-  it("renders native time inputs so odd minutes (:43) are authorable", () => {
+  it("uses the platform time picker so odd minutes (:43) are authorable", () => {
     render(<HeartbeatConfig />)
-    const times = screen.getAllByLabelText(/Custom time/)
+    const times = screen.getAllByLabelText(/^Custom time \d+$/)
     expect(times.length).toBe(2)
-    expect(times[0].getAttribute("type")).toBe("time")
+    expect(times[0].tagName).toBe("BUTTON")
+    setPickedTime("Custom time 1", "08:43")
+    expect(pickedTime("Custom time 1")).toBe("08:43")
   })
 })
 
@@ -113,7 +126,7 @@ describe("HeartbeatConfig - custom times are typed in the browser's local tz, st
     seedTimes(12)
     render(<HeartbeatConfig />)
 
-    fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "19:00" } })
+    setPickedTime("Custom time 1", "19:00")
 
     const stored = storedTimes()
     expect(stored.tz).toBe("UTC")
@@ -128,8 +141,7 @@ describe("HeartbeatConfig - custom times are typed in the browser's local tz, st
     seedTimes(15)
     render(<HeartbeatConfig />)
 
-    const input = screen.getByLabelText("Custom time 1") as HTMLInputElement
-    expect(input.value).toBe("19:00")
+    expect(pickedTime("Custom time 1")).toBe("19:00")
   })
 
   it("round-trips: after typing 19:00 the re-rendered input still reads 19:00", () => {
@@ -137,10 +149,9 @@ describe("HeartbeatConfig - custom times are typed in the browser's local tz, st
     seedTimes(12)
     render(<HeartbeatConfig />)
 
-    fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "19:00" } })
+    setPickedTime("Custom time 1", "19:00")
 
-    const input = screen.getByLabelText("Custom time 1") as HTMLInputElement
-    expect(input.value).toBe("19:00")
+    expect(pickedTime("Custom time 1")).toBe("19:00")
     expect(storedTimes().slots[0].hour).toBe(15)
   })
 })
@@ -168,13 +179,13 @@ describe("HeartbeatConfig - local-time matrix (browser in, UTC stored, local out
     seedTimesJson({ slots: [{ hour: 12, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }], tz: "UTC" })
     render(<HeartbeatConfig />)
 
-    fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "19:00" } })
+    setPickedTime("Custom time 1", "19:00")
 
     const stored = storedTimesJson()
     expect(stored.tz).toBe("UTC")
     expect(stored.authoredTz).toBe("UTC")
     expect(stored.slots[0].hour).toBe(19)
-    expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("19:00")
+    expect(pickedTime("Custom time 1")).toBe("19:00")
   })
 
   it("America/Los_Angeles (PDT, Aug): typed 19:00 stores hour:2 UTC next day and re-renders 19:00", () => {
@@ -184,7 +195,7 @@ describe("HeartbeatConfig - local-time matrix (browser in, UTC stored, local out
       seedTimesJson({ slots: [{ hour: 12, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6] }], tz: "UTC" })
       render(<HeartbeatConfig />)
 
-      fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "19:00" } })
+      setPickedTime("Custom time 1", "19:00")
 
       const stored = storedTimesJson()
       expect(stored.tz).toBe("UTC")
@@ -192,7 +203,7 @@ describe("HeartbeatConfig - local-time matrix (browser in, UTC stored, local out
       // 19:00 PDT = 02:00Z the NEXT day; all-days weekday set is rotation-invariant.
       expect(stored.slots[0].hour).toBe(2)
       expect(stored.slots[0].weekdays).toEqual([0, 1, 2, 3, 4, 5, 6])
-      expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("19:00")
+      expect(pickedTime("Custom time 1")).toBe("19:00")
     } finally {
       vi.useRealTimers()
     }
@@ -235,7 +246,7 @@ describe("HeartbeatConfig - authored-tz pinning (a traveling user's claw never s
     seedTimesJson(dubaiAuthored)
     render(<HeartbeatConfig />)
 
-    expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("19:00")
+    expect(pickedTime("Custom time 1")).toBe("19:00")
     expect(screen.getByTestId("schedule-chip").textContent).toBe("Daily at 19:00 GMT+4")
     expect(screen.getByText(/Times are in Asia\/Dubai/)).toBeTruthy()
   })
@@ -245,13 +256,13 @@ describe("HeartbeatConfig - authored-tz pinning (a traveling user's claw never s
     seedTimesJson(dubaiAuthored)
     render(<HeartbeatConfig />)
 
-    fireEvent.change(screen.getByLabelText("Custom time 1"), { target: { value: "20:00" } })
+    setPickedTime("Custom time 1", "20:00")
 
     const stored = storedTimesJson()
     expect(stored.authoredTz).toBe("Asia/Dubai")
     expect(stored.tz).toBe("UTC")
     expect(stored.slots[0].hour).toBe(16)
-    expect((screen.getByLabelText("Custom time 1") as HTMLInputElement).value).toBe("20:00")
+    expect(pickedTime("Custom time 1")).toBe("20:00")
   })
 })
 
@@ -295,7 +306,7 @@ describe("HeartbeatConfig - monthly pins the authoring tz (exact day-of-month se
     let stored = JSON.parse(useBuilderStore.getState().heartbeatSchedule.time)
     expect(stored.tz).toBe("Asia/Dubai")
 
-    fireEvent.change(screen.getByLabelText("Monthly time"), { target: { value: "09:30" } })
+    setPickedTime("Monthly time", "09:30")
     stored = JSON.parse(useBuilderStore.getState().heartbeatSchedule.time)
     expect(stored.tz).toBe("Asia/Dubai")
     expect(stored.hour).toBe(9)
@@ -362,7 +373,7 @@ describe("HeartbeatConfig - daily/weekday presets stamp the authored tz", () => 
     })
     render(<HeartbeatConfig />)
 
-    fireEvent.change(screen.getByLabelText("Heartbeat time"), { target: { value: "19:05" } })
+    setPickedTime("Heartbeat time", "19:05")
 
     expect(JSON.parse(storedPreset().time)).toEqual({ time: "19:05", tz: "Asia/Dubai" })
   })
@@ -397,7 +408,37 @@ describe("HeartbeatConfig - daily/weekday presets stamp the authored tz", () => 
     )
 
     // Type a DIFFERENT time (React dedupes same-value change events).
-    fireEvent.change(screen.getByLabelText("Heartbeat time"), { target: { value: "19:30" } })
+    setPickedTime("Heartbeat time", "19:30")
     expect(screen.getByTestId("preset-time-receipt").textContent).toBe("19:30 GMT+4 · 15:30 UTC")
+  })
+})
+
+describe("HeartbeatConfig - raw cron draft errors do not accumulate", () => {
+  it("shows only the current invalid expression and clears when the draft is emptied", () => {
+    pinBrowserTz("Asia/Dubai")
+    seedTimesJson({
+      slots: [{ hour: 15, minute: 0, weekdays: [1, 2, 3, 4, 5] }],
+      tz: "UTC",
+      authoredTz: "Asia/Dubai",
+    })
+    render(<HeartbeatConfig />)
+
+    fireEvent.click(screen.getByText(/Advanced \(raw cron\)/i))
+    const input = screen.getByLabelText("Cron expression 1")
+
+    fireEvent.change(input, { target: { value: "a" } })
+    fireEvent.change(input, { target: { value: "as" } })
+    fireEvent.change(input, { target: { value: "asd" } })
+
+    const cronAlerts = screen
+      .getAllByRole("alert")
+      .filter((el) => /Invalid cron/.test(el.textContent ?? ""))
+    expect(cronAlerts).toHaveLength(1)
+    expect(cronAlerts[0].textContent).toMatch(/Invalid cron "asd"/)
+    expect(screen.queryByText(/Invalid cron "a"/)).toBeNull()
+    expect(screen.queryByText(/Invalid cron "as"/)).toBeNull()
+
+    fireEvent.change(input, { target: { value: "" } })
+    expect(screen.queryByText(/Invalid cron/)).toBeNull()
   })
 })

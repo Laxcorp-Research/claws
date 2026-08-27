@@ -22,6 +22,7 @@ const DOM_TITLE_ALLOWLIST: readonly string[] = []
 const PORTAL_ALLOWLIST: readonly string[] = [
   "components/ui/modal.tsx",
   "components/ui/select.tsx",
+  "components/ui/time-picker.tsx",
   "components/shared/snackbar.tsx",
 ]
 

@@ -104,8 +104,6 @@ interface BuilderState {
 
   selectedAgentId: string | null
   selectedEdgeId: string | null
-  /** Focus choreography knobs (from locked fence jump link). */
-  focusWorkflowKnobs: boolean
   leftPanelTab: "agents" | "skills"
 
   skills: SkillItem[]
@@ -136,8 +134,6 @@ interface BuilderState {
   setLeftPanelTab: (tab: "agents" | "skills") => void
   selectAgent: (id: string | null) => void
   selectEdge: (id: string | null) => void
-  jumpToWorkflowKnobs: () => void
-  clearFocusWorkflowKnobs: () => void
   addAgent: (opts?: { name?: string; role?: AgentRole; model?: string; soulMd?: string; agentsMd?: string }) => void
   addWorker: () => void
   removeAgent: (id: string) => void
@@ -308,7 +304,6 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
     selectedAgentId: null,
     selectedEdgeId: null,
-    focusWorkflowKnobs: false,
     leftPanelTab: "agents",
 
     skills: [],
@@ -365,7 +360,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         type: "default",
         data: { condition: "ON_COMPLETE", label: "Delegates", contextNote: null },
         label: undefined,
-        animated: true,
+        animated: false,
         style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
       }
       set((s2) => ({ edges: addEdge(newEdge, s2.edges) as Edge<ConnectionEdgeData>[] }))
@@ -392,16 +387,6 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     setLeftPanelTab: (tab) => set({ leftPanelTab: tab }),
     selectAgent: (id) => set({ selectedAgentId: id, selectedEdgeId: null }),
     selectEdge: (id) => set({ selectedEdgeId: id, selectedAgentId: null }),
-    jumpToWorkflowKnobs: () => {
-      const critic = get().nodes.find((n) => (n.data as AgentNodeData).role === "CRITIC")
-      set({
-        focusWorkflowKnobs: true,
-        selectedAgentId: critic?.id ?? null,
-        selectedEdgeId: null,
-      })
-    },
-    clearFocusWorkflowKnobs: () => set({ focusWorkflowKnobs: false }),
-
     addAgent: (opts) => {
       const s = get()
       if (!s.workspaceId) return
@@ -441,7 +426,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           type: "default",
           data: { condition: "ON_COMPLETE", label: "Delegates", contextNote: null },
           label: undefined,
-          animated: true,
+          animated: false,
           style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
         })
       }
@@ -692,7 +677,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           target: c.targetAgentId as string,
           label: undefined,
           type: "default",
-          animated: true,
+          animated: false,
           style: { stroke: "var(--bd2)", strokeWidth: 1.5 },
           data: {
             condition: "ON_COMPLETE",
@@ -769,7 +754,6 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           maxRevisionRounds,
           deliveryMode,
           skills: workspaceSkills, isLoading: false, isDirty: false, selectedAgentId: null, selectedEdgeId: null,
-          focusWorkflowKnobs: false,
           heartbeatSchedule,
           lastSavedState: cloneState(
             nodes,

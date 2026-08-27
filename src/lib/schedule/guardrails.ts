@@ -16,14 +16,6 @@ export type ScheduleValidation = {
   creditWarning: string | null
 }
 
-function extrasOf(value: ScheduleValue): string[] {
-  if (value.mode === "times" || value.mode === "interval" || value.mode === "monthly") {
-    return value.extraExpressions ?? []
-  }
-  if (value.mode === "cron") return value.expressions
-  return []
-}
-
 function extraFires(expressions: string[] | undefined, timezone: string): number {
   if (!expressions?.length) return 0
   return countFiresInNext24h(
@@ -114,16 +106,8 @@ export function validateSchedule(
     errors.push("Add at least one cron expression")
   }
 
-  const tz = value.mode === "times" || value.mode === "monthly" || value.mode === "cron"
-    ? value.tz
-    : timezone
-  for (const expr of extrasOf(value)) {
-    const parsed = tryParseCroner(expr, tz)
-    if (!parsed.ok) {
-      errors.push(`Invalid cron "${expr}": ${parsed.message}`)
-    }
-  }
-
+  // Planned already includes extraExpressions. Validating extras separately
+  // duplicated every Invalid cron line in the builder.
   const planned = scheduleToCronExprs(value, timezone)
   for (const p of planned) {
     const parsed = tryParseCroner(p.expr, p.tz ?? timezone)

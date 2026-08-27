@@ -161,5 +161,5 @@ export function illegalEdgeMessage(sourceRole: string, targetRole: string): stri
 export const AUTO_PROCEED_DISABLED_COPY =
   "Autonomous delivery needs action integrations connected - coming soon. Delivery stays on ask-before-acting."
 
-export const EDGE_LEGEND_SOLID = "Delegates (you drew this)"
-export const EDGE_LEGEND_DOTTED = "Review (automatic)"
+export const EDGE_LEGEND_SOLID = "Delegates: Commander to worker"
+export const EDGE_LEGEND_DOTTED = "Review: automatic"

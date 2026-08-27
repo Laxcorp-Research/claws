@@ -49,6 +49,20 @@ describe("schedule guardrails - caps and floors", () => {
     expect(v.errors.some((e) => /Invalid cron/i.test(e))).toBe(true)
   })
 
+  it("invalid extra cron is reported once (not duplicated via extras + planned)", () => {
+    const v = validateSchedule(
+      {
+        mode: "times",
+        tz: "UTC",
+        slots: [{ hour: 8, minute: 0, weekdays: [1, 2, 3, 4, 5] }],
+        extraExpressions: ["nope"],
+      },
+      "UTC",
+    )
+    expect(v.ok).toBe(false)
+    expect(v.errors.filter((e) => /Invalid cron/i.test(e))).toHaveLength(1)
+  })
+
   it("daily at 24 fires/day shows the credit warning", () => {
     const slots = Array.from({ length: 24 }, (_, i) => ({
       hour: i,

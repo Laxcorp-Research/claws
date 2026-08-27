@@ -23,4 +23,10 @@ describe("platform Select cleanup", () => {
     expect(source).toContain('import { Select } from "@/components/ui/select"')
     expect(source).not.toContain("role=\"listbox\"")
   })
+
+  it("has no native time inputs in TSX", () => {
+    const offenders = tsxFiles(join(process.cwd(), "src"))
+      .filter((file) => /type=["']time["']/.test(readFileSync(file, "utf8")))
+    expect(offenders).toEqual([])
+  })
 })
