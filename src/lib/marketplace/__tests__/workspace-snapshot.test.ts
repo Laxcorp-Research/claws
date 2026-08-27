@@ -173,4 +173,60 @@ describe("PR-2 workspace snapshot parity", () => {
     expect(skillReport).toContain("skillId: skill.id")
     expect(skillReport).toContain("VALID_REASONS")
   })
+
+  it("seed snapshot may emit files[]; publish builder never does (privacy rail v1)", () => {
+    const fromSeed = JSON.parse(
+      buildWorkspaceSnapshotFromSeedTemplate({
+        agents: [
+          {
+            name: "Lead",
+            agentSlug: "lead",
+            role: "ORCHESTRATOR",
+            color: "#000",
+            model: "anthropic/claude-sonnet-4-6",
+            roleDescription: "Lead",
+            soulMd: "soul",
+            agentsMd: "agents",
+            heartbeatMd: "hb",
+            skills: [],
+            position: { x: 0, y: 0 },
+          },
+        ],
+        connections: [],
+        tools: [],
+        flowDescription: "seed flow",
+        files: [{ path: "VOICE.md", content: "creator memory - must not publish" }],
+      }),
+    ) as Record<string, unknown>
+
+    const fromWorkspace = JSON.parse(
+      buildWorkspaceSnapshotFromWorkspace({
+        maxRevisionRounds: 3,
+        deliveryMode: "APPROVAL_REQUIRED",
+        description: "ws flow",
+        agents: [
+          {
+            id: "a1",
+            name: "Lead",
+            agentSlug: "lead",
+            role: "ORCHESTRATOR",
+            soulMd: "soul",
+            agentsMd: "agents",
+            model: "anthropic/claude-sonnet-4-6",
+            skills: [],
+            positionX: 0,
+            positionY: 0,
+          },
+        ],
+        connections: [],
+        toolConnections: [],
+      }),
+    ) as Record<string, unknown>
+
+    expect(fromSeed.files).toEqual([
+      { path: "VOICE.md", content: "creator memory - must not publish" },
+    ])
+    expect(fromWorkspace).not.toHaveProperty("files")
+    expect(WORKSPACE_SNAPSHOT_PARITY_KEYS).not.toContain("files")
+  })
 })

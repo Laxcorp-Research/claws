@@ -44,6 +44,10 @@ const MOCK_TEMPLATE = {
       { sourceSlug: 'orch', targetSlug: 'worker', condition: 'ON_COMPLETE' },
     ],
     tools: SNAPSHOT_TOOLS,
+    files: [
+      { path: 'memory/MEMORY.md', content: '# MEMORY.md\nMaintained by this agent.\n' },
+      { path: 'VOICE.md', content: '# VOICE.md\nMaintained by content-writer.\n' },
+    ],
   }),
 };
 
@@ -112,6 +116,22 @@ describe('createWorkspaceFromTemplate', () => {
     expect(prismaMock.clawTemplate.update).not.toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ workspaceSnapshot: expect.anything() }),
+      }),
+    );
+  });
+
+  it('seeds seedFiles from snapshot.files (MUTATION: skip copy → fail)', async () => {
+    setupMocks();
+    await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
+
+    expect(prismaMock.workspace.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          seedFiles: [
+            { path: 'memory/MEMORY.md', content: '# MEMORY.md\nMaintained by this agent.\n' },
+            { path: 'VOICE.md', content: '# VOICE.md\nMaintained by content-writer.\n' },
+          ],
+        }),
       }),
     );
   });

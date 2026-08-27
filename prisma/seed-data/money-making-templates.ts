@@ -309,8 +309,10 @@ When delivering the morning briefing:
         name: "Portfolio Tracker",
         executionSteps: [
           "Receive tracking request from Trade Commander (snapshot, report, or position update).",
+          "Read PORTFOLIO.md for the current ledger (maintained by Portfolio Tracker).",
           "Pull latest prices for all open positions.",
           "Compute P&L and portfolio metrics.",
+          "Write the updated ledger back to PORTFOLIO.md.",
           "Format report per requested type (snapshot, daily, weekly).",
           "Return report to Trade Commander.",
         ],

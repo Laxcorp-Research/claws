@@ -14,6 +14,8 @@
 //   - openclaw.json → gzip → base64 → CLAWS_CONFIG_GZ_B64 env var
 //   - .env content → gzip → base64 → CLAWS_ENV_GZ_B64 env var
 //   - Workspace files (SOUL.md etc.) → JSON → gzip → base64 → CLAWS_FILES_GZ_B64
+//   - Birth stubs (MEMORY.md, VOICE.md, …) → JSON → gzip → base64 → CLAWS_SEED_FILES_GZ_B64
+//     unpacked IF-ABSENT so agent/hibernation writes survive redeploy
 //   - Railway start command decodes these to /home/node/.openclaw/ on boot
 // ============================================================================
 
@@ -1133,6 +1135,7 @@ export function buildRailwayEnvVars(
   const configJson = generated['openclaw.json'];
   const envFileContent = generated['.env'];
   const workspaceFiles = buildWorkspaceFileMap(generated);
+  const seedFiles = generated.seedFiles ?? {};
 
   const vars: Record<string, string> = {
     CLAWS_BOOT_B64: BOOT_SCRIPT_B64,
@@ -1147,6 +1150,10 @@ export function buildRailwayEnvVars(
     NODE_ENV: 'production',
     PORT: '18789',
   };
+
+  if (Object.keys(seedFiles).length > 0) {
+    vars.CLAWS_SEED_FILES_GZ_B64 = gzipBase64(JSON.stringify(seedFiles));
+  }
 
   if (workspace.containerHost) {
     vars.CLAWS_PUBLIC_URL = `https://${workspace.containerHost}`;

@@ -54,6 +54,10 @@ import { isThinkingLevel } from '@/lib/models/thinking';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { deriveAllowAgents } from '@/lib/openclaw/derive-allow-agents';
 import {
+  expandSeedFilesForAgents,
+  resolveWorkspaceSeedFiles,
+} from '@/lib/workspace-seed-files';
+import {
   WORKFLOW_FENCE_BEGIN,
   applyWorkflowFence,
   generateFencedWorkflowSection,
@@ -142,6 +146,12 @@ export interface GeneratedWorkspace {
 
   /** True when a stale/tampered orchestrator workflow fence was regenerated. */
   workflowFenceCorrected?: boolean;
+
+  /**
+   * INFRA-2 birth stubs unpacked IF-ABSENT (not mixed into CLAWS_FILES).
+   * Keys are paths under /home/node/.openclaw/ (workspace-{id}/VOICE.md).
+   */
+  seedFiles?: Record<string, string>;
 }
 
 export interface AgentWorkspaceFiles {
@@ -439,6 +449,15 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     mcpEmission !== null,
   );
 
+  const logicalSeeds = resolveWorkspaceSeedFiles({
+    seedFiles: workspaceWithChannels.seedFiles,
+    clawTemplateSnapshot: workspaceWithChannels.clawTemplate?.workspaceSnapshot,
+  });
+  const seedFiles = expandSeedFilesForAgents(
+    logicalSeeds,
+    [orchestrator, ...workers, critic].map((agent) => `workspace-${toAgentId(agent.name)}`),
+  );
+
   return {
     'openclaw.json': JSON.stringify(openclawConfig, null, 2),
     '.env': envFile,
@@ -446,6 +465,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     'cron/jobs.json': JSON.stringify(cronJobs, null, 2),
     gatewayToken,
     workflowFenceCorrected: workspaceFiles.workflowFenceCorrected,
+    seedFiles,
   };
 }
 
@@ -2370,7 +2390,9 @@ type WorkspaceWithRelations = {
   toolConnections: ToolConnectionRecord[];
   customToolConnections?: CustomToolConnectionRecord[];
   channelConfig: ChannelConfigMap;
-  clawTemplate: { name: string; slug: string } | null;
+  clawTemplate: { name: string; slug: string; workspaceSnapshot?: unknown } | null;
+  /** INFRA-2 install copy of snapshot.files[]; null → dual-read template snapshot. */
+  seedFiles?: unknown;
   /** WorkspaceApiKey rows (setup wizard "Add key" overrides). Optional so
    *  older fixtures omit it; generateEnvFile treats absent as []. */
   apiKeyOverrides?: { provider: string; encryptedKey: string }[];

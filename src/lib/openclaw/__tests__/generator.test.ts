@@ -230,6 +230,27 @@ describe('generateWorkspace', () => {
     expect(result).toHaveProperty('workspaces');
     expect(result).toHaveProperty('cron/jobs.json');
     expect(result).toHaveProperty('gatewayToken');
+    expect(result.seedFiles).toEqual({});
+  });
+
+  it('fans workspace.seedFiles into every agent dir (MUTATION: mix into CLAWS_FILES workspaces → fail)', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({
+        seedFiles: [
+          { path: 'memory/MEMORY.md', content: '# MEMORY.md\nMaintained by this agent.\n' },
+          { path: 'VOICE.md', content: '# VOICE.md\nMaintained by content-writer.\n' },
+        ],
+      }),
+    );
+    const result = await generateWorkspace('ws-test-1');
+    const dirs = Object.keys(result.workspaces);
+    expect(dirs.length).toBeGreaterThanOrEqual(3);
+    for (const dir of dirs) {
+      expect(result.seedFiles?.[`${dir}/memory/MEMORY.md`]).toContain('Maintained by this agent');
+      expect(result.seedFiles?.[`${dir}/VOICE.md`]).toContain('content-writer');
+      expect(result.workspaces[dir]).not.toHaveProperty('VOICE.md');
+      expect(result.workspaces[dir]).not.toHaveProperty('memory/MEMORY.md');
+    }
   });
 
   it('buyer-independence: unpublished sold template still generates from workspace snapshot', async () => {

@@ -24,11 +24,14 @@ export const UNPACK_NODE_SCRIPT = [
   'const b=s=>Buffer.from(s,"base64").toString();',
   'const g=s=>z.gunzipSync(Buffer.from(s,"base64")).toString();',
   'const w=(p,c)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,c)};',
+  'const wa=(p,c)=>{if(fs.existsSync(p))return;w(p,c)};',
+  'const safe=p=>typeof p==="string"&&!p.includes("..")&&!path.isAbsolute(p);',
   'const d=process.env.CLAWS_UNPACK_DIR||"/home/node/.openclaw/";',
   'fs.mkdirSync(d,{recursive:true});',
   'if(process.env.CLAWS_CONFIG_GZ_B64)w(path.join(d,"openclaw.json"),g(process.env.CLAWS_CONFIG_GZ_B64));else if(process.env.CLAWS_CONFIG_B64)w(path.join(d,"openclaw.json"),b(process.env.CLAWS_CONFIG_B64));',
   'if(process.env.CLAWS_ENV_GZ_B64)w(path.join(d,".env"),g(process.env.CLAWS_ENV_GZ_B64));else if(process.env.CLAWS_ENV_B64)w(path.join(d,".env"),b(process.env.CLAWS_ENV_B64));',
-  'if(process.env.CLAWS_FILES_GZ_B64){const f=JSON.parse(g(process.env.CLAWS_FILES_GZ_B64));for(const[p,c]of Object.entries(f))w(path.join(d,p),String(c))}else if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))w(path.join(d,p),String(c))};',
+  'if(process.env.CLAWS_FILES_GZ_B64){const f=JSON.parse(g(process.env.CLAWS_FILES_GZ_B64));for(const[p,c]of Object.entries(f))if(safe(p))w(path.join(d,p),String(c))}else if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))if(safe(p))w(path.join(d,p),String(c))};',
+  'if(process.env.CLAWS_SEED_FILES_GZ_B64){const f=JSON.parse(g(process.env.CLAWS_SEED_FILES_GZ_B64));for(const[p,c]of Object.entries(f))if(safe(p))wa(path.join(d,p),String(c))}else if(process.env.CLAWS_SEED_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_SEED_FILES_B64));for(const[p,c]of Object.entries(f))if(safe(p))wa(path.join(d,p),String(c))};',
   'console.log("Unpack complete. Files:",fs.readdirSync(d).join(", "))',
 ].join('');
 

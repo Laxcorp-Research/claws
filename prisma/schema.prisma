@@ -256,6 +256,12 @@ model Workspace {
   // stays intact for the next buyer.
   toolRequirements Json?
 
+  // INFRA-2: per-workspace copy of template snapshot files[] (birth stubs).
+  // Null = legacy install → dual-read falls back to ClawTemplate.workspaceSnapshot.files.
+  // Seeded at createWorkspaceFromTemplate. Template JSON stays intact for the next buyer.
+  // Community publish MUST omit files[] (privacy rail v1).
+  seedFiles Json?
+
   containerState           ContainerState?
   apiKeySourceOverride     ApiKeySource?
 

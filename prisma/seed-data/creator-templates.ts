@@ -264,6 +264,7 @@ For each option:
           name: "Script Builder",
           executionSteps: [
             "Receive video concept, title, and any research notes from Orchestrator",
+            "Read VOICE.md for channel voice rules before writing",
             "Research the topic for accuracy and depth using Tavily if needed",
             "Write the full script following the methodology structure",
             "Add B-roll cues, pattern interrupts, and chapter markers",
@@ -593,6 +594,7 @@ For each piece:
           name: "Content Writer",
           executionSteps: [
             "Receive trend report and content brief from Orchestrator",
+            "Read VOICE.md for the account's voice rules before drafting",
             "Review past performance data in memory for content patterns",
             "Write 3-5 content pieces (mix of tweets and threads)",
             "Optimize hooks and formatting for maximum engagement",
@@ -913,6 +915,7 @@ For each topic:
           name: "Draft Writer",
           executionSteps: [
             "Receive topic brief and research from Orchestrator",
+            "Read VOICE.md for editorial voice before drafting",
             "Review past high-performing issues for style and structure",
             "Write complete draft with subject lines and CTAs",
             "Format for readability and scan-ability",
@@ -1189,10 +1192,12 @@ For each topic:
         agentsMd: generateWorkerAgentsMd({
           name: "Guest Researcher & Booker",
           executionSteps: [
+            "Read GUEST_PIPELINE.md for the current guest pipeline",
             "Research potential guests using Tavily and social platforms",
             "Score and rank prospects by relevance and audience fit",
             "Draft personalized outreach emails via Gmail",
             "Manage scheduling via Google Calendar",
+            "Write pipeline updates back to GUEST_PIPELINE.md",
             "Return guest pipeline update to Orchestrator",
           ],
         }),
