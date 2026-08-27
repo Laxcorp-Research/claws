@@ -103,6 +103,35 @@ export function buildWorkspaceSnapshotJson(payload: WorkspaceSnapshotPayload): s
   return JSON.stringify(buildWorkspaceSnapshotObject(payload))
 }
 
+/**
+ * Seed authoring is `string[]`. Install's snapshotSkillSlug only reads
+ * `{ slug | skillSlug }` on objects — a bare string was silently skipped.
+ * Normalize here so reseeded templates materialize AgentSkill rows.
+ */
+export function normalizeSeedAgentSkills(skills: unknown): Array<{ slug: string }> {
+  if (!Array.isArray(skills)) return []
+  const out: Array<{ slug: string }> = []
+  for (const entry of skills) {
+    if (typeof entry === "string") {
+      const slug = entry.trim()
+      if (slug) out.push({ slug })
+      continue
+    }
+    if (entry && typeof entry === "object") {
+      const rec = entry as { slug?: unknown; skillSlug?: unknown }
+      const raw =
+        typeof rec.slug === "string"
+          ? rec.slug
+          : typeof rec.skillSlug === "string"
+            ? rec.skillSlug
+            : ""
+      const slug = raw.trim()
+      if (slug) out.push({ slug })
+    }
+  }
+  return out
+}
+
 /** SeedTemplate-shaped input (prisma/seed-data). */
 export function buildWorkspaceSnapshotFromSeedTemplate(template: {
   agents: Array<{
@@ -142,7 +171,7 @@ export function buildWorkspaceSnapshotFromSeedTemplate(template: {
       soulMd: a.soulMd,
       agentsMd: a.agentsMd,
       heartbeatMd: a.heartbeatMd,
-      skills: a.skills,
+      skills: normalizeSeedAgentSkills(a.skills),
       positionX: a.position.x,
       positionY: a.position.y,
       ...(a.role === "CRITIC"

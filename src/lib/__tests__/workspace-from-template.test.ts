@@ -103,7 +103,7 @@ describe('createWorkspaceFromTemplate', () => {
         }),
       }),
     );
-    // Template JSON must remain untouched - only installCount update on template.
+    // Template JSON must remain untouched — only installCount update on template.
     expect(prismaMock.clawTemplate.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { installCount: { increment: 1 } },
@@ -180,6 +180,41 @@ describe('createWorkspaceFromTemplate', () => {
     const result = await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
     expect(result.workspaceId).toBe('ws-solo');
     expect(prismaMock.agentConnection.create).not.toHaveBeenCalled();
+  });
+
+  it('APPLYs string skill slugs the same as { slug } objects (seed authoring shape)', async () => {
+    const withStringSkills = {
+      ...MOCK_TEMPLATE,
+      workspaceSnapshot: JSON.stringify({
+        agents: [
+          {
+            agentSlug: 'orch',
+            name: 'Orchestrator',
+            role: 'ORCHESTRATOR',
+            model: 'm',
+            soulMd: 's',
+            agentsMd: 'a',
+            skills: ['web-search', 'github'],
+          },
+        ],
+        tools: SNAPSHOT_TOOLS,
+      }),
+    };
+    setupMocks();
+    (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(withStringSkills);
+    (prismaMock.agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'agent-orch' });
+    (prismaMock.skill.findUnique as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'skill-web' })
+      .mockResolvedValueOnce({ id: 'skill-gh' });
+    (prismaMock.agentSkill.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
+
+    expect(prismaMock.skill.findUnique).toHaveBeenCalledWith({
+      where: { slug: 'web-search' },
+      select: { id: true },
+    });
+    expect(prismaMock.agentSkill.create).toHaveBeenCalledTimes(2);
   });
 
   it('APPLYs agents[].skills into AgentSkill rows (MUTATION: drop materialization → fail)', async () => {

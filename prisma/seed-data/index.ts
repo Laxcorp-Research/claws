@@ -3,7 +3,10 @@ import { CREATOR_TEMPLATES } from "./creator-templates"
 import { BUSINESS_OPS_TEMPLATES } from "./business-ops-templates"
 import { VERTICAL_TEMPLATES } from "./vertical-templates"
 import { LIFESTYLE_TEMPLATES } from "./lifestyle-templates"
+import { applySkillAttach } from "./skill-attach-map"
 import type { SeedTemplate } from "./types"
+
+export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -11,7 +14,7 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   ...BUSINESS_OPS_TEMPLATES,
   ...VERTICAL_TEMPLATES,
   ...LIFESTYLE_TEMPLATES,
-]
+].map(applySkillAttach)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)

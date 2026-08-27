@@ -26,8 +26,8 @@ interface SnapshotAgent {
   positionX?: number
   positionY?: number
   reportsTo?: string
-  /** Publish snapshot shape: { slug, name, configOverrides } - APPLY at install (D-AS). */
-  skills?: SnapshotSkill[]
+  /** Publish: { slug, name, configOverrides }. Seed (pre-normalize): string slugs. */
+  skills?: Array<SnapshotSkill | string>
 }
 
 interface SnapshotConnection {
@@ -58,7 +58,11 @@ interface WorkspaceResult {
 
 type AgentRole = "ORCHESTRATOR" | "WORKER" | "CRITIC"
 
-function snapshotSkillSlug(entry: SnapshotSkill): string | null {
+function snapshotSkillSlug(entry: SnapshotSkill | string): string | null {
+  if (typeof entry === "string") {
+    const slug = entry.trim()
+    return slug.length > 0 ? slug : null
+  }
   if (typeof entry.slug === "string" && entry.slug.trim()) return entry.slug.trim()
   if (typeof entry.skillSlug === "string" && entry.skillSlug.trim()) {
     return entry.skillSlug.trim()
@@ -161,15 +165,17 @@ export async function createWorkspaceFromTemplate(
             agentId: agent.id,
             skillId: skill.id,
             configOverrides:
-              typeof skillEntry.configOverrides === "string"
-                ? skillEntry.configOverrides
-                : skillEntry.configOverrides ?? null,
+              typeof skillEntry === "string"
+                ? null
+                : typeof skillEntry.configOverrides === "string"
+                  ? skillEntry.configOverrides
+                  : skillEntry.configOverrides ?? null,
           },
         })
       }
     }
 
-    // WIRE-FULL: reportsTo writers removed - derive from edges at read time.
+    // WIRE-FULL: reportsTo writers removed — derive from edges at read time.
 
     for (const c of snapshot.connections ?? []) {
       const src = slugToId[c.sourceSlug]

@@ -41,15 +41,15 @@ Use \`search_depth: "advanced"\` for deeper results. Default returns title, url,
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create contact - \`HUBSPOT_CREATE_CONTACT\`:**
+**Create contact — \`HUBSPOT_CREATE_CONTACT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/HUBSPOT_CREATE_CONTACT \\
@@ -77,7 +77,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List contacts - \`HUBSPOT_HUBSPOT_LIST_CONTACTS\` _(tool name per Composio SDK 2026-04-19)_:**
+**List contacts — \`HUBSPOT_HUBSPOT_LIST_CONTACTS\` _(tool name per Composio SDK 2026-04-19)_:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/HUBSPOT_HUBSPOT_LIST_CONTACTS \\
@@ -87,7 +87,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/HUBSPOT_HUBSPOT_L
 # Response: { data: { results: [{ id, properties: {...} }] }, successful: true }
 \`\`\`
 
-**Create deal - \`HUBSPOT_CREATE_DEAL\`:**
+**Create deal — \`HUBSPOT_CREATE_DEAL\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/HUBSPOT_CREATE_DEAL \\
@@ -104,9 +104,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect HubSpot" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect HubSpot" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CRM",
     icon: "🔗",
@@ -123,15 +123,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create contact - \`SALESFORCE_CREATE_CONTACT\`:**
+**Create contact — \`SALESFORCE_CREATE_CONTACT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SALESFORCE_CREATE_CONTACT \\
@@ -159,7 +159,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List contacts - \`SALESFORCE_LIST_CONTACTS\`:**
+**List contacts — \`SALESFORCE_LIST_CONTACTS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SALESFORCE_LIST_CONTACTS \\
@@ -169,7 +169,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/SALESFORCE_LIST_C
 # Response: { data: { records: [{ Id, Name, Email, ... }] }, successful: true }
 \`\`\`
 
-**Send email - \`SALESFORCE_SEND_EMAIL\`:**
+**Send email — \`SALESFORCE_SEND_EMAIL\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SALESFORCE_SEND_EMAIL \\
@@ -186,9 +186,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Salesforce" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Salesforce" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CRM",
     icon: "☁️",
@@ -344,9 +344,9 @@ curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10" \\
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
@@ -355,7 +355,7 @@ No OAuth tokens enter the container. Composio handles refresh/rotation/revocatio
 
 ## Key operations
 
-**Create post - \`LINKEDIN_CREATE_LINKED_IN_POST\`:**
+**Create post — \`LINKEDIN_CREATE_LINKED_IN_POST\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINKEDIN_CREATE_LINKED_IN_POST \\
@@ -383,7 +383,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**Get my profile - \`LINKEDIN_GET_MY_INFO\`:**
+**Get my profile — \`LINKEDIN_GET_MY_INFO\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINKEDIN_GET_MY_INFO \\
@@ -393,7 +393,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINKEDIN_GET_MY_I
 # Response: { data: { id, localizedFirstName, localizedLastName, ... }, successful: true }
 \`\`\`
 
-**Get company info - \`LINKEDIN_GET_COMPANY_INFO\`:**
+**Get company info — \`LINKEDIN_GET_COMPANY_INFO\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINKEDIN_GET_COMPANY_INFO \\
@@ -410,9 +410,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect LinkedIn" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect LinkedIn" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "SOCIAL",
     icon: "💼",
@@ -422,43 +422,95 @@ Check \`successful\` before trusting \`data\`. Common failures:
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
-  // `buffer-social` skill removed in PR #4 - Composio has no `buffer` toolkit,
+  // `buffer-social` skill removed in PR #4 — Composio has no `buffer` toolkit,
   // so this skill had no usable tool to bind to. Restoration tracked in the
   // "Template seed data drift" umbrella issue; remediation path is PR #6's
   // Custom API pipeline (buffer-api direct-token).
   {
     name: "YouTube Data API",
     slug: "youtube-data-api",
-    description: "Manage YouTube channels, videos, and playlists",
+    description: "Search videos, read channel stats, and list playlists via Composio YouTube OAuth",
     skillMd: `## Authentication
-Set \`$YOUTUBE_DATA_API_KEY\` to your YouTube Data API key (or OAuth token for writes).
 
-## Key Endpoints
+This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
-**Search Videos:**
+No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
+
+> Bind this skill to the OAuth \`youtube\` catalog tool (not the deprecated API_KEY \`youtube-data-api\` slug). Writes and channel-owner reads require the connected Google account.
+
+## Key operations
+
+**Search videos — \`YOUTUBE_SEARCH_YOU_TUBE\`:**
+
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/search?part=snippet&q=AI+agents&type=video&key=$YOUTUBE_DATA_API_KEY"
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"q":"AI agents","type":"video","maxResults":10}}'
 \`\`\`
 
-**Get Channel Stats:**
-\`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/channels?part=statistics&id=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
+Or via Node (OpenClaw's skill runtime has \`fetch()\` natively):
+
+\`\`\`javascript
+const r = await fetch("https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE", {
+  method: "POST",
+  headers: {
+    "X-API-Key": process.env.COMPOSIO_API_KEY,
+    "content-type": "application/json",
+  },
+  body: JSON.stringify({
+    user_id: process.env.COMPOSIO_USER_ID,
+    connected_account_id: process.env.COMPOSIO_CONNECTED_ACCOUNT_ID,
+    arguments: {"q":"AI agents","type":"video","maxResults":10},
+  }),
+})
+const { data, successful, error } = await r.json()
+if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List Playlists:**
+**Channel statistics — \`YOUTUBE_GET_CHANNEL_STATISTICS\`:**
+
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
-\`\`\``,
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{}}'
+# Response: { data: { statistics: { viewCount, subscriberCount, videoCount } }, successful: true }
+\`\`\`
+
+**List playlists — \`YOUTUBE_LIST_USER_PLAYLISTS\`:**
+
+\`\`\`bash
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_LIST_USER_PLAYLISTS \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{}}'
+# Response: { data: { items: [{ id, snippet: { title } }] }, successful: true }
+\`\`\`
+
+## Response shape + error handling
+
+Every \`composio.tools.execute\` response follows:
+\`\`\`json
+{ "data": { ... }, "successful": true, "error": null }
+\`\`\`
+Check \`successful\` before trusting \`data\`. Common failures:
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect YouTube" to the human.
+- **Quota** — YouTube Data API quota exhausted; backoff and report remaining quota if present.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
     icon: "🎬",
-    compatibleTools: ["youtube-data-api"],
+    compatibleTools: ["youtube"],
     requiresToolConnection: true,
     requiredToolCategory: "CONTENT",
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
-  // `beehiiv-newsletter` and `substack-newsletter` skills removed in PR #4 -
+  // `beehiiv-newsletter` and `substack-newsletter` skills removed in PR #4 —
   // Composio has no `beehiiv` or `substack` toolkit. Beehiiv users can instead
   // use `beehiiv-api` (API_KEY_TOOLS, direct-token) via the MarketplaceSkill
   // `beehiiv-newsletter` row in marketplace-skills.ts. Substack has no current
@@ -470,9 +522,9 @@ curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHA
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
@@ -481,7 +533,7 @@ No OAuth tokens enter the container. Composio handles refresh/rotation/revocatio
 
 ## Key operations
 
-**Add subscriber to form - \`KIT_ADD_SUBSCRIBER_TO_FORM\`:**
+**Add subscriber to form — \`KIT_ADD_SUBSCRIBER_TO_FORM\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/KIT_ADD_SUBSCRIBER_TO_FORM \\
@@ -509,7 +561,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List subscribers - \`KIT_LIST_SUBSCRIBERS\`:**
+**List subscribers — \`KIT_LIST_SUBSCRIBERS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/KIT_LIST_SUBSCRIBERS \\
@@ -519,7 +571,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/KIT_LIST_SUBSCRIB
 # Response: { data: { subscribers: [{ id, email_address, state, created_at }] }, successful: true }
 \`\`\`
 
-**List broadcasts - \`KIT_LIST_BROADCASTS\`:**
+**List broadcasts — \`KIT_LIST_BROADCASTS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/KIT_LIST_BROADCASTS \\
@@ -536,9 +588,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect ConvertKit (Kit)" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect ConvertKit (Kit)" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
     icon: "💌",
@@ -708,15 +760,15 @@ Polymarket uses a CLOB (Central Limit Order Book). Prices are between 0 and 1, r
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create issue - \`LINEAR_CREATE_LINEAR_ISSUE\` _(tool name per Composio SDK 2026-04-19)_:**
+**Create issue — \`LINEAR_CREATE_LINEAR_ISSUE\` _(tool name per Composio SDK 2026-04-19)_:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINEAR_CREATE_LINEAR_ISSUE \\
@@ -744,7 +796,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List issues - \`LINEAR_LIST_LINEAR_ISSUES\`:**
+**List issues — \`LINEAR_LIST_LINEAR_ISSUES\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINEAR_LIST_LINEAR_ISSUES \\
@@ -754,7 +806,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINEAR_LIST_LINEA
 # Response: { data: { nodes: [{ id, identifier, title, state: { name }, ... }] }, successful: true }
 \`\`\`
 
-**Update issue - \`LINEAR_UPDATE_ISSUE\`:**
+**Update issue — \`LINEAR_UPDATE_ISSUE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/LINEAR_UPDATE_ISSUE \\
@@ -771,9 +823,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Linear" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Linear" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "PROJECT_MGMT",
     icon: "📐",
@@ -790,15 +842,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create task - \`ASANA_CREATE_A_TASK\`:**
+**Create task — \`ASANA_CREATE_A_TASK\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/ASANA_CREATE_A_TASK \\
@@ -826,7 +878,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List tasks - \`ASANA_GET_MULTIPLE_TASKS\`:**
+**List tasks — \`ASANA_GET_MULTIPLE_TASKS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/ASANA_GET_MULTIPLE_TASKS \\
@@ -836,13 +888,13 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/ASANA_GET_MULTIPL
 # Response: { data: { data: [{ gid, name, completed, assignee: { gid, name } }] }, successful: true }
 \`\`\`
 
-**Comment on task - \`ASANA_CREATE_TASK_COMMENT\`:**
+**Comment on task — \`ASANA_CREATE_TASK_COMMENT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/ASANA_CREATE_TASK_COMMENT \\
   -H "X-API-Key: $COMPOSIO_API_KEY" \\
   -H "content-type: application/json" \\
-  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"task":"<task-gid>","text":"Bumping this - need it by EOW."}}'
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"task":"<task-gid>","text":"Bumping this — need it by EOW."}}'
 # Response: { data: { data: { gid, text, created_at } }, successful: true }
 \`\`\`
 
@@ -853,9 +905,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Asana" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Asana" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "PROJECT_MGMT",
     icon: "🎯",
@@ -872,15 +924,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create task - \`CLICKUP_CREATE_TASK\`:**
+**Create task — \`CLICKUP_CREATE_TASK\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/CLICKUP_CREATE_TASK \\
@@ -908,7 +960,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List tasks in list - \`CLICKUP_GET_TASKS\`:**
+**List tasks in list — \`CLICKUP_GET_TASKS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/CLICKUP_GET_TASKS \\
@@ -918,7 +970,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/CLICKUP_GET_TASKS
 # Response: { data: { tasks: [{ id, name, status: { status }, assignees: [...] }] }, successful: true }
 \`\`\`
 
-**Comment on task - \`CLICKUP_CREATE_TASK_COMMENT\`:**
+**Comment on task — \`CLICKUP_CREATE_TASK_COMMENT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/CLICKUP_CREATE_TASK_COMMENT \\
@@ -935,9 +987,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect ClickUp" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect ClickUp" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "PROJECT_MGMT",
     icon: "✅",
@@ -954,15 +1006,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create issue - \`JIRA_CREATE_ISSUE\`:**
+**Create issue — \`JIRA_CREATE_ISSUE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/JIRA_CREATE_ISSUE \\
@@ -990,7 +1042,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**Get issue - \`JIRA_GET_ISSUE\`:**
+**Get issue — \`JIRA_GET_ISSUE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/JIRA_GET_ISSUE \\
@@ -1000,13 +1052,13 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/JIRA_GET_ISSUE \\
 # Response: { data: { id, key, fields: { summary, status: { name }, assignee: { displayName } } }, successful: true }
 \`\`\`
 
-**Comment on issue - \`JIRA_ADD_COMMENT\`:**
+**Comment on issue — \`JIRA_ADD_COMMENT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/JIRA_ADD_COMMENT \\
   -H "X-API-Key: $COMPOSIO_API_KEY" \\
   -H "content-type: application/json" \\
-  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"issueKey":"ENG-1234","body":"Reproducing locally - update in next standup."}}'
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"issueKey":"ENG-1234","body":"Reproducing locally — update in next standup."}}'
 # Response: { data: { id, body, author: { displayName }, created }, successful: true }
 \`\`\`
 
@@ -1017,9 +1069,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Jira" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Jira" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "PROJECT_MGMT",
     icon: "🔵",
@@ -1036,15 +1088,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Post message to channel - \`SLACK_CHAT_POST_MESSAGE\`:**
+**Post message to channel — \`SLACK_CHAT_POST_MESSAGE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SLACK_CHAT_POST_MESSAGE \\
@@ -1072,7 +1124,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List channels - \`SLACK_LIST_ALL_CHANNELS\`:**
+**List channels — \`SLACK_LIST_ALL_CHANNELS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SLACK_LIST_ALL_CHANNELS \\
@@ -1082,7 +1134,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/SLACK_LIST_ALL_CH
 # Response: { data: { channels: [{ id, name, is_member, num_members }] }, successful: true }
 \`\`\`
 
-**Send message (alt form) - \`SLACK_SEND_MESSAGE\`:**
+**Send message (alt form) — \`SLACK_SEND_MESSAGE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SLACK_SEND_MESSAGE \\
@@ -1099,9 +1151,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Slack" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Slack" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "COMMUNICATION",
     icon: "💬",
@@ -1118,15 +1170,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Append content to page - \`NOTION_ADD_PAGE_CONTENT\`:**
+**Append content to page — \`NOTION_ADD_PAGE_CONTENT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/NOTION_ADD_PAGE_CONTENT \\
@@ -1154,7 +1206,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**Search pages - \`NOTION_SEARCH_NOTION_PAGE\`:**
+**Search pages — \`NOTION_SEARCH_NOTION_PAGE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/NOTION_SEARCH_NOTION_PAGE \\
@@ -1164,7 +1216,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/NOTION_SEARCH_NOT
 # Response: { data: { results: [{ id, url, properties: { title: [...] } }] }, successful: true }
 \`\`\`
 
-**Query database - \`NOTION_QUERY_DATABASE\`:**
+**Query database — \`NOTION_QUERY_DATABASE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/NOTION_QUERY_DATABASE \\
@@ -1181,9 +1233,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Notion" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Notion" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
     icon: "📝",
@@ -1200,15 +1252,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create order - \`SHOPIFY_CREATE_ORDER\`:**
+**Create order — \`SHOPIFY_CREATE_ORDER\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_CREATE_ORDER \\
@@ -1236,7 +1288,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List products - \`SHOPIFY_GET_PRODUCTS\`:**
+**List products — \`SHOPIFY_GET_PRODUCTS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_GET_PRODUCTS \\
@@ -1246,7 +1298,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_GET_PRODU
 # Response: { data: { products: [{ id, title, vendor, variants: [...] }] }, successful: true }
 \`\`\`
 
-**Create product - \`SHOPIFY_CREATE_PRODUCT\`:**
+**Create product — \`SHOPIFY_CREATE_PRODUCT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_CREATE_PRODUCT \\
@@ -1263,9 +1315,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Shopify" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Shopify" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "FINANCE",
     icon: "🛍️",
@@ -1280,7 +1332,7 @@ Check \`successful\` before trusting \`data\`. Common failures:
     slug: "google-search-console",
     description: "Search performance and indexing data via Composio",
     skillMd: `## Authentication
-Via Composio OAuth - auth managed automatically.
+Via Composio OAuth — auth managed automatically.
 
 ## Capabilities
 - Query search analytics (clicks, impressions, CTR, position)
@@ -1305,9 +1357,9 @@ Composio handles the full OAuth2 flow. No manual token management required.`,
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
@@ -1316,7 +1368,7 @@ No OAuth tokens enter the container. Composio handles refresh/rotation/revocatio
 
 ## Key operations
 
-**List accounts - \`GOOGLE_ANALYTICS_LIST_ACCOUNTS\`:**
+**List accounts — \`GOOGLE_ANALYTICS_LIST_ACCOUNTS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLE_ANALYTICS_LIST_ACCOUNTS \\
@@ -1344,7 +1396,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**Get account - \`GOOGLE_ANALYTICS_GET_ACCOUNT\`:**
+**Get account — \`GOOGLE_ANALYTICS_GET_ACCOUNT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLE_ANALYTICS_GET_ACCOUNT \\
@@ -1354,7 +1406,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLE_ANALYTICS_
 # Response: { data: { name, displayName, regionCode }, successful: true }
 \`\`\`
 
-**List audiences - \`GOOGLE_ANALYTICS_LIST_AUDIENCES\`:**
+**List audiences — \`GOOGLE_ANALYTICS_LIST_AUDIENCES\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLE_ANALYTICS_LIST_AUDIENCES \\
@@ -1371,9 +1423,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Google Analytics" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Google Analytics" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "ANALYTICS",
     icon: "📈",
@@ -1425,18 +1477,18 @@ curl "https://api.ahrefs.com/v3/site-explorer/domain-rating?target=example.com" 
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
-> Calendly events are created by external users via public booking pages - not via API. These ops are for reading/managing existing bookings.
+> Calendly events are created by external users via public booking pages — not via API. These ops are for reading/managing existing bookings.
 
 
 ## Key operations
 
-**List event types - \`CALENDLY_LIST_USER_S_EVENT_TYPES\`:**
+**List event types — \`CALENDLY_LIST_USER_S_EVENT_TYPES\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/CALENDLY_LIST_USER_S_EVENT_TYPES \\
@@ -1464,7 +1516,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**Get current user - \`CALENDLY_GET_CURRENT_USER\`:**
+**Get current user — \`CALENDLY_GET_CURRENT_USER\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/CALENDLY_GET_CURRENT_USER \\
@@ -1474,7 +1526,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/CALENDLY_GET_CURR
 # Response: { data: { resource: { uri, name, email, scheduling_url } }, successful: true }
 \`\`\`
 
-**List scheduled events - \`CALENDLY_LIST_EVENTS\`:**
+**List scheduled events — \`CALENDLY_LIST_EVENTS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/CALENDLY_LIST_EVENTS \\
@@ -1491,9 +1543,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Calendly" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Calendly" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CALENDAR",
     icon: "📅",
@@ -1535,7 +1587,7 @@ Uses Basic auth with Account SID and Auth Token.`,
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
-  // `wordpress-cms` skill removed in PR #4 - Composio has no `wordpress`
+  // `wordpress-cms` skill removed in PR #4 — Composio has no `wordpress`
   // toolkit. WordPress users can still install the `wordpress-cms`
   // MarketplaceSkill (marketplace-skills.ts) which uses a direct
   // WORDPRESS_URL + WORDPRESS_TOKEN pair (no OAuth). Restoration as a
@@ -1555,15 +1607,15 @@ Uses Basic auth with Account SID and Auth Token.`,
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Send email - \`GMAIL_SEND_EMAIL\`:**
+**Send email — \`GMAIL_SEND_EMAIL\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL \\
@@ -1591,7 +1643,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**Fetch recent emails - \`GMAIL_FETCH_EMAILS\`:**
+**Fetch recent emails — \`GMAIL_FETCH_EMAILS\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GMAIL_FETCH_EMAILS \\
@@ -1601,7 +1653,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/GMAIL_FETCH_EMAIL
 # Response: { data: { messages: [{ messageId, threadId, payload: { headers, parts } }] }, successful: true }
 \`\`\`
 
-**Add label - \`GMAIL_ADD_LABEL_TO_EMAIL\`:**
+**Add label — \`GMAIL_ADD_LABEL_TO_EMAIL\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GMAIL_ADD_LABEL_TO_EMAIL \\
@@ -1618,9 +1670,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Gmail" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Gmail" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "EMAIL_SENDER",
     icon: "📧",
@@ -1637,15 +1689,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create event - \`GOOGLECALENDAR_CREATE_EVENT\`:**
+**Create event — \`GOOGLECALENDAR_CREATE_EVENT\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLECALENDAR_CREATE_EVENT \\
@@ -1673,7 +1725,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List upcoming events - \`GOOGLECALENDAR_EVENTS_LIST\`:**
+**List upcoming events — \`GOOGLECALENDAR_EVENTS_LIST\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLECALENDAR_EVENTS_LIST \\
@@ -1683,7 +1735,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLECALENDAR_EV
 # Response: { data: { items: [{ id, summary, start: { dateTime }, end: { dateTime }, attendees: [...] }] }, successful: true }
 \`\`\`
 
-**Quick-add via natural language - \`GOOGLECALENDAR_QUICK_ADD\`:**
+**Quick-add via natural language — \`GOOGLECALENDAR_QUICK_ADD\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GOOGLECALENDAR_QUICK_ADD \\
@@ -1700,9 +1752,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Google Calendar" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Google Calendar" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CALENDAR",
     icon: "🗓️",
@@ -1719,15 +1771,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
 ## Key operations
 
-**Create issue - \`GITHUB_ISSUES_CREATE\`:**
+**Create issue — \`GITHUB_ISSUES_CREATE\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GITHUB_ISSUES_CREATE \\
@@ -1755,7 +1807,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List issues for repo - \`GITHUB_ISSUES_LIST_FOR_REPO\`:**
+**List issues for repo — \`GITHUB_ISSUES_LIST_FOR_REPO\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GITHUB_ISSUES_LIST_FOR_REPO \\
@@ -1765,7 +1817,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/GITHUB_ISSUES_LIS
 # Response: { data: [{ number, title, state, labels: [...], user: { login } }], successful: true }
 \`\`\`
 
-**Get repository metadata - \`GITHUB_GET_A_REPOSITORY\`:**
+**Get repository metadata — \`GITHUB_GET_A_REPOSITORY\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/GITHUB_GET_A_REPOSITORY \\
@@ -1782,9 +1834,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect GitHub" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect GitHub" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
     icon: "🐙",
@@ -1801,9 +1853,9 @@ Check \`successful\` before trusting \`data\`. Common failures:
     skillMd: `## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
+- \`$COMPOSIO_API_KEY\` — platform secret
+- \`$COMPOSIO_USER_ID\` — \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` — the OAuth connection for this toolkit
 
 No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
 
@@ -1812,7 +1864,7 @@ No OAuth tokens enter the container. Composio handles refresh/rotation/revocatio
 
 ## Key operations
 
-**Create post - \`TWITTER_CREATION_OF_A_POST\` _(tool name per Composio SDK 2026-04-19)_:**
+**Create post — \`TWITTER_CREATION_OF_A_POST\` _(tool name per Composio SDK 2026-04-19)_:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/TWITTER_CREATION_OF_A_POST \\
@@ -1840,7 +1892,7 @@ const { data, successful, error } = await r.json()
 if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**Lookup post - \`TWITTER_POST_LOOKUP_BY_POST_ID\`:**
+**Lookup post — \`TWITTER_POST_LOOKUP_BY_POST_ID\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/TWITTER_POST_LOOKUP_BY_POST_ID \\
@@ -1850,7 +1902,7 @@ curl -X POST https://backend.composio.dev/api/v3/tools/execute/TWITTER_POST_LOOK
 # Response: { data: { data: { id, text, public_metrics: { retweet_count, like_count, reply_count } } }, successful: true }
 \`\`\`
 
-**Follow user - \`TWITTER_FOLLOW_USER\`:**
+**Follow user — \`TWITTER_FOLLOW_USER\`:**
 
 \`\`\`bash
 curl -X POST https://backend.composio.dev/api/v3/tools/execute/TWITTER_FOLLOW_USER \\
@@ -1867,9 +1919,9 @@ Every \`composio.tools.execute\` response follows:
 { "data": { ... }, "successful": true, "error": null }
 \`\`\`
 Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Twitter/X" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Revoked OAuth** — \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Twitter/X" to the human.
+- **Rate limits** — HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
+- **Missing env vars** — request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "SOCIAL",
     icon: "🐤",
