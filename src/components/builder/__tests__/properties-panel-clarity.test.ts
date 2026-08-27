@@ -14,7 +14,7 @@ const store = readFileSync(
 describe("PropertiesPanel workspace vs agent clarity", () => {
   it("MUTATION: Properties - prefix on agent header → fail", () => {
     expect(panel).not.toContain("Properties -")
-    expect(panel).not.toContain("Properties —")
+    expect(panel).not.toContain("Properties \u2014")
     const header = panel.slice(
       panel.indexOf("const agent = selectedNode.data"),
       panel.indexOf("Role"),
