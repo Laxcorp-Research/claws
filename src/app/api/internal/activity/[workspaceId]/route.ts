@@ -45,6 +45,7 @@ import {
   CRON_JOB_FAILED_WINDOW_MS,
 } from "@/lib/alerts/cron-job-failed-detect";
 import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push";
+import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -102,6 +103,17 @@ interface ValidatedEvent {
 // `action`. The plugin caps at ~4000; we enforce a hard ceiling so a runaway
 // payload can't bloat a DB row. Optional - most rows have no detail.
 const MAX_DETAIL_LEN = 4096;
+
+async function maybeCompleteUserMdInterview(
+  workspaceId: string,
+  ev: ValidatedEvent,
+): Promise<void> {
+  if (!eventSignalsUserMdInterviewComplete(ev)) return;
+  await prisma.workspace.updateMany({
+    where: { id: workspaceId, userMdInterviewCompletedAt: null },
+    data: { userMdInterviewCompletedAt: new Date() },
+  });
+}
 
 function isAllowedActionType(value: unknown): value is ActivityType {
   return typeof value === "string" && ALLOWED_ACTION_TYPES.has(value as ActivityType);
@@ -543,11 +555,11 @@ export async function POST(
         });
       }
       try {
-        await checkCronJobFailedAndAlert(workspaceId, ev);
-      } catch (cronErr) {
-        log.error("activity: failed to check cron-job-failed critical alert", {
+        await maybeCompleteUserMdInterview(workspaceId, ev);
+      } catch (interviewErr) {
+        log.error("activity: failed to stamp userMdInterviewCompletedAt", {
           workspaceId,
-          error: cronErr instanceof Error ? cronErr.message : String(cronErr),
+          error: interviewErr instanceof Error ? interviewErr.message : String(interviewErr),
         });
       }
       // warmIdle honesty: stamp lastChannelMessageAt on external-channel inbound

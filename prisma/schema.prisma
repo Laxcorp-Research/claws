@@ -262,6 +262,11 @@ model Workspace {
   // Community publish MUST omit files[] (privacy rail v1).
   seedFiles Json?
 
+  // INFRA-1: first-boot USER.md interview completed (workspace flag, no canvas).
+  // Null = orchestrator BOOT.md still carries the coverage pack. Set once via
+  // activity token CLAWS_USER_MD_INTERVIEW_COMPLETE; redeploy never re-interviews.
+  userMdInterviewCompletedAt DateTime?
+
   containerState           ContainerState?
   apiKeySourceOverride     ApiKeySource?
 

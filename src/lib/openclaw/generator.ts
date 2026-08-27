@@ -58,6 +58,11 @@ import {
   resolveWorkspaceSeedFiles,
 } from '@/lib/workspace-seed-files';
 import {
+  formatInterviewBootSection,
+  getInterviewPack,
+  USER_MD_HOST_PATH,
+} from '@/lib/user-md-interview';
+import {
   WORKFLOW_FENCE_BEGIN,
   applyWorkflowFence,
   generateFencedWorkflowSection,
@@ -1490,7 +1495,7 @@ function generateAgentWorkspaceFiles(
     'HEARTBEAT.md': isOrchestrator
       ? generateHeartbeatMd(orchestrator)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
-    'BOOT.md': generateBootMd(agent),
+    'BOOT.md': generateBootMd(agent, workspace),
     skills: generateSkillFiles(agent, workspace),
     workflowFenceCorrected: agentsMdResult.workflowFenceCorrected,
   };
@@ -1746,7 +1751,7 @@ function generateOrchestratorAgentsMd(
 
 Every session, before doing anything else:
 1. Read SOUL.md - this is who you are
-2. Read USER.md - this is who you're helping
+2. Read ${USER_MD_HOST_PATH} - this is who you're helping
 3. Read TOOLS.md - what tools and environment details are available
 4. Read memory/MEMORY.md if it exists - long-term context
 5. Read today's and yesterday's memory files if they exist
@@ -1814,7 +1819,7 @@ function generateCriticAgentsMd(critic: AgentWithRelations): string {
 
 Every session, before doing anything else:
 1. Read SOUL.md - this is who you are
-2. Read USER.md - understand the human's preferences and context
+2. Read ${USER_MD_HOST_PATH} - understand the human's preferences and context
 
 # Your Role
 
@@ -1839,7 +1844,7 @@ function generateWorkerAgentsMd(): string {
 
 Every session, before doing anything else:
 1. Read SOUL.md - this is who you are
-2. Read USER.md - understand the human's context
+2. Read ${USER_MD_HOST_PATH} - understand the human's context
 3. Read TOOLS.md - what environment-specific details are available
 
 # Your Role
@@ -2133,13 +2138,21 @@ function generateHeartbeatMd(orchestrator: AgentWithRelations): string {
 // We use it for startup verification.
 // ---------------------------------------------------------------------------
 
-function generateBootMd(agent: AgentWithRelations): string {
+function generateBootMd(
+  agent: AgentWithRelations,
+  workspace?: WorkspaceWithRelations,
+): string {
   if (agent.role !== 'ORCHESTRATOR') {
     return `# BOOT.md
 
 # No startup tasks for this agent.
 `;
   }
+
+  const interviewSection = formatInterviewBootSection({
+    interviewCompleted: Boolean(workspace?.userMdInterviewCompletedAt),
+    pack: getInterviewPack(workspace?.clawTemplate?.slug),
+  });
 
   return `# BOOT.md - Startup Checklist
 
@@ -2149,6 +2162,8 @@ On gateway startup:
 3. Verify HEARTBEAT.md has your scheduled tasks
 4. If everything looks good, reply with NO_REPLY
 5. If something is wrong (missing files, corrupted memory), send a brief status message to the human
+
+${interviewSection}
 `;
 }
 
@@ -2394,6 +2409,8 @@ type WorkspaceWithRelations = {
   clawTemplate: { name: string; slug: string; workspaceSnapshot?: unknown } | null;
   /** INFRA-2 install copy of snapshot.files[]; null → dual-read template snapshot. */
   seedFiles?: unknown;
+  /** INFRA-1: set once after first-boot interview; redeploy omits the pack. */
+  userMdInterviewCompletedAt?: Date | null;
   /** WorkspaceApiKey rows (setup wizard "Add key" overrides). Optional so
    *  older fixtures omit it; generateEnvFile treats absent as []. */
   apiKeyOverrides?: { provider: string; encryptedKey: string }[];

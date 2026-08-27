@@ -58,7 +58,11 @@ describe("INFRA-2 seed shared-file manifests", () => {
     for (const template of ALL_TEMPLATES) {
       const files = template.files ?? []
       expect(files.some((f) => f.path === "memory/MEMORY.md"), template.slug).toBe(true)
-      const named = files.filter((f) => f.path !== "memory/MEMORY.md").map((f) => f.path).sort()
+      expect(files.some((f) => f.path === "shared/USER.md"), template.slug).toBe(true)
+      const named = files
+        .filter((f) => f.path !== "memory/MEMORY.md" && f.path !== "shared/USER.md")
+        .map((f) => f.path)
+        .sort()
       expect(named, template.slug).toEqual([...(EXPECTED_NAMED[template.slug] ?? [])].sort())
       total += files.length
       for (const file of files) {
@@ -68,7 +72,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(34)
+    expect(total).toBe(54)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
@@ -76,7 +80,11 @@ describe("INFRA-2 seed shared-file manifests", () => {
     const snap = JSON.parse(buildWorkspaceSnapshotFromSeedTemplate(twitter)) as {
       files?: Array<{ path: string; content: string }>
     }
-    expect(snap.files?.map((f) => f.path).sort()).toEqual(["memory/MEMORY.md", "shared/VOICE.md"])
+    expect(snap.files?.map((f) => f.path).sort()).toEqual([
+      "memory/MEMORY.md",
+      "shared/USER.md",
+      "shared/VOICE.md",
+    ])
   })
 
   it("prose execution steps bind to the shared host path", () => {
@@ -94,8 +102,9 @@ describe("INFRA-2 seed shared-file manifests", () => {
     const tree = expandSeedFilesForAgents(twitter.files ?? [], dirs)
     const keys = Object.keys(tree).sort()
     expect(dirs.length).toBe(6)
-    expect(keys).toHaveLength(7)
+    expect(keys).toHaveLength(8)
     expect(keys).toContain("shared/VOICE.md")
+    expect(keys).toContain("shared/USER.md")
     expect(tree["shared/VOICE.md"]).toContain("Maintained by content-writer")
     expect(keys.filter((k) => k.endsWith("/VOICE.md") || k === "VOICE.md")).toEqual(["shared/VOICE.md"])
     for (const dir of dirs) {
