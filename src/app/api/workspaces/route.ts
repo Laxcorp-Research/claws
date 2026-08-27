@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { DEFAULT_MODEL } from "@/lib/models"
 import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboarding"
+import { cloneSeedFilesForWorkspace } from "@/lib/workspace-seed-files"
+import type { Prisma } from "@/generated/prisma/client"
 
 const workspaceDetailInclude = {
   agents: { orderBy: { createdAt: "asc" as const } },
@@ -76,9 +78,11 @@ export async function POST(req: NextRequest) {
     const snapshot = JSON.parse(template.workspaceSnapshot) as {
       agents: Array<{ name: string; agentSlug: string; role: string; color: string; model: string; soulMd: string; agentsMd: string; heartbeatMd?: string; heartbeatFrequency?: string | null; heartbeatTime?: string | null; positionX: number; positionY: number; qualityThreshold?: number; reportsTo?: string }>
       connections: Array<{ sourceSlug: string; targetSlug: string; condition: string; label?: string }>
+      files?: unknown
       maxRevisionRounds?: number
       deliveryMode?: "APPROVAL_REQUIRED" | "AUTO_PROCEED"
     }
+    const seedFiles = cloneSeedFilesForWorkspace(snapshot.files)
 
     const workspace = await prisma.$transaction(async (tx) => {
       const ws = await tx.workspace.create({
@@ -88,6 +92,8 @@ export async function POST(req: NextRequest) {
           slug,
           status: "SETUP_INCOMPLETE",
           clawTemplateId: templateId,
+          seedFiles:
+            seedFiles.length > 0 ? (seedFiles as unknown as Prisma.InputJsonValue) : undefined,
           maxRevisionRounds:
             typeof snapshot.maxRevisionRounds === "number" ? snapshot.maxRevisionRounds : 3,
           deliveryMode:

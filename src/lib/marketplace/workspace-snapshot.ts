@@ -50,6 +50,12 @@ export type SnapshotToolInput = {
   alternatives?: string[]
 }
 
+/** Birth stubs. Path is relative to each agent workspace (e.g. memory/MEMORY.md). */
+export type SnapshotSeedFileInput = {
+  path: string
+  content: string
+}
+
 export type WorkspaceSnapshotPayload = {
   agents: SnapshotAgentInput[]
   connections: SnapshotConnectionInput[]
@@ -59,6 +65,11 @@ export type WorkspaceSnapshotPayload = {
   maxRevisionRounds: number
   deliveryMode: SnapshotDeliveryMode
   recommendedAlwaysOn?: boolean
+  /**
+   * Seed-only. Community publish must omit this key (privacy rail v1).
+   * Not a parity key - publish and seed are allowed to differ here.
+   */
+  files?: SnapshotSeedFileInput[]
 }
 
 /** Canonical keys every writer must be able to emit (mutation-tested). */
@@ -94,6 +105,11 @@ export function buildWorkspaceSnapshotObject(
 
   if (payload.recommendedAlwaysOn === true) {
     obj.recommendedAlwaysOn = true
+  }
+
+  // Seed path only. Publish builder never passes files - do not add a default.
+  if (payload.files && payload.files.length > 0) {
+    obj.files = payload.files
   }
 
   return obj
@@ -154,6 +170,7 @@ export function buildWorkspaceSnapshotFromSeedTemplate(template: {
   legalDisclaimer?: string
   recommendedAlwaysOn?: boolean
   knobs?: { maxRevisionRounds: number; deliveryMode: SnapshotDeliveryMode }
+  files?: SnapshotSeedFileInput[]
 }): string {
   const knobs = template.knobs ?? {
     maxRevisionRounds: 3,
@@ -187,6 +204,7 @@ export function buildWorkspaceSnapshotFromSeedTemplate(template: {
     maxRevisionRounds: knobs.maxRevisionRounds,
     deliveryMode: knobs.deliveryMode,
     recommendedAlwaysOn: template.recommendedAlwaysOn === true ? true : undefined,
+    files: template.files && template.files.length > 0 ? template.files : undefined,
   })
 }
 
