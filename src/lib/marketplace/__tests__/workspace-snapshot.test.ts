@@ -100,6 +100,8 @@ describe("PR-2 workspace snapshot parity", () => {
     expect(fromSeed.deliveryMode).toBe(fromWorkspace.deliveryMode)
     expect(fromSeed.recommendedAlwaysOn).toBe(true)
     expect(fromWorkspace.recommendedAlwaysOn).toBe(true)
+    const seedAgents = fromSeed.agents as Array<{ skills?: Array<{ slug: string }> }>
+    expect(seedAgents[0].skills).toEqual([{ slug: "git-operations" }])
   })
 
   it("round-trip: workspace knobs survive publish snapshot → parse → install fields", () => {

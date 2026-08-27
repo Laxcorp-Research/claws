@@ -1046,6 +1046,7 @@ Use when: calendar conflict detected, overdue commitment approaching deadline, u
       agentsMd: generateCriticAgentsMd({ qualityThreshold: 8.5 }),
       heartbeatMd: "",
       skills: [],
+      qualityThreshold: 8.5,
       position: CRITIC_POS,
     },
   ],

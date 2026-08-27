@@ -429,30 +429,82 @@ Check \`successful\` before trusting \`data\`. Common failures:
   {
     name: "YouTube Data API",
     slug: "youtube-data-api",
-    description: "Manage YouTube channels, videos, and playlists",
+    description: "Search videos, read channel stats, and list playlists via Composio YouTube OAuth",
     skillMd: `## Authentication
-Set \`$YOUTUBE_DATA_API_KEY\` to your YouTube Data API key (or OAuth token for writes).
 
-## Key Endpoints
+This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
+- \`$COMPOSIO_API_KEY\` - platform secret
+- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
 
-**Search Videos:**
+No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
+
+> Bind this skill to the OAuth \`youtube\` catalog tool (not the deprecated API_KEY \`youtube-data-api\` slug). Writes and channel-owner reads require the connected Google account.
+
+## Key operations
+
+**Search videos - \`YOUTUBE_SEARCH_YOU_TUBE\`:**
+
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/search?part=snippet&q=AI+agents&type=video&key=$YOUTUBE_DATA_API_KEY"
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"q":"AI agents","type":"video","maxResults":10}}'
 \`\`\`
 
-**Get Channel Stats:**
-\`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/channels?part=statistics&id=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
+Or via Node (OpenClaw's skill runtime has \`fetch()\` natively):
+
+\`\`\`javascript
+const r = await fetch("https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE", {
+  method: "POST",
+  headers: {
+    "X-API-Key": process.env.COMPOSIO_API_KEY,
+    "content-type": "application/json",
+  },
+  body: JSON.stringify({
+    user_id: process.env.COMPOSIO_USER_ID,
+    connected_account_id: process.env.COMPOSIO_CONNECTED_ACCOUNT_ID,
+    arguments: {"q":"AI agents","type":"video","maxResults":10},
+  }),
+})
+const { data, successful, error } = await r.json()
+if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List Playlists:**
+**Channel statistics - \`YOUTUBE_GET_CHANNEL_STATISTICS\`:**
+
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
-\`\`\``,
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{}}'
+# Response: { data: { statistics: { viewCount, subscriberCount, videoCount } }, successful: true }
+\`\`\`
+
+**List playlists - \`YOUTUBE_LIST_USER_PLAYLISTS\`:**
+
+\`\`\`bash
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_LIST_USER_PLAYLISTS \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{}}'
+# Response: { data: { items: [{ id, snippet: { title } }] }, successful: true }
+\`\`\`
+
+## Response shape + error handling
+
+Every \`composio.tools.execute\` response follows:
+\`\`\`json
+{ "data": { ... }, "successful": true, "error": null }
+\`\`\`
+Check \`successful\` before trusting \`data\`. Common failures:
+- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect YouTube" to the human.
+- **Quota** - YouTube Data API quota exhausted; backoff and report remaining quota if present.
+- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
     icon: "🎬",
-    compatibleTools: ["youtube-data-api"],
+    compatibleTools: ["youtube"],
     requiresToolConnection: true,
     requiredToolCategory: "CONTENT",
     isBuiltIn: false,
