@@ -1,5 +1,6 @@
 import type { InterviewQuestion } from "../../prisma/seed-data/interview-packs"
 import { TEMPLATE_INTERVIEW_PACKS } from "../../prisma/seed-data/interview-packs"
+import { TWITTER_FIRST_MISSION_PROSE, TWITTER_WAVE0_SLUG } from "../../prisma/seed-data/wave-0-twitter"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
 
 export const USER_MD_UNPACK_PATH = "shared/USER.md"
@@ -60,6 +61,7 @@ export function userMdInterviewFileIsComplete(content: string): boolean {
 export function formatInterviewBootSection(input: {
   interviewCompleted: boolean
   pack: InterviewQuestion[] | null
+  templateSlug?: string | null
 }): string {
   const always = `Human profile file: ${USER_MD_HOST_PATH} (this workspace USER.md is name/timezone identity only).
 If ${USER_MD_HOST_PATH} already has "## Interview complete" set to yes, do not interview again.
@@ -72,13 +74,15 @@ If the human says "update my profile", rewrite that file from the conversation a
   const bullets = input.pack
     .map((q) => `- ${q.id}: ${q.prompt} (${q.coverage})`)
     .join("\n")
+  const firstMission =
+    input.templateSlug === TWITTER_WAVE0_SLUG ? `\n\n${TWITTER_FIRST_MISSION_PROSE}` : ""
   return `${always}
 
 ## First-boot interview
 This is a conversation, not a form. Use the pack as a coverage guide; skip anything they already volunteered.
 ${bullets}
 
-When they confirm the profile, write ${USER_MD_HOST_PATH} and include ${USER_MD_INTERVIEW_COMPLETE_TOKEN} in your confirmation message.`
+When they confirm the profile, write ${USER_MD_HOST_PATH} and include ${USER_MD_INTERVIEW_COMPLETE_TOKEN} in your confirmation message.${firstMission}`
 }
 
 export function eventSignalsUserMdInterviewComplete(ev: {

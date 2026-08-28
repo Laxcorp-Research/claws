@@ -55,13 +55,23 @@ describe("INFRA-1 USER.md interview packs", () => {
 
   it("BOOT section omits the pack after completion (MUTATION: keep First-boot interview → fail)", () => {
     const pack = getInterviewPack("twitter-growth-machine")!
-    const pending = formatInterviewBootSection({ interviewCompleted: false, pack })
+    const pending = formatInterviewBootSection({
+      interviewCompleted: false,
+      pack,
+      templateSlug: "twitter-growth-machine",
+    })
     expect(pending).toContain("## First-boot interview")
     expect(pending).toContain("do_not:")
     expect(pending).toContain(USER_MD_INTERVIEW_COMPLETE_TOKEN)
     expect(pending).toContain(USER_MD_HOST_PATH)
+    expect(pending).toContain("mini first-mission")
+    expect(pending).toContain("2 draft posts")
 
-    const done = formatInterviewBootSection({ interviewCompleted: true, pack })
+    const done = formatInterviewBootSection({
+      interviewCompleted: true,
+      pack,
+      templateSlug: "twitter-growth-machine",
+    })
     expect(done).not.toContain("## First-boot interview")
     expect(done).not.toContain("do_not:")
     expect(done).toContain("update my profile")

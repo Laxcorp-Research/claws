@@ -2152,6 +2152,7 @@ function generateBootMd(
   const interviewSection = formatInterviewBootSection({
     interviewCompleted: Boolean(workspace?.userMdInterviewCompletedAt),
     pack: getInterviewPack(workspace?.clawTemplate?.slug),
+    templateSlug: workspace?.clawTemplate?.slug,
   });
 
   return `# BOOT.md - Startup Checklist

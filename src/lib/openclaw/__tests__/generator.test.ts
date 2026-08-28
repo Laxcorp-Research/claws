@@ -736,6 +736,8 @@ describe('generateWorkspace', () => {
       expect(boot).toContain('## First-boot interview');
       expect(boot).toContain('do_not:');
       expect(boot).toContain('/home/node/.openclaw/shared/USER.md');
+      expect(boot).toContain('mini first-mission');
+      expect(boot).toContain('2 draft posts');
     });
 
     it('omits interview pack after userMdInterviewCompletedAt (MUTATION: re-interview on redeploy → fail)', async () => {

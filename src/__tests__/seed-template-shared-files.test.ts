@@ -12,7 +12,12 @@ const EXPECTED_NAMED: Record<string, string[]> = {
   "freelancer-revenue-engine": [],
   "ecommerce-profit-maximizer": [],
   "youtube-channel-os": ["shared/VOICE.md"],
-  "twitter-growth-machine": ["shared/VOICE.md"],
+  "twitter-growth-machine": [
+    "shared/VOICE.md",
+    "shared/deliverables/x-morning-trends.md",
+    "shared/deliverables/x-content-cycle.md",
+    "shared/deliverables/x-daily-recap.md",
+  ],
   "newsletter-empire": ["shared/VOICE.md"],
   "podcast-production-studio": ["shared/GUEST_PIPELINE.md"],
   "b2b-sales-machine": ["shared/ICP.md", "shared/SEQUENCE.md"],
@@ -72,7 +77,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(54)
+    expect(total).toBe(57)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
@@ -84,6 +89,9 @@ describe("INFRA-2 seed shared-file manifests", () => {
       "memory/MEMORY.md",
       "shared/USER.md",
       "shared/VOICE.md",
+      "shared/deliverables/x-content-cycle.md",
+      "shared/deliverables/x-daily-recap.md",
+      "shared/deliverables/x-morning-trends.md",
     ])
   })
 
@@ -102,7 +110,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
     const tree = expandSeedFilesForAgents(twitter.files ?? [], dirs)
     const keys = Object.keys(tree).sort()
     expect(dirs.length).toBe(6)
-    expect(keys).toHaveLength(8)
+    expect(keys).toHaveLength(11)
     expect(keys).toContain("shared/VOICE.md")
     expect(keys).toContain("shared/USER.md")
     expect(tree["shared/VOICE.md"]).toContain("Maintained by content-writer")
