@@ -725,6 +725,32 @@ describe('generateWorkspace', () => {
       expect(boot).toMatch(/never .*read.* memory\//i);
     });
 
+    it('includes Twitter interview pack until the workspace flag is set', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...buildMockWorkspace({ userMdInterviewCompletedAt: null }),
+        clawTemplate: { name: 'Twitter/X Growth Machine', slug: 'twitter-growth-machine' },
+      });
+      const result = await generateWorkspace('ws-test-1');
+      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+      const boot = result.workspaces[orchKey!]['BOOT.md'];
+      expect(boot).toContain('## First-boot interview');
+      expect(boot).toContain('do_not:');
+      expect(boot).toContain('/home/node/.openclaw/shared/USER.md');
+    });
+
+    it('omits interview pack after userMdInterviewCompletedAt (MUTATION: re-interview on redeploy → fail)', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...buildMockWorkspace({ userMdInterviewCompletedAt: new Date('2026-08-27T00:00:00.000Z') }),
+        clawTemplate: { name: 'Twitter/X Growth Machine', slug: 'twitter-growth-machine' },
+      });
+      const result = await generateWorkspace('ws-test-1');
+      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+      const boot = result.workspaces[orchKey!]['BOOT.md'];
+      expect(boot).not.toContain('## First-boot interview');
+      expect(boot).not.toContain('do_not:');
+      expect(boot).toContain('update my profile');
+    });
+
     it('MUTATION: restoring Check memory/ directory in generateBootMd fails', async () => {
       const { readFileSync } = await import('node:fs');
       const { join } = await import('node:path');

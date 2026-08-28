@@ -5,10 +5,12 @@ import { VERTICAL_TEMPLATES } from "./vertical-templates"
 import { LIFESTYLE_TEMPLATES } from "./lifestyle-templates"
 import { applySkillAttach } from "./skill-attach-map"
 import { applySharedFiles } from "./shared-file-manifests"
+import { applyInterviewSeed } from "./interview-packs"
 import type { SeedTemplate } from "./types"
 
 export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
 export { TEMPLATE_NAMED_FILES, applySharedFiles } from "./shared-file-manifests"
+export { TEMPLATE_INTERVIEW_PACKS, applyInterviewSeed } from "./interview-packs"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -16,7 +18,7 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   ...BUSINESS_OPS_TEMPLATES,
   ...VERTICAL_TEMPLATES,
   ...LIFESTYLE_TEMPLATES,
-].map(applySkillAttach).map(applySharedFiles)
+].map(applySkillAttach).map(applySharedFiles).map(applyInterviewSeed)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)
