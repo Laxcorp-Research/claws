@@ -1,4 +1,5 @@
 import type { SeedTemplate } from "./types"
+import { TWITTER_HEARTBEAT_MD } from "./wave-0-twitter"
 
 /**
  * INFRA-4 baseline mission scripts. Waves polish category excellence.
@@ -104,41 +105,7 @@ export const TEMPLATE_MISSION_SCRIPTS: Record<string, string> = {
     ),
   ]),
 
-  "twitter-growth-machine": missionDoc([
-    windowBlock(
-      "0 8 * * *",
-      [
-        wake([USER, "VOICE.md"]),
-        "Use twitter-api and tavily-search via Trend & Topic Scout for niche opportunities that respect USER.md do-not topics.",
-        "Delegate a first-draft slate to Content Writer (twitter-api) per the canvas. Do not post.",
-        "Critic gate: Social Content Reviewer must approve voice and risk before anything is scheduled.",
-        memory(),
-      ],
-      "shared/deliverables/x-morning-trends.md (top opportunities and one recommended first post)",
-    ),
-    windowBlock(
-      "0 12,16,20 * * *",
-      [
-        wake([USER, "VOICE.md"]),
-        "Use twitter-api via Content Writer and Engagement Strategist to draft the next scheduled item and a reply plan.",
-        "Delegate timing/reply choices to Engagement Strategist per the canvas. Stay inside USER.md cadence.",
-        "Critic gate: Social Content Reviewer rejects off-voice or engagement-bait.",
-        memory(),
-      ],
-      "shared/deliverables/x-content-cycle.md (drafts queued, replies suggested, items held)",
-    ),
-    windowBlock(
-      "0 21 * * *",
-      [
-        wake([USER, "VOICE.md"]),
-        "Use twitter-api via Analytics & Growth Tracker for today's follower, reply, and post stats against USER.md weekly goals.",
-        "Do not change strategy from a single-day dip. Flag only repeats or a missed cadence.",
-        "Critic gate: Social Content Reviewer signs the recap before it is treated as the day's record.",
-        memory(),
-      ],
-      "shared/deliverables/x-daily-recap.md (what shipped, what held, one learning)",
-    ),
-  ]),
+  "twitter-growth-machine": TWITTER_HEARTBEAT_MD,
 
   "newsletter-empire": missionDoc([
     windowBlock(

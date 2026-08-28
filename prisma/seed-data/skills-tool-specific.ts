@@ -24,7 +24,21 @@ curl -X POST https://api.tavily.com/extract \\
   -d '{"api_key":"'$TAVILY_API_KEY'","urls":["https://example.com"]}'
 \`\`\`
 
-Use \`search_depth: "advanced"\` for deeper results. Default returns title, url, content, and score.`,
+Use \`search_depth: "advanced"\` for deeper results. Default returns title, url, content, and score.
+
+## Scout query patterns (Trend Scout and similar)
+
+Tavily corroborates why an X topic is moving. It does not invent the trend. Run 1-3 queries on topics that already survived twitter-api search/recent.
+
+Patterns:
+1. Corroborate: \`<topic> announcement OR launch OR paper\` + today's date context. max_results 5.
+2. Disambiguate: \`<handle or product> <noun>\` when the tweet is vague. Do not use this to expand into adjacent hype.
+3. Skip-news: if search/recent already has a primary source link, extract that URL instead of a new search.
+
+Do not:
+- Query "AI agents trending" (noise).
+- Use Tavily as a substitute when twitter-api 401s (tell the human the Bearer is dead).
+- Pull more than 3 queries per heartbeat window.`,
     type: "TOOL_SPECIFIC",
     category: "SEARCH",
     icon: "🔎",
@@ -303,31 +317,46 @@ curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$INSTAN
   {
     name: "Twitter API",
     slug: "twitter-api",
-    description: "Post, read, and search tweets via the Twitter/X API",
+    description: "Read and search tweets via the Twitter/X API (Bearer; drafts only, human posts)",
     skillMd: `## Authentication
-Set \`$TWITTER_API_KEY\` to your Twitter Bearer token.
+Set \`$TWITTER_API_KEY\` to the Twitter/X Bearer token (app-only). This toolkit is read-focused. The claw drafts; the human posts. Do not treat Bearer as a user-OAuth posting key.
 
-## Key Endpoints
+## Endpoints used per mission
 
-**Post Tweet:**
+**Morning / first-mission (Trend Scout):** \`GET /2/tweets/search/recent\`
+Query = USER.md niche terms, recency 6h, max_results 10-20. Fields: author_id, created_at, public_metrics, text.
+
 \`\`\`bash
-curl -X POST https://api.twitter.com/2/tweets \\
-  -H "Authorization: Bearer $TWITTER_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"text":"Hello from LaxClaws!"}'
-\`\`\`
-
-**Search Tweets:**
-\`\`\`bash
-curl "https://api.twitter.com/2/tweets/search/recent?query=AI%20agents&max_results=10" \\
+curl "https://api.twitter.com/2/tweets/search/recent?query=evals%20agents&max_results=10&tweet.fields=created_at,public_metrics" \\
   -H "Authorization: Bearer $TWITTER_API_KEY"
 \`\`\`
 
-**Get User Timeline:**
+**Content cycle (Engagement):** \`GET /2/tweets/:id\` for a candidate reply target. Confirm text and metrics before writing a line.
+
+**Evening recap (Analytics):** \`GET /2/users/:id/tweets\` for today's posts only (max_results 10) + lookup for any known ids.
+
 \`\`\`bash
-curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10" \\
+curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10&tweet.fields=created_at,public_metrics" \\
   -H "Authorization: Bearer $TWITTER_API_KEY"
-\`\`\``,
+\`\`\`
+
+## Rate-limit behavior
+
+- 429: wait for reset (or 60s if unknown), one retry, then DEGRADED. Do not tight-loop.
+- 401/403: Bearer is dead or forbidden. Stop. Ping the human. Do not invent a timeline.
+- 5xx: one retry. Then DEGRADED.
+
+## What NOT to fetch
+
+- Full-archive / all-time search
+- DMs, email, phone
+- Follower dumps or block lists
+- POST /2/tweets (this claw does not post on Bearer)
+- User lookup sprees outside the mission
+
+## What not to do with the data
+
+Do not fabricate public_metrics when the field is missing. Write unknown. Do not paginate "just in case" past the recency window.`,
     type: "TOOL_SPECIFIC",
     category: "SOCIAL",
     icon: "🐦",

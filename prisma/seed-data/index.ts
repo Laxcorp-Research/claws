@@ -7,6 +7,7 @@ import { applySkillAttach } from "./skill-attach-map"
 import { applySharedFiles } from "./shared-file-manifests"
 import { applyInterviewSeed } from "./interview-packs"
 import { applyMissionScripts } from "./mission-scripts"
+import { applyWave0Twitter } from "./wave-0-twitter"
 import type { SeedTemplate } from "./types"
 
 export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
@@ -18,6 +19,7 @@ export {
   FORMERLY_EMPTY_TEMPLATE_SLUGS,
   applyMissionScripts,
 } from "./mission-scripts"
+export { applyWave0Twitter, TWITTER_WAVE0_SLUG } from "./wave-0-twitter"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -30,6 +32,7 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   .map(applySharedFiles)
   .map(applyInterviewSeed)
   .map(applyMissionScripts)
+  .map(applyWave0Twitter)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)
