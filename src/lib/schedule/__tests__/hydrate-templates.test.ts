@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { ALL_TEMPLATES } from "../../../../prisma/seed-data"
+import {
+  ALL_TEMPLATES,
+  FORMERLY_EMPTY_TEMPLATE_SLUGS,
+  TEMPLATE_SPEC_CRONS,
+} from "../../../../prisma/seed-data"
+import { extractCronExprsFromHeartbeatMd } from "@/lib/openclaw/heartbeat-md-cron"
 import { hydrateSchedule } from "@/lib/schedule/hydrate"
 
 describe("hydration from all 20 template seeds", () => {
@@ -17,7 +22,9 @@ describe("hydration from all 20 template seeds", () => {
         heartbeatMd: orch!.heartbeatMd,
         timezone: "UTC",
       })
-      const hasCron = /cron:\s*"/.test(orch!.heartbeatMd)
+      const hasCron =
+        /cron:\s*"/.test(orch!.heartbeatMd) ||
+        /^## window[ \t]+/m.test(orch!.heartbeatMd)
       if (hasCron) {
         expect(value.mode, tmpl.slug).not.toBe("off")
         if (value.mode === "times") {
@@ -44,6 +51,26 @@ describe("hydration from all 20 template seeds", () => {
     expect(value.mode === "times" || value.mode === "cron").toBe(true)
     if (value.mode === "times") {
       expect(value.slots.length).toBeGreaterThan(1)
+    }
+  })
+
+  it("9 formerly-empty templates hydrate to ON with their spec'd schedules", () => {
+    expect(FORMERLY_EMPTY_TEMPLATE_SLUGS).toHaveLength(9)
+    for (const slug of FORMERLY_EMPTY_TEMPLATE_SLUGS) {
+      const tmpl = ALL_TEMPLATES.find((t) => t.slug === slug)
+      expect(tmpl, slug).toBeDefined()
+      const orch = tmpl!.agents.find((a) => a.role === "ORCHESTRATOR")
+      expect(orch, slug).toBeDefined()
+      const exprs = extractCronExprsFromHeartbeatMd(orch!.heartbeatMd)
+      expect(exprs, slug).toEqual(TEMPLATE_SPEC_CRONS[slug])
+      expect(exprs.length, slug).toBeGreaterThan(0)
+      const value = hydrateSchedule({
+        heartbeatFrequency: null,
+        heartbeatTime: null,
+        heartbeatMd: orch!.heartbeatMd,
+        timezone: "UTC",
+      })
+      expect(value.mode, slug).not.toBe("off")
     }
   })
 })
