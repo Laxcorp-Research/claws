@@ -1,4 +1,8 @@
 import { CHANNEL_IDS } from "@/lib/openclaw/channel-config"
+import {
+  isProtocolOnlyChatBody,
+  stripPlatformSentinels,
+} from "@/lib/chat/platform-sentinels"
 
 export type ConversationRole = "user" | "assistant" | "system" | "tool"
 
@@ -239,7 +243,7 @@ function isRawToolJson(text: string): boolean {
 function shouldDropText(role: ConversationTextRole, content: string, rawContent: unknown): boolean {
   const trimmed = content.trim()
   if (!trimmed) return true
-  if (role === "assistant" && trimmed === "NO_REPLY") return true
+  if (role === "assistant" && isProtocolOnlyChatBody(trimmed)) return true
   if (trimmed.includes("EXTERNAL_UNTRUSTED_CONTENT")) return true
   if (role === "assistant" && isRawToolJson(trimmed)) return true
   if (isToolResultPayload(rawContent)) return true
@@ -273,7 +277,7 @@ export function normalizeConversationMessages(payload: unknown): ConversationMes
     if (role !== "user" && role !== "assistant") return normalized
     const content = textFromContent(item.content).trim()
     if (!shouldDropText(role, content, item.content)) {
-      normalized.push({ type: "message", role, content, at })
+      normalized.push({ type: "message", role, content: stripPlatformSentinels(content), at })
     }
     return normalized
   })

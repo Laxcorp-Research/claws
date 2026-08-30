@@ -2,6 +2,7 @@ import type { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/db"
 import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboarding"
 import { cloneToolsForWorkspaceSeed } from "@/lib/tools/workspace-tool-requirements"
+import { cloneSeedFilesForWorkspace } from "@/lib/workspace-seed-files"
 import { log } from "@/lib/logger"
 
 interface SnapshotSkill {
@@ -26,8 +27,8 @@ interface SnapshotAgent {
   positionX?: number
   positionY?: number
   reportsTo?: string
-  /** Publish snapshot shape: { slug, name, configOverrides } - APPLY at install (D-AS). */
-  skills?: SnapshotSkill[]
+  /** Publish: { slug, name, configOverrides }. Seed (pre-normalize): string slugs. */
+  skills?: Array<SnapshotSkill | string>
 }
 
 interface SnapshotConnection {
@@ -40,6 +41,7 @@ interface WorkspaceSnapshot {
   agents: SnapshotAgent[]
   connections?: SnapshotConnection[]
   tools?: unknown
+  files?: unknown
   maxRevisionRounds?: number
   deliveryMode?: "APPROVAL_REQUIRED" | "AUTO_PROCEED"
 }
@@ -58,7 +60,11 @@ interface WorkspaceResult {
 
 type AgentRole = "ORCHESTRATOR" | "WORKER" | "CRITIC"
 
-function snapshotSkillSlug(entry: SnapshotSkill): string | null {
+function snapshotSkillSlug(entry: SnapshotSkill | string): string | null {
+  if (typeof entry === "string") {
+    const slug = entry.trim()
+    return slug.length > 0 ? slug : null
+  }
   if (typeof entry.slug === "string" && entry.slug.trim()) return entry.slug.trim()
   if (typeof entry.skillSlug === "string" && entry.skillSlug.trim()) {
     return entry.skillSlug.trim()
@@ -70,6 +76,7 @@ function snapshotSkillSlug(entry: SnapshotSkill): string | null {
  * Creates a Workspace + Agents + AgentConnections from a ClawTemplate snapshot.
  * Also creates a TemplateInstall record and increments ClawTemplate.installCount.
  * Copies snapshot.tools → workspace.toolRequirements (template JSON untouched).
+ * Copies snapshot.files → workspace.seedFiles (birth stubs; template JSON untouched).
  * Materializes agents[].skills → AgentSkill rows (D-AS; stale slugs skipped with WARN).
  *
  * Used by: checkout route (mock mode + free templates), webhook (paid templates).
@@ -90,6 +97,7 @@ export async function createWorkspaceFromTemplate(
   // Verbatim copy of snapshot.tools into the workspace-owned set. Dismissed
   // defaults absent/false. Template workspaceSnapshot is never written back.
   const toolRequirements = cloneToolsForWorkspaceSeed(snapshot.tools)
+  const seedFiles = cloneSeedFilesForWorkspace(snapshot.files)
 
   return prisma.$transaction(async (tx) => {
     const existingCount = await tx.workspace.count({
@@ -108,6 +116,8 @@ export async function createWorkspaceFromTemplate(
         status: "SETUP_INCOMPLETE",
         clawTemplateId: template.id,
         toolRequirements: toolRequirements as unknown as Prisma.InputJsonValue,
+        seedFiles:
+          seedFiles.length > 0 ? (seedFiles as unknown as Prisma.InputJsonValue) : undefined,
         maxRevisionRounds:
           typeof snapshot.maxRevisionRounds === "number" ? snapshot.maxRevisionRounds : 3,
         deliveryMode:
@@ -161,9 +171,11 @@ export async function createWorkspaceFromTemplate(
             agentId: agent.id,
             skillId: skill.id,
             configOverrides:
-              typeof skillEntry.configOverrides === "string"
-                ? skillEntry.configOverrides
-                : skillEntry.configOverrides ?? null,
+              typeof skillEntry === "string"
+                ? null
+                : typeof skillEntry.configOverrides === "string"
+                  ? skillEntry.configOverrides
+                  : skillEntry.configOverrides ?? null,
           },
         })
       }

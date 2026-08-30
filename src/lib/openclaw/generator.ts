@@ -54,6 +54,15 @@ import { isThinkingLevel } from '@/lib/models/thinking';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { deriveAllowAgents } from '@/lib/openclaw/derive-allow-agents';
 import {
+  expandSeedFilesForAgents,
+  resolveWorkspaceSeedFiles,
+} from '@/lib/workspace-seed-files';
+import {
+  formatInterviewBootSection,
+  getInterviewPack,
+  USER_MD_HOST_PATH,
+} from '@/lib/user-md-interview';
+import {
   WORKFLOW_FENCE_BEGIN,
   applyWorkflowFence,
   generateFencedWorkflowSection,
@@ -143,6 +152,13 @@ export interface GeneratedWorkspace {
 
   /** True when a stale/tampered orchestrator workflow fence was regenerated. */
   workflowFenceCorrected?: boolean;
+
+  /**
+   * INFRA-2 birth stubs unpacked IF-ABSENT (not mixed into CLAWS_FILES).
+   * Keys are paths under /home/node/.openclaw/
+   * (shared/VOICE.md once; workspace-{id}/memory/MEMORY.md per agent).
+   */
+  seedFiles?: Record<string, string>;
 }
 
 export interface AgentWorkspaceFiles {
@@ -287,9 +303,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
       (tc) =>
         (tc.connectionType === 'OAUTH_COMPOSIO' && tc.status === 'CONNECTED') ||
         (tc.connectionType === 'NO_AUTH' && tc.status === 'CONNECTED') ||
-        (tc.connectionType === 'API_KEY' &&
-          tc.status !== 'NEEDS_CREDENTIALS' &&
-          !!tc.encryptedCredentials),
+        isApiKeyToolEmitEligible(tc),
     )
     .map((tc) => tc.toolSlug);
 
@@ -440,6 +454,15 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     mcpEmission !== null,
   );
 
+  const logicalSeeds = resolveWorkspaceSeedFiles({
+    seedFiles: workspaceWithChannels.seedFiles,
+    clawTemplateSnapshot: workspaceWithChannels.clawTemplate?.workspaceSnapshot,
+  });
+  const seedFiles = expandSeedFilesForAgents(
+    logicalSeeds,
+    [orchestrator, ...workers, critic].map((agent) => `workspace-${toAgentId(agent.name)}`),
+  );
+
   return {
     'openclaw.json': JSON.stringify(openclawConfig, null, 2),
     '.env': envFile,
@@ -447,6 +470,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     'cron/jobs.json': JSON.stringify(cronJobs, null, 2),
     gatewayToken,
     workflowFenceCorrected: workspaceFiles.workflowFenceCorrected,
+    seedFiles,
   };
 }
 
@@ -849,6 +873,26 @@ function hasCompatibleSkill(workspace: WorkspaceWithRelations, toolSlug: string)
   return workspace.compatibleToolSkills.some((s) => s.compatibleTools.includes(toolSlug));
 }
 
+/**
+ * Same eligibility the deploy gate / wizard already use for credentialed
+ * API_KEY rows: ciphertext present, CONNECTED or credentialed PENDING.
+ * PENDING unverified keys (no validator, e.g. twitter-api) MUST emit - D6
+ * taught us the gate-vs-generator seam for model keys; this is that seam
+ * for the tool class. ERROR / EXPIRED / REVOKED / NEEDS_CREDENTIALS stay out
+ * so TOOLS.md never says Connected when .env will not carry the key.
+ */
+export function isApiKeyToolEmitEligible(toolConn: {
+  connectionType: string;
+  status: string;
+  encryptedCredentials: string | null;
+}): boolean {
+  return (
+    toolConn.connectionType === 'API_KEY' &&
+    Boolean(toolConn.encryptedCredentials) &&
+    (toolConn.status === 'CONNECTED' || toolConn.status === 'PENDING')
+  );
+}
+
 function parseLocalCredentialMap(toolConn: ToolConnectionRecord): Record<string, string> | null {
   if (!toolConn.encryptedCredentials) return null;
   try {
@@ -872,6 +916,20 @@ function parseLocalCredentialMap(toolConn: ToolConnectionRecord): Record<string,
     );
     return null;
   }
+}
+
+/** Flatten emit-eligible API_KEY ToolConnections into env-var → value. */
+export function collectApiKeyToolEnv(
+  toolConnections: ToolConnectionRecord[],
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const toolConn of toolConnections) {
+    if (!isApiKeyToolEmitEligible(toolConn)) continue;
+    const map = parseLocalCredentialMap(toolConn);
+    if (!map) continue;
+    Object.assign(env, map);
+  }
+  return env;
 }
 
 function parseCustomApiCredential(customConn: CustomToolConnectionRecord): string | null {
@@ -1009,14 +1067,20 @@ function generateSkillsEntriesConfig(
 
   // --- API_KEY branch -----------------------------------------------------
   for (const toolConn of workspace.toolConnections) {
-    if (toolConn.connectionType !== 'API_KEY') continue;
-    if (!toolConn.encryptedCredentials) continue;
-    if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
+    if (!isApiKeyToolEmitEligible(toolConn)) continue;
 
     const env = parseLocalCredentialMap(toolConn);
     if (!env) continue;
 
     entries[toolConn.toolSlug] = { enabled: true, env };
+    // OpenClaw looks up skills.entries[skillSlug]. toolSlug !== skill slug
+    // for several catalog pairs (tavily / tavily-search). Alias so hasEnv
+    // sees the same map the SKILL.md directory is named for.
+    for (const skill of workspace.compatibleToolSkills) {
+      if (!skill.compatibleTools.includes(toolConn.toolSlug)) continue;
+      if (skill.slug === toolConn.toolSlug) continue;
+      entries[skill.slug] = { enabled: true, env };
+    }
 
     // C-engine B1: API_KEY row with no matching curated Skill row - the
     // env entry above is dead weight (no SKILL.md consumes it) and the
@@ -1148,8 +1212,7 @@ function emitMarketplaceSkillEntries(
 ): void {
   const credentialMaps: Record<string, string>[] = [];
   for (const toolConn of workspace.toolConnections) {
-    if (toolConn.connectionType !== 'API_KEY') continue;
-    if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
+    if (!isApiKeyToolEmitEligible(toolConn)) continue;
     const env = parseLocalCredentialMap(toolConn);
     if (env) credentialMaps.push(env);
   }
@@ -1251,6 +1314,21 @@ function generateEnvFile(
     lines.push(`${key}=${value}`);
   }
   lines.push('');
+
+  // API_KEY tools (twitter-api, tavily, binance, …). D6 put model overrides
+  // into this file so the container sees what the gate unlocked. Tool
+  // ciphertext lived only on skills.entries[toolSlug] - OpenClaw hasEnv
+  // also reads process.env, and TOOLS.md was labeling PENDING as
+  // unavailable. Same emit-eligible set as skills.entries.
+  const toolEnv = collectApiKeyToolEnv(workspace.toolConnections);
+  const toolEnvNames = Object.keys(toolEnv).sort();
+  if (toolEnvNames.length > 0) {
+    lines.push('# API_KEY tool credentials');
+    for (const name of toolEnvNames) {
+      lines.push(`${name}=${toolEnv[name]}`);
+    }
+    lines.push('');
+  }
 
   // Timezone - container process TZ is always UTC (matches buildRailwayEnvVars).
   // Workspace timezone remains for cron schedule.tz + USER.md context only.
@@ -1470,7 +1548,7 @@ function generateAgentWorkspaceFiles(
     'HEARTBEAT.md': isOrchestrator
       ? generateHeartbeatMd(orchestrator)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
-    'BOOT.md': generateBootMd(agent),
+    'BOOT.md': generateBootMd(agent, workspace),
     skills: generateSkillFiles(agent, workspace),
     workflowFenceCorrected: agentsMdResult.workflowFenceCorrected,
   };
@@ -1726,7 +1804,7 @@ function generateOrchestratorAgentsMd(
 
 Every session, before doing anything else:
 1. Read SOUL.md - this is who you are
-2. Read USER.md - this is who you're helping
+2. Read ${USER_MD_HOST_PATH} - this is who you're helping
 3. Read TOOLS.md - what tools and environment details are available
 4. Read memory/MEMORY.md if it exists - long-term context
 5. Read today's and yesterday's memory files if they exist
@@ -1794,7 +1872,7 @@ function generateCriticAgentsMd(critic: AgentWithRelations): string {
 
 Every session, before doing anything else:
 1. Read SOUL.md - this is who you are
-2. Read USER.md - understand the human's preferences and context
+2. Read ${USER_MD_HOST_PATH} - understand the human's preferences and context
 
 # Your Role
 
@@ -1819,7 +1897,7 @@ function generateWorkerAgentsMd(): string {
 
 Every session, before doing anything else:
 1. Read SOUL.md - this is who you are
-2. Read USER.md - understand the human's context
+2. Read ${USER_MD_HOST_PATH} - understand the human's context
 3. Read TOOLS.md - what environment-specific details are available
 
 # Your Role
@@ -1952,6 +2030,28 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Never fabricate or guess a result for a failed tool call.
 `;
 
+/**
+ * TOOLS.md status must match what the container will actually carry.
+ * Credentialed PENDING (validator-less API_KEY) emits into .env - calling
+ * it unavailable is how the fire claw reported "Twitter API (PENDING)".
+ */
+export function toolConnectionRuntimeStatusLabel(toolConn: {
+  connectionType: string;
+  status: string;
+  encryptedCredentials: string | null;
+}): string {
+  if (isApiKeyToolEmitEligible(toolConn)) {
+    return toolConn.status === 'PENDING'
+      ? 'Connected (saved; unverified until first use)'
+      : 'Connected';
+  }
+  if (toolConn.status === 'CONNECTED') return 'Connected';
+  if (toolConn.status === 'NEEDS_CREDENTIALS') {
+    return 'Needs credentials (partial data - agent should treat as unavailable)';
+  }
+  return `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+}
+
 function generateToolsMd(
   workspace: WorkspaceWithRelations,
   agent: AgentWithRelations,
@@ -1993,12 +2093,7 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
       catalogTool?.name ||
       toolConn.toolSlug;
 
-    const statusLabel =
-      toolConn.status === 'CONNECTED'
-        ? 'Connected'
-        : toolConn.status === 'NEEDS_CREDENTIALS'
-          ? 'Needs credentials (partial data - agent should treat as unavailable)'
-          : `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+    const statusLabel = toolConnectionRuntimeStatusLabel(toolConn);
     const honestyLines = twitterApiToolsMdHonestyLines(toolConn.toolSlug);
 
     const section = `### ${name}
@@ -2114,13 +2209,22 @@ function generateHeartbeatMd(orchestrator: AgentWithRelations): string {
 // We use it for startup verification.
 // ---------------------------------------------------------------------------
 
-function generateBootMd(agent: AgentWithRelations): string {
+function generateBootMd(
+  agent: AgentWithRelations,
+  workspace?: WorkspaceWithRelations,
+): string {
   if (agent.role !== 'ORCHESTRATOR') {
     return `# BOOT.md
 
 # No startup tasks for this agent.
 `;
   }
+
+  const interviewSection = formatInterviewBootSection({
+    interviewCompleted: Boolean(workspace?.userMdInterviewCompletedAt),
+    pack: getInterviewPack(workspace?.clawTemplate?.slug),
+    templateSlug: workspace?.clawTemplate?.slug,
+  });
 
   return `# BOOT.md - Startup Checklist
 
@@ -2130,6 +2234,8 @@ On gateway startup:
 3. Verify HEARTBEAT.md has your scheduled tasks
 4. If everything looks good, reply with NO_REPLY
 5. If something is wrong (missing files, corrupted memory), send a brief status message to the human
+
+${interviewSection}
 `;
 }
 
@@ -2372,7 +2478,11 @@ type WorkspaceWithRelations = {
   toolConnections: ToolConnectionRecord[];
   customToolConnections?: CustomToolConnectionRecord[];
   channelConfig: ChannelConfigMap;
-  clawTemplate: { name: string; slug: string } | null;
+  clawTemplate: { name: string; slug: string; workspaceSnapshot?: unknown } | null;
+  /** INFRA-2 install copy of snapshot.files[]; null → dual-read template snapshot. */
+  seedFiles?: unknown;
+  /** INFRA-1: set once after first-boot interview; redeploy omits the pack. */
+  userMdInterviewCompletedAt?: Date | null;
   /** WorkspaceApiKey rows (setup wizard "Add key" overrides). Optional so
    *  older fixtures omit it; generateEnvFile treats absent as []. */
   apiKeyOverrides?: { provider: string; encryptedKey: string }[];

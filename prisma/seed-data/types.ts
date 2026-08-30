@@ -20,6 +20,11 @@ export interface SeedWorkspaceKnobs {
   deliveryMode: "APPROVAL_REQUIRED" | "AUTO_PROCEED"
 }
 
+export interface SeedSharedFile {
+  path: string
+  content: string
+}
+
 export interface SeedConnection {
   sourceSlug: string
   targetSlug: string
@@ -72,4 +77,9 @@ export interface SeedTemplate {
   tools: SeedTool[]
   /** Defaults applied when omitted: rounds=3, APPROVAL_REQUIRED. */
   knobs?: SeedWorkspaceKnobs
+  /**
+   * INFRA-2: logical shared files. memory/MEMORY.md is per-agent;
+   * coordination files use shared/*. Applied by applySharedFiles.
+   */
+  files?: SeedSharedFile[]
 }

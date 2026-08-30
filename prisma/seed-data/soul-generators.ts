@@ -41,7 +41,7 @@ export function generateOrchestratorAgentsMd(p: {
 
 Every session, before doing anything else:
 1. Read SOUL.md - this is who you are
-2. Read USER.md - this is who you're helping
+2. Read /home/node/.openclaw/shared/USER.md - this is who you're helping
 3. Read TOOLS.md - what tools are connected
 4. Read memory/MEMORY.md - long-term context
 5. Read memory/[today].md and memory/[yesterday].md - recent context
@@ -91,7 +91,7 @@ export function generateWorkerAgentsMd(p: { name: string; executionSteps: string
   return `# Session Start Protocol
 
 1. Read SOUL.md - your identity and methodology
-2. Read USER.md - context about the human's business
+2. Read /home/node/.openclaw/shared/USER.md - context about the human's business
 3. Read TOOLS.md - available tools and APIs
 4. Read the task instructions from Orchestrator
 

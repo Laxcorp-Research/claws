@@ -44,6 +44,10 @@ const MOCK_TEMPLATE = {
       { sourceSlug: 'orch', targetSlug: 'worker', condition: 'ON_COMPLETE' },
     ],
     tools: SNAPSHOT_TOOLS,
+    files: [
+      { path: 'memory/MEMORY.md', content: '# MEMORY.md\nMaintained by this agent.\n' },
+      { path: 'VOICE.md', content: '# VOICE.md\nMaintained by content-writer.\n' },
+    ],
   }),
 };
 
@@ -116,6 +120,22 @@ describe('createWorkspaceFromTemplate', () => {
     );
   });
 
+  it('seeds seedFiles from snapshot.files (MUTATION: skip copy → fail)', async () => {
+    setupMocks();
+    await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
+
+    expect(prismaMock.workspace.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          seedFiles: [
+            { path: 'memory/MEMORY.md', content: '# MEMORY.md\nMaintained by this agent.\n' },
+            { path: 'VOICE.md', content: '# VOICE.md\nMaintained by content-writer.\n' },
+          ],
+        }),
+      }),
+    );
+  });
+
   it('creates workspace with SETUP_INCOMPLETE status', async () => {
     setupMocks();
     await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
@@ -180,6 +200,41 @@ describe('createWorkspaceFromTemplate', () => {
     const result = await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
     expect(result.workspaceId).toBe('ws-solo');
     expect(prismaMock.agentConnection.create).not.toHaveBeenCalled();
+  });
+
+  it('APPLYs string skill slugs the same as { slug } objects (seed authoring shape)', async () => {
+    const withStringSkills = {
+      ...MOCK_TEMPLATE,
+      workspaceSnapshot: JSON.stringify({
+        agents: [
+          {
+            agentSlug: 'orch',
+            name: 'Orchestrator',
+            role: 'ORCHESTRATOR',
+            model: 'm',
+            soulMd: 's',
+            agentsMd: 'a',
+            skills: ['web-search', 'github'],
+          },
+        ],
+        tools: SNAPSHOT_TOOLS,
+      }),
+    };
+    setupMocks();
+    (prismaMock.clawTemplate.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(withStringSkills);
+    (prismaMock.agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'agent-orch' });
+    (prismaMock.skill.findUnique as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'skill-web' })
+      .mockResolvedValueOnce({ id: 'skill-gh' });
+    (prismaMock.agentSkill.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await createWorkspaceFromTemplate({ userId: 'user-1', templateId: 'tpl-1' });
+
+    expect(prismaMock.skill.findUnique).toHaveBeenCalledWith({
+      where: { slug: 'web-search' },
+      select: { id: true },
+    });
+    expect(prismaMock.agentSkill.create).toHaveBeenCalledTimes(2);
   });
 
   it('APPLYs agents[].skills into AgentSkill rows (MUTATION: drop materialization → fail)', async () => {

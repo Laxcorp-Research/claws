@@ -50,6 +50,12 @@ export type SnapshotToolInput = {
   alternatives?: string[]
 }
 
+/** Birth stubs. Path is relative to each agent workspace (e.g. memory/MEMORY.md). */
+export type SnapshotSeedFileInput = {
+  path: string
+  content: string
+}
+
 export type WorkspaceSnapshotPayload = {
   agents: SnapshotAgentInput[]
   connections: SnapshotConnectionInput[]
@@ -59,6 +65,11 @@ export type WorkspaceSnapshotPayload = {
   maxRevisionRounds: number
   deliveryMode: SnapshotDeliveryMode
   recommendedAlwaysOn?: boolean
+  /**
+   * Seed-only. Community publish must omit this key (privacy rail v1).
+   * Not a parity key - publish and seed are allowed to differ here.
+   */
+  files?: SnapshotSeedFileInput[]
 }
 
 /** Canonical keys every writer must be able to emit (mutation-tested). */
@@ -96,11 +107,45 @@ export function buildWorkspaceSnapshotObject(
     obj.recommendedAlwaysOn = true
   }
 
+  // Seed path only. Publish builder never passes files - do not add a default.
+  if (payload.files && payload.files.length > 0) {
+    obj.files = payload.files
+  }
+
   return obj
 }
 
 export function buildWorkspaceSnapshotJson(payload: WorkspaceSnapshotPayload): string {
   return JSON.stringify(buildWorkspaceSnapshotObject(payload))
+}
+
+/**
+ * Seed authoring is `string[]`. Install's snapshotSkillSlug only reads
+ * `{ slug | skillSlug }` on objects - a bare string was silently skipped.
+ * Normalize here so reseeded templates materialize AgentSkill rows.
+ */
+export function normalizeSeedAgentSkills(skills: unknown): Array<{ slug: string }> {
+  if (!Array.isArray(skills)) return []
+  const out: Array<{ slug: string }> = []
+  for (const entry of skills) {
+    if (typeof entry === "string") {
+      const slug = entry.trim()
+      if (slug) out.push({ slug })
+      continue
+    }
+    if (entry && typeof entry === "object") {
+      const rec = entry as { slug?: unknown; skillSlug?: unknown }
+      const raw =
+        typeof rec.slug === "string"
+          ? rec.slug
+          : typeof rec.skillSlug === "string"
+            ? rec.skillSlug
+            : ""
+      const slug = raw.trim()
+      if (slug) out.push({ slug })
+    }
+  }
+  return out
 }
 
 /** SeedTemplate-shaped input (prisma/seed-data). */
@@ -125,6 +170,7 @@ export function buildWorkspaceSnapshotFromSeedTemplate(template: {
   legalDisclaimer?: string
   recommendedAlwaysOn?: boolean
   knobs?: { maxRevisionRounds: number; deliveryMode: SnapshotDeliveryMode }
+  files?: SnapshotSeedFileInput[]
 }): string {
   const knobs = template.knobs ?? {
     maxRevisionRounds: 3,
@@ -142,7 +188,7 @@ export function buildWorkspaceSnapshotFromSeedTemplate(template: {
       soulMd: a.soulMd,
       agentsMd: a.agentsMd,
       heartbeatMd: a.heartbeatMd,
-      skills: a.skills,
+      skills: normalizeSeedAgentSkills(a.skills),
       positionX: a.position.x,
       positionY: a.position.y,
       ...(a.role === "CRITIC"
@@ -158,6 +204,7 @@ export function buildWorkspaceSnapshotFromSeedTemplate(template: {
     maxRevisionRounds: knobs.maxRevisionRounds,
     deliveryMode: knobs.deliveryMode,
     recommendedAlwaysOn: template.recommendedAlwaysOn === true ? true : undefined,
+    files: template.files && template.files.length > 0 ? template.files : undefined,
   })
 }
 

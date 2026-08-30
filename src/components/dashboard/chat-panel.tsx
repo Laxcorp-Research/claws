@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage, type ChatBubbleStatus } from "./chat-message"
 import { cn } from "@/lib/utils"
+import {
+  isProtocolOnlyChatBody,
+  stripPlatformSentinels,
+} from "@/lib/chat/platform-sentinels"
 
 // Mirror of the send endpoint cap (src/app/api/workspaces/[id]/chat/route.ts
 // MESSAGE_MAX_CHARS) so the composer can't compose something the server will
@@ -162,7 +166,7 @@ function chatRowBody(row: ChatRow): string {
 }
 
 function isNoReplyText(value: string | null | undefined): boolean {
-  return value?.trim() === "NO_REPLY"
+  return isProtocolOnlyChatBody(value)
 }
 
 /**
@@ -224,8 +228,8 @@ export function reconcileChatMessages(
       // resolved display name (or the orchestrator's name as a fallback).
       senderName: isUser ? "You" : r.agentName || orchestratorName || "Agent",
       sortTs: Number.isNaN(parsed) ? 0 : parsed,
-      detail: r.detail ?? null,
-      action: r.action,
+      detail: r.detail != null ? stripPlatformSentinels(r.detail) : null,
+      action: stripPlatformSentinels(r.action),
       // The turn key lives in different metadata fields per row type: a user
       // send (MESSAGE_RECEIVED) carries it as messageId; the agent reply
       // (MESSAGE_SENT) carries it as runId. Normalize both into `runId` so
