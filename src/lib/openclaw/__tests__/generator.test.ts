@@ -33,6 +33,7 @@ vi.mock('@/lib/crypto', () => ({
 import { generateWorkspace } from '@/lib/openclaw/generator';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { generateSecureToken } from '@/lib/crypto';
+import { TWITTER_API_402_COPY } from '@/lib/tools/twitter-api-honesty';
 
 const runtimeChannelsSchema2026052206 = z.object({
   telegram: z.object({
@@ -949,6 +950,45 @@ describe('generateWorkspace', () => {
     expect(toolsMd).toContain('Manage Tools');
     expect(toolsMd).not.toContain('OpenClaw');
     expect(toolsMd).not.toContain('localhost');
+  });
+
+  it('TOOLS.md treats twitter-api 402 as tier-not-entitled, not down', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'twitter-api',
+        displayName: 'Twitter/X API',
+        connectionType: 'API_KEY',
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({ TWITTER_API_KEY: 'bearer' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+      {
+        toolSlug: 'tavily',
+        displayName: 'Tavily',
+        connectionType: 'API_KEY',
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'k' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const orchKey = Object.keys(result.workspaces).find((k) =>
+      k.includes('test-commander'),
+    );
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    const twitterBlock = toolsMd.slice(
+      toolsMd.indexOf('### Twitter/X API'),
+      toolsMd.indexOf('### Tavily'),
+    );
+    const tavilyBlock = toolsMd.slice(toolsMd.indexOf('### Tavily'));
+    expect(twitterBlock).toContain(TWITTER_API_402_COPY);
+    expect(twitterBlock).toContain('not "down."');
+    expect(tavilyBlock).not.toContain(TWITTER_API_402_COPY);
   });
 
   it('sets orchestrator as default agent with subagents config', async () => {

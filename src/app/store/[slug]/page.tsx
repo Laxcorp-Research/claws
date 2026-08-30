@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, type ReactNode } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
@@ -17,6 +17,7 @@ import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { CustomSelect } from "@/components/ui/custom-select"
 import { TemplateHierarchyPreview } from "@/components/store/template-hierarchy-preview"
 import { getComplianceNotice } from "@/lib/compliance-notices"
+import { storeToolHonestyNote } from "@/lib/tools/twitter-api-honesty"
 import { formatEstimatedMonthlyTotal } from "@/lib/marketplace/estimated-monthly-total"
 import { isMarketplaceCommunityPurchaseEnabled } from "@/lib/marketplace/feature-flags"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
@@ -95,6 +96,30 @@ interface PageData {
 
 function SectionHeader({ title }: { title: string }) {
   return <h2 className="text-[13px] font-semibold text-[var(--tx)] mb-2">{title}</h2>
+}
+
+function TemplateToolRow({
+  tool,
+  trailing,
+}: {
+  tool: TemplateTool
+  trailing?: ReactNode
+}) {
+  const honesty = storeToolHonestyNote(tool.slug)
+  return (
+    <div className="flex items-start gap-2">
+      <Wrench size={11} className="text-[var(--tx3)] mt-[3px] shrink-0" aria-hidden="true" />
+      <div className="flex flex-col gap-[2px] min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[var(--tx)]">{tool.name}</span>
+          {trailing}
+        </div>
+        {honesty ? (
+          <span className="text-[10px] text-[var(--tx3)] leading-[1.4]">{honesty}</span>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 export default function TemplateDetailPage() {
@@ -414,11 +439,11 @@ export default function TemplateDetailPage() {
               <h2 className="text-[13px] font-semibold mb-2">Required tools</h2>
               <div className="flex flex-col gap-1.5 text-[12px]">
                 {template.tools.required.map((tool) => (
-                  <div key={tool.slug} className="flex items-center gap-2">
-                    <Wrench size={11} className="text-[var(--tx3)]" aria-hidden="true" />
-                    <span className="text-[var(--tx)]">{tool.name}</span>
-                    <span className="text-[10px] text-[var(--ok)] ml-auto">Required</span>
-                  </div>
+                  <TemplateToolRow
+                    key={tool.slug}
+                    tool={tool}
+                    trailing={<span className="text-[10px] text-[var(--ok)] ml-auto">Required</span>}
+                  />
                 ))}
                 {template.tools.required.length === 0 && <p className="text-[var(--tx3)]">None</p>}
               </div>
@@ -427,13 +452,15 @@ export default function TemplateDetailPage() {
               <h2 className="text-[13px] font-semibold mb-2">Recommended <span className="text-[10px] font-normal text-[var(--tx2)]">(swappable)</span></h2>
               <div className="flex flex-col gap-1.5 text-[12px]">
                 {template.tools.recommended.map((tool) => (
-                  <div key={tool.slug} className="flex items-center gap-2">
-                    <Wrench size={11} className="text-[var(--tx3)]" aria-hidden="true" />
-                    <span className="text-[var(--tx)]">{tool.name}</span>
-                    {tool.alternatives && tool.alternatives.length > 0 && (
-                      <span className="text-[9px] text-[var(--tx3)] ml-auto">or {tool.alternatives.join(", ")}</span>
-                    )}
-                  </div>
+                  <TemplateToolRow
+                    key={tool.slug}
+                    tool={tool}
+                    trailing={
+                      tool.alternatives && tool.alternatives.length > 0 ? (
+                        <span className="text-[9px] text-[var(--tx3)] ml-auto">or {tool.alternatives.join(", ")}</span>
+                      ) : undefined
+                    }
+                  />
                 ))}
                 {template.tools.recommended.length === 0 && <p className="text-[var(--tx3)]">None</p>}
               </div>

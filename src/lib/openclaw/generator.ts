@@ -59,6 +59,7 @@ import {
   generateFencedWorkflowSection,
   type WorkflowDeliveryMode,
 } from '@/lib/openclaw/workflow-language';
+import { twitterApiToolsMdHonestyLines } from '@/lib/tools/twitter-api-honesty';
 import type { ApiKeySource } from '@/generated/prisma/client';
 import yaml from 'yaml';
 
@@ -1998,11 +1999,12 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
         : toolConn.status === 'NEEDS_CREDENTIALS'
           ? 'Needs credentials (partial data - agent should treat as unavailable)'
           : `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+    const honestyLines = twitterApiToolsMdHonestyLines(toolConn.toolSlug);
 
     const section = `### ${name}
 - Slug: \`${toolConn.toolSlug}\`
 - Connection type: ${toolConn.connectionType}
-- Status: ${statusLabel}`;
+- Status: ${statusLabel}${honestyLines}`;
     toolSections.push(section);
   }
 
