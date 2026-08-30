@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import { ALL_TEMPLATES } from "../../prisma/seed-data"
 import { ALL_SKILLS } from "../../prisma/seed-data/skills-index"
 import { parseHeartbeatWindowScripts } from "@/lib/openclaw/heartbeat-md-cron"
+import { TWITTER_API_402_COPY } from "@/lib/tools/twitter-api-honesty"
 
 function twitter() {
   const t = ALL_TEMPLATES.find((x) => x.slug === "twitter-growth-machine")
@@ -32,6 +33,17 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("WHY:")
   })
 
+  it("Content Writer grounding law: no invented facts; placeholder when unsourced", () => {
+    const soul = agent("content-writer").soulMd
+    expect(soul).toContain("Grounding law")
+    expect(soul).toContain("NEVER invent numbers")
+    expect(soul).toContain("[YOUR NUMBER HERE]")
+    expect(soul).toContain("one-line ask")
+    expect(soul).toContain("USER.md")
+    expect(soul).toContain("VOICE.md")
+    expect(agent("content-writer").agentsMd).toContain("[YOUR NUMBER HERE]")
+  })
+
   it("Social Content Reviewer names 4 dimensions, rejection format, and instant-reject list", () => {
     const soul = agent("social-content-reviewer").soulMd
     expect(soul).toContain("voice-match")
@@ -44,6 +56,7 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("Engagement-bait")
     expect(soul).toContain("USER.md do-nots")
     expect(soul).toContain("qualityThreshold")
+    expect(soul).toContain("specific factual claim with no source in files/tools")
   })
 
   it("Commander has capacity, escalation, tool errors, and same-session first-mission", () => {
@@ -53,6 +66,8 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("Ratio detected")
     expect(soul).toContain("Viral-response protocol")
     expect(soul).toContain("twitter-api 429")
+    expect(soul).toContain("twitter-api 402")
+    expect(soul).toContain(TWITTER_API_402_COPY)
     expect(soul).toContain("mini first-mission")
     expect(soul).toContain("2 draft posts")
   })
@@ -123,9 +138,11 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(twitterSkill?.skillMd).toContain("Endpoints used per mission")
     expect(twitterSkill?.skillMd).toContain("What NOT to fetch")
     expect(twitterSkill?.skillMd).toContain("429")
+    expect(twitterSkill?.skillMd).toContain(TWITTER_API_402_COPY)
     expect(twitterSkill?.skillMd).not.toContain("Hello from LaxClaws")
     expect(tavily?.skillMd).toContain("Scout query patterns")
     expect(tavily?.skillMd).toContain("Corroborate")
+    expect(tavily?.skillMd).toContain(TWITTER_API_402_COPY)
   })
 
   it("three windows stay parseable scripts with failure branches", () => {
@@ -140,5 +157,7 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(md).toContain("DEGRADED")
     expect(md).toContain("twitter-api")
     expect(md).toContain("tavily-search")
+    expect(md).toContain("twitter-api 402")
+    expect(md).toContain(TWITTER_API_402_COPY)
   })
 })
