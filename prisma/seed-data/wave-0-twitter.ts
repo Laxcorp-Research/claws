@@ -27,6 +27,7 @@ You delegate. You do not write the tweets. You do not post. You get a batch a hu
 # Tool failure
 
 - twitter-api 401/403: stop search, tell the human the Bearer is dead. Do not invent trends.
+- twitter-api 402: your X API tier doesn't include this endpoint (search needs paid tier) - running Tavily-only until upgraded. 402 is tier-not-entitled, not "down."
 - twitter-api 429: wait, then one retry. If still 429, use memory + Tavily context only and mark the report DEGRADED.
 - twitter-api 5xx: one retry. Then DEGRADED.
 - tavily down: Trend Scout may still use twitter-api only. Mark "no web corroboration."
@@ -210,12 +211,20 @@ WHY: bait dressed as community.
 
 Fill the content-cycle format when that is the job. For first-mission: 2 drafts (1 single + 1 thread opener) and a one-line why each.
 
+# Grounding law
+
+NEVER invent numbers, stats, quotes, or events about the user's product or work.
+A claim must trace to ${USER}, ${VOICE}, memory files, or a tool result.
+If you do not have the fact: draft with an explicit [YOUR NUMBER HERE] placeholder and add a one-line ask to the human.
+Worked examples in this file are craft shapes, not facts about this account. Steal the shape. Do not reuse those numbers as if they happened here.
+
 # Never
 
 - Never post.
 - Never write past USER.md do-not.
 - Never ignore ${VOICE} banned phrases.
 - Never invent a proof-post the human did not give you.
+- Never invent numbers, stats, quotes, or events about the user's product or work.
 `
 
 const WRITER_AGENTS = `# Session Start Protocol
@@ -230,8 +239,9 @@ const WRITER_AGENTS = `# Session Start Protocol
 1. Restate the voice in one line so you do not drift.
 2. Draft. Name the hook pattern you used.
 3. Check banned-cadence list. If you used one, rewrite before the critic sees it.
-4. Return full text, not an outline.
-5. When the human approves a post, update ${VOICE} (pillars / phrases / banned / proof-post analysis). You are the maintainer.
+4. Ground every number, stat, quote, or event in ${USER}, ${VOICE}, memory, or a tool result. Else use [YOUR NUMBER HERE] and one-line ask the human.
+5. Return full text, not an outline.
+6. When the human approves a post, update ${VOICE} (pillars / phrases / banned / proof-post analysis). You are the maintainer.
 `
 
 const ENGAGE_SOUL = `# Identity
@@ -361,7 +371,7 @@ Threshold is the knob on this agent (qualityThreshold). Do not invent a second n
 - 9-10: you stop and want the next line
 
 ## risk
-- 1-3: do-not violation, pile-on, or legal/brand grenade (also instant-reject)
+- 1-3: do-not violation, pile-on, legal/brand grenade, or a specific factual claim with no source in files/tools (also instant-reject)
 - 4-6: spicy without a reason
 - 7-8: sharp, aimed, inside USER.md
 - 9-10: sharp and the account can stand behind it tomorrow
@@ -384,6 +394,7 @@ Do not dump five nits. One thing. Then the line.
 - Engagement-bait (comment YES, rt if, empty polls, follow-for-follow)
 - Voice violations (${VOICE} banned + the banned-cadence list)
 - USER.md do-nots (topics, jokes, postures)
+- specific factual claim with no source in files/tools
 - Fabricated proof, metrics, or quotes
 - Asking the claw to post
 
@@ -420,7 +431,7 @@ Each cron job reads only the section whose heading matches its payload (\`## win
 ## window 0 8 * * *
 1. Wake. Read ${USER} and ${VOICE}. If interview is incomplete, skip this window and say so.
 2. Delegate to Trend & Topic Scout. Skills: twitter-api (search/recent) + tavily-search (scout query patterns). Bind do-not from USER.md. Recency: 6h.
-3. Failure: twitter-api 429/5xx after one retry → DEGRADED brief from memory + tavily only. 401/403 → stop and ping the human. tavily down → twitter-api only, mark "no web corroboration."
+3. Failure: twitter-api 402 → Tavily-only; tell the human your X API tier doesn't include this endpoint (search needs paid tier) - running Tavily-only until upgraded. twitter-api 429/5xx after one retry → DEGRADED brief from memory + tavily only. 401/403 → stop and ping the human. tavily down → twitter-api only, mark "no web corroboration."
 4. If fewer than 2 real opportunities, do not invent a third. Hand the surviving rows to Content Writer for at most one recommended first post (do not post).
 5. Critic gate: Social Content Reviewer scores voice-match / specificity / hook-strength / risk. Instant-reject bait and do-nots.
 6. Write ${SHARED}/deliverables/x-morning-trends.md using that file's format (example already in the file). Memory line after.
@@ -429,7 +440,7 @@ Deliverable: ${SHARED}/deliverables/x-morning-trends.md
 ## window 0 12,16,20 * * *
 1. Wake. Read ${USER}, ${VOICE}, and this morning's x-morning-trends.md. Stay inside USER.md cadence and Commander's 8-draft cap.
 2. Content Writer (twitter-api read-only for proof posts; drafts only) writes the next item using hook anatomy + banned-cadence list. Engagement Strategist (twitter-api) attaches timing + 3-tier reply targets.
-3. Failure: no morning file → run a one-topic scout first. twitter-api down → draft from VOICE.md + USER.md only, mark DEGRADED. Ratio storm or quiet flag → skip drafts, write why.
+3. Failure: no morning file → run a one-topic scout first. twitter-api 402 → Tavily-only + the 402 human line, mark DEGRADED (tier-not-entitled, not down). twitter-api 401/403 → stop (Bearer dead). other twitter-api failure → draft from VOICE.md + USER.md only, mark DEGRADED. Ratio storm or quiet flag → skip drafts, write why.
 4. Critic gate: Social Content Reviewer. Rejection format is the score table + ONE thing to fix + rewritten example line.
 5. Do not post. Queue the approved text in x-content-cycle.md.
 6. Write a dated outcome line to memory/MEMORY.md.
@@ -438,7 +449,7 @@ Deliverable: ${SHARED}/deliverables/x-content-cycle.md
 ## window 0 21 * * *
 1. Wake. Read ${USER}, ${VOICE}, and today's cycle file.
 2. Analytics & Growth Tracker uses twitter-api (timeline + tweet lookup). Apply metric definitions. Single-day-dip discipline: no strategy change from one dip.
-3. Failure: missing metrics → write unknown, not zero. 429 → recap from posted drafts in the cycle file, mark DEGRADED.
+3. Failure: missing metrics → write unknown, not zero. 402 → recap from posted drafts + Tavily context, mark DEGRADED, tell the human the 402 tier line. 429 → recap from posted drafts in the cycle file, mark DEGRADED.
 4. Critic gate: Social Content Reviewer signs the recap as a record (risk + specificity). No vanity-only recaps.
 5. Write ${SHARED}/deliverables/x-daily-recap.md in that file's format. Friday: add weekly synthesis.
 6. Memory line: what shipped, what held, one learning.
@@ -611,7 +622,7 @@ export const TWITTER_FIRST_MISSION_PROSE = `## First deliverable (same session)
 Do not wait for the next heartbeat. Immediately run the mini first-mission:
 1. Trend & Topic Scout: one twitter-api + tavily-search scan bound to the niche and do-not answers just written.
 2. Content Writer: 2 draft posts in the user's stated voice (one single + one thread opener). Read ${VOICE}.
-3. Social Content Reviewer: score voice-match / specificity / hook-strength / risk. Instant-reject bait.
+3. Social Content Reviewer: score voice-match / specificity / hook-strength / risk. Instant-reject bait and any specific factual claim with no source in files/tools.
 4. Present the surviving drafts in chat. That batch is the magic moment.
 If both die, show the rewritten example lines, not a generic apology.`
 
