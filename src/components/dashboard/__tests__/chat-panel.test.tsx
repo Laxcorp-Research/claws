@@ -18,6 +18,11 @@ import {
   statusToReason,
   errorCodeToReason,
   PENDING_TURN_TIMEOUT_MS,
+  fitChatComposer,
+  composerLineBox,
+  COMPOSER_MIN_HEIGHT_PX,
+  COMPOSER_MAX_HEIGHT_PX,
+  COMPOSER_MAX_ROWS,
   type ChatRow,
   type ChatMessageView,
   type OptimisticMessage,
@@ -261,6 +266,60 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
     const views = reconcileChatMessages(optimistic, merged, "Dev Commander")
     expect(views.filter((v) => v.sender === "user")).toHaveLength(1)
     expect(views[0].key).toBe("same-db-row")
+  })
+})
+
+describe("fitChatComposer - grow to 6 lines then inner scroll", () => {
+  function mockTextarea(scrollHeight: number): HTMLTextAreaElement {
+    const el = document.createElement("textarea")
+    Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => scrollHeight })
+    return el
+  }
+
+  it("clamps a short draft to the 2-line floor", () => {
+    const fitted = fitChatComposer(mockTextarea(24))
+    expect(fitted.height).toBe(COMPOSER_MIN_HEIGHT_PX)
+    expect(fitted.overflowY).toBe("hidden")
+  })
+
+  it("grows with content between 2 and 6 lines (MUTATION: frozen at 2 rows -> fail)", () => {
+    expect(COMPOSER_MAX_ROWS).toBe(6)
+    expect(COMPOSER_MAX_HEIGHT_PX).toBeGreaterThan(COMPOSER_MIN_HEIGHT_PX)
+    const mid = COMPOSER_MIN_HEIGHT_PX + 32
+    const fitted = fitChatComposer(mockTextarea(mid))
+    expect(fitted.height).toBe(mid)
+    expect(fitted.overflowY).toBe("hidden")
+  })
+
+  it("freezes at 6 lines and scrolls inside when content is taller", () => {
+    const fitted = fitChatComposer(mockTextarea(COMPOSER_MAX_HEIGHT_PX + 80))
+    expect(fitted.height).toBe(COMPOSER_MAX_HEIGHT_PX)
+    expect(fitted.overflowY).toBe("auto")
+  })
+
+  it("taller computed line-height raises the 6-line cap (MUTATION: hardcode 112px only -> fail)", () => {
+    const box = composerLineBox({ lineHeight: "20px", paddingTop: "8px", paddingBottom: "8px" })
+    expect(box.maxH).toBe(16 + 20 * 6)
+    expect(box.maxH).toBeGreaterThan(COMPOSER_MAX_HEIGHT_PX)
+  })
+
+  it("measures with height 0 and maxHeight none so CSS max-h cannot freeze scrollHeight", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+    expect(src).toContain('el.style.height = "0px"')
+    expect(src).toContain('el.style.maxHeight = "none"')
+    expect(src).not.toContain("max-h-[112px]")
+  })
+
+  it("applies the grown height on the live composer after typing", () => {
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
+    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement
+    const mid = COMPOSER_MIN_HEIGHT_PX + 32
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => mid })
+    fireEvent.change(textarea, { target: { value: "line one\nline two\nline three\nline four" } })
+    expect(textarea.style.height).toBe(`${mid}px`)
+    expect(textarea.style.overflowY).toBe("hidden")
   })
 })
 
