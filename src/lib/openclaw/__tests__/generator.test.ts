@@ -473,6 +473,106 @@ describe('generateWorkspace', () => {
 
     expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
     expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=mock-gateway-token-abc123');
+    // API_KEY tools ride the same .env as model keys (D6 seam for tools).
+    expect(result['.env']).toContain('TAVILY_API_KEY=real-tavily-key');
+  });
+
+  it('emits credentialed PENDING API_KEY tools into .env and TOOLS.md Connected (MUTATION: emission severed → fail)', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'twitter-api',
+        displayName: 'Twitter/X API',
+        connectionType: 'API_KEY',
+        status: 'PENDING',
+        encryptedCredentials: JSON.stringify({ TWITTER_API_KEY: 'AAAA-fire-bearer' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+      {
+        toolSlug: 'tavily',
+        displayName: 'Tavily (Web Search)',
+        connectionType: 'API_KEY',
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'tvly-connected' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+    (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { slug: 'twitter-api', compatibleTools: ['twitter-api'] },
+      { slug: 'tavily-search', compatibleTools: ['tavily'] },
+    ]);
+
+    const result = await generateWorkspace('ws-test-1');
+    expect(result['.env']).toContain('TWITTER_API_KEY=AAAA-fire-bearer');
+    expect(result['.env']).toContain('TAVILY_API_KEY=tvly-connected');
+
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.skills.entries['twitter-api'].env.TWITTER_API_KEY).toBe('AAAA-fire-bearer');
+    expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('tvly-connected');
+    expect(config.skills.entries['tavily-search'].env.TAVILY_API_KEY).toBe('tvly-connected');
+
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('Status: Connected (saved; unverified until first use)');
+    expect(toolsMd).toContain('### Tavily (Web Search)');
+    expect(toolsMd).toMatch(/### Tavily \(Web Search\)[\s\S]*Status: Connected/);
+    expect(toolsMd).not.toContain('PENDING (agent should treat as unavailable');
+  });
+
+  it('does not emit NEEDS_CREDENTIALS API_KEY rows into .env', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'alpaca',
+        displayName: 'Alpaca',
+        connectionType: 'API_KEY',
+        status: 'NEEDS_CREDENTIALS',
+        encryptedCredentials: JSON.stringify({ ALPACA_API_KEY_ID: 'partial-only' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    expect(result['.env']).not.toContain('ALPACA_API_KEY_ID=');
+  });
+
+  it('does not emit ERROR API_KEY rows into .env and TOOLS.md stays unavailable', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'twitter-api',
+        displayName: 'Twitter/X API',
+        connectionType: 'API_KEY',
+        status: 'ERROR',
+        encryptedCredentials: JSON.stringify({ TWITTER_API_KEY: 'dead-bearer' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    expect(result['.env']).not.toContain('TWITTER_API_KEY=');
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('ERROR (agent should treat as unavailable until reconnected)');
+    expect(toolsMd).not.toContain('Status: Connected');
+  });
+
+  it('MUTATION: generateEnvFile must flatten API_KEY tools via collectApiKeyToolEnv', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(process.cwd(), 'src/lib/openclaw/generator.ts'), 'utf8');
+    const envStart = src.indexOf('function generateEnvFile');
+    expect(envStart).toBeGreaterThanOrEqual(0);
+    const envFn = src.slice(envStart, src.indexOf('function generateCronJobs'));
+    expect(envFn).toContain('collectApiKeyToolEnv');
+    expect(src).toContain('export function isApiKeyToolEmitEligible');
   });
 
   // ─── D6 2026-08-23 webchat-silent regression ──────────────────────────

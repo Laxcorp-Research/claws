@@ -302,9 +302,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
       (tc) =>
         (tc.connectionType === 'OAUTH_COMPOSIO' && tc.status === 'CONNECTED') ||
         (tc.connectionType === 'NO_AUTH' && tc.status === 'CONNECTED') ||
-        (tc.connectionType === 'API_KEY' &&
-          tc.status !== 'NEEDS_CREDENTIALS' &&
-          !!tc.encryptedCredentials),
+        isApiKeyToolEmitEligible(tc),
     )
     .map((tc) => tc.toolSlug);
 
@@ -874,6 +872,26 @@ function hasCompatibleSkill(workspace: WorkspaceWithRelations, toolSlug: string)
   return workspace.compatibleToolSkills.some((s) => s.compatibleTools.includes(toolSlug));
 }
 
+/**
+ * Same eligibility the deploy gate / wizard already use for credentialed
+ * API_KEY rows: ciphertext present, CONNECTED or credentialed PENDING.
+ * PENDING unverified keys (no validator, e.g. twitter-api) MUST emit - D6
+ * taught us the gate-vs-generator seam for model keys; this is that seam
+ * for the tool class. ERROR / EXPIRED / REVOKED / NEEDS_CREDENTIALS stay out
+ * so TOOLS.md never says Connected when .env will not carry the key.
+ */
+export function isApiKeyToolEmitEligible(toolConn: {
+  connectionType: string;
+  status: string;
+  encryptedCredentials: string | null;
+}): boolean {
+  return (
+    toolConn.connectionType === 'API_KEY' &&
+    Boolean(toolConn.encryptedCredentials) &&
+    (toolConn.status === 'CONNECTED' || toolConn.status === 'PENDING')
+  );
+}
+
 function parseLocalCredentialMap(toolConn: ToolConnectionRecord): Record<string, string> | null {
   if (!toolConn.encryptedCredentials) return null;
   try {
@@ -897,6 +915,20 @@ function parseLocalCredentialMap(toolConn: ToolConnectionRecord): Record<string,
     );
     return null;
   }
+}
+
+/** Flatten emit-eligible API_KEY ToolConnections into env-var → value. */
+export function collectApiKeyToolEnv(
+  toolConnections: ToolConnectionRecord[],
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const toolConn of toolConnections) {
+    if (!isApiKeyToolEmitEligible(toolConn)) continue;
+    const map = parseLocalCredentialMap(toolConn);
+    if (!map) continue;
+    Object.assign(env, map);
+  }
+  return env;
 }
 
 function parseCustomApiCredential(customConn: CustomToolConnectionRecord): string | null {
@@ -1034,14 +1066,20 @@ function generateSkillsEntriesConfig(
 
   // --- API_KEY branch -----------------------------------------------------
   for (const toolConn of workspace.toolConnections) {
-    if (toolConn.connectionType !== 'API_KEY') continue;
-    if (!toolConn.encryptedCredentials) continue;
-    if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
+    if (!isApiKeyToolEmitEligible(toolConn)) continue;
 
     const env = parseLocalCredentialMap(toolConn);
     if (!env) continue;
 
     entries[toolConn.toolSlug] = { enabled: true, env };
+    // OpenClaw looks up skills.entries[skillSlug]. toolSlug !== skill slug
+    // for several catalog pairs (tavily / tavily-search). Alias so hasEnv
+    // sees the same map the SKILL.md directory is named for.
+    for (const skill of workspace.compatibleToolSkills) {
+      if (!skill.compatibleTools.includes(toolConn.toolSlug)) continue;
+      if (skill.slug === toolConn.toolSlug) continue;
+      entries[skill.slug] = { enabled: true, env };
+    }
 
     // C-engine B1: API_KEY row with no matching curated Skill row - the
     // env entry above is dead weight (no SKILL.md consumes it) and the
@@ -1173,8 +1211,7 @@ function emitMarketplaceSkillEntries(
 ): void {
   const credentialMaps: Record<string, string>[] = [];
   for (const toolConn of workspace.toolConnections) {
-    if (toolConn.connectionType !== 'API_KEY') continue;
-    if (toolConn.status === 'NEEDS_CREDENTIALS') continue;
+    if (!isApiKeyToolEmitEligible(toolConn)) continue;
     const env = parseLocalCredentialMap(toolConn);
     if (env) credentialMaps.push(env);
   }
@@ -1276,6 +1313,21 @@ function generateEnvFile(
     lines.push(`${key}=${value}`);
   }
   lines.push('');
+
+  // API_KEY tools (twitter-api, tavily, binance, …). D6 put model overrides
+  // into this file so the container sees what the gate unlocked. Tool
+  // ciphertext lived only on skills.entries[toolSlug] - OpenClaw hasEnv
+  // also reads process.env, and TOOLS.md was labeling PENDING as
+  // unavailable. Same emit-eligible set as skills.entries.
+  const toolEnv = collectApiKeyToolEnv(workspace.toolConnections);
+  const toolEnvNames = Object.keys(toolEnv).sort();
+  if (toolEnvNames.length > 0) {
+    lines.push('# API_KEY tool credentials');
+    for (const name of toolEnvNames) {
+      lines.push(`${name}=${toolEnv[name]}`);
+    }
+    lines.push('');
+  }
 
   // Timezone - container process TZ is always UTC (matches buildRailwayEnvVars).
   // Workspace timezone remains for cron schedule.tz + USER.md context only.
@@ -1977,6 +2029,28 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
 - Never fabricate or guess a result for a failed tool call.
 `;
 
+/**
+ * TOOLS.md status must match what the container will actually carry.
+ * Credentialed PENDING (validator-less API_KEY) emits into .env - calling
+ * it unavailable is how the fire claw reported "Twitter API (PENDING)".
+ */
+export function toolConnectionRuntimeStatusLabel(toolConn: {
+  connectionType: string;
+  status: string;
+  encryptedCredentials: string | null;
+}): string {
+  if (isApiKeyToolEmitEligible(toolConn)) {
+    return toolConn.status === 'PENDING'
+      ? 'Connected (saved; unverified until first use)'
+      : 'Connected';
+  }
+  if (toolConn.status === 'CONNECTED') return 'Connected';
+  if (toolConn.status === 'NEEDS_CREDENTIALS') {
+    return 'Needs credentials (partial data - agent should treat as unavailable)';
+  }
+  return `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+}
+
 function generateToolsMd(
   workspace: WorkspaceWithRelations,
   agent: AgentWithRelations,
@@ -2018,12 +2092,7 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
       catalogTool?.name ||
       toolConn.toolSlug;
 
-    const statusLabel =
-      toolConn.status === 'CONNECTED'
-        ? 'Connected'
-        : toolConn.status === 'NEEDS_CREDENTIALS'
-          ? 'Needs credentials (partial data - agent should treat as unavailable)'
-          : `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+    const statusLabel = toolConnectionRuntimeStatusLabel(toolConn);
 
     const section = `### ${name}
 - Slug: \`${toolConn.toolSlug}\`
