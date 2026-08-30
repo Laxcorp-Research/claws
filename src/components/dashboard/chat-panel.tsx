@@ -336,6 +336,45 @@ export function preservePrependedScrollPosition(
   el.scrollTop = previous.scrollTop + (el.scrollHeight - previous.scrollHeight)
 }
 
+// Composer grow: start at 2 lines, grow through 6 visible lines, then freeze
+// and scroll inside. Measure with height=0 and maxHeight=none so a CSS max-h
+// (or rows=2) cannot freeze scrollHeight at the visible box.
+export const COMPOSER_LINE_PX = 16
+export const COMPOSER_PAD_Y_PX = 16
+export const COMPOSER_MIN_ROWS = 2
+export const COMPOSER_MAX_ROWS = 6
+export const COMPOSER_MIN_HEIGHT_PX = COMPOSER_PAD_Y_PX + COMPOSER_LINE_PX * COMPOSER_MIN_ROWS
+export const COMPOSER_MAX_HEIGHT_PX = COMPOSER_PAD_Y_PX + COMPOSER_LINE_PX * COMPOSER_MAX_ROWS
+
+export function composerLineBox(style: {
+  lineHeight: string
+  paddingTop: string
+  paddingBottom: string
+}): { minH: number; maxH: number } {
+  const parsedLine = parseFloat(style.lineHeight)
+  const line = Number.isFinite(parsedLine) && parsedLine > 0 ? parsedLine : COMPOSER_LINE_PX
+  const pad =
+    (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) || COMPOSER_PAD_Y_PX
+  return {
+    minH: pad + line * COMPOSER_MIN_ROWS,
+    maxH: pad + line * COMPOSER_MAX_ROWS,
+  }
+}
+
+export function fitChatComposer(el: HTMLTextAreaElement): { height: number; overflowY: "hidden" | "auto" } {
+  const box = composerLineBox(getComputedStyle(el))
+  const prevMax = el.style.maxHeight
+  el.style.maxHeight = "none"
+  el.style.height = "0px"
+  el.style.overflowY = "hidden"
+  const raw = el.scrollHeight
+  const height = Math.min(box.maxH, Math.max(box.minH, raw))
+  el.style.height = `${height}px`
+  el.style.maxHeight = prevMax
+  el.style.overflowY = raw > box.maxH ? "auto" : "hidden"
+  return { height, overflowY: raw > box.maxH ? "auto" : "hidden" }
+}
+
 function WorkingIndicator({ orchestratorName }: { orchestratorName: string }) {
   const name = orchestratorName || "Orchestrator"
   return (
@@ -426,6 +465,7 @@ export function ChatPanel({
   // element's scrollTop - never the page viewport (scrollIntoView moved all
   // scrollable ancestors and jumped the whole dashboard).
   const listRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
   // Start pinned; recomputed on every user scroll. When the user scrolls up to
   // read history this goes false and new messages stop yanking them down.
   const nearBottomRef = useRef(true)
@@ -527,6 +567,11 @@ export function ChatPanel({
     preservePrependedScrollPosition(el, previous)
     prependScrollRef.current = null
   }, [messages.length])
+
+  useLayoutEffect(() => {
+    const el = composerRef.current
+    if (el) fitChatComposer(el)
+  }, [draft])
 
   // GAP #2 timeout tick: advance the clock WITHOUT a new message so a turn that
   // never replies flips from "working…" to "No response" once it crosses
@@ -766,15 +811,19 @@ export function ChatPanel({
         )}
         <div className="flex items-end gap-2">
           <Textarea
+            ref={composerRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              fitChatComposer(e.currentTarget)
+            }}
             onKeyDown={onKeyDown}
             placeholder={sendable ? "Type a message…" : "Chat unavailable"}
             disabled={!sendable}
             maxLength={MESSAGE_MAX_CHARS}
-            rows={2}
+            rows={COMPOSER_MIN_ROWS}
             aria-label="Message"
-            className="flex-1"
+            className="flex-1 min-h-[48px] leading-4"
           />
           <Button
             variant="primary"
