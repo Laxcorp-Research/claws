@@ -231,6 +231,31 @@ describe('generateWorkspace', () => {
     expect(result).toHaveProperty('workspaces');
     expect(result).toHaveProperty('cron/jobs.json');
     expect(result).toHaveProperty('gatewayToken');
+    expect(result.seedFiles).toEqual({});
+  });
+
+  it('emits MEMORY.md per agent and VOICE.md once at shared/ (MUTATION: mix into CLAWS_FILES workspaces → fail)', async () => {
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildMockWorkspace({
+        seedFiles: [
+          { path: 'memory/MEMORY.md', content: '# MEMORY.md\nMaintained by this agent.\n' },
+          { path: 'VOICE.md', content: '# VOICE.md\nMaintained by content-writer.\n' },
+        ],
+      }),
+    );
+    const result = await generateWorkspace('ws-test-1');
+    const dirs = Object.keys(result.workspaces);
+    expect(dirs.length).toBeGreaterThanOrEqual(3);
+    expect(result.seedFiles?.['shared/VOICE.md']).toContain('content-writer');
+    expect(Object.keys(result.seedFiles ?? {}).filter((k) => k.endsWith('/VOICE.md') || k === 'VOICE.md')).toEqual([
+      'shared/VOICE.md',
+    ]);
+    for (const dir of dirs) {
+      expect(result.seedFiles?.[`${dir}/memory/MEMORY.md`]).toContain('Maintained by this agent');
+      expect(result.seedFiles?.[`${dir}/VOICE.md`]).toBeUndefined();
+      expect(result.workspaces[dir]).not.toHaveProperty('VOICE.md');
+      expect(result.workspaces[dir]).not.toHaveProperty('memory/MEMORY.md');
+    }
   });
 
   it('buyer-independence: unpublished sold template still generates from workspace snapshot', async () => {
@@ -449,6 +474,107 @@ describe('generateWorkspace', () => {
 
     expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
     expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=mock-gateway-token-abc123');
+    // API_KEY tools ride the same .env as model keys (D6 seam for tools).
+    expect(result['.env']).toContain('TAVILY_API_KEY=real-tavily-key');
+  });
+
+  it('emits credentialed PENDING API_KEY tools into .env and TOOLS.md Connected (MUTATION: emission severed → fail)', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'twitter-api',
+        displayName: 'Twitter/X API',
+        connectionType: 'API_KEY',
+        status: 'PENDING',
+        encryptedCredentials: JSON.stringify({ TWITTER_API_KEY: 'AAAA-fire-bearer' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+      {
+        toolSlug: 'tavily',
+        displayName: 'Tavily (Web Search)',
+        connectionType: 'API_KEY',
+        status: 'CONNECTED',
+        encryptedCredentials: JSON.stringify({ TAVILY_API_KEY: 'tvly-connected' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+    (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { slug: 'twitter-api', compatibleTools: ['twitter-api'] },
+      { slug: 'tavily-search', compatibleTools: ['tavily'] },
+    ]);
+
+    const result = await generateWorkspace('ws-test-1');
+    expect(result['.env']).toContain('TWITTER_API_KEY=AAAA-fire-bearer');
+    expect(result['.env']).toContain('TAVILY_API_KEY=tvly-connected');
+
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.skills.entries['twitter-api'].env.TWITTER_API_KEY).toBe('AAAA-fire-bearer');
+    expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('tvly-connected');
+    expect(config.skills.entries['tavily-search'].env.TAVILY_API_KEY).toBe('tvly-connected');
+
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('Status: Connected (saved; unverified until first use)');
+    expect(toolsMd).toContain('### Tavily (Web Search)');
+    expect(toolsMd).toMatch(/### Tavily \(Web Search\)[\s\S]*Status: Connected/);
+    expect(toolsMd).not.toContain('PENDING (agent should treat as unavailable');
+  });
+
+  it('does not emit NEEDS_CREDENTIALS API_KEY rows into .env', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'alpaca',
+        displayName: 'Alpaca',
+        connectionType: 'API_KEY',
+        status: 'NEEDS_CREDENTIALS',
+        encryptedCredentials: JSON.stringify({ ALPACA_API_KEY_ID: 'partial-only' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    expect(result['.env']).not.toContain('ALPACA_API_KEY_ID=');
+  });
+
+  it('does not emit ERROR API_KEY rows into .env and TOOLS.md stays unavailable', async () => {
+    const ws = buildMockWorkspace();
+    ws.toolConnections = [
+      {
+        toolSlug: 'twitter-api',
+        displayName: 'Twitter/X API',
+        connectionType: 'API_KEY',
+        status: 'ERROR',
+        encryptedCredentials: JSON.stringify({ TWITTER_API_KEY: 'dead-bearer' }),
+        composioConnectionId: null,
+        composioEntityId: null,
+      },
+    ];
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    expect(result['.env']).not.toContain('TWITTER_API_KEY=');
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
+    expect(toolsMd).toContain('ERROR (agent should treat as unavailable until reconnected)');
+    expect(toolsMd).not.toContain('Status: Connected');
+  });
+
+  it('MUTATION: generateEnvFile must flatten API_KEY tools via collectApiKeyToolEnv', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(process.cwd(), 'src/lib/openclaw/generator.ts'), 'utf8');
+    const envStart = src.indexOf('function generateEnvFile');
+    expect(envStart).toBeGreaterThanOrEqual(0);
+    const envFn = src.slice(envStart, src.indexOf('function generateCronJobs'));
+    expect(envFn).toContain('collectApiKeyToolEnv');
+    expect(src).toContain('export function isApiKeyToolEmitEligible');
+    expect(src).toContain('twitterApiToolsMdHonestyLines');
   });
 
   // ─── D6 2026-08-23 webchat-silent regression ──────────────────────────
@@ -699,6 +825,34 @@ describe('generateWorkspace', () => {
       expect(boot).not.toContain('Check memory/ directory');
       expect(boot).toContain('memory/YYYY-MM-DD.md');
       expect(boot).toMatch(/never .*read.* memory\//i);
+    });
+
+    it('includes Twitter interview pack until the workspace flag is set', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...buildMockWorkspace({ userMdInterviewCompletedAt: null }),
+        clawTemplate: { name: 'Twitter/X Growth Machine', slug: 'twitter-growth-machine' },
+      });
+      const result = await generateWorkspace('ws-test-1');
+      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+      const boot = result.workspaces[orchKey!]['BOOT.md'];
+      expect(boot).toContain('## First-boot interview');
+      expect(boot).toContain('do_not:');
+      expect(boot).toContain('/home/node/.openclaw/shared/USER.md');
+      expect(boot).toContain('mini first-mission');
+      expect(boot).toContain('2 draft posts');
+    });
+
+    it('omits interview pack after userMdInterviewCompletedAt (MUTATION: re-interview on redeploy → fail)', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...buildMockWorkspace({ userMdInterviewCompletedAt: new Date('2026-08-27T00:00:00.000Z') }),
+        clawTemplate: { name: 'Twitter/X Growth Machine', slug: 'twitter-growth-machine' },
+      });
+      const result = await generateWorkspace('ws-test-1');
+      const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+      const boot = result.workspaces[orchKey!]['BOOT.md'];
+      expect(boot).not.toContain('## First-boot interview');
+      expect(boot).not.toContain('do_not:');
+      expect(boot).toContain('update my profile');
     });
 
     it('MUTATION: restoring Check memory/ directory in generateBootMd fails', async () => {
@@ -959,7 +1113,7 @@ describe('generateWorkspace', () => {
         toolSlug: 'twitter-api',
         displayName: 'Twitter/X API',
         connectionType: 'API_KEY',
-        status: 'CONNECTED',
+        status: 'PENDING',
         encryptedCredentials: JSON.stringify({ TWITTER_API_KEY: 'bearer' }),
         composioConnectionId: null,
         composioEntityId: null,

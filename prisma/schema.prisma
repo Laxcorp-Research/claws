@@ -256,6 +256,17 @@ model Workspace {
   // stays intact for the next buyer.
   toolRequirements Json?
 
+  // INFRA-2: per-workspace copy of template snapshot files[] (birth stubs).
+  // Null = legacy install → dual-read falls back to ClawTemplate.workspaceSnapshot.files.
+  // Seeded at createWorkspaceFromTemplate. Template JSON stays intact for the next buyer.
+  // Community publish MUST omit files[] (privacy rail v1).
+  seedFiles Json?
+
+  // INFRA-1: first-boot USER.md interview completed (workspace flag, no canvas).
+  // Null = orchestrator BOOT.md still carries the coverage pack. Set once via
+  // activity token CLAWS_USER_MD_INTERVIEW_COMPLETE; redeploy never re-interviews.
+  userMdInterviewCompletedAt DateTime?
+
   containerState           ContainerState?
   apiKeySourceOverride     ApiKeySource?
 

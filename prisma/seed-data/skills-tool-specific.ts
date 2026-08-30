@@ -24,7 +24,22 @@ curl -X POST https://api.tavily.com/extract \\
   -d '{"api_key":"'$TAVILY_API_KEY'","urls":["https://example.com"]}'
 \`\`\`
 
-Use \`search_depth: "advanced"\` for deeper results. Default returns title, url, content, and score.`,
+Use \`search_depth: "advanced"\` for deeper results. Default returns title, url, content, and score.
+
+## Scout query patterns (Trend Scout and similar)
+
+Tavily corroborates why an X topic is moving. It does not invent the trend. Run 1-3 queries on topics that already survived twitter-api search/recent.
+
+Patterns:
+1. Corroborate: \`<topic> announcement OR launch OR paper\` + today's date context. max_results 5.
+2. Disambiguate: \`<handle or product> <noun>\` when the tweet is vague. Do not use this to expand into adjacent hype.
+3. Skip-news: if search/recent already has a primary source link, extract that URL instead of a new search.
+
+Do not:
+- Query "AI agents trending" (noise).
+- Use Tavily as a substitute when twitter-api 401s (tell the human the Bearer is dead).
+- Treat twitter-api 402 as "down". 402 is tier-not-entitled: run Tavily-only and tell the human your X API tier doesn't include this endpoint (search needs paid tier) - running Tavily-only until upgraded.
+- Pull more than 3 queries per heartbeat window.`,
     type: "TOOL_SPECIFIC",
     category: "SEARCH",
     icon: "🔎",
@@ -303,31 +318,47 @@ curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$INSTAN
   {
     name: "Twitter API",
     slug: "twitter-api",
-    description: "Post, read, and search tweets via the Twitter/X API",
+    description: "Read and search tweets via the Twitter/X API (Bearer; drafts only, human posts)",
     skillMd: `## Authentication
-Set \`$TWITTER_API_KEY\` to your Twitter Bearer token.
+Set \`$TWITTER_API_KEY\` to the Twitter/X Bearer token (app-only). This toolkit is read-focused. The claw drafts; the human posts. Do not treat Bearer as a user-OAuth posting key.
 
-## Key Endpoints
+## Endpoints used per mission
 
-**Post Tweet:**
+**Morning / first-mission (Trend Scout):** \`GET /2/tweets/search/recent\`
+Query = USER.md niche terms, recency 6h, max_results 10-20. Fields: author_id, created_at, public_metrics, text.
+
 \`\`\`bash
-curl -X POST https://api.twitter.com/2/tweets \\
-  -H "Authorization: Bearer $TWITTER_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"text":"Hello from LaxClaws!"}'
-\`\`\`
-
-**Search Tweets:**
-\`\`\`bash
-curl "https://api.twitter.com/2/tweets/search/recent?query=AI%20agents&max_results=10" \\
+curl "https://api.twitter.com/2/tweets/search/recent?query=evals%20agents&max_results=10&tweet.fields=created_at,public_metrics" \\
   -H "Authorization: Bearer $TWITTER_API_KEY"
 \`\`\`
 
-**Get User Timeline:**
+**Content cycle (Engagement):** \`GET /2/tweets/:id\` for a candidate reply target. Confirm text and metrics before writing a line.
+
+**Evening recap (Analytics):** \`GET /2/users/:id/tweets\` for today's posts only (max_results 10) + lookup for any known ids.
+
 \`\`\`bash
-curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10" \\
+curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10&tweet.fields=created_at,public_metrics" \\
   -H "Authorization: Bearer $TWITTER_API_KEY"
-\`\`\``,
+\`\`\`
+
+## Rate-limit behavior
+
+- 429: wait for reset (or 60s if unknown), one retry, then DEGRADED. Do not tight-loop.
+- 401/403: Bearer is dead or forbidden. Stop. Ping the human. Do not invent a timeline.
+- 402: your X API tier doesn't include this endpoint (search needs paid tier) - running Tavily-only until upgraded. 402 is tier-not-entitled, not down.
+- 5xx: one retry. Then DEGRADED.
+
+## What NOT to fetch
+
+- Full-archive / all-time search
+- DMs, email, phone
+- Follower dumps or block lists
+- POST /2/tweets (this claw does not post on Bearer)
+- User lookup sprees outside the mission
+
+## What not to do with the data
+
+Do not fabricate public_metrics when the field is missing. Write unknown. Do not paginate "just in case" past the recency window.`,
     type: "TOOL_SPECIFIC",
     category: "SOCIAL",
     icon: "🐦",
@@ -429,30 +460,82 @@ Check \`successful\` before trusting \`data\`. Common failures:
   {
     name: "YouTube Data API",
     slug: "youtube-data-api",
-    description: "Manage YouTube channels, videos, and playlists",
+    description: "Search videos, read channel stats, and list playlists via Composio YouTube OAuth",
     skillMd: `## Authentication
-Set \`$YOUTUBE_DATA_API_KEY\` to your YouTube Data API key (or OAuth token for writes).
 
-## Key Endpoints
+This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
+- \`$COMPOSIO_API_KEY\` - platform secret
+- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
+- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
 
-**Search Videos:**
+No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
+
+> Bind this skill to the OAuth \`youtube\` catalog tool (not the deprecated API_KEY \`youtube-data-api\` slug). Writes and channel-owner reads require the connected Google account.
+
+## Key operations
+
+**Search videos - \`YOUTUBE_SEARCH_YOU_TUBE\`:**
+
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/search?part=snippet&q=AI+agents&type=video&key=$YOUTUBE_DATA_API_KEY"
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"q":"AI agents","type":"video","maxResults":10}}'
 \`\`\`
 
-**Get Channel Stats:**
-\`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/channels?part=statistics&id=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
+Or via Node (OpenClaw's skill runtime has \`fetch()\` natively):
+
+\`\`\`javascript
+const r = await fetch("https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE", {
+  method: "POST",
+  headers: {
+    "X-API-Key": process.env.COMPOSIO_API_KEY,
+    "content-type": "application/json",
+  },
+  body: JSON.stringify({
+    user_id: process.env.COMPOSIO_USER_ID,
+    connected_account_id: process.env.COMPOSIO_CONNECTED_ACCOUNT_ID,
+    arguments: {"q":"AI agents","type":"video","maxResults":10},
+  }),
+})
+const { data, successful, error } = await r.json()
+if (!successful) throw new Error(error ?? "composio.tools.execute failed")
 \`\`\`
 
-**List Playlists:**
+**Channel statistics - \`YOUTUBE_GET_CHANNEL_STATISTICS\`:**
+
 \`\`\`bash
-curl "https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=CHANNEL_ID&key=$YOUTUBE_DATA_API_KEY"
-\`\`\``,
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{}}'
+# Response: { data: { statistics: { viewCount, subscriberCount, videoCount } }, successful: true }
+\`\`\`
+
+**List playlists - \`YOUTUBE_LIST_USER_PLAYLISTS\`:**
+
+\`\`\`bash
+curl -X POST https://backend.composio.dev/api/v3/tools/execute/YOUTUBE_LIST_USER_PLAYLISTS \\
+  -H "X-API-Key: $COMPOSIO_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{}}'
+# Response: { data: { items: [{ id, snippet: { title } }] }, successful: true }
+\`\`\`
+
+## Response shape + error handling
+
+Every \`composio.tools.execute\` response follows:
+\`\`\`json
+{ "data": { ... }, "successful": true, "error": null }
+\`\`\`
+Check \`successful\` before trusting \`data\`. Common failures:
+- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect YouTube" to the human.
+- **Quota** - YouTube Data API quota exhausted; backoff and report remaining quota if present.
+- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
     icon: "🎬",
-    compatibleTools: ["youtube-data-api"],
+    compatibleTools: ["youtube"],
     requiresToolConnection: true,
     requiredToolCategory: "CONTENT",
     isBuiltIn: false,

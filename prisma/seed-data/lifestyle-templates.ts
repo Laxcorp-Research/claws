@@ -117,9 +117,10 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         agentsMd: generateWorkerAgentsMd({
           name: "Workout Planner",
           executionSteps: [
-            "Read the user's goals, equipment list, and schedule from USER.md",
-            "Check recovery status from the latest Habit & Recovery Tracker report",
+            "Read the user's goals, equipment list, and schedule from /home/node/.openclaw/shared/USER.md; read the current training block from /home/node/.openclaw/shared/PROGRAM.md",
+            "Check recovery status from the latest Habit & Recovery Tracker report and /home/node/.openclaw/shared/LOG.md",
             "Design or adjust the training program using periodization principles",
+            "Write the active block to /home/node/.openclaw/shared/PROGRAM.md (maintained by Workout Planner)",
             "Format the workout with exercises, sets, reps, RPE, and rest periods",
             "Return the program to Fitness Commander for Critic review",
           ],
@@ -163,7 +164,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         agentsMd: generateWorkerAgentsMd({
           name: "Nutrition Advisor",
           executionSteps: [
-            "Read user's dietary preferences, restrictions, and goals from USER.md",
+            "Read user's dietary preferences, restrictions, and goals from /home/node/.openclaw/shared/USER.md",
             "Calculate or verify TDEE and macro targets",
             "Design meal plan aligned with this week's training schedule",
             "Include meal-prep instructions and grocery list",
@@ -201,8 +202,10 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
           name: "Habit & Recovery Tracker",
           executionSteps: [
             "Collect today's data: workout completion, sleep, soreness, energy",
+            "Read /home/node/.openclaw/shared/LOG.md for recent sessions (maintained by Habit & Recovery Tracker)",
             "Update running adherence metrics in memory",
             "Check for overtraining signals (3+ days of declining metrics)",
+            "Append today's row to /home/node/.openclaw/shared/LOG.md",
             "Generate daily log entry and any alerts",
             "Return the report to Fitness Commander",
           ],
@@ -368,7 +371,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         agentsMd: generateWorkerAgentsMd({
           name: "Study Planner",
           executionSteps: [
-            "Read the student's courses, deadlines, and goals from USER.md",
+            "Read the student's courses, deadlines, and goals from /home/node/.openclaw/shared/USER.md",
             "Check calendar for existing commitments and available study windows",
             "Build or adjust the study schedule using spaced repetition intervals",
             "Prioritize subjects based on upcoming deadlines and weak areas",
@@ -634,7 +637,7 @@ export const LIFESTYLE_TEMPLATES: SeedTemplate[] = [
         agentsMd: generateWorkerAgentsMd({
           name: "Opportunity Scout",
           executionSteps: [
-            "Read the user's target profile, skills, and preferences from USER.md",
+            "Read the user's target profile, skills, and preferences from /home/node/.openclaw/shared/USER.md",
             "Search for matching positions using Tavily and LinkedIn",
             "Score and rank opportunities against the target profile",
             "Research top matches for company culture and reviews",

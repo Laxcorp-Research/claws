@@ -1,5 +1,5 @@
 import type { ScheduleValue, TimeSlot, Weekday } from "@/lib/schedule/types"
-import { cronExprToIdSlug } from "@/lib/openclaw/heartbeat-md-cron"
+import { cronExprToIdSlug, heartbeatPayloadMessage } from "@/lib/openclaw/heartbeat-md-cron"
 
 export type PlannedCron = {
   expr: string
@@ -154,11 +154,9 @@ export function emitHeartbeatJobs(args: {
     agentId: slug,
     sessionTarget: `session:agent:${slug}:main`,
     wakeMode: "now" as const,
-    payload: {
-      kind: "agentTurn" as const,
-      message:
-        "Heartbeat. Read HEARTBEAT.md and follow it strictly. " +
-        "If nothing needs attention, reply HEARTBEAT_OK.",
-    },
+      payload: {
+        kind: "agentTurn" as const,
+        message: heartbeatPayloadMessage(p.expr),
+      },
   }))
 }

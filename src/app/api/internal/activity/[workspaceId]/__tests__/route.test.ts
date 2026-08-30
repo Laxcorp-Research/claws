@@ -63,6 +63,7 @@ function defaultMocks() {
     { id: "agent-cuid-1", agentSlug: "orchestrator", name: "Orchestrator" },
   ]);
   (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
 }
 
 describe("POST /api/internal/activity/[workspaceId]", () => {
@@ -861,6 +862,39 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
         (c) => c[0]?.data?.actionType === "SYSTEM",
       );
       expect(systemCreates.length).toBe(0);
+    });
+  });
+
+  describe("INFRA-1 USER.md interview flag", () => {
+    it("stamps userMdInterviewCompletedAt once when confirmation token is in detail", async () => {
+      defaultMocks();
+      ;(prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_SENT",
+              detail: "Profile saved. CLAWS_USER_MD_INTERVIEW_COMPLETE",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      expect(prismaMock.workspace.updateMany).toHaveBeenCalledWith({
+        where: { id: WORKSPACE_ID, userMdInterviewCompletedAt: null },
+        data: { userMdInterviewCompletedAt: expect.any(Date) },
+      });
+    });
+
+    it("does not stamp the flag on ordinary events (MUTATION: stamp every event → fail)", async () => {
+      defaultMocks();
+      await callRoute({ events: [makeEvent()] }, { secret: SECRET });
+      expect(prismaMock.workspace.updateMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userMdInterviewCompletedAt: expect.any(Date) }),
+        }),
+      );
     });
   });
 });

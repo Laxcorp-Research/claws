@@ -237,8 +237,10 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           name: "Market Intel Agent",
           executionSteps: [
             "Receive property or market query from Listing Commander",
+            "Read /home/node/.openclaw/shared/MARKET.md for the latest neighborhood metrics",
             "Pull comparable sales and market data from available tools",
             "Apply adjustment methodology per SOUL.md",
+            "Write updated metrics back to /home/node/.openclaw/shared/MARKET.md",
             "Generate CMA or market report with pricing recommendation",
             "Return analysis to Listing Commander",
           ],
@@ -320,6 +322,7 @@ export const VERTICAL_TEMPLATES: SeedTemplate[] = [
           name: "Client Communicator",
           executionSteps: [
             "Receive communication task from Listing Commander with context",
+            "Read /home/node/.openclaw/shared/LISTINGS.md for the active inventory (maintained by Listing Commander)",
             "Review client history and preferences in memory files",
             "Draft communication following SOUL.md guidelines",
             "Include appropriate disclaimers and CTAs",
