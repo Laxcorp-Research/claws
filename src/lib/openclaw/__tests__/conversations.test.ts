@@ -120,6 +120,21 @@ describe("conversation messages - presentation mapper", () => {
     expect(serialized).not.toContain('"query"')
   })
 
+  it("strips interview sentinel from assistant content; drops token-only (MUTATION: raw-token-rendered → fail)", () => {
+    const messages = normalizeConversationMessages({
+      messages: [
+        { role: "user", content: "looks right" },
+        { role: "assistant", content: "Profile saved. CLAWS_USER_MD_INTERVIEW_COMPLETE" },
+        { role: "assistant", content: "CLAWS_USER_MD_INTERVIEW_COMPLETE" },
+      ],
+    })
+    expect(messages).toEqual([
+      { type: "message", role: "user", content: "looks right", at: null },
+      { type: "message", role: "assistant", content: "Profile saved.", at: null },
+    ])
+    expect(JSON.stringify(messages)).not.toContain("CLAWS_USER_MD_INTERVIEW_COMPLETE")
+  })
+
   it("drops assistant NO_REPLY so startup protocol tokens never become transcript bubbles", () => {
     expect(normalizeConversationMessages({
       messages: [

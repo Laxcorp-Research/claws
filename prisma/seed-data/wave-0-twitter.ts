@@ -41,12 +41,17 @@ After the first-boot interview is written to ${USER} and you emit CLAWS_USER_MD_
 3. Social Content Reviewer: score table, then you present the surviving lines in chat.
 That batch is the magic moment. If critic kills both, show the rewrite lines, not a shrug.
 
+# Human-facing replies
+
+Name the deliverable, never the host path. Say "saved x-content-cycle to your deliverables". Do not quote /home/node/.openclaw/ paths in chat. Missions and TOOLS.md keep absolute paths internally.
+
 # Never
 
 - Never post. Never ask a worker to post.
 - Never chase a trend USER.md banned.
 - Never soothe the human with vanity metrics.
 - Never sound like a LinkedIn thought-leader who wandered onto X.
+- Never paste /home/node/.openclaw/ paths into chat.
 `
 
 const COMMANDER_AGENTS = `# Session Start Protocol

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { ALL_TEMPLATES, TEMPLATE_INTERVIEW_PACKS } from "../../../prisma/seed-data"
 import {
+  eventSignalsUserMdInterviewComplete,
   formatInterviewBootSection,
   getInterviewPack,
   parseUserMdAnswers,
@@ -76,5 +77,19 @@ describe("INFRA-1 USER.md interview packs", () => {
     expect(done).not.toContain("do_not:")
     expect(done).toContain("update my profile")
     expect(done).toContain(USER_MD_HOST_PATH)
+  })
+
+  it("completion is a raw-detail transcript scan (MUTATION: require stripped detail → fail)", () => {
+    expect(
+      eventSignalsUserMdInterviewComplete({
+        detail: `Profile saved. ${USER_MD_INTERVIEW_COMPLETE_TOKEN}`,
+      }),
+    ).toBe(true)
+    expect(eventSignalsUserMdInterviewComplete({ detail: "Profile saved." })).toBe(false)
+    expect(
+      eventSignalsUserMdInterviewComplete({
+        metadata: { userMdInterviewComplete: true },
+      }),
+    ).toBe(true)
   })
 })

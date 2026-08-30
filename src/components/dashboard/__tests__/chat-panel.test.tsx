@@ -225,6 +225,35 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
     expect(JSON.stringify(views)).not.toContain("NO_REPLY")
   })
 
+  it("strips interview sentinel from reconciled views (MUTATION: raw-token-rendered → fail)", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "a1",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-06-22T08:00:01.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: Profile saved. CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        detail: "Profile saved. CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        runId: "r1",
+      },
+      {
+        id: "a2",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-06-22T08:00:02.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        detail: "CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        runId: "r2",
+      },
+    ]
+
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views).toHaveLength(1)
+    expect(views[0].detail).toBe("Profile saved.")
+    expect(views[0].action).toBe("Replied: Profile saved.")
+    expect(JSON.stringify(views)).not.toContain("CLAWS_USER_MD_INTERVIEW_COMPLETE")
+  })
+
   it("multi-tab lock: a tab with NO optimistic state renders streamed MESSAGE_RECEIVED exactly once as You", () => {
     const rows: ChatRow[] = [
       {

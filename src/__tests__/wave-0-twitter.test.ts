@@ -70,6 +70,14 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain(TWITTER_API_402_COPY)
     expect(soul).toContain("mini first-mission")
     expect(soul).toContain("2 draft posts")
+    expect(soul).toContain("saved x-content-cycle to your deliverables")
+  })
+
+  it("reply prose names deliverables; missions keep host paths (MUTATION: drop phrase or strip HEARTBEAT path → fail)", () => {
+    const soul = agent("twitter-commander").soulMd
+    const heartbeat = agent("twitter-commander").heartbeatMd
+    expect(soul).toContain("saved x-content-cycle to your deliverables")
+    expect(heartbeat).toContain("/home/node/.openclaw/shared/deliverables/")
   })
 
   it("Scout has signal-vs-noise tree, recency windows, and USER.md do-not bind", () => {

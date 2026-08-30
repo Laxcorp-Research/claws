@@ -8,9 +8,12 @@
 // MUTATION: change ChatMessage's body to `detail` (alone) and the first test
 // renders an empty bubble → getByText("Reply failed") throws → fails.
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { ChatMessage } from "@/components/dashboard/chat-message"
+import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
 afterEach(() => cleanup())
 
@@ -249,6 +252,23 @@ describe("ChatMessage - long-unbroken-token wrap (no horizontal overflow)", () =
     expect(bubble.className).toContain("overflow-wrap:anywhere")
     expect(bubble.className).not.toContain("break-all")
     expect(screen.getByText(LONG)).toBeTruthy()
+  })
+
+  it("hides CLAWS_USER_MD_INTERVIEW_COMPLETE from rendered chat (MUTATION: raw-token-rendered → fail)", () => {
+    const raw = `Profile saved. ${PLATFORM_INTERVIEW_COMPLETE_TOKEN}`
+    render(
+      <ChatMessage
+        sender="agent"
+        senderName="Twitter Commander"
+        timestamp="08:00 UTC"
+        detail={raw}
+        action={`Replied: ${raw}`}
+      />,
+    )
+    expect(screen.getByText("Profile saved.")).toBeTruthy()
+    expect(document.body.textContent).not.toContain(PLATFORM_INTERVIEW_COMPLETE_TOKEN)
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-message.tsx"), "utf8")
+    expect(src).toContain("stripPlatformSentinels")
   })
 
   it("agent bubble uses overflow-wrap:anywhere too (markdown reply with a long token)", () => {

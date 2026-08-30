@@ -14,6 +14,8 @@
 // labeled "MUTATION-anchored:". See the verification step at the end of
 // Phase B for the deliberate-break re-run.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { prismaMock } from "@/test/helpers/mock-prisma";
 import { createMockRequest } from "@/test/helpers/mock-request";
@@ -885,6 +887,15 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
         where: { id: WORKSPACE_ID, userMdInterviewCompletedAt: null },
         data: { userMdInterviewCompletedAt: expect.any(Date) },
       });
+    });
+
+    it("scans raw incoming detail, never a render-stripped copy (MUTATION: strip before scan → fail)", () => {
+      const src = readFileSync(
+        join(process.cwd(), "src/app/api/internal/activity/[workspaceId]/route.ts"),
+        "utf8",
+      );
+      expect(src).toMatch(/eventSignalsUserMdInterviewComplete\(ev\)/);
+      expect(src).not.toContain("stripPlatformSentinels");
     });
 
     it("does not stamp the flag on ordinary events (MUTATION: stamp every event → fail)", async () => {
