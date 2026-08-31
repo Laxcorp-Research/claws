@@ -454,15 +454,16 @@ export async function deployToCloud(
     let previousDeploymentId: string | null = null;
 
     if (workspace.containerId) {
+      const existingServiceId = workspace.containerId
       try {
-        log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId, image });
-        const beforeStatus = await getServiceStatus(workspace.containerId);
+        log.info('Reusing existing Railway service', { serviceId: existingServiceId, workspaceId, image });
+        const beforeStatus = await getServiceStatus(existingServiceId);
         previousDeploymentId =
           beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
             ? null
             : beforeStatus.deploymentId;
         result = await withTransientDeployRetry(() =>
-          updateAndRedeployService(workspace.containerId, envVars, image),
+          updateAndRedeployService(existingServiceId, envVars, image),
         );
         if (!result.domain && workspace.containerHost) {
           result.domain = workspace.containerHost;
