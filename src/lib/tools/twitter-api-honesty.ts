@@ -5,7 +5,7 @@
  */
 
 export const TWITTER_API_402_COPY =
-  "your X API tier doesn't include this endpoint (search needs paid tier) - running Tavily-only until upgraded."
+  "X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then"
 
 export const TWITTER_API_STORE_TIER_NOTE =
   "required Twitter API - free tier limits reads"

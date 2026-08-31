@@ -45,6 +45,7 @@ import {
 } from './railway-client';
 import { log } from '@/lib/logger';
 import { DEFAULT_SYNC_TIMEOUT_MS, trySyncNow } from './sync-now';
+import { withTransientDeployRetry } from '@/lib/healing/guards';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
 import {
   assertNoPlaceholderEnvValues,
@@ -460,7 +461,9 @@ export async function deployToCloud(
           beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
             ? null
             : beforeStatus.deploymentId;
-        result = await updateAndRedeployService(workspace.containerId, envVars, image);
+        result = await withTransientDeployRetry(() =>
+          updateAndRedeployService(workspace.containerId, envVars, image),
+        );
         if (!result.domain && workspace.containerHost) {
           result.domain = workspace.containerHost;
         }
@@ -487,7 +490,9 @@ export async function deployToCloud(
             beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
               ? null
               : beforeStatus.deploymentId;
-          result = await updateAndRedeployService(existingId, envVars, image);
+          result = await withTransientDeployRetry(() =>
+            updateAndRedeployService(existingId, envVars, image),
+          );
         } else {
           if (opts.forbidCreate) {
             throw new Error(
@@ -499,7 +504,9 @@ export async function deployToCloud(
             data: { containerId: null, containerName: null, containerHost: null },
           });
           try {
-            result = await createServiceGoverned(workspaceId, { name: serviceName, envVars, image });
+            result = await withTransientDeployRetry(() =>
+              createServiceGoverned(workspaceId, { name: serviceName, envVars, image }),
+            );
           } catch (freshErr) {
             // Guard: auth outage on NEW provision fails loud - do not loop.
             if (isRailwayAuthOutageError(freshErr)) {
@@ -515,7 +522,9 @@ export async function deployToCloud(
       }
     } else {
       try {
-        result = await createServiceGoverned(workspaceId, { name: serviceName, envVars, image });
+        result = await withTransientDeployRetry(() =>
+          createServiceGoverned(workspaceId, { name: serviceName, envVars, image }),
+        );
       } catch (err: unknown) {
         // Fresh provision NotAuthorized → fail loud (no orphan clear/retry loop).
         if (isRailwayAuthOutageError(err) && !String(err).includes('already exists')) {
@@ -531,7 +540,9 @@ export async function deployToCloud(
             beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
               ? null
               : beforeStatus.deploymentId;
-          result = await updateAndRedeployService(existingId, envVars, image);
+          result = await withTransientDeployRetry(() =>
+            updateAndRedeployService(existingId, envVars, image),
+          );
         } else {
           throw err;
         }

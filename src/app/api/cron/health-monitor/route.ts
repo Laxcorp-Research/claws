@@ -18,6 +18,11 @@ import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
 import { sendCriticalAlert, sendResolveAlert } from "@/lib/alerts/critical-alert-push"
 import { clearParkedStaleSyncFlags, healRunningStaleSync } from "@/lib/healing/stale-sync"
 import { ledgerHealAttempt } from "@/lib/healing/ledger"
+import { maybeLedgerMissionInterrupted } from "@/lib/healing/mission-resume"
+import {
+  planHealthRuntimeHeal,
+  scheduleHealthRuntimeHeal,
+} from "@/lib/healing/runtime-heals"
 
 // PR-3 - Health Monitor cron.
 //
@@ -94,8 +99,14 @@ type WorkspaceRow = {
   // Cry-wolf guard (PR-C #13): consecutive stale-snapshot probes seen so far.
   // decideStateSyncStale only sets stateSyncStaleDetectedAt once this reaches 2.
   stateSyncStaleConsecutive: number
+  heartbeatMissedAt?: Date | null
+  mcpSessionHealthStatus?: string | null
   agents?: Array<{ heartbeatFrequency: string | null }>
-  containerState?: { runtimeStateUpdatedAt: Date | null } | null
+  containerState?: {
+    runtimeStateUpdatedAt: Date | null
+    containerPhase?: string | null
+    heartbeatCronExpressions?: string | null
+  } | null
   deployments?: Array<{ completedAt: Date | null }>
 }
 
@@ -493,6 +504,7 @@ export async function GET(req: NextRequest) {
       stateSyncStaleDetectedAt: true,
       stateSyncStaleConsecutive: true,
       heartbeatMissedAt: true,
+      mcpSessionHealthStatus: true,
       containerState: {
         select: {
           runtimeStateUpdatedAt: true,
@@ -716,6 +728,35 @@ export async function GET(req: NextRequest) {
       lastHealthCheckTouched: update.lastHealthCheck !== null,
       reclassifiedFromError: wasReclassified,
     })
+
+    const healPlan = planHealthRuntimeHeal({
+      probeKind: probe.result.kind,
+      probeReason:
+        probe.result.kind === "degraded" || probe.result.kind === "failure"
+          ? probe.result.reason
+          : update.lastHealthReason,
+      heartbeatMissedAt:
+        heartbeatMissedAt instanceof Date ? heartbeatMissedAt : ws.heartbeatMissedAt,
+      mcpSessionHealthStatus: ws.mcpSessionHealthStatus,
+      containerPhase: ws.containerState?.containerPhase ?? null,
+    })
+    if (healPlan) {
+      scheduleHealthRuntimeHeal({
+        workspaceId: ws.id,
+        containerHost: ws.containerHost,
+        plan: healPlan,
+      })
+    }
+    if (probe.result.kind === "failure") {
+      try {
+        await maybeLedgerMissionInterrupted({
+          workspaceId: ws.id,
+          heartbeatCronExpressions: ws.containerState?.heartbeatCronExpressions,
+        })
+      } catch (err) {
+        errors.push(`${ws.id}: mission_interrupted ledger failed ${String(err)}`)
+      }
+    }
   }
 
   // Lifecycle P2.1: missed-wake for HIBERNATED claws (fixture July shape).

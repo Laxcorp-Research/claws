@@ -38,7 +38,7 @@ Patterns:
 Do not:
 - Query "AI agents trending" (noise).
 - Use Tavily as a substitute when twitter-api 401s (tell the human the Bearer is dead).
-- Treat twitter-api 402 as "down". 402 is tier-not-entitled: run Tavily-only and tell the human your X API tier doesn't include this endpoint (search needs paid tier) - running Tavily-only until upgraded.
+- Treat twitter-api 402 as "down". 402 is tier-not-entitled: run Tavily-only and tell the human X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
 - Pull more than 3 queries per heartbeat window.`,
     type: "TOOL_SPECIFIC",
     category: "SEARCH",
@@ -345,7 +345,7 @@ curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10&tweet.fields=cr
 
 - 429: wait for reset (or 60s if unknown), one retry, then DEGRADED. Do not tight-loop.
 - 401/403: Bearer is dead or forbidden. Stop. Ping the human. Do not invent a timeline.
-- 402: your X API tier doesn't include this endpoint (search needs paid tier) - running Tavily-only until upgraded. 402 is tier-not-entitled, not down.
+- 402: X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
 - 5xx: one retry. Then DEGRADED.
 
 ## What NOT to fetch

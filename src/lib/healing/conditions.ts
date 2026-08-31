@@ -42,6 +42,7 @@ export const PHASE_A_CONDITION_IDS = [
   "thinking-signature-poison",
   "cron-job-failed",
   "state-sync-near-cap",
+  "mission_interrupted",
 ] as const
 
 export type HealConditionId = (typeof PHASE_A_CONDITION_IDS)[number]
