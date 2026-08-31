@@ -14,6 +14,8 @@
 // the PR description.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { prismaMock } from "@/test/helpers/mock-prisma";
 import { createMockRequest } from "@/test/helpers/mock-request";
 
@@ -24,6 +26,13 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/encryption", () => ({
   decrypt: vi.fn((s: string) => `decrypted:${s}`),
 }));
+
+const mockClearParked = vi.hoisted(() => vi.fn())
+const mockHealRunning = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/healing/stale-sync", () => ({
+  clearParkedStaleSyncFlags: (...args: unknown[]) => mockClearParked(...args),
+  healRunningStaleSync: (...args: unknown[]) => mockHealRunning(...args),
+}))
 
 import { GET, __internal } from "@/app/api/cron/health-monitor/route";
 
@@ -115,6 +124,10 @@ function mockProbeFetch(opts: { adminRpc: Response | (() => never); healthz?: Re
 beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET;
   vi.restoreAllMocks();
+  mockClearParked.mockReset()
+  mockHealRunning.mockReset()
+  mockClearParked.mockResolvedValue(0)
+  mockHealRunning.mockResolvedValue({ cleared: false, alert: false, synced: false })
   // P4 stranded adopter sibling pass - default empty (no stranded deploys).
   ;(prismaMock.deployment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 });
@@ -1326,6 +1339,40 @@ describe("GET end-to-end", () => {
     expect(update.data.healthStatus).toBe("HEALTHY");
     expect(update.data.stateSyncStaleDetectedAt).toBeInstanceOf(Date);
     expect(update.data.stateSyncStaleConsecutive).toBe(2);
+    expect(mockHealRunning).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "ws-stale-sync", consecutive: 2 }),
+    );
+  });
+
+  it("stale-sync heal success clears the flag (no customer page)", async () => {
+    mockHealRunning.mockResolvedValue({ cleared: true, alert: false, synced: true });
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeWs({
+        id: "ws-stale-healed",
+        containerState: { runtimeStateUpdatedAt: new Date(Date.now() - 20 * 60 * 1000) },
+        deployments: [{ completedAt: new Date(Date.now() - 30 * 60 * 1000) }],
+        stateSyncStaleDetectedAt: null,
+        stateSyncStaleConsecutive: 1,
+      }),
+    ]);
+    (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(HEALTHY_PAYLOAD));
+
+    const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+    expect(res.status).toBe(200);
+    const update = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(update.data.stateSyncStaleDetectedAt).toBeNull();
+    expect(update.data.stateSyncStaleConsecutive).toBe(0);
+  });
+
+  it("MUTATION: health-monitor must heal stale-sync before any customer page", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/cron/health-monitor/route.ts"),
+      "utf8",
+    );
+    expect(src).toContain("healRunningStaleSync");
+    expect(src).toContain("clearParkedStaleSyncFlags");
+    expect(src).toContain("heal.alert");
   });
 
   it("sets stateSyncStaleDetectedAt for healthy workspace missing ContainerState row, after 2 consecutive probes", async () => {
