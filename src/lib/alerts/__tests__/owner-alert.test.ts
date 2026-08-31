@@ -7,9 +7,9 @@ vi.mock("@/lib/channels/telegram-bot-api", () => ({
   telegramSendMessage: (...args: unknown[]) => mockTelegramSend(...args),
 }))
 
-const mockResendSend = vi.hoisted(() => vi.fn())
-vi.mock("@/lib/resend", () => ({
-  getResend: () => ({ emails: { send: mockResendSend } }),
+const mockSendEmail = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/email/send-email", () => ({
+  sendEmail: (...args: unknown[]) => mockSendEmail(...args),
 }))
 
 vi.mock("@/lib/logger", () => ({
@@ -21,8 +21,8 @@ import { sendOwnerAlert } from "@/lib/alerts/owner-alert"
 describe("sendOwnerAlert", () => {
   beforeEach(() => {
     mockTelegramSend.mockReset()
-    mockResendSend.mockReset()
-    mockResendSend.mockResolvedValue({ id: "em-owner" })
+    mockSendEmail.mockReset()
+    mockSendEmail.mockResolvedValue({ ok: true })
     vi.stubEnv("ADMIN_ALERT_EMAIL", "founder@laxcorp.com")
     vi.stubEnv("FOUNDER_TELEGRAM_BOT_TOKEN", "")
     vi.stubEnv("FOUNDER_TELEGRAM_CHAT_ID", "")
@@ -40,17 +40,20 @@ describe("sendOwnerAlert", () => {
     })
     expect(result.sent).toBe(true)
     expect(result.channel).toBe("email")
-    expect(mockResendSend).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "founder@laxcorp.com" }),
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "founder@laxcorp.com", kind: "owner_alert" }),
     )
-    const to = (mockResendSend.mock.calls[0][0] as { to: string }).to
+    const to = (mockSendEmail.mock.calls[0][0] as { to: string }).to
     expect(to).not.toBe("owner@example.com")
   })
 
-  it("MUTATION: owner-alert module must not read workspace.user.email", () => {
+  it("MUTATION: owner-alert module must not read workspace.user.email or raw Resend", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/alerts/owner-alert.ts"), "utf8")
     expect(src).not.toContain("user.email")
     expect(src).not.toContain("workspace.user")
+    expect(src).not.toContain("getResend")
+    expect(src).not.toContain(".emails.send(")
     expect(src).toContain("ADMIN_ALERT_EMAIL")
+    expect(src).toContain("sendEmail")
   })
 })

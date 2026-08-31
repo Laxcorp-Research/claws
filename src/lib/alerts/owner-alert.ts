@@ -1,5 +1,5 @@
 import { log } from "@/lib/logger"
-import { getResend } from "@/lib/resend"
+import { sendEmail } from "@/lib/email/send-email"
 import { telegramSendMessage } from "@/lib/channels/telegram-bot-api"
 import { dashboardUrl } from "@/lib/alerts/app-url"
 
@@ -46,20 +46,20 @@ export async function sendOwnerAlert(args: {
     return { sent: false, channel: "skipped", reason: "no-owner-channel" }
   }
 
-  try {
-    const href = dashboardUrl(args.workspaceId)
-    await getResend().emails.send({
-      from: "Claws <noreply@buildclaws.ai>",
-      to: email,
-      subject: `Claws owner alert: ${args.title}`,
-      html: `<p>${args.title}</p>${args.detail ? `<p>${args.detail}</p>` : ""}<p><a href="${href}">Open dashboard</a></p>`,
-    })
-    return { sent: true, channel: "email" }
-  } catch (err) {
+  const href = dashboardUrl(args.workspaceId)
+  const result = await sendEmail({
+    kind: "owner_alert",
+    to: email,
+    subject: `Claws owner alert: ${args.title}`,
+    html: `<p>${args.title}</p>${args.detail ? `<p>${args.detail}</p>` : ""}<p><a href="${href}">Open dashboard</a></p>`,
+    workspaceIds: args.workspaceId ? [args.workspaceId] : [],
+  })
+  if (!result.ok) {
     log.error("owner-alert: email failed", {
       alertKey: args.alertKey,
-      error: err instanceof Error ? err.message : String(err),
+      error: result.reason,
     })
-    return { sent: false, channel: "email", reason: "email-send-failed" }
+    return { sent: false, channel: "email", reason: result.reason ?? "email-send-failed" }
   }
+  return { sent: true, channel: "email" }
 }
