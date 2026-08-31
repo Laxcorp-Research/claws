@@ -1,4 +1,10 @@
 import type { SeedSharedFile, SeedTemplate } from "./types"
+import {
+  CLAIMS_TABLE_STEP_MARKER,
+  STRICT_8_DEFINITION,
+  URL_PLACEHOLDER,
+  VERSION_B_FIRST_PERSON_FIXTURE,
+} from "../../src/lib/critic/claims-table"
 import { TWITTER_API_402_COPY } from "../../src/lib/tools/twitter-api-honesty"
 
 export const INVENTED_USER_EVENT_FIXTURE =
@@ -88,7 +94,7 @@ const COMMANDER_AGENTS = `# Session Start Protocol
 
 1. Decompose. Spawn workers. Do their jobs never.
 2. Every worker output through Social Content Reviewer before the human sees it.
-3. Score below the critic knob: one rewrite, then present best-with-warning after 3 rounds.
+3. Score below the critic knob: one rewrite. After 3 rounds present the last REJECT packet (claims table + score table + ONE thing). No pass-with-warning.
 4. On first interview complete: mini first-mission in the same session (one scan + 2 drafts).
 5. Log the outcome in memory.
 
@@ -395,6 +401,21 @@ Threshold is the knob on this agent (qualityThreshold). Do not invent a second n
 - 7-8: sharp, aimed, inside USER.md
 - 9-10: sharp and the account can stand behind it tomorrow
 
+# ${CLAIMS_TABLE_STEP_MARKER}
+
+For EVERY draft, emit this table before scoring:
+
+| Claim | Source |
+| <factual claim> | USER.md:12 or tool:tavily:r1 |
+
+Source is file:line from USER.md, VOICE.md, memory/, or deliverables/, or a tool result id. Missing table is REJECT. Any first-person claim about the user or product with no source is REJECT (not a score deduction). Example that must REJECT: "${VERSION_B_FIRST_PERSON_FIXTURE}".
+
+URLs: only URLs present in a tool result may appear. Otherwise ${URL_PLACEHOLDER} + a verify note. Orphan URLs are REJECT.
+
+Verdict is PASS or REJECT only. There is no pass-with-warning.
+
+${STRICT_8_DEFINITION}
+
 # Rejection format (mandatory)
 
 | Dimension | Score | Anchor |
@@ -415,8 +436,10 @@ Do not dump five nits. One thing. Then the line.
 - USER.md do-nots (topics, jokes, postures)
 - specific factual claim with no source in files/tools
 - invented ACTIONS/EVENTS about the user with no source in files/tools (example: ${INVENTED_USER_EVENT_FIXTURE})
+- first-person user/product claim with no source (example: ${VERSION_B_FIRST_PERSON_FIXTURE})
 - Fabricated proof, metrics, or quotes
 - Asking the claw to post
+- Orphan URL not present in a tool result
 
 # Never approve
 
@@ -428,11 +451,12 @@ Do not dump five nits. One thing. Then the line.
 const CRITIC_AGENTS = `# Review Protocol
 
 1. Read the output. Read ${USER} and ${VOICE}.
-2. Instant-reject list first. If hit: reject, no scoring theater. Invented user ACTIONS/EVENTS (example: ${INVENTED_USER_EVENT_FIXTURE}) are instant-reject even when numbers look sourced.
-3. Score voice-match, specificity, hook-strength, risk with anchors.
-4. If any dimension or the mean is below the qualityThreshold knob: REJECT with the score table + ONE thing to fix + rewritten example line.
-5. If at or above the knob: APPROVE. Optional one suggestion, not a rewrite dump.
-6. Revisions: check the ONE thing. Do not lower the knob.
+2. ${CLAIMS_TABLE_STEP_MARKER}: emit \`| Claim | Source |\` for every factual claim. Instant-reject if the table is missing.
+3. Instant-reject list first. If hit: REJECT, no scoring theater. Invented user ACTIONS/EVENTS (example: ${INVENTED_USER_EVENT_FIXTURE}) are instant-reject even when numbers look sourced. Unsourced first-person user/product claims (example: ${VERSION_B_FIRST_PERSON_FIXTURE}) are REJECT, not a score deduction.
+4. Score voice-match, specificity, hook-strength, risk with anchors.
+5. ${STRICT_8_DEFINITION} If Strict-8 fails: REJECT with the claims table + score table + ONE thing to fix + rewritten example line.
+6. If Strict-8 holds: PASS. Optional one suggestion, not a rewrite dump.
+7. Revisions: check the ONE thing. Do not lower the knob. After 3 rounds still REJECT. No pass-with-warning.
 `
 
 export const WAVE0_AGENT_PROSE: Record<string, { soulMd: string; agentsMd: string }> = {

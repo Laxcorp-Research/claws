@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
+  CLAIMS_TABLE_STEP_MARKER,
+  STRICT_8_DEFINITION,
+} from "@/lib/critic/claims-table"
+import {
+  CLOCK_TZ_COPY,
   CRITIC_NE_HUMAN_COPY,
   deliveryProseViolations,
   looksLikeApprovalRequest,
@@ -9,6 +14,7 @@ import {
   outboundDenyList,
   overlayMissionLaw,
   shouldDenyOutboundAction,
+  TOOL_STATUS_TRUTH_COPY,
 } from "@/lib/openclaw/delivery-rail"
 import { TWITTER_TOKEN_CANNOT_POST_COPY } from "@/lib/tools/twitter-api-honesty"
 import { formatWorkflowLawSection } from "@/lib/openclaw/workflow-language"
@@ -80,5 +86,25 @@ describe("B-3 delivery rail", () => {
       twitterReadOnly: true,
     })
     expect(overlaid).toContain(TWITTER_TOKEN_CANNOT_POST_COPY)
+  })
+
+  it("pins clock/tz and tool-status truth on every overlay", () => {
+    const overlaid = overlayMissionLaw("# Identity\nYou are Twitter Commander.\n")
+    expect(overlaid).toContain(CLOCK_TZ_COPY)
+    expect(overlaid).toContain(TOOL_STATUS_TRUTH_COPY)
+    const again = overlayMissionLaw(overlaid)
+    expect(again.split(CLOCK_TZ_COPY)).toHaveLength(2)
+    expect(again.split(TOOL_STATUS_TRUTH_COPY)).toHaveLength(2)
+  })
+
+  it("pins claims-table law on critic overlay only", () => {
+    const worker = overlayMissionLaw("# Identity\nYou write.\n")
+    expect(worker).not.toContain(CLAIMS_TABLE_STEP_MARKER)
+    const critic = overlayMissionLaw("# Identity\nYou review.\n", { critic: true })
+    expect(critic).toContain(CLAIMS_TABLE_STEP_MARKER)
+    expect(critic).toContain(STRICT_8_DEFINITION)
+    expect(critic).toMatch(/PASS or REJECT only/)
+    const again = overlayMissionLaw(critic, { critic: true })
+    expect(again.split(CLAIMS_TABLE_STEP_MARKER)).toHaveLength(2)
   })
 })
