@@ -4,6 +4,8 @@
 // and (2) composer behavior (disabled when not sendable; failed bubble on a
 // non-202 send, never a throw).
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react"
 import {
@@ -14,6 +16,8 @@ import {
   hasPendingTurn,
   isNearBottom,
   preservePrependedScrollPosition,
+  chatPaneMaxHeightPx,
+  CHAT_PANE_MIN_PX,
   chatUnavailableCopy,
   statusToReason,
   errorCodeToReason,
@@ -80,7 +84,19 @@ describe("ChatPanel header", () => {
     expect(log.className).toContain("flex-1")
     expect(log.className).toContain("min-h-0")
     expect(log.className).toContain("overflow-y-auto")
+    expect(log.className).toContain("min-w-0")
+    expect(log.className).toContain("overflow-anchor:none")
     expect(log.className).not.toContain("max-h-none")
+    // MUTATION: drop overflow-hidden → bounce/table overflow grows the page.
+    expect(pane.className).toContain("overflow-hidden")
+  })
+
+  it("chatPaneMaxHeightPx uses document offset so a scrolled page cannot enlarge the pane", () => {
+    expect(chatPaneMaxHeightPx({ paneOffsetTop: 400, viewportHeight: 900 })).toBe(476)
+    expect(chatPaneMaxHeightPx({ paneOffsetTop: 800, viewportHeight: 900 })).toBe(CHAT_PANE_MIN_PX)
+    // scrollY is already folded into paneOffsetTop by the caller; a large
+    // offset must shrink the cap, never grow it past the remaining viewport.
+    expect(chatPaneMaxHeightPx({ paneOffsetTop: 100, viewportHeight: 900 })).toBe(776)
   })
 
   it("full-height chat keeps the message list as the scroll region and composer visible", () => {
@@ -913,6 +929,41 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
       render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
       expect(screen.getByText(/is working/i)).toBeTruthy()
       expect(screen.queryByText("No response")).toBeNull()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  // The bounce translateY leaked into the document scrollport and painted a
+  // blank slab under the composer. Live role=status on the dots also made
+  // Chrome scroll that node into view. MUTATION: restore animate-bounce or
+  // put role=status on the dots → this fails.
+  it("working dots do not bounce or host role=status (page-gap lock)", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      render(
+        <ChatPanel
+          workspaceId="ws-1"
+          status="RUNNING"
+          rows={[userRow("r1", 10_000)]}
+          orchestratorName="Twitter Commander"
+          fullHeight
+        />,
+      )
+      const dots = document.querySelector("[data-working-indicator]") as HTMLElement | null
+      expect(dots).not.toBeNull()
+      expect(dots!.className).toContain("overflow-anchor:none")
+      expect(dots!.querySelector("[class*='animate-bounce']")).toBeNull()
+      expect(dots!.querySelector("[role='status']")).toBeNull()
+      expect(dots!.querySelector("[class*='overflow-hidden']")).not.toBeNull()
+      const live = screen.getByRole("status")
+      expect(live.className).toContain("sr-only")
+      expect(live.textContent).toMatch(/Twitter Commander is working/)
+      const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+      expect(src).not.toMatch(/animate-bounce/)
+      expect(src).toContain("data-working-indicator")
     } finally {
       cleanup()
       vi.useRealTimers()

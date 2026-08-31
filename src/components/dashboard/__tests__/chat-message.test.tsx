@@ -252,6 +252,8 @@ describe("ChatMessage - long-unbroken-token wrap (no horizontal overflow)", () =
     expect(bubble.className).toContain("overflow-wrap:anywhere")
     expect(bubble.className).not.toContain("break-all")
     expect(screen.getByText(LONG)).toBeTruthy()
+    const column = bubble.parentElement as HTMLElement
+    expect(column.className).toContain("min-w-0")
   })
 
   it("hides CLAWS_USER_MD_INTERVIEW_COMPLETE from rendered chat (MUTATION: raw-token-rendered → fail)", () => {
