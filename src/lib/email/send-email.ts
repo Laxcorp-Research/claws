@@ -46,6 +46,7 @@ export type EmailKind =
   | "security_update"
   | "credit_pool_alert"
   | "owner_alert"
+  | "customer_nudge"
 
 export type SendEmailArgs = {
   kind: EmailKind

@@ -68,7 +68,7 @@ export function formatWorkflowLawSection(knobs: WorkflowLawKnobs): string {
     `Results return to ${knobs.orchestratorDisplayName} automatically.`,
     `${knobs.criticDisplayName} reviews every worker output before anything reaches the user.`,
     `Scores below ${threshold} loop back for revision (max ${rounds}).`,
-    `Delivery mode: ask the user before acting.`,
+    `Delivery mode: ask the user before acting. Critic approval is not human approval; nothing ships without the human's explicit approve.`,
   ].join(" ")
 }
 

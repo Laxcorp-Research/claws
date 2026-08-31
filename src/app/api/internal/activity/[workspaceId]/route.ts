@@ -46,6 +46,10 @@ import {
   CRON_JOB_FAILED_WINDOW_MS,
 } from "@/lib/alerts/cron-job-failed-detect";
 import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push";
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge";
+import { applyWorkspaceApiCost } from "@/lib/healing/spend-limit";
+import { NEAR_CAP_METADATA_KIND } from "@/lib/openclaw/near-cap-alert";
+import { createPendingApprovalFromOutbound } from "@/lib/openclaw/pending-approval";
 import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
@@ -544,6 +548,56 @@ export async function POST(
           apiCost,
         },
       });
+      if (typeof apiCost === "number" && apiCost > 0) {
+        try {
+          await applyWorkspaceApiCost({ workspaceId, delta: apiCost });
+        } catch (spendErr) {
+          log.error("activity: spend-limit apply failed", {
+            workspaceId,
+            error: spendErr instanceof Error ? spendErr.message : String(spendErr),
+          });
+        }
+      }
+      if (ev.type === "MESSAGE_SENT") {
+        try {
+          await createPendingApprovalFromOutbound({
+            workspaceId,
+            action: ev.action,
+            agentName: agent?.name ?? null,
+            agentSlug: agent?.agentSlug ?? resolvedAgentId ?? null,
+          });
+        } catch (approvalErr) {
+          log.error("activity: pending approval create failed", {
+            workspaceId,
+            error: approvalErr instanceof Error ? approvalErr.message : String(approvalErr),
+          });
+        }
+      }
+      const blob = `${ev.action} ${ev.detail ?? ""}`;
+      if (ev.type === "ERROR" && /402/.test(blob) && /twitter|x api/i.test(blob)) {
+        try {
+          await sendCustomerNudge({ workspaceId, condition: "twitter-402-tier" });
+        } catch (nudgeErr) {
+          log.error("activity: twitter-402 nudge failed", {
+            workspaceId,
+            error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+          });
+        }
+      }
+      if (
+        ev.type === "ERROR" &&
+        typeof ev.metadata?.kind === "string" &&
+        ev.metadata.kind === NEAR_CAP_METADATA_KIND
+      ) {
+        try {
+          await sendCustomerNudge({ workspaceId, condition: "state-sync-near-cap" });
+        } catch (nudgeErr) {
+          log.error("activity: near-cap nudge failed", {
+            workspaceId,
+            error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+          });
+        }
+      }
       try {
         await markNoActiveComposioConnection(workspaceId, ev);
       } catch (markErr) {

@@ -175,6 +175,36 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(prismaMock.activityLog.create).not.toHaveBeenCalled()
   })
 
+  it("DEPLOYING ledgers mid-boot reject so the send does not vanish", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceRow({ status: "DEPLOYING" }),
+    )
+    const res = await post({ message: "hi" })
+    expect(res.status).toBe(409)
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "Chat send rejected mid-boot",
+          actionType: "ERROR",
+        }),
+      }),
+    )
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it("unreachable after retry ledgers the rejected send", async () => {
+    mockSend.mockResolvedValue({ ok: false, reason: "unreachable", detail: "chat.send rejected: ?" })
+    await post({ message: "hi" })
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "Chat send rejected mid-boot",
+          actionType: "ERROR",
+        }),
+      }),
+    )
+  })
+
   // ─── V6: at most one retry, SAME idempotencyKey ──────────────────────────
   it("retries once on unreachable with the SAME idempotencyKey, then succeeds", async () => {
     mockSend

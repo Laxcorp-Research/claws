@@ -87,6 +87,8 @@ function activityPayload(opts: {
   lastHealthCheck?: string | null;
   expiredTools?: Array<{ name: string; status: "ERROR" | "EXPIRED" | "REVOKED"; connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "CHANNEL_NATIVE" }>;
   spend?: { thisMonth: number; limit: number; percent: number };
+  status?: string;
+  healedThisWeek?: number;
 }) {
   const {
     mcpSessionHealthStatus,
@@ -98,6 +100,8 @@ function activityPayload(opts: {
     lastHealthCheck = null,
     expiredTools = [],
     spend = { thisMonth: 0, limit: 50, percent: 0 },
+    status = "RUNNING",
+    healedThisWeek = 0,
   } = opts
   return {
     success: true,
@@ -105,7 +109,7 @@ function activityPayload(opts: {
       workspace: {
         id: "ws-1",
         name: "Sales Claw",
-        status: "RUNNING",
+        status,
         healthStatus,
         lastHealthCheck,
         lastHealthReason,
@@ -133,6 +137,7 @@ function activityPayload(opts: {
         estimatedCostToday: 0,
         estimatedCostTodayCalls: 0,
         pendingReview: 0,
+        healedThisWeek,
       },
       agents: [
         {
@@ -186,6 +191,7 @@ function mockFetch(opts: {
   trialEndsAt?: string | null;
   hasActiveSubscription?: boolean;
   workspaceStatus?: string;
+  spend?: { thisMonth: number; limit: number; percent: number };
 } = {}) {
   const payloadOptions = {
     mcpSessionHealthStatus: opts.mcpSessionHealthStatus ?? null,
@@ -194,6 +200,8 @@ function mockFetch(opts: {
     stateSyncNearCapActive: opts.stateSyncNearCapActive ?? false,
     healthStatus: opts.healthStatus ?? ("HEALTHY" as const),
     lastHealthReason: opts.lastHealthReason ?? null,
+    spend: opts.spend,
+    status: opts.workspaceStatus,
   }
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -434,7 +442,7 @@ describe("DashboardPage MCP session banner", () => {
     expect(src.includes('params.set("costRange", costRange)')).toBe(true)
   })
 
-  it("orders the eight cockpit alerts with container-down first and expands the rest with CTAs intact", async () => {
+  it("collapses the banner stack into Claw health with the highest-priority nudge only", async () => {
     const payload = activityPayload({
       mcpSessionHealthStatus: "DEAD",
       activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z",
@@ -480,27 +488,11 @@ describe("DashboardPage MCP session banner", () => {
     render(<DashboardPage />)
 
     expect(await screen.findByText("Agent container is not responding")).toBeDefined()
-    const expander = await screen.findByRole("button", { name: "7 more alerts" })
+    expect(screen.getByText(/Claw health/)).toBeDefined()
+    expect(screen.queryByRole("button", { name: /more alert/ })).toBeNull()
     expect(screen.queryByText("A runtime update is available - redeploy to apply")).toBeNull()
-
-    fireEvent.click(expander)
-
-    expect(await screen.findByText("Activity feed appears silent - agents may be running but not reporting.")).toBeDefined()
-    expect(screen.getByText(/Memory bundle approaching size limit/)).toBeDefined()
-    expect(screen.getByRole("button", { name: "Manage sessions" })).toBeDefined()
-    expect(screen.getByText("Agent memory backup is stale - recent memory may not survive a restart. Force-restart to restore syncing.")).toBeDefined()
-    expect(screen.getByText("HubSpot connection expired")).toBeDefined()
-    expect(screen.getByText("Long-tail tools disconnected - redeploy to restore")).toBeDefined()
-    expect(screen.getByText("Configuration changed since last deploy - redeploy to apply")).toBeDefined()
-    expect(screen.getByText("A runtime update is available - redeploy to apply")).toBeDefined()
-
-    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }))
-    expect(mockPush).toHaveBeenCalledWith("/setup/ws-1/step/2?mode=manage")
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Force restart" })[0])
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("/api/deploy/ws-1/restart", { method: "POST" })
-    })
+    expect(screen.queryByText("Activity feed appears silent - agents may be running but not reporting.")).toBeNull()
+    expect(screen.queryByText("HubSpot connection expired")).toBeNull()
   })
 
   it("renders near-cap banner from synthetic stateSyncNearCapActive and routes Manage sessions", async () => {
@@ -520,7 +512,16 @@ describe("DashboardPage MCP session banner", () => {
     expect(screen.queryByText(/Memory bundle approaching size limit/)).toBeNull()
   })
 
-  it("Batch E: spend-limit (money) is primary over activity-silence", async () => {
+  it("MUTATION: spend-limit banner without pause (enforcement) does not render", async () => {
+    mockFetch({
+      spend: { thisMonth: 50, limit: 50, percent: 100 },
+    })
+    render(<DashboardPage />)
+    expect(await screen.findByText(/Claw health/)).toBeDefined()
+    expect(screen.queryByText(/Monthly API spend limit reached/)).toBeNull()
+  })
+
+  it("Batch E: spend-limit nudge shows only when paused (enforced)", async () => {
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes("/api/activity/ws-1")) {
@@ -531,6 +532,7 @@ describe("DashboardPage MCP session banner", () => {
               mcpSessionHealthStatus: "HEALTHY",
               activitySilenceDetectedAt: "2026-07-05T08:30:00.000Z",
               spend: { thisMonth: 50, limit: 50, percent: 100 },
+              status: "PAUSED",
             }),
         } as Response
       }
@@ -549,13 +551,7 @@ describe("DashboardPage MCP session banner", () => {
     render(<DashboardPage />)
 
     expect(await screen.findByText(/Monthly API spend limit reached/)).toBeDefined()
-    expect(
-      screen.queryByText("Activity feed appears silent - agents may be running but not reporting."),
-    ).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "1 more alert" }))
-    expect(
-      screen.getByText("Activity feed appears silent - agents may be running but not reporting."),
-    ).toBeDefined()
+    expect(screen.queryByRole("button", { name: /more alert/ })).toBeNull()
   })
 
   it("Batch E: Optimize costs navigates to Costs tab", async () => {

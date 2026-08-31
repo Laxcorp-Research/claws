@@ -19,6 +19,9 @@ const mockDestroyContainer = vi.fn()
 vi.mock("@/lib/openclaw/deployer", () => ({
   destroyContainer: (...args: unknown[]) => mockDestroyContainer(...args),
 }))
+vi.mock("@/lib/healing/spend-limit", () => ({
+  maybeResolveSpendLimitAfterLimitChange: vi.fn().mockResolvedValue(undefined),
+}))
 
 import { DELETE, PATCH } from "@/app/api/workspaces/[id]/route"
 

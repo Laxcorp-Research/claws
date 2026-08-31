@@ -29,9 +29,9 @@ function policy(
 }
 
 /**
- * One row per Phase-A condition plus mission_interrupted. B-2 wires
- * auto-redeploy / crash restart / heartbeat re-arm under guards.
- * Channel nudges stay deferred-b3. Drift stays banner-only on running claws.
+ * One row per Phase-A condition plus mission_interrupted. B-3 wires
+ * user-only channel nudges and spend-limit pause. Drift stays banner-only
+ * on running claws.
  */
 export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
   "state-sync-stale": policy("state-sync-stale", "platform", "customer", "trySyncNow", 3, "customer-alert"),
@@ -56,16 +56,16 @@ export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
   "needs-credentials-tools": policy("needs-credentials-tools", "platform", "none", "evaluateWorkspaceDeployToolPrerequisites", 0, "none"),
   "mcp-session-dead": policy("mcp-session-dead", "platform", "customer", "auto-redeploy under guards", 3, "owner-alert"),
   "version-update": policy("version-update", "platform", "none", "apply at next wake", 0, "none"),
-  "oauth-expired": policy("oauth-expired", "user-only", "customer", null, 0, "deferred-b3"),
-  "tool-connection-error": policy("tool-connection-error", "user-only", "customer", "connection-health retry", 2, "deferred-b3"),
-  "twitter-402-tier": policy("twitter-402-tier", "user-only", "customer", null, 0, "deferred-b3"),
+  "oauth-expired": policy("oauth-expired", "user-only", "customer", null, 0, "customer-alert"),
+  "tool-connection-error": policy("tool-connection-error", "user-only", "customer", "connection-health retry", 2, "customer-alert"),
+  "twitter-402-tier": policy("twitter-402-tier", "user-only", "customer", null, 0, "customer-alert"),
   "tool-429": policy("tool-429", "platform", "none", "agent/client backoff", 0, "deferred-b3"),
   "credits-exhausted": policy("credits-exhausted", "platform", "customer", "onCreditsExhausted", 0, "customer-alert"),
   "trial-lapse": policy("trial-lapse", "platform", "customer", "enforce-trial-expiry", 0, "customer-alert"),
   "subscription-failed": policy("subscription-failed", "platform", "customer", "handleSubscriptionFailed", 0, "customer-alert"),
-  "subscription-on-hold": policy("subscription-on-hold", "user-only", "customer", null, 0, "deferred-b3"),
-  "payment-failed": policy("payment-failed", "user-only", "customer", null, 0, "deferred-b3"),
-  "spend-limit-100": policy("spend-limit-100", "deferred-b3", "customer", null, 0, "deferred-b3"),
+  "subscription-on-hold": policy("subscription-on-hold", "user-only", "customer", null, 0, "customer-alert"),
+  "payment-failed": policy("payment-failed", "user-only", "customer", null, 0, "customer-alert"),
+  "spend-limit-100": policy("spend-limit-100", "platform", "customer", "enforceSpendLimit", 0, "customer-alert"),
   "credit-pool": policy("credit-pool", "owner-only", "owner", "credit-pool-monitor", 0, "owner-alert"),
   "credit-balance-drift": policy("credit-balance-drift", "owner-only", "owner", "reconcile-credit-balances", 0, "owner-alert"),
   "email-delivery-failed": policy("email-delivery-failed", "platform", "owner", "Resend retry (trial stamp)", 0, "owner-alert"),
@@ -73,7 +73,7 @@ export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
   "thinking-signature-poison": policy("thinking-signature-poison", "platform", "none", "auto-redeploy under guards", 3, "owner-alert"),
   "mission_interrupted": policy("mission_interrupted", "platform", "none", "auto-resume on wake", 2, "customer-alert"),
   "cron-job-failed": policy("cron-job-failed", "platform", "customer", "classify then heal", 0, "customer-alert"),
-  "state-sync-near-cap": policy("state-sync-near-cap", "user-only", "customer", null, 0, "deferred-b3"),
+  "state-sync-near-cap": policy("state-sync-near-cap", "user-only", "customer", null, 0, "customer-alert"),
 }
 
 export function getHealPolicy(id: HealConditionId): HealPolicy {

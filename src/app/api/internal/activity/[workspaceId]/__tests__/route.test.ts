@@ -26,6 +26,16 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("@/lib/healing/spend-limit", () => ({
+  applyWorkspaceApiCost: vi.fn().mockResolvedValue({ enforced: false, resolved: false }),
+}))
+vi.mock("@/lib/alerts/customer-nudge", () => ({
+  sendCustomerNudge: vi.fn().mockResolvedValue({ sent: false, channel: "skipped" }),
+}))
+vi.mock("@/lib/openclaw/pending-approval", () => ({
+  createPendingApprovalFromOutbound: vi.fn().mockResolvedValue({ created: false }),
+}))
+
 import { POST, __internal } from "@/app/api/internal/activity/[workspaceId]/route";
 
 const SECRET = "test_activity_secret_pr2";

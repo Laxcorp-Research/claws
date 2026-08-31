@@ -46,6 +46,13 @@ describe("HEAL_REGISTRY coverage", () => {
     expect(row.plane).toBe("none")
   })
 
+  it("spend-limit-100 is platform-enforced with customer nudge", () => {
+    const row = getHealPolicy("spend-limit-100")
+    expect(row.ruling).toBe("platform")
+    expect(row.existingHeal).toBe("enforceSpendLimit")
+    expect(row.escalate).toBe("customer-alert")
+  })
+
   it("MUTATION: deployer must import trySyncNow (no private duplicate)", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/openclaw/deployer.ts"), "utf8")
     expect(src).toMatch(/from ['"]\.\/sync-now['"]/)

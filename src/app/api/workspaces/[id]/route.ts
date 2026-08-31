@@ -5,6 +5,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { parseRecommendedAlwaysOn } from "@/lib/templates/recommended-always-on"
 import { destroyContainer } from "@/lib/openclaw/deployer"
+import { maybeResolveSpendLimitAfterLimitChange } from "@/lib/healing/spend-limit"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -113,6 +114,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const workspace = await prisma.workspace.update({ where: { id }, data: updates })
+  if (updates.apiSpendLimit !== undefined) {
+    await maybeResolveSpendLimitAfterLimitChange(id)
+  }
   return apiSuccess(workspace)
 }
 

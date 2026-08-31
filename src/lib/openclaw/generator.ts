@@ -39,6 +39,7 @@ import {
   buildMessageDeliverySection,
   mergeMessageDenyIntoTools,
 } from '@/lib/openclaw/message-delivery';
+import { CRITIC_NE_HUMAN_COPY, mergeOutboundDenyIntoTools, overlayMissionLaw } from '@/lib/openclaw/delivery-rail';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
@@ -574,6 +575,11 @@ function generateOpenClawConfig(
       entry.tools = mergeMcpDenyIntoAgentTools(entry.tools as Record<string, unknown> | undefined);
     }
 
+    entry.tools = mergeOutboundDenyIntoTools(
+      entry.tools as Record<string, unknown> | undefined,
+      workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
+    );
+
     return entry;
   });
 
@@ -672,6 +678,14 @@ function generateOpenClawConfig(
   if (configuredChannelIds(workspace.channelConfig).length === 0) {
     config.tools = mergeMessageDenyIntoTools(config.tools as Record<string, unknown>);
   }
+
+  // B-3 delivery rail: outbound post/send/execute stay denied until the
+  // human flips AUTO_PROCEED AND the tool opts into autonomous. Knob-as-prose
+  // only is a mutation failure.
+  config.tools = mergeOutboundDenyIntoTools(
+    config.tools as Record<string, unknown>,
+    workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
+  );
 
   // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
   // non-null when CLAWS_MCP_LONGTAIL_ENABLED=true AND the workspace has
@@ -1540,13 +1554,13 @@ function generateAgentWorkspaceFiles(
   const agentsMdResult = generateAgentsMd(agent, orchestrator, workers, critic, workspace);
 
   return {
-    'SOUL.md': generateSoulMd(agent, clawName),
+    'SOUL.md': generateSoulMd(agent, clawName, workspace),
     'AGENTS.md': agentsMdResult.text,
     'USER.md': generateUserMd(workspace),
     'IDENTITY.md': generateIdentityMd(agent),
     'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled),
     'HEARTBEAT.md': isOrchestrator
-      ? generateHeartbeatMd(orchestrator)
+      ? generateHeartbeatMd(orchestrator, workspace)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
     'BOOT.md': generateBootMd(agent, workspace),
     skills: generateSkillFiles(agent, workspace),
@@ -1561,22 +1575,25 @@ function generateAgentWorkspaceFiles(
 // Keep concise - this is in every LLM call's token count.
 // ---------------------------------------------------------------------------
 
-function generateSoulMd(agent: AgentWithRelations, clawName: string): string {
-  // If the agent has custom soulMd from the Builder, use it
-  if (agent.soulMd?.trim()) {
-    return agent.soulMd;
-  }
+function workspaceHasTwitterApi(workspace: WorkspaceWithRelations): boolean {
+  return workspace.toolConnections.some((t) => t.toolSlug === 'twitter-api');
+}
 
-  // Otherwise, generate from role template
-  switch (agent.role) {
-    case 'ORCHESTRATOR':
-      return generateOrchestratorSoulMd(agent, clawName);
-    case 'CRITIC':
-      return generateCriticSoulMd(agent, clawName);
-    case 'WORKER':
-    default:
-      return generateWorkerSoulMd(agent, clawName);
-  }
+function generateSoulMd(
+  agent: AgentWithRelations,
+  clawName: string,
+  workspace: WorkspaceWithRelations,
+): string {
+  // Custom Builder soul is the voice; overlay still pins delivery law.
+  // MUTATION: return agent.soulMd raw → fire-claw 11:50 "no user approval" ships.
+  const base = agent.soulMd?.trim()
+    ? agent.soulMd
+    : agent.role === 'ORCHESTRATOR'
+      ? generateOrchestratorSoulMd(agent, clawName)
+      : agent.role === 'CRITIC'
+        ? generateCriticSoulMd(agent, clawName)
+        : generateWorkerSoulMd(agent, clawName);
+  return overlayMissionLaw(base, { twitterReadOnly: workspaceHasTwitterApi(workspace) });
 }
 
 function generateOrchestratorSoulMd(agent: AgentWithRelations, clawName: string): string {
@@ -1607,6 +1624,7 @@ You are ${agent.name}, the Orchestrator for ${clawName}. You are the manager of 
 - Never share internal agent communications with the human (they see results, not sausage-making)
 - Never blame a Worker for failure - you own all outcomes
 - Never continue operating if your API spend limit is reached - pause and alert the human
+- ${CRITIC_NE_HUMAN_COPY}
 `;
 }
 
@@ -1663,6 +1681,7 @@ ALWAYS respond with exactly this structure:
 - Never approve something you wouldn't put your own name on
 - Never rewrite the work yourself - give feedback, let the Worker fix it
 - If you're unsure, REJECT with a note explaining your uncertainty
+- ${CRITIC_NE_HUMAN_COPY}
 `;
 }
 
@@ -1686,6 +1705,7 @@ You are ${agent.name}, a specialized Worker agent in the ${clawName} team. You e
 - You never message the human directly.
 - Be concise in your outputs but complete in your work.
 - Include your reasoning when it adds value.
+- ${CRITIC_NE_HUMAN_COPY}
 `;
 }
 
@@ -2188,18 +2208,20 @@ ${pausedWorkers.map((worker) => `- Worker ${worker.name} is paused - do not dele
 // with "Read HEARTBEAT.md if it exists. Follow it strictly."
 // ---------------------------------------------------------------------------
 
-function generateHeartbeatMd(orchestrator: AgentWithRelations): string {
-  if (!orchestrator.heartbeatMd?.trim()) {
-    return `# HEARTBEAT.md
+function generateHeartbeatMd(
+  orchestrator: AgentWithRelations,
+  workspace: WorkspaceWithRelations,
+): string {
+  const base = orchestrator.heartbeatMd?.trim()
+    ? orchestrator.heartbeatMd
+    : `# HEARTBEAT.md
 
 # Periodic tasks for ${orchestrator.name}
 # Add tasks below. The gateway will prompt you to check this file periodically.
 # Use checklist format:
 # - [ ] Task description
 `;
-  }
-
-  return orchestrator.heartbeatMd;
+  return overlayMissionLaw(base, { twitterReadOnly: workspaceHasTwitterApi(workspace) });
 }
 
 // ---------------------------------------------------------------------------

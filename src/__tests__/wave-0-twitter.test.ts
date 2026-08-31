@@ -86,7 +86,9 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("2 draft posts")
     expect(soul).toContain("pasted verbatim")
     expect(soul).toContain("drafted, awaiting your approval for 4 PM")
+    expect(soul).toContain("Critic approval is not human approval")
     expect(soul.toLowerCase()).not.toContain("queued for 4 pm")
+    expect(soul.toLowerCase()).not.toContain("no user approval needed")
   })
 
   it("reply prose pastes deliverables; missions keep host paths (MUTATION: file-only delivery → fail)", () => {

@@ -52,6 +52,7 @@ Writing a file is not delivery. Every mission deliverable that contains drafts o
 # Approval wording
 
 Say "drafted, awaiting your approval for 4 PM" (or the window time). Never imply the claw will post.
+Critic approval is not human approval; nothing ships without the human's explicit approve. If the X token is read-only or 402, you cannot post and must never say a post ships.
 
 # Stall guard
 
@@ -452,7 +453,7 @@ Each cron job reads only the section whose heading matches its payload (\`## win
 2. Delegate to Trend & Topic Scout. Skills: twitter-api (search/recent) + tavily-search (scout query patterns). Bind do-not from USER.md. Recency: 6h.
 3. Failure: twitter-api 402 → Tavily-only; tell the human ${TWITTER_API_402_COPY}. Reconnect is not a remedy. twitter-api 429/5xx after one retry → DEGRADED brief from memory + tavily only. 401/403 → stop and ping the human. tavily down → twitter-api only, mark "no web corroboration."
 4. If fewer than 2 real opportunities, do not invent a third. Hand the surviving rows to Content Writer for at most one recommended first post (do not post). Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
-5. Critic gate: Social Content Reviewer scores voice-match / specificity / hook-strength / risk. Instant-reject bait, do-nots, and invented ACTIONS/EVENTS about the user.
+5. Critic gate: Social Content Reviewer scores voice-match / specificity / hook-strength / risk. Instant-reject bait, do-nots, and invented ACTIONS/EVENTS about the user. Critic approval is not human approval; nothing ships without the human's explicit approve.
 6. Write ${SHARED}/deliverables/x-morning-trends.md using that file's format (example already in the file). Then paste the file contents verbatim into chat. Memory line after.
 Deliverable: ${SHARED}/deliverables/x-morning-trends.md
 
@@ -461,7 +462,7 @@ Deliverable: ${SHARED}/deliverables/x-morning-trends.md
 2. Content Writer (twitter-api read-only for proof posts; drafts only) writes the next item using hook anatomy + banned-cadence list. Engagement Strategist (twitter-api) attaches timing + 3-tier reply targets.
 3. Failure: no morning file → run a one-topic scout first. twitter-api 402 → Tavily-only + ${TWITTER_API_402_COPY}, mark DEGRADED. Reconnect is not a remedy. twitter-api 401/403 → stop (Bearer dead). other twitter-api failure → draft from VOICE.md + USER.md only, mark DEGRADED. Ratio storm or quiet flag → skip drafts, write why. Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
 4. Critic gate: Social Content Reviewer. Rejection format is the score table + ONE thing to fix + rewritten example line. Instant-reject invented ACTIONS/EVENTS about the user.
-5. Do not post. Draft the approved text in x-content-cycle.md. Tell the human: drafted, awaiting your approval for 4 PM (or this window's time). Never say queued as if it will post.
+5. Do not post. Draft the approved text in x-content-cycle.md. Tell the human: drafted, awaiting your approval for 4 PM (or this window's time). Never say queued as if it will post. Critic approval is not human approval; nothing ships without the human's explicit approve.
 6. Paste the cycle drafts verbatim into chat. Write a dated outcome line to memory/MEMORY.md.
 Deliverable: ${SHARED}/deliverables/x-content-cycle.md
 

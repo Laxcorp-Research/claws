@@ -34,7 +34,7 @@ describe('buildHeartbeatSchedule', () => {
     it('maps "hourly" to cron "0 * * * *"', () => {
       const result = buildHeartbeatSchedule('hourly', null, TZ, SLUG);
       expect(result?.intervalConfig).toBeUndefined();
-      expect(result?.cronJob?.schedule).toEqual({ kind: 'cron', expr: '0 * * * *', tz: TZ });
+      expect(result?.cronJob?.schedule).toEqual({ kind: 'cron', expr: '0 * * * *', tz: 'UTC' });
     });
 
     it('maps "every_6h" to cron "0 */6 * * *"', () => {
@@ -54,9 +54,9 @@ describe('buildHeartbeatSchedule', () => {
       expect(result?.cronJob?.schedule.expr).toBe('0 * * * *');
     });
 
-    it('stamps workspace timezone on interval crons', () => {
+    it('interval crons stamp UTC, not workspace timezone', () => {
       const result = buildHeartbeatSchedule('every_6h', null, 'Asia/Kolkata', SLUG);
-      expect(result?.cronJob?.schedule.tz).toBe('Asia/Kolkata');
+      expect(result?.cronJob?.schedule.tz).toBe('UTC');
     });
   });
 
@@ -66,7 +66,7 @@ describe('buildHeartbeatSchedule', () => {
       expect(result?.intervalConfig).toBeUndefined();
       expect(result?.cronJob?.schedule.kind).toBe('cron');
       expect(result?.cronJob?.schedule.expr).toBe('0 8 * * *');
-      expect(result?.cronJob?.schedule.tz).toBe(TZ);
+      expect(result?.cronJob?.schedule.tz).toBe('UTC');
     });
 
     it('maps daily at 14:30 to cron "30 14 * * *"', () => {
@@ -114,19 +114,29 @@ describe('buildHeartbeatSchedule', () => {
       expect(result?.cronJob?.schedule.expr).toBe('0 8 * * 1-5');
     });
 
-    it('preserves timezone in cron job schedule', () => {
+    it('authored daily JSON pins schedule.tz', () => {
+      const result = buildHeartbeatSchedule(
+        'daily',
+        JSON.stringify({ time: '08:00', tz: 'Asia/Dubai' }),
+        'UTC',
+        SLUG,
+      );
+      expect(result?.cronJob?.schedule.tz).toBe('Asia/Dubai');
+    });
+
+    it('unstamped daily is UTC even when workspace tz is set', () => {
       const result = buildHeartbeatSchedule('daily', '08:00', 'Asia/Kolkata', SLUG);
-      expect(result?.cronJob?.schedule.tz).toBe('Asia/Kolkata');
+      expect(result?.cronJob?.schedule.tz).toBe('UTC');
     });
 
-    it('omits timezone field when timezone is null', () => {
+    it('null workspace timezone still stamps UTC on daily', () => {
       const result = buildHeartbeatSchedule('daily', '08:00', null, SLUG);
-      expect(result?.cronJob?.schedule.tz).toBeUndefined();
+      expect(result?.cronJob?.schedule.tz).toBe('UTC');
     });
 
-    it('omits timezone field when timezone is empty string', () => {
+    it('empty workspace timezone still stamps UTC on daily', () => {
       const result = buildHeartbeatSchedule('daily', '08:00', '', SLUG);
-      expect(result?.cronJob?.schedule.tz).toBeUndefined();
+      expect(result?.cronJob?.schedule.tz).toBe('UTC');
     });
   });
 

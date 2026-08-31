@@ -10,6 +10,9 @@ export const TWITTER_API_402_COPY =
 export const TWITTER_API_STORE_TIER_NOTE =
   "required Twitter API - free tier limits reads"
 
+export const TWITTER_TOKEN_CANNOT_POST_COPY =
+  "This token cannot post. Never say a post ships."
+
 export function storeToolHonestyNote(slug: string): string | null {
   if (slug === "twitter-api") return TWITTER_API_STORE_TIER_NOTE
   return null
@@ -19,5 +22,6 @@ export function twitterApiToolsMdHonestyLines(toolSlug: string): string {
   if (toolSlug !== "twitter-api") return ""
   return `
 - 402: ${TWITTER_API_402_COPY}
-- 402 means the saved Bearer is real but the X API tier does not include that endpoint. It is not "down."`
+- 402 means the saved Bearer is real but the X API tier does not include that endpoint. It is not "down."
+- ${TWITTER_TOKEN_CANNOT_POST_COPY}`
 }

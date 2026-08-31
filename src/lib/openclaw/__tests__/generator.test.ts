@@ -33,7 +33,8 @@ vi.mock('@/lib/crypto', () => ({
 import { generateWorkspace } from '@/lib/openclaw/generator';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { generateSecureToken } from '@/lib/crypto';
-import { TWITTER_API_402_COPY } from '@/lib/tools/twitter-api-honesty';
+import { TWITTER_API_402_COPY, TWITTER_TOKEN_CANNOT_POST_COPY } from '@/lib/tools/twitter-api-honesty';
+import { CRITIC_NE_HUMAN_COPY } from '@/lib/openclaw/delivery-rail';
 
 const runtimeChannelsSchema2026052206 = z.object({
   telegram: z.object({
@@ -306,7 +307,7 @@ describe('generateWorkspace', () => {
     expect(config.tools?.deny).toContain('dir_list');
   });
 
-  it('D6-b: connected-channel claw keeps the message tool available', async () => {
+  it('B-3 delivery rail: connected-channel claw still denies message until human approve', async () => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       buildMockWorkspace({
         channelConfigEncrypted: JSON.stringify({
@@ -316,7 +317,8 @@ describe('generateWorkspace', () => {
     );
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']) as { tools?: { deny?: string[] } };
-    expect(config.tools?.deny).not.toContain('message');
+    expect(config.tools?.deny).toContain('message');
+    expect(config.tools?.deny).toContain('exec');
     expect(config.tools?.deny).toContain('dir_list');
   });
 
@@ -1143,6 +1145,24 @@ describe('generateWorkspace', () => {
     expect(twitterBlock).toContain(TWITTER_API_402_COPY);
     expect(twitterBlock).toContain('not "down."');
     expect(tavilyBlock).not.toContain(TWITTER_API_402_COPY);
+    const soul = result.workspaces[orchKey!]['SOUL.md'];
+    const heartbeat = result.workspaces[orchKey!]['HEARTBEAT.md'];
+    expect(soul).toContain(CRITIC_NE_HUMAN_COPY);
+    expect(soul).toContain(TWITTER_TOKEN_CANNOT_POST_COPY);
+    expect(heartbeat).toContain(CRITIC_NE_HUMAN_COPY);
+  });
+
+  it('MUTATION: custom soulMd returned raw (no overlay) fails', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const workerKey = Object.keys(result.workspaces).find((k) => k.includes('data-analyst'));
+    const soul = result.workspaces[workerKey!]['SOUL.md'];
+    expect(soul).toContain('# Data Analyst');
+    expect(soul).toContain(CRITIC_NE_HUMAN_COPY);
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(process.cwd(), 'src/lib/openclaw/generator.ts'), 'utf8');
+    expect(src).toMatch(/overlayMissionLaw\(base/);
+    expect(src).not.toMatch(/if \(agent\.soulMd\?\.trim\(\)\) \{\s*return agent\.soulMd;/);
   });
 
   it('sets orchestrator as default agent with subagents config', async () => {
@@ -1216,7 +1236,7 @@ describe('generateWorkspace', () => {
       schedule?: { tz?: string }
     }>;
     const heartbeatJob = cronJobs.find((j) => j.schedule?.tz);
-    expect(heartbeatJob?.schedule?.tz).toBe('America/New_York');
+    expect(heartbeatJob?.schedule?.tz).toBe('UTC');
   });
 
   it('MUTATION-anchored: disables tools.web.search when no search backend is connected', async () => {
@@ -1609,7 +1629,7 @@ describe('generateWorkspace', () => {
       expect(config.agents.defaults.heartbeat).toBeUndefined();
       expect(cronJobs).toHaveLength(1);
       const job = cronJobs[0];
-      expect(job.schedule).toEqual({ kind: 'cron', expr: '0 8 * * *', tz: 'America/New_York' });
+      expect(job.schedule).toEqual({ kind: 'cron', expr: '0 8 * * *', tz: 'UTC' });
       // PR-2b #9: sessionTarget is now the session-keyed form for the
       // orchestrator's main session. "main" (the pre-PR-2b value) is
       // rejected at fire time by OpenClaw for agentTurn payloads, so

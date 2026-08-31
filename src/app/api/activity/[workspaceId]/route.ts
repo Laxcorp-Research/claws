@@ -19,6 +19,7 @@ import {
   NEAR_CAP_METADATA_CONTAINS,
 } from "@/lib/openclaw/near-cap-alert"
 import type { ActivityType, Prisma } from "@/generated/prisma/client"
+import { HEAL_ATTEMPT_EVENT_KIND } from "@/lib/healing/ledger"
 
 const MAX_ACTIVITY_LIMIT = 50
 const ACTIVITY_TYPES = new Set<string>([
@@ -237,6 +238,19 @@ export async function GET(
       select: { configSnapshotGzip: true },
     }),
   ])
+
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const healedThisWeek = await prisma.activityLog.count({
+    where: {
+      workspaceId,
+      actionType: "SYSTEM",
+      timestamp: { gte: weekAgo },
+      AND: [
+        { metadata: { contains: `"eventKind":"${HEAL_ATTEMPT_EVENT_KIND}"` } },
+        { metadata: { contains: `"outcome":"healed"` } },
+      ],
+    },
+  })
 
   const hasMoreActivity = recentLogs.length > activityLimit
   const activityRows = hasMoreActivity ? recentLogs.slice(0, activityLimit) : recentLogs
@@ -521,6 +535,7 @@ export async function GET(
       estimatedCostTodayCalls,
       estimatedCostTodayIsEstimate,
       pendingReview,
+      healedThisWeek,
     },
     costWindow: {
       range: costRange,
