@@ -4,6 +4,11 @@ import { ALL_SKILLS } from "../../prisma/seed-data/skills-index"
 import { parseHeartbeatWindowScripts } from "@/lib/openclaw/heartbeat-md-cron"
 import { TWITTER_API_402_COPY } from "@/lib/tools/twitter-api-honesty"
 import { INVENTED_USER_EVENT_FIXTURE } from "../../prisma/seed-data/wave-0-twitter"
+import {
+  CLAIMS_TABLE_STEP_MARKER,
+  STRICT_8_DEFINITION,
+  VERSION_B_FIRST_PERSON_FIXTURE,
+} from "@/lib/critic/claims-table"
 
 function twitter() {
   const t = ALL_TEMPLATES.find((x) => x.slug === "twitter-growth-machine")
@@ -71,6 +76,13 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("USER.md do-nots")
     expect(soul).toContain("qualityThreshold")
     expect(soul).toContain("specific factual claim with no source in files/tools")
+    expect(soul).toContain(CLAIMS_TABLE_STEP_MARKER)
+    expect(soul).toContain("| Claim | Source |")
+    expect(soul).toContain(VERSION_B_FIRST_PERSON_FIXTURE)
+    expect(soul).toContain(STRICT_8_DEFINITION)
+    expect(soul).toMatch(/\bPASS\b/)
+    expect(soul).toMatch(/\bREJECT\b/)
+    expect(soul).not.toMatch(/present best-with-warning/)
   })
 
   it("Commander has capacity, escalation, tool errors, and same-session first-mission", () => {

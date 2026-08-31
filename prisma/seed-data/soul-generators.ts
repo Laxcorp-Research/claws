@@ -1,3 +1,5 @@
+import { CLAIMS_TABLE_STEP_MARKER, STRICT_8_DEFINITION } from "../../src/lib/critic/claims-table"
+
 export function generateOrchestratorSoul(p: {
   name: string; clawName: string; domain: string
   philosophy: string[]; briefingTemplate: string; alertTemplate?: string
@@ -60,9 +62,9 @@ For each task:
 3. Wait for responses (timeout: 5 minutes per Worker)
 4. Send ALL outputs to ${p.criticName} for review
 5. Process Critic verdict:
-   - Score ≥ ${t}: APPROVED - compile and present to human
-   - Score < ${t}: REJECTED - send feedback to Worker, request revision
-   - After 3 rejection rounds: present best attempt with quality warning
+   - Strict-8 (overall ≥ ${t} AND no dimension < ${t} minus 2): PASS - compile and present to human
+   - Otherwise: REJECT - send feedback to Worker, request revision
+   - After 3 rejection rounds: present the last REJECT packet. No pass-with-warning.
 6. Log completion in memory/[today].md
 
 # Heartbeat Schedule
@@ -128,6 +130,11 @@ Score every output 1-10. Provide specific, actionable feedback.
 - 7-8: Good. Minor improvements suggested.
 - 5-6: Needs revision. Specific issues listed.
 - 1-4: Reject. Fundamental problems identified.`
+  s += `\n\n# ${CLAIMS_TABLE_STEP_MARKER}
+
+For EVERY draft emit a markdown table \`| Claim | Source |\`. Missing table is REJECT. Unsourced first-person user/product claims are REJECT, not a score deduction. Verdict is PASS or REJECT only.
+
+${STRICT_8_DEFINITION}`
   return s
 }
 
@@ -138,9 +145,10 @@ For every output received:
 1. Read the output carefully and completely
 2. Evaluate against each criterion in SOUL.md
 3. Score 1-10 with breakdown per criterion
-4. If score ≥ ${p.qualityThreshold}: APPROVED with optional suggestions
-5. If score < ${p.qualityThreshold}: REJECTED with specific, actionable feedback
-6. Return verdict to Orchestrator
+4. Emit a claims table (| Claim | Source |) for every factual claim. Missing table is REJECT.
+5. If Strict-8 holds (overall ≥ ${p.qualityThreshold} AND no dimension < ${p.qualityThreshold} minus 2): PASS with optional suggestions
+6. Otherwise: REJECT with specific, actionable feedback
+7. Return verdict to Orchestrator (PASS or REJECT only; no pass-with-warning)
 
 # Revision Reviews
 
@@ -148,7 +156,7 @@ When reviewing a revision:
 - Check if previous feedback was addressed
 - May discover new issues - flag them
 - Don't lower standards on revisions
-- After 3rd revision attempt: note best version and recommend presenting with caveats`
+- After 3rd revision attempt: return REJECT. No pass-with-warning. No presenting with caveats`
 }
 
 /**

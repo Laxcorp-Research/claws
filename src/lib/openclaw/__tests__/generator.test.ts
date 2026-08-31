@@ -30,11 +30,24 @@ vi.mock('@/lib/crypto', () => ({
   generateSecureToken: vi.fn(() => 'mock-gateway-token-abc123'),
 }));
 
+const mockReprobeWorkspaceToolConnections = vi.fn().mockResolvedValue({
+  probed: 0,
+  connected: 0,
+  errors: 0,
+  unverified: 0,
+  skipped: 0,
+});
+vi.mock('@/lib/tools/reprobe-on-deploy', () => ({
+  reprobeWorkspaceToolConnections: (...args: unknown[]) =>
+    mockReprobeWorkspaceToolConnections(...args),
+}));
+
 import { generateWorkspace } from '@/lib/openclaw/generator';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { generateSecureToken } from '@/lib/crypto';
 import { TWITTER_API_402_COPY, TWITTER_TOKEN_CANNOT_POST_COPY } from '@/lib/tools/twitter-api-honesty';
-import { CRITIC_NE_HUMAN_COPY } from '@/lib/openclaw/delivery-rail';
+import { CLOCK_TZ_COPY, CRITIC_NE_HUMAN_COPY, TOOL_STATUS_TRUTH_COPY } from '@/lib/openclaw/delivery-rail';
+import { CLAIMS_TABLE_STEP_MARKER } from '@/lib/critic/claims-table';
 
 const runtimeChannelsSchema2026052206 = z.object({
   telegram: z.object({
@@ -214,6 +227,13 @@ function buildMockWorkspace(overrides: Record<string, unknown> = {}) {
 describe('generateWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockReprobeWorkspaceToolConnections.mockResolvedValue({
+      probed: 0,
+      connected: 0,
+      errors: 0,
+      unverified: 0,
+      skipped: 0,
+    });
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       buildMockWorkspace()
     );
@@ -227,6 +247,7 @@ describe('generateWorkspace', () => {
   it('returns a GeneratedWorkspace with all required keys', async () => {
     const result = await generateWorkspace('ws-test-1');
 
+    expect(mockReprobeWorkspaceToolConnections).toHaveBeenCalledWith('ws-test-1');
     expect(result).toHaveProperty('openclaw.json');
     expect(result).toHaveProperty('.env');
     expect(result).toHaveProperty('workspaces');
@@ -522,6 +543,8 @@ describe('generateWorkspace', () => {
     expect(toolsMd).toContain('Status: Connected (saved; unverified until first use)');
     expect(toolsMd).toContain('### Tavily (Web Search)');
     expect(toolsMd).toMatch(/### Tavily \(Web Search\)[\s\S]*Status: Connected/);
+    expect(toolsMd).toContain('Last probe: never');
+    expect(toolsMd).toContain(TOOL_STATUS_TRUTH_COPY);
     expect(toolsMd).not.toContain('PENDING (agent should treat as unavailable');
   });
 
@@ -1158,11 +1181,24 @@ describe('generateWorkspace', () => {
     const soul = result.workspaces[workerKey!]['SOUL.md'];
     expect(soul).toContain('# Data Analyst');
     expect(soul).toContain(CRITIC_NE_HUMAN_COPY);
+    expect(soul).toContain(CLOCK_TZ_COPY);
+    expect(soul).toContain(TOOL_STATUS_TRUTH_COPY);
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const src = readFileSync(join(process.cwd(), 'src/lib/openclaw/generator.ts'), 'utf8');
     expect(src).toMatch(/overlayMissionLaw\(base/);
     expect(src).not.toMatch(/if \(agent\.soulMd\?\.trim\(\)\) \{\s*return agent\.soulMd;/);
+  });
+
+  it('critic workspace files pin claims table and PASS/REJECT', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const criticKey = Object.keys(result.workspaces).find((k) => k.includes('quality-reviewer'));
+    const soul = result.workspaces[criticKey!]['SOUL.md'];
+    const agents = result.workspaces[criticKey!]['AGENTS.md'];
+    expect(soul).toContain(CLAIMS_TABLE_STEP_MARKER);
+    expect(soul).toContain('## Verdict: [PASS / REJECT]');
+    expect(agents).toContain(CLAIMS_TABLE_STEP_MARKER);
+    expect(agents).toMatch(/PASS or REJECT only/);
   });
 
   it('sets orchestrator as default agent with subagents config', async () => {

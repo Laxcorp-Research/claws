@@ -1,3 +1,7 @@
+import {
+  CLAIMS_TABLE_STEP_MARKER,
+  CRITIC_CLAIMS_TABLE_LAW,
+} from "@/lib/critic/claims-table"
 import type { WorkflowDeliveryMode } from "@/lib/openclaw/workflow-language"
 import { TWITTER_TOKEN_CANNOT_POST_COPY } from "@/lib/tools/twitter-api-honesty"
 
@@ -18,6 +22,12 @@ const WRITE_TOOL_RE =
 
 export const CRITIC_NE_HUMAN_COPY =
   "Critic approval is not human approval; nothing ships without the human's explicit approve."
+
+export const CLOCK_TZ_COPY =
+  "Container clock is UTC (TZ=UTC). Report times as UTC. Workspace timezone is the human's context, not the process clock. Never invent an offset."
+
+export const TOOL_STATUS_TRUTH_COPY =
+  "Do not repeat DEGRADED from a prior window. Re-call the tool (or the human Tests in Manage Tools) before restating status. Recharge does not clear status until a new probe succeeds. Status lines in TOOLS.md are last-probe only."
 
 export const NO_USER_APPROVAL_NEEDED_RE = /no user approval needed/i
 
@@ -89,18 +99,39 @@ export function looksLikeApprovalRequest(text: string | null | undefined): boole
  */
 export function overlayMissionLaw(
   text: string,
-  opts?: { twitterReadOnly?: boolean },
+  opts?: { twitterReadOnly?: boolean; critic?: boolean },
 ): string {
   const body = text.replace(/\s+$/u, "")
-  const additions: string[] = []
+  const chunks: string[] = []
+
+  const delivery: string[] = []
   if (!body.includes(CRITIC_NE_HUMAN_COPY)) {
-    additions.push(`- ${CRITIC_NE_HUMAN_COPY}`)
+    delivery.push(`- ${CRITIC_NE_HUMAN_COPY}`)
   }
   if (opts?.twitterReadOnly && !body.includes(TWITTER_TOKEN_CANNOT_POST_COPY)) {
-    additions.push(`- ${TWITTER_TOKEN_CANNOT_POST_COPY}`)
+    delivery.push(`- ${TWITTER_TOKEN_CANNOT_POST_COPY}`)
   }
-  if (additions.length === 0) {
+  if (delivery.length > 0) {
+    chunks.push(`# Delivery law\n${delivery.join("\n")}`)
+  }
+
+  const clockTool: string[] = []
+  if (!body.includes(CLOCK_TZ_COPY)) {
+    clockTool.push(`- ${CLOCK_TZ_COPY}`)
+  }
+  if (!body.includes(TOOL_STATUS_TRUTH_COPY)) {
+    clockTool.push(`- ${TOOL_STATUS_TRUTH_COPY}`)
+  }
+  if (clockTool.length > 0) {
+    chunks.push(`# Clock and tool-status truth\n${clockTool.join("\n")}`)
+  }
+
+  if (opts?.critic && !body.includes(CLAIMS_TABLE_STEP_MARKER)) {
+    chunks.push(CRITIC_CLAIMS_TABLE_LAW)
+  }
+
+  if (chunks.length === 0) {
     return text.endsWith("\n") ? text : `${text}\n`
   }
-  return `${body}\n\n# Delivery law\n${additions.join("\n")}\n`
+  return `${body}\n\n${chunks.join("\n\n")}\n`
 }
