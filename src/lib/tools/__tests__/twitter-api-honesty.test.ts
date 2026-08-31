@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   TWITTER_API_402_COPY,
   TWITTER_API_STORE_TIER_NOTE,
+  TWITTER_TOKEN_CANNOT_POST_COPY,
   storeToolHonestyNote,
   twitterApiToolsMdHonestyLines,
 } from "@/lib/tools/twitter-api-honesty"
@@ -29,5 +30,6 @@ describe("twitter-api honesty copy", () => {
     const lines = twitterApiToolsMdHonestyLines("twitter-api")
     expect(lines).toContain(TWITTER_API_402_COPY)
     expect(lines).toContain("not \"down.\"")
+    expect(lines).toContain(TWITTER_TOKEN_CANNOT_POST_COPY)
   })
 })

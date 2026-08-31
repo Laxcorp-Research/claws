@@ -8,7 +8,7 @@ const FROM = new Date("2026-08-17T12:00:00.000Z") // Monday
 describe("tz matrix - GST / UTC / US-west render, UTC instants", () => {
   const value: ScheduleValue = { mode: "daily", time: "08:00" }
 
-  it("same wall-clock 08:00 yields distinct UTC instants per workspace tz", () => {
+  it("unstamped daily 08:00 is UTC regardless of workspace tz", () => {
     const utc = computeNextOccurrences({ value, timezone: "UTC", from: FROM, n: 1 })[0]
     const gst = computeNextOccurrences({ value, timezone: "Asia/Dubai", from: FROM, n: 1 })[0]
     const west = computeNextOccurrences({
@@ -18,11 +18,8 @@ describe("tz matrix - GST / UTC / US-west render, UTC instants", () => {
       n: 1,
     })[0]
     expect(utc.utcIso).toBe("2026-08-18T08:00:00.000Z")
-    // GST (UTC+4): 08:00 GST = 04:00 UTC
-    expect(gst.utcIso).toBe("2026-08-18T04:00:00.000Z")
-    // US-west PDT (UTC-7 in August): 08:00 PT = 15:00 UTC
-    expect(west.utcIso).toBe("2026-08-17T15:00:00.000Z")
-    expect(new Set([utc.utcIso, gst.utcIso, west.utcIso]).size).toBe(3)
+    expect(gst.utcIso).toBe("2026-08-18T08:00:00.000Z")
+    expect(west.utcIso).toBe("2026-08-18T08:00:00.000Z")
   })
 
   it("times JSON stores wall-clock + IANA tz (not a pre-baked UTC string)", () => {
@@ -46,8 +43,8 @@ describe("tz matrix - GST / UTC / US-west render, UTC instants", () => {
       n: 1,
       displayTimeZone: "Asia/Dubai",
     })[0]
-    expect(row.utcIso.endsWith("Z")).toBe(true)
-    expect(row.localIso).toMatch(/08:00:00/)
+    expect(row.utcIso).toBe("2026-08-18T08:00:00.000Z")
+    expect(row.localIso).toMatch(/12:00:00/)
   })
 })
 
@@ -91,14 +88,14 @@ describe("daily/weekday authored-tz stamp", () => {
     expect(row.utcIso).toBe("2026-08-18T04:00:00.000Z")
   })
 
-  it("LEGACY LOCK: unstamped daily keeps firing in the workspace tz (existing rows never shift)", () => {
+  it("B-3: unstamped daily fires UTC even when workspace tz is Dubai", () => {
     const row = computeNextOccurrences({
       value: { mode: "daily", time: "08:00" },
       timezone: "Asia/Dubai",
       from: FROM,
       n: 1,
     })[0]
-    expect(row.utcIso).toBe("2026-08-18T04:00:00.000Z")
+    expect(row.utcIso).toBe("2026-08-18T08:00:00.000Z")
   })
 
   it("stamped weekday fires in the authored tz", () => {

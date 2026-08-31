@@ -13,6 +13,8 @@
  * `sessionTarget:"main"` + `payload.kind:"agentTurn"` is rejected at fire.
  */
 
+import { DEFAULT_CRON_TZ, formatCronWallLabel } from "@/lib/schedule/cron-tz"
+
 export type HeartbeatWindowScript = {
   cron: string
   steps: string[]
@@ -24,13 +26,15 @@ export function heartbeatWindowHeading(expr: string): string {
 }
 
 /** Payload the runtime actually sends. Window-addressable when expr is known. */
-export function heartbeatPayloadMessage(expr?: string): string {
+export function heartbeatPayloadMessage(expr?: string, tz?: string | null): string {
   const tail = "If nothing needs attention, reply HEARTBEAT_OK."
   const trimmed = expr?.trim() ?? ""
+  const zone = tz?.trim() || DEFAULT_CRON_TZ
+  const label = trimmed.length > 0 ? ` Fire label: ${formatCronWallLabel(trimmed, zone)}.` : ""
   if (trimmed.length > 0) {
     return (
       `Heartbeat. Read HEARTBEAT.md section "${heartbeatWindowHeading(trimmed)}" ` +
-      `and follow it strictly. ${tail}`
+      `and follow it strictly.${label} ${tail}`
     )
   }
   return `Heartbeat. Read HEARTBEAT.md and follow it strictly. ${tail}`
@@ -109,10 +113,11 @@ export function buildCronJobsFromHeartbeatMd(args: {
 }): HeartbeatMdCronJob[] {
   const exprs = extractCronExprsFromHeartbeatMd(args.heartbeatMd ?? "")
   const unique = [...new Set(exprs)]
-  const tz =
-    args.timezone && args.timezone.trim().length > 0
-      ? args.timezone.trim()
-      : undefined
+  // Template / HEARTBEAT.md windows are UTC unless a later authored-tz pin
+  // is added. Workspace timezone must not slide the fire. MUTATION: stamp
+  // args.timezone here → Dubai workspace fires 04:00Z labeled 08:00 UTC.
+  void args.timezone
+  const tz = DEFAULT_CRON_TZ
   const slug = args.orchestratorAgentSlug
 
   return unique.map((expr) => {
@@ -121,20 +126,20 @@ export function buildCronJobsFromHeartbeatMd(args: {
       id: `heartbeat-${slug}-md-${idSlug}`,
       // Prefix must match claws-activity-reporter HEARTBEAT_CRON_NAME_PREFIX.
       name: `orchestrator-heartbeat-md-${idSlug}`,
-      description: `Orchestrator heartbeat (from HEARTBEAT.md schedule: ${expr})`,
+      description: `Orchestrator heartbeat (from HEARTBEAT.md schedule: ${expr} ${tz})`,
       enabled: true,
       deleteAfterRun: false,
       schedule: {
         kind: "cron" as const,
         expr,
-        ...(tz ? { tz } : {}),
+        tz,
       },
       agentId: slug,
       sessionTarget: `session:agent:${slug}:main`,
       wakeMode: "now" as const,
       payload: {
         kind: "agentTurn" as const,
-        message: heartbeatPayloadMessage(expr),
+        message: heartbeatPayloadMessage(expr, tz),
       },
     }
   })

@@ -109,7 +109,7 @@ export function deserializeSchedule(
   if (frequency === "daily" || frequency === "weekday") {
     const mode = frequency
     // Stamped format: JSON {time, tz}. Invalid tz is dropped (not propagated)
-    // so the row degrades to legacy workspace-tz semantics instead of feeding
+    // so the row degrades to UTC (no authored pin) instead of feeding
     // junk zones into croner/Intl.
     if (time && time.trim().startsWith("{")) {
       try {

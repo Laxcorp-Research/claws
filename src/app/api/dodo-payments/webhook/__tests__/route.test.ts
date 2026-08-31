@@ -16,6 +16,11 @@ vi.mock('@/lib/openclaw/deployer', () => ({
   destroyContainer: (...args: unknown[]) => mockDestroyContainer(...args),
 }));
 
+const mockSendCustomerNudge = vi.fn();
+vi.mock('@/lib/alerts/customer-nudge', () => ({
+  sendCustomerNudge: (...args: unknown[]) => mockSendCustomerNudge(...args),
+}));
+
 vi.mock('dodopayments', () => {
   const unwrapMock = vi.fn((body: string) => JSON.parse(body));
   return {
@@ -441,6 +446,8 @@ describe('POST /api/dodo-payments/webhook', () => {
 
   describe('payment.failed', () => {
     it('records failed purchase', async () => {
+      mockSendCustomerNudge.mockResolvedValue({ sent: true, channel: 'email' });
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 'ws-bill' }]);
       (prismaMock.purchase.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'purch-fail' });
 
       const req = createWebhookRequest({
@@ -458,6 +465,10 @@ describe('POST /api/dodo-payments/webhook', () => {
           data: expect.objectContaining({ status: 'FAILED' }),
         })
       );
+      expect(mockSendCustomerNudge).toHaveBeenCalledWith({
+        workspaceId: 'ws-bill',
+        condition: 'payment-failed',
+      });
     });
   });
 
@@ -528,6 +539,8 @@ describe('POST /api/dodo-payments/webhook', () => {
   describe('subscription.on_hold', () => {
     it('keeps hasActiveSubscription true and stamps subscriptionStatus=on_hold', async () => {
       mockUserLookup('user-dunning');
+      mockSendCustomerNudge.mockResolvedValue({ sent: true, channel: 'email' });
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 'ws-dunning' }]);
       (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
       (prismaMock.auditLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
@@ -551,6 +564,10 @@ describe('POST /api/dodo-payments/webhook', () => {
           }),
         }),
       );
+      expect(mockSendCustomerNudge).toHaveBeenCalledWith({
+        workspaceId: 'ws-dunning',
+        condition: 'subscription-on-hold',
+      });
     });
   });
 

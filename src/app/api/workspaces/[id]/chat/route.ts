@@ -36,6 +36,7 @@ import {
   type ChatSocketFactory,
   type SendChatResult,
 } from "@/lib/openclaw/gateway-chat-client"
+import { ledgerChatSendRejected } from "@/lib/openclaw/chat-send-reject"
 import crypto from "node:crypto"
 
 // V1 p95 target is 5s; the function budget leaves headroom for the lazy
@@ -113,6 +114,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     case "DEPLOYING":
     case "WAKING":
     case "PROVISIONING_QUEUED":
+      await ledgerChatSendRejected({
+        workspaceId: id,
+        reason: "workspace-transitioning",
+        detail: workspace.status,
+      })
       return apiError("WORKSPACE_TRANSITIONING", "Your Claw is starting up - try again shortly.", 409)
     default:
       // DRAFT / SETUP_INCOMPLETE / PAUSED (reserved, no writer)
@@ -181,6 +187,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const status = result.reason === "transitioning" ? 409 : 502
     const code = result.reason === "transitioning" ? "WORKSPACE_TRANSITIONING" : "GATEWAY_UNREACHABLE"
     log.warn("chat send failed", { workspaceId: id, reason: result.reason, detail: result.detail })
+    await ledgerChatSendRejected({
+      workspaceId: id,
+      reason: result.reason,
+      detail: result.detail,
+    })
     return apiError(
       code,
       result.reason === "transitioning"

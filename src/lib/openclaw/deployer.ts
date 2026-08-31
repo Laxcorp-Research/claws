@@ -202,10 +202,12 @@ function buildDeploymentCompletionData(
   generated: GeneratedWorkspace,
 ): DeploymentCompletionData {
   const envManifest = buildEnvManifest(generated['.env']);
+  const generatorSha = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? null;
   const snapshotPayload = {
     version: 1,
     fingerprintVersion: fingerprint.version,
     hash: fingerprint.hash,
+    generatorSha,
     areas: fingerprint.areas,
     envManifest,
     'openclaw.json': JSON.parse(generated['openclaw.json']),
@@ -224,6 +226,7 @@ function buildDeploymentCompletionData(
       fingerprintVersion: fingerprint.version,
       hash: fingerprint.hash,
       generatedAt: new Date().toISOString(),
+      generatorSha,
       areas: fingerprint.areas,
       envManifest,
     }),

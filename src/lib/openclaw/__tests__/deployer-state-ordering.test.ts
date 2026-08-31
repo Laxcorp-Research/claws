@@ -207,6 +207,7 @@ describe("deployToCloud initial-sync race closure (PR2.5)", () => {
     expect(completedUpdate.data.configHash).toBe("hash-current")
     expect(completedUpdate.data.configSnapshot).toContain('"hash":"hash-current"')
     expect(completedUpdate.data.configSnapshot).toContain('"fingerprintVersion":2')
+    expect(completedUpdate.data.configSnapshot).toContain('"generatorSha"')
     expect(completedUpdate.data.configSnapshotGzip).toBeInstanceOf(Uint8Array)
     expect(completedUpdate.data.configSnapshotGzip.length).toBeGreaterThan(0)
     const inflated = JSON.parse(gunzipSync(Buffer.from(completedUpdate.data.configSnapshotGzip)).toString("utf8"))

@@ -6,6 +6,9 @@ vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
+vi.mock("@/lib/alerts/customer-nudge", () => ({
+  sendCustomerNudge: vi.fn().mockResolvedValue({ sent: true, channel: "telegram" }),
+}))
 
 const mockConnectedAccountsGet = vi.fn()
 const mockSessionRetrieve = vi.fn()

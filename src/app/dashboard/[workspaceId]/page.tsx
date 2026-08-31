@@ -11,7 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
-import { AlertStack } from "@/components/dashboard/alert-stack"
+import { ClawHealthLine } from "@/components/dashboard/claw-health-line"
 import { CommandStrip } from "@/components/dashboard/command-strip"
 import { LiveOpsSection } from "@/components/dashboard/live-ops-section"
 import { MissionLog } from "@/components/dashboard/mission-log"
@@ -61,6 +61,7 @@ interface DashboardStats {
   estimatedCostTodayCalls: number
   estimatedCostTodayIsEstimate?: boolean
   pendingReview: number
+  healedThisWeek?: number
 }
 
 interface WorkspaceInfo {
@@ -972,7 +973,7 @@ export default function DashboardPage() {
       })
     }
 
-    if (spendLimitReached) {
+    if (spendLimitReached && workspace?.status === "PAUSED") {
       list.push({
         key: "spend-limit",
         priority: 2,
@@ -1491,7 +1492,20 @@ export default function DashboardPage() {
         />
       )}
 
-      <AlertStack alerts={alertStackItems} />
+      <ClawHealthLine
+        recoveredThisWeek={stats?.healedThisWeek ?? 0}
+        nudge={
+          alertStackItems[0]
+            ? {
+                id: alertStackItems[0].id,
+                variant: alertStackItems[0].variant,
+                icon: alertStackItems[0].icon,
+                message: alertStackItems[0].message,
+                cta: alertStackItems[0].cta,
+              }
+            : null
+        }
+      />
 
       {isEmpty ? (
         <div className="py-8">

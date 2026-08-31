@@ -39,9 +39,8 @@ export type ScheduleValue =
   | { mode: "every_6h" }
   | { mode: "every_12h" }
   // daily/weekday: `tz` is the IANA zone the time was AUTHORED in (browser tz
-  // at edit time, stamped by the editor post-#454-follow-up). Absent = legacy
-  // row saved before stamping: the time keeps firing in the workspace tz
-  // exactly as before, so existing rows' emission never shifts.
+  // at edit time). Absent = UTC (B-3: crons evaluate in the schedule's own tz;
+  // workspace timezone is not a fire tz).
   | { mode: "daily"; time: string; tz?: string }
   | { mode: "weekday"; time: string; tz?: string }
   // times: slots are wall-clock in `tz` (UTC for editor-authored values).
