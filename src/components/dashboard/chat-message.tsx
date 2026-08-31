@@ -43,7 +43,7 @@ const MD_PROSE = cn(
   "[&_blockquote]:border-l-2 [&_blockquote]:border-[var(--bd2)] [&_blockquote]:pl-2 [&_blockquote]:text-[var(--tx2)]",
   "[&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[11px] [&_:not(pre)>code]:bg-[var(--bg3)] [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:rounded",
   "[&_pre]:bg-[var(--bg3)] [&_pre]:p-2 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-1 [&_pre_code]:font-mono [&_pre_code]:text-[11px]",
-  "[&_table]:block [&_table]:overflow-x-auto [&_th]:text-left [&_th]:pr-3 [&_td]:pr-3 [&_th]:border-b [&_th]:border-[var(--bd)]",
+  "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_th]:text-left [&_th]:pr-3 [&_td]:pr-3 [&_th]:border-b [&_th]:border-[var(--bd)]",
 )
 
 function MarkdownBody({ content }: { content: string }): ReactElement {
@@ -108,7 +108,7 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
   const body = stripPlatformSentinels(rawBody)
 
   return (
-    <div className={cn("flex flex-col gap-[3px] max-w-[85%]", isUser ? "self-end items-end" : "self-start items-start")}>
+    <div className={cn("flex min-w-0 max-w-[85%] flex-col gap-[3px]", isUser ? "self-end items-end" : "self-start items-start")}>
       <div className="flex items-center gap-1.5 text-[10px] leading-none">
         <span className="font-semibold text-[var(--tx2)]">{senderName}</span>
         <span className="font-mono text-[var(--tx3)]">{timestamp}</span>

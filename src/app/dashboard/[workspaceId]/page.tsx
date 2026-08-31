@@ -1638,7 +1638,7 @@ export default function DashboardPage() {
             </section>
           </div>
 
-          <div hidden={activeTab !== "chat"}>
+          <div hidden={activeTab !== "chat"} className="min-w-0 overflow-x-hidden">
             <ChatPanel
               workspaceId={workspaceId}
               status={workspace!.status}

@@ -340,6 +340,22 @@ export function preservePrependedScrollPosition(
   el.scrollTop = previous.scrollTop + (el.scrollHeight - previous.scrollHeight)
 }
 
+// Remaining viewport under the pane's document offset. Used so fullHeight
+// cannot overshoot when chrome (command strip + health line + tabs) is taller
+// than the 260px CSS fallback. Document-relative (rect.top + scrollY) so a
+// mid-page scroll does not enlarge the pane and create empty space below.
+export const CHAT_PANE_MIN_PX = 240
+export const CHAT_PANE_BOTTOM_GAP_PX = 24
+
+export function chatPaneMaxHeightPx(args: {
+  paneOffsetTop: number
+  viewportHeight: number
+  bottomGap?: number
+}): number {
+  const gap = args.bottomGap ?? CHAT_PANE_BOTTOM_GAP_PX
+  return Math.max(CHAT_PANE_MIN_PX, Math.floor(args.viewportHeight - args.paneOffsetTop - gap))
+}
+
 // Composer grow: start at 2 lines, grow through 6 visible lines, then freeze
 // and scroll inside. Measure with height=0 and maxHeight=none so a CSS max-h
 // (or rows=2) cannot freeze scrollHeight at the visible box.
@@ -381,19 +397,23 @@ export function fitChatComposer(el: HTMLTextAreaElement): { height: number; over
 
 function WorkingIndicator({ orchestratorName }: { orchestratorName: string }) {
   const name = orchestratorName || "Orchestrator"
+  // Opacity pulse only - translateY bounce expands the nearest scrollport
+  // (often the page) and paints empty space below the composer. Overflow is
+  // clipped and overflow-anchor is off so inserting this row cannot grow or
+  // re-anchor the document. Live-status lives in the already-visible header
+  // (role=status here made Chrome scroll this node into view).
   return (
-    <div className="flex flex-col gap-[3px] max-w-[85%] self-start items-start">
+    <div
+      data-working-indicator
+      className="flex max-w-[85%] min-w-0 flex-col items-start gap-[3px] self-start [overflow-anchor:none]"
+    >
       <div className="flex items-center gap-1.5 text-[10px] leading-none">
         <span className="font-semibold text-[var(--tx2)]">{name}</span>
       </div>
-      <div
-        role="status"
-        className="rounded-lg px-3 py-2 bg-[var(--bg2)] border border-[var(--bd)] inline-flex items-center gap-1"
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce [animation-delay:-0.3s]" aria-hidden="true" />
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce [animation-delay:-0.15s]" aria-hidden="true" />
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce" aria-hidden="true" />
-        <span className="sr-only">{name} is working…</span>
+      <div className="inline-flex items-center gap-1 overflow-hidden rounded-lg border border-[var(--bd)] bg-[var(--bg2)] px-3 py-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse [animation-delay:-0.3s]" aria-hidden="true" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse [animation-delay:-0.15s]" aria-hidden="true" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse" aria-hidden="true" />
       </div>
     </div>
   )
@@ -469,7 +489,9 @@ export function ChatPanel({
   // element's scrollTop - never the page viewport (scrollIntoView moved all
   // scrollable ancestors and jumped the whole dashboard).
   const listRef = useRef<HTMLDivElement | null>(null)
+  const paneRef = useRef<HTMLElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const [paneMaxPx, setPaneMaxPx] = useState<number | undefined>(undefined)
   // Start pinned; recomputed on every user scroll. When the user scrolls up to
   // read history this goes false and new messages stop yanking them down.
   const nearBottomRef = useRef(true)
@@ -571,6 +593,22 @@ export function ChatPanel({
     preservePrependedScrollPosition(el, previous)
     prependScrollRef.current = null
   }, [messages.length])
+
+  useLayoutEffect(() => {
+    if (!fullHeight) {
+      setPaneMaxPx(undefined)
+      return
+    }
+    const pane = paneRef.current
+    if (!pane) return
+    const apply = () => {
+      const top = pane.getBoundingClientRect().top + window.scrollY
+      setPaneMaxPx(chatPaneMaxHeightPx({ paneOffsetTop: top, viewportHeight: window.innerHeight }))
+    }
+    apply()
+    window.addEventListener("resize", apply)
+    return () => window.removeEventListener("resize", apply)
+  }, [fullHeight])
 
   useLayoutEffect(() => {
     const el = composerRef.current
@@ -700,12 +738,15 @@ export function ChatPanel({
 
   // fullHeight: bound the pane to the viewport (header + tabs + bottom gap ≈ 260px).
   // MUTATION: strip max-h-[calc(...)] → unit + Playwright viewport assertions fail.
+  // overflow-hidden clips bounce/table overflow so it cannot grow the document.
   return (
     <section
+      ref={paneRef}
       aria-label="Web chat"
+      style={fullHeight && paneMaxPx ? { maxHeight: paneMaxPx } : undefined}
       className={cn(
         "border border-[var(--bd)] rounded-lg mb-6",
-        fullHeight && "flex max-h-[calc(100vh-260px)] flex-col",
+        fullHeight && "flex max-h-[calc(100vh-260px)] flex-col overflow-hidden",
         className,
       )}
     >
@@ -714,14 +755,19 @@ export function ChatPanel({
         <p className="text-[11px] text-[var(--tx3)] mt-0.5">
           Direct line to {orchestratorName || "your orchestrator"}. Conversations on connected channels appear in the activity feed.
         </p>
+        {working && (
+          <p role="status" className="sr-only">
+            {orchestratorName || "Orchestrator"} is working…
+          </p>
+        )}
       </div>
 
       <div
         ref={listRef}
         onScroll={handleScroll}
         className={cn(
-          "flex flex-col gap-3 p-3.5 min-h-[120px] overflow-y-auto",
-          fullHeight ? "min-h-0 flex-1" : "max-h-[360px]",
+          "flex min-w-0 flex-col gap-3 overflow-x-auto overflow-y-auto p-3.5 [overflow-anchor:none]",
+          fullHeight ? "min-h-0 flex-1" : "max-h-[360px] min-h-[120px]",
         )}
         role="log"
         aria-label="Chat messages"
