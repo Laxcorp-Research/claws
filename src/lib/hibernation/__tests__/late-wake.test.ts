@@ -9,6 +9,10 @@ const mockDeploy = vi.fn()
 vi.mock("@/lib/openclaw/deployer", () => ({
   deployToCloud: (...args: unknown[]) => mockDeploy(...args),
   syncThenRemoveDeployment: vi.fn(),
+  getGatewayConnectionInfo: vi.fn(),
+}))
+vi.mock("@/lib/healing/mission-resume", () => ({
+  maybeResumeInterruptedMission: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/logger", () => ({

@@ -623,7 +623,10 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       );
       expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
         where: { workspaceId: WORKSPACE_ID },
-        data: { lastChannelMessageAt: new Date("2026-07-19T08:15:00.000Z") },
+        data: {
+          lastChannelMessageAt: new Date("2026-07-19T08:15:00.000Z"),
+          lastActiveAt: new Date("2026-07-19T08:15:00.000Z"),
+        },
       });
     });
 
@@ -646,7 +649,10 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       );
       expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
         where: { workspaceId: WORKSPACE_ID },
-        data: { lastChannelMessageAt: new Date("2026-07-19T09:00:00.000Z") },
+        data: {
+          lastChannelMessageAt: new Date("2026-07-19T09:00:00.000Z"),
+          lastActiveAt: new Date("2026-07-19T09:00:00.000Z"),
+        },
       });
     });
 
@@ -833,10 +839,13 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       ).mock.calls.filter(
         (c) => c[0]?.data?.actionType === "SYSTEM",
       );
-      expect(systemCreates.length).toBe(1);
-      expect(systemCreates[0][0].data.metadata).toContain("thinking_signature_poison");
-      expect(systemCreates[0][0].data.metadata).toContain('"needsImageHeal":true');
-      expect(systemCreates[0][0].data.metadata).toContain('"platformRotated":false');
+      const poison = systemCreates.filter((c) =>
+        String(c[0]?.data?.metadata ?? "").includes("thinking_signature_poison"),
+      );
+      expect(poison.length).toBe(1);
+      expect(poison[0][0].data.metadata).toContain("thinking_signature_poison");
+      expect(poison[0][0].data.metadata).toContain('"needsImageHeal":true');
+      expect(poison[0][0].data.metadata).toContain('"platformRotated":false');
     });
 
     it("dedup: prior heal in window → no second SYSTEM ledger", async () => {

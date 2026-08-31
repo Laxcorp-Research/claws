@@ -38,6 +38,7 @@ import {
   THINKING_SIGNATURE_HEAL_DEDUP_MS,
   THINKING_SIGNATURE_POISON_EVENT_KIND,
 } from "@/lib/trial/thinking-signature-heal";
+import { scheduleThinkingSignatureHeal } from "@/lib/healing/runtime-heals";
 import {
   decideCronJobFailedAlert,
   extractCronJobName,
@@ -317,6 +318,11 @@ export async function ledgerThinkingSignaturePoison(
     workspaceId,
     sessionKey: decision.sessionKey,
   });
+  const host = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { containerHost: true },
+  });
+  scheduleThinkingSignatureHeal(workspaceId, host?.containerHost ?? null);
 }
 
 /**

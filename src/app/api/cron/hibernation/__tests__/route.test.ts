@@ -88,6 +88,7 @@ beforeEach(() => {
   ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
     count: 0,
   })
+  ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
   prevCronSecret = process.env.CRON_SECRET
   process.env.CRON_SECRET = CRON_SECRET
   delete process.env.HIBERNATION_ENABLED

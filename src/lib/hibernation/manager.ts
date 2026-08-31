@@ -6,6 +6,7 @@ import { computeNextHeartbeatAt } from "@/lib/hibernation/next-heartbeat"
 import { isPastDueHint } from "@/lib/hibernation/wake-geometry"
 import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
+import { maybeResumeInterruptedMission } from "@/lib/healing/mission-resume"
 
 // P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot - when a claw
 // wakes past a due heartbeat hint, the container overlay should fire one
@@ -323,6 +324,10 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
       lateWake: pastDue,
       rolledNextHeartbeatAt: rolledHint?.toISOString() ?? null,
     })
+
+    // version-update applies here via deployToCloud (latest image). Mission
+    // resume is silent unless it fails twice.
+    await maybeResumeInterruptedMission(workspaceId)
   } catch (err) {
     log.error("Wake failed", { workspaceId, error: String(err) })
 
