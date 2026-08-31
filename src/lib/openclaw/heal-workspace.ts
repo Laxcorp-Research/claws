@@ -2,6 +2,7 @@ import { redis } from "@/lib/redis"
 import { log } from "@/lib/logger"
 import { redeployWorkspace } from "@/lib/openclaw/deployer"
 import { resolveMode } from "@/lib/openclaw/reconcile-mode"
+import { ledgerHealAttempt } from "@/lib/healing/ledger"
 
 // Per-workspace AUTO-HEAL cooldown (contract §4). Prevents the cron and the
 // event fast-path from double-redeploying the same workspace inside this window
@@ -36,6 +37,12 @@ export type HealResult =
  */
 export async function healWorkspace(workspaceId: string): Promise<HealResult> {
   if (resolveMode() === "detect_only") {
+    await ledgerHealAttempt({
+      workspaceId,
+      condition: "env-credential-drift",
+      outcome: "skipped",
+      detail: "detect_only",
+    })
     return { ok: true, action: "detect_only_noop" }
   }
 
@@ -50,10 +57,22 @@ export async function healWorkspace(workspaceId: string): Promise<HealResult> {
       workspaceId,
       error,
     })
+    await ledgerHealAttempt({
+      workspaceId,
+      condition: "env-credential-drift",
+      outcome: "failed",
+      detail: error,
+    })
     return { ok: false, error }
   }
 
   if (!acquired) {
+    await ledgerHealAttempt({
+      workspaceId,
+      condition: "env-credential-drift",
+      outcome: "skipped",
+      detail: "cooldown",
+    })
     return { ok: true, action: "cooldown_skipped" }
   }
 
@@ -63,6 +82,11 @@ export async function healWorkspace(workspaceId: string): Promise<HealResult> {
       category: "env_reconciliation",
       event: "healed",
       workspaceId,
+    })
+    await ledgerHealAttempt({
+      workspaceId,
+      condition: "env-credential-drift",
+      outcome: "healed",
     })
     return { ok: true, action: "healed" }
   } catch (err) {
@@ -83,6 +107,12 @@ export async function healWorkspace(workspaceId: string): Promise<HealResult> {
       event: "heal_error",
       workspaceId,
       error,
+    })
+    await ledgerHealAttempt({
+      workspaceId,
+      condition: "env-credential-drift",
+      outcome: "failed",
+      detail: error,
     })
     return { ok: false, error }
   }

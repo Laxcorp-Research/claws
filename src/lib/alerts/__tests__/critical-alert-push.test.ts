@@ -41,9 +41,11 @@ import {
   ALERT_KEYS,
   COOLDOWN_MS,
   buildAlertMessage,
+  buildResolveMessage,
   decideCriticalAlertSend,
   resolveDeliveryTarget,
   sendCriticalAlert,
+  sendResolveAlert,
   type AlertKey,
 } from "@/lib/alerts/critical-alert-push"
 
@@ -310,22 +312,81 @@ describe("sendCriticalAlert - integration", () => {
     expect(keys).toHaveLength(7)
   })
 
-  it("global dedup omits workspaceId from the 12h lookup (80% budget class)", async () => {
-    mockWorkspace({ channelConfigEncrypted: telegramConfigBlob() })
-    mockTelegramSend.mockResolvedValue(true)
+  it("MUTATION: owner-class railway-create-budget must not email the workspace owner", async () => {
+    mockWorkspace({ channelConfigEncrypted: null, email: "owner@example.com" })
 
-    await sendCriticalAlert({
+    const result = await sendCriticalAlert({
       workspaceId: WORKSPACE_ID,
       alertKey: "railway-create-budget",
       dedup: "global",
     })
 
-    const findArgs = (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(findArgs.where.workspaceId).toBeUndefined()
-    expect(findArgs.where.AND).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ metadata: { contains: '"alertKey":"railway-create-budget"' } }),
-      ]),
+    expect(result).toEqual({ sent: false, channel: "skipped", reason: "owner-plane" })
+    expect(mockTelegramSend).not.toHaveBeenCalled()
+    expect(mockResendSend).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.findUnique).not.toHaveBeenCalled()
+  })
+
+  it("MUTATION: provisioning-queued must not page a customer", async () => {
+    mockWorkspace({ email: "owner@example.com" })
+    const result = await sendCriticalAlert({
+      workspaceId: WORKSPACE_ID,
+      alertKey: "provisioning-queued",
+    })
+    expect(result.reason).toBe("customer-alert-disabled")
+    expect(mockResendSend).not.toHaveBeenCalled()
+  })
+
+  it("alert email CTA uses the environment base URL, never hardcoded prod", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://staging.app.buildclaws.ai")
+    mockWorkspace({ channelConfigEncrypted: null, email: "owner@example.com" })
+    await sendCriticalAlert({ workspaceId: WORKSPACE_ID, alertKey: "container-unhealthy" })
+    const html = (mockResendSend.mock.calls[0][0] as { html: string }).html
+    expect(html).toContain("https://staging.app.buildclaws.ai/dashboard")
+    expect(html).not.toContain("https://app.buildclaws.ai/dashboard")
+    vi.unstubAllEnvs()
+  })
+
+  it("MUTATION: critical-alert-push must not hardcode the prod dashboard URL", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/alerts/critical-alert-push.ts"),
+      "utf8",
     )
+    expect(src).not.toContain("https://app.buildclaws.ai/dashboard")
+    expect(src).toContain("dashboardUrl")
+  })
+})
+
+describe("sendResolveAlert", () => {
+  it("skips when no prior delivered alert exists", async () => {
+    const result = await sendResolveAlert({
+      workspaceId: WORKSPACE_ID,
+      alertKey: "state-sync-stale",
+    })
+    expect(result).toEqual({ sent: false, channel: "skipped", reason: "never-alerted" })
+    expect(mockTelegramSend).not.toHaveBeenCalled()
+  })
+
+  it("sends 'back to normal' after a delivered alert", async () => {
+    mockWorkspace({ channelConfigEncrypted: telegramConfigBlob("bt-1", [777]) })
+    mockTelegramSend.mockResolvedValue(true)
+    ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ timestamp: new Date(Date.now() - 60_000) })
+      .mockResolvedValueOnce(null)
+
+    const result = await sendResolveAlert({
+      workspaceId: WORKSPACE_ID,
+      alertKey: "state-sync-stale",
+    })
+    expect(result).toEqual({ sent: true, channel: "telegram" })
+    expect(mockTelegramSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining("back to normal") }),
+    )
+  })
+
+  it("resolve copy is title: back to normal for every customer-facing key", () => {
+    for (const key of ["container-unhealthy", "cron-job-failed", "heartbeat-missed", "state-sync-stale"] as const) {
+      expect(buildResolveMessage(key)).toMatch(/: back to normal$/)
+    }
   })
 })

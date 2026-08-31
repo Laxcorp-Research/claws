@@ -26,6 +26,12 @@ vi.mock('@/lib/openclaw/deploy-topology-prerequisites', () => ({
   evaluateWorkspaceDeployTopologyPrerequisites: (...args: unknown[]) => mockEvaluateTopology(...args),
 }));
 
+const mockEvaluateProviderAuth = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/deploy/provider-auth-prerequisites', () => ({
+  PROVIDER_AUTH_MISSING: 'PROVIDER_AUTH_MISSING',
+  evaluateWorkspaceDeployProviderAuth: (...args: unknown[]) => mockEvaluateProviderAuth(...args),
+}));
+
 vi.mock('@/lib/logger', () => ({
   log: { deployEvent: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
@@ -103,6 +109,7 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
       softWarnings: [],
       primaryMessage: null,
     });
+    mockEvaluateProviderAuth.mockResolvedValue({ ok: true });
     mockEvaluateCreateBudget.mockResolvedValue({
       allowed: true,
       cap: 25,
@@ -365,6 +372,40 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     );
     expect(src).toContain('evaluateWorkspaceDeployTopologyPrerequisites');
     expect(src).toContain('TOPOLOGY_INVALID');
+  });
+
+  it('keyless deploy → 400 PROVIDER_AUTH_MISSING naming the missing key', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
+    mockEvaluateProviderAuth.mockResolvedValue({
+      ok: false,
+      code: 'PROVIDER_AUTH_MISSING',
+      message: 'Add an Anthropic API key before deploy',
+      missingProviders: ['ANTHROPIC'],
+    });
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.code).toBe('PROVIDER_AUTH_MISSING');
+    expect(json.error.message).toContain('Anthropic');
+    expect(mockDeployToCloud).not.toHaveBeenCalled();
+    expect(prismaMock.user.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('MUTATION source lock: route must call evaluateWorkspaceDeployProviderAuth (keyless bypass → fail)', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'src/app/api/deploy/[workspaceId]/cloud/route.ts'),
+      'utf8',
+    );
+    expect(src).toContain('evaluateWorkspaceDeployProviderAuth');
+    expect(src).toContain('PROVIDER_AUTH_MISSING');
+    const gateIdx = src.indexOf('await evaluateWorkspaceDeployProviderAuth');
+    const eligibilityIdx = src.indexOf('checkDeployEligibility(user)');
+    const deployIdx = src.indexOf('await deployToCloud');
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(eligibilityIdx);
+    expect(gateIdx).toBeLessThan(deployIdx);
   });
 
   it('over-cap create path → 202 queued, never DEPLOYING / deployToCloud / ERROR', async () => {

@@ -13,6 +13,11 @@ vi.mock("@/lib/alerts/critical-alert-push", () => ({
   sendCriticalAlert: (...args: unknown[]) => mockSendCriticalAlert(...args),
 }))
 
+const mockSendOwnerAlert = vi.fn()
+vi.mock("@/lib/alerts/owner-alert", () => ({
+  sendOwnerAlert: (...args: unknown[]) => mockSendOwnerAlert(...args),
+}))
+
 const mockDeployToCloud = vi.fn()
 vi.mock("@/lib/openclaw/deployer", () => ({
   deployToCloud: (...args: unknown[]) => mockDeployToCloud(...args),
@@ -48,6 +53,8 @@ function ineligibleUser() {
 beforeEach(() => {
   mockSendCriticalAlert.mockReset()
   mockSendCriticalAlert.mockResolvedValue({ sent: false, channel: "skipped" })
+  mockSendOwnerAlert.mockReset()
+  mockSendOwnerAlert.mockResolvedValue({ sent: false, channel: "skipped" })
   mockDeployToCloud.mockResolvedValue({ deploymentId: "d1", containerId: "s1", gatewayToken: "t" })
   ;(prismaMock.railwayCreateLedger.count as ReturnType<typeof vi.fn>).mockResolvedValue(23)
   ;(prismaMock.railwayCreateLedger.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -71,7 +78,7 @@ beforeEach(() => {
 })
 
 describe("enqueueProvisioning", () => {
-  it("over-cap → PROVISIONING_QUEUED with position + ETA, first-queue alert", async () => {
+  it("over-cap → PROVISIONING_QUEUED with position + ETA; customer first-queue alert off", async () => {
     const queued = await enqueueProvisioning("ws-1", "budget", NOW)
     expect(queued.position).toBe(1)
     expect(queued.message).toContain("queued to provision")
@@ -82,13 +89,7 @@ describe("enqueueProvisioning", () => {
     expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "ERROR" }) }),
     )
-    expect(mockSendCriticalAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        workspaceId: "ws-1",
-        alertKey: "provisioning-queued",
-        dedup: "workspace",
-      }),
-    )
+    expect(mockSendCriticalAlert).not.toHaveBeenCalled()
   })
 
   it("second enqueue for same workspace does not re-alert (first-entry only)", async () => {
@@ -176,7 +177,7 @@ describe("drainProvisioningQueueHead", () => {
 })
 
 describe("80% owner alert", () => {
-  it("recordSuccessfulCreate at 20/25 sends railway-create-budget with global 12h dedup", async () => {
+  it("recordSuccessfulCreate at 20/25 pages founder only (sendOwnerAlert)", async () => {
     ;(prismaMock.railwayCreateLedger.count as ReturnType<typeof vi.fn>).mockResolvedValue(20)
     ;(prismaMock.railwayCreateLedger.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(
       Array.from({ length: 20 }, () => ({ createdAt: NOW })),
@@ -185,12 +186,18 @@ describe("80% owner alert", () => {
     ;(prismaMock.provisioningQueue.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 })
 
     await recordSuccessfulCreate("ws-1", "svc-1")
-    expect(mockSendCriticalAlert).toHaveBeenCalledWith(
+    expect(mockSendCriticalAlert).not.toHaveBeenCalled()
+    expect(mockSendOwnerAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: "ws-1",
         alertKey: "railway-create-budget",
-        dedup: "global",
+        workspaceId: "ws-1",
       }),
     )
+  })
+
+  it("MUTATION: governor must not sendCriticalAlert for budget or queue", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/railway/governor.ts"), "utf8")
+    expect(src).not.toContain("sendCriticalAlert")
+    expect(src).toContain("sendOwnerAlert")
   })
 })

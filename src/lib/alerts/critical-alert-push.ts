@@ -29,6 +29,7 @@ import {
   type ChannelConfigMap,
 } from "@/lib/openclaw/channel-config"
 import { telegramSendMessage } from "@/lib/channels/telegram-bot-api"
+import { dashboardUrl } from "@/lib/alerts/app-url"
 
 // ─── Alert classes ─────────────────────────────────────────────────────────
 
@@ -46,6 +47,16 @@ export const ALERT_KEYS = [
 
 export type AlertKey = (typeof ALERT_KEYS)[number]
 
+/** Owner-plane / waiting-is-not-action. sendCriticalAlert must not page a customer. */
+export const CUSTOMER_DISABLED_ALERT_KEYS = [
+  "railway-create-budget",
+  "provisioning-queued",
+] as const
+
+export function isCustomerDisabledAlertKey(key: string): boolean {
+  return (CUSTOMER_DISABLED_ALERT_KEYS as readonly string[]).includes(key)
+}
+
 /** Dedup / re-alert window. MUTATION: dropping this check breaks dedup. */
 export const COOLDOWN_MS = 12 * 60 * 60 * 1000
 
@@ -53,6 +64,8 @@ export const COOLDOWN_MS = 12 * 60 * 60 * 1000
 export const CRITICAL_ALERT_PUSH_EVENT_KIND = "alert_pushed"
 /** Pre-soak-followups rows - still count for 12h dedup. */
 export const CRITICAL_ALERT_PUSH_EVENT_KIND_LEGACY = "critical_alert_push"
+/** Sent when a previously delivered customer alert's condition clears. */
+export const RESOLVE_ALERT_EVENT_KIND = "alert_resolved"
 
 type AlertCopy = { title: string; emoji: string }
 
@@ -71,6 +84,11 @@ export function buildAlertMessage(alertKey: AlertKey, detail?: string | null): s
   const copy = ALERT_COPY[alertKey]
   const head = `${copy.emoji} ${copy.title}`
   return detail ? `${head}\n${detail}` : head
+}
+
+export function buildResolveMessage(alertKey: AlertKey): string {
+  const copy = ALERT_COPY[alertKey]
+  return `${copy.emoji} ${copy.title}: back to normal`
 }
 
 // ─── Pure decision helpers (unit-testable without DB/network) ─────────────
@@ -218,7 +236,7 @@ async function sendCriticalAlertEmail(args: {
                 <div style="font-size:13px;color:#555;margin-bottom:8px;">${workspaceLabel}</div>
                 <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">${copy.emoji} ${copy.title}</div>
                 ${args.detail ? `<div style="font-size:13px;color:#555;margin-bottom:16px;line-height:1.6;">${args.detail}</div>` : ""}
-                <a href="https://app.buildclaws.ai/dashboard" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
+                <a href="${dashboardUrl(args.workspaceId)}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
                   Open dashboard
                 </a>
               </td>
@@ -256,6 +274,11 @@ export async function sendCriticalAlert(args: {
   detail?: string | null
   dedup?: "workspace" | "global"
 }): Promise<SendCriticalAlertResult> {
+  if (isCustomerDisabledAlertKey(args.alertKey)) {
+    const reason = args.alertKey === "railway-create-budget" ? "owner-plane" : "customer-alert-disabled"
+    return { sent: false, channel: "skipped", reason }
+  }
+
   const workspace = await prisma.workspace.findUnique({
     where: { id: args.workspaceId },
     select: {
@@ -379,6 +402,210 @@ export async function sendCriticalAlert(args: {
     delivered: false,
     reason: "no-channel-configured",
   })
+  return { sent: false, channel: "skipped", reason: "no-channel-configured" }
+}
+
+async function findLastDeliveredAlertAt(
+  workspaceId: string,
+  alertKey: AlertKey,
+): Promise<Date | null> {
+  const prior = await prisma.activityLog.findFirst({
+    where: {
+      workspaceId,
+      actionType: "SYSTEM",
+      AND: [
+        {
+          OR: [
+            { metadata: { contains: `"eventKind":"${CRITICAL_ALERT_PUSH_EVENT_KIND}"` } },
+            { metadata: { contains: `"eventKind":"${CRITICAL_ALERT_PUSH_EVENT_KIND_LEGACY}"` } },
+          ],
+        },
+        { metadata: { contains: `"alertKey":"${alertKey}"` } },
+        { metadata: { contains: `"delivered":true` } },
+      ],
+    },
+    orderBy: { timestamp: "desc" },
+    select: { timestamp: true },
+  })
+  return prior?.timestamp ?? null
+}
+
+async function alreadyResolvedSince(workspaceId: string, alertKey: AlertKey, since: Date): Promise<boolean> {
+  const prior = await prisma.activityLog.findFirst({
+    where: {
+      workspaceId,
+      actionType: "SYSTEM",
+      timestamp: { gte: since },
+      AND: [
+        { metadata: { contains: `"eventKind":"${RESOLVE_ALERT_EVENT_KIND}"` } },
+        { metadata: { contains: `"alertKey":"${alertKey}"` } },
+      ],
+    },
+    select: { id: true },
+  })
+  return prior !== null
+}
+
+/**
+ * Customer-facing "back to normal" after a delivered alert. No-ops when the
+ * class never paged the customer, or a resolve already followed that page.
+ */
+export async function sendResolveAlert(args: {
+  workspaceId: string
+  alertKey: AlertKey
+}): Promise<SendCriticalAlertResult> {
+  if (isCustomerDisabledAlertKey(args.alertKey)) {
+    return { sent: false, channel: "skipped", reason: "owner-plane" }
+  }
+
+  const lastAlertAt = await findLastDeliveredAlertAt(args.workspaceId, args.alertKey)
+  if (!lastAlertAt) {
+    return { sent: false, channel: "skipped", reason: "never-alerted" }
+  }
+  if (await alreadyResolvedSince(args.workspaceId, args.alertKey, lastAlertAt)) {
+    return { sent: false, channel: "skipped", reason: "already-resolved" }
+  }
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: args.workspaceId },
+    select: {
+      id: true,
+      name: true,
+      criticalAlertsOptOut: true,
+      channelConfigEncrypted: true,
+      user: { select: { email: true } },
+    },
+  })
+  if (!workspace) {
+    return { sent: false, channel: "skipped", reason: "workspace-not-found" }
+  }
+  if (workspace.criticalAlertsOptOut) {
+    return { sent: false, channel: "skipped", reason: "opt-out" }
+  }
+
+  let config: ChannelConfigMap = {}
+  try {
+    config = parseChannelConfigBlob(workspace.channelConfigEncrypted, decrypt)
+  } catch (err) {
+    log.error("resolve-alert: failed to parse channel config", {
+      workspaceId: args.workspaceId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  const ownerEmail = workspace.user?.email ?? null
+  const target = resolveDeliveryTarget(config, ownerEmail)
+  const text = buildResolveMessage(args.alertKey)
+  const workspaceName = workspace.name?.trim() || "Unnamed Claw"
+  const copy = ALERT_COPY[args.alertKey]
+
+  const ledger = async (
+    channel: "telegram" | "email" | "skipped",
+    delivered: boolean,
+    reason?: string,
+  ) => {
+    try {
+      await prisma.activityLog.create({
+        data: {
+          workspaceId: args.workspaceId,
+          action: `${copy.title}: back to normal`,
+          detail: reason ?? null,
+          actionType: "SYSTEM",
+          timestamp: new Date(),
+          metadata: JSON.stringify({
+            eventKind: RESOLVE_ALERT_EVENT_KIND,
+            alertKey: args.alertKey,
+            channel,
+            delivered,
+            reason: reason ?? null,
+          }),
+        },
+      })
+    } catch (err) {
+      log.error("resolve-alert: failed to ledger", {
+        workspaceId: args.workspaceId,
+        alertKey: args.alertKey,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  if (target.channel === "telegram") {
+    const ok = await telegramSendMessage({
+      botToken: target.botToken,
+      chatId: target.chatId,
+      text,
+    })
+    if (ok) {
+      await ledger("telegram", true)
+      return { sent: true, channel: "telegram" }
+    }
+    if (ownerEmail) {
+      const emailOk = await sendEmail({
+        kind: "critical_alert_fallback",
+        workspaceIds: [args.workspaceId],
+        to: ownerEmail,
+        subject: `Claws: ${workspaceName} - ${copy.title}: back to normal`,
+        html: `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin:0;padding:0;background-color:#FBFBFB;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;margin:40px auto;background:#FFFFFF;border:1px solid #EFEFEF;border-radius:12px;">
+            <tr>
+              <td style="padding:40px 32px;text-align:center;">
+                <div style="font-size:20px;font-weight:700;color:#0A0A0B;margin-bottom:8px;">Claws</div>
+                <div style="font-size:13px;color:#555;margin-bottom:8px;">${workspaceName}</div>
+                <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">${copy.title}: back to normal</div>
+                <a href="${dashboardUrl(args.workspaceId)}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
+                  Open dashboard
+                </a>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+      })
+      await ledger("email", emailOk.ok, emailOk.ok ? undefined : "email-send-failed")
+      return { sent: emailOk.ok, channel: "email" }
+    }
+    await ledger("telegram", false, "telegram-send-failed")
+    return { sent: false, channel: "skipped", reason: "telegram-send-failed" }
+  }
+
+  if (target.channel === "email") {
+    const emailOk = await sendEmail({
+      kind: "critical_alert_fallback",
+      workspaceIds: [args.workspaceId],
+      to: target.email,
+      subject: `Claws: ${workspaceName} - ${copy.title}: back to normal`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin:0;padding:0;background-color:#FBFBFB;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;margin:40px auto;background:#FFFFFF;border:1px solid #EFEFEF;border-radius:12px;">
+            <tr>
+              <td style="padding:40px 32px;text-align:center;">
+                <div style="font-size:20px;font-weight:700;color:#0A0A0B;margin-bottom:8px;">Claws</div>
+                <div style="font-size:13px;color:#555;margin-bottom:8px;">${workspaceName}</div>
+                <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">${copy.title}: back to normal</div>
+                <a href="${dashboardUrl(args.workspaceId)}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
+                  Open dashboard
+                </a>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    })
+    await ledger("email", emailOk.ok, emailOk.ok ? undefined : "email-send-failed")
+    return { sent: emailOk.ok, channel: "email" }
+  }
+
+  await ledger("skipped", false, "no-channel-configured")
   return { sent: false, channel: "skipped", reason: "no-channel-configured" }
 }
 

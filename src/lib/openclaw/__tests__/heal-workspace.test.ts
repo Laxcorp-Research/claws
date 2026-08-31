@@ -16,6 +16,11 @@ vi.mock("@/lib/openclaw/deployer", () => ({
 
 vi.mock("@/lib/logger", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 
+const mockLedger = vi.fn()
+vi.mock("@/lib/healing/ledger", () => ({
+  ledgerHealAttempt: (...a: unknown[]) => mockLedger(...a),
+}))
+
 import { healWorkspace, RECONCILE_COOLDOWN_SEC } from "@/lib/openclaw/heal-workspace"
 
 beforeEach(() => {
@@ -47,6 +52,9 @@ describe("healWorkspace", () => {
     expect(RECONCILE_COOLDOWN_SEC).toBe(1800)
     expect(mockRedeploy).toHaveBeenCalledWith("ws-1")
     expect(mockRedisDel).not.toHaveBeenCalled()
+    expect(mockLedger).toHaveBeenCalledWith(
+      expect.objectContaining({ condition: "env-credential-drift", outcome: "healed" }),
+    )
   })
 
   it("auto_heal + cooldown held (NX returns null) → cooldown_skipped, no redeploy", async () => {

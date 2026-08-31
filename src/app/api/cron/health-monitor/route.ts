@@ -15,7 +15,9 @@ import {
   WOKE_LATE_CATCHUP_GRACE_MS,
 } from "@/lib/hibernation/next-heartbeat"
 import { adoptStrandedDeployments } from "@/lib/deploy/stranded-adopter"
-import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
+import { sendCriticalAlert, sendResolveAlert } from "@/lib/alerts/critical-alert-push"
+import { clearParkedStaleSyncFlags, healRunningStaleSync } from "@/lib/healing/stale-sync"
+import { ledgerHealAttempt } from "@/lib/healing/ledger"
 
 // PR-3 - Health Monitor cron.
 //
@@ -159,6 +161,19 @@ function pushCriticalAlert(
 ): void {
   sendCriticalAlert({ workspaceId, alertKey, detail }).catch((err) => {
     log.error("health-monitor: sendCriticalAlert failed", {
+      workspaceId,
+      alertKey,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+}
+
+function pushResolveAlert(
+  workspaceId: string,
+  alertKey: Parameters<typeof sendResolveAlert>[0]["alertKey"],
+): void {
+  sendResolveAlert({ workspaceId, alertKey }).catch((err) => {
+    log.error("health-monitor: sendResolveAlert failed", {
       workspaceId,
       alertKey,
       error: err instanceof Error ? err.message : String(err),
@@ -507,6 +522,12 @@ export async function GET(req: NextRequest) {
   let reclassified = 0
   const errors: string[] = []
 
+  try {
+    await clearParkedStaleSyncFlags()
+  } catch (err) {
+    errors.push(`parked-stale-clear: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   for (const ws of candidates) {
     const before = {
       status: ws.status,
@@ -539,7 +560,7 @@ export async function GET(req: NextRequest) {
       currentFlag: ws.activitySilenceDetectedAt,
       nowMs: startedAt,
     })
-    const { stateSyncStaleDetectedAt, stateSyncStaleConsecutive } = decideStateSyncStale({
+    let { stateSyncStaleDetectedAt, stateSyncStaleConsecutive } = decideStateSyncStale({
       status: update.status,
       healthStatus: update.healthStatus,
       runtimeStateUpdatedAt: ws.containerState?.runtimeStateUpdatedAt ?? null,
@@ -548,6 +569,30 @@ export async function GET(req: NextRequest) {
       currentConsecutive: ws.stateSyncStaleConsecutive,
       nowMs: startedAt,
     })
+    const effectiveStaleFlag =
+      stateSyncStaleDetectedAt !== undefined ? stateSyncStaleDetectedAt : ws.stateSyncStaleDetectedAt
+    const effectiveStaleConsecutive =
+      stateSyncStaleConsecutive !== undefined ? stateSyncStaleConsecutive : ws.stateSyncStaleConsecutive
+    if (effectiveStaleFlag instanceof Date) {
+      try {
+        const heal = await healRunningStaleSync({
+          workspaceId: ws.id,
+          containerHost: ws.containerHost,
+          consecutive: effectiveStaleConsecutive,
+        })
+        if (heal.cleared) {
+          stateSyncStaleDetectedAt = null
+          stateSyncStaleConsecutive = 0
+          pushResolveAlert(ws.id, "state-sync-stale")
+        } else if (heal.alert) {
+          pushCriticalAlert(ws.id, "state-sync-stale")
+        }
+      } catch (err) {
+        errors.push(`${ws.id}: stale-sync heal failed ${String(err)}`)
+      }
+    } else if (ws.stateSyncStaleDetectedAt instanceof Date && stateSyncStaleDetectedAt === null) {
+      pushResolveAlert(ws.id, "state-sync-stale")
+    }
 
     // Lifecycle P2 Watchtower: missed cron heartbeat window (ops-gap).
     // Distinct from activity-silence - both flags may coexist.
@@ -609,6 +654,9 @@ export async function GET(req: NextRequest) {
           `No HEARTBEAT/poll-marker evidence in [${expected.toISOString()}, ${new Date(expected.getTime() + HEARTBEAT_MISS_GRACE_MS).toISOString()}]`,
         )
       }
+      if (heartbeatMissedAt === null && ws.heartbeatMissedAt instanceof Date) {
+        pushResolveAlert(ws.id, "heartbeat-missed")
+      }
     }
 
     if (probe.result.kind === "healthy") healthy++
@@ -619,16 +667,21 @@ export async function GET(req: NextRequest) {
       escalatedUnhealthy++
       pushCriticalAlert(ws.id, "container-unhealthy", update.lastHealthReason ?? undefined)
     }
-    if (
-      stateSyncStaleDetectedAt instanceof Date &&
-      ws.stateSyncStaleDetectedAt === null
-    ) {
-      pushCriticalAlert(ws.id, "state-sync-stale")
+    if (update.healthStatus === "HEALTHY" && before.healthStatus === "UNHEALTHY") {
+      pushResolveAlert(ws.id, "container-unhealthy")
     }
     if (update.status === "ERROR" && before.status !== "ERROR") escalatedError++
     // PR-4: count the config-drift self-heal (ERROR → RUNNING on a 4xx probe).
     const wasReclassified = before.status === "ERROR" && update.status === "RUNNING"
-    if (wasReclassified) reclassified++
+    if (wasReclassified) {
+      reclassified++
+      void ledgerHealAttempt({
+        workspaceId: ws.id,
+        condition: "error-self-heal",
+        outcome: "healed",
+        detail: update.lastHealthReason ?? "ERROR reclassified to RUNNING",
+      })
+    }
 
     try {
       await prisma.workspace.update({
