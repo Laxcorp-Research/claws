@@ -6,7 +6,8 @@
 
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
-import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push"
+import { sendOwnerAlert } from "@/lib/alerts/owner-alert"
+import { ledgerHealAttempt } from "@/lib/healing/ledger"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
 import {
   computeQueueEta,
@@ -97,11 +98,11 @@ async function queuePosition(enqueuedAt: Date): Promise<number> {
 async function maybeAlertBudget80(workspaceId: string, rollingCount: number, cap: number): Promise<void> {
   if (!shouldAlertCreateBudget80(rollingCount, cap)) return
   try {
-    await sendCriticalAlert({
-      workspaceId,
+    await sendOwnerAlert({
       alertKey: "railway-create-budget",
+      title: "Railway create budget at 80%",
       detail: `Railway serviceCreate budget at ${rollingCount}/${cap} (80% threshold).`,
-      dedup: "global",
+      workspaceId,
     })
   } catch (err) {
     log.error("governor: 80% budget alert failed", {
@@ -152,19 +153,10 @@ export async function enqueueProvisioning(
   })
 
   if (isFirst) {
-    try {
-      await sendCriticalAlert({
-        workspaceId,
-        alertKey: "provisioning-queued",
-        detail: `Position ${position}. ${queued.message}`,
-        dedup: "workspace",
-      })
-    } catch (err) {
-      log.error("governor: first-queue alert failed", {
-        workspaceId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
+    log.info("governor: first-queue (customer alert off)", {
+      workspaceId,
+      position,
+    })
   }
 
   return queued
@@ -285,13 +277,31 @@ export async function drainProvisioningQueueHead(schedule: (fn: () => void | Pro
     try {
       const { deployToCloud } = await import("@/lib/openclaw/deployer")
       await deployToCloud(workspaceId)
+      await ledgerHealAttempt({
+        workspaceId,
+        condition: "provisioning-queued",
+        outcome: "healed",
+        detail: "drainProvisioningQueueHead started deploy",
+      })
     } catch (err) {
       if (isProvisioningQueuedError(err)) {
         log.info("governor: drain re-queued (budget closed mid-flight)", { workspaceId })
+        await ledgerHealAttempt({
+          workspaceId,
+          condition: "provisioning-queued",
+          outcome: "skipped",
+          detail: "budget closed mid-flight",
+        })
         return
       }
       const message = err instanceof Error ? err.message : String(err)
       log.error("governor: drain deploy failed", { workspaceId, error: message })
+      await ledgerHealAttempt({
+        workspaceId,
+        condition: "provisioning-queued",
+        outcome: "failed",
+        detail: message.slice(0, 500),
+      })
       await prisma.provisioningQueue.updateMany({
         where: { workspaceId },
         data: { lastError: message.slice(0, 500) },

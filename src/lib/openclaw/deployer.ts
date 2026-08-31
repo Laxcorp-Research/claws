@@ -44,6 +44,7 @@ import {
   BOOT_SCRIPT_B64,
 } from './railway-client';
 import { log } from '@/lib/logger';
+import { DEFAULT_SYNC_TIMEOUT_MS, trySyncNow } from './sync-now';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
 import {
   assertNoPlaceholderEnvValues,
@@ -89,8 +90,6 @@ const CONTAINER_PAYLOAD_SAFETY_CEILING = 30_000;
 // (route maxDuration=60). The hibernation cron passes a tighter value
 // (HIBERNATE_SYNC_TIMEOUT_MS) because it loops under a 55s ceiling - see
 // src/app/api/cron/hibernation/route.ts.
-const DEFAULT_SYNC_TIMEOUT_MS = 18_000;
-
 /**
  * Missing Railway service (404 / not found) - safe to adopt-by-name or fresh-create.
  * BEFORE P4: only this shape fell through; NotAuthorized rethrew forever.
@@ -748,73 +747,6 @@ export interface SyncThenDestroyOptions {
 export type SyncThenDestroyResult =
   | { destroyed: true; syncWarning?: string }
   | { destroyed: false; refused: true; reason: string };
-
-type SyncNowOutcome = { synced: true } | { synced: false; reason: string };
-
-/**
- * POSTs the pre-destroy confirmed-sync request to the container's
- * /internal/sync-now route (the claws-activity-reporter overlay plugin).
- *
- * Returns synced:true ONLY on an HTTP 200 whose body confirms a persist
- * (persisted:true) or a genuinely empty data dir (empty:true) - the exact
- * contract enforced by container/claws-activity-reporter/index.mjs and locked
- * by src/__tests__/claws-sync-now-route.test.ts. Any non-200, unparseable
- * body, timeout, or network error → synced:false with a short reason for the
- * incomplete-sync marker. NEVER throws.
- */
-async function trySyncNow(containerHost: string, timeoutMs: number): Promise<SyncNowOutcome> {
-  // The backend sends the value of METERING_MASTER_SECRET (the same value it
-  // injects into the container as CLAWS_METERING_SECRET - see
-  // buildRailwayEnvVars). Do NOT read CLAWS_METERING_SECRET here: that name
-  // exists only inside the container, never on the backend.
-  const secret = process.env.METERING_MASTER_SECRET;
-  if (!secret) {
-    return { synced: false, reason: 'unconfigured' };
-  }
-
-  const url = `https://${containerHost}/internal/sync-now`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'X-Metering-Secret': secret },
-    });
-  } catch (err) {
-    const isTimeout = controller.signal.aborted || (err instanceof Error && err.name === 'AbortError');
-    return { synced: false, reason: isTimeout ? 'timeout' : 'unreachable' };
-  } finally {
-    clearTimeout(timer);
-  }
-
-  if (res.status !== 200) {
-    // 502 carries {status:'rejected'}; 503 carries {status:'error'|
-    // 'accepted-unconfirmed'|'unconfigured'}. Prefer the server's own
-    // discriminant for the marker; fall back to the bare HTTP code (e.g. 401).
-    let serverStatus: string | undefined;
-    try {
-      const body = (await res.json()) as { status?: unknown };
-      if (typeof body?.status === 'string') serverStatus = body.status;
-    } catch {
-      /* non-JSON or empty body */
-    }
-    return { synced: false, reason: serverStatus ?? `http-${res.status}` };
-  }
-
-  let body: { persisted?: unknown; empty?: unknown };
-  try {
-    body = (await res.json()) as { persisted?: unknown; empty?: unknown };
-  } catch {
-    return { synced: false, reason: 'unparseable' };
-  }
-
-  if (body.persisted === true || body.empty === true) {
-    return { synced: true };
-  }
-  return { synced: false, reason: 'unconfirmed' };
-}
 
 /**
  * Shared sync gate for syncThenDestroy (terminal teardown) and

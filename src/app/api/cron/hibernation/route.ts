@@ -16,6 +16,8 @@ import {
   type WakeEligibilityLine,
 } from "@/lib/hibernation/wake-geometry"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
+import { ledgerHealAttempt } from "@/lib/healing/ledger"
+import type { HealConditionId } from "@/lib/healing/conditions"
 
 // before: 55 - Vercel FUNCTION_INVOCATION_TIMEOUT when wakes awaited inline.
 // after: 300 - belt for sleep-side syncThenRemoveDeployment + after() wake fan-out headroom.
@@ -36,11 +38,24 @@ const SYNC_BUDGET_CUTOFF_MS =
  * duration / isolation tests fail.
  */
 function scheduleWake(workspaceId: string, reason: "eligible" | "stuck"): void {
+  const condition: HealConditionId = reason === "stuck" ? "stuck-waking" : "heartbeat-missed-wake"
   after(async () => {
     try {
       await wakeWorkspace(workspaceId)
+      await ledgerHealAttempt({
+        workspaceId,
+        condition,
+        outcome: "healed",
+        detail: `scheduleWake:${reason}`,
+      })
       log.info("Hibernation cron: wake completed (after)", { workspaceId, reason })
     } catch (err) {
+      await ledgerHealAttempt({
+        workspaceId,
+        condition,
+        outcome: "failed",
+        detail: String(err),
+      })
       log.error("Hibernation cron: wake failed (after)", {
         workspaceId,
         reason,

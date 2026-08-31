@@ -9,6 +9,10 @@ import { evaluateWorkspaceDeployToolPrerequisites } from "@/lib/tools/deploy-too
 import { missingRequiredToolsBannerTitle } from "@/lib/tools/required-tools"
 import { evaluateWorkspaceDeployTopologyPrerequisites } from "@/lib/openclaw/deploy-topology-prerequisites"
 import {
+  evaluateWorkspaceDeployProviderAuth,
+  PROVIDER_AUTH_MISSING,
+} from "@/lib/deploy/provider-auth-prerequisites"
+import {
   evaluateCreateBudget,
   enqueueProvisioning,
   isProvisioningQueuedError,
@@ -26,6 +30,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
 
   if (workspace?.status === "RUNNING" && workspace.containerId) return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
+
+  // B-1: keyless deploy hard-block. No auth path for a required provider
+  // must never become a dead boot. MUTATION: remove this gate → keyless
+  // deploy-bypass test fails.
+  const providerAuth = await evaluateWorkspaceDeployProviderAuth(workspaceId)
+  if (!providerAuth.ok) {
+    return apiError(PROVIDER_AUTH_MISSING, providerAuth.message, 400)
+  }
 
   // Finding F server parity (#282): same requiredToolsSatisfied gate as Setup
   // Step 3 â€” before eligibility side effects / deployToCloud.
