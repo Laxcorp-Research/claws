@@ -1,0 +1,47 @@
+/**
+ * Locked Phase-A condition ids. Coverage test fails if the registry
+ * drops one or adds a silent extra.
+ */
+export const PHASE_A_CONDITION_IDS = [
+  "state-sync-stale",
+  "fingerprint-config-drift",
+  "bad-token",
+  "plugin-not-loaded",
+  "env-credential-drift",
+  "probe-failure",
+  "error-self-heal",
+  "probe-degraded",
+  "heartbeat-missed-running",
+  "heartbeat-missed-wake",
+  "heartbeat-woke-late",
+  "activity-silence",
+  "hibernation-refused",
+  "stuck-waking",
+  "deploy-failed",
+  "stranded-deployment",
+  "provisioning-queued",
+  "railway-create-budget",
+  "keyless-boot",
+  "needs-credentials-tools",
+  "mcp-session-dead",
+  "version-update",
+  "oauth-expired",
+  "tool-connection-error",
+  "twitter-402-tier",
+  "tool-429",
+  "credits-exhausted",
+  "trial-lapse",
+  "subscription-failed",
+  "subscription-on-hold",
+  "payment-failed",
+  "spend-limit-100",
+  "credit-pool",
+  "credit-balance-drift",
+  "email-delivery-failed",
+  "channel-send-failed",
+  "thinking-signature-poison",
+  "cron-job-failed",
+  "state-sync-near-cap",
+] as const
+
+export type HealConditionId = (typeof PHASE_A_CONDITION_IDS)[number]
