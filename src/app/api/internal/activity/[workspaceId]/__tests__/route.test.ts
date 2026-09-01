@@ -35,6 +35,10 @@ vi.mock("@/lib/alerts/customer-nudge", () => ({
 vi.mock("@/lib/openclaw/pending-approval", () => ({
   createPendingApprovalFromOutbound: vi.fn().mockResolvedValue({ created: false }),
 }))
+const mockNudgeDeliverableSyncNow = vi.fn().mockResolvedValue(undefined)
+vi.mock("@/lib/artifacts/nudge-sync-now", () => ({
+  nudgeDeliverableSyncNow: (...args: unknown[]) => mockNudgeDeliverableSyncNow(...args),
+}))
 
 import { POST, __internal } from "@/app/api/internal/activity/[workspaceId]/route";
 
@@ -84,6 +88,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
   beforeEach(() => {
     prevSecret = process.env.ACTIVITY_PIPELINE_SECRET;
     process.env.ACTIVITY_PIPELINE_SECRET = SECRET;
+    mockNudgeDeliverableSyncNow.mockClear();
   });
 
   afterEach(() => {
@@ -925,6 +930,18 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
           data: expect.objectContaining({ userMdInterviewCompletedAt: expect.any(Date) }),
         }),
       );
+    });
+  });
+
+  describe("deliverable sync-now nudge", () => {
+    it("nudges sync-now on TASK_COMPLETE only", async () => {
+      defaultMocks();
+      await callRoute(
+        { events: [makeEvent(), makeEvent({ type: "TASK_COMPLETE" })] },
+        { secret: SECRET },
+      );
+      expect(mockNudgeDeliverableSyncNow).toHaveBeenCalledTimes(1);
+      expect(mockNudgeDeliverableSyncNow).toHaveBeenCalledWith(WORKSPACE_ID);
     });
   });
 });

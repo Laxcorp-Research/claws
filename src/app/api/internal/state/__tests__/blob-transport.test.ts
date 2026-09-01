@@ -8,6 +8,11 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+const mockExtractDeliverables = vi.fn().mockRejectedValue(new Error("extract boom"))
+vi.mock("@/lib/artifacts/extract-deliverables", () => ({
+  extractDeliverablesFromGzip: (...args: unknown[]) => mockExtractDeliverables(...args),
+}))
+
 const SECRET = "test-master-secret"
 
 function sha256Hex(buf: Buffer): string {
@@ -25,6 +30,8 @@ function req(url: string, body: Record<string, unknown>, secret = SECRET): NextR
 describe("POST /api/internal/state/finalize - persist + idempotency + del", () => {
   beforeEach(() => {
     process.env.METERING_MASTER_SECRET = SECRET
+    mockExtractDeliverables.mockClear()
+    mockExtractDeliverables.mockRejectedValue(new Error("extract boom"))
     ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
       count: 1,
     })
@@ -56,6 +63,7 @@ describe("POST /api/internal/state/finalize - persist + idempotency + del", () =
     expect(prismaMock.containerState.updateMany).toHaveBeenCalledTimes(1)
     expect(prismaMock.containerState.update).not.toHaveBeenCalled()
     expect(deleteBlob).toHaveBeenCalledTimes(1)
+    expect(mockExtractDeliverables).toHaveBeenCalledTimes(1)
   })
 
   it("flipped sha256 → runtimeStateUpdatedAt must NOT advance (no updateMany)", async () => {
