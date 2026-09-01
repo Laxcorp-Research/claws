@@ -26,6 +26,7 @@ import {
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
+import { FilesTab } from "@/components/dashboard/files-tab"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-error"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
@@ -224,6 +225,7 @@ type CostWindowPayload = {
 const DASHBOARD_TABS = [
   { id: "overview", label: "Overview" },
   { id: "chat", label: "Chat" },
+  { id: "files", label: "Files" },
   { id: "activity", label: "Activity" },
   { id: "conversations", label: "Conversations" },
   { id: "costs", label: "Costs" },
@@ -1662,6 +1664,10 @@ export default function DashboardPage() {
               historyEnabled
               fullHeight
             />
+          </div>
+
+          <div hidden={activeTab !== "files"} className="min-w-0">
+            <FilesTab workspaceId={workspaceId} />
           </div>
 
           <div hidden={activeTab !== "activity"} className="sticky top-0">

@@ -351,6 +351,15 @@ describe("DashboardPage MCP session banner", () => {
     expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=activity")
   })
 
+  it("exposes the Files tab and syncs ?tab=files", async () => {
+    mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
+    render(<DashboardPage />)
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Files" }))
+
+    expect(mockReplace).toHaveBeenCalledWith("/dashboard/ws-1?tab=files")
+  })
+
   it("renders the workspace name exactly once in the consolidated header", async () => {
     mockFetch({ mcpSessionHealthStatus: "HEALTHY" })
     render(<DashboardPage />)
