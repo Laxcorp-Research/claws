@@ -1,6 +1,12 @@
+export const DELIVERABLE_EXTRACT_EVENT_KIND = "deliverable_extracted"
 export const DELIVERABLE_APPROVAL_EVENT_KIND = "deliverable_approval_request"
 export const DELIVERABLE_PREVIEW_CHARS = 240
-const DELIVERABLE_PATH_PREFIX = "shared/deliverables/"
+export const DELIVERABLE_PATH_PREFIX = "shared/deliverables/"
+
+export function titleFromDeliverablePath(logicalPath: string): string {
+  const base = logicalPath.replace(/\\/g, "/").split("/").pop() ?? logicalPath
+  return base.replace(/\.(md|txt)$/i, "")
+}
 
 /** Decision docs get Approve/Edit/Reject. Everything else is a view-only report. */
 const DECISION_NAME_RE = /(cycle|draft|decision|approval|plan)/i

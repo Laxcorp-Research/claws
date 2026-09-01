@@ -4,7 +4,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiError, apiSuccess, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
-import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/extract-deliverables"
+import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 
 export const dynamic = "force-dynamic"
 

@@ -4,15 +4,20 @@ import { log } from "@/lib/logger"
 import { parseRuntimeStateGzip } from "@/lib/openclaw/snapshot-conversations"
 import type { FileVersionTrigger } from "@/generated/prisma/client"
 import {
-  DELIVERABLE_APPROVAL_EVENT_KIND,
+  DELIVERABLE_EXTRACT_EVENT_KIND,
+  DELIVERABLE_PATH_PREFIX,
   deliverableKind,
   isDecisionDeliverable,
   previewFromContent,
+  titleFromDeliverablePath,
 } from "@/lib/artifacts/deliverable-kind"
 import { createDeliverableApprovalFromFileVersion } from "@/lib/openclaw/pending-approval"
 
-export const DELIVERABLE_EXTRACT_EVENT_KIND = "deliverable_extracted"
-export const DELIVERABLE_PATH_PREFIX = "shared/deliverables/"
+export {
+  DELIVERABLE_EXTRACT_EVENT_KIND,
+  DELIVERABLE_PATH_PREFIX,
+  titleFromDeliverablePath,
+} from "@/lib/artifacts/deliverable-kind"
 export const DELIVERABLE_MAX_BYTES = 256 * 1024
 export const DELIVERABLE_TEXT_EXT = new Set([".md", ".txt"])
 
@@ -40,11 +45,6 @@ export function isDeliverableExtractPath(relativePath: string): boolean {
   if (dot < 1) return false
   const ext = base.slice(dot).toLowerCase()
   return DELIVERABLE_TEXT_EXT.has(ext)
-}
-
-export function titleFromDeliverablePath(logicalPath: string): string {
-  const base = logicalPath.replace(/\\/g, "/").split("/").pop() ?? logicalPath
-  return base.replace(/\.(md|txt)$/i, "")
 }
 
 type SeedFile = { path?: unknown; content?: unknown }

@@ -24,7 +24,7 @@ import {
   type MissionLogEntry,
 } from "@/components/dashboard/mission-log-utils"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
-import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/extract-deliverables"
+import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-error"

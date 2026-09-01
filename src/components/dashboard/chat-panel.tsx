@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage, type ChatBubbleStatus } from "./chat-message"
 import { DocumentCard } from "./document-card"
-import { DELIVERABLE_EXTRACT_EVENT_KIND, titleFromDeliverablePath } from "@/lib/artifacts/extract-deliverables"
+import { DELIVERABLE_EXTRACT_EVENT_KIND, titleFromDeliverablePath } from "@/lib/artifacts/deliverable-kind"
 import type { DeliverableKind } from "@/lib/artifacts/deliverable-kind"
 import { cn } from "@/lib/utils"
 import {
