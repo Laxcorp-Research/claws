@@ -1,8 +1,6 @@
 import { CHANNEL_IDS } from "@/lib/openclaw/channel-config"
-import {
-  isProtocolOnlyChatBody,
-  stripPlatformSentinels,
-} from "@/lib/chat/platform-sentinels"
+import { polishChatRenderText } from "@/lib/chat/chat-copy"
+import { isProtocolOnlyChatBody } from "@/lib/chat/platform-sentinels"
 
 export type ConversationRole = "user" | "assistant" | "system" | "tool"
 
@@ -277,7 +275,7 @@ export function normalizeConversationMessages(payload: unknown): ConversationMes
     if (role !== "user" && role !== "assistant") return normalized
     const content = textFromContent(item.content).trim()
     if (!shouldDropText(role, content, item.content)) {
-      normalized.push({ type: "message", role, content: stripPlatformSentinels(content), at })
+      normalized.push({ type: "message", role, content: polishChatRenderText(content), at })
     }
     return normalized
   })

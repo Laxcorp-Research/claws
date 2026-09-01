@@ -1912,7 +1912,7 @@ At the end of each session:
 When triggered by heartbeat:
 1. Read HEARTBEAT.md for scheduled tasks
 2. For each due task: decompose, spawn Workers, collect results, review via Critic
-3. If nothing needs attention: respond HEARTBEAT_OK
+3. Emit HEARTBEAT_OK ONLY when there is nothing else to say. Never append HEARTBEAT_OK after a real reply.
 4. MANDATORY final step, every heartbeat run - including the step 3 no-op case: write memory/[today's date].md summarizing what happened this run, and update memory/MEMORY.md with any long-term learnings. Do not end a heartbeat run without writing memory - it is the human's only audit trail for unattended runs.
 `;
 }

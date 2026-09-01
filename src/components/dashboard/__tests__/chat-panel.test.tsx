@@ -13,6 +13,7 @@ import {
   reconcileChatMessages,
   documentViewsFromRows,
   mergePersistedChatRows,
+  collectWorkingAgentNames,
   computeTurnStatuses,
   computeTurnPhases,
   hasPendingTurn,
@@ -390,6 +391,139 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
     expect(views[0].detail).toBe("Profile saved.")
     expect(views[0].action).toBe("Replied: Profile saved.")
     expect(JSON.stringify(views)).not.toContain("CLAWS_USER_MD_INTERVIEW_COMPLETE")
+  })
+
+  it("collapses empty Replied bubbles (08:02-08:05, 12:01-12:02) and keeps a real reply", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "u-am",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-09-01T08:01:00.000Z",
+        agentName: "System",
+        action: "Received from : go",
+        detail: "go",
+        messageId: "run-am",
+      },
+      {
+        id: "blank-0802",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:02:00.000Z",
+        agentName: "Scout",
+        action: "Replied",
+        detail: "",
+        runId: "run-am",
+      },
+      {
+        id: "blank-0803",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:03:00.000Z",
+        agentName: "Writer",
+        action: "Replied:",
+        detail: "",
+        runId: "run-am",
+      },
+      {
+        id: "blank-0805",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:05:00.000Z",
+        agentName: "Critic",
+        action: "Replied",
+        detail: null,
+        runId: "run-am",
+      },
+      {
+        id: "real-am",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:06:00.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: hey there",
+        detail: "hey there",
+        runId: "run-am",
+      },
+      {
+        id: "u-noon",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-09-01T12:00:00.000Z",
+        agentName: "System",
+        action: "Received from : again",
+        detail: "again",
+        messageId: "run-noon",
+      },
+      {
+        id: "blank-1201",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T12:01:00.000Z",
+        agentName: "Scout",
+        action: "Replied",
+        detail: "",
+        runId: "run-noon",
+      },
+      {
+        id: "blank-1202",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T12:02:00.000Z",
+        agentName: "Writer",
+        action: "Replied:",
+        detail: "",
+        runId: "run-noon",
+      },
+    ]
+
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views.map((v) => v.key)).toEqual(["u-am", "real-am", "u-noon"])
+    expect(views.some((v) => v.action === "Replied" || v.detail === "")).toBe(false)
+    expect(JSON.stringify(views)).not.toContain("blank-0802")
+    expect(computeTurnStatuses(views, Date.parse("2026-09-01T12:00:30.000Z")).get("run-noon")).toBe(
+      "pending",
+    )
+    expect(collectWorkingAgentNames(rows, Date.parse("2026-09-01T12:00:00.000Z"))).toEqual([
+      "Scout",
+      "Writer",
+    ])
+  })
+
+  it("strips trailing HEARTBEAT_OK from a full reply and drops HEARTBEAT_OK-only", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "full",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: Here's the recap.\nHEARTBEAT_OK",
+        detail: "Here's the recap.\nHEARTBEAT_OK",
+        runId: "r-full",
+      },
+      {
+        id: "ok-only",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:01.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: HEARTBEAT_OK",
+        detail: "HEARTBEAT_OK",
+        runId: "r-ok",
+      },
+    ]
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views).toHaveLength(1)
+    expect(views[0].detail).toBe("Here's the recap.")
+    expect(JSON.stringify(views)).not.toContain("HEARTBEAT_OK")
+  })
+
+  it("rewrites Scheduled 12:30 UTC in reconciled agent text", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "slot",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: Scheduled 12:30 UTC",
+        detail: "Scheduled 12:30 UTC",
+        runId: "r-slot",
+      },
+    ]
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views[0].detail).toBe("proposed slot 12:30 UTC, pending your approval")
+    expect(JSON.stringify(views)).not.toContain("Scheduled 12:30 UTC")
   })
 
   it("multi-tab lock: a tab with NO optimistic state renders streamed MESSAGE_RECEIVED exactly once as You", () => {
@@ -1256,9 +1390,70 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
       const live = screen.getByRole("status")
       expect(live.className).toContain("sr-only")
       expect(live.textContent).toMatch(/Twitter Commander is working/)
+      expect(screen.queryByText(/working -/)).toBeNull()
       const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
       expect(src).not.toMatch(/animate-bounce/)
       expect(src).toContain("data-working-indicator")
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows working - Scout, Writer, Critic instead of blank Replied bubbles", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      const rows: ChatRow[] = [
+        userRow("r1", 10_000),
+        {
+          id: "t-scout",
+          actionType: "TASK_START",
+          timestamp: iso(BASE - 8_000),
+          agentName: "Scout",
+          action: "Scout started",
+          detail: null,
+          runId: "r1",
+        },
+        {
+          id: "t-writer",
+          actionType: "TASK_START",
+          timestamp: iso(BASE - 7_000),
+          agentName: "Writer",
+          action: "Writer started",
+          detail: null,
+          runId: "r1",
+        },
+        {
+          id: "t-critic",
+          actionType: "TASK_START",
+          timestamp: iso(BASE - 6_000),
+          agentName: "Critic",
+          action: "Critic started",
+          detail: null,
+          runId: "r1",
+        },
+        {
+          id: "blank-scout",
+          actionType: "MESSAGE_SENT",
+          timestamp: iso(BASE - 5_000),
+          agentName: "Scout",
+          action: "Replied",
+          detail: "",
+          runId: "r1",
+        },
+      ]
+      render(
+        <ChatPanel
+          workspaceId="ws-1"
+          status="RUNNING"
+          rows={rows}
+          orchestratorName="Twitter Commander"
+        />,
+      )
+      expect(screen.getByText("working - Scout, Writer, Critic")).toBeTruthy()
+      expect(screen.queryByText("Replied")).toBeNull()
+      expect(screen.getByText(/is working/i)).toBeTruthy()
     } finally {
       cleanup()
       vi.useRealTimers()

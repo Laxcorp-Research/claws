@@ -27,7 +27,8 @@ export function heartbeatWindowHeading(expr: string): string {
 
 /** Payload the runtime actually sends. Window-addressable when expr is known. */
 export function heartbeatPayloadMessage(expr?: string, tz?: string | null): string {
-  const tail = "If nothing needs attention, reply HEARTBEAT_OK."
+  const tail =
+    "Emit HEARTBEAT_OK ONLY when there is nothing else to say. Never append HEARTBEAT_OK after a real reply."
   const trimmed = expr?.trim() ?? ""
   const zone = tz?.trim() || DEFAULT_CRON_TZ
   const label = trimmed.length > 0 ? ` Fire label: ${formatCronWallLabel(trimmed, zone)}.` : ""

@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown"
 import type { Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
-import { stripPlatformSentinels } from "@/lib/chat/platform-sentinels"
+import { polishChatRenderText } from "@/lib/chat/chat-copy"
 
 export type ChatBubbleStatus = "sending" | "sent" | "failed" | "held"
 
@@ -105,10 +105,11 @@ interface ChatMessageProps {
 export function ChatMessage({ sender, senderName, timestamp, detail, action, status, turnPhase, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
   // NEVER `detail` alone - see the guard note above. Empty-string detail also
-  // falls through to action. Strip platform sentinels AFTER that pick so
-  // activity ingest can still scan raw detail; this is render-only.
+  // falls through to action. Polish (strip sentinels + scheduled-slot rewrite)
+  // AFTER that pick so activity ingest can still scan raw detail; this is
+  // render-only.
   const rawBody = (detail && detail.length > 0 ? detail : action) || ""
-  const body = stripPlatformSentinels(rawBody)
+  const body = polishChatRenderText(rawBody)
 
   return (
     <div className={cn("flex min-w-0 max-w-[85%] flex-col gap-[3px]", isUser ? "self-end items-end" : "self-start items-start")}>

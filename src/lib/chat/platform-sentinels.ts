@@ -3,19 +3,26 @@
  * machine event. They must stay in the stored activity `detail` (API-side
  * transcript scan) and must never reach a rendered chat bubble.
  *
- * Generated-prose grep (2026-08-30): the only tokens BOOT/WAVE-0 tell the
- * agent to put in a human-visible message are:
- *   - CLAWS_USER_MD_INTERVIEW_COMPLETE (confirmation line)
+ * Generated-prose grep: tokens BOOT/WAVE-0/heartbeat tell the agent to
+ * put in a message:
+ *   - CLAWS_USER_MD_INTERVIEW_COMPLETE (confirmation line; strip from render)
  *   - NO_REPLY (boot "all good" reply; drop the whole bubble)
+ *   - HEARTBEAT_OK (emit ONLY when there is nothing else to say; strip if
+ *     it trails a real reply, drop the bubble if it is the whole body)
  * EXTERNAL_UNTRUSTED_CONTENT is a tool-payload wrapper, not generated
  * prose, but it gets the same drop if it leaks into chat.
  */
 
 export const PLATFORM_INTERVIEW_COMPLETE_TOKEN = "CLAWS_USER_MD_INTERVIEW_COMPLETE"
 
-export const PLATFORM_RENDER_STRIP_TOKENS = [PLATFORM_INTERVIEW_COMPLETE_TOKEN] as const
+export const PLATFORM_HEARTBEAT_OK_TOKEN = "HEARTBEAT_OK"
 
-export const PLATFORM_CHAT_DROP_EXACT = ["NO_REPLY"] as const
+export const PLATFORM_RENDER_STRIP_TOKENS = [
+  PLATFORM_INTERVIEW_COMPLETE_TOKEN,
+  PLATFORM_HEARTBEAT_OK_TOKEN,
+] as const
+
+export const PLATFORM_CHAT_DROP_EXACT = ["NO_REPLY", PLATFORM_HEARTBEAT_OK_TOKEN] as const
 
 export const PLATFORM_CHAT_DROP_IF_PRESENT = ["EXTERNAL_UNTRUSTED_CONTENT"] as const
 

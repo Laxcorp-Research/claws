@@ -135,6 +135,33 @@ describe("conversation messages - presentation mapper", () => {
     expect(JSON.stringify(messages)).not.toContain("CLAWS_USER_MD_INTERVIEW_COMPLETE")
   })
 
+  it("strips trailing HEARTBEAT_OK and drops HEARTBEAT_OK-only assistant turns", () => {
+    const messages = normalizeConversationMessages({
+      messages: [
+        { role: "assistant", content: "Here's the recap.\nHEARTBEAT_OK" },
+        { role: "assistant", content: "HEARTBEAT_OK" },
+      ],
+    })
+    expect(messages).toEqual([
+      { type: "message", role: "assistant", content: "Here's the recap.", at: null },
+    ])
+    expect(JSON.stringify(messages)).not.toContain("HEARTBEAT_OK")
+  })
+
+  it("rewrites Scheduled 12:30 UTC in transcript assistant text", () => {
+    const messages = normalizeConversationMessages({
+      messages: [{ role: "assistant", content: "Scheduled 12:30 UTC" }],
+    })
+    expect(messages).toEqual([
+      {
+        type: "message",
+        role: "assistant",
+        content: "proposed slot 12:30 UTC, pending your approval",
+        at: null,
+      },
+    ])
+  })
+
   it("drops assistant NO_REPLY so startup protocol tokens never become transcript bubbles", () => {
     expect(normalizeConversationMessages({
       messages: [

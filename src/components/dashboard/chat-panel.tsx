@@ -10,9 +10,10 @@ import type { DeliverableKind } from "@/lib/artifacts/deliverable-kind"
 import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 import { cn } from "@/lib/utils"
 import {
-  isProtocolOnlyChatBody,
-  stripPlatformSentinels,
-} from "@/lib/chat/platform-sentinels"
+  formatWorkingLine,
+  isBlankAgentReplyBody,
+  polishChatRenderText,
+} from "@/lib/chat/chat-copy"
 
 // Mirror of the send endpoint cap (src/app/api/workspaces/[id]/chat/route.ts
 // MESSAGE_MAX_CHARS) so the composer can't compose something the server will
@@ -197,14 +198,6 @@ export interface ChatMessageView {
   failureCode?: string
 }
 
-function chatRowBody(row: ChatRow): string {
-  return row.detail && row.detail.length > 0 ? row.detail : row.action
-}
-
-function isNoReplyText(value: string | null | undefined): boolean {
-  return isProtocolOnlyChatBody(value)
-}
-
 /**
  * PR-9/B reconciliation (pure; unit-tested in chat-panel.test.tsx).
  *
@@ -274,8 +267,8 @@ export function reconcileChatMessages(
         sender: "user",
         senderName: "You",
         sortTs: Number.isNaN(parsed) ? 0 : parsed,
-        detail: r.detail != null ? stripPlatformSentinels(r.detail) : null,
-        action: stripPlatformSentinels(r.detail && r.detail.length > 0 ? r.detail : r.action),
+        detail: r.detail != null ? polishChatRenderText(r.detail) : null,
+        action: polishChatRenderText(r.detail && r.detail.length > 0 ? r.detail : r.action),
         status: r.holdStatus === "flushed" ? "sent" : "held",
         runId: heldRunId,
       })
@@ -283,7 +276,7 @@ export function reconcileChatMessages(
     }
     if (r.actionType !== "MESSAGE_RECEIVED" && r.actionType !== "MESSAGE_SENT") continue
     const isUser = r.actionType === "MESSAGE_RECEIVED"
-    if (!isUser && isNoReplyText(chatRowBody(r))) continue
+    if (!isUser && isBlankAgentReplyBody(r.action, r.detail)) continue
     const parsed = Date.parse(r.timestamp)
     views.push({
       key: r.id,
@@ -292,8 +285,8 @@ export function reconcileChatMessages(
       // resolved display name (or the orchestrator's name as a fallback).
       senderName: isUser ? "You" : r.agentName || orchestratorName || "Agent",
       sortTs: Number.isNaN(parsed) ? 0 : parsed,
-      detail: r.detail != null ? stripPlatformSentinels(r.detail) : null,
-      action: stripPlatformSentinels(r.action),
+      detail: r.detail != null ? polishChatRenderText(r.detail) : null,
+      action: polishChatRenderText(r.action),
       // The turn key lives in different metadata fields per row type: a user
       // send (MESSAGE_RECEIVED) carries it as messageId; the agent reply
       // (MESSAGE_SENT) carries it as runId. Normalize both into `runId` so
@@ -353,6 +346,44 @@ export const PENDING_TURN_TIMEOUT_MS = 2 * 60 * 1000
 export const PENDING_TICK_MS = 15 * 1000
 
 export type TurnState = "pending" | "no_response"
+
+export function collectWorkingAgentNames(
+  rows: ChatRow[],
+  pendingSinceMs: number,
+): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const ts = Date.parse(row.timestamp)
+    if (Number.isNaN(ts) || ts < pendingSinceMs) continue
+    const fromStart = row.actionType === "TASK_START"
+    const fromBlankReply =
+      row.actionType === "MESSAGE_SENT" && isBlankAgentReplyBody(row.action, row.detail)
+    if (!fromStart && !fromBlankReply) continue
+    const name = row.agentName.trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  return names
+}
+
+function oldestPendingUserTs(
+  views: ChatMessageView[],
+  statuses: Map<string, TurnState>,
+): number | null {
+  let oldest: number | null = null
+  for (const view of views) {
+    if (view.sender !== "user" || typeof view.runId !== "string" || view.runId.length === 0) {
+      continue
+    }
+    if (statuses.get(view.runId) !== "pending") continue
+    if (oldest === null || view.sortTs < oldest) oldest = view.sortTs
+  }
+  return oldest
+}
 
 // WORKING-INDICATOR FIX (replaces the old count-based isAgentWorking).
 //
@@ -507,8 +538,16 @@ export function fitChatComposer(el: HTMLTextAreaElement): { height: number; over
   return { height, overflowY: raw > box.maxH ? "auto" : "hidden" }
 }
 
-function WorkingIndicator({ orchestratorName }: { orchestratorName: string }) {
+function WorkingIndicator({
+  orchestratorName,
+  agentNames,
+}: {
+  orchestratorName: string
+  agentNames: readonly string[]
+}) {
   const name = orchestratorName || "Orchestrator"
+  const extras = agentNames.filter((n) => n.trim().toLowerCase() !== name.toLowerCase())
+  const line = extras.length > 0 ? formatWorkingLine(name, extras) : null
   // Opacity pulse only - translateY bounce expands the nearest scrollport
   // (often the page) and paints empty space below the composer. Overflow is
   // clipped and overflow-anchor is off so inserting this row cannot grow or
@@ -526,6 +565,7 @@ function WorkingIndicator({ orchestratorName }: { orchestratorName: string }) {
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse [animation-delay:-0.3s]" aria-hidden="true" />
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse [animation-delay:-0.15s]" aria-hidden="true" />
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse" aria-hidden="true" />
+        {line ? <span className="text-[11px] text-[var(--tx2)]">{line}</span> : null}
       </div>
     </div>
   )
@@ -660,6 +700,10 @@ export function ChatPanel({
   // "No response" instead of sticking the indicator on forever.
   const pending = hasPendingTurn(turnStatuses)
   const working = sendable && pending
+  const workingAgentNames = useMemo(() => {
+    const since = oldestPendingUserTs(messages, turnStatuses)
+    return since == null ? [] : collectWorkingAgentNames(persistedRows, since)
+  }, [messages, persistedRows, turnStatuses])
   const prependScrollRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
 
   useEffect(() => {
@@ -993,7 +1037,9 @@ export function ChatPanel({
             )
           })
         )}
-        {working && <WorkingIndicator orchestratorName={orchestratorName} />}
+        {working && (
+          <WorkingIndicator orchestratorName={orchestratorName} agentNames={workingAgentNames} />
+        )}
       </div>
 
       <div className="shrink-0 border-t border-[var(--bd)] p-3.5">
