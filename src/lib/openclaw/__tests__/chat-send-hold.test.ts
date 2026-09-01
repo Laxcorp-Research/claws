@@ -127,9 +127,8 @@ describe("flushHeldChatSends", () => {
         sessionKey: "agent:dev-commander:main",
       }),
     )
-    expect(heldFlushOwnerMessage("do the thing")).toContain("workspace owner")
-    expect(heldFlushOwnerMessage("do the thing")).toContain("do the thing")
-    expect(heldFlushOwnerMessage("do the thing")).not.toMatch(/^do the thing$/)
+    expect(heldFlushOwnerMessage("do the thing")).toBe("do the thing")
+    expect(heldFlushOwnerMessage("do the thing")).not.toMatch(/workspace owner|untrusted sender/)
     const meta = JSON.parse(
       (prismaMock.activityLog.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data.metadata,
     )
