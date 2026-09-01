@@ -9,6 +9,7 @@ import {
   VERSION_B_CLAIMS_TABLE,
   VERSION_B_DRAFT,
   VERSION_B_FIRST_PERSON_FIXTURE,
+  THIRD_PARTY_ABOUT_USER_FIXTURE,
   reviewDraft,
   runWave0ClaimsHarness,
   strict8Passes,
@@ -67,6 +68,34 @@ describe("claims table procedure", () => {
     const wave0 = criticSoul()
     expect(wave0).toContain(CLAIMS_TABLE_STEP_MARKER)
     expect(wave0).toContain(VERSION_B_FIRST_PERSON_FIXTURE)
+    expect(wave0).toContain(THIRD_PARTY_ABOUT_USER_FIXTURE)
+  })
+
+  it("rejects unsourced third-party-about-the-user claim (Hermes explicitly names Claws)", () => {
+    const unsourced = reviewDraft({
+      draft: `${THIRD_PARTY_ABOUT_USER_FIXTURE}.`,
+      claimsTable: `| Claim | Source |\n| ${THIRD_PARTY_ABOUT_USER_FIXTURE} | |`,
+      knownSources: ["USER.md:4"],
+      knob: 8,
+      dimensionScores: [8, 8, 8, 8],
+    })
+    expect(unsourced.verdict).toBe("REJECT")
+    expect(unsourced.reasons.some((r) => r.includes("no source"))).toBe(true)
+    expect(unsourced.reasons.some((r) => r.includes(THIRD_PARTY_ABOUT_USER_FIXTURE))).toBe(true)
+
+    const sourced = reviewDraft({
+      draft: `${THIRD_PARTY_ABOUT_USER_FIXTURE}.`,
+      claimsTable: `| Claim | Source |\n| ${THIRD_PARTY_ABOUT_USER_FIXTURE} | USER.md:4 |`,
+      knownSources: ["USER.md:4"],
+      knob: 8,
+      dimensionScores: [8, 8, 8, 8],
+    })
+    expect(sourced.verdict).toBe("PASS")
+    expect(sourced.reasons).toEqual([])
+
+    const src = readFileSync(join(process.cwd(), "src/lib/critic/claims-table.ts"), "utf8")
+    expect(src).toContain("extractThirdPartyAboutUserClaims")
+    expect(src).toContain("third-party-about-user claim has no source")
   })
 
   it("defines Strict-8 and tests the knob-2 floor", () => {

@@ -3,6 +3,7 @@ import {
   CLAIMS_TABLE_STEP_MARKER,
   STRICT_8_DEFINITION,
   URL_PLACEHOLDER,
+  THIRD_PARTY_ABOUT_USER_FIXTURE,
   VERSION_B_FIRST_PERSON_FIXTURE,
 } from "../../src/lib/critic/claims-table"
 import { TWITTER_API_402_COPY } from "../../src/lib/tools/twitter-api-honesty"
@@ -57,7 +58,7 @@ Write every mission deliverable to shared/deliverables/. The dashboard shows it 
 
 # Approval wording
 
-After writing a decision-type deliverable, wait for the human to Approve, Edit, or Reject on the card. Never imply the claw will post.
+After writing a decision-type deliverable, wait for the human to Approve, Edit, or Reject on the card. Never imply the claw will post. Never say "Scheduled 12:30 UTC". Say "proposed slot 12:30 UTC, pending your approval".
 Critic approval is not human approval; nothing ships without the human's explicit approve. If the X token is read-only or 402, you cannot post and must never say a post ships.
 
 # Stall guard
@@ -408,7 +409,7 @@ For EVERY draft, emit this table before scoring:
 | Claim | Source |
 | <factual claim> | USER.md:12 or tool:tavily:r1 |
 
-Source is file:line from USER.md, VOICE.md, memory/, or deliverables/, or a tool result id. Missing table is REJECT. Any first-person claim about the user or product with no source is REJECT (not a score deduction). Example that must REJECT: "${VERSION_B_FIRST_PERSON_FIXTURE}".
+Source is file:line from USER.md, VOICE.md, memory/, or deliverables/, or a tool result id. Missing table is REJECT. Any first-person claim about the user or product with no source is REJECT (not a score deduction). Example that must REJECT: "${VERSION_B_FIRST_PERSON_FIXTURE}". Any third-party-about-the-user claim with no source is REJECT. Example that must REJECT: "${THIRD_PARTY_ABOUT_USER_FIXTURE}".
 
 URLs: only URLs present in a tool result may appear. Otherwise ${URL_PLACEHOLDER} + a verify note. Orphan URLs are REJECT.
 
@@ -437,6 +438,7 @@ Do not dump five nits. One thing. Then the line.
 - specific factual claim with no source in files/tools
 - invented ACTIONS/EVENTS about the user with no source in files/tools (example: ${INVENTED_USER_EVENT_FIXTURE})
 - first-person user/product claim with no source (example: ${VERSION_B_FIRST_PERSON_FIXTURE})
+- third-party-about-the-user claim with no source (example: ${THIRD_PARTY_ABOUT_USER_FIXTURE})
 - Fabricated proof, metrics, or quotes
 - Asking the claw to post
 - Orphan URL not present in a tool result
@@ -452,7 +454,7 @@ const CRITIC_AGENTS = `# Review Protocol
 
 1. Read the output. Read ${USER} and ${VOICE}.
 2. ${CLAIMS_TABLE_STEP_MARKER}: emit \`| Claim | Source |\` for every factual claim. Instant-reject if the table is missing.
-3. Instant-reject list first. If hit: REJECT, no scoring theater. Invented user ACTIONS/EVENTS (example: ${INVENTED_USER_EVENT_FIXTURE}) are instant-reject even when numbers look sourced. Unsourced first-person user/product claims (example: ${VERSION_B_FIRST_PERSON_FIXTURE}) are REJECT, not a score deduction.
+3. Instant-reject list first. If hit: REJECT, no scoring theater. Invented user ACTIONS/EVENTS (example: ${INVENTED_USER_EVENT_FIXTURE}) are instant-reject even when numbers look sourced. Unsourced first-person user/product claims (example: ${VERSION_B_FIRST_PERSON_FIXTURE}) are REJECT, not a score deduction. Unsourced third-party-about-the-user claims (example: ${THIRD_PARTY_ABOUT_USER_FIXTURE}) are REJECT.
 4. Score voice-match, specificity, hook-strength, risk with anchors.
 5. ${STRICT_8_DEFINITION} If Strict-8 fails: REJECT with the claims table + score table + ONE thing to fix + rewritten example line.
 6. If Strict-8 holds: PASS. Optional one suggestion, not a rewrite dump.

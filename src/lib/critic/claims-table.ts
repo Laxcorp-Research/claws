@@ -20,6 +20,8 @@ export const STRICT_8_DEFINITION =
 export const VERSION_B_FIRST_PERSON_FIXTURE =
   "We hit this in Claws with a 4-minute scrape"
 
+export const THIRD_PARTY_ABOUT_USER_FIXTURE = "Hermes explicitly names Claws"
+
 export const URL_PLACEHOLDER = "[link]"
 export const URL_VERIFY_NOTE = "verify"
 
@@ -35,7 +37,7 @@ const URL_RE = /https?:\/\/[^\s)\]>'"]+/gi
 
 export const CRITIC_CLAIMS_TABLE_LAW = `# Critic law
 
-${CLAIMS_TABLE_STEP_MARKER}: for EVERY draft, emit a markdown table \`| Claim | Source |\` covering every factual claim. Source is file:line from USER.md, VOICE.md, memory/, or deliverables/, or a tool result id. Any first-person claim about the user or product with no source is REJECT (not a score deduction). Example that must REJECT: "${VERSION_B_FIRST_PERSON_FIXTURE}".
+${CLAIMS_TABLE_STEP_MARKER}: for EVERY draft, emit a markdown table \`| Claim | Source |\` covering every factual claim. Source is file:line from USER.md, VOICE.md, memory/, or deliverables/, or a tool result id. Any first-person claim about the user or product with no source is REJECT (not a score deduction). Example that must REJECT: "${VERSION_B_FIRST_PERSON_FIXTURE}". Any third-party-about-the-user claim with no source is REJECT. Example that must REJECT: "${THIRD_PARTY_ABOUT_USER_FIXTURE}".
 
 URLs: only URLs present in a tool result may appear in the draft. Otherwise replace with ${URL_PLACEHOLDER} and a ${URL_VERIFY_NOTE} note. Orphan URLs are REJECT.
 
@@ -116,6 +118,21 @@ export function extractFirstPersonProductClaims(draft: string): string[] {
   return claims
 }
 
+export function extractThirdPartyAboutUserClaims(draft: string): string[] {
+  const claims: string[] = []
+  const seen = new Set<string>()
+  const push = (raw: string) => {
+    const n = normalizeClaimText(raw)
+    if (!n || seen.has(n)) return
+    seen.add(n)
+    claims.push(raw.replace(/\s+/g, " ").trim())
+  }
+  if (draft.includes(THIRD_PARTY_ABOUT_USER_FIXTURE)) {
+    push(THIRD_PARTY_ABOUT_USER_FIXTURE)
+  }
+  return claims
+}
+
 export function rowCoversClaim(row: ClaimRow, claim: string): boolean {
   const a = normalizeClaimText(row.claim)
   const b = normalizeClaimText(claim)
@@ -168,6 +185,18 @@ export function reviewDraft(input: ReviewDraftInput): ReviewDraftResult {
     }
     if (isEmptySource(covering.source) || !sourceLooksValid(covering.source, knownSources)) {
       reasons.push(`first-person user/product claim has no source: ${claim}`)
+    }
+  }
+
+  const thirdParty = extractThirdPartyAboutUserClaims(input.draft)
+  for (const claim of thirdParty) {
+    const covering = rows.find((row) => rowCoversClaim(row, claim))
+    if (!covering) {
+      reasons.push(`third-party-about-user claim has no claims-table row: ${claim}`)
+      continue
+    }
+    if (isEmptySource(covering.source) || !sourceLooksValid(covering.source, knownSources)) {
+      reasons.push(`third-party-about-user claim has no source: ${claim}`)
     }
   }
 

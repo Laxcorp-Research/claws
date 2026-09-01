@@ -7,6 +7,7 @@ import { INVENTED_USER_EVENT_FIXTURE } from "../../prisma/seed-data/wave-0-twitt
 import {
   CLAIMS_TABLE_STEP_MARKER,
   STRICT_8_DEFINITION,
+  THIRD_PARTY_ABOUT_USER_FIXTURE,
   VERSION_B_FIRST_PERSON_FIXTURE,
 } from "@/lib/critic/claims-table"
 
@@ -79,6 +80,7 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain(CLAIMS_TABLE_STEP_MARKER)
     expect(soul).toContain("| Claim | Source |")
     expect(soul).toContain(VERSION_B_FIRST_PERSON_FIXTURE)
+    expect(soul).toContain(THIRD_PARTY_ABOUT_USER_FIXTURE)
     expect(soul).toContain(STRICT_8_DEFINITION)
     expect(soul).toMatch(/\bPASS\b/)
     expect(soul).toMatch(/\bREJECT\b/)
@@ -99,6 +101,8 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("document card")
     expect(soul).toContain("Approve, Edit, or Reject on the card")
     expect(soul).toContain("Critic approval is not human approval")
+    expect(soul).toContain("proposed slot 12:30 UTC, pending your approval")
+    expect(soul).toContain('Never say "Scheduled 12:30 UTC"')
     expect(soul.toLowerCase()).not.toContain("queued for 4 pm")
     expect(soul.toLowerCase()).not.toContain("no user approval needed")
   })
