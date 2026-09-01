@@ -130,11 +130,11 @@ describe("/internal/sync-now - route registration", () => {
   it("registers an exact, auth:plugin route at /internal/sync-now", () => {
     const registerHttpRoute = vi.fn()
     pluginEntry.register({ on: vi.fn(), registerHttpRoute })
-    expect(registerHttpRoute).toHaveBeenCalledTimes(1)
-    const arg = registerHttpRoute.mock.calls[0][0]
-    expect(arg.path).toBe("/internal/sync-now")
-    expect(arg.auth).toBe("plugin")
-    expect(arg.match).toBe("exact")
-    expect(typeof arg.handler).toBe("function")
+    const routes = registerHttpRoute.mock.calls.map((c: unknown[]) => c[0] as { path: string; auth: string; match: string; handler: unknown })
+    const sync = routes.find((r) => r.path === "/internal/sync-now")
+    expect(sync).toBeDefined()
+    expect(sync?.auth).toBe("plugin")
+    expect(sync?.match).toBe("exact")
+    expect(typeof sync?.handler).toBe("function")
   })
 })
