@@ -25,6 +25,7 @@ import {
 } from "@/components/dashboard/mission-log-utils"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
+import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { FilesTab } from "@/components/dashboard/files-tab"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
@@ -135,6 +136,7 @@ interface LogEntry {
   preview?: string | null
   deliverableKind?: "decision" | "report" | null
   humanRequestId?: string | null
+  holdStatus?: string | null
 }
 
 interface PendingApprovalItem {
@@ -1383,7 +1385,11 @@ export default function DashboardPage() {
   const chatRows: ChatRow[] = logs
     .filter(
       (l) =>
-        (l.actionType === "SYSTEM" && l.eventKind === DELIVERABLE_EXTRACT_EVENT_KIND) ||
+        (l.actionType === "SYSTEM" &&
+          (l.eventKind === DELIVERABLE_EXTRACT_EVENT_KIND ||
+            l.eventKind === CHAT_SEND_HELD_EVENT_KIND)) ||
+        l.actionType === "TASK_START" ||
+        l.actionType === "TASK_COMPLETE" ||
         ((l.actionType === "MESSAGE_RECEIVED" || l.actionType === "MESSAGE_SENT") &&
           l.channelId === "webchat"),
     )
@@ -1402,6 +1408,7 @@ export default function DashboardPage() {
       preview: l.preview ?? null,
       deliverableKind: l.deliverableKind ?? null,
       humanRequestId: l.humanRequestId ?? null,
+      holdStatus: l.holdStatus ?? null,
     }))
   const agentsActive = agents.filter((a) => a.status !== "paused").length
   const alertStackItems = alerts.map((alert) => ({

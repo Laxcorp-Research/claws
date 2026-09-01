@@ -51,6 +51,7 @@ import { applyWorkspaceApiCost } from "@/lib/healing/spend-limit";
 import { NEAR_CAP_METADATA_KIND } from "@/lib/openclaw/near-cap-alert";
 import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
 import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
+import { applyInboundApprovalCommand } from "@/lib/artifacts/approval-command";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -565,6 +566,20 @@ export async function POST(
           log.error("activity: deliverable sync-now nudge failed", {
             workspaceId,
             error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+          });
+        }
+      }
+      if (ev.type === "MESSAGE_RECEIVED") {
+        try {
+          await applyInboundApprovalCommand({
+            workspaceId,
+            text: ev.detail ?? ev.action,
+            respondedBy: ev.channelId ?? "channel",
+          });
+        } catch (cmdErr) {
+          log.error("activity: approval command failed", {
+            workspaceId,
+            error: cmdErr instanceof Error ? cmdErr.message : String(cmdErr),
           });
         }
       }

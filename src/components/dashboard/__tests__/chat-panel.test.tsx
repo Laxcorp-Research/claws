@@ -14,6 +14,7 @@ import {
   documentViewsFromRows,
   mergePersistedChatRows,
   computeTurnStatuses,
+  computeTurnPhases,
   hasPendingTurn,
   isNearBottom,
   preservePrependedScrollPosition,
@@ -156,6 +157,68 @@ describe("documentViewsFromRows", () => {
       deliverableKind: "decision",
       humanRequestId: "hr-1",
     })
+  })
+
+  it("renders a held SYSTEM row as a user bubble so refresh does not vanish the send", () => {
+    const views = reconcileChatMessages(
+      [],
+      [
+        {
+          id: "hold-1",
+          actionType: "SYSTEM",
+          timestamp: "2026-09-01T08:00:00.000Z",
+          agentName: "System",
+          action: "Chat send held",
+          detail: "hello while asleep",
+          eventKind: "chat_send_held",
+          runId: "run-hold",
+          holdStatus: "held",
+        },
+      ],
+      "Commander",
+    )
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({
+      sender: "user",
+      detail: "hello while asleep",
+      status: "held",
+      runId: "run-hold",
+    })
+  })
+
+  it("drops optimistic + held SYSTEM once MESSAGE_RECEIVED with the same runId arrives", () => {
+    const optimistic: OptimisticMessage[] = [
+      { tempId: "tmp_h", text: "hello while asleep", createdAt: 1000, status: "held", runId: "run-hold" },
+    ]
+    const views = reconcileChatMessages(
+      optimistic,
+      [
+        {
+          id: "hold-1",
+          actionType: "SYSTEM",
+          timestamp: "2026-09-01T08:00:00.000Z",
+          agentName: "System",
+          action: "Chat send held",
+          detail: "hello while asleep",
+          eventKind: "chat_send_held",
+          runId: "run-hold",
+          holdStatus: "flushed",
+        },
+        {
+          id: "recv-1",
+          actionType: "MESSAGE_RECEIVED",
+          timestamp: "2026-09-01T08:01:00.000Z",
+          agentName: "System",
+          action: "Received from : hello while asleep",
+          detail: "hello while asleep",
+          messageId: "run-hold",
+        },
+      ],
+      "Commander",
+    )
+    expect(views.filter((v) => v.sender === "user")).toHaveLength(1)
+    expect(views[0]?.key).toBe("recv-1")
+    expect(views[0]?.status).toBeUndefined()
   })
 
   it("does not turn SYSTEM extract rows into agent chat bubbles", () => {
@@ -470,6 +533,120 @@ describe("ChatPanel - composer", () => {
     expect(screen.queryByText(/Failed to send/i)).toBeNull()
   })
 
+  it("202 held marks the optimistic bubble Held, not working or no_response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 202,
+      json: async () => ({ success: true, data: { runId: "run-hold", held: true, holdReason: "HIBERNATED" } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[]} orchestratorName="Dev Commander" />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "wake and do this" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText("wake and do this")).toBeTruthy()
+    expect(await screen.findByText("Held until the Claw is ready")).toBeTruthy()
+    expect(screen.queryByText(/is working/i)).toBeNull()
+    expect(screen.queryByText("No response")).toBeNull()
+    expect(screen.queryByText("Accepted")).toBeNull()
+  })
+
+  it("persisted held SYSTEM row renders Held after refresh (no vanish)", () => {
+    render(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="DEPLOYING"
+        rows={[
+          {
+            id: "hold-1",
+            actionType: "SYSTEM",
+            timestamp: "2026-09-01T08:00:00.000Z",
+            agentName: "System",
+            action: "Chat send held",
+            detail: "still here after reload",
+            eventKind: "chat_send_held",
+            runId: "run-hold",
+            holdStatus: "held",
+          },
+        ]}
+        orchestratorName="Dev Commander"
+      />,
+    )
+    expect(screen.getByText("still here after reload")).toBeTruthy()
+    expect(screen.getByText("Held until the Claw is ready")).toBeTruthy()
+  })
+
+  it("renders Accepted / Working / Done from gateway events", () => {
+    const accepted: ChatRow[] = [
+      {
+        id: "u1",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "System",
+        action: "Received from : go",
+        detail: "go",
+        messageId: "run-p",
+        channelId: "webchat",
+      },
+    ]
+    const { rerender } = render(
+      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={accepted} orchestratorName="Dev Commander" />,
+    )
+    expect(screen.getByText("Accepted")).toBeTruthy()
+
+    rerender(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="RUNNING"
+        rows={[
+          ...accepted,
+          {
+            id: "t1",
+            actionType: "TASK_START",
+            timestamp: "2026-09-01T08:00:01.000Z",
+            agentName: "Dev Commander",
+            action: "Task started",
+            runId: "run-p",
+          },
+        ]}
+        orchestratorName="Dev Commander"
+      />,
+    )
+    expect(screen.getByText("Working")).toBeTruthy()
+    expect(screen.queryByText("Accepted")).toBeNull()
+
+    rerender(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="RUNNING"
+        rows={[
+          ...accepted,
+          {
+            id: "t1",
+            actionType: "TASK_START",
+            timestamp: "2026-09-01T08:00:01.000Z",
+            agentName: "Dev Commander",
+            action: "Task started",
+            runId: "run-p",
+          },
+          {
+            id: "a1",
+            actionType: "MESSAGE_SENT",
+            timestamp: "2026-09-01T08:00:05.000Z",
+            agentName: "Dev Commander",
+            action: "Replied: done",
+            detail: "all set",
+            runId: "run-p",
+            channelId: "webchat",
+          },
+        ]}
+        orchestratorName="Dev Commander"
+      />,
+    )
+    expect(screen.getByText("Done")).toBeTruthy()
+    expect(screen.getByText("all set")).toBeTruthy()
+  })
+
   it("renders a streamed agent reply from rows", () => {
     const rows: ChatRow[] = [
       {
@@ -674,18 +851,17 @@ describe("ChatPanel - per-state disabled copy + inline Wake (9/C)", () => {
   // generic 9/B line), composer disabled. Only HIBERNATED offers the inline
   // Wake CTA; WAKING/DEPLOYING self-resolve and PAUSED is unreachable.
   // MUTATION: revert to the single generic line → the specific-copy asserts fail.
-  it.each<[string, RegExp, boolean]>([
-    ["HIBERNATED", /asleep/i, true],
-    ["WAKING", /unlocks automatically/i, false],
-    ["DEPLOYING", /when it's live/i, false],
-    ["PAUSED", /chat is paused/i, false],
-  ])("status %s → its own copy, composer disabled, Wake button = %s", (status, copyRe, expectWake) => {
+  it.each<[string, RegExp, boolean, boolean]>([
+    ["HIBERNATED", /held until the Claw is ready/i, true, false],
+    ["WAKING", /held until the Claw is ready/i, false, false],
+    ["DEPLOYING", /held until the Claw is ready/i, false, false],
+    ["PAUSED", /chat is paused/i, false, true],
+  ])("status %s → hold/disabled copy, Wake = %s, composer disabled = %s", (status, copyRe, expectWake, expectDisabled) => {
     render(
       <ChatPanel workspaceId="ws-1" status={status} rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
     )
-    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(true)
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(expectDisabled)
     expect(screen.getByText(copyRe)).toBeTruthy()
-    // The generic 9/B fallback must NOT appear for a mapped state.
     expect(screen.queryByText(/Chat is unavailable while your Claw is/i)).toBeNull()
     const wake = screen.queryByRole("button", { name: "Wake" })
     if (expectWake) expect(wake).toBeTruthy()
@@ -706,7 +882,7 @@ describe("ChatPanel - per-state disabled copy + inline Wake (9/C)", () => {
     const { rerender } = render(
       <ChatPanel workspaceId="ws-1" status="WAKING" rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
     )
-    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(true)
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(false)
 
     rerender(
       <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
@@ -717,7 +893,7 @@ describe("ChatPanel - per-state disabled copy + inline Wake (9/C)", () => {
   it("omits the Wake button when no onWake is provided (graceful), still shows the copy", () => {
     render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[]} orchestratorName="Dev Commander" />)
     expect(screen.queryByRole("button", { name: "Wake" })).toBeNull()
-    expect(screen.getByText(/asleep/i)).toBeTruthy()
+    expect(screen.getByText(/held until the Claw is ready/i)).toBeTruthy()
   })
 
   it("falls back to the generic line for an unmapped non-sendable status", () => {
@@ -880,7 +1056,7 @@ describe("computeTurnStatuses - per-runId, time-bounded pending (working-indicat
   const userView = (
     runId: string | null,
     sortTs: number,
-    status?: "sending" | "sent" | "failed",
+    status?: "sending" | "sent" | "failed" | "held",
   ): ChatMessageView => ({
     key: "u-" + runId, sender: "user", senderName: "You", sortTs, detail: "", action: "", status, runId,
   })
@@ -955,14 +1131,74 @@ describe("computeTurnStatuses - per-runId, time-bounded pending (working-indicat
     expect(computeTurnStatuses(views, T + PENDING_TURN_TIMEOUT_MS + 1).get("rC")).toBe("no_response")
   })
 
-  it("does not track pre-202 (sending), failed, or keyless user turns", () => {
+  it("does not track pre-202 (sending), failed, held, or keyless user turns", () => {
     expect(computeTurnStatuses([userView("rD", within, "sending")], T).size).toBe(0)
     expect(computeTurnStatuses([userView("rE", within, "failed")], T).size).toBe(0)
+    expect(computeTurnStatuses([userView("rH", within, "held")], T).size).toBe(0)
     expect(computeTurnStatuses([userView(null, within, "sent")], T).size).toBe(0)
   })
 
   it("streamed MESSAGE_RECEIVED (status undefined) counts as a started turn", () => {
     expect(computeTurnStatuses([userView("rF", within, undefined)], T).get("rF")).toBe("pending")
+  })
+})
+
+describe("computeTurnPhases - accepted → working → done", () => {
+  const user = (runId: string, status?: ChatMessageView["status"]): ChatMessageView => ({
+    key: "u-" + runId,
+    sender: "user",
+    senderName: "You",
+    sortTs: 1,
+    detail: "hi",
+    action: "hi",
+    status,
+    runId,
+  })
+  const agent = (runId: string): ChatMessageView => ({
+    key: "a-" + runId,
+    sender: "agent",
+    senderName: "X",
+    sortTs: 2,
+    detail: "ok",
+    action: "ok",
+    runId,
+  })
+  const startRow = (runId: string): ChatRow => ({
+    id: "t-" + runId,
+    actionType: "TASK_START",
+    timestamp: "2026-09-01T08:00:00.000Z",
+    agentName: "Dev Commander",
+    action: "Task started",
+    runId,
+  })
+
+  it("accepted after 202 with no TASK_START and no reply", () => {
+    const phases = computeTurnPhases([user("r1", "sent")], [])
+    expect(phases.get("r1")).toBe("accepted")
+  })
+
+  it("working once TASK_START arrives for the same runId", () => {
+    const phases = computeTurnPhases([user("r1", "sent")], [startRow("r1")])
+    expect(phases.get("r1")).toBe("working")
+  })
+
+  it("done when an agent reply with the same runId arrives", () => {
+    const phases = computeTurnPhases(
+      [user("r1", "sent"), agent("r1")],
+      [startRow("r1")],
+    )
+    expect(phases.get("r1")).toBe("done")
+  })
+
+  it("TASK_START for a different runId does not mark this turn working", () => {
+    const phases = computeTurnPhases([user("r1", "sent")], [startRow("rOTHER")])
+    expect(phases.get("r1")).toBe("accepted")
+  })
+
+  it("skips held / sending / failed turns so they never fake working or no_response", () => {
+    expect(computeTurnPhases([user("rH", "held")], [startRow("rH")]).size).toBe(0)
+    expect(computeTurnPhases([user("rS", "sending")], []).size).toBe(0)
+    expect(computeTurnPhases([user("rF", "failed")], []).size).toBe(0)
   })
 })
 
@@ -1203,7 +1439,7 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(BASE)
-      render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
+      render(<ChatPanel workspaceId="ws-1" status="PAUSED" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
       expect(screen.queryByText(/is working/i)).toBeNull()
     } finally {
       cleanup()

@@ -110,6 +110,10 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
                 actionType: "SYSTEM",
                 metadata: { contains: '"eventKind":"deliverable_extracted"' },
               },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"chat_send_held"' },
+              },
             ],
           },
         ],
@@ -163,6 +167,10 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
                 actionType: "SYSTEM",
                 metadata: { contains: '"eventKind":"deliverable_extracted"' },
               },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"chat_send_held"' },
+              },
             ],
           },
           {
@@ -176,6 +184,28 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
       take: 3,
     })
+  })
+
+  it("returns persisted chat_send_held SYSTEM rows so a refresh does not vanish the send", async () => {
+    const held = row({
+      id: "hold-1",
+      action: "Chat send held",
+      actionType: "SYSTEM",
+      detail: "hello while asleep",
+      metadata: JSON.stringify({
+        eventKind: "chat_send_held",
+        holdStatus: "held",
+        holdReason: "HIBERNATED",
+        runId: "run-hold",
+      }),
+    })
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([held] as never)
+    const { status, data } = await parseResponse(await get())
+    expect(status).toBe(200)
+    expect(data.data.rows).toEqual([formatActivityLog(held)])
+    expect(data.data.rows[0].eventKind).toBe("chat_send_held")
+    expect(data.data.rows[0].holdStatus).toBe("held")
+    expect(data.data.rows[0].runId).toBe("run-hold")
   })
 
   it("400 on an invalid before cursor", async () => {

@@ -39,6 +39,10 @@ const mockNudgeDeliverableSyncNow = vi.fn().mockResolvedValue(undefined)
 vi.mock("@/lib/artifacts/nudge-sync-now", () => ({
   nudgeDeliverableSyncNow: (...args: unknown[]) => mockNudgeDeliverableSyncNow(...args),
 }))
+const mockApprovalCommand = vi.fn().mockResolvedValue({ applied: false })
+vi.mock("@/lib/artifacts/approval-command", () => ({
+  applyInboundApprovalCommand: (...args: unknown[]) => mockApprovalCommand(...args),
+}))
 
 import { POST, __internal } from "@/app/api/internal/activity/[workspaceId]/route";
 
@@ -89,6 +93,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
     prevSecret = process.env.ACTIVITY_PIPELINE_SECRET;
     process.env.ACTIVITY_PIPELINE_SECRET = SECRET;
     mockNudgeDeliverableSyncNow.mockClear();
+    mockApprovalCommand.mockClear();
   });
 
   afterEach(() => {
@@ -942,6 +947,62 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       );
       expect(mockNudgeDeliverableSyncNow).toHaveBeenCalledTimes(1);
       expect(mockNudgeDeliverableSyncNow).toHaveBeenCalledWith(WORKSPACE_ID);
+    });
+  });
+
+  describe("inbound APPROVE/REJECT commands", () => {
+    it("MESSAGE_RECEIVED passes detail text to applyInboundApprovalCommand", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_RECEIVED",
+              action: "Received from telegram: APPROVE",
+              detail: "APPROVE",
+              channelId: "telegram:1227037949",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      expect(mockApprovalCommand).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE_ID,
+        text: "APPROVE",
+        respondedBy: "telegram:1227037949",
+      });
+    });
+
+    it("falls back to action when detail is empty", async () => {
+      defaultMocks();
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_RECEIVED",
+              action: "REJECT",
+              detail: null,
+              channelId: "webchat",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(mockApprovalCommand).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE_ID,
+        text: "REJECT",
+        respondedBy: "webchat",
+      });
+    });
+
+    it("does not call applyInboundApprovalCommand on MESSAGE_SENT", async () => {
+      defaultMocks();
+      await callRoute(
+        { events: [makeEvent({ type: "MESSAGE_SENT", detail: "APPROVE" })] },
+        { secret: SECRET },
+      );
+      expect(mockApprovalCommand).not.toHaveBeenCalled();
     });
   });
 });

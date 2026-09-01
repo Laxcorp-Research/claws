@@ -5,6 +5,7 @@ import { apiError, apiSuccess, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
 import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
+import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 
 export const dynamic = "force-dynamic"
 
@@ -12,6 +13,7 @@ const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
 const WEBCHAT_MARKER = '"channelId":"webchat"'
 const DELIVERABLE_MARKER = `"eventKind":"${DELIVERABLE_EXTRACT_EVENT_KIND}"`
+const HELD_SEND_MARKER = `"eventKind":"${CHAT_SEND_HELD_EVENT_KIND}"`
 
 interface HistoryCursor {
   timestamp: string
@@ -77,6 +79,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             {
               actionType: "SYSTEM",
               metadata: { contains: DELIVERABLE_MARKER },
+            },
+            {
+              actionType: "SYSTEM",
+              metadata: { contains: HELD_SEND_MARKER },
             },
           ],
         },

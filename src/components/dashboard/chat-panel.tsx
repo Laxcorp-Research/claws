@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ChatMessage, type ChatBubbleStatus } from "./chat-message"
+import { ChatMessage, type ChatBubbleStatus, type ChatTurnPhase } from "./chat-message"
 import { DocumentCard } from "./document-card"
 import { DELIVERABLE_EXTRACT_EVENT_KIND, titleFromDeliverablePath } from "@/lib/artifacts/deliverable-kind"
 import type { DeliverableKind } from "@/lib/artifacts/deliverable-kind"
+import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 import { cn } from "@/lib/utils"
 import {
   isProtocolOnlyChatBody,
@@ -22,7 +23,20 @@ const MESSAGE_MAX_CHARS = 4000
 // path; ERROR is attempted as a recovery path (the send endpoint maps the
 // failure honestly). Every other status disables the composer here and the
 // endpoint would 409/502 anyway.
-const SENDABLE_STATUSES: ReadonlySet<string> = new Set(["RUNNING", "ERROR"])
+const SENDABLE_STATUSES: ReadonlySet<string> = new Set([
+  "RUNNING",
+  "ERROR",
+  "HIBERNATED",
+  "WAKING",
+  "DEPLOYING",
+  "PROVISIONING_QUEUED",
+])
+const HOLDABLE_STATUSES: ReadonlySet<string> = new Set([
+  "HIBERNATED",
+  "WAKING",
+  "DEPLOYING",
+  "PROVISIONING_QUEUED",
+])
 
 // PR-9/C: rich per-state UX. Two surfaces resolve to ONE of these reasons so
 // they show the SAME words: (1) the disabled composer (pre-send, from the
@@ -135,6 +149,7 @@ export interface ChatRow {
   preview?: string | null
   deliverableKind?: DeliverableKind | null
   humanRequestId?: string | null
+  holdStatus?: string | null
 }
 
 export interface ChatDocumentView {
@@ -209,7 +224,7 @@ export function reconcileChatMessages(
   rows: ChatRow[],
   orchestratorName: string,
 ): ChatMessageView[] {
-  const reconciledRunIds = new Set(
+  const receivedRunIds = new Set(
     rows
       .filter(
         (r) =>
@@ -219,12 +234,23 @@ export function reconcileChatMessages(
       )
       .map((r) => r.messageId as string),
   )
+  const heldRunIds = new Set(
+    rows
+      .filter(
+        (r) =>
+          r.actionType === "SYSTEM" &&
+          r.eventKind === CHAT_SEND_HELD_EVENT_KIND &&
+          typeof r.runId === "string" &&
+          r.runId.length > 0,
+      )
+      .map((r) => r.runId as string),
+  )
 
   const views: ChatMessageView[] = []
 
   for (const o of optimistic) {
-    // Reconciled → the streamed MESSAGE_RECEIVED below renders instead.
-    if (o.runId && reconciledRunIds.has(o.runId)) continue
+    // Reconciled → the streamed MESSAGE_RECEIVED or persisted hold row renders.
+    if (o.runId && (receivedRunIds.has(o.runId) || heldRunIds.has(o.runId))) continue
     views.push({
       key: o.tempId,
       sender: "user",
@@ -239,6 +265,22 @@ export function reconcileChatMessages(
   }
 
   for (const r of rows) {
+    if (r.actionType === "SYSTEM" && r.eventKind === CHAT_SEND_HELD_EVENT_KIND) {
+      const heldRunId = typeof r.runId === "string" && r.runId.length > 0 ? r.runId : null
+      if (heldRunId && receivedRunIds.has(heldRunId)) continue
+      const parsed = Date.parse(r.timestamp)
+      views.push({
+        key: r.id,
+        sender: "user",
+        senderName: "You",
+        sortTs: Number.isNaN(parsed) ? 0 : parsed,
+        detail: r.detail != null ? stripPlatformSentinels(r.detail) : null,
+        action: stripPlatformSentinels(r.detail && r.detail.length > 0 ? r.detail : r.action),
+        status: r.holdStatus === "flushed" ? "sent" : "held",
+        runId: heldRunId,
+      })
+      continue
+    }
     if (r.actionType !== "MESSAGE_RECEIVED" && r.actionType !== "MESSAGE_SENT") continue
     const isUser = r.actionType === "MESSAGE_RECEIVED"
     if (!isUser && isNoReplyText(chatRowBody(r))) continue
@@ -347,7 +389,7 @@ export function computeTurnStatuses(
     if (v.sender !== "user") continue
     // No run started yet (pre-202) or the send failed (no run will start) →
     // not a pending turn; the bubble's own "Sending…"/"Failed to send" covers it.
-    if (v.status === "sending" || v.status === "failed") continue
+    if (v.status === "sending" || v.status === "failed" || v.status === "held") continue
     // Need the turn key to correlate a reply; a keyless user row can't be paired.
     if (typeof v.runId !== "string" || v.runId.length === 0) continue
     // The reply already arrived → resolved, nothing to show.
@@ -359,6 +401,33 @@ export function computeTurnStatuses(
 
 // The agent owes a reply iff at least one turn is genuinely pending (unreplied
 // AND within the timeout). Drives the working indicator.
+export function computeTurnPhases(
+  views: ChatMessageView[],
+  rows: ChatRow[],
+): Map<string, ChatTurnPhase> {
+  const workingIds = new Set<string>()
+  for (const row of rows) {
+    if (row.actionType === "TASK_START" && typeof row.runId === "string" && row.runId.length > 0) {
+      workingIds.add(row.runId)
+    }
+  }
+  const replied = new Set<string>()
+  for (const v of views) {
+    if (v.sender === "agent" && typeof v.runId === "string" && v.runId.length > 0) {
+      replied.add(v.runId)
+    }
+  }
+  const phases = new Map<string, ChatTurnPhase>()
+  for (const v of views) {
+    if (v.sender !== "user" || typeof v.runId !== "string" || v.runId.length === 0) continue
+    if (v.status === "held" || v.status === "sending" || v.status === "failed") continue
+    if (replied.has(v.runId)) phases.set(v.runId, "done")
+    else if (workingIds.has(v.runId)) phases.set(v.runId, "working")
+    else phases.set(v.runId, "accepted")
+  }
+  return phases
+}
+
 export function hasPendingTurn(statuses: Map<string, TurnState>): boolean {
   for (const s of statuses.values()) {
     if (s === "pending") return true
@@ -541,14 +610,15 @@ export function ChatPanel({
   const [showJump, setShowJump] = useState(false)
 
   const sendable = SENDABLE_STATUSES.has(status)
+  const holdable = HOLDABLE_STATUSES.has(status)
 
   // PR-9/C: tailored disabled-composer copy + (HIBERNATED only) an inline Wake
-  // CTA. An unmapped non-sendable status falls back to the legacy templated note
-  // rather than the "Failed to send" wording, which would be wrong here.
+  // CTA. Holdable boot/sleep states stay sendable; the note is honest hold copy.
   const unavailableReason = statusToReason(status)
   const unavailableCopy = chatUnavailableCopy(unavailableReason)
-  const composerNote =
-    unavailableReason === "unknown"
+  const composerNote = holdable
+    ? "Sends are held until the Claw is ready."
+    : unavailableReason === "unknown"
       ? `Chat is unavailable while your Claw is ${status.toLowerCase()}.`
       : unavailableCopy.message
   const showWake = unavailableCopy.cta === "wake" && !!onWake
@@ -582,6 +652,7 @@ export function ChatPanel({
 
   // Per-turn pending state: runId-keyed + time-bounded (see computeTurnStatuses).
   const turnStatuses = useMemo(() => computeTurnStatuses(messages, nowTick), [messages, nowTick])
+  const turnPhases = useMemo(() => computeTurnPhases(messages, persistedRows), [messages, persistedRows])
 
   // GAP #2 (fixed): the agent is "working" only while a turn is GENUINELY
   // pending - unreplied AND within PENDING_TURN_TIMEOUT_MS. Gated to a sendable
@@ -701,8 +772,14 @@ export function ChatPanel({
           // Store runId so the optimistic bubble reconciles against the streamed
           // MESSAGE_RECEIVED (messageId === runId). Clear any prior failureCode
           // (a successful Retry).
-          const json = (await res.json().catch(() => null)) as { data?: { runId?: string } } | null
-          mark({ status: "sent", runId: json?.data?.runId, failureCode: undefined })
+          const json = (await res.json().catch(() => null)) as {
+            data?: { runId?: string; held?: boolean }
+          } | null
+          mark({
+            status: json?.data?.held ? "held" : "sent",
+            runId: json?.data?.runId,
+            failureCode: undefined,
+          })
         } else {
           // 409 (hibernated/stopped/transitioning) / 502 (gateway) / 429 (rate)
           // / 4xx - mark failed (NEVER throw) and capture error.code so the
@@ -900,6 +977,7 @@ export function ChatPanel({
                   detail={m.detail}
                   action={m.action}
                   status={m.status}
+                  turnPhase={m.sender === "user" && m.runId ? turnPhases.get(m.runId) ?? null : null}
                   noResponse={noResponse}
                   failureMessage={failure?.message ?? null}
                   onRetry={
@@ -919,7 +997,7 @@ export function ChatPanel({
       </div>
 
       <div className="shrink-0 border-t border-[var(--bd)] p-3.5">
-        {!sendable && (
+        {(!sendable || holdable) && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] text-[var(--tx3)]">{composerNote}</p>
             {showWake && (
