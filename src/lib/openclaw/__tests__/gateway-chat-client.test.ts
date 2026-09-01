@@ -217,9 +217,9 @@ describe("gateway-chat-client", () => {
     })
     // Connect-send-DISCONNECT: the socket that carried the send is closed.
     expect(gw.sockets[gw.sockets.length - 1].closedWith).toBe(1000)
-    expect(CHAT_SEND_CLIENT_INFO).toMatchObject({ id: "webchat-ui", mode: "webchat" })
-    expect(CHAT_SEND_CLIENT_INFO.id).not.toBe("gateway-client")
-    expect(CHAT_SEND_CLIENT_INFO.mode).not.toBe("backend")
+    expect(CHAT_SEND_CLIENT_INFO).toMatchObject({ id: "gateway-client", mode: "backend" })
+    expect(CHAT_SEND_CLIENT_INFO.id).not.toBe("webchat-ui")
+    expect(CHAT_SEND_CLIENT_INFO.mode).not.toBe("webchat")
   })
 
   it("lazy pairing path: NOT_PAIRED → approve(requestId from details) → reconnect once → ack", async () => {
