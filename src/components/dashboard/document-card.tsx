@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
 import { Textarea } from "@/components/ui/textarea"
 import { MarkdownBody } from "@/components/dashboard/chat-message"
+import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { cn } from "@/lib/utils"
@@ -131,12 +132,15 @@ export function DocumentCard({
       >
         <div className="flex items-start justify-between gap-[10px]">
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-[var(--tx)]">{title}</p>
+            <TruncatedText as="p" className="text-[13px] font-semibold text-[var(--tx)]">
+              {title}
+            </TruncatedText>
             <p className="mt-[3px] text-[10px] text-[var(--tx3)]">
               {timestamp}
               {decision !== "NONE" ? ` · ${decision === "APPROVED" ? "Approved" : "Rejected"}` : ""}
             </p>
             {preview && (
+              // truncate-allowlist: 3-line card preview; TruncatedText is single-line only
               <p className="mt-[6px] line-clamp-3 text-[12px] leading-snug text-[var(--tx2)]">{preview}</p>
             )}
           </div>
