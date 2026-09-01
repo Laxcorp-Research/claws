@@ -3,9 +3,21 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { parseRuntimeStateGzip } from "@/lib/openclaw/snapshot-conversations"
 import type { FileVersionTrigger } from "@/generated/prisma/client"
+import {
+  DELIVERABLE_EXTRACT_EVENT_KIND,
+  DELIVERABLE_PATH_PREFIX,
+  deliverableKind,
+  isDecisionDeliverable,
+  previewFromContent,
+  titleFromDeliverablePath,
+} from "@/lib/artifacts/deliverable-kind"
+import { createDeliverableApprovalFromFileVersion } from "@/lib/openclaw/pending-approval"
 
-export const DELIVERABLE_EXTRACT_EVENT_KIND = "deliverable_extracted"
-export const DELIVERABLE_PATH_PREFIX = "shared/deliverables/"
+export {
+  DELIVERABLE_EXTRACT_EVENT_KIND,
+  DELIVERABLE_PATH_PREFIX,
+  titleFromDeliverablePath,
+} from "@/lib/artifacts/deliverable-kind"
 export const DELIVERABLE_MAX_BYTES = 256 * 1024
 export const DELIVERABLE_TEXT_EXT = new Set([".md", ".txt"])
 
@@ -33,11 +45,6 @@ export function isDeliverableExtractPath(relativePath: string): boolean {
   if (dot < 1) return false
   const ext = base.slice(dot).toLowerCase()
   return DELIVERABLE_TEXT_EXT.has(ext)
-}
-
-export function titleFromDeliverablePath(logicalPath: string): string {
-  const base = logicalPath.replace(/\\/g, "/").split("/").pop() ?? logicalPath
-  return base.replace(/\.(md|txt)$/i, "")
 }
 
 type SeedFile = { path?: unknown; content?: unknown }
@@ -141,10 +148,31 @@ export async function extractDeliverablesFromGzip(args: {
       },
     })
 
+    const kind = deliverableKind(logicalPath)
+    const title = titleFromDeliverablePath(logicalPath)
+    let humanRequestId: string | null = null
+    if (trigger === "MISSION" && isDecisionDeliverable(logicalPath)) {
+      try {
+        const approval = await createDeliverableApprovalFromFileVersion({
+          workspaceId: args.workspaceId,
+          fileVersionId: created.id,
+          logicalPath,
+          title,
+        })
+        humanRequestId = approval.id ?? null
+      } catch (err) {
+        log.warn("deliverable extract: approval row failed (continuing)", {
+          workspaceId: args.workspaceId,
+          logicalPath,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
     await prisma.activityLog.create({
       data: {
         workspaceId: args.workspaceId,
-        action: `Deliverable extracted: ${titleFromDeliverablePath(logicalPath)}`,
+        action: `Deliverable extracted: ${title}`,
         actionType: "SYSTEM",
         detail: logicalPath,
         metadata: JSON.stringify({
@@ -154,6 +182,9 @@ export async function extractDeliverablesFromGzip(args: {
           version: nextVersion,
           contentHash,
           trigger,
+          preview: previewFromContent(content),
+          deliverableKind: kind,
+          humanRequestId,
         }),
       },
     })

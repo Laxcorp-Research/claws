@@ -4,9 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 import { buildRuntimeStateGzipFixture } from "@/lib/openclaw/snapshot-conversations"
 
+const mockCreateApproval = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
+vi.mock("@/lib/openclaw/pending-approval", () => ({
+  createDeliverableApprovalFromFileVersion: (...args: unknown[]) => mockCreateApproval(...args),
 }))
 
 import {
@@ -45,6 +49,8 @@ describe("extractDeliverablesFromGzip", () => {
       }),
     )
     ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "log-1" })
+    mockCreateApproval.mockReset()
+    mockCreateApproval.mockResolvedValue({ created: true, id: "hr-1" })
   })
 
   it("inserts FileVersion + ActivityLog for a new deliverable", async () => {
@@ -72,6 +78,21 @@ describe("extractDeliverablesFromGzip", () => {
         metadata: expect.stringContaining(DELIVERABLE_EXTRACT_EVENT_KIND),
       }),
     })
+    expect(mockCreateApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        title: "x-content-cycle",
+      }),
+    )
+  })
+
+  it("does not create a HUMAN_REQUEST for report-type recap files", async () => {
+    const gzip = buildRuntimeStateGzipFixture({
+      "shared/deliverables/x-daily-recap.md": "# Recap\ndone",
+    })
+    await extractDeliverablesFromGzip({ workspaceId: "ws-1", gzip })
+    expect(mockCreateApproval).not.toHaveBeenCalled()
   })
 
   it("marks first extract SEED when bytes match Workspace.seedFiles", async () => {
@@ -82,6 +103,7 @@ describe("extractDeliverablesFromGzip", () => {
     expect(prismaMock.fileVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ trigger: "SEED", version: 1 }),
     })
+    expect(mockCreateApproval).not.toHaveBeenCalled()
   })
 
   it("does not bump when contentHash matches latest", async () => {
@@ -132,5 +154,14 @@ describe("extractDeliverablesFromGzip", () => {
     )
     expect(src).toContain("nudgeDeliverableSyncNow")
     expect(src).toMatch(/TASK_COMPLETE[\s\S]{0,200}nudgeDeliverableSyncNow/)
+  })
+
+  it("MUTATION: activity ingest must not create approvals from outbound chat regex", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/internal/activity/[workspaceId]/route.ts"),
+      "utf8",
+    )
+    expect(src).not.toContain("createPendingApprovalFromOutbound")
+    expect(src).not.toContain("looksLikeApprovalRequest")
   })
 })

@@ -24,6 +24,7 @@ import {
   type MissionLogEntry,
 } from "@/components/dashboard/mission-log-utils"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
+import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-error"
@@ -127,6 +128,12 @@ interface LogEntry {
   channelId?: string | null
   from?: string | null
   runId?: string | null
+  eventKind?: string | null
+  fileVersionId?: string | null
+  logicalPath?: string | null
+  preview?: string | null
+  deliverableKind?: "decision" | "report" | null
+  humanRequestId?: string | null
 }
 
 interface PendingApprovalItem {
@@ -1374,8 +1381,9 @@ export default function DashboardPage() {
   const chatRows: ChatRow[] = logs
     .filter(
       (l) =>
-        (l.actionType === "MESSAGE_RECEIVED" || l.actionType === "MESSAGE_SENT") &&
-        l.channelId === "webchat",
+        (l.actionType === "SYSTEM" && l.eventKind === DELIVERABLE_EXTRACT_EVENT_KIND) ||
+        ((l.actionType === "MESSAGE_RECEIVED" || l.actionType === "MESSAGE_SENT") &&
+          l.channelId === "webchat"),
     )
     .map((l) => ({
       id: l.id,
@@ -1386,6 +1394,12 @@ export default function DashboardPage() {
       detail: l.detail ?? null,
       messageId: l.messageId ?? null,
       runId: l.runId ?? null,
+      eventKind: l.eventKind ?? null,
+      fileVersionId: l.fileVersionId ?? null,
+      logicalPath: l.logicalPath ?? null,
+      preview: l.preview ?? null,
+      deliverableKind: l.deliverableKind ?? null,
+      humanRequestId: l.humanRequestId ?? null,
     }))
   const agentsActive = agents.filter((a) => a.status !== "paused").length
   const alertStackItems = alerts.map((alert) => ({

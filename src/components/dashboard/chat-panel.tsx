@@ -4,6 +4,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage, type ChatBubbleStatus } from "./chat-message"
+import { DocumentCard } from "./document-card"
+import { DELIVERABLE_EXTRACT_EVENT_KIND, titleFromDeliverablePath } from "@/lib/artifacts/deliverable-kind"
+import type { DeliverableKind } from "@/lib/artifacts/deliverable-kind"
 import { cn } from "@/lib/utils"
 import {
   isProtocolOnlyChatBody,
@@ -126,6 +129,24 @@ export interface ChatRow {
   // 202 runId). Projected by formatLog so the working indicator can pair a
   // reply to its send per-turn.
   runId?: string | null
+  eventKind?: string | null
+  fileVersionId?: string | null
+  logicalPath?: string | null
+  preview?: string | null
+  deliverableKind?: DeliverableKind | null
+  humanRequestId?: string | null
+}
+
+export interface ChatDocumentView {
+  key: string
+  kind: "document"
+  sortTs: number
+  title: string
+  preview: string
+  fileVersionId: string
+  logicalPath: string
+  deliverableKind: DeliverableKind
+  humanRequestId: string | null
 }
 
 // A message the composer rendered optimistically. The send endpoint writes NO
@@ -218,6 +239,7 @@ export function reconcileChatMessages(
   }
 
   for (const r of rows) {
+    if (r.actionType !== "MESSAGE_RECEIVED" && r.actionType !== "MESSAGE_SENT") continue
     const isUser = r.actionType === "MESSAGE_RECEIVED"
     if (!isUser && isNoReplyText(chatRowBody(r))) continue
     const parsed = Date.parse(r.timestamp)
@@ -239,6 +261,27 @@ export function reconcileChatMessages(
   }
 
   views.sort((a, b) => a.sortTs - b.sortTs)
+  return views
+}
+
+export function documentViewsFromRows(rows: ChatRow[]): ChatDocumentView[] {
+  const views: ChatDocumentView[] = []
+  for (const r of rows) {
+    if (r.actionType !== "SYSTEM" || r.eventKind !== DELIVERABLE_EXTRACT_EVENT_KIND) continue
+    if (!r.fileVersionId || !r.logicalPath) continue
+    const parsed = Date.parse(r.timestamp)
+    views.push({
+      key: r.id,
+      kind: "document",
+      sortTs: Number.isNaN(parsed) ? 0 : parsed,
+      title: titleFromDeliverablePath(r.logicalPath),
+      preview: r.preview ?? "",
+      fileVersionId: r.fileVersionId,
+      logicalPath: r.logicalPath,
+      deliverableKind: r.deliverableKind ?? "report",
+      humanRequestId: r.humanRequestId ?? null,
+    })
+  }
   return views
 }
 
@@ -519,6 +562,18 @@ export function ChatPanel({
     () => reconcileChatMessages(optimistic, persistedRows, orchestratorName),
     [optimistic, persistedRows, orchestratorName],
   )
+  const documents = useMemo(() => documentViewsFromRows(persistedRows), [persistedRows])
+  const timeline = useMemo(() => {
+    const items: Array<
+      | { sortTs: number; kind: "message"; message: ChatMessageView }
+      | { sortTs: number; kind: "document"; document: ChatDocumentView }
+    > = [
+      ...messages.map((message) => ({ sortTs: message.sortTs, kind: "message" as const, message })),
+      ...documents.map((document) => ({ sortTs: document.sortTs, kind: "document" as const, document })),
+    ]
+    items.sort((a, b) => a.sortTs - b.sortTs)
+    return items
+  }, [messages, documents])
 
   // Re-eval clock for time-bounded pending. Advanced ONLY by the tick effect
   // below while a turn is pending - a quiet panel never touches it (no idle
@@ -584,7 +639,7 @@ export function ChatPanel({
     } else if (el) {
       setShowJump(true)
     }
-  }, [messages.length, working])
+  }, [messages.length, documents.length, working])
 
   useLayoutEffect(() => {
     const previous = prependScrollRef.current
@@ -592,7 +647,7 @@ export function ChatPanel({
     if (!previous || !el) return
     preservePrependedScrollPosition(el, previous)
     prependScrollRef.current = null
-  }, [messages.length])
+  }, [messages.length, documents.length])
 
   useLayoutEffect(() => {
     if (!fullHeight) {
@@ -794,26 +849,41 @@ export function ChatPanel({
             </Button>
           </div>
         )}
-        {messages.length === 0 && !working ? (
+        {timeline.length === 0 && !working ? (
           <p className="text-[11px] text-[var(--tx3)] py-6 text-center">
             {historyLoading ? "Loading messages..." : "No messages yet. Say hello to get started."}
           </p>
         ) : (
-          messages.map((m, index) => {
-            const day = formatDay(m.sortTs)
-            const previousDay = index > 0 ? formatDay(messages[index - 1].sortTs) : null
-            // A user turn whose runId aged out with no reply → quiet "No
-            // response" note (distinct from a send failure: the send succeeded).
+          timeline.map((item, index) => {
+            const day = formatDay(item.sortTs)
+            const previousDay = index > 0 ? formatDay(timeline[index - 1].sortTs) : null
+            if (item.kind === "document") {
+              const d = item.document
+              return (
+                <div key={d.key} className="contents">
+                  {day !== previousDay && (
+                    <div className="self-center rounded-full bg-[var(--bg2)] px-3 py-1 text-[10px] text-[var(--tx3)]">
+                      {day}
+                    </div>
+                  )}
+                  <DocumentCard
+                    workspaceId={workspaceId}
+                    fileVersionId={d.fileVersionId}
+                    title={d.title}
+                    preview={d.preview}
+                    logicalPath={d.logicalPath}
+                    deliverableKind={d.deliverableKind}
+                    humanRequestId={d.humanRequestId}
+                    timestamp={formatClock(d.sortTs)}
+                  />
+                </div>
+              )
+            }
+            const m = item.message
             const noResponse =
               m.sender === "user" &&
               typeof m.runId === "string" &&
               turnStatuses.get(m.runId) === "no_response"
-            // PR-9/C: a failed send shows the SAME tailored per-state copy as the
-            // disabled composer (keyed off the captured error.code) instead of a
-            // flat "Failed to send". The reason's `cta` drives the affordance -
-            // "wake" (send-time HIBERNATED, the mid-compose race) reuses the page's
-            // onWake; "retry" (transient) re-POSTs the same text. Symmetric to the
-            // pre-send composer so the two surfaces behave identically.
             const failure =
               m.status === "failed" ? chatUnavailableCopy(errorCodeToReason(m.failureCode)) : null
             return (

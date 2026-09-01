@@ -4,12 +4,14 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiError, apiSuccess, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
+import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 
 export const dynamic = "force-dynamic"
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
 const WEBCHAT_MARKER = '"channelId":"webchat"'
+const DELIVERABLE_MARKER = `"eventKind":"${DELIVERABLE_EXTRACT_EVENT_KIND}"`
 
 interface HistoryCursor {
   timestamp: string
@@ -65,16 +67,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const rows = await prisma.activityLog.findMany({
     where: {
       workspaceId: id,
-      actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
-      metadata: { contains: WEBCHAT_MARKER },
-      ...(cursor
-        ? {
-            OR: [
-              { timestamp: { lt: new Date(cursor.timestamp) } },
-              { timestamp: new Date(cursor.timestamp), id: { lt: cursor.id } },
-            ],
-          }
-        : {}),
+      AND: [
+        {
+          OR: [
+            {
+              actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
+              metadata: { contains: WEBCHAT_MARKER },
+            },
+            {
+              actionType: "SYSTEM",
+              metadata: { contains: DELIVERABLE_MARKER },
+            },
+          ],
+        },
+        ...(cursor
+          ? [
+              {
+                OR: [
+                  { timestamp: { lt: new Date(cursor.timestamp) } },
+                  { timestamp: new Date(cursor.timestamp), id: { lt: cursor.id } },
+                ],
+              },
+            ]
+          : []),
+      ],
     },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }],
     take: limit + 1,

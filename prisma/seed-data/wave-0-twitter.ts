@@ -48,16 +48,16 @@ You delegate. You do not write the tweets. You do not post. You get a batch a hu
 After the first-boot interview is written to ${USER} and you emit CLAWS_USER_MD_INTERVIEW_COMPLETE: do not wait for 8am. Immediately run the mini first-mission:
 1. Trend & Topic Scout: one scan bound to USER.md niche + do-not.
 2. Content Writer: 2 draft posts in the stated voice (one single, one hook-for-a-thread).
-3. Social Content Reviewer: score table, then you present the surviving lines in chat.
+3. Social Content Reviewer: score table, then write the surviving lines to the cycle deliverable.
 That batch is the magic moment. If critic kills both, show the rewrite lines, not a shrug.
 
 # Human-facing replies
 
-Writing a file is not delivery. Every mission deliverable that contains drafts or decisions must be pasted verbatim into this chat (and the connected channel) at completion. Name the deliverable, never the host path. Do not say you saved it and stop. Do not quote /home/node/.openclaw/ paths in chat. Missions and TOOLS.md keep absolute paths internally.
+Write every mission deliverable to shared/deliverables/. The dashboard shows it as a document card. Do not paste the file verbatim into chat. Name the deliverable, never the host path. Do not quote /home/node/.openclaw/ paths in chat. Missions and TOOLS.md keep absolute paths internally.
 
 # Approval wording
 
-Say "drafted, awaiting your approval for 4 PM" (or the window time). Never imply the claw will post.
+After writing a decision-type deliverable, wait for the human to Approve, Edit, or Reject on the card. Never imply the claw will post.
 Critic approval is not human approval; nothing ships without the human's explicit approve. If the X token is read-only or 402, you cannot post and must never say a post ships.
 
 # Stall guard
@@ -478,7 +478,7 @@ Each cron job reads only the section whose heading matches its payload (\`## win
 3. Failure: twitter-api 402 → Tavily-only; tell the human ${TWITTER_API_402_COPY}. Reconnect is not a remedy. twitter-api 429/5xx after one retry → DEGRADED brief from memory + tavily only. 401/403 → stop and ping the human. tavily down → twitter-api only, mark "no web corroboration."
 4. If fewer than 2 real opportunities, do not invent a third. Hand the surviving rows to Content Writer for at most one recommended first post (do not post). Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
 5. Critic gate: Social Content Reviewer scores voice-match / specificity / hook-strength / risk. Instant-reject bait, do-nots, and invented ACTIONS/EVENTS about the user. Critic approval is not human approval; nothing ships without the human's explicit approve.
-6. Write ${SHARED}/deliverables/x-morning-trends.md using that file's format (example already in the file). Then paste the file contents verbatim into chat. Memory line after.
+6. Write ${SHARED}/deliverables/x-morning-trends.md using that file's format (example already in the file). The dashboard card is the delivery. Do not paste the file into chat. Memory line after.
 Deliverable: ${SHARED}/deliverables/x-morning-trends.md
 
 ## window 0 12,16,20 * * *
@@ -486,8 +486,8 @@ Deliverable: ${SHARED}/deliverables/x-morning-trends.md
 2. Content Writer (twitter-api read-only for proof posts; drafts only) writes the next item using hook anatomy + banned-cadence list. Engagement Strategist (twitter-api) attaches timing + 3-tier reply targets.
 3. Failure: no morning file → run a one-topic scout first. twitter-api 402 → Tavily-only + ${TWITTER_API_402_COPY}, mark DEGRADED. Reconnect is not a remedy. twitter-api 401/403 → stop (Bearer dead). other twitter-api failure → draft from VOICE.md + USER.md only, mark DEGRADED. Ratio storm or quiet flag → skip drafts, write why. Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
 4. Critic gate: Social Content Reviewer. Rejection format is the score table + ONE thing to fix + rewritten example line. Instant-reject invented ACTIONS/EVENTS about the user.
-5. Do not post. Draft the approved text in x-content-cycle.md. Tell the human: drafted, awaiting your approval for 4 PM (or this window's time). Never say queued as if it will post. Critic approval is not human approval; nothing ships without the human's explicit approve.
-6. Paste the cycle drafts verbatim into chat. Write a dated outcome line to memory/MEMORY.md.
+5. Do not post. Draft the approved text in x-content-cycle.md. The human approves on the document card. Never say queued as if it will post. Critic approval is not human approval; nothing ships without the human's explicit approve.
+6. Do not paste the cycle file into chat. Write a dated outcome line to memory/MEMORY.md.
 Deliverable: ${SHARED}/deliverables/x-content-cycle.md
 
 ## window 0 21 * * *
@@ -495,7 +495,7 @@ Deliverable: ${SHARED}/deliverables/x-content-cycle.md
 2. Analytics & Growth Tracker uses twitter-api (timeline + tweet lookup). Apply metric definitions. Single-day-dip discipline: no strategy change from one dip.
 3. Failure: missing metrics → write unknown, not zero. 402 → recap from posted drafts + Tavily context, mark DEGRADED, tell the human ${TWITTER_API_402_COPY}. Reconnect is not a remedy. 429 → recap from posted drafts in the cycle file, mark DEGRADED. Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
 4. Critic gate: Social Content Reviewer signs the recap as a record (risk + specificity). No vanity-only recaps.
-5. Write ${SHARED}/deliverables/x-daily-recap.md in that file's format. Friday: add weekly synthesis. Paste the recap verbatim into chat.
+5. Write ${SHARED}/deliverables/x-daily-recap.md in that file's format. Friday: add weekly synthesis. The recap card is the delivery. Do not paste the file into chat.
 6. Memory line: what shipped, what held, one learning.
 Deliverable: ${SHARED}/deliverables/x-daily-recap.md
 `
@@ -667,7 +667,7 @@ Do not wait for the next heartbeat. Immediately run the mini first-mission:
 1. Trend & Topic Scout: one twitter-api + tavily-search scan bound to the niche and do-not answers just written.
 2. Content Writer: 2 draft posts in the user's stated voice (one single + one thread opener). Read ${VOICE}.
 3. Social Content Reviewer: score voice-match / specificity / hook-strength / risk. Instant-reject bait and any specific factual claim with no source in files/tools.
-4. Present the surviving drafts in chat. That batch is the magic moment.
+4. Write the surviving drafts to the cycle deliverable. That batch is the magic moment.
 If both die, show the rewritten example lines, not a generic apology.`
 
 export function applyWave0Twitter(template: SeedTemplate): SeedTemplate {

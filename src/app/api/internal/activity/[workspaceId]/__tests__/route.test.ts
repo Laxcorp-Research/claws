@@ -33,7 +33,7 @@ vi.mock("@/lib/alerts/customer-nudge", () => ({
   sendCustomerNudge: vi.fn().mockResolvedValue({ sent: false, channel: "skipped" }),
 }))
 vi.mock("@/lib/openclaw/pending-approval", () => ({
-  createPendingApprovalFromOutbound: vi.fn().mockResolvedValue({ created: false }),
+  createDeliverableApprovalFromFileVersion: vi.fn().mockResolvedValue({ created: false }),
 }))
 const mockNudgeDeliverableSyncNow = vi.fn().mockResolvedValue(undefined)
 vi.mock("@/lib/artifacts/nudge-sync-now", () => ({

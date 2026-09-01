@@ -14,7 +14,7 @@ import { getGatewayConnectionInfo } from "@/lib/openclaw/deployer"
 import { sendChatMessage } from "@/lib/openclaw/gateway-chat-client"
 
 export const MISSION_RESUME_PROMPT =
-  "Resume the interrupted mission window. Re-run the HEARTBEAT section that matches now. Paste every draft and decision verbatim into chat when done. Do not say you only saved a file."
+  "Resume the interrupted mission window. Re-run the HEARTBEAT section that matches now. Write drafts and decisions to shared/deliverables/. Do not paste files into chat."
 
 export const MISSION_RESUME_FAIL_NOTE =
   "I could not auto-resume the interrupted mission after two tries. Open chat and ask me to finish the last window."

@@ -96,23 +96,25 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain(TWITTER_API_402_COPY)
     expect(soul).toContain("mini first-mission")
     expect(soul).toContain("2 draft posts")
-    expect(soul).toContain("pasted verbatim")
-    expect(soul).toContain("drafted, awaiting your approval for 4 PM")
+    expect(soul).toContain("document card")
+    expect(soul).toContain("Approve, Edit, or Reject on the card")
     expect(soul).toContain("Critic approval is not human approval")
     expect(soul.toLowerCase()).not.toContain("queued for 4 pm")
     expect(soul.toLowerCase()).not.toContain("no user approval needed")
   })
 
-  it("reply prose pastes deliverables; missions keep host paths (MUTATION: file-only delivery → fail)", () => {
+  it("reply prose delivers via document cards; missions keep host paths (MUTATION: paste-verbatim revival → fail)", () => {
     const soul = agent("twitter-commander").soulMd
     const heartbeat = agent("twitter-commander").heartbeatMd
-    expect(soul).toContain("Writing a file is not delivery")
-    expect(soul).toContain("pasted verbatim")
+    expect(soul).toContain("document card")
+    expect(soul).toContain("Do not paste the file verbatim into chat")
+    expect(soul).not.toContain("Writing a file is not delivery")
     expect(soul).not.toContain("saved x-content-cycle to your deliverables")
-    expect(heartbeat).toContain("paste")
-    expect(heartbeat).toContain("verbatim")
+    expect(heartbeat).toContain("dashboard card is the delivery")
+    expect(heartbeat).toContain("Do not paste")
+    expect(heartbeat).not.toContain("verbatim")
     expect(heartbeat).toContain("/home/node/.openclaw/shared/deliverables/")
-    expect(heartbeat).toContain("drafted, awaiting your approval")
+    expect(heartbeat).not.toContain("drafted, awaiting your approval")
     expect(heartbeat.toLowerCase()).not.toContain("queue the approved")
   })
 

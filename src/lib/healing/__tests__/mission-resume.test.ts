@@ -9,7 +9,8 @@ import {
 describe("mission_interrupted resume copy", () => {
   it("auto-resume prompt pastes work; user note only after two fails", () => {
     expect(MISSION_RESUME_PROMPT).toContain("interrupted mission")
-    expect(MISSION_RESUME_PROMPT).toContain("verbatim")
+    expect(MISSION_RESUME_PROMPT).toContain("shared/deliverables")
+    expect(MISSION_RESUME_PROMPT).not.toContain("verbatim")
     expect(MISSION_RESUME_FAIL_NOTE).toContain("two tries")
   })
 

@@ -84,7 +84,17 @@ const SSE_EXCLUDED_FIELDS: ReadonlyArray<string> = [
 // Enumerated here so the structural assertion stays exact:
 //   formatLog output === (scalar fields − SSE_EXCLUDED_FIELDS) + SSE_DERIVED_FIELDS.
 // Adding a projection without listing it here (or vice versa) MUST fail (d).
-const SSE_DERIVED_FIELDS: ReadonlyArray<string> = ["messageId", "from", "runId"]
+const SSE_DERIVED_FIELDS: ReadonlyArray<string> = [
+  "messageId",
+  "from",
+  "runId",
+  "eventKind",
+  "fileVersionId",
+  "logicalPath",
+  "preview",
+  "deliverableKind",
+  "humanRequestId",
+]
 
 function getActivityLogScalarFields(): string[] {
   const schemaPath = join(process.cwd(), "prisma/schema.prisma")

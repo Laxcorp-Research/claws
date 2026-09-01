@@ -84,11 +84,11 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
         runId: null,
       }),
     })
-    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { where?: { metadata?: { contains?: string } } }) => {
-      // If this route regresses to the SSE init query shape (last 50 all-activity
-      // rows, no webchat metadata filter), the 50 non-chat rows win and the old
-      // webchat row is crowded out.
-      if (args.where?.metadata?.contains === '"channelId":"webchat"') {
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: {
+      where?: { AND?: Array<{ OR?: Array<{ metadata?: { contains?: string } }> }> }
+    }) => {
+      const or = args.where?.AND?.[0]?.OR ?? []
+      if (or.some((clause) => clause.metadata?.contains === '"channelId":"webchat"')) {
         return Promise.resolve([olderWebchat] as never)
       }
       return Promise.resolve(crowdedOutBySseInit as never)
@@ -99,8 +99,20 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
     expect(prismaMock.activityLog.findMany).toHaveBeenCalledWith({
       where: {
         workspaceId: "ws-1",
-        actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
-        metadata: { contains: '"channelId":"webchat"' },
+        AND: [
+          {
+            OR: [
+              {
+                actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
+                metadata: { contains: '"channelId":"webchat"' },
+              },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"deliverable_extracted"' },
+              },
+            ],
+          },
+        ],
       },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
       take: 26,
@@ -140,11 +152,25 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
     expect(prismaMock.activityLog.findMany).toHaveBeenLastCalledWith({
       where: {
         workspaceId: "ws-1",
-        actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
-        metadata: { contains: '"channelId":"webchat"' },
-        OR: [
-          { timestamp: { lt: new Date("2026-06-22T08:01:00.000Z") } },
-          { timestamp: new Date("2026-06-22T08:01:00.000Z"), id: { lt: "b" } },
+        AND: [
+          {
+            OR: [
+              {
+                actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
+                metadata: { contains: '"channelId":"webchat"' },
+              },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"deliverable_extracted"' },
+              },
+            ],
+          },
+          {
+            OR: [
+              { timestamp: { lt: new Date("2026-06-22T08:01:00.000Z") } },
+              { timestamp: new Date("2026-06-22T08:01:00.000Z"), id: { lt: "b" } },
+            ],
+          },
         ],
       },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
