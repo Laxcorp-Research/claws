@@ -9,6 +9,7 @@ import {
 } from "@/lib/openclaw/state-snapshot"
 import { ABSOLUTE_MAX_COMPRESSED_BYTES } from "@/lib/openclaw/state-sync-limits"
 import { assertMeteringSecret } from "@/lib/openclaw/state-sync-auth"
+import { extractDeliverablesFromGzip } from "@/lib/artifacts/extract-deliverables"
 
 export const maxDuration = 60
 
@@ -164,6 +165,14 @@ export function createFinalizeHandler(
         compressedBytes: stateBuffer.length,
         uncompressedBytes: uncompressedSize,
       })
+      try {
+        await extractDeliverablesFromGzip({ workspaceId, gzip: stateBuffer })
+      } catch (extractErr) {
+        log.warn("State finalize: deliverable extract failed (continuing)", {
+          workspaceId,
+          error: extractErr instanceof Error ? extractErr.message : String(extractErr),
+        })
+      }
     }
 
     // Post-persist cleanup: never fail the response if del() throws.

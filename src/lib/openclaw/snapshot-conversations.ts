@@ -89,7 +89,7 @@ export function readAllowedSessionFile(
   }
 }
 
-type RuntimeBundle = {
+export type RuntimeBundle = {
   files: Record<string, string>
   totalSize: number
 }
@@ -116,6 +116,11 @@ function parseBundleJson(raw: string): RuntimeBundle {
           }
         }, 0)
   return { files, totalSize }
+}
+
+export function parseRuntimeStateGzip(gzipBytes: Buffer): RuntimeBundle {
+  const raw = gunzipSync(gzipBytes).toString("utf8")
+  return parseBundleJson(raw)
 }
 
 const UUID_RE =

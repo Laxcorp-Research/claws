@@ -51,6 +51,7 @@ import { applyWorkspaceApiCost } from "@/lib/healing/spend-limit";
 import { NEAR_CAP_METADATA_KIND } from "@/lib/openclaw/near-cap-alert";
 import { createPendingApprovalFromOutbound } from "@/lib/openclaw/pending-approval";
 import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
+import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -555,6 +556,16 @@ export async function POST(
           log.error("activity: spend-limit apply failed", {
             workspaceId,
             error: spendErr instanceof Error ? spendErr.message : String(spendErr),
+          });
+        }
+      }
+      if (ev.type === "TASK_COMPLETE") {
+        try {
+          await nudgeDeliverableSyncNow(workspaceId);
+        } catch (nudgeErr) {
+          log.error("activity: deliverable sync-now nudge failed", {
+            workspaceId,
+            error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
           });
         }
       }
