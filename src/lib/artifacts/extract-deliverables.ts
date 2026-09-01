@@ -12,6 +12,7 @@ import {
   titleFromDeliverablePath,
 } from "@/lib/artifacts/deliverable-kind"
 import { createDeliverableApprovalFromFileVersion } from "@/lib/openclaw/pending-approval"
+import { notifyDeliverableExtracted } from "@/lib/artifacts/deliverable-notice"
 
 export {
   DELIVERABLE_EXTRACT_EVENT_KIND,
@@ -169,6 +170,7 @@ export async function extractDeliverablesFromGzip(args: {
       }
     }
 
+    const preview = previewFromContent(content)
     await prisma.activityLog.create({
       data: {
         workspaceId: args.workspaceId,
@@ -182,12 +184,28 @@ export async function extractDeliverablesFromGzip(args: {
           version: nextVersion,
           contentHash,
           trigger,
-          preview: previewFromContent(content),
+          preview,
           deliverableKind: kind,
           humanRequestId,
         }),
       },
     })
+    if (trigger === "MISSION") {
+      void notifyDeliverableExtracted({
+        workspaceId: args.workspaceId,
+        title,
+        logicalPath,
+        fileVersionId: created.id,
+        preview,
+        isDecision: isDecisionDeliverable(logicalPath),
+      }).catch((err) => {
+        log.warn("deliverable extract: channel notice failed (continuing)", {
+          workspaceId: args.workspaceId,
+          logicalPath,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      })
+    }
     summary.extracted += 1
   }
 

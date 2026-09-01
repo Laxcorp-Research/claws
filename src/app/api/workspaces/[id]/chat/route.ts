@@ -5,10 +5,10 @@
 // Fire-and-forget by design (Option B, docs/OPENCLAW_GATEWAY_PROTOCOL.md §7):
 // the gateway ack is acceptance-time (<500ms live), the Orchestrator's reply
 // lands in ActivityLog minutes later via the PR-9/A-container reporter
-// extension and reaches the dashboard over the existing SSE stream. THIS
-// ROUTE WRITES NO ActivityLog ROW - the container's message_received hook
-// writes the canonical MESSAGE_RECEIVED (metadata.messageId = the runId we
-// return), and a route-side write would double-log every message (V3).
+// extension and reaches the dashboard over the existing SSE stream. A live
+// RUNNING send writes NO MESSAGE_RECEIVED row (V3) - the container hook owns
+// that canonical row. Boot/sleep holds persist a SYSTEM chat_send_held ledger
+// so the text does not vanish before flush.
 //
 // Status gate (V2, amendment 2): Workspace.status is the primary gate -
 // matching every existing container-contact route (health-monitor, restart,
@@ -37,6 +37,9 @@ import {
   type SendChatResult,
 } from "@/lib/openclaw/gateway-chat-client"
 import { ledgerChatSendRejected } from "@/lib/openclaw/chat-send-reject"
+import { flushHeldChatSends, isHoldableChatStatus, ledgerChatSendHeld } from "@/lib/openclaw/chat-send-hold"
+import { wakeWorkspace } from "@/lib/hibernation/manager"
+import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import crypto from "node:crypto"
 
 // V1 p95 target is 5s; the function budget leaves headroom for the lazy
@@ -103,25 +106,60 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   })
 
   // ─── Status gate (V2, amendment 1 error codes) ─────────────────────────
+  // Boot/sleep: hold the send with a runId and honest held state. STOPPED
+  // still 409. DRAFT/PAUSED stay transitioning.
+  if (isHoldableChatStatus(workspace.status)) {
+    if (workspace.status === "HIBERNATED") {
+      const owner = await prisma.workspace.findUnique({
+        where: { id },
+        select: {
+          user: {
+            select: {
+              trialUsed: true,
+              trialStartedAt: true,
+              trialEndsAt: true,
+              hasActiveSubscription: true,
+            },
+          },
+        },
+      })
+      const entitlement = owner?.user
+        ? canWakeHibernatedWorkspace(owner.user)
+        : { allowed: false as const }
+      if (!entitlement.allowed) {
+        return apiError(
+          "SUBSCRIPTION_REQUIRED",
+          "Your 3-day trial has ended. Subscribe to wake this Claw.",
+          402,
+        )
+      }
+    }
+    const runId = crypto.randomUUID()
+    await ledgerChatSendHeld({
+      workspaceId: id,
+      message,
+      runId,
+      holdReason: workspace.status,
+    })
+    if (workspace.status === "HIBERNATED") {
+      void wakeWorkspace(id)
+        .then(() => flushHeldChatSends(id))
+        .catch((err) => {
+          log.error("chat hold: wake/flush failed", {
+            workspaceId: id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        })
+    }
+    return apiSuccess({ runId, held: true, holdReason: workspace.status }, 202)
+  }
   switch (workspace.status) {
     case "RUNNING":
     case "ERROR": // attempt; the client maps the failure honestly (V2)
       break
-    case "HIBERNATED":
-      return apiError("WORKSPACE_HIBERNATED", "Your Claw is asleep. Wake it to chat.", 409)
     case "STOPPED":
       return apiError("WORKSPACE_STOPPED", "Your Claw is stopped. Redeploy it to chat.", 409)
-    case "DEPLOYING":
-    case "WAKING":
-    case "PROVISIONING_QUEUED":
-      await ledgerChatSendRejected({
-        workspaceId: id,
-        reason: "workspace-transitioning",
-        detail: workspace.status,
-      })
-      return apiError("WORKSPACE_TRANSITIONING", "Your Claw is starting up - try again shortly.", 409)
     default:
-      // DRAFT / SETUP_INCOMPLETE / PAUSED (reserved, no writer)
       return apiError("WORKSPACE_TRANSITIONING", `Cannot chat while the workspace is ${workspace.status}.`, 409)
   }
 

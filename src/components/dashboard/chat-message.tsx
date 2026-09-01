@@ -7,7 +7,9 @@ import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
 import { stripPlatformSentinels } from "@/lib/chat/platform-sentinels"
 
-export type ChatBubbleStatus = "sending" | "sent" | "failed"
+export type ChatBubbleStatus = "sending" | "sent" | "failed" | "held"
+
+export type ChatTurnPhase = "accepted" | "working" | "done"
 
 // PR-9/B polish - SECURITY: agent reply text is UNTRUSTED (LLM/container output,
 // potentially prompt-injected). We render it with react-markdown v10 whose
@@ -77,6 +79,7 @@ interface ChatMessageProps {
   detail: string | null
   action: string
   status?: ChatBubbleStatus
+  turnPhase?: ChatTurnPhase | null
   // WORKING-INDICATOR FIX: the turn was sent (202) but no reply arrived within
   // the timeout. Renders a SUBTLE, muted "No response" note - deliberately
   // DISTINCT from the red "Failed to send": the message DID send; the agent just
@@ -99,7 +102,7 @@ interface ChatMessageProps {
   onWake?: () => void
 }
 
-export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
+export function ChatMessage({ sender, senderName, timestamp, detail, action, status, turnPhase, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
   // NEVER `detail` alone - see the guard note above. Empty-string detail also
   // falls through to action. Strip platform sentinels AFTER that pick so
@@ -129,6 +132,18 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
         {isUser ? <span className="whitespace-pre-wrap">{body}</span> : <MarkdownBody content={body} />}
       </div>
       {status === "sending" && <span className="text-[10px] text-[var(--tx3)]">Sending…</span>}
+      {status === "held" && (
+        <span className="text-[10px] text-[var(--tx3)]">Held until the Claw is ready</span>
+      )}
+      {status !== "held" && status !== "failed" && status !== "sending" && turnPhase === "accepted" && (
+        <span className="text-[10px] text-[var(--tx3)]">Accepted</span>
+      )}
+      {status !== "held" && turnPhase === "working" && (
+        <span className="text-[10px] text-[var(--tx3)]">Working</span>
+      )}
+      {status !== "held" && turnPhase === "done" && (
+        <span className="text-[10px] text-[var(--tx3)]">Done</span>
+      )}
       {/* PR-9/C: tailored per-state copy (e.g. "Your Claw is asleep - wake it to
           chat.") replaces the flat "Failed to send" when the panel supplies it.
           A "wake" reason (send-time HIBERNATED) offers a Wake button; a transient

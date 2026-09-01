@@ -12,6 +12,10 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/openclaw/pending-approval", () => ({
   createDeliverableApprovalFromFileVersion: (...args: unknown[]) => mockCreateApproval(...args),
 }))
+const mockNotify = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/artifacts/deliverable-notice", () => ({
+  notifyDeliverableExtracted: (...args: unknown[]) => mockNotify(...args),
+}))
 
 import {
   DELIVERABLE_EXTRACT_EVENT_KIND,
@@ -51,6 +55,8 @@ describe("extractDeliverablesFromGzip", () => {
     ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "log-1" })
     mockCreateApproval.mockReset()
     mockCreateApproval.mockResolvedValue({ created: true, id: "hr-1" })
+    mockNotify.mockReset()
+    mockNotify.mockResolvedValue(undefined)
   })
 
   it("inserts FileVersion + ActivityLog for a new deliverable", async () => {
@@ -85,6 +91,13 @@ describe("extractDeliverablesFromGzip", () => {
         title: "x-content-cycle",
       }),
     )
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        isDecision: true,
+      }),
+    )
   })
 
   it("does not create a HUMAN_REQUEST for report-type recap files", async () => {
@@ -93,6 +106,12 @@ describe("extractDeliverablesFromGzip", () => {
     })
     await extractDeliverablesFromGzip({ workspaceId: "ws-1", gzip })
     expect(mockCreateApproval).not.toHaveBeenCalled()
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        logicalPath: "shared/deliverables/x-daily-recap.md",
+        isDecision: false,
+      }),
+    )
   })
 
   it("marks first extract SEED when bytes match Workspace.seedFiles", async () => {
@@ -104,6 +123,7 @@ describe("extractDeliverablesFromGzip", () => {
       data: expect.objectContaining({ trigger: "SEED", version: 1 }),
     })
     expect(mockCreateApproval).not.toHaveBeenCalled()
+    expect(mockNotify).not.toHaveBeenCalled()
   })
 
   it("does not bump when contentHash matches latest", async () => {
@@ -154,6 +174,15 @@ describe("extractDeliverablesFromGzip", () => {
     )
     expect(src).toContain("nudgeDeliverableSyncNow")
     expect(src).toMatch(/TASK_COMPLETE[\s\S]{0,200}nudgeDeliverableSyncNow/)
+  })
+
+  it("MUTATION: MISSION extract must notify the claw channel", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/artifacts/extract-deliverables.ts"),
+      "utf8",
+    )
+    expect(src).toContain("notifyDeliverableExtracted")
+    expect(src).toMatch(/trigger === "MISSION"[\s\S]{0,80}notifyDeliverableExtracted/)
   })
 
   it("MUTATION: activity ingest must not create approvals from outbound chat regex", () => {

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 import { createMockRequest, parseResponse } from "@/test/helpers/mock-request"
@@ -95,5 +97,14 @@ describe("POST /api/workspaces/[id]/respond", () => {
     const { status } = await parseResponse(await post({ activityLogId: "hr-1", action: "approve" }))
     expect(status).toBe(409)
     expect(mockApply).not.toHaveBeenCalled()
+  })
+
+  it("MUTATION: route must call respondToDeliverable (same path as Telegram)", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/workspaces/[id]/respond/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain("respondToDeliverable")
+    expect(src).not.toContain("createPendingApprovalFromOutbound")
   })
 })

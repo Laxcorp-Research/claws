@@ -328,6 +328,13 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
     // version-update applies here via deployToCloud (latest image). Mission
     // resume is silent unless it fails twice.
     await maybeResumeInterruptedMission(workspaceId)
+    const { flushHeldChatSends } = await import("@/lib/openclaw/chat-send-hold")
+    await flushHeldChatSends(workspaceId).catch((flushErr) => {
+      log.warn("wake: held chat flush failed", {
+        workspaceId,
+        error: flushErr instanceof Error ? flushErr.message : String(flushErr),
+      })
+    })
   } catch (err) {
     log.error("Wake failed", { workspaceId, error: String(err) })
 

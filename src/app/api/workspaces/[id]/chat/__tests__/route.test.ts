@@ -28,6 +28,12 @@ vi.mock("@/lib/api/ownership", () => ({
 vi.mock("@/lib/openclaw/deployer", () => ({
   getGatewayConnectionInfo: vi.fn().mockResolvedValue({ wsUrl: "wss://claw-test.up.railway.app", token: "gw-token" }),
 }))
+vi.mock("@/lib/hibernation/manager", () => ({
+  wakeWorkspace: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock("@/lib/trial/wake-entitlement", () => ({
+  canWakeHibernatedWorkspace: vi.fn().mockReturnValue({ allowed: true }),
+}))
 const mockLimit = vi.fn().mockResolvedValue({ success: true })
 vi.mock("@/lib/rate-limit", () => ({ chatRateLimit: { limit: (...a: unknown[]) => mockLimit(...a) } }))
 
@@ -104,10 +110,7 @@ describe("POST /api/workspaces/[id]/chat", () => {
 
   // ─── V2 status-gate matrix (amendment-1 codes) ───────────────────────────
   it.each([
-    ["HIBERNATED", 409, "WORKSPACE_HIBERNATED"],
     ["STOPPED", 409, "WORKSPACE_STOPPED"],
-    ["DEPLOYING", 409, "WORKSPACE_TRANSITIONING"],
-    ["WAKING", 409, "WORKSPACE_TRANSITIONING"],
     ["DRAFT", 409, "WORKSPACE_TRANSITIONING"],
   ])("status %s → %i %s, gateway never contacted", async (status, code, errCode) => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceRow({ status }))
@@ -115,6 +118,46 @@ describe("POST /api/workspaces/[id]/chat", () => {
     const { status: httpStatus, data } = await parseResponse(res)
     expect(httpStatus).toBe(code)
     expect(data.error.code).toBe(errCode)
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it.each(["HIBERNATED", "DEPLOYING", "WAKING", "PROVISIONING_QUEUED"])("status %s holds the send (202, no gateway)", async (status) => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspaceRow({ status }))
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { trialUsed: true, trialStartedAt: new Date(), trialEndsAt: new Date(Date.now() + 86400000), hasActiveSubscription: true },
+    })
+    const { status: httpStatus, data } = await parseResponse(await post({ message: "hi" }))
+    expect(httpStatus).toBe(202)
+    expect(data.data.held).toBe(true)
+    expect(data.data.holdReason).toBe(status)
+    expect(mockSend).not.toHaveBeenCalled()
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "Chat send held",
+          actionType: "SYSTEM",
+        }),
+      }),
+    )
+  })
+
+  it("HIBERNATED with expired trial → 402, no hold ledger", async () => {
+    const { canWakeHibernatedWorkspace } = await import("@/lib/trial/wake-entitlement")
+    ;(canWakeHibernatedWorkspace as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      allowed: false,
+      reason: "trial_ended",
+      needsSubscription: true,
+    })
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceRow({ status: "HIBERNATED" }),
+    )
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { trialUsed: true, trialStartedAt: new Date(), trialEndsAt: new Date(0), hasActiveSubscription: false },
+    })
+    const { status, data } = await parseResponse(await post({ message: "hi" }))
+    expect(status).toBe(402)
+    expect(data.error.code).toBe("SUBSCRIPTION_REQUIRED")
+    expect(prismaMock.activityLog.create).not.toHaveBeenCalled()
     expect(mockSend).not.toHaveBeenCalled()
   })
 
@@ -175,17 +218,17 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(prismaMock.activityLog.create).not.toHaveBeenCalled()
   })
 
-  it("DEPLOYING ledgers mid-boot reject so the send does not vanish", async () => {
+  it("DEPLOYING ledgers a held send so the message does not vanish", async () => {
     ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
       workspaceRow({ status: "DEPLOYING" }),
     )
     const res = await post({ message: "hi" })
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(202)
     expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          action: "Chat send rejected mid-boot",
-          actionType: "ERROR",
+          action: "Chat send held",
+          actionType: "SYSTEM",
         }),
       }),
     )

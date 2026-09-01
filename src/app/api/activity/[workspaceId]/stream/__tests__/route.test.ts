@@ -94,6 +94,7 @@ const SSE_DERIVED_FIELDS: ReadonlyArray<string> = [
   "preview",
   "deliverableKind",
   "humanRequestId",
+  "holdStatus",
 ]
 
 function getActivityLogScalarFields(): string[] {

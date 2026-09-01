@@ -2,9 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
-import { parseDeliverableMetadata } from "@/lib/artifacts/deliverable-kind"
-import { applyFileVersionDecision } from "@/lib/artifacts/apply-decision"
-import { findDeliverableApprovalRequest } from "@/lib/openclaw/pending-approval"
+import { respondToDeliverable } from "@/lib/artifacts/respond-deliverable"
 
 export async function POST(
   request: NextRequest,
@@ -31,71 +29,29 @@ export async function POST(
   })
   if (!workspace) return ERRORS.NOT_FOUND("workspace")
 
-  let requestId = activityLogId
-  if (!requestId && fileVersionId) {
-    const found = await findDeliverableApprovalRequest({ workspaceId, fileVersionId })
-    requestId = found?.id
-  }
-  if (!requestId) return ERRORS.NOT_FOUND("pending approval")
-
-  const originalRequest = await prisma.activityLog.findFirst({
-    where: { id: requestId, workspaceId, actionType: "HUMAN_REQUEST" },
+  const result = await respondToDeliverable({
+    workspaceId,
+    activityLogId,
+    fileVersionId,
+    action: action as "approve" | "reject",
+    feedback,
+    respondedBy: user.email ?? user.id,
   })
-  if (!originalRequest) return ERRORS.NOT_FOUND("pending approval")
-
-  const existingResponse = await prisma.activityLog.findFirst({
-    where: {
-      workspaceId,
-      actionType: { in: ["HUMAN_APPROVE", "HUMAN_REJECT"] },
-      metadata: { contains: requestId },
-    },
-  })
-  if (existingResponse) {
-    return apiError("ALREADY_RESPONDED", "Already responded to this request", 409)
-  }
-
-  const meta = parseDeliverableMetadata(originalRequest.metadata)
-  const resolvedFileVersionId = meta.fileVersionId ?? fileVersionId ?? null
-
-  const responseLog = await prisma.activityLog.create({
-    data: {
-      workspaceId,
-      agentName: originalRequest.agentName,
-      agentSlug: originalRequest.agentSlug,
-      action: action === "approve"
-        ? `Human approved: ${originalRequest.action}`
-        : `Human rejected: ${originalRequest.action}${feedback ? ` - "${feedback}"` : ""}`,
-      actionType: action === "approve" ? "HUMAN_APPROVE" : "HUMAN_REJECT",
-      metadata: JSON.stringify({
-        originalRequestId: requestId,
-        fileVersionId: resolvedFileVersionId,
-        feedback: feedback || null,
-        respondedBy: user.email,
-        respondedAt: new Date().toISOString(),
-      }),
-    },
-  })
-
-  let decision: { fileVersionId: string; liveWriteOk: boolean } | null = null
-  if (resolvedFileVersionId) {
-    const applied = await applyFileVersionDecision({
-      workspaceId,
-      fileVersionId: resolvedFileVersionId,
-      decision: action === "approve" ? "APPROVED" : "REJECTED",
-      reason: feedback || null,
-      decidedBy: user.email ?? user.id,
-    })
-    if ("error" in applied) {
-      return apiError("DECISION_LEDGER_FAILED", applied.error, applied.status)
+  if (!result.ok) {
+    if (result.error === "already_responded") {
+      return apiError("ALREADY_RESPONDED", "Already responded to this request", 409)
     }
-    decision = { fileVersionId: applied.fileVersionId, liveWriteOk: applied.liveWriteOk }
+    if (result.error === "pending_approval_not_found") {
+      return ERRORS.NOT_FOUND("pending approval")
+    }
+    return apiError("DECISION_LEDGER_FAILED", result.error, result.status)
   }
 
   return apiSuccess({
-    id: responseLog.id,
-    action,
-    originalRequestId: requestId,
-    fileVersionId: resolvedFileVersionId,
-    liveWriteOk: decision?.liveWriteOk ?? null,
+    id: result.id,
+    action: result.action,
+    originalRequestId: result.originalRequestId,
+    fileVersionId: result.fileVersionId,
+    liveWriteOk: result.liveWriteOk,
   })
 }
