@@ -25,6 +25,10 @@
 //     import): Vercel runs Node 24 (native client WebSocket), but CI runs
 //     Node 20 (none) - tests must always inject a mock, and importing this
 //     module must never touch the real implementation.
+//   - Do not send client id webchat-ui / mode webchat from this Node
+//     client. OpenClaw origin-gates those as Control UI; native WebSocket
+//     cannot set Origin, so connect becomes INVALID_REQUEST. Owner trust
+//     for held-flush is the send prefix + TOOLS.md, not the client id.
 //
 // TIMEOUTS AS THE HONESTY LINE (A6): every captured failure signature is
 // FAST - edge-404/non-101 against a destroyed container in ~440-670ms,
@@ -47,13 +51,13 @@ const PROTOCOL_VERSION = 4
 const CONNECT_TIMEOUT_MS = 5_000
 const TOTAL_BUDGET_MS = 10_000
 const OPERATOR_SCOPES = ["operator.read", "operator.write"]
-/** Dashboard / held-flush identity. mode=webchat so OpenClaw treats the
- *  send as owner web chat, not an untrusted gateway-client backend. */
+/** Node/Vercel send client. Must stay backend/gateway-client: webchat-ui is
+ *  origin-gated by OpenClaw and native WebSocket cannot set Origin. */
 export const CHAT_SEND_CLIENT_INFO = {
-  id: "webchat-ui",
+  id: "gateway-client",
   version: "claws-chat-send",
   platform: "node",
-  mode: "webchat",
+  mode: "backend",
 } as const
 
 const CLIENT_INFO = CHAT_SEND_CLIENT_INFO
@@ -96,7 +100,7 @@ export interface SendChatMessageParams {
    * Used by wake-on-channel platform Telegram delivery.
    */
   awaitReplyMs?: number
-  /** Injectable for tests; default resolves globalThis.WebSocket LAZILY. */
+  /** Injectable for tests; default resolves globalThis.WebSocket lazily. */
   socketFactory?: ChatSocketFactory
   /** Injectable fetch for the pairing admin-RPC call (tests). */
   fetchImpl?: typeof fetch
