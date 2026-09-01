@@ -27,20 +27,33 @@ export function hashFileContent(content: string): string {
 }
 
 /**
+ * Agent writes often land under workspace-<slug>/shared/deliverables.
+ * Canonicalize to platform shared/deliverables before the allowlist.
+ */
+const WORKSPACE_DELIVERABLE_RE = /(?:^|\/)workspace-[^/]+\/(shared\/deliverables\/.+)$/
+
+export function canonicalizeDeliverableExtractPath(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, "/")
+  const match = normalized.match(WORKSPACE_DELIVERABLE_RE)
+  return match?.[1] ?? normalized
+}
+
+/**
  * Allowlist for card-source extract. shared/deliverables/* text only.
  * Never dotfiles, never .., never host-absolute, never openclaw.json/.env/cron.
+ * workspace-<slug>/shared/deliverables is accepted via canonicalize.
  */
 export function isDeliverableExtractPath(relativePath: string): boolean {
   if (typeof relativePath !== "string" || relativePath.length === 0) return false
   if (relativePath.includes("\0")) return false
-  const normalized = relativePath.replace(/\\/g, "/")
-  if (normalized.startsWith("/") || normalized.includes("://")) return false
-  const parts = normalized.split("/")
+  const canonical = canonicalizeDeliverableExtractPath(relativePath)
+  if (canonical.startsWith("/") || canonical.includes("://")) return false
+  const parts = canonical.split("/")
   if (parts.some((p) => p === ".." || p === "." || p === "" || p.startsWith("."))) {
     return false
   }
-  if (!normalized.startsWith(DELIVERABLE_PATH_PREFIX)) return false
-  if (normalized === DELIVERABLE_PATH_PREFIX.slice(0, -1)) return false
+  if (!canonical.startsWith(DELIVERABLE_PATH_PREFIX)) return false
+  if (canonical === DELIVERABLE_PATH_PREFIX.slice(0, -1)) return false
   const base = parts[parts.length - 1] ?? ""
   const dot = base.lastIndexOf(".")
   if (dot < 1) return false
@@ -94,9 +107,14 @@ export async function extractDeliverablesFromGzip(args: {
   })
 
   for (const [rawPath, b64] of Object.entries(files)) {
-    const logicalPath = rawPath.replace(/\\/g, "/")
+    const logicalPath = canonicalizeDeliverableExtractPath(rawPath)
     if (!isDeliverableExtractPath(logicalPath)) {
-      if (logicalPath.startsWith(DELIVERABLE_PATH_PREFIX)) summary.skippedInvalid += 1
+      if (
+        logicalPath.startsWith(DELIVERABLE_PATH_PREFIX) ||
+        /(?:^|\/)workspace-[^/]+\/shared\/deliverables\//.test(rawPath.replace(/\\/g, "/"))
+      ) {
+        summary.skippedInvalid += 1
+      }
       continue
     }
     if (typeof b64 !== "string") {
