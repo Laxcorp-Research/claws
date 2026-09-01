@@ -26,6 +26,7 @@ import {
   CHAT_SEND_HELD_ACTION,
   CHAT_SEND_HELD_EVENT_KIND,
   flushHeldChatSends,
+  heldFlushOwnerMessage,
   isHoldableChatStatus,
   ledgerChatSendHeld,
 } from "@/lib/openclaw/chat-send-hold"
@@ -121,11 +122,14 @@ describe("flushHeldChatSends", () => {
     expect(summary).toEqual({ flushed: 1, failed: 0 })
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "do the thing",
+        message: heldFlushOwnerMessage("do the thing"),
         idempotencyKey: "run-hold",
         sessionKey: "agent:dev-commander:main",
       }),
     )
+    expect(heldFlushOwnerMessage("do the thing")).toContain("workspace owner")
+    expect(heldFlushOwnerMessage("do the thing")).toContain("do the thing")
+    expect(heldFlushOwnerMessage("do the thing")).not.toMatch(/^do the thing$/)
     const meta = JSON.parse(
       (prismaMock.activityLog.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data.metadata,
     )

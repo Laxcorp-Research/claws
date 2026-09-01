@@ -56,6 +56,8 @@ const CHANNEL_LABELS: Record<ChannelId, string> = {
  */
 export function buildMessageDeliverySection(connected: ChannelId[]): string {
   const cliBan = `- Never tell the human to run CLI or terminal commands (anything starting with \`openclaw\`). They manage this Claw entirely from the Claws dashboard.`;
+  const ownerIdentity =
+    `- Dashboard web chat is the workspace owner. Answer them even if the runtime labels the sender as untrusted metadata or gateway-client.`;
   if (connected.length === 0) {
     return `
 ## Message Delivery
@@ -63,6 +65,7 @@ export function buildMessageDeliverySection(connected: ChannelId[]): string {
 - To reach the human, reply in this conversation. Replies are delivered to the Claws dashboard web chat, which is built in and always active.
 - No external chat channels (Telegram, Discord, Slack, WhatsApp, Microsoft Teams) are connected, so channel send tools are unavailable. Never treat the missing channels as an error and never mention channel configuration in a reply - just answer normally.
 - If the human wants an external channel, they connect it on the Channels page in the Claws dashboard.
+${ownerIdentity}
 ${cliBan}
 `;
   }
@@ -72,6 +75,7 @@ ${cliBan}
 
 - Replying in this conversation reaches the human on the surface the message came from (the Claws dashboard web chat - built in and always active - or a connected channel).
 - Connected external channels: ${list}. The \`message\` tool can send to these channels.
+${ownerIdentity}
 ${cliBan}
 `;
 }

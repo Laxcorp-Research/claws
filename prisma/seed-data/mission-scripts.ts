@@ -21,9 +21,13 @@ export const FORMERLY_EMPTY_TEMPLATE_SLUGS = [
   "developer-productivity-os",
 ] as const
 
+function absolutizeDeliverableLine(deliverable: string): string {
+  return deliverable.replace(/(^|[\s(])shared\//g, `$1${SHARED}/`)
+}
+
 function windowBlock(expr: string, steps: string[], deliverable: string): string {
   const numbered = steps.map((step, i) => `${i + 1}. ${step}`).join("\n")
-  return `${`## window ${expr}`}\n${numbered}\nDeliverable: ${deliverable}`
+  return `${`## window ${expr}`}\n${numbered}\nDeliverable: ${absolutizeDeliverableLine(deliverable)}`
 }
 
 function missionDoc(windows: string[]): string {

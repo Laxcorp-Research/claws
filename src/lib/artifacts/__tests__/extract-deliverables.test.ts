@@ -19,6 +19,7 @@ vi.mock("@/lib/artifacts/deliverable-notice", () => ({
 
 import {
   DELIVERABLE_EXTRACT_EVENT_KIND,
+  canonicalizeDeliverableExtractPath,
   extractDeliverablesFromGzip,
   hashFileContent,
   isDeliverableExtractPath,
@@ -36,6 +37,19 @@ describe("isDeliverableExtractPath", () => {
     expect(isDeliverableExtractPath("cron/jobs.json")).toBe(false)
     expect(isDeliverableExtractPath("agents/main/sessions/s1.jsonl")).toBe(false)
     expect(isDeliverableExtractPath("shared/deliverables/photo.png")).toBe(false)
+  })
+
+  it("accepts workspace-*/shared/deliverables and canonicalizes to shared/deliverables", () => {
+    expect(canonicalizeDeliverableExtractPath("workspace-orchestrator/shared/deliverables/x-smoke-cycle.md")).toBe(
+      "shared/deliverables/x-smoke-cycle.md",
+    )
+    expect(
+      canonicalizeDeliverableExtractPath(
+        "home/node/.openclaw/workspace-twitter-commander/shared/deliverables/cycle.md",
+      ),
+    ).toBe("shared/deliverables/cycle.md")
+    expect(isDeliverableExtractPath("workspace-orchestrator/shared/deliverables/x-smoke-cycle.md")).toBe(true)
+    expect(isDeliverableExtractPath("workspace-orchestrator/SOUL.md")).toBe(false)
   })
 })
 
@@ -57,6 +71,20 @@ describe("extractDeliverablesFromGzip", () => {
     mockCreateApproval.mockResolvedValue({ created: true, id: "hr-1" })
     mockNotify.mockReset()
     mockNotify.mockResolvedValue(undefined)
+  })
+
+  it("extracts workspace-orchestrator/shared/deliverables as shared/deliverables", async () => {
+    const gzip = buildRuntimeStateGzipFixture({
+      "workspace-orchestrator/shared/deliverables/x-smoke-cycle.md": "# Cycle\nagent wrote here",
+    })
+    const result = await extractDeliverablesFromGzip({ workspaceId: "ws-1", gzip })
+    expect(result.extracted).toBe(1)
+    expect(prismaMock.fileVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        logicalPath: "shared/deliverables/x-smoke-cycle.md",
+        trigger: "MISSION",
+      }),
+    })
   })
 
   it("inserts FileVersion + ActivityLog for a new deliverable", async () => {

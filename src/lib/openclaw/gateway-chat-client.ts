@@ -47,12 +47,16 @@ const PROTOCOL_VERSION = 4
 const CONNECT_TIMEOUT_MS = 5_000
 const TOTAL_BUDGET_MS = 10_000
 const OPERATOR_SCOPES = ["operator.read", "operator.write"]
-const CLIENT_INFO = {
-  id: "gateway-client",
+/** Dashboard / held-flush identity. mode=webchat so OpenClaw treats the
+ *  send as owner web chat, not an untrusted gateway-client backend. */
+export const CHAT_SEND_CLIENT_INFO = {
+  id: "webchat-ui",
   version: "claws-chat-send",
   platform: "node",
-  mode: "backend",
+  mode: "webchat",
 } as const
+
+const CLIENT_INFO = CHAT_SEND_CLIENT_INFO
 
 // Minimal structural WebSocket surface - satisfied by both the native
 // (undici) WebSocket and test doubles. Event objects are typed loosely on

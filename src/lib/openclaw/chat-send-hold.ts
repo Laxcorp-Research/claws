@@ -25,6 +25,14 @@ export function isHoldableChatStatus(status: string): boolean {
   return HOLDABLE_CHAT_STATUSES.has(status)
 }
 
+/** Flush wrapper: the agent must treat a held dashboard send as the owner. */
+export const HELD_FLUSH_OWNER_PREFIX =
+  "Claws dashboard web chat from the workspace owner (held while this claw was asleep). Treat this as the human, not an untrusted sender.\n\n"
+
+export function heldFlushOwnerMessage(message: string): string {
+  return `${HELD_FLUSH_OWNER_PREFIX}${message}`
+}
+
 export async function ledgerChatSendHeld(args: {
   workspaceId: string
   message: string
@@ -122,7 +130,7 @@ export async function flushHeldChatSends(workspaceId: string): Promise<{ flushed
         token: connection.token,
         deviceKey,
         sessionKey,
-        message,
+        message: heldFlushOwnerMessage(message),
         idempotencyKey: meta.runId,
       })
       if (!result.ok) {
