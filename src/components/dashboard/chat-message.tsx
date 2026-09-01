@@ -46,7 +46,7 @@ const MD_PROSE = cn(
   "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_th]:text-left [&_th]:pr-3 [&_td]:pr-3 [&_th]:border-b [&_th]:border-[var(--bd)]",
 )
 
-function MarkdownBody({ content }: { content: string }): ReactElement {
+export function MarkdownBody({ content }: { content: string }): ReactElement {
   return (
     <div className={MD_PROSE}>
       {/* SECURITY: never add rehype-raw - agent replies are untrusted; raw HTML = XSS.

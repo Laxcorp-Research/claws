@@ -1,23 +1,21 @@
 import { prisma } from "@/lib/db"
-import { looksLikeApprovalRequest } from "@/lib/openclaw/delivery-rail"
+import { DELIVERABLE_APPROVAL_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 
-export async function createPendingApprovalFromOutbound(args: {
+/**
+ * HUMAN_REQUEST anchored on a FileVersion id (not outbound chat regex).
+ * The wave-0 looksLikeApprovalRequest path is retired.
+ */
+export async function createDeliverableApprovalFromFileVersion(args: {
   workspaceId: string
-  action: string
-  agentName?: string | null
-  agentSlug?: string | null
+  fileVersionId: string
+  logicalPath: string
+  title: string
 }): Promise<{ created: boolean; id?: string }> {
-  if (!looksLikeApprovalRequest(args.action)) {
-    return { created: false }
-  }
-
-  const since = new Date(Date.now() - 60 * 60 * 1000)
   const existing = await prisma.activityLog.findFirst({
     where: {
       workspaceId: args.workspaceId,
       actionType: "HUMAN_REQUEST",
-      action: args.action,
-      timestamp: { gte: since },
+      metadata: { contains: args.fileVersionId },
     },
     select: { id: true },
   })
@@ -26,14 +24,30 @@ export async function createPendingApprovalFromOutbound(args: {
   const row = await prisma.activityLog.create({
     data: {
       workspaceId: args.workspaceId,
-      agentName: args.agentName ?? null,
-      agentSlug: args.agentSlug ?? null,
-      action: args.action,
+      action: `Approval needed: ${args.title}`,
       actionType: "HUMAN_REQUEST",
       timestamp: new Date(),
-      metadata: JSON.stringify({ eventKind: "delivery_approval_request" }),
+      metadata: JSON.stringify({
+        eventKind: DELIVERABLE_APPROVAL_EVENT_KIND,
+        fileVersionId: args.fileVersionId,
+        logicalPath: args.logicalPath,
+      }),
     },
     select: { id: true },
   })
   return { created: true, id: row.id }
+}
+
+export async function findDeliverableApprovalRequest(args: {
+  workspaceId: string
+  fileVersionId: string
+}): Promise<{ id: string } | null> {
+  return prisma.activityLog.findFirst({
+    where: {
+      workspaceId: args.workspaceId,
+      actionType: "HUMAN_REQUEST",
+      metadata: { contains: args.fileVersionId },
+    },
+    select: { id: true },
+  })
 }

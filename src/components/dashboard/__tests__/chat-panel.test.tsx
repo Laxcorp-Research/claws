@@ -11,6 +11,7 @@ import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-libra
 import {
   ChatPanel,
   reconcileChatMessages,
+  documentViewsFromRows,
   mergePersistedChatRows,
   computeTurnStatuses,
   hasPendingTurn,
@@ -117,6 +118,64 @@ describe("ChatPanel header", () => {
     expect(screen.getByRole("log").className).toContain("flex-1")
     expect(screen.getByLabelText("Message")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy()
+  })
+})
+
+describe("documentViewsFromRows", () => {
+  it("projects deliverable_extracted SYSTEM rows and ignores chat messages", () => {
+    const views = documentViewsFromRows([
+      {
+        id: "msg",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "Commander",
+        action: "hi",
+        detail: "hi",
+      },
+      {
+        id: "doc",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-01T08:01:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-content-cycle",
+        detail: "shared/deliverables/x-content-cycle.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        preview: "Draft A",
+        deliverableKind: "decision",
+        humanRequestId: "hr-1",
+      },
+    ])
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({
+      key: "doc",
+      kind: "document",
+      title: "x-content-cycle",
+      fileVersionId: "fv-1",
+      deliverableKind: "decision",
+      humanRequestId: "hr-1",
+    })
+  })
+
+  it("does not turn SYSTEM extract rows into agent chat bubbles", () => {
+    const views = reconcileChatMessages(
+      [],
+      [
+        {
+          id: "doc",
+          actionType: "SYSTEM",
+          timestamp: "2026-09-01T08:01:00.000Z",
+          agentName: "System",
+          action: "Deliverable extracted: x-content-cycle",
+          eventKind: "deliverable_extracted",
+          fileVersionId: "fv-1",
+          logicalPath: "shared/deliverables/x-content-cycle.md",
+        },
+      ],
+      "Commander",
+    )
+    expect(views).toHaveLength(0)
   })
 })
 

@@ -3,6 +3,13 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { parseRuntimeStateGzip } from "@/lib/openclaw/snapshot-conversations"
 import type { FileVersionTrigger } from "@/generated/prisma/client"
+import {
+  DELIVERABLE_APPROVAL_EVENT_KIND,
+  deliverableKind,
+  isDecisionDeliverable,
+  previewFromContent,
+} from "@/lib/artifacts/deliverable-kind"
+import { createDeliverableApprovalFromFileVersion } from "@/lib/openclaw/pending-approval"
 
 export const DELIVERABLE_EXTRACT_EVENT_KIND = "deliverable_extracted"
 export const DELIVERABLE_PATH_PREFIX = "shared/deliverables/"
@@ -141,10 +148,31 @@ export async function extractDeliverablesFromGzip(args: {
       },
     })
 
+    const kind = deliverableKind(logicalPath)
+    const title = titleFromDeliverablePath(logicalPath)
+    let humanRequestId: string | null = null
+    if (trigger === "MISSION" && isDecisionDeliverable(logicalPath)) {
+      try {
+        const approval = await createDeliverableApprovalFromFileVersion({
+          workspaceId: args.workspaceId,
+          fileVersionId: created.id,
+          logicalPath,
+          title,
+        })
+        humanRequestId = approval.id ?? null
+      } catch (err) {
+        log.warn("deliverable extract: approval row failed (continuing)", {
+          workspaceId: args.workspaceId,
+          logicalPath,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
     await prisma.activityLog.create({
       data: {
         workspaceId: args.workspaceId,
-        action: `Deliverable extracted: ${titleFromDeliverablePath(logicalPath)}`,
+        action: `Deliverable extracted: ${title}`,
         actionType: "SYSTEM",
         detail: logicalPath,
         metadata: JSON.stringify({
@@ -154,6 +182,9 @@ export async function extractDeliverablesFromGzip(args: {
           version: nextVersion,
           contentHash,
           trigger,
+          preview: previewFromContent(content),
+          deliverableKind: kind,
+          humanRequestId,
         }),
       },
     })

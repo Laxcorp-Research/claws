@@ -49,7 +49,6 @@ import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push";
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge";
 import { applyWorkspaceApiCost } from "@/lib/healing/spend-limit";
 import { NEAR_CAP_METADATA_KIND } from "@/lib/openclaw/near-cap-alert";
-import { createPendingApprovalFromOutbound } from "@/lib/openclaw/pending-approval";
 import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
 import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
 
@@ -60,7 +59,7 @@ import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
 //   - SYSTEM            → emitted by agents/[workspaceId]/[id]/control/route.ts
 //   - HUMAN_APPROVE     → emitted by workspaces/[id]/respond/route.ts
 //   - HUMAN_REJECT      → emitted by workspaces/[id]/respond/route.ts
-//   - HUMAN_REQUEST     → no source today (Claws-template concept, PR-3+ scope)
+//   - HUMAN_REQUEST     → created from FileVersion id on extract (not this route)
 //   - REVIEW_PASS / REVIEW_REJECT → Claws-template concept
 //   - COST_ALERT        → computed Claws-side; PR-2b scope
 //   - TRADE_*           → trading-template specific
@@ -566,21 +565,6 @@ export async function POST(
           log.error("activity: deliverable sync-now nudge failed", {
             workspaceId,
             error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
-          });
-        }
-      }
-      if (ev.type === "MESSAGE_SENT") {
-        try {
-          await createPendingApprovalFromOutbound({
-            workspaceId,
-            action: ev.action,
-            agentName: agent?.name ?? null,
-            agentSlug: agent?.agentSlug ?? resolvedAgentId ?? null,
-          });
-        } catch (approvalErr) {
-          log.error("activity: pending approval create failed", {
-            workspaceId,
-            error: approvalErr instanceof Error ? approvalErr.message : String(approvalErr),
           });
         }
       }
