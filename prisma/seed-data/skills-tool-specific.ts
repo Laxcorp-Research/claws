@@ -38,7 +38,7 @@ Patterns:
 Do not:
 - Query "AI agents trending" (noise).
 - Use Tavily as a substitute when a Bearer-header curl to twitter-api returns 401 (tell the human the Bearer is dead; reconnect in Manage Tools).
-- Treat web_fetch 401 on api.twitter.com as a dead token. web_fetch does not send Authorization. Retry with curl -H "Authorization: Bearer $TWITTER_API_KEY".
+- Treat web_fetch 401 on api.twitter.com as a dead token. web_fetch does not send Authorization. Retry with curl and an Authorization Bearer header.
 - Treat twitter-api 402 as "down". 402 is tier-not-entitled: run Tavily-only and tell the human X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
 - Pull more than 3 queries per heartbeat window.`,
     type: "TOOL_SPECIFIC",
