@@ -160,6 +160,64 @@ describe("documentViewsFromRows", () => {
     })
   })
 
+  it("collapses consecutive same-path extracts minutes apart into the latest card", () => {
+    const views = documentViewsFromRows([
+      {
+        id: "recap-2100",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-02T21:00:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-daily-recap",
+        detail: "shared/deliverables/x-daily-recap.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-recap-1",
+        logicalPath: "shared/deliverables/x-daily-recap.md",
+        preview: "21:00",
+        deliverableKind: "report",
+      },
+      {
+        id: "recap-2101",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-02T21:01:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-daily-recap",
+        detail: "shared/deliverables/x-daily-recap.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-recap-2",
+        logicalPath: "shared/deliverables/x-daily-recap.md",
+        preview: "21:01",
+        deliverableKind: "report",
+      },
+      {
+        id: "cycle-sep1",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-01T12:00:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-content-cycle",
+        detail: "shared/deliverables/x-content-cycle.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-sep1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        preview: "sep1",
+        deliverableKind: "decision",
+      },
+      {
+        id: "cycle-sep2",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-02T12:00:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-content-cycle",
+        detail: "shared/deliverables/x-content-cycle.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-sep2",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        preview: "sep2",
+        deliverableKind: "decision",
+      },
+    ])
+    expect(views.map((v) => v.fileVersionId)).toEqual(["fv-sep1", "fv-sep2", "fv-recap-2"])
+  })
+
   it("renders a held SYSTEM row as a user bubble so refresh does not vanish the send", () => {
     const views = reconcileChatMessages(
       [],

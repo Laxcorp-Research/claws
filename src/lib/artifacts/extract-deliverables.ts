@@ -13,6 +13,7 @@ import {
 } from "@/lib/artifacts/deliverable-kind"
 import { createDeliverableApprovalFromFileVersion } from "@/lib/openclaw/pending-approval"
 import { notifyDeliverableExtracted } from "@/lib/artifacts/deliverable-notice"
+import { supersedeOlderPendingVersions } from "@/lib/artifacts/supersede-versions"
 
 export {
   DELIVERABLE_EXTRACT_EVENT_KIND,
@@ -166,6 +167,22 @@ export async function extractDeliverablesFromGzip(args: {
         decision: "NONE",
       },
     })
+
+    if (trigger === "MISSION") {
+      try {
+        await supersedeOlderPendingVersions({
+          workspaceId: args.workspaceId,
+          logicalPath,
+          keepFileVersionId: created.id,
+        })
+      } catch (err) {
+        log.warn("deliverable extract: supersede older versions failed (continuing)", {
+          workspaceId: args.workspaceId,
+          logicalPath,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
 
     const kind = deliverableKind(logicalPath)
     const title = titleFromDeliverablePath(logicalPath)

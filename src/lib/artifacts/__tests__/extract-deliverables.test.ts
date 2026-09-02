@@ -67,6 +67,7 @@ describe("extractDeliverablesFromGzip", () => {
       }),
     )
     ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "log-1" })
+    ;(prismaMock.fileVersion.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 })
     mockCreateApproval.mockReset()
     mockCreateApproval.mockResolvedValue({ created: true, id: "hr-1" })
     mockNotify.mockReset()
@@ -152,6 +153,7 @@ describe("extractDeliverablesFromGzip", () => {
     })
     expect(mockCreateApproval).not.toHaveBeenCalled()
     expect(mockNotify).not.toHaveBeenCalled()
+    expect(prismaMock.fileVersion.updateMany).not.toHaveBeenCalled()
   })
 
   it("does not bump when contentHash matches latest", async () => {
@@ -180,6 +182,14 @@ describe("extractDeliverablesFromGzip", () => {
     await extractDeliverablesFromGzip({ workspaceId: "ws-1", gzip })
     expect(prismaMock.fileVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ version: 2, trigger: "MISSION" }),
+    })
+    expect(prismaMock.fileVersion.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        workspaceId: "ws-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        decision: "NONE",
+      }),
+      data: { decision: "SUPERSEDED" },
     })
   })
 

@@ -5,6 +5,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiError, apiSuccess, ERRORS } from "@/lib/api/response"
 import { writeWorkspaceSharedFile } from "@/lib/artifacts/live-write"
 import { isSharedWritePath } from "@/lib/artifacts/workspace-file-allowlist"
+import { loadApprovalVersionStates } from "@/lib/artifacts/supersede-versions"
 
 export async function GET(
   _request: NextRequest,
@@ -22,12 +23,21 @@ export async function GET(
   })
   if (!row) return ERRORS.NOT_FOUND("file version")
 
+  const states = await loadApprovalVersionStates({
+    workspaceId,
+    logicalPaths: [row.logicalPath],
+  })
+  const state = states.get(row.id)
+
   return apiSuccess({
     id: row.id,
     logicalPath: row.logicalPath,
     version: row.version,
     content: row.content,
-    decision: row.decision,
+    decision: state?.decision ?? row.decision,
+    isLatest: state?.isLatest ?? true,
+    latestFileVersionId: state?.latestFileVersionId ?? row.id,
+    latestLabel: state?.latestLabel ?? "",
     trigger: row.trigger,
     createdAt: row.createdAt.toISOString(),
     createdBy: row.createdBy,

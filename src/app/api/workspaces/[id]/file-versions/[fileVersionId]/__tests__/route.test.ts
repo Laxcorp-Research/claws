@@ -38,6 +38,15 @@ describe("file-versions route", () => {
       createdAt: new Date("2026-09-01T00:00:00.000Z"),
       createdBy: "system",
     })
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 2,
+        createdAt: new Date("2026-09-01T00:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
   })
 
   it("GET returns file content for the owner", async () => {
@@ -49,6 +58,8 @@ describe("file-versions route", () => {
       id: "fv-1",
       content: "# Cycle",
       logicalPath: "shared/deliverables/x-content-cycle.md",
+      decision: "NONE",
+      isLatest: true,
     })
   })
 

@@ -310,6 +310,7 @@ export async function GET(
 
   const answered = respondedRequestIds(humanResponses)
   const pendingApprovals = await hydratePendingApprovals(
+    workspaceId,
     humanRequests.filter((req) => !answered.has(req.id)),
   )
 

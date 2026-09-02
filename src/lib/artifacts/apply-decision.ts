@@ -14,7 +14,7 @@ export type AppliedDecision = {
 export async function applyFileVersionDecision(args: {
   workspaceId: string
   fileVersionId: string
-  decision: Exclude<FileVersionDecision, "NONE">
+  decision: Extract<FileVersionDecision, "APPROVED" | "REJECTED">
   reason: string | null
   decidedBy: string
 }): Promise<AppliedDecision | { error: string; status: number }> {
@@ -22,6 +22,10 @@ export async function applyFileVersionDecision(args: {
     where: { id: args.fileVersionId, workspaceId: args.workspaceId },
   })
   if (!row) return { error: "file_version_not_found", status: 404 }
+  if (row.decision === "APPROVED") return { error: "already_approved", status: 409 }
+  if (row.decision === "REJECTED") return { error: "already_rejected", status: 409 }
+  if (row.decision === "SUPERSEDED") return { error: "superseded", status: 409 }
+  if (row.decision !== "NONE") return { error: "already_responded", status: 409 }
 
   const updated = await prisma.fileVersion.update({
     where: { id: row.id },

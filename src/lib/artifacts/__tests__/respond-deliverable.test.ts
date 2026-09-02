@@ -37,6 +37,15 @@ describe("findLatestPendingDeliverableApproval", () => {
   beforeEach(() => {
     mockApply.mockReset()
     mockFind.mockReset()
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
   })
 
   it("returns the newest unanswered HUMAN_REQUEST", async () => {
@@ -94,6 +103,15 @@ describe("respondToDeliverable", () => {
       },
     )
     ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "ha-1" })
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
   })
 
   it("writes HUMAN_APPROVE and applies the FileVersion decision", async () => {
@@ -140,7 +158,78 @@ describe("respondToDeliverable", () => {
       action: "reject",
       respondedBy: "telegram:1",
     })
-    expect(result).toEqual({ ok: false, error: "already_responded", status: 409 })
+    expect(result).toEqual({
+      ok: false,
+      error: "already_approved",
+      message: "already approved",
+      status: 409,
+    })
     expect(mockApply).not.toHaveBeenCalled()
+  })
+
+  it("refuses an older version as superseded; approve latest applies sidecar", async () => {
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
+      },
+      {
+        id: "fv-2",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 2,
+        createdAt: new Date("2026-09-02T12:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
+    const stale = await respondToDeliverable({
+      workspaceId: "ws-1",
+      activityLogId: "hr-1",
+      fileVersionId: "fv-1",
+      action: "approve",
+      respondedBy: "founder@test.com",
+    })
+    expect(stale).toEqual({
+      ok: false,
+      error: "superseded",
+      message: "superseded by the Sep 2 version - open latest",
+      status: 409,
+    })
+    expect(mockApply).not.toHaveBeenCalled()
+
+    const latestRow = {
+      ...pendingRow,
+      id: "hr-2",
+      metadata: JSON.stringify({
+        eventKind: "deliverable_approval_request",
+        fileVersionId: "fv-2",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+      }),
+    }
+    ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where?: { actionType?: unknown } }) => {
+        if (args.where?.actionType === "HUMAN_REQUEST") return latestRow
+        return null
+      },
+    )
+    mockApply.mockResolvedValue({
+      fileVersionId: "fv-2",
+      decision: "APPROVED",
+      sidecarPath: "shared/deliverables/x-content-cycle.md.status.json",
+      liveWriteOk: true,
+    })
+    const latest = await respondToDeliverable({
+      workspaceId: "ws-1",
+      activityLogId: "hr-2",
+      fileVersionId: "fv-2",
+      action: "approve",
+      respondedBy: "founder@test.com",
+    })
+    expect(latest).toMatchObject({ ok: true, fileVersionId: "fv-2", liveWriteOk: true })
+    expect(mockApply).toHaveBeenCalledWith(
+      expect.objectContaining({ fileVersionId: "fv-2", decision: "APPROVED" }),
+    )
   })
 })

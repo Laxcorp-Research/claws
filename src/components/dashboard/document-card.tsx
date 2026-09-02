@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { DocumentViewer } from "@/components/dashboard/document-viewer"
 import { Textarea } from "@/components/ui/textarea"
@@ -10,6 +10,10 @@ import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { cn } from "@/lib/utils"
 import type { DeliverableKind } from "@/lib/artifacts/deliverable-kind"
+import {
+  messageFromRespondBody,
+  type ApprovalDecisionState,
+} from "@/lib/artifacts/approval-version"
 
 export interface DocumentCardProps {
   workspaceId: string
@@ -20,8 +24,30 @@ export interface DocumentCardProps {
   deliverableKind: DeliverableKind
   humanRequestId: string | null
   timestamp: string
+  decision?: ApprovalDecisionState
+  latestLabel?: string
+  stateRevision?: number
   className?: string
   onDecision?: (decision: "APPROVED" | "REJECTED") => void
+}
+
+function decisionStatusCopy(
+  decision: ApprovalDecisionState,
+  latestLabel: string,
+): { text: string; className: string } | null {
+  if (decision === "APPROVED") {
+    return { text: "Approved \u2713", className: "text-[var(--ok)]" }
+  }
+  if (decision === "REJECTED") {
+    return { text: "Rejected", className: "text-[var(--tx2)]" }
+  }
+  if (decision === "SUPERSEDED") {
+    return {
+      text: latestLabel ? `Superseded - see ${latestLabel} version` : "Superseded - see latest",
+      className: "text-[var(--tx3)]",
+    }
+  }
+  return null
 }
 
 export function DocumentCard({
@@ -33,6 +59,9 @@ export function DocumentCard({
   deliverableKind,
   humanRequestId,
   timestamp,
+  decision: decisionProp,
+  latestLabel: latestLabelProp,
+  stateRevision = 0,
   className,
   onDecision,
 }: DocumentCardProps) {
@@ -43,19 +72,54 @@ export function DocumentCard({
   const [content, setContent] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
   const [loading, setLoading] = useState(false)
-  const [decision, setDecision] = useState<"NONE" | "APPROVED" | "REJECTED">("NONE")
+  const [fetched, setFetched] = useState<{
+    decision: ApprovalDecisionState
+    latestLabel: string
+  } | null>(null)
   const isDecision = deliverableKind === "decision"
+  const decision = decisionProp ?? fetched?.decision ?? null
+  const latestLabel = latestLabelProp ?? fetched?.latestLabel ?? ""
+
+  useEffect(() => {
+    if (decisionProp !== undefined) return
+    let cancelled = false
+    void fetch(`/api/workspaces/${workspaceId}/file-versions/${fileVersionId}`)
+      .then(async (res) => {
+        if (!res.ok) return
+        const json = (await res.json()) as {
+          data?: { decision?: ApprovalDecisionState; latestLabel?: string }
+        }
+        if (cancelled || !json.data?.decision) return
+        setFetched({
+          decision: json.data.decision,
+          latestLabel: json.data.latestLabel ?? "",
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId, fileVersionId, stateRevision, decisionProp])
 
   const loadContent = async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/file-versions/${fileVersionId}`)
     if (!res.ok) throw new Error("Could not open document")
     const json = (await res.json()) as {
-      data?: { content?: string; decision?: "NONE" | "APPROVED" | "REJECTED" }
+      data?: {
+        content?: string
+        decision?: ApprovalDecisionState
+        latestLabel?: string
+      }
     }
     const next = json.data?.content ?? ""
     setContent(next)
     setDraft(next)
-    if (json.data?.decision) setDecision(json.data.decision)
+    if (json.data?.decision) {
+      setFetched({
+        decision: json.data.decision,
+        latestLabel: json.data.latestLabel ?? "",
+      })
+    }
   }
 
   const handleOpen = async () => {
@@ -74,6 +138,7 @@ export function DocumentCard({
 
   const respond = async (action: "approve" | "reject") => {
     setLoading(true)
+    const fallback = action === "approve" ? "Could not approve" : "Could not reject"
     try {
       await mutateWithFeedback(
         async () => {
@@ -86,14 +151,16 @@ export function DocumentCard({
               activityLogId: humanRequestId ?? undefined,
             }),
           })
-          if (!res.ok) throw new Error(action === "approve" ? "Could not approve" : "Could not reject")
+          if (!res.ok) {
+            const body: unknown = await res.json().catch(() => null)
+            throw new Error(messageFromRespondBody(body, fallback))
+          }
           const next = action === "approve" ? "APPROVED" : "REJECTED"
-          setDecision(next)
+          setFetched({ decision: next, latestLabel })
           onDecision?.(next)
         },
         {
           message: action === "approve" ? "Approved" : "Rejected",
-          errorMessage: action === "approve" ? "Could not approve" : "Could not reject",
         },
         show,
       )
@@ -128,6 +195,9 @@ export function DocumentCard({
     }
   }
 
+  const status = decision ? decisionStatusCopy(decision, latestLabel) : null
+  const showButtons = isDecision && decision === "NONE"
+
   return (
     <div className={cn("self-start w-full max-w-[85%]", className)}>
       <div
@@ -141,10 +211,7 @@ export function DocumentCard({
             <TruncatedText as="p" className="text-[13px] font-semibold text-[var(--tx)]">
               {title}
             </TruncatedText>
-            <p className="mt-[3px] text-[10px] text-[var(--tx3)]">
-              {timestamp}
-              {decision !== "NONE" ? ` · ${decision === "APPROVED" ? "Approved" : "Rejected"}` : ""}
-            </p>
+            <p className="mt-[3px] text-[10px] text-[var(--tx3)]">{timestamp}</p>
             {preview && (
               // truncate-allowlist: 3-line card preview; TruncatedText is single-line only
               <p className="mt-[6px] line-clamp-3 text-[12px] leading-snug text-[var(--tx2)]">{preview}</p>
@@ -154,8 +221,8 @@ export function DocumentCard({
             Open
           </Button>
         </div>
-        {isDecision && decision === "NONE" && (
-          <div className="mt-[8px] flex items-center gap-[4px]">
+        {showButtons && (
+          <div className="mt-[8px] flex items-center gap-[4px]" data-testid="document-card-actions">
             <Button
               variant="primary"
               className="text-[9px] px-[8px] py-[2px] h-auto"
@@ -185,6 +252,11 @@ export function DocumentCard({
             </Button>
           </div>
         )}
+        {status && (
+          <p className={cn("mt-[8px] text-[11px] font-medium", status.className)} data-testid="document-card-status">
+            {status.text}
+          </p>
+        )}
       </div>
 
       <DocumentViewer
@@ -196,7 +268,7 @@ export function DocumentCard({
         title={title}
         description={logicalPath}
         actions={
-          isDecision && decision === "NONE" ? (
+          showButtons ? (
             editing ? (
               <>
                 <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={loading}>

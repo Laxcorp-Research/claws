@@ -33,6 +33,8 @@ export function NeedsYouSection({ workspaceId, approvals, onDecision }: NeedsYou
             deliverableKind={approval.deliverableKind}
             humanRequestId={approval.humanRequestId}
             timestamp={approval.timestamp}
+            decision={approval.decision ?? "NONE"}
+            latestLabel={approval.latestLabel}
             className="max-w-none"
             onDecision={() => {
               if (approval.humanRequestId) onDecision?.(approval.humanRequestId)

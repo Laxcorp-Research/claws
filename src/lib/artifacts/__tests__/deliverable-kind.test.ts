@@ -54,6 +54,7 @@ describe("deliverable kind", () => {
       "src/app/dashboard/[workspaceId]/page.tsx",
       "src/components/dashboard/chat-panel.tsx",
       "src/components/dashboard/document-card.tsx",
+      "src/lib/artifacts/approval-version.ts",
     ]
     for (const rel of clients) {
       const src = readFileSync(resolve(rel), "utf8")

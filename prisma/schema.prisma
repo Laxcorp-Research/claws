@@ -986,6 +986,7 @@ enum FileVersionDecision {
   NONE
   APPROVED
   REJECTED
+  SUPERSEDED
 }
 
 // ─── AUDIT LOG ──────────────────────────────────────────

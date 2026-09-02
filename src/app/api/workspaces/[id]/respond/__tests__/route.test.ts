@@ -62,6 +62,15 @@ describe("POST /api/workspaces/[id]/respond", () => {
       },
     )
     ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "ha-1" })
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
     mockApply.mockResolvedValue({
       fileVersionId: "fv-1",
       decision: "APPROVED",

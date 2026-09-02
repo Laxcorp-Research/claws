@@ -299,6 +299,8 @@ export function reconcileChatMessages(
   return views
 }
 
+export const LEDGER_COLLAPSE_WINDOW_MS = 5 * 60 * 1000
+
 export function documentViewsFromRows(rows: ChatRow[]): ChatDocumentView[] {
   const views: ChatDocumentView[] = []
   for (const r of rows) {
@@ -317,7 +319,21 @@ export function documentViewsFromRows(rows: ChatRow[]): ChatDocumentView[] {
       humanRequestId: r.humanRequestId ?? null,
     })
   }
-  return views
+  views.sort((a, b) => a.sortTs - b.sortTs)
+  const collapsed: ChatDocumentView[] = []
+  for (const view of views) {
+    const prev = collapsed[collapsed.length - 1]
+    if (
+      prev &&
+      prev.logicalPath === view.logicalPath &&
+      view.sortTs - prev.sortTs <= LEDGER_COLLAPSE_WINDOW_MS
+    ) {
+      collapsed[collapsed.length - 1] = view
+      continue
+    }
+    collapsed.push(view)
+  }
+  return collapsed
 }
 
 // History endpoint rows and SSE rows are the SAME persisted ActivityLog rows.
@@ -996,6 +1012,7 @@ export function ChatPanel({
                     deliverableKind={d.deliverableKind}
                     humanRequestId={d.humanRequestId}
                     timestamp={formatClock(d.sortTs)}
+                    stateRevision={documents.length}
                   />
                 </div>
               )

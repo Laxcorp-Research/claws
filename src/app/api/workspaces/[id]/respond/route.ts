@@ -38,13 +38,8 @@ export async function POST(
     respondedBy: user.email ?? user.id,
   })
   if (!result.ok) {
-    if (result.error === "already_responded") {
-      return apiError("ALREADY_RESPONDED", "Already responded to this request", 409)
-    }
-    if (result.error === "pending_approval_not_found") {
-      return ERRORS.NOT_FOUND("pending approval")
-    }
-    return apiError("DECISION_LEDGER_FAILED", result.error, result.status)
+    const code = result.error.toUpperCase()
+    return apiError(code, result.message, result.status)
   }
 
   return apiSuccess({

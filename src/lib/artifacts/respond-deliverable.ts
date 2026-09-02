@@ -4,6 +4,8 @@ import { applyFileVersionDecision } from "@/lib/artifacts/apply-decision"
 import { findDeliverableApprovalRequest } from "@/lib/openclaw/pending-approval"
 import { resolveCustomerNudge } from "@/lib/alerts/customer-nudge"
 import { PENDING_APPROVAL_NUDGE_CONDITION } from "@/lib/artifacts/pending-approvals"
+import { respondFailureMessage } from "@/lib/artifacts/approval-version"
+import { loadApprovalVersionStates } from "@/lib/artifacts/supersede-versions"
 
 export type DeliverableRespondAction = "approve" | "reject"
 
@@ -19,7 +21,12 @@ export type DeliverableRespondOk = {
 export type DeliverableRespondFail = {
   ok: false
   error: string
+  message: string
   status: number
+}
+
+function fail(error: string, status: number, latestLabel?: string | null): DeliverableRespondFail {
+  return { ok: false, error, message: respondFailureMessage(error, latestLabel), status }
 }
 
 export type DeliverableRespondResult = DeliverableRespondOk | DeliverableRespondFail
@@ -50,6 +57,13 @@ export async function findLatestPendingDeliverableApproval(args: {
       select: { id: true },
     })
     if (existing) continue
+    if (meta.fileVersionId && meta.logicalPath) {
+      const states = await loadApprovalVersionStates({
+        workspaceId: args.workspaceId,
+        logicalPaths: [meta.logicalPath],
+      })
+      if (!states.get(meta.fileVersionId)?.isDecidable) continue
+    }
     return { id: row.id, fileVersionId: meta.fileVersionId }
   }
   return null
@@ -71,12 +85,28 @@ export async function respondToDeliverable(args: {
     })
     requestId = found?.id
   }
-  if (!requestId) return { ok: false, error: "pending_approval_not_found", status: 404 }
+  if (!requestId) return fail("pending_approval_not_found", 404)
 
   const originalRequest = await prisma.activityLog.findFirst({
     where: { id: requestId, workspaceId: args.workspaceId, actionType: "HUMAN_REQUEST" },
   })
-  if (!originalRequest) return { ok: false, error: "pending_approval_not_found", status: 404 }
+  if (!originalRequest) return fail("pending_approval_not_found", 404)
+
+  const meta = parseDeliverableMetadata(originalRequest.metadata)
+  const resolvedFileVersionId = meta.fileVersionId ?? args.fileVersionId ?? null
+  const logicalPath = meta.logicalPath
+
+  if (resolvedFileVersionId && logicalPath) {
+    const states = await loadApprovalVersionStates({
+      workspaceId: args.workspaceId,
+      logicalPaths: [logicalPath],
+    })
+    const state = states.get(resolvedFileVersionId)
+    if (!state) return fail("file_version_not_found", 404)
+    if (state.decision === "APPROVED") return fail("already_approved", 409)
+    if (state.decision === "REJECTED") return fail("already_rejected", 409)
+    if (!state.isDecidable) return fail("superseded", 409, state.latestLabel)
+  }
 
   const existingResponse = await prisma.activityLog.findFirst({
     where: {
@@ -85,10 +115,10 @@ export async function respondToDeliverable(args: {
       metadata: { contains: requestId },
     },
   })
-  if (existingResponse) return { ok: false, error: "already_responded", status: 409 }
-
-  const meta = parseDeliverableMetadata(originalRequest.metadata)
-  const resolvedFileVersionId = meta.fileVersionId ?? args.fileVersionId ?? null
+  if (existingResponse) {
+    const kind = existingResponse.actionType === "HUMAN_REJECT" ? "already_rejected" : "already_approved"
+    return fail(kind, 409)
+  }
 
   const responseLog = await prisma.activityLog.create({
     data: {
@@ -120,7 +150,7 @@ export async function respondToDeliverable(args: {
       decidedBy: args.respondedBy,
     })
     if ("error" in applied) {
-      return { ok: false, error: applied.error, status: applied.status }
+      return fail(applied.error, applied.status)
     }
     liveWriteOk = applied.liveWriteOk
   }
