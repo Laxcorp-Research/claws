@@ -67,6 +67,16 @@ async function slackSendMessage(args: {
   }
 }
 
+export function hasLaunchChannel(config: ChannelConfigMap): boolean {
+  const telegramChat = preferNumericTelegramAllowFrom(config.telegram?.allowFrom)?.[0]
+  if (config.telegram?.botToken && telegramChat !== undefined && telegramChat !== null) {
+    return true
+  }
+  if (config.discord?.token && config.discord.allowFrom?.[0]) return true
+  if (config.slack?.botToken && config.slack.allowFrom?.[0]) return true
+  return false
+}
+
 /**
  * Post as the claw on its connected launch channel (Telegram, then Discord, then Slack).
  * Web-chat-only workspaces return web-chat-only so the caller can email + dashboard.

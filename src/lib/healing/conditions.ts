@@ -43,6 +43,7 @@ export const PHASE_A_CONDITION_IDS = [
   "cron-job-failed",
   "state-sync-near-cap",
   "mission_interrupted",
+  "pending-approval-unactioned",
 ] as const
 
 export type HealConditionId = (typeof PHASE_A_CONDITION_IDS)[number]
