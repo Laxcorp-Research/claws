@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Modal } from "@/components/ui/modal"
+import { DocumentViewer } from "@/components/dashboard/document-viewer"
 import { Textarea } from "@/components/ui/textarea"
 import { MarkdownBody } from "@/components/dashboard/chat-message"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
@@ -187,7 +187,7 @@ export function DocumentCard({
         )}
       </div>
 
-      <Modal
+      <DocumentViewer
         open={open}
         onClose={() => {
           setOpen(false)
@@ -195,33 +195,30 @@ export function DocumentCard({
         }}
         title={title}
         description={logicalPath}
-        size="xl"
-        footer={
+        actions={
           isDecision && decision === "NONE" ? (
-            <div className="flex items-center justify-end gap-[6px]">
-              {editing ? (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={loading}>
-                    Cancel
-                  </Button>
-                  <Button variant="primary" size="sm" onClick={() => void saveEdit()} loading={loading}>
-                    Save
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={loading}>
-                    Edit
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => void respond("reject")} disabled={loading}>
-                    Reject
-                  </Button>
-                  <Button variant="primary" size="sm" onClick={() => void respond("approve")} loading={loading}>
-                    Approve
-                  </Button>
-                </>
-              )}
-            </div>
+            editing ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={loading}>
+                  Cancel
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => void saveEdit()} loading={loading}>
+                  Save
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={loading}>
+                  Edit
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void respond("reject")} disabled={loading}>
+                  Reject
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => void respond("approve")} loading={loading}>
+                  Approve
+                </Button>
+              </>
+            )
           ) : undefined
         }
       >
@@ -231,12 +228,12 @@ export function DocumentCard({
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            className="min-h-[280px] text-[12px] font-mono"
+            className="min-h-[160px] w-full max-w-full text-[12px] font-mono"
           />
         ) : (
           <MarkdownBody content={content} />
         )}
-      </Modal>
+      </DocumentViewer>
     </div>
   )
 }

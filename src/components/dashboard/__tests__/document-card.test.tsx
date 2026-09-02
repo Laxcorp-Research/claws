@@ -28,6 +28,16 @@ describe("DocumentCard decision path", () => {
     )
   })
 
+  it("Open uses DocumentViewer", async () => {
+    render(<DocumentCard {...props} />)
+    fireEvent.click(screen.getByRole("button", { name: "Open" }))
+    await waitFor(() => {
+      expect(screen.getByTestId("document-viewer-body")).toBeTruthy()
+    })
+    expect(screen.getByTestId("document-viewer-actions")).toBeTruthy()
+    expect(screen.getByTestId("document-viewer-prose")).toBeTruthy()
+  })
+
   it("Approve posts the FileVersion-keyed respond path", async () => {
     render(<DocumentCard {...props} />)
     fireEvent.click(screen.getByRole("button", { name: "Approve" }))
