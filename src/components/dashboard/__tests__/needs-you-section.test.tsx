@@ -38,6 +38,17 @@ describe("NeedsYouSection", () => {
     expect(screen.queryByText("Unknown")).toBeNull()
   })
 
+  it("does not show live buttons when the approval is already decided", () => {
+    render(
+      <NeedsYouSection
+        workspaceId="ws-1"
+        approvals={[{ ...approval, decision: "APPROVED" }]}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
+    expect(screen.getByTestId("document-card-status").textContent).toContain("Approved")
+  })
+
   it("uses --warn for the section title, not agent green", () => {
     render(<NeedsYouSection workspaceId="ws-1" approvals={[approval]} />)
     const heading = screen.getByText("Needs you (1 item)")

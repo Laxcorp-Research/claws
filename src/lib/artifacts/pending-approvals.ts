@@ -12,6 +12,8 @@ import {
   titleFromDeliverablePath,
   type DeliverableKind,
 } from "@/lib/artifacts/deliverable-kind"
+import type { ApprovalDecisionState } from "@/lib/artifacts/approval-version"
+import { loadApprovalVersionStates, reconcileSupersededVersions } from "@/lib/artifacts/supersede-versions"
 
 /** Email (web-chat-only) after this many hours without Approve/Reject. */
 export const PENDING_APPROVAL_NUDGE_AFTER_MS = 4 * 60 * 60 * 1000
@@ -27,6 +29,9 @@ export type PendingApprovalView = {
   deliverableKind: DeliverableKind
   humanRequestId: string
   timestamp: string
+  decision: ApprovalDecisionState
+  latestLabel: string
+  isDecidable: boolean
 }
 
 export function respondedRequestIds(
@@ -45,6 +50,7 @@ export function respondedRequestIds(
 }
 
 export async function hydratePendingApprovals(
+  workspaceId: string,
   requests: Array<{
     id: string
     timestamp: Date
@@ -71,6 +77,23 @@ export async function hydratePendingApprovals(
         })
       : []
   const byId = new Map(versions.map((row) => [row.id, row]))
+  const paths = [
+    ...new Set(
+      parsed
+        .map((row) => byId.get(row.meta.fileVersionId ?? "")?.logicalPath ?? row.meta.logicalPath)
+        .filter((path): path is string => Boolean(path)),
+    ),
+  ]
+  if (paths.length > 0) {
+    try {
+      await reconcileSupersededVersions({ workspaceId, logicalPaths: paths })
+    } catch {
+      /* reconcile is best-effort; view still uses computed state */
+    }
+  }
+  const states = paths.length > 0
+    ? await loadApprovalVersionStates({ workspaceId, logicalPaths: paths })
+    : new Map()
 
   const out: PendingApprovalView[] = []
   for (const { req, meta } of parsed) {
@@ -79,6 +102,7 @@ export async function hydratePendingApprovals(
     const fv = byId.get(fileVersionId)
     const logicalPath = fv?.logicalPath ?? meta.logicalPath
     if (!logicalPath) continue
+    const state = states.get(fileVersionId)
     const title = sanitizeActivityText(titleFromDeliverablePath(logicalPath))
     const preview = sanitizeActivityText(
       meta.preview ?? (fv ? previewFromContent(fv.content) : ""),
@@ -92,9 +116,12 @@ export async function hydratePendingApprovals(
       deliverableKind: meta.deliverableKind ?? deliverableKind(logicalPath),
       humanRequestId: req.id,
       timestamp: req.timestamp.toISOString(),
+      decision: state?.decision ?? "NONE",
+      latestLabel: state?.latestLabel ?? "",
+      isDecidable: state?.isDecidable ?? false,
     })
   }
-  return out
+  return out.filter((row) => row.isDecidable)
 }
 
 export async function countPendingApprovalsByWorkspace(
@@ -117,10 +144,31 @@ export async function countPendingApprovalsByWorkspace(
     }),
   ])
   const done = respondedRequestIds(responses)
-  for (const req of requests) {
-    if (done.has(req.id)) continue
-    if (!parseDeliverableMetadata(req.metadata).fileVersionId) continue
-    counts.set(req.workspaceId, (counts.get(req.workspaceId) ?? 0) + 1)
+  const open = requests.filter((req) => {
+    if (done.has(req.id)) return false
+    return Boolean(parseDeliverableMetadata(req.metadata).fileVersionId)
+  })
+  const byWorkspace = new Map<string, typeof open>()
+  for (const req of open) {
+    const list = byWorkspace.get(req.workspaceId) ?? []
+    list.push(req)
+    byWorkspace.set(req.workspaceId, list)
+  }
+  for (const [workspaceId, rows] of byWorkspace) {
+    const paths = [
+      ...new Set(
+        rows
+          .map((row) => parseDeliverableMetadata(row.metadata).logicalPath)
+          .filter((path): path is string => Boolean(path)),
+      ),
+    ]
+    const states = await loadApprovalVersionStates({ workspaceId, logicalPaths: paths })
+    let n = 0
+    for (const req of rows) {
+      const fvId = parseDeliverableMetadata(req.metadata).fileVersionId
+      if (fvId && states.get(fvId)?.isDecidable) n += 1
+    }
+    if (n > 0) counts.set(workspaceId, n)
   }
   return counts
 }
@@ -166,9 +214,18 @@ export async function nudgeStaleWebChatPendingApprovals(
       select: { metadata: true },
     })
     const done = respondedRequestIds(responses)
+    const paths = [
+      ...new Set(
+        rows
+          .map((row) => parseDeliverableMetadata(row.metadata).logicalPath)
+          .filter((path): path is string => Boolean(path)),
+      ),
+    ]
+    const states = await loadApprovalVersionStates({ workspaceId, logicalPaths: paths })
     const open = rows.filter((row) => {
       if (done.has(row.id)) return false
-      return Boolean(parseDeliverableMetadata(row.metadata).fileVersionId)
+      const fvId = parseDeliverableMetadata(row.metadata).fileVersionId
+      return Boolean(fvId && states.get(fvId)?.isDecidable)
     })
     if (open.length === 0) continue
 

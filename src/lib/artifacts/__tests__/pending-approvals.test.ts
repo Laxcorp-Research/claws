@@ -53,12 +53,16 @@ describe("hydratePendingApprovals", () => {
         id: "fv-1",
         logicalPath: "shared/deliverables/x-content-cycle.md",
         content: "# Cycle\n\nDraft A for the human.",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
       },
     ])
+    ;(prismaMock.fileVersion.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 })
   })
 
   it("joins FileVersion title and preview; never Unknown", async () => {
-    const views = await hydratePendingApprovals([
+    const views = await hydratePendingApprovals("ws-1", [
       {
         id: "hr-1",
         timestamp: new Date("2026-09-01T12:00:00.000Z"),
@@ -74,6 +78,8 @@ describe("hydratePendingApprovals", () => {
         logicalPath: "shared/deliverables/x-content-cycle.md",
         deliverableKind: "decision",
         humanRequestId: "hr-1",
+        decision: "NONE",
+        isDecidable: true,
       }),
     ])
     expect(views[0]?.preview).toContain("Draft A")
@@ -81,7 +87,7 @@ describe("hydratePendingApprovals", () => {
   })
 
   it("drops HUMAN_REQUEST rows with no fileVersionId", async () => {
-    const views = await hydratePendingApprovals([
+    const views = await hydratePendingApprovals("ws-1", [
       {
         id: "hr-legacy",
         timestamp: new Date("2026-09-01T12:00:00.000Z"),
@@ -90,7 +96,51 @@ describe("hydratePendingApprovals", () => {
       },
     ])
     expect(views).toEqual([])
-    expect(prismaMock.fileVersion.findMany).not.toHaveBeenCalled()
+  })
+
+  it("drops an older same-path version after a newer one exists (does not clear latest)", async () => {
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        content: "sep1",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
+      },
+      {
+        id: "fv-2",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        content: "sep2",
+        version: 2,
+        createdAt: new Date("2026-09-02T12:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
+    const views = await hydratePendingApprovals("ws-1", [
+      {
+        id: "hr-1",
+        timestamp: new Date("2026-09-01T12:00:00.000Z"),
+        action: "Approval needed: x-content-cycle",
+        metadata: JSON.stringify({
+          eventKind: "deliverable_approval_request",
+          fileVersionId: "fv-1",
+          logicalPath: "shared/deliverables/x-content-cycle.md",
+        }),
+      },
+      {
+        id: "hr-2",
+        timestamp: new Date("2026-09-02T12:00:00.000Z"),
+        action: "Approval needed: x-content-cycle",
+        metadata: JSON.stringify({
+          eventKind: "deliverable_approval_request",
+          fileVersionId: "fv-2",
+          logicalPath: "shared/deliverables/x-content-cycle.md",
+        }),
+      },
+    ])
+    expect(views.map((v) => v.fileVersionId)).toEqual(["fv-2"])
+    expect(views[0]?.isDecidable).toBe(true)
   })
 })
 
@@ -103,6 +153,16 @@ describe("countPendingApprovalsByWorkspace", () => {
         { id: "hr-3", workspaceId: "ws-2", metadata: "{}" },
       ])
       .mockResolvedValueOnce([{ metadata: JSON.stringify({ originalRequestId: "hr-2" }) }])
+
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
 
     const counts = await countPendingApprovalsByWorkspace(["ws-1", "ws-2"])
     expect(counts.get("ws-1")).toBe(1)
@@ -138,6 +198,16 @@ describe("nudgeStaleWebChatPendingApprovals", () => {
         ]
       },
     )
+
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 1,
+        createdAt: new Date("2026-09-01T12:00:00.000Z"),
+        decision: "NONE",
+      },
+    ])
 
     const out = await nudgeStaleWebChatPendingApprovals(new Date())
     expect(out.nudged).toBe(1)

@@ -19,6 +19,7 @@ describe("applyFileVersionDecision", () => {
     ;(prismaMock.fileVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "fv-1",
       logicalPath: "shared/deliverables/x-content-cycle.md",
+      decision: "NONE",
     })
     ;(prismaMock.fileVersion.update as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "fv-1",
@@ -66,6 +67,24 @@ describe("applyFileVersionDecision", () => {
       decidedBy: "u",
     })
     expect(result).toEqual({ error: "file_version_not_found", status: 404 })
+    expect(mockWrite).not.toHaveBeenCalled()
+  })
+
+  it("refuses SUPERSEDED and already-decided rows", async () => {
+    ;(prismaMock.fileVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "fv-1",
+      logicalPath: "shared/deliverables/x-content-cycle.md",
+      decision: "SUPERSEDED",
+    })
+    expect(
+      await applyFileVersionDecision({
+        workspaceId: "ws-1",
+        fileVersionId: "fv-1",
+        decision: "APPROVED",
+        reason: null,
+        decidedBy: "u",
+      }),
+    ).toEqual({ error: "superseded", status: 409 })
     expect(mockWrite).not.toHaveBeenCalled()
   })
 })

@@ -117,6 +117,7 @@ async function callRoute(opts: WsOverrides) {
   (prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(
     (opts.fileVersions ?? []) as never,
   );
+  (prismaMock.fileVersion.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 } as never);
   (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue((opts.todayCallGroups ?? []) as never);
   (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue((opts.expiredTools ?? []) as never);
   (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -559,6 +560,9 @@ describe("pendingApprovals FileVersion join", () => {
           id: "fv-1",
           logicalPath: "shared/deliverables/x-content-cycle.md",
           content: "# Cycle\n\nDraft A for the human.",
+          version: 1,
+          createdAt: new Date("2026-09-01T12:00:00.000Z"),
+          decision: "NONE",
         },
       ],
     })

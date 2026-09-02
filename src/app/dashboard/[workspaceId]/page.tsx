@@ -148,6 +148,8 @@ interface PendingApprovalItem {
   deliverableKind: "decision" | "report"
   humanRequestId: string
   timestamp: string
+  decision?: "NONE" | "APPROVED" | "REJECTED" | "SUPERSEDED"
+  latestLabel?: string
 }
 
 interface SpendInfo {
