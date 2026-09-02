@@ -20,6 +20,8 @@ export interface DocumentCardProps {
   deliverableKind: DeliverableKind
   humanRequestId: string | null
   timestamp: string
+  className?: string
+  onDecision?: (decision: "APPROVED" | "REJECTED") => void
 }
 
 export function DocumentCard({
@@ -31,6 +33,8 @@ export function DocumentCard({
   deliverableKind,
   humanRequestId,
   timestamp,
+  className,
+  onDecision,
 }: DocumentCardProps) {
   const snackbar = useSnackbarOptional()
   const show = snackbar?.show ?? (() => undefined)
@@ -83,7 +87,9 @@ export function DocumentCard({
             }),
           })
           if (!res.ok) throw new Error(action === "approve" ? "Could not approve" : "Could not reject")
-          setDecision(action === "approve" ? "APPROVED" : "REJECTED")
+          const next = action === "approve" ? "APPROVED" : "REJECTED"
+          setDecision(next)
+          onDecision?.(next)
         },
         {
           message: action === "approve" ? "Approved" : "Rejected",
@@ -123,7 +129,7 @@ export function DocumentCard({
   }
 
   return (
-    <div className="self-start w-full max-w-[85%]">
+    <div className={cn("self-start w-full max-w-[85%]", className)}>
       <div
         className={cn(
           "rounded-[10px] border border-[var(--bd)] bg-[var(--bg)] px-[12px] py-[10px]",

@@ -141,10 +141,12 @@ interface LogEntry {
 
 interface PendingApprovalItem {
   id: string
+  fileVersionId: string
   title: string
-  description: string
-  agentName: string
-  agentSlug: string
+  preview: string
+  logicalPath: string
+  deliverableKind: "decision" | "report"
+  humanRequestId: string
   timestamp: string
 }
 
@@ -690,46 +692,9 @@ export default function DashboardPage() {
     void redeployFlow.startRedeploy()
   }, [redeployFlow])
 
-  const handleApprove = async (activityLogId: string) => {
-    try {
-      await mutateWithFeedback(
-        async () => {
-          const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ activityLogId, action: "approve" }),
-          })
-          if (!res.ok) throw new Error("Could not approve")
-          setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
-          fetchStats()
-        },
-        { message: "Approved", errorMessage: "Could not approve" },
-        showSnackbar,
-      )
-    } catch {
-      /* error snackbar already shown */
-    }
-  }
-
-  const handleReject = async (activityLogId: string, feedback?: string) => {
-    try {
-      await mutateWithFeedback(
-        async () => {
-          const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ activityLogId, action: "reject", feedback }),
-          })
-          if (!res.ok) throw new Error("Could not reject")
-          setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
-          fetchStats()
-        },
-        { message: "Rejected", errorMessage: "Could not reject" },
-        showSnackbar,
-      )
-    } catch {
-      /* error snackbar already shown */
-    }
+  const handleApprovalDecision = (humanRequestId: string) => {
+    setPendingApprovals((prev) => prev.filter((a) => a.humanRequestId !== humanRequestId && a.id !== humanRequestId))
+    fetchStats()
   }
 
   const handleAgentControl = async (agentId: string, action: "pause" | "resume" | "restart") => {
@@ -1556,7 +1521,13 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <Tabs tabs={DASHBOARD_TABS} activeTab={activeTab} onTabChange={switchTab} />
+          <Tabs
+            tabs={DASHBOARD_TABS.map((tab) =>
+              tab.id === "overview" ? { ...tab, badge: pendingApprovals.length } : tab,
+            )}
+            activeTab={activeTab}
+            onTabChange={switchTab}
+          />
 
           <div hidden={activeTab !== "overview"}>
             <BriefingHeader
@@ -1574,12 +1545,9 @@ export default function DashboardPage() {
             />
             <div className="grid gap-3 md:grid-cols-2">
               <NeedsYouSection
-                approvals={pendingApprovals.map((a) => ({
-                  ...a,
-                  agentColor: agentColorMapRef.current[a.agentName] ?? AGENT_COLORS["WORKER"],
-                }))}
-                onApprove={handleApprove}
-                onReject={handleReject}
+                workspaceId={workspaceId}
+                approvals={pendingApprovals}
+                onDecision={handleApprovalDecision}
               />
               <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Costs">
                 <div className="mb-2 flex items-center justify-between gap-3">

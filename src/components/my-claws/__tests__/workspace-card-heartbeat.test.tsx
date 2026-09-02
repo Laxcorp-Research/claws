@@ -58,6 +58,18 @@ describe("WorkspaceCard - sticky heartbeat visibility", () => {
     expect(screen.getByText(/Heartbeat missed/)).toBeTruthy()
   })
 
+  it("shows a pending-approval count badge", () => {
+    render(
+      <WorkspaceCard
+        {...base}
+        status="running"
+        apiStatus="RUNNING"
+        pendingApprovalCount={2}
+      />,
+    )
+    expect(screen.getByLabelText("2 pending approvals")).toBeTruthy()
+  })
+
   it("omits line when heartbeatMissedAt is null", () => {
     render(
       <WorkspaceCard

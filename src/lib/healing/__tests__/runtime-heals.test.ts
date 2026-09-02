@@ -69,10 +69,11 @@ describe("planHealthRuntimeHeal", () => {
 })
 
 describe("B-2 registry rows", () => {
-  it("covers 39 Phase-A ids plus mission_interrupted", () => {
-    expect(PHASE_A_CONDITION_IDS).toHaveLength(40)
+  it("covers Phase-A ids plus mission_interrupted", () => {
+    expect(PHASE_A_CONDITION_IDS).toHaveLength(41)
     expect(PHASE_A_CONDITION_IDS).toContain("mission_interrupted")
-    expect(Object.keys(HEAL_REGISTRY)).toHaveLength(40)
+    expect(PHASE_A_CONDITION_IDS).toContain("pending-approval-unactioned")
+    expect(Object.keys(HEAL_REGISTRY)).toHaveLength(41)
     expect(getHealPolicy("mission_interrupted").existingHeal).toBe("auto-resume on wake")
     expect(getHealPolicy("fingerprint-config-drift").existingHeal).toContain("banner-only")
     expect(getHealPolicy("version-update").existingHeal).toBe("apply at next wake")

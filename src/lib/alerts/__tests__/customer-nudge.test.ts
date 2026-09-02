@@ -38,4 +38,16 @@ describe("customer nudge", () => {
     expect(text).toContain("One action:")
     expect(text).toContain("Raise the spend limit")
   })
+
+  it("pending-approval-unactioned is user-only and asks to open the dashboard", () => {
+    expect(isUserOnlyNudgeCondition("pending-approval-unactioned")).toBe(true)
+    expect(getHealPolicy("pending-approval-unactioned").ruling).toBe("user-only")
+    const text = buildCustomerNudgeText("pending-approval-unactioned")
+    expect(text).toContain("waiting for your approval")
+    expect(text).toContain("Approve, Edit, or Reject")
+    expect(decideCustomerNudge({
+      condition: "pending-approval-unactioned",
+      openNudgeAt: new Date("2026-09-01T12:00:00Z"),
+    }).action).toBe("skip")
+  })
 })

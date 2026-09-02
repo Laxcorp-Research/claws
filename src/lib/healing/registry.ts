@@ -74,6 +74,14 @@ export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
   "mission_interrupted": policy("mission_interrupted", "platform", "none", "auto-resume on wake", 2, "customer-alert"),
   "cron-job-failed": policy("cron-job-failed", "platform", "customer", "classify then heal", 0, "customer-alert"),
   "state-sync-near-cap": policy("state-sync-near-cap", "user-only", "customer", null, 0, "customer-alert"),
+  "pending-approval-unactioned": policy(
+    "pending-approval-unactioned",
+    "user-only",
+    "customer",
+    "web-chat-only email after 4h",
+    0,
+    "customer-alert",
+  ),
 }
 
 export function getHealPolicy(id: HealConditionId): HealPolicy {

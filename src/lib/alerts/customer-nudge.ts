@@ -41,6 +41,10 @@ const NUDGE_COPY: Partial<Record<HealConditionId, NudgeCopy>> = {
     tried: "Memory bundle is near the size cap; further growth risks a refused hibernate.",
     action: "Open Conversations and delete old sessions.",
   },
+  "pending-approval-unactioned": {
+    tried: "A deliverable has been waiting for your approval.",
+    action: "Open the dashboard, read the draft, then Approve, Edit, or Reject.",
+  },
   "spend-limit-100": {
     tried: "Monthly API spend hit your limit. The claw was synced and paused (not destroyed).",
     action: "Raise the spend limit or wait until next month.",

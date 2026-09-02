@@ -21,10 +21,12 @@ describe("PR-4 Snackbar adoption guard", () => {
         "handleStopConfirmed",
         "handleResumeAll",
         "handleRedeployFromStopped",
-        "handleApprove",
-        "handleReject",
         "handleAgentControl",
       ],
+    },
+    {
+      file: "src/components/dashboard/document-card.tsx",
+      handlers: ["respond"],
     },
     {
       file: "src/components/settings/api-key-manager.tsx",

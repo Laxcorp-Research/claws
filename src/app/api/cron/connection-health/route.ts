@@ -5,6 +5,7 @@ import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
 import { IMPLEMENTED_SLUGS, hasValidator, validateToolKey, type ValidationResult } from "@/lib/tools/validators"
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
+import { nudgeStaleWebChatPendingApprovals } from "@/lib/artifacts/pending-approvals"
 
 // before: 55 - after: 300 (belt with staging cron scheduler routes)
 export const maxDuration = 300
@@ -501,15 +502,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let pendingApprovalNudge = { scanned: 0, nudged: 0, skippedChannel: 0 }
+  try {
+    pendingApprovalNudge = await nudgeStaleWebChatPendingApprovals()
+  } catch (err) {
+    log.error("connection-health: pending-approval nudge failed", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   const durationMs = Date.now() - startedAt
   log.info("connection-health: sweep complete", {
     category: "connection_health",
     event: "run_complete",
     durationMs,
     ...summary,
+    pendingApprovalNudge,
   })
 
-  return Response.json({ success: true, data: { ...summary, durationMs } })
+  return Response.json({ success: true, data: { ...summary, pendingApprovalNudge, durationMs } })
 }
 
 export const __internal = {

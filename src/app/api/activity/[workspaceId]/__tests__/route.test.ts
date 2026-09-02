@@ -55,6 +55,8 @@ type WsOverrides = {
   nearCapWarningAt?: Date | null;
   nearCapSnapshot?: { updatedAt: Date; compressedBytes: number } | null;
   alwaysOn?: boolean;
+  humanRequests?: unknown[];
+  fileVersions?: unknown[];
 };
 
 async function callRoute(opts: WsOverrides) {
@@ -107,8 +109,14 @@ async function callRoute(opts: WsOverrides) {
     if (args.where?.actionType === "MESSAGE_SENT") {
       return Promise.resolve((opts.messageSents ?? []) as never)
     }
+    if (args.where?.actionType === "HUMAN_REQUEST") {
+      return Promise.resolve((opts.humanRequests ?? []) as never)
+    }
     return Promise.resolve([] as never)
   });
+  (prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(
+    (opts.fileVersions ?? []) as never,
+  );
   (prismaMock.activityLog.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue((opts.todayCallGroups ?? []) as never);
   (prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue((opts.expiredTools ?? []) as never);
   (prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -527,3 +535,41 @@ describe("PR-3 near-cap AlertStack detector surface", () => {
     expect(data.workspace.stateSyncNearCapActive).toBe(false);
   });
 });
+
+describe("pendingApprovals FileVersion join", () => {
+  it("returns deliverable title and preview, not Unknown", async () => {
+    const data = await callRoute({
+      status: "RUNNING",
+      healthStatus: "HEALTHY",
+      humanRequests: [
+        {
+          id: "hr-1",
+          action: "Approval needed: x-content-cycle",
+          agentName: null,
+          timestamp: new Date("2026-09-01T12:00:00.000Z"),
+          metadata: JSON.stringify({
+            eventKind: "deliverable_approval_request",
+            fileVersionId: "fv-1",
+            logicalPath: "shared/deliverables/x-content-cycle.md",
+          }),
+        },
+      ],
+      fileVersions: [
+        {
+          id: "fv-1",
+          logicalPath: "shared/deliverables/x-content-cycle.md",
+          content: "# Cycle\n\nDraft A for the human.",
+        },
+      ],
+    })
+    expect(data.pendingApprovals).toEqual([
+      expect.objectContaining({
+        fileVersionId: "fv-1",
+        title: "x-content-cycle",
+        humanRequestId: "hr-1",
+        deliverableKind: "decision",
+      }),
+    ])
+    expect(JSON.stringify(data.pendingApprovals)).not.toMatch(/Unknown/)
+  })
+})

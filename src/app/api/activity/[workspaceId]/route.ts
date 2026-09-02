@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
-import { sanitizeActivityText } from "@/lib/security/sanitize"
+import { hydratePendingApprovals, respondedRequestIds } from "@/lib/artifacts/pending-approvals"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
 import {
   aggregateAgentCostRow,
@@ -308,24 +308,10 @@ export async function GET(
         : null,
   })
 
-  const respondedRequestIds = new Set<string>()
-  for (const r of humanResponses) {
-    try {
-      const meta = JSON.parse(r.metadata || "{}")
-      if (meta.originalRequestId) respondedRequestIds.add(meta.originalRequestId)
-    } catch { /* skip malformed */ }
-  }
-  const pendingApprovals = humanRequests
-    .filter((req) => !respondedRequestIds.has(req.id))
-    .map((req) => ({
-      id: req.id,
-      title: `${req.agentName || "Agent"} requests approval`,
-      description: sanitizeActivityText(req.action),
-      agentName: req.agentName || "Unknown",
-      agentSlug: req.agentSlug || "",
-      timestamp: req.timestamp.toISOString(),
-      metadata: req.metadata,
-    }))
+  const answered = respondedRequestIds(humanResponses)
+  const pendingApprovals = await hydratePendingApprovals(
+    humanRequests.filter((req) => !answered.has(req.id)),
+  )
 
   const agentSlugs = agents.map((a) => a.agentSlug).filter(Boolean)
   const latestActivityByAgent = agentSlugs.length > 0

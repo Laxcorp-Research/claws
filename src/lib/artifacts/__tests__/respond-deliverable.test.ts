@@ -11,6 +11,10 @@ vi.mock("@/lib/artifacts/apply-decision", () => ({
 vi.mock("@/lib/openclaw/pending-approval", () => ({
   findDeliverableApprovalRequest: (...args: unknown[]) => mockFind(...args),
 }))
+const mockResolveNudge = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/alerts/customer-nudge", () => ({
+  resolveCustomerNudge: (...args: unknown[]) => mockResolveNudge(...args),
+}))
 
 import {
   findLatestPendingDeliverableApproval,
@@ -75,6 +79,8 @@ describe("respondToDeliverable", () => {
   beforeEach(() => {
     mockApply.mockReset()
     mockFind.mockReset()
+    mockResolveNudge.mockReset()
+    mockResolveNudge.mockResolvedValue({ sent: false, reason: "no-open-nudge" })
     mockApply.mockResolvedValue({
       fileVersionId: "fv-1",
       decision: "APPROVED",
@@ -115,6 +121,10 @@ describe("respondToDeliverable", () => {
         decision: "APPROVED",
       }),
     )
+    expect(mockResolveNudge).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      condition: "pending-approval-unactioned",
+    })
   })
 
   it("409 when already responded", async () => {

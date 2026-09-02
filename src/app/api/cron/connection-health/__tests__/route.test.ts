@@ -9,6 +9,13 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/alerts/customer-nudge", () => ({
   sendCustomerNudge: vi.fn().mockResolvedValue({ sent: true, channel: "telegram" }),
 }))
+vi.mock("@/lib/artifacts/pending-approvals", () => ({
+  nudgeStaleWebChatPendingApprovals: vi.fn().mockResolvedValue({
+    scanned: 0,
+    nudged: 0,
+    skippedChannel: 0,
+  }),
+}))
 
 const mockConnectedAccountsGet = vi.fn()
 const mockSessionRetrieve = vi.fn()

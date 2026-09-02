@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db"
 import { parseDeliverableMetadata } from "@/lib/artifacts/deliverable-kind"
 import { applyFileVersionDecision } from "@/lib/artifacts/apply-decision"
 import { findDeliverableApprovalRequest } from "@/lib/openclaw/pending-approval"
+import { resolveCustomerNudge } from "@/lib/alerts/customer-nudge"
+import { PENDING_APPROVAL_NUDGE_CONDITION } from "@/lib/artifacts/pending-approvals"
 
 export type DeliverableRespondAction = "approve" | "reject"
 
@@ -121,6 +123,15 @@ export async function respondToDeliverable(args: {
       return { ok: false, error: applied.error, status: applied.status }
     }
     liveWriteOk = applied.liveWriteOk
+  }
+
+  try {
+    await resolveCustomerNudge({
+      workspaceId: args.workspaceId,
+      condition: PENDING_APPROVAL_NUDGE_CONDITION,
+    })
+  } catch {
+    /* resolve is best-effort; the decision already landed */
   }
 
   return {
