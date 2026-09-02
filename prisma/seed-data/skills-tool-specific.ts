@@ -37,7 +37,8 @@ Patterns:
 
 Do not:
 - Query "AI agents trending" (noise).
-- Use Tavily as a substitute when twitter-api 401s (tell the human the Bearer is dead).
+- Use Tavily as a substitute when a Bearer-header curl to twitter-api returns 401 (tell the human the Bearer is dead; reconnect in Manage Tools).
+- Treat web_fetch 401 on api.twitter.com as a dead token. web_fetch does not send Authorization. Retry with curl and an Authorization Bearer header.
 - Treat twitter-api 402 as "down". 402 is tier-not-entitled: run Tavily-only and tell the human X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
 - Pull more than 3 queries per heartbeat window.`,
     type: "TOOL_SPECIFIC",
@@ -343,8 +344,12 @@ curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10&tweet.fields=cr
 
 ## Rate-limit behavior
 
+Call these endpoints with \`curl\` and \`-H "Authorization: Bearer $TWITTER_API_KEY"\`. Never \`web_fetch\` api.twitter.com or api.x.com (no Authorization header; those hosts then 401 even when the Bearer is live). Never GET /2/users/me (app-only forbidden, 403 Unsupported Authentication; not a dead token).
+
 - 429: wait for reset (or 60s if unknown), one retry, then DEGRADED. Do not tight-loop.
-- 401/403: Bearer is dead or forbidden. Stop. Ping the human. Do not invent a timeline.
+- 401 after a Bearer curl: token is dead. Stop. Tell the human to reconnect in Manage Tools. Do not invent a timeline. Do not degrade to Tavily.
+- web_fetch 401 on api.twitter.com: missing Authorization, not token-dead. Retry with curl. Reconnect is not the remedy.
+- 403 Unsupported Authentication on /2/users/me: wrong endpoint for app-only Bearer. Do not reconnect.
 - 402: X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
 - 5xx: one retry. Then DEGRADED.
 
@@ -354,6 +359,7 @@ curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10&tweet.fields=cr
 - DMs, email, phone
 - Follower dumps or block lists
 - POST /2/tweets (this claw does not post on Bearer)
+- GET /2/users/me
 - User lookup sprees outside the mission
 
 ## What not to do with the data

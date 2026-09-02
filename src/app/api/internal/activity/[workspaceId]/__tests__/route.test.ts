@@ -45,6 +45,7 @@ vi.mock("@/lib/artifacts/approval-command", () => ({
 }))
 
 import { POST, __internal } from "@/app/api/internal/activity/[workspaceId]/route";
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge";
 
 const SECRET = "test_activity_secret_pr2";
 const WORKSPACE_ID = "ws-fixture-1";
@@ -94,6 +95,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
     process.env.ACTIVITY_PIPELINE_SECRET = SECRET;
     mockNudgeDeliverableSyncNow.mockClear();
     mockApprovalCommand.mockClear();
+    vi.mocked(sendCustomerNudge).mockClear();
   });
 
   afterEach(() => {
@@ -1003,6 +1005,62 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
         { secret: SECRET },
       );
       expect(mockApprovalCommand).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("twitter 401 vs 402 protocol", () => {
+    it("does not customer-nudge on the Sep-1 web_fetch 401", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "ERROR",
+              action: "Tool web_fetch failed: Web fetch failed (401): SECURITY NOTICE",
+              detail:
+                "Web fetch failed (401): GET https://api.twitter.com/2/tweets/search/recent?query=AI%20agents",
+              metadata: {
+                toolName: "web_fetch",
+                error: "Web fetch failed (401): Unauthorized",
+              },
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      expect(sendCustomerNudge).not.toHaveBeenCalled();
+    });
+
+    it("nudges twitter-402-tier on an X 402 ERROR", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "ERROR",
+              action: "Tool exec failed: X API 402 Payment Required",
+              detail: "twitter-api 402",
+              metadata: { toolName: "exec" },
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      expect(sendCustomerNudge).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE_ID,
+        condition: "twitter-402-tier",
+      });
+    });
+
+    it("routes twitter nudges through twitterNudgeFromActivity (MUTATION: inline /402/ revive → fail)", () => {
+      const src = readFileSync(
+        join(process.cwd(), "src/app/api/internal/activity/[workspaceId]/route.ts"),
+        "utf8",
+      );
+      expect(src).toContain("twitterNudgeFromActivity");
+      expect(src).not.toMatch(/\/402\/\.test/);
     });
   });
 });

@@ -14,17 +14,16 @@
  * Rate-limit responses (429) are treated as transient verification failures:
  * the key may work, but the provider did not give us a fresh auth answer.
  *
- * IMPLEMENTED (13 of 29 API_KEY tools after PR #3a):
+ * IMPLEMENTED (14 of 29 API_KEY tools):
  *   anthropic_api, tavily, stripe_api, sendgrid, elevenlabs, brave_search,
  *   youtube-data-api, binance, alpaca, coinbase, salesforce-api, beehiiv-api,
- *   twilio (promoted to multi-cred in PR #3a)
+ *   twilio, twitter-api (app-only Bearer via GET /2/users/by/username/X;
+ *   never /2/users/me)
  *
- * DEFERRED (16 - why each is hard to validate from whatever credentials we
+ * DEFERRED (15 - why each is hard to validate from whatever credentials we
  * persist today):
  *   mixpanel        service-account username + secret pair; our catalog
  *                   only stores the secret
- *   twitter-api     OAuth 1.0a (4 values) or OAuth 2.0 Bearer - unclear
- *                   which one a single-field input represents
  *   google-search-console  OAuth-only; catalog is mislabeled as API_KEY
  *   mailgun         domain-scoped sending keys and a new token scheme; no
  *                   universal /me endpoint that works for both
@@ -51,6 +50,11 @@
 
 import crypto from "node:crypto"
 import { log } from "@/lib/logger"
+import {
+  TWITTER_API_402_COPY,
+  TWITTER_API_VALIDATE_URL,
+  classifyTwitterApiFailure,
+} from "@/lib/tools/twitter-api-honesty"
 
 export interface ValidationResult {
   /** True means "safe to save this key". False means "reject the save". */
@@ -506,6 +510,48 @@ async function validateBeehiivApi(
   return { valid: false, error: `Beehiiv returned ${res.status}` }
 }
 
+/**
+ * App-only Bearer probe. GET /2/users/me is forbidden for this token class
+ * (403 Unsupported Authentication) and must not be used as a validator.
+ */
+async function validateTwitterApi(
+  credentials: Record<string, string>,
+): Promise<ValidationResult> {
+  const miss = requireFields(credentials, ["TWITTER_API_KEY"], "Twitter/X")
+  if (miss) return miss
+
+  const res = await fetch(TWITTER_API_VALIDATE_URL, {
+    headers: { Authorization: `Bearer ${credentials.TWITTER_API_KEY}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  })
+  const body = await res.text().catch(() => "")
+  const classified = classifyTwitterApiFailure({
+    status: res.status,
+    url: TWITTER_API_VALIDATE_URL,
+    body,
+    sentAuthorization: true,
+    toolName: "curl",
+  })
+
+  if (classified === "live") return { valid: true }
+  if (classified === "dead-token") {
+    return { valid: false, error: "Invalid Twitter/X Bearer token" }
+  }
+  if (classified === "tier") {
+    return { valid: true, warning: TWITTER_API_402_COPY }
+  }
+  if (classified === "app-only-forbidden") {
+    return { valid: true, warning: "Probe endpoint rejected app-only auth; token was accepted" }
+  }
+  if (classified === "rate-limit") {
+    return { valid: true, warning: RATE_LIMIT_WARNING }
+  }
+  if (classified === "transient") {
+    return { valid: true, warning: TRANSIENT_WARNING }
+  }
+  return { valid: false, error: `Twitter/X returned ${res.status}` }
+}
+
 // ─── Registry + dispatch ───────────────────────────────
 
 const VALIDATORS: Record<string, ToolValidator> = {
@@ -522,6 +568,7 @@ const VALIDATORS: Record<string, ToolValidator> = {
   "salesforce-api": validateSalesforceApi,
   "beehiiv-api": validateBeehiivApi,
   twilio: validateTwilio,
+  "twitter-api": validateTwitterApi,
 }
 
 /** Exposed for tests to assert coverage. */

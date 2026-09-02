@@ -905,7 +905,7 @@ function hasCompatibleSkill(workspace: WorkspaceWithRelations, toolSlug: string)
 /**
  * Same eligibility the deploy gate / wizard already use for credentialed
  * API_KEY rows: ciphertext present, CONNECTED or credentialed PENDING.
- * PENDING unverified keys (no validator, e.g. twitter-api) MUST emit - D6
+ * PENDING credentialed keys MUST emit - D6
  * taught us the gate-vs-generator seam for model keys; this is that seam
  * for the tool class. ERROR / EXPIRED / REVOKED / NEEDS_CREDENTIALS stay out
  * so TOOLS.md never says Connected when .env will not carry the key.

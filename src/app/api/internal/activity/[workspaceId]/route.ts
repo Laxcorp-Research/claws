@@ -52,6 +52,7 @@ import { NEAR_CAP_METADATA_KIND } from "@/lib/openclaw/near-cap-alert";
 import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
 import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
 import { applyInboundApprovalCommand } from "@/lib/artifacts/approval-command";
+import { twitterNudgeFromActivity } from "@/lib/tools/twitter-api-honesty";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -583,13 +584,19 @@ export async function POST(
           });
         }
       }
-      const blob = `${ev.action} ${ev.detail ?? ""}`;
-      if (ev.type === "ERROR" && /402/.test(blob) && /twitter|x api/i.test(blob)) {
+      const twitterNudge = twitterNudgeFromActivity({
+        type: ev.type,
+        action: ev.action,
+        detail: ev.detail,
+        metadata: JSON.stringify(ev.metadata ?? {}),
+      });
+      if (twitterNudge) {
         try {
-          await sendCustomerNudge({ workspaceId, condition: "twitter-402-tier" });
+          await sendCustomerNudge({ workspaceId, condition: twitterNudge });
         } catch (nudgeErr) {
-          log.error("activity: twitter-402 nudge failed", {
+          log.error("activity: twitter nudge failed", {
             workspaceId,
+            condition: twitterNudge,
             error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
           });
         }

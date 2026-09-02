@@ -1167,6 +1167,9 @@ describe('generateWorkspace', () => {
     const tavilyBlock = toolsMd.slice(toolsMd.indexOf('### Tavily'));
     expect(twitterBlock).toContain(TWITTER_API_402_COPY);
     expect(twitterBlock).toContain('not "down."');
+    expect(twitterBlock).toContain('Never web_fetch api.twitter.com');
+    expect(twitterBlock).toContain('Never GET /2/users/me');
+    expect(twitterBlock).toContain('PENDING or unverified last-probe is not READY');
     expect(tavilyBlock).not.toContain(TWITTER_API_402_COPY);
     const soul = result.workspaces[orchKey!]['SOUL.md'];
     const heartbeat = result.workspaces[orchKey!]['HEARTBEAT.md'];

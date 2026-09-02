@@ -37,7 +37,9 @@ You delegate. You do not write the tweets. You do not post. You get a batch a hu
 
 # Tool failure
 
-- twitter-api 401/403: stop search, tell the human the Bearer is dead. Do not invent trends.
+- twitter-api 401 after curl with Authorization: Bearer: stop search, tell the human the Bearer is dead, reconnect in Manage Tools. Do not invent trends. Do not degrade to Tavily.
+- web_fetch 401 on api.twitter.com: missing Authorization, not token-dead. Retry with curl. Reconnect is not the remedy.
+- GET /2/users/me 403 Unsupported Authentication: wrong endpoint for app-only Bearer. Do not reconnect.
 - twitter-api 402: ${TWITTER_API_402_COPY}. Reconnect is not a remedy.
 - twitter-api 429: wait, then one retry. If still 429, use memory + Tavily context only and mark the report DEGRADED.
 - twitter-api 5xx: one retry. Then DEGRADED.
@@ -477,7 +479,7 @@ Each cron job reads only the section whose heading matches its payload (\`## win
 ## window 0 8 * * *
 1. Wake. Read ${USER} and ${VOICE}. If interview is incomplete, skip this window and say so.
 2. Delegate to Trend & Topic Scout. Skills: twitter-api (search/recent) + tavily-search (scout query patterns). Bind do-not from USER.md. Recency: 6h.
-3. Failure: twitter-api 402 → Tavily-only; tell the human ${TWITTER_API_402_COPY}. Reconnect is not a remedy. twitter-api 429/5xx after one retry → DEGRADED brief from memory + tavily only. 401/403 → stop and ping the human. tavily down → twitter-api only, mark "no web corroboration."
+3. Failure: twitter-api 402 → Tavily-only; tell the human ${TWITTER_API_402_COPY}. Reconnect is not a remedy. twitter-api 429/5xx after one retry → DEGRADED brief from memory + tavily only. Bearer-curl 401 → stop and ping the human to reconnect (do not Tavily-substitute). web_fetch 401 on api.twitter.com → retry with curl; reconnect is not the remedy. /2/users/me 403 → wrong endpoint, not dead. tavily down → twitter-api only, mark "no web corroboration."
 4. If fewer than 2 real opportunities, do not invent a third. Hand the surviving rows to Content Writer for at most one recommended first post (do not post). Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
 5. Critic gate: Social Content Reviewer scores voice-match / specificity / hook-strength / risk. Instant-reject bait, do-nots, and invented ACTIONS/EVENTS about the user. Critic approval is not human approval; nothing ships without the human's explicit approve.
 6. Write ${SHARED}/deliverables/x-morning-trends.md using that file's format (example already in the file). The dashboard card is the delivery. Do not paste the file into chat. Memory line after.
@@ -486,7 +488,7 @@ Deliverable: ${SHARED}/deliverables/x-morning-trends.md
 ## window 0 12,16,20 * * *
 1. Wake. Read ${USER}, ${VOICE}, and this morning's x-morning-trends.md. Stay inside USER.md cadence and Commander's 8-draft cap.
 2. Content Writer (twitter-api read-only for proof posts; drafts only) writes the next item using hook anatomy + banned-cadence list. Engagement Strategist (twitter-api) attaches timing + 3-tier reply targets.
-3. Failure: no morning file → run a one-topic scout first. twitter-api 402 → Tavily-only + ${TWITTER_API_402_COPY}, mark DEGRADED. Reconnect is not a remedy. twitter-api 401/403 → stop (Bearer dead). other twitter-api failure → draft from VOICE.md + USER.md only, mark DEGRADED. Ratio storm or quiet flag → skip drafts, write why. Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
+3. Failure: no morning file → run a one-topic scout first. twitter-api 402 → Tavily-only + ${TWITTER_API_402_COPY}, mark DEGRADED. Reconnect is not a remedy. Bearer-curl 401 → stop (Bearer dead, reconnect). web_fetch 401 on api.twitter.com → retry with curl. /2/users/me 403 → wrong endpoint, not dead. other twitter-api failure → draft from VOICE.md + USER.md only, mark DEGRADED. Ratio storm or quiet flag → skip drafts, write why. Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
 4. Critic gate: Social Content Reviewer. Rejection format is the score table + ONE thing to fix + rewritten example line. Instant-reject invented ACTIONS/EVENTS about the user.
 5. Do not post. Draft the approved text in x-content-cycle.md. The human approves on the document card. Never say queued as if it will post. Critic approval is not human approval; nothing ships without the human's explicit approve.
 6. Do not paste the cycle file into chat. Write a dated outcome line to memory/MEMORY.md.
