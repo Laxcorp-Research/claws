@@ -1,5 +1,11 @@
 import { log } from '@/lib/logger';
 import type { RawContainerEnv } from './container-env-actual';
+import {
+  planServiceDomainCap,
+  isRailwayDomainCapError,
+  RailwayDomainCapError,
+  type ServiceDomainRecord,
+} from './service-domain';
 
 const RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 
@@ -396,7 +402,7 @@ export async function createService(config: {
     },
   );
 
-  // DOMAIN_REUSE_QUERY_FIRST - never unconditional serviceDomainCreate.
+  // DOMAIN_REUSE_QUERY_FIRST - list via domains(), create only when zero exist.
   const domain = await ensureServiceDomain(serviceId);
 
   await railwayGql(
@@ -425,42 +431,40 @@ export async function findServiceByName(name: string): Promise<string | null> {
   return match?.node.id ?? null;
 }
 
-async function queryServiceDomain(serviceId: string): Promise<string | null> {
-  try {
-    const data = await railwayGql<{
-      environment: { config: Record<string, unknown> };
-    }>(
-      `query($envId: String!) {
-        environment(id: $envId) { config(decryptVariables: false) }
-      }`,
-      { envId: RAILWAY_ENVIRONMENT_ID },
-    );
+/**
+ * Live list. Must use domains(projectId, environmentId, serviceId).
+ * The environment.config map is hostname -> {}, not an array; do not
+ * read index 0 from it. Throw on query failure (never swallow as empty).
+ */
+export async function listServiceDomains(serviceId: string): Promise<ServiceDomainRecord[]> {
+  const data = await railwayGql<{
+    domains: { serviceDomains: Array<{ id: string; domain: string; createdAt: string }> | null };
+  }>(
+    `query($projectId: String!, $environmentId: String!, $serviceId: String!) {
+      domains(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId) {
+        serviceDomains { id domain createdAt }
+      }
+    }`,
+    {
+      projectId: RAILWAY_PROJECT_ID,
+      environmentId: RAILWAY_ENVIRONMENT_ID,
+      serviceId,
+    },
+  );
 
-    const services = (data.environment.config as Record<string, unknown>).services as
-      Record<string, { networking?: { serviceDomains?: string[] } }> | undefined;
-    if (!services) return null;
-
-    const svc = services[serviceId];
-    const domains = svc?.networking?.serviceDomains;
-    return domains?.[0] ?? null;
-  } catch (err) {
-    log.warn('Failed to query service domain from Railway', { serviceId, error: err });
-    return null;
-  }
+  return data.domains?.serviceDomains ?? [];
 }
 
-/**
- * DOMAIN_REUSE_QUERY_FIRST: reuse an existing Railway service domain when
- * present; only call serviceDomainCreate when none exists.
- * MUTATION: unconditional create (skip query) → domain-reuse contract fails.
- */
-async function ensureServiceDomain(serviceId: string): Promise<string> {
-  const existing = await queryServiceDomain(serviceId);
-  if (existing) {
-    log.info('Reusing existing Railway service domain', { serviceId, domain: existing });
-    return existing;
-  }
+async function deleteServiceDomain(id: string): Promise<void> {
+  await railwayGql(
+    `mutation($id: String!) {
+      serviceDomainDelete(id: $id)
+    }`,
+    { id },
+  );
+}
 
+async function createServiceDomain(serviceId: string): Promise<string> {
   const domainData = await railwayGql<{
     serviceDomainCreate: { domain: string };
   }>(
@@ -478,12 +482,68 @@ async function ensureServiceDomain(serviceId: string): Promise<string> {
   return domainData.serviceDomainCreate.domain;
 }
 
+async function pruneServiceDomains(extras: ServiceDomainRecord[]): Promise<void> {
+  for (const extra of extras) {
+    await deleteServiceDomain(extra.id);
+  }
+}
+
+/**
+ * DOMAIN_REUSE_QUERY_FIRST: list, reuse one, create only when zero exist.
+ * Cap error -> prune extras then retry once; never throw a GraphQL cap string.
+ */
+export async function ensureServiceDomain(
+  serviceId: string,
+  preferredHost?: string | null,
+): Promise<string> {
+  const existing = await listServiceDomains(serviceId);
+  const plan = planServiceDomainCap({ existing, preferredHost });
+  if (plan.prune.length > 0) {
+    log.info('Pruning extra Railway service domains', {
+      serviceId,
+      keep: plan.keep?.domain ?? null,
+      pruneCount: plan.prune.length,
+    });
+    await pruneServiceDomains(plan.prune);
+  }
+  if (plan.keep && !plan.create) {
+    log.info('Reusing existing Railway service domain', { serviceId, domain: plan.keep.domain });
+    return plan.keep.domain;
+  }
+
+  try {
+    return await createServiceDomain(serviceId);
+  } catch (err) {
+    if (!isRailwayDomainCapError(err)) throw err;
+    log.warn('Railway domain cap on create; pruning and retrying', {
+      serviceId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    const again = await listServiceDomains(serviceId);
+    const heal = planServiceDomainCap({ existing: again, preferredHost });
+    await pruneServiceDomains(heal.prune);
+    if (heal.keep && !heal.create) {
+      return heal.keep.domain;
+    }
+    try {
+      return await createServiceDomain(serviceId);
+    } catch (retryErr) {
+      log.error('Railway domain cap heal failed after prune+retry', {
+        serviceId,
+        error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+      });
+      throw new RailwayDomainCapError();
+    }
+  }
+}
+
 export async function updateAndRedeployService(
   serviceId: string,
   envVars: Record<string, string>,
   // PR-1: explicit image at the call site (from deployer.resolveDeployImage).
   // Falls back to the module-level OPENCLAW_IMAGE when omitted.
   image?: string,
+  preferredHost?: string | null,
 ): Promise<{ serviceId: string; domain: string }> {
   assertRailwayTargetAllowed();
   const imageToUse = image ?? OPENCLAW_IMAGE;
@@ -515,7 +575,7 @@ export async function updateAndRedeployService(
   );
 
   // DOMAIN_REUSE_QUERY_FIRST - same path as createService.
-  const domain = await ensureServiceDomain(serviceId);
+  const domain = await ensureServiceDomain(serviceId, preferredHost);
 
   await railwayGql(
     `mutation($serviceId: String!, $environmentId: String!) {

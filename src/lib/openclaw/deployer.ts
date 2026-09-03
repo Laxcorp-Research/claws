@@ -74,6 +74,12 @@ import {
   recordSuccessfulCreate,
 } from '@/lib/railway/governor';
 import { isRailwayCreateQuotaError } from '@/lib/railway/governor-budget';
+import { sendOwnerAlert } from '@/lib/alerts/owner-alert';
+import {
+  isRailwayDomainCapError,
+  publicDeployErrorMessage,
+  RailwayDomainCapError,
+} from '@/lib/openclaw/service-domain';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -466,7 +472,7 @@ export async function deployToCloud(
             ? null
             : beforeStatus.deploymentId;
         result = await withTransientDeployRetry(() =>
-          updateAndRedeployService(existingServiceId, envVars, image),
+          updateAndRedeployService(existingServiceId, envVars, image, workspace.containerHost),
         );
         if (!result.domain && workspace.containerHost) {
           result.domain = workspace.containerHost;
@@ -495,7 +501,7 @@ export async function deployToCloud(
               ? null
               : beforeStatus.deploymentId;
           result = await withTransientDeployRetry(() =>
-            updateAndRedeployService(existingId, envVars, image),
+            updateAndRedeployService(existingId, envVars, image, workspace.containerHost),
           );
         } else {
           if (opts.forbidCreate) {
@@ -545,7 +551,7 @@ export async function deployToCloud(
               ? null
               : beforeStatus.deploymentId;
           result = await withTransientDeployRetry(() =>
-            updateAndRedeployService(existingId, envVars, image),
+            updateAndRedeployService(existingId, envVars, image, workspace.containerHost),
           );
         } else {
           throw err;
@@ -614,7 +620,22 @@ export async function deployToCloud(
       await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', error.queued.message);
       throw error;
     }
-    const message = error instanceof Error ? error.message : 'Unknown deployment error';
+    const message = publicDeployErrorMessage(error);
+    if (isRailwayDomainCapError(error)) {
+      try {
+        await sendOwnerAlert({
+          alertKey: 'railway-domain-cap',
+          title: 'Railway domain cap heal failed',
+          detail: `workspace ${workspaceId}`,
+          workspaceId,
+        });
+      } catch (alertErr) {
+        log.error('owner-alert railway-domain-cap failed', {
+          workspaceId,
+          error: alertErr instanceof Error ? alertErr.message : String(alertErr),
+        });
+      }
+    }
     await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
     // Atomically converge Workspace + ContainerState rows on deploy failure.
     // ContainerState.containerPhase='STOPPED' is correct here: the ContainerPhase
@@ -632,6 +653,9 @@ export async function deployToCloud(
         data: { containerPhase: 'STOPPED' },
       }),
     ]);
+    if (isRailwayDomainCapError(error)) {
+      throw new RailwayDomainCapError();
+    }
     throw error;
   }
 }

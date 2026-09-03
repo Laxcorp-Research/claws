@@ -273,11 +273,12 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
 
     await deployToCloud("ws-1");
 
-    // updateAndRedeployService is the (serviceId, envVars, image) shape.
+    // updateAndRedeployService is the (serviceId, envVars, image, preferredHost) shape.
     expect(mockUpdateAndRedeployService).toHaveBeenCalledTimes(1);
-    const [serviceId, , imageArg] = mockUpdateAndRedeployService.mock.calls[0];
+    const [serviceId, , imageArg, preferredHost] = mockUpdateAndRedeployService.mock.calls[0];
     expect(serviceId).toBe("svc-existing");
     expect(imageArg).toBe(STABLE_DOCKER_IMAGE);
+    expect(preferredHost).toBe("svc-existing.up.railway.app");
 
     const depCreateArgs = (prismaMock.deployment.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(depCreateArgs.data.containerImage).toBe(STABLE_DOCKER_IMAGE);
