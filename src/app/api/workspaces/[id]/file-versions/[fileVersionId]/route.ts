@@ -6,6 +6,8 @@ import { apiError, apiSuccess, ERRORS } from "@/lib/api/response"
 import { writeWorkspaceSharedFile } from "@/lib/artifacts/live-write"
 import { isSharedWritePath } from "@/lib/artifacts/workspace-file-allowlist"
 import { loadApprovalVersionStates } from "@/lib/artifacts/supersede-versions"
+import { pushDecisionToClaw } from "@/lib/artifacts/decision-push"
+import { log } from "@/lib/logger"
 
 export async function GET(
   _request: NextRequest,
@@ -73,6 +75,22 @@ export async function PATCH(
   })
   if (!written.ok) {
     return apiError("LIVE_WRITE_FAILED", written.error, written.status)
+  }
+
+  if (!written.unchanged) {
+    try {
+      await pushDecisionToClaw({
+        workspaceId,
+        logicalPath: existing.logicalPath,
+        version: written.version,
+        decision: "EDITED",
+      })
+    } catch (err) {
+      log.warn("file-version edit: decision push failed", {
+        workspaceId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   return apiSuccess({

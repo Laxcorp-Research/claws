@@ -6,6 +6,7 @@ import { createMockRequest, parseResponse } from "@/test/helpers/mock-request"
 
 const mockApply = vi.hoisted(() => vi.fn())
 const mockFind = vi.hoisted(() => vi.fn())
+const mockPush = vi.hoisted(() => vi.fn())
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/api/auth", () => ({
@@ -16,6 +17,12 @@ vi.mock("@/lib/artifacts/apply-decision", () => ({
 }))
 vi.mock("@/lib/openclaw/pending-approval", () => ({
   findDeliverableApprovalRequest: (...args: unknown[]) => mockFind(...args),
+}))
+vi.mock("@/lib/artifacts/decision-push", () => ({
+  pushDecisionToClaw: (...args: unknown[]) => mockPush(...args),
+}))
+vi.mock("@/lib/logger", () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
 import { POST } from "@/app/api/workspaces/[id]/respond/route"
@@ -38,6 +45,8 @@ describe("POST /api/workspaces/[id]/respond", () => {
     vi.clearAllMocks()
     mockApply.mockReset()
     mockFind.mockReset()
+    mockPush.mockReset()
+    mockPush.mockResolvedValue({ runId: "push-1", held: false, pushed: true })
     ;(getSessionUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "user-1",
       email: "founder@test.com",
@@ -76,6 +85,8 @@ describe("POST /api/workspaces/[id]/respond", () => {
       decision: "APPROVED",
       sidecarPath: "shared/deliverables/x-content-cycle.md.status.json",
       liveWriteOk: true,
+      logicalPath: "shared/deliverables/x-content-cycle.md",
+      version: 1,
     })
   })
 

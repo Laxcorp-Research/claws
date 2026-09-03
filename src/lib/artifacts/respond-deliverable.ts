@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db"
+import { log } from "@/lib/logger"
 import { parseDeliverableMetadata } from "@/lib/artifacts/deliverable-kind"
 import { applyFileVersionDecision } from "@/lib/artifacts/apply-decision"
+import { pushDecisionToClaw } from "@/lib/artifacts/decision-push"
 import { findDeliverableApprovalRequest } from "@/lib/openclaw/pending-approval"
 import { resolveCustomerNudge } from "@/lib/alerts/customer-nudge"
 import { PENDING_APPROVAL_NUDGE_CONDITION } from "@/lib/artifacts/pending-approvals"
@@ -141,6 +143,8 @@ export async function respondToDeliverable(args: {
   })
 
   let liveWriteOk: boolean | null = null
+  let pushPath = logicalPath
+  let pushVersion: number | null = null
   if (resolvedFileVersionId) {
     const applied = await applyFileVersionDecision({
       workspaceId: args.workspaceId,
@@ -153,6 +157,24 @@ export async function respondToDeliverable(args: {
       return fail(applied.error, applied.status)
     }
     liveWriteOk = applied.liveWriteOk
+    pushPath = applied.logicalPath
+    pushVersion = applied.version
+  }
+
+  if (pushPath) {
+    try {
+      await pushDecisionToClaw({
+        workspaceId: args.workspaceId,
+        logicalPath: pushPath,
+        version: pushVersion,
+        decision: args.action === "approve" ? "APPROVED" : "REJECTED",
+      })
+    } catch (err) {
+      log.warn("deliverable respond: decision push failed", {
+        workspaceId: args.workspaceId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   try {

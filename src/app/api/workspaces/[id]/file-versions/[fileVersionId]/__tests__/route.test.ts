@@ -3,7 +3,11 @@ import { prismaMock } from "@/test/helpers/mock-prisma"
 import { createMockRequest, parseResponse } from "@/test/helpers/mock-request"
 
 const mockWrite = vi.hoisted(() => vi.fn())
+const mockPush = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/logger", () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
 vi.mock("@/lib/api/auth", () => ({
   getSessionUser: vi.fn().mockResolvedValue({ id: "user-1", email: "founder@test.com" }),
 }))
@@ -12,6 +16,9 @@ vi.mock("@/lib/api/ownership", () => ({
 }))
 vi.mock("@/lib/artifacts/live-write", () => ({
   writeWorkspaceSharedFile: (...args: unknown[]) => mockWrite(...args),
+}))
+vi.mock("@/lib/artifacts/decision-push", () => ({
+  pushDecisionToClaw: (...args: unknown[]) => mockPush(...args),
 }))
 
 import { GET, PATCH } from "@/app/api/workspaces/[id]/file-versions/[fileVersionId]/route"
@@ -23,6 +30,8 @@ describe("file-versions route", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockWrite.mockReset()
+    mockPush.mockReset()
+    mockPush.mockResolvedValue({ runId: "push-edit", held: false, pushed: true })
     ;(getSessionUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "user-1",
       email: "founder@test.com",
@@ -80,5 +89,29 @@ describe("file-versions route", () => {
       }),
     )
     expect(data.data.fileVersionId).toBe("fv-2")
+    expect(mockPush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 3,
+        decision: "EDITED",
+      }),
+    )
+  })
+
+  it("MUTATION: an edit without push leaves the agent unaware", async () => {
+    mockWrite.mockResolvedValue({ ok: true, fileVersionId: "fv-2", version: 3, unchanged: false, bytes: 8 })
+    await PATCH(
+      createMockRequest("http://localhost/x", { method: "PATCH", body: { content: "# Edited" } }),
+      params,
+    )
+    expect(mockPush).toHaveBeenCalledTimes(1)
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/workspaces/[id]/file-versions/[fileVersionId]/route.ts"),
+      "utf8",
+    )
+    expect(src).toContain("pushDecisionToClaw")
   })
 })

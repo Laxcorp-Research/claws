@@ -17,7 +17,7 @@
 // gatewayToken cannot be contacted → GATEWAY_UNREACHABLE (the health
 // monitor's "no-container" failure kind proves the state exists).
 
-import { NextRequest } from "next/server"
+import { after, NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
@@ -42,9 +42,9 @@ import { wakeWorkspace } from "@/lib/hibernation/manager"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import crypto from "node:crypto"
 
-// V1 p95 target is 5s; the function budget leaves headroom for the lazy
-// pairing path (connect → approve → reconnect → send) without a runaway
-// function. The client enforces its own ~10s internal cap.
+// HTTP returns 202 + runId before the gateway turn. Waiting here for
+// chat.send (or the reply) is the founder 19:34Z false-fail: the turn
+// ran, the reply landed, the client timed the wait into "failed".
 export const maxDuration = 30
 
 // Mirror of the reporter's DETAIL_MAX: a longer message would be truncated
@@ -53,11 +53,14 @@ const MESSAGE_MAX_CHARS = 4000
 
 // Test seam: route tests inject a fake client + socket factory. Production
 // always uses the real implementations.
+export type ChatRouteAfter = (fn: () => void | Promise<void>) => void
+
 export interface ChatRouteDeps {
   send: typeof sendChatMessage
   socketFactory?: ChatSocketFactory
+  after?: ChatRouteAfter
 }
-const defaultDeps: ChatRouteDeps = { send: sendChatMessage }
+const defaultDeps: ChatRouteDeps = { send: sendChatMessage, after }
 let deps: ChatRouteDeps = defaultDeps
 export function __setChatRouteDepsForTests(next: ChatRouteDeps | null) {
   deps = next ?? defaultDeps
@@ -212,32 +215,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       socketFactory: deps.socketFactory,
     })
 
-  let result: SendChatResult = await attempt()
+  const schedule = deps.after ?? after
+  schedule(async () => {
+    let result: SendChatResult = await attempt()
 
-  // V6: at most ONE retry, SAME idempotencyKey (the gateway dedupes on it -
-  // verified by the spike's T5 double-send), and only when no ack was
-  // received. A fresh key could double-deliver the message.
-  if (!result.ok && result.reason === "unreachable") {
-    result = await attempt()
-  }
+    // V6: at most ONE retry, SAME idempotencyKey (the gateway dedupes on it -
+    // verified by the spike's T5 double-send), and only when no ack was
+    // received. A fresh key could double-deliver the message.
+    if (!result.ok && result.reason === "unreachable") {
+      result = await attempt()
+    }
 
-  if (!result.ok) {
-    const status = result.reason === "transitioning" ? 409 : 502
-    const code = result.reason === "transitioning" ? "WORKSPACE_TRANSITIONING" : "GATEWAY_UNREACHABLE"
-    log.warn("chat send failed", { workspaceId: id, reason: result.reason, detail: result.detail })
-    await ledgerChatSendRejected({
-      workspaceId: id,
-      reason: result.reason,
-      detail: result.detail,
-    })
-    return apiError(
-      code,
-      result.reason === "transitioning"
-        ? "Your Claw's gateway is starting up - try again shortly."
-        : "Could not reach your Claw. It may be restarting.",
-      status,
-    )
-  }
+    if (!result.ok) {
+      log.warn("chat send failed", { workspaceId: id, reason: result.reason, detail: result.detail })
+      await ledgerChatSendRejected({
+        workspaceId: id,
+        reason: result.reason,
+        detail: result.detail,
+      })
+    }
+  })
 
-  return apiSuccess({ runId: result.runId }, 202)
+  return apiSuccess({ runId: idempotencyKey }, 202)
 }

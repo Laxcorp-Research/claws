@@ -325,6 +325,37 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
     expect(userViews[0].key).toBe("log-1")
   })
 
+  it("founder 19:34Z: reply exists for the runId so a false-fail bubble is cleared", () => {
+    const optimistic: OptimisticMessage[] = [
+      {
+        tempId: "tmp_fail",
+        text: "ship the drafts",
+        createdAt: Date.parse("2026-09-02T19:34:00.000Z"),
+        status: "failed",
+        runId: "run-1934",
+        failureCode: "GATEWAY_UNREACHABLE",
+      },
+    ]
+    const rows: ChatRow[] = [
+      {
+        id: "a-1934",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-02T19:34:08.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: queued.",
+        detail: "Ack. Drafts are held.",
+        runId: "run-1934",
+      },
+    ]
+    const views = reconcileChatMessages(optimistic, rows, "Twitter Commander")
+    const user = views.find((v) => v.sender === "user")
+    expect(user?.status).toBe("sent")
+    expect(user?.failureCode).toBeUndefined()
+    expect(views.some((v) => v.sender === "agent" && v.runId === "run-1934")).toBe(true)
+    const phases = computeTurnPhases(views, rows)
+    expect(phases.get("run-1934")).toBe("done")
+  })
+
   it("keeps the optimistic bubble while its run has not yet streamed back", () => {
     const optimistic: OptimisticMessage[] = [
       { tempId: "tmp_2", text: "pending msg", createdAt: 1000, status: "sent", runId: "run-Y" },
@@ -723,6 +754,19 @@ describe("ChatPanel - composer", () => {
     expect(await screen.findByText("hi there")).toBeTruthy()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     expect(screen.queryByText(/Failed to send/i)).toBeNull()
+    expect(await screen.findByText("Accepted")).toBeTruthy()
+  })
+
+  it("MUTATION: performSend has no sync-wait that can time out into failed", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+    const perform = src.slice(src.indexOf("const performSend"), src.indexOf("const send ="))
+    expect(perform).toContain("res.status === 202")
+    expect(perform).not.toMatch(/AbortSignal/)
+    expect(perform).not.toMatch(/awaitReplyMs/)
+    expect(perform).not.toMatch(/waitForReply/)
+    expect(perform).not.toMatch(/Promise\.race/)
+    expect(perform).not.toMatch(/setTimeout/)
+    expect(perform).not.toMatch(/failed.*timeout|timeout.*failed/i)
   })
 
   it("202 held marks the optimistic bubble Held, not working or no_response", async () => {

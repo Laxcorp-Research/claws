@@ -238,12 +238,27 @@ export function reconcileChatMessages(
       )
       .map((r) => r.runId as string),
   )
+  // Founder 19:34Z: gateway turn finished (MESSAGE_SENT) while a client
+  // sync-wait marked the optimistic bubble failed. A reply for that runId
+  // means the send landed - never keep the false-fail.
+  const repliedRunIds = new Set(
+    rows
+      .filter(
+        (r) =>
+          r.actionType === "MESSAGE_SENT" &&
+          typeof r.runId === "string" &&
+          r.runId.length > 0,
+      )
+      .map((r) => r.runId as string),
+  )
 
   const views: ChatMessageView[] = []
 
   for (const o of optimistic) {
     // Reconciled → the streamed MESSAGE_RECEIVED or persisted hold row renders.
     if (o.runId && (receivedRunIds.has(o.runId) || heldRunIds.has(o.runId))) continue
+    const status =
+      o.status === "failed" && o.runId && repliedRunIds.has(o.runId) ? "sent" : o.status
     views.push({
       key: o.tempId,
       sender: "user",
@@ -251,9 +266,9 @@ export function reconcileChatMessages(
       sortTs: o.createdAt,
       detail: o.text,
       action: o.text,
-      status: o.status,
+      status,
       runId: o.runId ?? null,
-      failureCode: o.failureCode,
+      failureCode: status === "failed" ? o.failureCode : undefined,
     })
   }
 
@@ -818,6 +833,7 @@ export function ChatPanel({
   // PR-9/C: the core POST for ONE bubble + text - shared by a fresh send and
   // Retry. Marks the bubble failed (NEVER throws) and, on a non-202, captures
   // error.code so the failed bubble can render the matching per-state copy.
+  // No client abort or reply-wait: a timeout here is the 19:34Z false-fail.
   const performSend = useCallback(
     async (tempId: string, text: string) => {
       const mark = (patch: Partial<OptimisticMessage>) =>

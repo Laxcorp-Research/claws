@@ -20,6 +20,7 @@ describe("applyFileVersionDecision", () => {
       id: "fv-1",
       logicalPath: "shared/deliverables/x-content-cycle.md",
       decision: "NONE",
+      version: 2,
     })
     ;(prismaMock.fileVersion.update as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "fv-1",
@@ -40,6 +41,8 @@ describe("applyFileVersionDecision", () => {
       decision: "APPROVED",
       sidecarPath: "shared/deliverables/x-content-cycle.md.status.json",
       liveWriteOk: true,
+      logicalPath: "shared/deliverables/x-content-cycle.md",
+      version: 2,
     })
     expect(prismaMock.fileVersion.update).toHaveBeenCalledWith({
       where: { id: "fv-1" },
