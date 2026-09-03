@@ -82,6 +82,14 @@ export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
     0,
     "customer-alert",
   ),
+  "railway-domain-cap": policy(
+    "railway-domain-cap",
+    "platform",
+    "owner",
+    "prune+retry",
+    1,
+    "owner-alert",
+  ),
 }
 
 export function getHealPolicy(id: HealConditionId): HealPolicy {

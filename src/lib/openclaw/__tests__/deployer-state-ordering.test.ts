@@ -77,7 +77,13 @@ vi.mock("@/lib/composio", () => ({
   getComposioUserId: (id: string) => `composio:${id}`,
 }))
 
+const mockSendOwnerAlert = vi.fn()
+vi.mock("@/lib/alerts/owner-alert", () => ({
+  sendOwnerAlert: (...args: unknown[]) => mockSendOwnerAlert(...args),
+}))
+
 import { deployToCloud } from "@/lib/openclaw/deployer"
+import { RAILWAY_DOMAIN_CAP_PUBLIC } from "@/lib/openclaw/service-domain"
 
 function generatedStub() {
   return {
@@ -115,6 +121,8 @@ beforeEach(() => {
   mockIsRailwayConfigured.mockReset()
   mockDeleteService.mockReset()
   mockFindServiceByName.mockReset()
+  mockSendOwnerAlert.mockReset()
+  mockSendOwnerAlert.mockResolvedValue({ sent: false, channel: "skipped" })
   mockGenerateWorkspace.mockReset()
   mockBuildWorkspaceConfigFingerprint.mockReset()
 
@@ -343,6 +351,43 @@ describe("deployToCloud failure recovery - preserves live container pointers", (
           containerHost: "svc-new.up.railway.app",
         }),
       }),
+    )
+  })
+
+  it("MUTATION: domain-cap GraphQL must not land on the deploy row or the thrown error", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({
+        containerId: "svc-existing",
+        containerName: "claw-ws-1",
+        containerHost: "svc-existing.up.railway.app",
+      }),
+    )
+    ;(prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-1",
+      trialUsed: false,
+      apiKeys: [],
+    })
+    mockGetServiceStatus.mockResolvedValue({
+      status: "SUCCESS",
+      deploymentId: "dep-rw-prev",
+      healthy: true,
+    })
+    mockUpdateAndRedeployService.mockRejectedValue(
+      new Error("Railway GraphQL error: You have reached the maximum number of domains for this service"),
+    )
+
+    await expect(deployToCloud("ws-1")).rejects.toMatchObject({
+      name: "RailwayDomainCapError",
+      message: RAILWAY_DOMAIN_CAP_PUBLIC,
+    })
+
+    const failedUpdate = (prismaMock.deployment.update as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[0])
+      .find((call) => call.data.status === "FAILED")
+    expect(failedUpdate?.data.errorMessage).toBe(RAILWAY_DOMAIN_CAP_PUBLIC)
+    expect(JSON.stringify(failedUpdate)).not.toContain("GraphQL")
+    expect(mockSendOwnerAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ alertKey: "railway-domain-cap", workspaceId: "ws-1" }),
     )
   })
 })
