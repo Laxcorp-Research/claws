@@ -1,12 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 const mockApply = vi.hoisted(() => vi.fn())
 const mockFind = vi.hoisted(() => vi.fn())
+const mockPush = vi.hoisted(() => vi.fn())
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/logger", () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
 vi.mock("@/lib/artifacts/apply-decision", () => ({
   applyFileVersionDecision: (...args: unknown[]) => mockApply(...args),
+}))
+vi.mock("@/lib/artifacts/decision-push", () => ({
+  pushDecisionToClaw: (...args: unknown[]) => mockPush(...args),
 }))
 vi.mock("@/lib/openclaw/pending-approval", () => ({
   findDeliverableApprovalRequest: (...args: unknown[]) => mockFind(...args),
@@ -90,11 +100,15 @@ describe("respondToDeliverable", () => {
     mockFind.mockReset()
     mockResolveNudge.mockReset()
     mockResolveNudge.mockResolvedValue({ sent: false, reason: "no-open-nudge" })
+    mockPush.mockReset()
+    mockPush.mockResolvedValue({ runId: "push-1", held: false, pushed: true })
     mockApply.mockResolvedValue({
       fileVersionId: "fv-1",
       decision: "APPROVED",
       sidecarPath: "shared/deliverables/x-content-cycle.md.status.json",
       liveWriteOk: true,
+      logicalPath: "shared/deliverables/x-content-cycle.md",
+      version: 2,
     })
     ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
       async (args: { where?: { actionType?: unknown } }) => {
@@ -143,6 +157,28 @@ describe("respondToDeliverable", () => {
       workspaceId: "ws-1",
       condition: "pending-approval-unactioned",
     })
+    expect(mockPush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        version: 2,
+        decision: "APPROVED",
+      }),
+    )
+  })
+
+  it("MUTATION: sidecar write without push leaves the agent unaware", async () => {
+    await respondToDeliverable({
+      workspaceId: "ws-1",
+      activityLogId: "hr-1",
+      action: "approve",
+      respondedBy: "founder@test.com",
+    })
+    expect(mockApply).toHaveBeenCalled()
+    // Sidecar-only is not delivery. Drop this call → agent never sees the decision.
+    expect(mockPush).toHaveBeenCalledTimes(1)
+    const src = readFileSync(join(process.cwd(), "src/lib/artifacts/respond-deliverable.ts"), "utf8")
+    expect(src).toContain("pushDecisionToClaw")
   })
 
   it("409 when already responded", async () => {
@@ -165,6 +201,7 @@ describe("respondToDeliverable", () => {
       status: 409,
     })
     expect(mockApply).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
   })
 
   it("refuses an older version as superseded; approve latest applies sidecar", async () => {
@@ -219,6 +256,8 @@ describe("respondToDeliverable", () => {
       decision: "APPROVED",
       sidecarPath: "shared/deliverables/x-content-cycle.md.status.json",
       liveWriteOk: true,
+      logicalPath: "shared/deliverables/x-content-cycle.md",
+      version: 2,
     })
     const latest = await respondToDeliverable({
       workspaceId: "ws-1",

@@ -9,6 +9,8 @@ export type AppliedDecision = {
   decision: FileVersionDecision
   sidecarPath: string
   liveWriteOk: boolean
+  logicalPath: string
+  version: number
 }
 
 export async function applyFileVersionDecision(args: {
@@ -71,5 +73,7 @@ export async function applyFileVersionDecision(args: {
     decision: args.decision,
     sidecarPath,
     liveWriteOk: written.ok,
+    logicalPath: row.logicalPath,
+    version: row.version,
   }
 }

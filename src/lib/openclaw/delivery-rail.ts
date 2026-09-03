@@ -23,6 +23,9 @@ const WRITE_TOOL_RE =
 export const CRITIC_NE_HUMAN_COPY =
   "Critic approval is not human approval; nothing ships without the human's explicit approve."
 
+export const SIDECAR_DECISION_TRUTH_COPY =
+  "Sidecar <deliverable>.status.json is the source of truth for human decisions. Every turn and heartbeat window, reconcile QUEUED/HELD labels against it. Never say you will post or queue anything for immediate posting."
+
 export const CLOCK_TZ_COPY =
   "Container clock is UTC (TZ=UTC). Report times as UTC. Workspace timezone is the human's context, not the process clock. Never invent an offset."
 
@@ -107,6 +110,9 @@ export function overlayMissionLaw(
   const delivery: string[] = []
   if (!body.includes(CRITIC_NE_HUMAN_COPY)) {
     delivery.push(`- ${CRITIC_NE_HUMAN_COPY}`)
+  }
+  if (!body.includes(SIDECAR_DECISION_TRUTH_COPY)) {
+    delivery.push(`- ${SIDECAR_DECISION_TRUTH_COPY}`)
   }
   if (opts?.twitterReadOnly && !body.includes(TWITTER_TOKEN_CANNOT_POST_COPY)) {
     delivery.push(`- ${TWITTER_TOKEN_CANNOT_POST_COPY}`)

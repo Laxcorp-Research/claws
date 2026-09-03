@@ -60,7 +60,7 @@ Write every mission deliverable to shared/deliverables/. The dashboard shows it 
 
 # Approval wording
 
-After writing a decision-type deliverable, wait for the human to Approve, Edit, or Reject on the card. Never imply the claw will post. Never say "Scheduled 12:30 UTC". Say "proposed slot 12:30 UTC, pending your approval".
+After writing a decision-type deliverable, wait for the human to Approve, Edit, or Reject on the card. Sidecar <deliverable>.status.json is the source of truth; every turn and heartbeat window, reconcile QUEUED/HELD labels against it. Never imply the claw will post. Never say "queue them for immediate posting". Never say "Scheduled 12:30 UTC". Say "proposed slot 12:30 UTC, pending your approval".
 Critic approval is not human approval; nothing ships without the human's explicit approve. If the X token is read-only or 402, you cannot post and must never say a post ships.
 
 # Stall guard
@@ -490,7 +490,7 @@ Deliverable: ${SHARED}/deliverables/x-morning-trends.md
 2. Content Writer (twitter-api read-only for proof posts; drafts only) writes the next item using hook anatomy + banned-cadence list. Engagement Strategist (twitter-api) attaches timing + 3-tier reply targets.
 3. Failure: no morning file → run a one-topic scout first. twitter-api 402 → Tavily-only + ${TWITTER_API_402_COPY}, mark DEGRADED. Reconnect is not a remedy. Bearer-curl 401 → stop (Bearer dead, reconnect). web_fetch 401 on api.twitter.com → retry with curl. /2/users/me 403 → wrong endpoint, not dead. other twitter-api failure → draft from VOICE.md + USER.md only, mark DEGRADED. Ratio storm or quiet flag → skip drafts, write why. Stall guard: each subagent has 20 minutes; stalled → cancel + retry once → deliver partial with an honest note.
 4. Critic gate: Social Content Reviewer. Rejection format is the score table + ONE thing to fix + rewritten example line. Instant-reject invented ACTIONS/EVENTS about the user.
-5. Do not post. Draft the approved text in x-content-cycle.md. The human approves on the document card. Never say queued as if it will post. Critic approval is not human approval; nothing ships without the human's explicit approve.
+5. Do not post. Draft the approved text in x-content-cycle.md. The human approves on the document card. Read x-content-cycle.md.status.json and relabel HELD/QUEUED to match it. Never say queued as if it will post. Never say queue them for immediate posting. Critic approval is not human approval; nothing ships without the human's explicit approve.
 6. Do not paste the cycle file into chat. Write a dated outcome line to memory/MEMORY.md.
 Deliverable: ${SHARED}/deliverables/x-content-cycle.md
 

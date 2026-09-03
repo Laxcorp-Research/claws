@@ -3,6 +3,7 @@ import {
   formatWorkingLine,
   isBlankAgentReplyBody,
   polishChatRenderText,
+  rewriteImmediatePostingCopy,
   rewriteScheduledSlotCopy,
 } from "@/lib/chat/chat-copy"
 
@@ -13,6 +14,18 @@ describe("chat copy polish", () => {
     )
     expect(polishChatRenderText("Queued. Scheduled 09:05 UTC after critic.")).toBe(
       "Queued. proposed slot 09:05 UTC, pending your approval after critic.",
+    )
+  })
+
+  it("kills immediate-posting promises so the claw never implies a post", () => {
+    expect(rewriteImmediatePostingCopy("I will queue them for immediate posting")).toBe(
+      "I will hold them pending your approval",
+    )
+    expect(polishChatRenderText("queue them for immediate posting after critic.")).toBe(
+      "hold them pending your approval after critic.",
+    )
+    expect(rewriteImmediatePostingCopy("ready for immediate posting")).toBe(
+      "ready for held pending your approval",
     )
   })
 

@@ -47,6 +47,10 @@ describe('buildMessageDeliverySection', () => {
     expect(section).toContain('Never treat the missing channels as an error');
     expect(section).toContain('Never tell the human to run CLI or terminal commands');
     expect(section).toContain('untrusted metadata or gateway-client');
+    expect(section).toContain('sidecar');
+    expect(section).toContain('source of truth');
+    expect(section).toContain('QUEUED/HELD');
+    expect(section).toContain('immediate posting');
     // The exact strings the founder saw must never be seeded into the prompt.
     expect(section).not.toContain('channels add');
     expect(section).not.toContain('channels list');

@@ -8,6 +8,7 @@ import {
 import {
   CLOCK_TZ_COPY,
   CRITIC_NE_HUMAN_COPY,
+  SIDECAR_DECISION_TRUTH_COPY,
   deliveryProseViolations,
   looksLikeApprovalRequest,
   mergeOutboundDenyIntoTools,
@@ -76,9 +77,11 @@ describe("B-3 delivery rail", () => {
     const overlaid = overlayMissionLaw("# Identity\nYou are Twitter Commander.\n")
     expect(overlaid).toContain("You are Twitter Commander.")
     expect(overlaid).toContain(CRITIC_NE_HUMAN_COPY)
+    expect(overlaid).toContain(SIDECAR_DECISION_TRUTH_COPY)
     expect(overlaid).not.toContain(TWITTER_TOKEN_CANNOT_POST_COPY)
     const again = overlayMissionLaw(overlaid)
     expect(again.split(CRITIC_NE_HUMAN_COPY)).toHaveLength(2)
+    expect(again.split(SIDECAR_DECISION_TRUTH_COPY)).toHaveLength(2)
   })
 
   it("twitter-readonly overlay forbids saying a post ships", () => {

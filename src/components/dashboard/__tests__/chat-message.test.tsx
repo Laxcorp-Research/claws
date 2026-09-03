@@ -301,6 +301,20 @@ describe("ChatMessage - long-unbroken-token wrap (no horizontal overflow)", () =
     expect(document.body.textContent).not.toContain("Scheduled 12:30 UTC")
   })
 
+  it("rewrites queue them for immediate posting", () => {
+    render(
+      <ChatMessage
+        sender="agent"
+        senderName="Twitter Commander"
+        timestamp="19:34 UTC"
+        detail="I will queue them for immediate posting."
+        action="Replied: I will queue them for immediate posting."
+      />,
+    )
+    expect(screen.getByText("I will hold them pending your approval.")).toBeTruthy()
+    expect(document.body.textContent).not.toContain("immediate posting")
+  })
+
   it("agent bubble uses overflow-wrap:anywhere too (markdown reply with a long token)", () => {
     const { container } = render(
       <ChatMessage sender="agent" senderName="Orchestrator" timestamp="08:00 UTC" detail={`See ${LONG} for details.`} action="x" />,

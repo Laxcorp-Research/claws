@@ -106,6 +106,8 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("Critic approval is not human approval")
     expect(soul).toContain("proposed slot 12:30 UTC, pending your approval")
     expect(soul).toContain('Never say "Scheduled 12:30 UTC"')
+    expect(soul).toContain("Sidecar <deliverable>.status.json is the source of truth")
+    expect(soul).toContain('Never say "queue them for immediate posting"')
     expect(soul.toLowerCase()).not.toContain("queued for 4 pm")
     expect(soul.toLowerCase()).not.toContain("no user approval needed")
   })
