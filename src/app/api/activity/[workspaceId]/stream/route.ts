@@ -3,8 +3,17 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { prisma } from "@/lib/db"
 import { formatActivityLog } from "@/lib/activity-log-format"
+import {
+  CHAT_RUN_STATE_STREAM_SCOPE,
+  chatRunStateInitWhere,
+} from "@/lib/chat/run-state"
 
 export const dynamic = "force-dynamic"
+
+// Vercel cuts SSE at the function limit. A 2+ min subagent turn needs the
+// stream to stay up; 300s matches other long-lived routes. MUTATION: drop
+// this export → the long-turn e2e / founder reload bug returns on Vercel.
+export const maxDuration = 300
 
 export async function GET(
   _req: NextRequest,
@@ -38,8 +47,9 @@ export async function GET(
         }
       }
 
+      const chatScope = _req.nextUrl.searchParams.get("scope") === CHAT_RUN_STATE_STREAM_SCOPE
       const initialLogs = await prisma.activityLog.findMany({
-        where: { workspaceId },
+        where: chatScope ? chatRunStateInitWhere(workspaceId) : { workspaceId },
         orderBy: { timestamp: "desc" },
         take: 50,
       })
