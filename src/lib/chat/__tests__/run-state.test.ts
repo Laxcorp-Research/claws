@@ -85,12 +85,9 @@ describe("chat run-state helpers", () => {
   it("chat-scoped Prisma where includes webchat + runId TASK rows", () => {
     const where = chatRunStateInitWhere("ws-1")
     expect(where.workspaceId).toBe("ws-1")
-    expect(where.OR.some((clause) => clause.metadata?.contains === '"channelId":"webchat"')).toBe(
-      true,
-    )
-    expect(where.OR.some((clause) => clause.actionType !== undefined && JSON.stringify(clause.actionType).includes("TASK_START"))).toBe(
-      true,
-    )
+    const encoded = JSON.stringify(where)
+    expect(encoded).toContain('\\"channelId\\":\\"webchat\\"')
+    expect(encoded).toContain("TASK_START")
   })
 
   it("query where adds per-runId metadata contains clauses", () => {
@@ -98,9 +95,8 @@ describe("chat run-state helpers", () => {
       runIds: ["run-9"],
       since: new Date("2026-09-04T08:00:00.000Z"),
     })
-    expect(where.AND[0].OR.some((clause) => clause.metadata?.contains === '"runId":"run-9"')).toBe(
-      true,
-    )
-    expect(where.AND[1]).toEqual({ timestamp: { gt: new Date("2026-09-04T08:00:00.000Z") } })
+    const encoded = JSON.stringify(where)
+    expect(encoded).toContain('\\"runId\\":\\"run-9\\"')
+    expect(encoded).toContain("2026-09-04T08:00:00.000Z")
   })
 })

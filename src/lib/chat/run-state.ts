@@ -1,5 +1,9 @@
+import type { ActivityType, Prisma } from "@/generated/prisma/client"
 import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
+
+const MESSAGE_ACTION_TYPES: ActivityType[] = ["MESSAGE_RECEIVED", "MESSAGE_SENT"]
+const TASK_ACTION_TYPES: ActivityType[] = ["TASK_START", "TASK_COMPLETE"]
 
 // Chat owns a sibling EventSource on the existing activity SSE route.
 // The query param is how the client subscription is locked: dashboard uses
@@ -117,20 +121,20 @@ export function parseRunStateSince(raw: string | null): Date | null {
 }
 
 /** Prisma `where` for chat-scoped SSE init - last N chat-relevant rows, not mixed noise. */
-export function chatRunStateInitWhere(workspaceId: string) {
+export function chatRunStateInitWhere(workspaceId: string): Prisma.ActivityLogWhereInput {
   return {
     workspaceId,
     OR: [
       {
-        actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
+        actionType: { in: MESSAGE_ACTION_TYPES },
         metadata: { contains: WEBCHAT_METADATA_MARKER },
       },
       {
-        actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
+        actionType: { in: MESSAGE_ACTION_TYPES },
         metadata: { contains: RUN_ID_METADATA_MARKER },
       },
       {
-        actionType: { in: ["TASK_START", "TASK_COMPLETE"] },
+        actionType: { in: TASK_ACTION_TYPES },
         metadata: { contains: RUN_ID_METADATA_MARKER },
       },
       {
@@ -148,17 +152,16 @@ export function chatRunStateInitWhere(workspaceId: string) {
 export function chatRunStateQueryWhere(
   workspaceId: string,
   opts: { runIds?: readonly string[]; since?: Date | null } = {},
-) {
-  const runIdClauses = (opts.runIds ?? []).flatMap((id) => [
+): Prisma.ActivityLogWhereInput {
+  const initOr = chatRunStateInitWhere(workspaceId).OR ?? []
+  const runIdClauses: Prisma.ActivityLogWhereInput[] = (opts.runIds ?? []).flatMap((id) => [
     { metadata: { contains: `"runId":"${id}"` } },
     { metadata: { contains: `"messageId":"${id}"` } },
   ])
   return {
     workspaceId,
     AND: [
-      {
-        OR: [...chatRunStateInitWhere(workspaceId).OR, ...runIdClauses],
-      },
+      { OR: [...initOr, ...runIdClauses] },
       ...(opts.since ? [{ timestamp: { gt: opts.since } }] : []),
     ],
   }
