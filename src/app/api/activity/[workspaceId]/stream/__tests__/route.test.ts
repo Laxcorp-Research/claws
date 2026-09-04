@@ -37,7 +37,8 @@ vi.mock("@/lib/security/sanitize", () => ({
   ),
 }))
 
-import { GET, formatLog } from "@/app/api/activity/[workspaceId]/stream/route"
+import { GET, formatLog, maxDuration } from "@/app/api/activity/[workspaceId]/stream/route"
+import { chatRunStateInitWhere, CHAT_RUN_STATE_STREAM_SCOPE } from "@/lib/chat/run-state"
 
 const WORKSPACE_ID = "ws-1"
 
@@ -319,4 +320,29 @@ describe("SSE /api/activity/[workspaceId]/stream - events", () => {
       "[cron:heartbeat-x] full prompt with the cron trace prefix",
     )
   }, 10_000)
+
+  it("MUTATION: maxDuration is 300 so Vercel keeps SSE up for a long turn", () => {
+    expect(maxDuration).toBe(300)
+    const src = readFileSync(join(process.cwd(), "src/app/api/activity/[workspaceId]/stream/route.ts"), "utf8")
+    expect(src).toMatch(/export const maxDuration = 300/)
+  })
+
+  it("chat-run-state scope inits from chat-relevant rows, not mixed last-50", async () => {
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([] as never)
+
+    const req = createMockRequest(
+      `/api/activity/${WORKSPACE_ID}/stream?scope=${CHAT_RUN_STATE_STREAM_SCOPE}`,
+    )
+    Object.defineProperty(req, "signal", { get: () => abortController.signal })
+
+    const response = await GET(req, {
+      params: Promise.resolve({ workspaceId: WORKSPACE_ID }),
+    })
+    expect(response.status).toBe(200)
+    expect(prismaMock.activityLog.findMany).toHaveBeenCalledWith({
+      where: chatRunStateInitWhere(WORKSPACE_ID),
+      orderBy: { timestamp: "desc" },
+      take: 50,
+    })
+  })
 })

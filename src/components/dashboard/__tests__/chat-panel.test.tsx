@@ -6,7 +6,7 @@
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, it, expect, afterEach, vi } from "vitest"
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest"
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react"
 import {
   ChatPanel,
@@ -16,6 +16,7 @@ import {
   collectWorkingAgentNames,
   computeTurnStatuses,
   computeTurnPhases,
+  collectPendingRunIds,
   hasPendingTurn,
   isNearBottom,
   preservePrependedScrollPosition,
@@ -35,6 +36,18 @@ import {
   type OptimisticMessage,
 } from "@/components/dashboard/chat-panel"
 
+beforeEach(() => {
+  class SilentEventSource {
+    url: string
+    constructor(url: string) {
+      this.url = url
+    }
+    addEventListener(): void {}
+    close(): void {}
+  }
+  vi.stubGlobal("EventSource", SilentEventSource)
+})
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -42,6 +55,13 @@ afterEach(() => {
 })
 
 describe("ChatPanel header", () => {
+  it("MUTATION: panel owns the chat run-state SSE subscription", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+    expect(src).toContain("useChatRunState")
+    expect(src).toContain("runStateRows")
+    expect(src).toContain("collectWorkingRunIds")
+  })
+
   it("labels the panel as web chat and points channel conversations to the activity feed", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
 
@@ -1377,6 +1397,25 @@ describe("computeTurnStatuses - per-runId, time-bounded pending (working-indicat
   it("streamed MESSAGE_RECEIVED (status undefined) counts as a started turn", () => {
     expect(computeTurnStatuses([userView("rF", within, undefined)], T).get("rF")).toBe("pending")
   })
+
+  it("working evidence keeps pending past PENDING_TURN_TIMEOUT_MS", () => {
+    const views = [userView("rW", T, "sent")]
+    expect(computeTurnStatuses(views, T + PENDING_TURN_TIMEOUT_MS + 1).get("rW")).toBe("no_response")
+    expect(
+      computeTurnStatuses(views, T + PENDING_TURN_TIMEOUT_MS + 1, PENDING_TURN_TIMEOUT_MS, new Set(["rW"])).get("rW"),
+    ).toBe("pending")
+  })
+
+  it("collectPendingRunIds lists unreplied sent turns only", () => {
+    expect(
+      collectPendingRunIds([
+        userView("r1", within, "sent"),
+        userView("r2", within, "failed"),
+        { key: "a", sender: "agent", senderName: "X", sortTs: T, detail: "ok", action: "ok", runId: "r3" },
+        userView("r3", within, "sent"),
+      ]),
+    ).toEqual(["r1"])
+  })
 })
 
 describe("computeTurnPhases - accepted → working → done", () => {
@@ -1619,6 +1658,42 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
 
   // TIMEOUT via the live tick: a pending turn flips to "No response" after the
   // ceiling WITHOUT a new message. MUTATION: remove the timeout → stays "working".
+  it("TASK_START working evidence keeps Working past the 2 min ceiling", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      const start: ChatRow = {
+        id: "t-rW",
+        actionType: "TASK_START",
+        timestamp: iso(BASE - 1_000),
+        agentName: "Dev Commander",
+        action: "Task started",
+        runId: "rW",
+      }
+      render(
+        <ChatPanel
+          workspaceId="ws-1"
+          status="RUNNING"
+          rows={[userRow("rW", 5_000), start]}
+          orchestratorName="Dev Commander"
+        />,
+      )
+      expect(screen.getByText("Working")).toBeTruthy()
+      expect(screen.getByText(/is working/i)).toBeTruthy()
+
+      act(() => {
+        vi.advanceTimersByTime(PENDING_TURN_TIMEOUT_MS + 30_000)
+      })
+
+      expect(screen.getByText("Working")).toBeTruthy()
+      expect(screen.getByText(/is working/i)).toBeTruthy()
+      expect(screen.queryByText("No response")).toBeNull()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
   it("times out a pending turn after PENDING_TURN_TIMEOUT_MS → indicator off + 'No response'", () => {
     vi.useFakeTimers()
     try {

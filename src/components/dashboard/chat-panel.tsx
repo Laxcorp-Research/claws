@@ -14,6 +14,8 @@ import {
   isBlankAgentReplyBody,
   polishChatRenderText,
 } from "@/lib/chat/chat-copy"
+import { collectWorkingRunIds } from "@/lib/chat/run-state"
+import { useChatRunState } from "@/hooks/use-chat-run-state"
 
 // Mirror of the send endpoint cap (src/app/api/workspaces/[id]/chat/route.ts
 // MESSAGE_MAX_CHARS) so the composer can't compose something the server will
@@ -434,10 +436,34 @@ function oldestPendingUserTs(
 //                   failure, because the send SUCCEEDED).
 // Because it's per-runId and time-bounded: a later replied turn resolves on its
 // own, and an earlier orphan ages out instead of holding the indicator hostage.
+export function collectPendingRunIds(views: ChatMessageView[]): string[] {
+  const replied = new Set<string>()
+  for (const v of views) {
+    if (v.sender === "agent" && typeof v.runId === "string" && v.runId.length > 0) {
+      replied.add(v.runId)
+    }
+  }
+  const ids: string[] = []
+  for (const v of views) {
+    if (v.sender !== "user") continue
+    if (v.status === "sending" || v.status === "failed" || v.status === "held") continue
+    if (typeof v.runId !== "string" || v.runId.length === 0) continue
+    if (replied.has(v.runId)) continue
+    ids.push(v.runId)
+  }
+  return ids
+}
+
+function sameIdList(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((id, i) => id === b[i])
+}
+
 export function computeTurnStatuses(
   views: ChatMessageView[],
   now: number,
   timeoutMs: number = PENDING_TURN_TIMEOUT_MS,
+  workingRunIds?: ReadonlySet<string>,
 ): Map<string, TurnState> {
   const repliedRunIds = new Set<string>()
   for (const v of views) {
@@ -456,6 +482,12 @@ export function computeTurnStatuses(
     if (typeof v.runId !== "string" || v.runId.length === 0) continue
     // The reply already arrived → resolved, nothing to show.
     if (repliedRunIds.has(v.runId)) continue
+    // TASK_START / TASK_COMPLETE for this runId means the turn is still
+    // working - do not age out to "No response" at 2 min (subagent turns).
+    if (workingRunIds?.has(v.runId)) {
+      statuses.set(v.runId, "pending")
+      continue
+    }
     statuses.set(v.runId, now - v.sortTs < timeoutMs ? "pending" : "no_response")
   }
   return statuses
@@ -667,6 +699,8 @@ export function ChatPanel({
   const [historyLoading, setHistoryLoading] = useState(false)
   const [olderLoading, setOlderLoading] = useState(false)
   const [optimistic, setOptimistic] = useState<OptimisticMessage[]>([])
+  const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
+  const { rows: runStateRows } = useChatRunState(workspaceId, pendingRunIds)
   const [draft, setDraft] = useState("")
   // GAP #3: ref to the SCROLL CONTAINER (not a sentinel) so we move only this
   // element's scrollTop - never the page viewport (scrollIntoView moved all
@@ -695,8 +729,8 @@ export function ChatPanel({
   const showWake = unavailableCopy.cta === "wake" && !!onWake
 
   const persistedRows = useMemo(
-    () => mergePersistedChatRows(historyRows, rows),
-    [historyRows, rows],
+    () => mergePersistedChatRows(historyRows, [...rows, ...(runStateRows as ChatRow[])]),
+    [historyRows, rows, runStateRows],
   )
 
   const messages = useMemo(
@@ -721,9 +755,18 @@ export function ChatPanel({
   // timer). Initialised lazily so SSR/first paint is stable.
   const [nowTick, setNowTick] = useState(() => Date.now())
 
-  // Per-turn pending state: runId-keyed + time-bounded (see computeTurnStatuses).
-  const turnStatuses = useMemo(() => computeTurnStatuses(messages, nowTick), [messages, nowTick])
+  const workingRunIds = useMemo(() => collectWorkingRunIds(persistedRows), [persistedRows])
   const turnPhases = useMemo(() => computeTurnPhases(messages, persistedRows), [messages, persistedRows])
+  // Per-turn pending state: runId-keyed + time-bounded (see computeTurnStatuses).
+  // Working evidence (TASK_START) keeps the turn pending past the 2 min ceiling.
+  const turnStatuses = useMemo(
+    () => computeTurnStatuses(messages, nowTick, PENDING_TURN_TIMEOUT_MS, workingRunIds),
+    [messages, nowTick, workingRunIds],
+  )
+  const derivedPending = collectPendingRunIds(messages)
+  if (!sameIdList(pendingRunIds, derivedPending)) {
+    setPendingRunIds(derivedPending)
+  }
 
   // GAP #2 (fixed): the agent is "working" only while a turn is GENUINELY
   // pending - unreplied AND within PENDING_TURN_TIMEOUT_MS. Gated to a sendable

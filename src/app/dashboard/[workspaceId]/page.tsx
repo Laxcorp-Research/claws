@@ -1337,9 +1337,10 @@ export default function DashboardPage() {
     lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
   }))
 
-  // PR-9/B: the dashboard chat reuses the SAME activity stream (no second
-  // EventSource). Filter the live logs to webchat MESSAGE_* rows - channelId
-  // keeps external-channel sends/receives (Slack, etc.) out of dashboard chat.
+  // Parent logs still feed chat as a secondary source. The panel itself
+  // subscribes to `/api/activity/<id>/stream?scope=chat-run-state` and merges
+  // by id until Done - the dashboard onInit replace cannot hide a live reply.
+  // Filter parent logs to webchat MESSAGE_* / TASK_* / chat ledger rows.
   const orchestratorName = agents.find((a) => a.role === "ORCHESTRATOR")?.name ?? "Orchestrator"
   const requestedTab = searchParams.get("tab") ?? "overview"
   const activeTab = DASHBOARD_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : "overview"
