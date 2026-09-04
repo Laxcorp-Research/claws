@@ -48,7 +48,7 @@ test.describe("Chat live run-state (no reload)", () => {
     await openChat(page)
     const urlBefore = page.url()
 
-    await page.getByLabel("Message").fill("ping live run-state")
+    await page.getByRole("textbox", { name: "Message" }).fill("ping live run-state")
     await page.getByRole("button", { name: "Send" }).click()
     await expect(page.getByText("Accepted")).toBeVisible({ timeout: 10_000 })
 
@@ -79,7 +79,7 @@ test.describe("Chat live run-state (no reload)", () => {
     await openChat(page)
     await page.clock.install()
 
-    await page.getByLabel("Message").fill("long subagent turn")
+    await page.getByRole("textbox", { name: "Message" }).fill("long subagent turn")
     await page.getByRole("button", { name: "Send" }).click()
     await expect(page.getByText("Accepted")).toBeVisible({ timeout: 10_000 })
 
@@ -139,7 +139,7 @@ test.describe("Chat live run-state (no reload)", () => {
       }),
     )
 
-    await page.getByLabel("Message").fill("background tab turn")
+    await page.getByRole("textbox", { name: "Message" }).fill("background tab turn")
     await page.getByRole("button", { name: "Send" }).click()
     await expect(page.getByText("Accepted")).toBeVisible({ timeout: 10_000 })
 
