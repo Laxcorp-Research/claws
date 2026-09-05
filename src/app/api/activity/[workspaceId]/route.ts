@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
-import { sanitizeActivityText } from "@/lib/security/sanitize"
+import { hydratePendingApprovals, respondedRequestIds } from "@/lib/artifacts/pending-approvals"
 import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
 import {
   aggregateAgentCostRow,
@@ -19,6 +19,7 @@ import {
   NEAR_CAP_METADATA_CONTAINS,
 } from "@/lib/openclaw/near-cap-alert"
 import type { ActivityType, Prisma } from "@/generated/prisma/client"
+import { HEAL_ATTEMPT_EVENT_KIND } from "@/lib/healing/ledger"
 
 const MAX_ACTIVITY_LIMIT = 50
 const ACTIVITY_TYPES = new Set<string>([
@@ -238,6 +239,19 @@ export async function GET(
     }),
   ])
 
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const healedThisWeek = await prisma.activityLog.count({
+    where: {
+      workspaceId,
+      actionType: "SYSTEM",
+      timestamp: { gte: weekAgo },
+      AND: [
+        { metadata: { contains: `"eventKind":"${HEAL_ATTEMPT_EVENT_KIND}"` } },
+        { metadata: { contains: `"outcome":"healed"` } },
+      ],
+    },
+  })
+
   const hasMoreActivity = recentLogs.length > activityLimit
   const activityRows = hasMoreActivity ? recentLogs.slice(0, activityLimit) : recentLogs
   const nextCursor = hasMoreActivity ? encodeCursor(activityRows[activityRows.length - 1]) : null
@@ -294,24 +308,11 @@ export async function GET(
         : null,
   })
 
-  const respondedRequestIds = new Set<string>()
-  for (const r of humanResponses) {
-    try {
-      const meta = JSON.parse(r.metadata || "{}")
-      if (meta.originalRequestId) respondedRequestIds.add(meta.originalRequestId)
-    } catch { /* skip malformed */ }
-  }
-  const pendingApprovals = humanRequests
-    .filter((req) => !respondedRequestIds.has(req.id))
-    .map((req) => ({
-      id: req.id,
-      title: `${req.agentName || "Agent"} requests approval`,
-      description: sanitizeActivityText(req.action),
-      agentName: req.agentName || "Unknown",
-      agentSlug: req.agentSlug || "",
-      timestamp: req.timestamp.toISOString(),
-      metadata: req.metadata,
-    }))
+  const answered = respondedRequestIds(humanResponses)
+  const pendingApprovals = await hydratePendingApprovals(
+    workspaceId,
+    humanRequests.filter((req) => !answered.has(req.id)),
+  )
 
   const agentSlugs = agents.map((a) => a.agentSlug).filter(Boolean)
   const latestActivityByAgent = agentSlugs.length > 0
@@ -521,6 +522,7 @@ export async function GET(
       estimatedCostTodayCalls,
       estimatedCostTodayIsEstimate,
       pendingReview,
+      healedThisWeek,
     },
     costWindow: {
       range: costRange,

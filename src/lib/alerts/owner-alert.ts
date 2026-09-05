@@ -5,6 +5,7 @@ import { dashboardUrl } from "@/lib/alerts/app-url"
 
 export const OWNER_ALERT_KEYS = [
   "railway-create-budget",
+  "railway-domain-cap",
   "heal-exhausted",
   "detector-anomaly",
 ] as const

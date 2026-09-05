@@ -29,6 +29,6 @@ export async function touchLastChannelMessageAt(
 ): Promise<void> {
   await prisma.containerState.updateMany({
     where: { workspaceId },
-    data: { lastChannelMessageAt: at },
+    data: { lastChannelMessageAt: at, lastActiveAt: at },
   })
 }

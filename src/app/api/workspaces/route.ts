@@ -6,6 +6,7 @@ import { DEFAULT_MODEL } from "@/lib/models"
 import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboarding"
 import { cloneSeedFilesForWorkspace } from "@/lib/workspace-seed-files"
 import type { Prisma } from "@/generated/prisma/client"
+import { countPendingApprovalsByWorkspace } from "@/lib/artifacts/pending-approvals"
 
 const workspaceDetailInclude = {
   agents: { orderBy: { createdAt: "asc" as const } },
@@ -26,7 +27,13 @@ export async function GET() {
     orderBy: { updatedAt: "desc" },
   })
 
-  return apiSuccess(workspaces)
+  const pendingCounts = await countPendingApprovalsByWorkspace(workspaces.map((w) => w.id))
+  return apiSuccess(
+    workspaces.map((w) => ({
+      ...w,
+      pendingApprovalCount: pendingCounts.get(w.id) ?? 0,
+    })),
+  )
 }
 
 export async function POST(req: NextRequest) {

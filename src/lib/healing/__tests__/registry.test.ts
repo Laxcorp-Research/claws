@@ -46,6 +46,22 @@ describe("HEAL_REGISTRY coverage", () => {
     expect(row.plane).toBe("none")
   })
 
+  it("railway-domain-cap is platform prune+retry with owner-alert on failure", () => {
+    const row = getHealPolicy("railway-domain-cap")
+    expect(row.ruling).toBe("platform")
+    expect(row.plane).toBe("owner")
+    expect(row.existingHeal).toBe("prune+retry")
+    expect(row.retries).toBe(1)
+    expect(row.escalate).toBe("owner-alert")
+  })
+
+  it("spend-limit-100 is platform-enforced with customer nudge", () => {
+    const row = getHealPolicy("spend-limit-100")
+    expect(row.ruling).toBe("platform")
+    expect(row.existingHeal).toBe("enforceSpendLimit")
+    expect(row.escalate).toBe("customer-alert")
+  })
+
   it("MUTATION: deployer must import trySyncNow (no private duplicate)", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/openclaw/deployer.ts"), "utf8")
     expect(src).toMatch(/from ['"]\.\/sync-now['"]/)

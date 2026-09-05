@@ -20,11 +20,10 @@
 //   - Lazy pairing is the NORMAL path, not an error (V5): every fresh
 //     container starts unpaired. NOT_PAIRED carries details.requestId
 //     directly - no device.pair.list scan needed.
-//   - WebSocket factory is INJECTABLE and the default resolves
-//     globalThis.WebSocket LAZILY inside the send call (never at module
-//     import): Vercel runs Node 24 (native client WebSocket), but CI runs
-//     Node 20 (none) - tests must always inject a mock, and importing this
-//     module must never touch the real implementation.
+//   - WebSocket factory is INJECTABLE. The default uses `ws` so Origin can
+//     be https://<gateway-host> (already in controlUi.allowedOrigins).
+//     webchat-ui / mode=webchat is origin-gated; native WebSocket cannot
+//     set Origin. Tests always inject a mock.
 //
 // TIMEOUTS AS THE HONESTY LINE (A6): every captured failure signature is
 // FAST - edge-404/non-101 against a destroyed container in ~440-670ms,
@@ -37,6 +36,7 @@
 // timeout, so the caller always gets a typed result.
 
 import crypto from "node:crypto"
+import WebSocket from "ws"
 import { log } from "@/lib/logger"
 import {
   signDeviceAuthV3,
@@ -47,12 +47,16 @@ const PROTOCOL_VERSION = 4
 const CONNECT_TIMEOUT_MS = 5_000
 const TOTAL_BUDGET_MS = 10_000
 const OPERATOR_SCOPES = ["operator.read", "operator.write"]
-const CLIENT_INFO = {
-  id: "gateway-client",
+/** Dashboard / held-flush identity. mode=webchat so OpenClaw treats the
+ *  send as owner web chat. Pair with gateway-host Origin (see factory). */
+export const CHAT_SEND_CLIENT_INFO = {
+  id: "webchat-ui",
   version: "claws-chat-send",
   platform: "node",
-  mode: "backend",
+  mode: "webchat",
 } as const
+
+const CLIENT_INFO = CHAT_SEND_CLIENT_INFO
 
 // Minimal structural WebSocket surface - satisfied by both the native
 // (undici) WebSocket and test doubles. Event objects are typed loosely on
@@ -64,6 +68,45 @@ export interface ChatSocket {
   addEventListener(type: "open" | "message" | "close" | "error", fn: (ev: never) => void): void
 }
 export type ChatSocketFactory = (url: string) => ChatSocket
+
+/** Origin OpenClaw already allowlists (generator + container host). */
+export function gatewayControlUiOrigin(wsUrl: string): string {
+  return `https://${new URL(wsUrl).host}`
+}
+
+function createGatewayOriginSocket(url: string): ChatSocket {
+  const socket = new WebSocket(url, {
+    headers: { Origin: gatewayControlUiOrigin(url) },
+  })
+  return {
+    send(data) {
+      socket.send(data)
+    },
+    close(code, reason) {
+      socket.close(code, reason)
+    },
+    addEventListener(type, fn) {
+      if (type === "open") {
+        socket.on("open", () => fn({} as never))
+        return
+      }
+      if (type === "message") {
+        socket.on("message", (data) => {
+          const text = typeof data === "string" ? data : Buffer.from(data as Uint8Array).toString("utf8")
+          fn({ data: text } as never)
+        })
+        return
+      }
+      if (type === "close") {
+        socket.on("close", (code, reason) => {
+          fn({ code, reason: reason?.toString() } as never)
+        })
+        return
+      }
+      socket.on("error", () => fn({} as never))
+    },
+  }
+}
 
 export type SendChatFailureReason =
   | "unreachable" // edge-404 / non-101 / timeout / auth mismatch / no ack
@@ -92,7 +135,7 @@ export interface SendChatMessageParams {
    * Used by wake-on-channel platform Telegram delivery.
    */
   awaitReplyMs?: number
-  /** Injectable for tests; default resolves globalThis.WebSocket LAZILY. */
+  /** Injectable for tests; default is `ws` with gateway-host Origin. */
   socketFactory?: ChatSocketFactory
   /** Injectable fetch for the pairing admin-RPC call (tests). */
   fetchImpl?: typeof fetch
@@ -137,16 +180,7 @@ interface GatewayFrame {
 // Lazy default: never resolved at module import (CI runs Node 20 with no
 // native client WebSocket; tests always inject). Fail loud, not silent.
 function resolveDefaultFactory(): ChatSocketFactory {
-  const NativeWebSocket = (globalThis as Record<string, unknown>).WebSocket as
-    | (new (url: string) => ChatSocket)
-    | undefined
-  if (!NativeWebSocket) {
-    throw new Error(
-      "gateway-chat-client: no native WebSocket in this runtime and no socketFactory injected " +
-        "(Vercel runs Node >=22 which has one; tests must inject a mock)",
-    )
-  }
-  return (url) => new NativeWebSocket(url)
+  return createGatewayOriginSocket
 }
 
 /** One WS connection attempt: connect frame → hello-ok | NOT_PAIRED | failure. */

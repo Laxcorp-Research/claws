@@ -33,6 +33,7 @@ interface ApiWorkspace {
   agents: { role: string }[]
   _count: { agents: number }
   heartbeatMissedAt?: string | null
+  pendingApprovalCount?: number
 }
 
 interface WorkspaceItem {
@@ -46,6 +47,7 @@ interface WorkspaceItem {
   monthlyCost: string | undefined
   source: string
   heartbeatMissedAt: string | null
+  pendingApprovalCount: number
 }
 
 function toWorkspaceItem(w: ApiWorkspace): WorkspaceItem {
@@ -61,6 +63,7 @@ function toWorkspaceItem(w: ApiWorkspace): WorkspaceItem {
     monthlyCost: w.currentMonthApiCost > 0 ? formatCurrency(w.currentMonthApiCost) : undefined,
     source: w.clawTemplate ? "From template" : "Custom",
     heartbeatMissedAt: w.heartbeatMissedAt ?? null,
+    pendingApprovalCount: w.pendingApprovalCount ?? 0,
   }
 }
 

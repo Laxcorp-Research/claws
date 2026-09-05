@@ -105,11 +105,15 @@ test.describe('Chat viewport bound (PR-A §6)', () => {
         logScrollHeight: logEl.scrollHeight,
         logClientHeight: logEl.clientHeight,
         paneMaxHeightClass: paneEl.className.includes('max-h-[calc(100vh-260px)]'),
+        paneOverflowHidden: paneEl.className.includes('overflow-hidden'),
+        workingVisible: Boolean(document.querySelector('[data-working-indicator]')),
       };
     });
 
     expect(metrics).toBeTruthy();
     expect(metrics!.paneMaxHeightClass).toBe(true);
+    expect(metrics!.paneOverflowHidden).toBe(true);
+    expect(metrics!.workingVisible).toBe(true);
     expect(metrics!.paneBottom).toBeLessThanOrEqual(metrics!.viewportHeight - 8);
     expect(metrics!.documentHeight).toBeLessThanOrEqual(metrics!.viewportHeight + 80);
     expect(metrics!.logScrollHeight).toBeGreaterThan(metrics!.logClientHeight);

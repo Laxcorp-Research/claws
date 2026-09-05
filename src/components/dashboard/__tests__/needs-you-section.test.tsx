@@ -1,51 +1,82 @@
 // @vitest-environment jsdom
-//
-// PR-6: NeedsYouSection is calm-by-default (absent when empty) and otherwise
-// wires approve inline + reject-through-a-feedback-modal. These guard the
-// empty-render contract and the two action paths.
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, screen, cleanup, fireEvent } from "@testing-library/react"
+import { render, screen, cleanup } from "@testing-library/react"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 
 afterEach(() => cleanup())
 
 const approval = {
-  id: "log-1",
-  title: "Orchestrator requests approval",
-  description: "Send the Q3 outreach batch",
-  agentName: "Orchestrator",
-  agentColor: "#5BA1F5",
-  timestamp: "08:00:00 UTC",
+  fileVersionId: "fv-1",
+  title: "x-content-cycle",
+  preview: "Draft A for the human.",
+  logicalPath: "shared/deliverables/x-content-cycle.md",
+  deliverableKind: "decision" as const,
+  humanRequestId: "hr-1",
+  timestamp: "2026-09-01T12:00:00.000Z",
 }
 
 describe("NeedsYouSection", () => {
   it("renders nothing when there are no approvals (calm-by-default)", () => {
     const { container } = render(
-      <NeedsYouSection approvals={[]} onApprove={vi.fn()} onReject={vi.fn()} />,
+      <NeedsYouSection workspaceId="ws-1" approvals={[]} />,
     )
     expect(container.firstChild).toBeNull()
   })
 
-  it("renders the section with a count and the approval card when present", () => {
-    render(<NeedsYouSection approvals={[approval]} onApprove={vi.fn()} onReject={vi.fn()} />)
+  it("renders title, preview, Open, and Approve/Edit/Reject from DocumentCard", () => {
+    render(<NeedsYouSection workspaceId="ws-1" approvals={[approval]} />)
     expect(screen.getByText("Needs you (1 item)")).toBeTruthy()
-    expect(screen.getByText("Orchestrator requests approval")).toBeTruthy()
+    expect(screen.getByText("x-content-cycle")).toBeTruthy()
+    expect(screen.getByText("Draft A for the human.")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy()
+    expect(screen.queryByText("Unknown")).toBeNull()
   })
 
-  it("calls onApprove with the id when Approve is clicked", () => {
-    const onApprove = vi.fn().mockResolvedValue(undefined)
-    render(<NeedsYouSection approvals={[approval]} onApprove={onApprove} onReject={vi.fn()} />)
-    fireEvent.click(screen.getByText("Approve"))
-    expect(onApprove).toHaveBeenCalledWith("log-1")
+  it("does not show live buttons when the approval is already decided", () => {
+    render(
+      <NeedsYouSection
+        workspaceId="ws-1"
+        approvals={[{ ...approval, decision: "APPROVED" }]}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
+    expect(screen.getByTestId("document-card-status").textContent).toContain("Approved")
   })
 
-  it("opens the reject-feedback modal (does not reject immediately) when Reject is clicked", () => {
-    const onReject = vi.fn().mockResolvedValue(undefined)
-    render(<NeedsYouSection approvals={[approval]} onApprove={vi.fn()} onReject={onReject} />)
-    fireEvent.click(screen.getByText("Reject"))
-    expect(screen.getByText("Reject this item?")).toBeTruthy()
-    // reject is only sent after confirming in the modal
-    expect(onReject).not.toHaveBeenCalled()
+  it("uses --warn for the section title, not agent green", () => {
+    render(<NeedsYouSection workspaceId="ws-1" approvals={[approval]} />)
+    const heading = screen.getByText("Needs you (1 item)")
+    expect(heading.className).toContain("text-[var(--warn)]")
+    expect(heading.className).not.toContain("text-[#")
+  })
+
+  it("MUTATION: blind-approve card restored as Needs you renderer fails", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/components/dashboard/needs-you-section.tsx"),
+      "utf8",
+    )
+    expect(src).toContain('from "./document-card"')
+    expect(src).toContain("DocumentCard")
+    expect(src).not.toContain("PendingApprovalCard")
+    expect(src).not.toContain("pending-approval-card")
+    expect(src).not.toContain("Unknown")
+    expect(src).not.toContain("agentColor")
+  })
+
+  it("MUTATION: deleted blind card file stays gone", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/components/dashboard/needs-you-section.tsx"),
+      "utf8",
+    )
+    expect(() =>
+      readFileSync(join(process.cwd(), "src/components/dashboard/pending-approval-card.tsx"), "utf8"),
+    ).toThrow()
+    expect(src).toContain("DocumentCard")
   })
 })

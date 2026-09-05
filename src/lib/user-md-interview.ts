@@ -2,10 +2,11 @@ import type { InterviewQuestion } from "../../prisma/seed-data/interview-packs"
 import { TEMPLATE_INTERVIEW_PACKS } from "../../prisma/seed-data/interview-packs"
 import { TWITTER_FIRST_MISSION_PROSE, TWITTER_WAVE0_SLUG } from "../../prisma/seed-data/wave-0-twitter"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
+import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
 export const USER_MD_UNPACK_PATH = "shared/USER.md"
 export const USER_MD_HOST_PATH = `${SHARED_HOST_ROOT}/USER.md`
-export const USER_MD_INTERVIEW_COMPLETE_TOKEN = "CLAWS_USER_MD_INTERVIEW_COMPLETE"
+export const USER_MD_INTERVIEW_COMPLETE_TOKEN = PLATFORM_INTERVIEW_COMPLETE_TOKEN
 
 export function getInterviewPack(slug: string | null | undefined): InterviewQuestion[] | null {
   if (!slug) return null

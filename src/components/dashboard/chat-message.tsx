@@ -5,8 +5,11 @@ import ReactMarkdown from "react-markdown"
 import type { Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
+import { polishChatRenderText } from "@/lib/chat/chat-copy"
 
-export type ChatBubbleStatus = "sending" | "sent" | "failed"
+export type ChatBubbleStatus = "sending" | "sent" | "failed" | "held"
+
+export type ChatTurnPhase = "accepted" | "working" | "done"
 
 // PR-9/B polish - SECURITY: agent reply text is UNTRUSTED (LLM/container output,
 // potentially prompt-injected). We render it with react-markdown v10 whose
@@ -42,10 +45,10 @@ const MD_PROSE = cn(
   "[&_blockquote]:border-l-2 [&_blockquote]:border-[var(--bd2)] [&_blockquote]:pl-2 [&_blockquote]:text-[var(--tx2)]",
   "[&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[11px] [&_:not(pre)>code]:bg-[var(--bg3)] [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:rounded",
   "[&_pre]:bg-[var(--bg3)] [&_pre]:p-2 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-1 [&_pre_code]:font-mono [&_pre_code]:text-[11px]",
-  "[&_table]:block [&_table]:overflow-x-auto [&_th]:text-left [&_th]:pr-3 [&_td]:pr-3 [&_th]:border-b [&_th]:border-[var(--bd)]",
+  "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_th]:text-left [&_th]:pr-3 [&_td]:pr-3 [&_th]:border-b [&_th]:border-[var(--bd)]",
 )
 
-function MarkdownBody({ content }: { content: string }): ReactElement {
+export function MarkdownBody({ content }: { content: string }): ReactElement {
   return (
     <div className={MD_PROSE}>
       {/* SECURITY: never add rehype-raw - agent replies are untrusted; raw HTML = XSS.
@@ -76,6 +79,7 @@ interface ChatMessageProps {
   detail: string | null
   action: string
   status?: ChatBubbleStatus
+  turnPhase?: ChatTurnPhase | null
   // WORKING-INDICATOR FIX: the turn was sent (202) but no reply arrived within
   // the timeout. Renders a SUBTLE, muted "No response" note - deliberately
   // DISTINCT from the red "Failed to send": the message DID send; the agent just
@@ -98,14 +102,17 @@ interface ChatMessageProps {
   onWake?: () => void
 }
 
-export function ChatMessage({ sender, senderName, timestamp, detail, action, status, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
+export function ChatMessage({ sender, senderName, timestamp, detail, action, status, turnPhase, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
   // NEVER `detail` alone - see the guard note above. Empty-string detail also
-  // falls through to action.
-  const body = (detail && detail.length > 0 ? detail : action) || ""
+  // falls through to action. Polish (strip sentinels + scheduled-slot rewrite)
+  // AFTER that pick so activity ingest can still scan raw detail; this is
+  // render-only.
+  const rawBody = (detail && detail.length > 0 ? detail : action) || ""
+  const body = polishChatRenderText(rawBody)
 
   return (
-    <div className={cn("flex flex-col gap-[3px] max-w-[85%]", isUser ? "self-end items-end" : "self-start items-start")}>
+    <div className={cn("flex min-w-0 max-w-[85%] flex-col gap-[3px]", isUser ? "self-end items-end" : "self-start items-start")}>
       <div className="flex items-center gap-1.5 text-[10px] leading-none">
         <span className="font-semibold text-[var(--tx2)]">{senderName}</span>
         <span className="font-mono text-[var(--tx3)]">{timestamp}</span>
@@ -126,6 +133,18 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
         {isUser ? <span className="whitespace-pre-wrap">{body}</span> : <MarkdownBody content={body} />}
       </div>
       {status === "sending" && <span className="text-[10px] text-[var(--tx3)]">Sending…</span>}
+      {status === "held" && (
+        <span className="text-[10px] text-[var(--tx3)]">Held until the Claw is ready</span>
+      )}
+      {status !== "held" && status !== "failed" && status !== "sending" && turnPhase === "accepted" && (
+        <span className="text-[10px] text-[var(--tx3)]">Accepted</span>
+      )}
+      {status !== "held" && turnPhase === "working" && (
+        <span className="text-[10px] text-[var(--tx3)]">Working</span>
+      )}
+      {status !== "held" && turnPhase === "done" && (
+        <span className="text-[10px] text-[var(--tx3)]">Done</span>
+      )}
       {/* PR-9/C: tailored per-state copy (e.g. "Your Claw is asleep - wake it to
           chat.") replaces the flat "Failed to send" when the panel supplies it.
           A "wake" reason (send-time HIBERNATED) offers a Wake button; a transient

@@ -3,6 +3,13 @@ import { ALL_TEMPLATES } from "../../prisma/seed-data"
 import { ALL_SKILLS } from "../../prisma/seed-data/skills-index"
 import { parseHeartbeatWindowScripts } from "@/lib/openclaw/heartbeat-md-cron"
 import { TWITTER_API_402_COPY } from "@/lib/tools/twitter-api-honesty"
+import { INVENTED_USER_EVENT_FIXTURE } from "../../prisma/seed-data/wave-0-twitter"
+import {
+  CLAIMS_TABLE_STEP_MARKER,
+  STRICT_8_DEFINITION,
+  THIRD_PARTY_ABOUT_USER_FIXTURE,
+  VERSION_B_FIRST_PERSON_FIXTURE,
+} from "@/lib/critic/claims-table"
 
 function twitter() {
   const t = ALL_TEMPLATES.find((x) => x.slug === "twitter-growth-machine")
@@ -37,11 +44,24 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     const soul = agent("content-writer").soulMd
     expect(soul).toContain("Grounding law")
     expect(soul).toContain("NEVER invent numbers")
+    expect(soul).toContain("ACTIONS/EVENTS about the user")
     expect(soul).toContain("[YOUR NUMBER HERE]")
     expect(soul).toContain("one-line ask")
     expect(soul).toContain("USER.md")
     expect(soul).toContain("VOICE.md")
     expect(agent("content-writer").agentsMd).toContain("[YOUR NUMBER HERE]")
+  })
+
+  it("critic + writer catch invented user ACTIONS/EVENTS, not just numbers (MUTATION: number-only anchor → fail)", () => {
+    const writer = agent("content-writer").soulMd
+    const critic = agent("social-content-reviewer").soulMd
+    expect(INVENTED_USER_EVENT_FIXTURE).toContain("Agent Seer")
+    expect(writer).toContain("ACTIONS/EVENTS about the user")
+    expect(writer).toContain(INVENTED_USER_EVENT_FIXTURE)
+    expect(critic).toContain("invented ACTIONS/EVENTS about the user")
+    expect(critic).toContain(INVENTED_USER_EVENT_FIXTURE)
+    expect(writer).toContain("NEVER invent numbers")
+    expect(critic).toContain("specific factual claim with no source")
   })
 
   it("Social Content Reviewer names 4 dimensions, rejection format, and instant-reject list", () => {
@@ -57,6 +77,14 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("USER.md do-nots")
     expect(soul).toContain("qualityThreshold")
     expect(soul).toContain("specific factual claim with no source in files/tools")
+    expect(soul).toContain(CLAIMS_TABLE_STEP_MARKER)
+    expect(soul).toContain("| Claim | Source |")
+    expect(soul).toContain(VERSION_B_FIRST_PERSON_FIXTURE)
+    expect(soul).toContain(THIRD_PARTY_ABOUT_USER_FIXTURE)
+    expect(soul).toContain(STRICT_8_DEFINITION)
+    expect(soul).toMatch(/\bPASS\b/)
+    expect(soul).toMatch(/\bREJECT\b/)
+    expect(soul).not.toMatch(/present best-with-warning/)
   })
 
   it("Commander has capacity, escalation, tool errors, and same-session first-mission", () => {
@@ -68,8 +96,35 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(soul).toContain("twitter-api 429")
     expect(soul).toContain("twitter-api 402")
     expect(soul).toContain(TWITTER_API_402_COPY)
+    expect(soul).toContain("Do not degrade to Tavily")
+    expect(soul).toContain("web_fetch 401 on api.twitter.com")
+    expect(soul).toContain("missing Authorization, not token-dead")
     expect(soul).toContain("mini first-mission")
     expect(soul).toContain("2 draft posts")
+    expect(soul).toContain("document card")
+    expect(soul).toContain("Approve, Edit, or Reject on the card")
+    expect(soul).toContain("Critic approval is not human approval")
+    expect(soul).toContain("proposed slot 12:30 UTC, pending your approval")
+    expect(soul).toContain('Never say "Scheduled 12:30 UTC"')
+    expect(soul).toContain("Sidecar <deliverable>.status.json is the source of truth")
+    expect(soul).toContain('Never say "queue them for immediate posting"')
+    expect(soul.toLowerCase()).not.toContain("queued for 4 pm")
+    expect(soul.toLowerCase()).not.toContain("no user approval needed")
+  })
+
+  it("reply prose delivers via document cards; missions keep host paths (MUTATION: paste-verbatim revival → fail)", () => {
+    const soul = agent("twitter-commander").soulMd
+    const heartbeat = agent("twitter-commander").heartbeatMd
+    expect(soul).toContain("document card")
+    expect(soul).toContain("Do not paste the file verbatim into chat")
+    expect(soul).not.toContain("Writing a file is not delivery")
+    expect(soul).not.toContain("saved x-content-cycle to your deliverables")
+    expect(heartbeat).toContain("dashboard card is the delivery")
+    expect(heartbeat).toContain("Do not paste")
+    expect(heartbeat).not.toContain("verbatim")
+    expect(heartbeat).toContain("/home/node/.openclaw/shared/deliverables/")
+    expect(heartbeat).not.toContain("drafted, awaiting your approval")
+    expect(heartbeat.toLowerCase()).not.toContain("queue the approved")
   })
 
   it("Scout has signal-vs-noise tree, recency windows, and USER.md do-not bind", () => {
@@ -139,10 +194,14 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(twitterSkill?.skillMd).toContain("What NOT to fetch")
     expect(twitterSkill?.skillMd).toContain("429")
     expect(twitterSkill?.skillMd).toContain(TWITTER_API_402_COPY)
+    expect(twitterSkill?.skillMd).toContain("Never `web_fetch` api.twitter.com")
+    expect(twitterSkill?.skillMd).toContain("Never GET /2/users/me")
+    expect(twitterSkill?.skillMd).toContain("Do not degrade to Tavily")
     expect(twitterSkill?.skillMd).not.toContain("Hello from LaxClaws")
     expect(tavily?.skillMd).toContain("Scout query patterns")
     expect(tavily?.skillMd).toContain("Corroborate")
     expect(tavily?.skillMd).toContain(TWITTER_API_402_COPY)
+    expect(tavily?.skillMd).toContain("Treat web_fetch 401 on api.twitter.com as a dead token")
   })
 
   it("three windows stay parseable scripts with failure branches", () => {
@@ -159,5 +218,10 @@ describe("WAVE-0 Twitter/X flagship prose contracts", () => {
     expect(md).toContain("tavily-search")
     expect(md).toContain("twitter-api 402")
     expect(md).toContain(TWITTER_API_402_COPY)
+    expect(md).toContain("do not Tavily-substitute")
+    expect(md).toContain("web_fetch 401 on api.twitter.com")
+    expect(md.toLowerCase()).not.toMatch(/402[\s\S]{0,80}reconnect/)
+    expect(md).toContain("Stall guard")
+    expect(md).toContain("20 minutes")
   })
 })

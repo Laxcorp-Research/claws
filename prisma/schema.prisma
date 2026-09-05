@@ -334,6 +334,7 @@ model Workspace {
   toolConnections ToolConnection[]
   customToolConnections CustomToolConnection[]
   snapshots   WorkspaceSnapshot[]
+  fileVersions FileVersion[]
   auditLogs   AuditLog[]
   apiKeyOverrides WorkspaceApiKey[]
 
@@ -948,6 +949,44 @@ enum SnapshotTrigger {
   PRE_DEPLOY
   TEMPLATE_LOAD
   USER_LABELED
+}
+
+// ARTIFACTS PR-1: per-path document versions (card-source). Not canvas/image
+// versioning. Restore inserts a new row that copies older content.
+model FileVersion {
+  id             String               @id @default(cuid())
+  workspaceId    String
+  logicalPath    String
+  version        Int
+  content        String               @db.Text
+  contentHash    String
+  createdAt      DateTime             @default(now())
+  createdBy      String
+  trigger        FileVersionTrigger
+  runId          String?
+  activityLogId  String?
+  decision       FileVersionDecision  @default(NONE)
+  decisionReason String?              @db.Text
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, logicalPath, version])
+  @@index([workspaceId, logicalPath])
+  @@index([workspaceId, createdAt])
+}
+
+enum FileVersionTrigger {
+  MISSION
+  EDIT
+  RESTORE
+  SEED
+}
+
+enum FileVersionDecision {
+  NONE
+  APPROVED
+  REJECTED
+  SUPERSEDED
 }
 
 // ─── AUDIT LOG ──────────────────────────────────────────

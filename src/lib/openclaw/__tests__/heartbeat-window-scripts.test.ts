@@ -19,6 +19,8 @@ describe("INFRA-4 HEARTBEAT window scripts", () => {
         expect(script.cron.length, `${tmpl.slug} ${script.cron}`).toBeGreaterThan(0)
         expect(script.steps.length, `${tmpl.slug} ${script.cron}`).toBeGreaterThanOrEqual(3)
         expect(script.deliverable.length, `${tmpl.slug} ${script.cron}`).toBeGreaterThan(0)
+        expect(script.deliverable, `${tmpl.slug} ${script.cron}`).toContain("/home/node/.openclaw/")
+        expect(script.deliverable, `${tmpl.slug} ${script.cron}`).not.toMatch(/(^|[\s(])shared\//)
       }
     }
   })

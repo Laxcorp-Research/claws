@@ -1,4 +1,5 @@
 import { sanitizeActivityDetail, sanitizeActivityText } from "@/lib/security/sanitize"
+import { parseDeliverableMetadata } from "@/lib/artifacts/deliverable-kind"
 
 export interface ActivityLogFormatInput {
   id: string
@@ -21,6 +22,13 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
   let channelId: string | null = log.channelId ?? null
   let from: string | null = null
   let runId: string | null = null
+  let eventKind: string | null = null
+  let fileVersionId: string | null = null
+  let logicalPath: string | null = null
+  let preview: string | null = null
+  let deliverableKind: "decision" | "report" | null = null
+  let humanRequestId: string | null = null
+  let holdStatus: string | null = null
 
   if (log.metadata) {
     try {
@@ -29,6 +37,14 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
       channelId = channelId ?? (typeof m.channelId === "string" ? m.channelId : null)
       from = typeof m.from === "string" ? m.from : null
       runId = typeof m.runId === "string" ? m.runId : null
+      holdStatus = typeof m.holdStatus === "string" ? m.holdStatus : null
+      const doc = parseDeliverableMetadata(log.metadata)
+      eventKind = doc.eventKind
+      fileVersionId = doc.fileVersionId
+      logicalPath = doc.logicalPath
+      preview = doc.preview
+      deliverableKind = doc.deliverableKind
+      humanRequestId = doc.humanRequestId
     } catch {
       // malformed metadata -> leave the derived chat fields null
     }
@@ -47,5 +63,12 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
     channelId,
     from,
     runId,
+    eventKind,
+    fileVersionId,
+    logicalPath,
+    preview,
+    deliverableKind,
+    humanRequestId,
+    holdStatus,
   }
 }

@@ -38,6 +38,7 @@ import {
   THINKING_SIGNATURE_HEAL_DEDUP_MS,
   THINKING_SIGNATURE_POISON_EVENT_KIND,
 } from "@/lib/trial/thinking-signature-heal";
+import { scheduleThinkingSignatureHeal } from "@/lib/healing/runtime-heals";
 import {
   decideCronJobFailedAlert,
   extractCronJobName,
@@ -45,7 +46,13 @@ import {
   CRON_JOB_FAILED_WINDOW_MS,
 } from "@/lib/alerts/cron-job-failed-detect";
 import { sendCriticalAlert } from "@/lib/alerts/critical-alert-push";
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge";
+import { applyWorkspaceApiCost } from "@/lib/healing/spend-limit";
+import { NEAR_CAP_METADATA_KIND } from "@/lib/openclaw/near-cap-alert";
 import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
+import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
+import { applyInboundApprovalCommand } from "@/lib/artifacts/approval-command";
+import { twitterNudgeFromActivity } from "@/lib/tools/twitter-api-honesty";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -54,7 +61,7 @@ import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
 //   - SYSTEM            → emitted by agents/[workspaceId]/[id]/control/route.ts
 //   - HUMAN_APPROVE     → emitted by workspaces/[id]/respond/route.ts
 //   - HUMAN_REJECT      → emitted by workspaces/[id]/respond/route.ts
-//   - HUMAN_REQUEST     → no source today (Claws-template concept, PR-3+ scope)
+//   - HUMAN_REQUEST     → created from FileVersion id on extract (not this route)
 //   - REVIEW_PASS / REVIEW_REJECT → Claws-template concept
 //   - COST_ALERT        → computed Claws-side; PR-2b scope
 //   - TRADE_*           → trading-template specific
@@ -317,6 +324,11 @@ export async function ledgerThinkingSignaturePoison(
     workspaceId,
     sessionKey: decision.sessionKey,
   });
+  const host = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { containerHost: true },
+  });
+  scheduleThinkingSignatureHeal(workspaceId, host?.containerHost ?? null);
 }
 
 /**
@@ -538,6 +550,71 @@ export async function POST(
           apiCost,
         },
       });
+      if (typeof apiCost === "number" && apiCost > 0) {
+        try {
+          await applyWorkspaceApiCost({ workspaceId, delta: apiCost });
+        } catch (spendErr) {
+          log.error("activity: spend-limit apply failed", {
+            workspaceId,
+            error: spendErr instanceof Error ? spendErr.message : String(spendErr),
+          });
+        }
+      }
+      if (ev.type === "TASK_COMPLETE") {
+        try {
+          await nudgeDeliverableSyncNow(workspaceId);
+        } catch (nudgeErr) {
+          log.error("activity: deliverable sync-now nudge failed", {
+            workspaceId,
+            error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+          });
+        }
+      }
+      if (ev.type === "MESSAGE_RECEIVED") {
+        try {
+          await applyInboundApprovalCommand({
+            workspaceId,
+            text: ev.detail ?? ev.action,
+            respondedBy: ev.channelId ?? "channel",
+          });
+        } catch (cmdErr) {
+          log.error("activity: approval command failed", {
+            workspaceId,
+            error: cmdErr instanceof Error ? cmdErr.message : String(cmdErr),
+          });
+        }
+      }
+      const twitterNudge = twitterNudgeFromActivity({
+        type: ev.type,
+        action: ev.action,
+        detail: ev.detail,
+        metadata: JSON.stringify(ev.metadata ?? {}),
+      });
+      if (twitterNudge) {
+        try {
+          await sendCustomerNudge({ workspaceId, condition: twitterNudge });
+        } catch (nudgeErr) {
+          log.error("activity: twitter nudge failed", {
+            workspaceId,
+            condition: twitterNudge,
+            error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+          });
+        }
+      }
+      if (
+        ev.type === "ERROR" &&
+        typeof ev.metadata?.kind === "string" &&
+        ev.metadata.kind === NEAR_CAP_METADATA_KIND
+      ) {
+        try {
+          await sendCustomerNudge({ workspaceId, condition: "state-sync-near-cap" });
+        } catch (nudgeErr) {
+          log.error("activity: near-cap nudge failed", {
+            workspaceId,
+            error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+          });
+        }
+      }
       try {
         await markNoActiveComposioConnection(workspaceId, ev);
       } catch (markErr) {

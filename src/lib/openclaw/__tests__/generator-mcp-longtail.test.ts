@@ -317,17 +317,19 @@ describe('(d) per-agent token-tax scoping', () => {
 
     expect(worker.tools.deny).toContain('composio__*');
     expect(critic.tools.deny).toContain('composio__*');
-    expect(orch.tools).toBeUndefined();
+    expect(orch.tools.deny).not.toContain('composio__*');
+    expect(orch.tools.deny).toEqual(expect.arrayContaining(['message', 'exec']));
   });
 
-  it('emits no deny anywhere when the workspace is not MCP-enabled', async () => {
+  it('emits no composio deny when the workspace is not MCP-enabled', async () => {
     primeMocks({ toolConnections: [CURATED_OAUTH_CONN], skillRows: CURATED_SKILL_ROWS });
 
     const result = await generateWorkspace('ws-mcp-1');
     const config = JSON.parse(result['openclaw.json']);
 
     for (const agent of config.agents.list) {
-      expect(agent.tools).toBeUndefined();
+      expect(agent.tools.deny).toEqual(expect.arrayContaining(['message', 'exec']));
+      expect(agent.tools.deny).not.toContain('composio__*');
     }
   });
 });

@@ -40,7 +40,7 @@ describe("touchLastChannelMessageAt", () => {
     await touchLastChannelMessageAt("ws-1", at)
     expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
       where: { workspaceId: "ws-1" },
-      data: { lastChannelMessageAt: at },
+      data: { lastChannelMessageAt: at, lastActiveAt: at },
     })
   })
 

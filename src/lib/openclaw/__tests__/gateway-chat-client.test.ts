@@ -14,6 +14,8 @@
 
 import { describe, it, expect, vi } from "vitest"
 import {
+  CHAT_SEND_CLIENT_INFO,
+  gatewayControlUiOrigin,
   sendChatMessage,
   type ChatSocket,
   type ChatSocketFactory,
@@ -216,6 +218,15 @@ describe("gateway-chat-client", () => {
     })
     // Connect-send-DISCONNECT: the socket that carried the send is closed.
     expect(gw.sockets[gw.sockets.length - 1].closedWith).toBe(1000)
+    expect(CHAT_SEND_CLIENT_INFO).toMatchObject({ id: "webchat-ui", mode: "webchat" })
+    expect(CHAT_SEND_CLIENT_INFO.id).not.toBe("gateway-client")
+    expect(CHAT_SEND_CLIENT_INFO.mode).not.toBe("backend")
+  })
+
+  it("sets Control UI Origin to the gateway host (webchat-ui is origin-gated)", () => {
+    expect(gatewayControlUiOrigin("wss://claw-example.up.railway.app")).toBe(
+      "https://claw-example.up.railway.app",
+    )
   })
 
   it("lazy pairing path: NOT_PAIRED → approve(requestId from details) → reconnect once → ack", async () => {

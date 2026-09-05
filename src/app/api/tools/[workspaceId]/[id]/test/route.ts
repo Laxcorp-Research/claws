@@ -1,11 +1,12 @@
 import { NextRequest } from "next/server"
-import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
-import { decrypt } from "@/lib/encryption"
-import { log } from "@/lib/logger"
-import { validateToolKey, hasValidator } from "@/lib/tools/validators"
+import { prisma } from "@/lib/db"
+import {
+  ledgerToolStatusProbe,
+  probeAndPersistApiKeyConnection,
+} from "@/lib/tools/probe-api-key"
 
 /**
  * POST /api/tools/[workspaceId]/[id]/test
@@ -42,115 +43,59 @@ export async function POST(
   })
   if (!conn) return ERRORS.NOT_FOUND("Tool connection")
 
-  if (conn.connectionType !== "API_KEY") {
-    return ERRORS.VALIDATION(
-      "Test is only available for API-key connections. OAuth tools are verified through their reconnect flow.",
-    )
-  }
-
-  // NEEDS_CREDENTIALS rows are known-incomplete; testing them will just
-  // fail with "missing required field". Surface a better error that maps
-  // onto the UI's Complete button flow.
-  if (conn.status === "NEEDS_CREDENTIALS") {
-    return ERRORS.VALIDATION(
-      "Connection is missing credentials. Click 'Complete' to supply the remaining fields.",
-    )
-  }
-
-  if (!conn.encryptedCredentials) {
-    return ERRORS.VALIDATION(
-      "This connection has no stored credentials. Reconnect to add them.",
-    )
-  }
-
-  let credentials: Record<string, string>
-  try {
-    const plaintext = decrypt(conn.encryptedCredentials)
-    const parsed = JSON.parse(plaintext)
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("encryptedCredentials plaintext is not a JSON object")
+  const probed = await probeAndPersistApiKeyConnection(conn, { userId: user.id })
+  if (!probed.ok) {
+    if (probed.failure.kind === "not_api_key") {
+      return ERRORS.VALIDATION(
+        "Test is only available for API-key connections. OAuth tools are verified through their reconnect flow.",
+      )
     }
-    credentials = parsed as Record<string, string>
-  } catch (err) {
-    log.error("Failed to decrypt tool credentials", {
-      category: "tool_validation",
-      toolSlug: conn.toolSlug,
-      error: err instanceof Error ? err.message : String(err),
-    })
+    if (probed.failure.kind === "needs_credentials") {
+      return ERRORS.VALIDATION(
+        "Connection is missing credentials. Click 'Complete' to supply the remaining fields.",
+      )
+    }
+    if (probed.failure.kind === "no_credentials") {
+      return ERRORS.VALIDATION(
+        "This connection has no stored credentials. Reconnect to add them.",
+      )
+    }
     return ERRORS.VALIDATION(
-      "Couldn't read the stored credentials. Remove and reconnect this tool.",
+      probed.failure.error ??
+        "Couldn't read the stored credentials. Remove and reconnect this tool.",
     )
   }
 
-  // If there's no validator for this tool, don't change status - just
-  // report honestly that we can't actually verify it right now.
-  if (!hasValidator(conn.toolSlug)) {
-    await prisma.toolConnection.update({
-      where: { id },
-      data: { lastTestedAt: new Date() },
-    })
+  const result = probed.result
+  await ledgerToolStatusProbe({
+    workspaceId,
+    trigger: "user_request",
+    results: [
+      { toolSlug: result.toolSlug, outcome: result.outcome, status: result.status },
+    ],
+  })
+
+  if (result.outcome === "unverified") {
     return apiSuccess({
       valid: true,
       unverified: true,
-      message:
-        "No validator implemented for this tool yet - we can't actually test it from here. The key is saved; the tool will fail at call time if it's wrong.",
-      status: conn.status,
+      message: result.message,
+      status: result.status,
     })
   }
-
-  const result = await validateToolKey(conn.toolSlug, credentials)
-
-  if (!result.valid) {
-    const updated = await prisma.toolConnection.update({
-      where: { id },
-      data: {
-        status: "ERROR",
-        lastTestedAt: new Date(),
-        lastError: result.error ?? "Test failed",
-      },
-      select: { status: true, lastError: true },
-    })
-    log.toolEvent({
-      event: "failed",
-      toolSlug: conn.toolSlug,
-      connectionType: conn.connectionType,
-      workspaceId,
-      userId: user.id,
-      error: result.error,
-    })
+  if (result.outcome === "error") {
     return apiSuccess({
       valid: false,
       error: result.error,
-      status: updated.status,
+      status: result.status,
     })
   }
-
-  // Transient provider error - treat as pending, not connected.
-  if (result.warning) {
-    const updated = await prisma.toolConnection.update({
-      where: { id },
-      data: {
-        status: "PENDING",
-        lastTestedAt: new Date(),
-        lastError: result.warning,
-      },
-      select: { status: true, lastError: true },
-    })
+  if (result.outcome === "pending") {
     return apiSuccess({
       valid: true,
       warning: result.warning,
-      status: updated.status,
+      status: result.status,
     })
   }
-
-  const updated = await prisma.toolConnection.update({
-    where: { id },
-    data: {
-      status: "CONNECTED",
-      lastTestedAt: new Date(),
-      lastError: null,
-    },
-    select: { status: true, lastError: true },
-  })
-  return apiSuccess({ valid: true, status: updated.status })
+  return apiSuccess({ valid: true, status: result.status })
 }

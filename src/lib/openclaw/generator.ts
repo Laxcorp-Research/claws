@@ -19,6 +19,7 @@
 
 import { prisma } from '@/lib/db';
 import { decrypt, encrypt } from '@/lib/encryption';
+import { log } from '@/lib/logger';
 import { generateSecureToken } from '@/lib/crypto';
 import { getToolBySlug } from '@/data/tool-catalog';
 import { getComposio, getComposioUserId } from '@/lib/composio';
@@ -39,6 +40,9 @@ import {
   buildMessageDeliverySection,
   mergeMessageDenyIntoTools,
 } from '@/lib/openclaw/message-delivery';
+import { CLAIMS_TABLE_STEP_MARKER, STRICT_8_DEFINITION } from '@/lib/critic/claims-table';
+import { CRITIC_NE_HUMAN_COPY, mergeOutboundDenyIntoTools, overlayMissionLaw, TOOL_STATUS_TRUTH_COPY } from '@/lib/openclaw/delivery-rail';
+import { reprobeWorkspaceToolConnections } from '@/lib/tools/reprobe-on-deploy';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
@@ -246,6 +250,18 @@ export async function claimGatewayToken(workspaceId: string): Promise<string> {
 }
 
 export async function generateWorkspace(workspaceId: string): Promise<GeneratedWorkspace> {
+  // Re-probe API_KEY connections so TOOLS.md status is last-probe, not a
+  // stale DEGRADED story from a prior window / recharge.
+  try {
+    await reprobeWorkspaceToolConnections(workspaceId);
+  } catch (err) {
+    log.warn('tool re-probe on generate failed; baking last known status', {
+      category: 'tool_validation',
+      workspaceId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // 1. Load full workspace graph from DB
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
@@ -574,6 +590,11 @@ function generateOpenClawConfig(
       entry.tools = mergeMcpDenyIntoAgentTools(entry.tools as Record<string, unknown> | undefined);
     }
 
+    entry.tools = mergeOutboundDenyIntoTools(
+      entry.tools as Record<string, unknown> | undefined,
+      workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
+    );
+
     return entry;
   });
 
@@ -672,6 +693,14 @@ function generateOpenClawConfig(
   if (configuredChannelIds(workspace.channelConfig).length === 0) {
     config.tools = mergeMessageDenyIntoTools(config.tools as Record<string, unknown>);
   }
+
+  // B-3 delivery rail: outbound post/send/execute stay denied until the
+  // human flips AUTO_PROCEED AND the tool opts into autonomous. Knob-as-prose
+  // only is a mutation failure.
+  config.tools = mergeOutboundDenyIntoTools(
+    config.tools as Record<string, unknown>,
+    workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
+  );
 
   // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
   // non-null when CLAWS_MCP_LONGTAIL_ENABLED=true AND the workspace has
@@ -876,7 +905,7 @@ function hasCompatibleSkill(workspace: WorkspaceWithRelations, toolSlug: string)
 /**
  * Same eligibility the deploy gate / wizard already use for credentialed
  * API_KEY rows: ciphertext present, CONNECTED or credentialed PENDING.
- * PENDING unverified keys (no validator, e.g. twitter-api) MUST emit - D6
+ * PENDING credentialed keys MUST emit - D6
  * taught us the gate-vs-generator seam for model keys; this is that seam
  * for the tool class. ERROR / EXPIRED / REVOKED / NEEDS_CREDENTIALS stay out
  * so TOOLS.md never says Connected when .env will not carry the key.
@@ -1540,13 +1569,13 @@ function generateAgentWorkspaceFiles(
   const agentsMdResult = generateAgentsMd(agent, orchestrator, workers, critic, workspace);
 
   return {
-    'SOUL.md': generateSoulMd(agent, clawName),
+    'SOUL.md': generateSoulMd(agent, clawName, workspace),
     'AGENTS.md': agentsMdResult.text,
     'USER.md': generateUserMd(workspace),
     'IDENTITY.md': generateIdentityMd(agent),
     'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled),
     'HEARTBEAT.md': isOrchestrator
-      ? generateHeartbeatMd(orchestrator)
+      ? generateHeartbeatMd(orchestrator, workspace)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
     'BOOT.md': generateBootMd(agent, workspace),
     skills: generateSkillFiles(agent, workspace),
@@ -1561,22 +1590,28 @@ function generateAgentWorkspaceFiles(
 // Keep concise - this is in every LLM call's token count.
 // ---------------------------------------------------------------------------
 
-function generateSoulMd(agent: AgentWithRelations, clawName: string): string {
-  // If the agent has custom soulMd from the Builder, use it
-  if (agent.soulMd?.trim()) {
-    return agent.soulMd;
-  }
+function workspaceHasTwitterApi(workspace: WorkspaceWithRelations): boolean {
+  return workspace.toolConnections.some((t) => t.toolSlug === 'twitter-api');
+}
 
-  // Otherwise, generate from role template
-  switch (agent.role) {
-    case 'ORCHESTRATOR':
-      return generateOrchestratorSoulMd(agent, clawName);
-    case 'CRITIC':
-      return generateCriticSoulMd(agent, clawName);
-    case 'WORKER':
-    default:
-      return generateWorkerSoulMd(agent, clawName);
-  }
+function generateSoulMd(
+  agent: AgentWithRelations,
+  clawName: string,
+  workspace: WorkspaceWithRelations,
+): string {
+  // Custom Builder soul is the voice; overlay still pins delivery law.
+  // MUTATION: return agent.soulMd raw → fire-claw 11:50 "no user approval" ships.
+  const base = agent.soulMd?.trim()
+    ? agent.soulMd
+    : agent.role === 'ORCHESTRATOR'
+      ? generateOrchestratorSoulMd(agent, clawName)
+      : agent.role === 'CRITIC'
+        ? generateCriticSoulMd(agent, clawName)
+        : generateWorkerSoulMd(agent, clawName);
+  return overlayMissionLaw(base, {
+    twitterReadOnly: workspaceHasTwitterApi(workspace),
+    critic: agent.role === 'CRITIC',
+  });
 }
 
 function generateOrchestratorSoulMd(agent: AgentWithRelations, clawName: string): string {
@@ -1607,6 +1642,7 @@ You are ${agent.name}, the Orchestrator for ${clawName}. You are the manager of 
 - Never share internal agent communications with the human (they see results, not sausage-making)
 - Never blame a Worker for failure - you own all outcomes
 - Never continue operating if your API spend limit is reached - pause and alert the human
+- ${CRITIC_NE_HUMAN_COPY}
 `;
 }
 
@@ -1648,21 +1684,31 @@ For EVERY piece of work, evaluate:
 ALWAYS respond with exactly this structure:
 
 \`\`\`
-## Verdict: [APPROVED / REJECTED]
+## ${CLAIMS_TABLE_STEP_MARKER}
+
+| Claim | Source |
+| --- | --- |
+| <factual claim> | USER.md:12 or tool:tavily:r1 |
+
+## Verdict: [PASS / REJECT]
 ## Score: [1-10]
 ## Assessment: [2-3 sentences]
-## [If REJECTED] Specific Feedback:
+## [If REJECT] Specific Feedback:
 - [Point 1: exactly what's wrong and how to fix it]
 - [Point 2: if applicable]
 ## [If any] Risk Flags:
-- [Potential issues even if approved]
+- [Potential issues even if PASS]
 \`\`\`
+
+${STRICT_8_DEFINITION}
 
 # Rules
 
 - Never approve something you wouldn't put your own name on
 - Never rewrite the work yourself - give feedback, let the Worker fix it
 - If you're unsure, REJECT with a note explaining your uncertainty
+- Missing claims table is REJECT. Unsourced first-person user/product claims are REJECT.
+- ${CRITIC_NE_HUMAN_COPY}
 `;
 }
 
@@ -1686,6 +1732,7 @@ You are ${agent.name}, a specialized Worker agent in the ${clawName} team. You e
 - You never message the human directly.
 - Be concise in your outputs but complete in your work.
 - Include your reasoning when it adds value.
+- ${CRITIC_NE_HUMAN_COPY}
 `;
 }
 
@@ -1716,6 +1763,9 @@ function generateAgentsMd(
       const withSpawn = injectSpawnInstructions(agent.agentsMd, workers, critic);
       return applyOrchestratorWorkflowFence(withSpawn, orchestrator, workers, critic, workspace);
     }
+    if (agent.role === 'CRITIC') {
+      return { text: overlayMissionLaw(agent.agentsMd, { critic: true }) };
+    }
     return { text: agent.agentsMd };
   }
 
@@ -1725,7 +1775,7 @@ function generateAgentsMd(
       return applyOrchestratorWorkflowFence(base, orchestrator, workers, critic, workspace);
     }
     case 'CRITIC':
-      return { text: generateCriticAgentsMd(critic) };
+      return { text: overlayMissionLaw(generateCriticAgentsMd(critic), { critic: true }) };
     case 'WORKER':
     default:
       return { text: generateWorkerAgentsMd() };
@@ -1838,10 +1888,10 @@ The Worker will execute the task and the result will be returned to you automati
 
 After receiving a Worker's output:
 1. Spawn the Critic: \`sessions_spawn(agentId: "${criticId}", task: "Review this output: [paste output]. Context: [what it's for].")\`
-2. The Critic will respond with a verdict (APPROVED/REJECTED with score and feedback)
-3. If APPROVED (score ≥ ${critic.qualityThreshold ?? 8}): Present to the human
-4. If REJECTED: Spawn the Worker again with the Critic's feedback included
-5. After ${rounds} rejection rounds: Present best attempt with a quality warning to the human
+2. The Critic will respond with a verdict (PASS/REJECT with claims table, score, and feedback)
+3. If PASS (${STRICT_8_DEFINITION}): Present to the human
+4. If REJECT: Spawn the Worker again with the Critic's feedback included
+5. After ${rounds} rejection rounds: Present the last REJECT packet. No pass-with-warning.
 
 # Error Handling
 
@@ -1862,7 +1912,7 @@ At the end of each session:
 When triggered by heartbeat:
 1. Read HEARTBEAT.md for scheduled tasks
 2. For each due task: decompose, spawn Workers, collect results, review via Critic
-3. If nothing needs attention: respond HEARTBEAT_OK
+3. Emit HEARTBEAT_OK ONLY when there is nothing else to say. Never append HEARTBEAT_OK after a real reply.
 4. MANDATORY final step, every heartbeat run - including the step 3 no-op case: write memory/[today's date].md summarizing what happened this run, and update memory/MEMORY.md with any long-term learnings. Do not end a heartbeat run without writing memory - it is the human's only audit trail for unattended runs.
 `;
 }
@@ -1881,10 +1931,11 @@ You are spawned by the Orchestrator to review a specific piece of work. Your res
 # Review Process
 
 1. Read the work provided in the task description carefully
-2. Evaluate against the criteria in your SOUL.md
-3. Score 1-10
-4. Respond with the exact verdict format from your SOUL.md
-5. Be specific in feedback - the Worker needs to know exactly what to fix
+2. ${CLAIMS_TABLE_STEP_MARKER}: emit \`| Claim | Source |\` for every factual claim before scoring
+3. Evaluate against the criteria in your SOUL.md
+4. Score 1-10
+5. Respond with the exact verdict format from your SOUL.md (PASS or REJECT only)
+6. Be specific in feedback - the Worker needs to know exactly what to fix
 
 # Quality Threshold
 
@@ -2095,11 +2146,15 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
 
     const statusLabel = toolConnectionRuntimeStatusLabel(toolConn);
     const honestyLines = twitterApiToolsMdHonestyLines(toolConn.toolSlug);
+    const lastProbe = toolConn.lastTestedAt
+      ? new Date(toolConn.lastTestedAt).toISOString()
+      : 'never';
 
     const section = `### ${name}
 - Slug: \`${toolConn.toolSlug}\`
 - Connection type: ${toolConn.connectionType}
-- Status: ${statusLabel}${honestyLines}`;
+- Status: ${statusLabel}
+- Last probe: ${lastProbe}${honestyLines}`;
     toolSections.push(section);
   }
 
@@ -2107,6 +2162,10 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
     return `# TOOLS.md - Environment Notes
 
 No external tools are connected yet. The human can connect tools in the Claws setup wizard.
+
+## Tool-status truth
+
+${TOOL_STATUS_TRUTH_COPY}
 ${deliverySection}
 ## Tool Connection Errors
 If a tool call fails because a connection is missing, expired, revoked, unauthorized, or needs credentials:
@@ -2144,6 +2203,10 @@ ${deliverySection}
 
 - Tool credentials and Custom API credentials are configured automatically via openclaw.json skills.entries. Use the corresponding skills to interact with these tools.
 - If a tool connection fails, advise the human to reconnect in the Claws platform Manage Tools page for this Claw.
+
+## Tool-status truth
+
+${TOOL_STATUS_TRUTH_COPY}
 
 ## Tool Connection Errors
 If a tool call fails because a connection is missing, expired, revoked, unauthorized, or needs credentials:
@@ -2188,18 +2251,20 @@ ${pausedWorkers.map((worker) => `- Worker ${worker.name} is paused - do not dele
 // with "Read HEARTBEAT.md if it exists. Follow it strictly."
 // ---------------------------------------------------------------------------
 
-function generateHeartbeatMd(orchestrator: AgentWithRelations): string {
-  if (!orchestrator.heartbeatMd?.trim()) {
-    return `# HEARTBEAT.md
+function generateHeartbeatMd(
+  orchestrator: AgentWithRelations,
+  workspace: WorkspaceWithRelations,
+): string {
+  const base = orchestrator.heartbeatMd?.trim()
+    ? orchestrator.heartbeatMd
+    : `# HEARTBEAT.md
 
 # Periodic tasks for ${orchestrator.name}
 # Add tasks below. The gateway will prompt you to check this file periodically.
 # Use checklist format:
 # - [ ] Task description
 `;
-  }
-
-  return orchestrator.heartbeatMd;
+  return overlayMissionLaw(base, { twitterReadOnly: workspaceHasTwitterApi(workspace) });
 }
 
 // ---------------------------------------------------------------------------
@@ -2691,6 +2756,7 @@ type ToolConnectionRecord = {
    *  this field on emit via getComposioUserId(user.id) to keep it
    *  authoritative at generate-time, but the column is kept for audit. */
   composioEntityId: string | null;
+  lastTestedAt?: Date | string | null;
 };
 
 /**

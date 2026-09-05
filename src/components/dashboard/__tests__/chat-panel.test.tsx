@@ -4,24 +4,49 @@
 // and (2) composer behavior (disabled when not sendable; failed bubble on a
 // non-202 send, never a throw).
 
-import { describe, it, expect, afterEach, vi } from "vitest"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest"
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react"
 import {
   ChatPanel,
   reconcileChatMessages,
+  documentViewsFromRows,
   mergePersistedChatRows,
+  collectWorkingAgentNames,
   computeTurnStatuses,
+  computeTurnPhases,
+  collectPendingRunIds,
   hasPendingTurn,
   isNearBottom,
   preservePrependedScrollPosition,
+  chatPaneMaxHeightPx,
+  CHAT_PANE_MIN_PX,
   chatUnavailableCopy,
   statusToReason,
   errorCodeToReason,
   PENDING_TURN_TIMEOUT_MS,
+  fitChatComposer,
+  composerLineBox,
+  COMPOSER_MIN_HEIGHT_PX,
+  COMPOSER_MAX_HEIGHT_PX,
+  COMPOSER_MAX_ROWS,
   type ChatRow,
   type ChatMessageView,
   type OptimisticMessage,
 } from "@/components/dashboard/chat-panel"
+
+beforeEach(() => {
+  class SilentEventSource {
+    url: string
+    constructor(url: string) {
+      this.url = url
+    }
+    addEventListener(): void {}
+    close(): void {}
+  }
+  vi.stubGlobal("EventSource", SilentEventSource)
+})
 
 afterEach(() => {
   cleanup()
@@ -30,6 +55,13 @@ afterEach(() => {
 })
 
 describe("ChatPanel header", () => {
+  it("MUTATION: panel owns the chat run-state SSE subscription", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+    expect(src).toContain("useChatRunState")
+    expect(src).toContain("runStateRows")
+    expect(src).toContain("collectWorkingRunIds")
+  })
+
   it("labels the panel as web chat and points channel conversations to the activity feed", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
 
@@ -75,7 +107,19 @@ describe("ChatPanel header", () => {
     expect(log.className).toContain("flex-1")
     expect(log.className).toContain("min-h-0")
     expect(log.className).toContain("overflow-y-auto")
+    expect(log.className).toContain("min-w-0")
+    expect(log.className).toContain("overflow-anchor:none")
     expect(log.className).not.toContain("max-h-none")
+    // MUTATION: drop overflow-hidden → bounce/table overflow grows the page.
+    expect(pane.className).toContain("overflow-hidden")
+  })
+
+  it("chatPaneMaxHeightPx uses document offset so a scrolled page cannot enlarge the pane", () => {
+    expect(chatPaneMaxHeightPx({ paneOffsetTop: 400, viewportHeight: 900 })).toBe(476)
+    expect(chatPaneMaxHeightPx({ paneOffsetTop: 800, viewportHeight: 900 })).toBe(CHAT_PANE_MIN_PX)
+    // scrollY is already folded into paneOffsetTop by the caller; a large
+    // offset must shrink the cap, never grow it past the remaining viewport.
+    expect(chatPaneMaxHeightPx({ paneOffsetTop: 100, viewportHeight: 900 })).toBe(776)
   })
 
   it("full-height chat keeps the message list as the scroll region and composer visible", () => {
@@ -96,6 +140,184 @@ describe("ChatPanel header", () => {
     expect(screen.getByRole("log").className).toContain("flex-1")
     expect(screen.getByLabelText("Message")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy()
+  })
+})
+
+describe("documentViewsFromRows", () => {
+  it("projects deliverable_extracted SYSTEM rows and ignores chat messages", () => {
+    const views = documentViewsFromRows([
+      {
+        id: "msg",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "Commander",
+        action: "hi",
+        detail: "hi",
+      },
+      {
+        id: "doc",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-01T08:01:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-content-cycle",
+        detail: "shared/deliverables/x-content-cycle.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        preview: "Draft A",
+        deliverableKind: "decision",
+        humanRequestId: "hr-1",
+      },
+    ])
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({
+      key: "doc",
+      kind: "document",
+      title: "x-content-cycle",
+      fileVersionId: "fv-1",
+      deliverableKind: "decision",
+      humanRequestId: "hr-1",
+    })
+  })
+
+  it("collapses consecutive same-path extracts minutes apart into the latest card", () => {
+    const views = documentViewsFromRows([
+      {
+        id: "recap-2100",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-02T21:00:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-daily-recap",
+        detail: "shared/deliverables/x-daily-recap.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-recap-1",
+        logicalPath: "shared/deliverables/x-daily-recap.md",
+        preview: "21:00",
+        deliverableKind: "report",
+      },
+      {
+        id: "recap-2101",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-02T21:01:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-daily-recap",
+        detail: "shared/deliverables/x-daily-recap.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-recap-2",
+        logicalPath: "shared/deliverables/x-daily-recap.md",
+        preview: "21:01",
+        deliverableKind: "report",
+      },
+      {
+        id: "cycle-sep1",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-01T12:00:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-content-cycle",
+        detail: "shared/deliverables/x-content-cycle.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-sep1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        preview: "sep1",
+        deliverableKind: "decision",
+      },
+      {
+        id: "cycle-sep2",
+        actionType: "SYSTEM",
+        timestamp: "2026-09-02T12:00:00.000Z",
+        agentName: "System",
+        action: "Deliverable extracted: x-content-cycle",
+        detail: "shared/deliverables/x-content-cycle.md",
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-sep2",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        preview: "sep2",
+        deliverableKind: "decision",
+      },
+    ])
+    expect(views.map((v) => v.fileVersionId)).toEqual(["fv-sep1", "fv-sep2", "fv-recap-2"])
+  })
+
+  it("renders a held SYSTEM row as a user bubble so refresh does not vanish the send", () => {
+    const views = reconcileChatMessages(
+      [],
+      [
+        {
+          id: "hold-1",
+          actionType: "SYSTEM",
+          timestamp: "2026-09-01T08:00:00.000Z",
+          agentName: "System",
+          action: "Chat send held",
+          detail: "hello while asleep",
+          eventKind: "chat_send_held",
+          runId: "run-hold",
+          holdStatus: "held",
+        },
+      ],
+      "Commander",
+    )
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({
+      sender: "user",
+      detail: "hello while asleep",
+      status: "held",
+      runId: "run-hold",
+    })
+  })
+
+  it("drops optimistic + held SYSTEM once MESSAGE_RECEIVED with the same runId arrives", () => {
+    const optimistic: OptimisticMessage[] = [
+      { tempId: "tmp_h", text: "hello while asleep", createdAt: 1000, status: "held", runId: "run-hold" },
+    ]
+    const views = reconcileChatMessages(
+      optimistic,
+      [
+        {
+          id: "hold-1",
+          actionType: "SYSTEM",
+          timestamp: "2026-09-01T08:00:00.000Z",
+          agentName: "System",
+          action: "Chat send held",
+          detail: "hello while asleep",
+          eventKind: "chat_send_held",
+          runId: "run-hold",
+          holdStatus: "flushed",
+        },
+        {
+          id: "recv-1",
+          actionType: "MESSAGE_RECEIVED",
+          timestamp: "2026-09-01T08:01:00.000Z",
+          agentName: "System",
+          action: "Received from : hello while asleep",
+          detail: "hello while asleep",
+          messageId: "run-hold",
+        },
+      ],
+      "Commander",
+    )
+    expect(views.filter((v) => v.sender === "user")).toHaveLength(1)
+    expect(views[0]?.key).toBe("recv-1")
+    expect(views[0]?.status).toBeUndefined()
+  })
+
+  it("does not turn SYSTEM extract rows into agent chat bubbles", () => {
+    const views = reconcileChatMessages(
+      [],
+      [
+        {
+          id: "doc",
+          actionType: "SYSTEM",
+          timestamp: "2026-09-01T08:01:00.000Z",
+          agentName: "System",
+          action: "Deliverable extracted: x-content-cycle",
+          eventKind: "deliverable_extracted",
+          fileVersionId: "fv-1",
+          logicalPath: "shared/deliverables/x-content-cycle.md",
+        },
+      ],
+      "Commander",
+    )
+    expect(views).toHaveLength(0)
   })
 })
 
@@ -121,6 +343,37 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
     expect(userViews).toHaveLength(1)
     // The streamed row wins (stable DB id, not the temp id).
     expect(userViews[0].key).toBe("log-1")
+  })
+
+  it("founder 19:34Z: reply exists for the runId so a false-fail bubble is cleared", () => {
+    const optimistic: OptimisticMessage[] = [
+      {
+        tempId: "tmp_fail",
+        text: "ship the drafts",
+        createdAt: Date.parse("2026-09-02T19:34:00.000Z"),
+        status: "failed",
+        runId: "run-1934",
+        failureCode: "GATEWAY_UNREACHABLE",
+      },
+    ]
+    const rows: ChatRow[] = [
+      {
+        id: "a-1934",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-02T19:34:08.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: queued.",
+        detail: "Ack. Drafts are held.",
+        runId: "run-1934",
+      },
+    ]
+    const views = reconcileChatMessages(optimistic, rows, "Twitter Commander")
+    const user = views.find((v) => v.sender === "user")
+    expect(user?.status).toBe("sent")
+    expect(user?.failureCode).toBeUndefined()
+    expect(views.some((v) => v.sender === "agent" && v.runId === "run-1934")).toBe(true)
+    const phases = computeTurnPhases(views, rows)
+    expect(phases.get("run-1934")).toBe("done")
   })
 
   it("keeps the optimistic bubble while its run has not yet streamed back", () => {
@@ -220,6 +473,168 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
     expect(JSON.stringify(views)).not.toContain("NO_REPLY")
   })
 
+  it("strips interview sentinel from reconciled views (MUTATION: raw-token-rendered → fail)", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "a1",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-06-22T08:00:01.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: Profile saved. CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        detail: "Profile saved. CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        runId: "r1",
+      },
+      {
+        id: "a2",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-06-22T08:00:02.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        detail: "CLAWS_USER_MD_INTERVIEW_COMPLETE",
+        runId: "r2",
+      },
+    ]
+
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views).toHaveLength(1)
+    expect(views[0].detail).toBe("Profile saved.")
+    expect(views[0].action).toBe("Replied: Profile saved.")
+    expect(JSON.stringify(views)).not.toContain("CLAWS_USER_MD_INTERVIEW_COMPLETE")
+  })
+
+  it("collapses empty Replied bubbles (08:02-08:05, 12:01-12:02) and keeps a real reply", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "u-am",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-09-01T08:01:00.000Z",
+        agentName: "System",
+        action: "Received from : go",
+        detail: "go",
+        messageId: "run-am",
+      },
+      {
+        id: "blank-0802",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:02:00.000Z",
+        agentName: "Scout",
+        action: "Replied",
+        detail: "",
+        runId: "run-am",
+      },
+      {
+        id: "blank-0803",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:03:00.000Z",
+        agentName: "Writer",
+        action: "Replied:",
+        detail: "",
+        runId: "run-am",
+      },
+      {
+        id: "blank-0805",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:05:00.000Z",
+        agentName: "Critic",
+        action: "Replied",
+        detail: null,
+        runId: "run-am",
+      },
+      {
+        id: "real-am",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:06:00.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: hey there",
+        detail: "hey there",
+        runId: "run-am",
+      },
+      {
+        id: "u-noon",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-09-01T12:00:00.000Z",
+        agentName: "System",
+        action: "Received from : again",
+        detail: "again",
+        messageId: "run-noon",
+      },
+      {
+        id: "blank-1201",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T12:01:00.000Z",
+        agentName: "Scout",
+        action: "Replied",
+        detail: "",
+        runId: "run-noon",
+      },
+      {
+        id: "blank-1202",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T12:02:00.000Z",
+        agentName: "Writer",
+        action: "Replied:",
+        detail: "",
+        runId: "run-noon",
+      },
+    ]
+
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views.map((v) => v.key)).toEqual(["u-am", "real-am", "u-noon"])
+    expect(views.some((v) => v.action === "Replied" || v.detail === "")).toBe(false)
+    expect(JSON.stringify(views)).not.toContain("blank-0802")
+    expect(computeTurnStatuses(views, Date.parse("2026-09-01T12:00:30.000Z")).get("run-noon")).toBe(
+      "pending",
+    )
+    expect(collectWorkingAgentNames(rows, Date.parse("2026-09-01T12:00:00.000Z"))).toEqual([
+      "Scout",
+      "Writer",
+    ])
+  })
+
+  it("strips trailing HEARTBEAT_OK from a full reply and drops HEARTBEAT_OK-only", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "full",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: Here's the recap.\nHEARTBEAT_OK",
+        detail: "Here's the recap.\nHEARTBEAT_OK",
+        runId: "r-full",
+      },
+      {
+        id: "ok-only",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:01.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: HEARTBEAT_OK",
+        detail: "HEARTBEAT_OK",
+        runId: "r-ok",
+      },
+    ]
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views).toHaveLength(1)
+    expect(views[0].detail).toBe("Here's the recap.")
+    expect(JSON.stringify(views)).not.toContain("HEARTBEAT_OK")
+  })
+
+  it("rewrites Scheduled 12:30 UTC in reconciled agent text", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "slot",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "Twitter Commander",
+        action: "Replied: Scheduled 12:30 UTC",
+        detail: "Scheduled 12:30 UTC",
+        runId: "r-slot",
+      },
+    ]
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views[0].detail).toBe("proposed slot 12:30 UTC, pending your approval")
+    expect(JSON.stringify(views)).not.toContain("Scheduled 12:30 UTC")
+  })
+
   it("multi-tab lock: a tab with NO optimistic state renders streamed MESSAGE_RECEIVED exactly once as You", () => {
     const rows: ChatRow[] = [
       {
@@ -264,6 +679,60 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
   })
 })
 
+describe("fitChatComposer - grow to 6 lines then inner scroll", () => {
+  function mockTextarea(scrollHeight: number): HTMLTextAreaElement {
+    const el = document.createElement("textarea")
+    Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => scrollHeight })
+    return el
+  }
+
+  it("clamps a short draft to the 2-line floor", () => {
+    const fitted = fitChatComposer(mockTextarea(24))
+    expect(fitted.height).toBe(COMPOSER_MIN_HEIGHT_PX)
+    expect(fitted.overflowY).toBe("hidden")
+  })
+
+  it("grows with content between 2 and 6 lines (MUTATION: frozen at 2 rows -> fail)", () => {
+    expect(COMPOSER_MAX_ROWS).toBe(6)
+    expect(COMPOSER_MAX_HEIGHT_PX).toBeGreaterThan(COMPOSER_MIN_HEIGHT_PX)
+    const mid = COMPOSER_MIN_HEIGHT_PX + 32
+    const fitted = fitChatComposer(mockTextarea(mid))
+    expect(fitted.height).toBe(mid)
+    expect(fitted.overflowY).toBe("hidden")
+  })
+
+  it("freezes at 6 lines and scrolls inside when content is taller", () => {
+    const fitted = fitChatComposer(mockTextarea(COMPOSER_MAX_HEIGHT_PX + 80))
+    expect(fitted.height).toBe(COMPOSER_MAX_HEIGHT_PX)
+    expect(fitted.overflowY).toBe("auto")
+  })
+
+  it("taller computed line-height raises the 6-line cap (MUTATION: hardcode 112px only -> fail)", () => {
+    const box = composerLineBox({ lineHeight: "20px", paddingTop: "8px", paddingBottom: "8px" })
+    expect(box.maxH).toBe(16 + 20 * 6)
+    expect(box.maxH).toBeGreaterThan(COMPOSER_MAX_HEIGHT_PX)
+  })
+
+  it("measures with height 0 and maxHeight none so CSS max-h cannot freeze scrollHeight", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+    expect(src).toContain('el.style.height = "0px"')
+    expect(src).toContain('el.style.maxHeight = "none"')
+    expect(src).not.toContain("max-h-[112px]")
+  })
+
+  it("applies the grown height on the live composer after typing", () => {
+    render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
+    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement
+    const mid = COMPOSER_MIN_HEIGHT_PX + 32
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => mid })
+    fireEvent.change(textarea, { target: { value: "line one\nline two\nline three\nline four" } })
+    expect(textarea.style.height).toBe(`${mid}px`)
+    expect(textarea.style.overflowY).toBe("hidden")
+  })
+})
+
 describe("ChatPanel - composer", () => {
   it("enables the composer when RUNNING", () => {
     render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" />)
@@ -305,6 +774,133 @@ describe("ChatPanel - composer", () => {
     expect(await screen.findByText("hi there")).toBeTruthy()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     expect(screen.queryByText(/Failed to send/i)).toBeNull()
+    expect(await screen.findByText("Accepted")).toBeTruthy()
+  })
+
+  it("MUTATION: performSend has no sync-wait that can time out into failed", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+    const perform = src.slice(src.indexOf("const performSend"), src.indexOf("const send ="))
+    expect(perform).toContain("res.status === 202")
+    expect(perform).not.toMatch(/AbortSignal/)
+    expect(perform).not.toMatch(/awaitReplyMs/)
+    expect(perform).not.toMatch(/waitForReply/)
+    expect(perform).not.toMatch(/Promise\.race/)
+    expect(perform).not.toMatch(/setTimeout/)
+    expect(perform).not.toMatch(/failed.*timeout|timeout.*failed/i)
+  })
+
+  it("202 held marks the optimistic bubble Held, not working or no_response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 202,
+      json: async () => ({ success: true, data: { runId: "run-hold", held: true, holdReason: "HIBERNATED" } }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[]} orchestratorName="Dev Commander" />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "wake and do this" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText("wake and do this")).toBeTruthy()
+    expect(await screen.findByText("Held until the Claw is ready")).toBeTruthy()
+    expect(screen.queryByText(/is working/i)).toBeNull()
+    expect(screen.queryByText("No response")).toBeNull()
+    expect(screen.queryByText("Accepted")).toBeNull()
+  })
+
+  it("persisted held SYSTEM row renders Held after refresh (no vanish)", () => {
+    render(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="DEPLOYING"
+        rows={[
+          {
+            id: "hold-1",
+            actionType: "SYSTEM",
+            timestamp: "2026-09-01T08:00:00.000Z",
+            agentName: "System",
+            action: "Chat send held",
+            detail: "still here after reload",
+            eventKind: "chat_send_held",
+            runId: "run-hold",
+            holdStatus: "held",
+          },
+        ]}
+        orchestratorName="Dev Commander"
+      />,
+    )
+    expect(screen.getByText("still here after reload")).toBeTruthy()
+    expect(screen.getByText("Held until the Claw is ready")).toBeTruthy()
+  })
+
+  it("renders Accepted / Working / Done from gateway events", () => {
+    const accepted: ChatRow[] = [
+      {
+        id: "u1",
+        actionType: "MESSAGE_RECEIVED",
+        timestamp: "2026-09-01T08:00:00.000Z",
+        agentName: "System",
+        action: "Received from : go",
+        detail: "go",
+        messageId: "run-p",
+        channelId: "webchat",
+      },
+    ]
+    const { rerender } = render(
+      <ChatPanel workspaceId="ws-1" status="RUNNING" rows={accepted} orchestratorName="Dev Commander" />,
+    )
+    expect(screen.getByText("Accepted")).toBeTruthy()
+
+    rerender(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="RUNNING"
+        rows={[
+          ...accepted,
+          {
+            id: "t1",
+            actionType: "TASK_START",
+            timestamp: "2026-09-01T08:00:01.000Z",
+            agentName: "Dev Commander",
+            action: "Task started",
+            runId: "run-p",
+          },
+        ]}
+        orchestratorName="Dev Commander"
+      />,
+    )
+    expect(screen.getByText("Working")).toBeTruthy()
+    expect(screen.queryByText("Accepted")).toBeNull()
+
+    rerender(
+      <ChatPanel
+        workspaceId="ws-1"
+        status="RUNNING"
+        rows={[
+          ...accepted,
+          {
+            id: "t1",
+            actionType: "TASK_START",
+            timestamp: "2026-09-01T08:00:01.000Z",
+            agentName: "Dev Commander",
+            action: "Task started",
+            runId: "run-p",
+          },
+          {
+            id: "a1",
+            actionType: "MESSAGE_SENT",
+            timestamp: "2026-09-01T08:00:05.000Z",
+            agentName: "Dev Commander",
+            action: "Replied: done",
+            detail: "all set",
+            runId: "run-p",
+            channelId: "webchat",
+          },
+        ]}
+        orchestratorName="Dev Commander"
+      />,
+    )
+    expect(screen.getByText("Done")).toBeTruthy()
+    expect(screen.getByText("all set")).toBeTruthy()
   })
 
   it("renders a streamed agent reply from rows", () => {
@@ -511,18 +1107,17 @@ describe("ChatPanel - per-state disabled copy + inline Wake (9/C)", () => {
   // generic 9/B line), composer disabled. Only HIBERNATED offers the inline
   // Wake CTA; WAKING/DEPLOYING self-resolve and PAUSED is unreachable.
   // MUTATION: revert to the single generic line → the specific-copy asserts fail.
-  it.each<[string, RegExp, boolean]>([
-    ["HIBERNATED", /asleep/i, true],
-    ["WAKING", /unlocks automatically/i, false],
-    ["DEPLOYING", /when it's live/i, false],
-    ["PAUSED", /chat is paused/i, false],
-  ])("status %s → its own copy, composer disabled, Wake button = %s", (status, copyRe, expectWake) => {
+  it.each<[string, RegExp, boolean, boolean]>([
+    ["HIBERNATED", /held until the Claw is ready/i, true, false],
+    ["WAKING", /held until the Claw is ready/i, false, false],
+    ["DEPLOYING", /held until the Claw is ready/i, false, false],
+    ["PAUSED", /chat is paused/i, false, true],
+  ])("status %s → hold/disabled copy, Wake = %s, composer disabled = %s", (status, copyRe, expectWake, expectDisabled) => {
     render(
       <ChatPanel workspaceId="ws-1" status={status} rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
     )
-    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(true)
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(expectDisabled)
     expect(screen.getByText(copyRe)).toBeTruthy()
-    // The generic 9/B fallback must NOT appear for a mapped state.
     expect(screen.queryByText(/Chat is unavailable while your Claw is/i)).toBeNull()
     const wake = screen.queryByRole("button", { name: "Wake" })
     if (expectWake) expect(wake).toBeTruthy()
@@ -543,7 +1138,7 @@ describe("ChatPanel - per-state disabled copy + inline Wake (9/C)", () => {
     const { rerender } = render(
       <ChatPanel workspaceId="ws-1" status="WAKING" rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
     )
-    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(true)
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled).toBe(false)
 
     rerender(
       <ChatPanel workspaceId="ws-1" status="RUNNING" rows={[]} orchestratorName="Dev Commander" onWake={() => {}} />,
@@ -554,7 +1149,7 @@ describe("ChatPanel - per-state disabled copy + inline Wake (9/C)", () => {
   it("omits the Wake button when no onWake is provided (graceful), still shows the copy", () => {
     render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[]} orchestratorName="Dev Commander" />)
     expect(screen.queryByRole("button", { name: "Wake" })).toBeNull()
-    expect(screen.getByText(/asleep/i)).toBeTruthy()
+    expect(screen.getByText(/held until the Claw is ready/i)).toBeTruthy()
   })
 
   it("falls back to the generic line for an unmapped non-sendable status", () => {
@@ -717,7 +1312,7 @@ describe("computeTurnStatuses - per-runId, time-bounded pending (working-indicat
   const userView = (
     runId: string | null,
     sortTs: number,
-    status?: "sending" | "sent" | "failed",
+    status?: "sending" | "sent" | "failed" | "held",
   ): ChatMessageView => ({
     key: "u-" + runId, sender: "user", senderName: "You", sortTs, detail: "", action: "", status, runId,
   })
@@ -792,14 +1387,93 @@ describe("computeTurnStatuses - per-runId, time-bounded pending (working-indicat
     expect(computeTurnStatuses(views, T + PENDING_TURN_TIMEOUT_MS + 1).get("rC")).toBe("no_response")
   })
 
-  it("does not track pre-202 (sending), failed, or keyless user turns", () => {
+  it("does not track pre-202 (sending), failed, held, or keyless user turns", () => {
     expect(computeTurnStatuses([userView("rD", within, "sending")], T).size).toBe(0)
     expect(computeTurnStatuses([userView("rE", within, "failed")], T).size).toBe(0)
+    expect(computeTurnStatuses([userView("rH", within, "held")], T).size).toBe(0)
     expect(computeTurnStatuses([userView(null, within, "sent")], T).size).toBe(0)
   })
 
   it("streamed MESSAGE_RECEIVED (status undefined) counts as a started turn", () => {
     expect(computeTurnStatuses([userView("rF", within, undefined)], T).get("rF")).toBe("pending")
+  })
+
+  it("working evidence keeps pending past PENDING_TURN_TIMEOUT_MS", () => {
+    const views = [userView("rW", T, "sent")]
+    expect(computeTurnStatuses(views, T + PENDING_TURN_TIMEOUT_MS + 1).get("rW")).toBe("no_response")
+    expect(
+      computeTurnStatuses(views, T + PENDING_TURN_TIMEOUT_MS + 1, PENDING_TURN_TIMEOUT_MS, new Set(["rW"])).get("rW"),
+    ).toBe("pending")
+  })
+
+  it("collectPendingRunIds lists unreplied sent turns only", () => {
+    expect(
+      collectPendingRunIds([
+        userView("r1", within, "sent"),
+        userView("r2", within, "failed"),
+        { key: "a", sender: "agent", senderName: "X", sortTs: T, detail: "ok", action: "ok", runId: "r3" },
+        userView("r3", within, "sent"),
+      ]),
+    ).toEqual(["r1"])
+  })
+})
+
+describe("computeTurnPhases - accepted → working → done", () => {
+  const user = (runId: string, status?: ChatMessageView["status"]): ChatMessageView => ({
+    key: "u-" + runId,
+    sender: "user",
+    senderName: "You",
+    sortTs: 1,
+    detail: "hi",
+    action: "hi",
+    status,
+    runId,
+  })
+  const agent = (runId: string): ChatMessageView => ({
+    key: "a-" + runId,
+    sender: "agent",
+    senderName: "X",
+    sortTs: 2,
+    detail: "ok",
+    action: "ok",
+    runId,
+  })
+  const startRow = (runId: string): ChatRow => ({
+    id: "t-" + runId,
+    actionType: "TASK_START",
+    timestamp: "2026-09-01T08:00:00.000Z",
+    agentName: "Dev Commander",
+    action: "Task started",
+    runId,
+  })
+
+  it("accepted after 202 with no TASK_START and no reply", () => {
+    const phases = computeTurnPhases([user("r1", "sent")], [])
+    expect(phases.get("r1")).toBe("accepted")
+  })
+
+  it("working once TASK_START arrives for the same runId", () => {
+    const phases = computeTurnPhases([user("r1", "sent")], [startRow("r1")])
+    expect(phases.get("r1")).toBe("working")
+  })
+
+  it("done when an agent reply with the same runId arrives", () => {
+    const phases = computeTurnPhases(
+      [user("r1", "sent"), agent("r1")],
+      [startRow("r1")],
+    )
+    expect(phases.get("r1")).toBe("done")
+  })
+
+  it("TASK_START for a different runId does not mark this turn working", () => {
+    const phases = computeTurnPhases([user("r1", "sent")], [startRow("rOTHER")])
+    expect(phases.get("r1")).toBe("accepted")
+  })
+
+  it("skips held / sending / failed turns so they never fake working or no_response", () => {
+    expect(computeTurnPhases([user("rH", "held")], [startRow("rH")]).size).toBe(0)
+    expect(computeTurnPhases([user("rS", "sending")], []).size).toBe(0)
+    expect(computeTurnPhases([user("rF", "failed")], []).size).toBe(0)
   })
 })
 
@@ -825,6 +1499,102 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
       render(<ChatPanel workspaceId="ws-1" status="RUNNING" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
       expect(screen.getByText(/is working/i)).toBeTruthy()
       expect(screen.queryByText("No response")).toBeNull()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  // The bounce translateY leaked into the document scrollport and painted a
+  // blank slab under the composer. Live role=status on the dots also made
+  // Chrome scroll that node into view. MUTATION: restore animate-bounce or
+  // put role=status on the dots → this fails.
+  it("working dots do not bounce or host role=status (page-gap lock)", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      render(
+        <ChatPanel
+          workspaceId="ws-1"
+          status="RUNNING"
+          rows={[userRow("r1", 10_000)]}
+          orchestratorName="Twitter Commander"
+          fullHeight
+        />,
+      )
+      const dots = document.querySelector("[data-working-indicator]") as HTMLElement | null
+      expect(dots).not.toBeNull()
+      expect(dots!.className).toContain("overflow-anchor:none")
+      expect(dots!.querySelector("[class*='animate-bounce']")).toBeNull()
+      expect(dots!.querySelector("[role='status']")).toBeNull()
+      expect(dots!.querySelector("[class*='overflow-hidden']")).not.toBeNull()
+      const live = screen.getByRole("status")
+      expect(live.className).toContain("sr-only")
+      expect(live.textContent).toMatch(/Twitter Commander is working/)
+      expect(screen.queryByText(/working -/)).toBeNull()
+      const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-panel.tsx"), "utf8")
+      expect(src).not.toMatch(/animate-bounce/)
+      expect(src).toContain("data-working-indicator")
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows working - Scout, Writer, Critic instead of blank Replied bubbles", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      const rows: ChatRow[] = [
+        userRow("r1", 10_000),
+        {
+          id: "t-scout",
+          actionType: "TASK_START",
+          timestamp: iso(BASE - 8_000),
+          agentName: "Scout",
+          action: "Scout started",
+          detail: null,
+          runId: "r1",
+        },
+        {
+          id: "t-writer",
+          actionType: "TASK_START",
+          timestamp: iso(BASE - 7_000),
+          agentName: "Writer",
+          action: "Writer started",
+          detail: null,
+          runId: "r1",
+        },
+        {
+          id: "t-critic",
+          actionType: "TASK_START",
+          timestamp: iso(BASE - 6_000),
+          agentName: "Critic",
+          action: "Critic started",
+          detail: null,
+          runId: "r1",
+        },
+        {
+          id: "blank-scout",
+          actionType: "MESSAGE_SENT",
+          timestamp: iso(BASE - 5_000),
+          agentName: "Scout",
+          action: "Replied",
+          detail: "",
+          runId: "r1",
+        },
+      ]
+      render(
+        <ChatPanel
+          workspaceId="ws-1"
+          status="RUNNING"
+          rows={rows}
+          orchestratorName="Twitter Commander"
+        />,
+      )
+      expect(screen.getByText("working - Scout, Writer, Critic")).toBeTruthy()
+      expect(screen.queryByText("Replied")).toBeNull()
+      expect(screen.getByText(/is working/i)).toBeTruthy()
     } finally {
       cleanup()
       vi.useRealTimers()
@@ -888,6 +1658,42 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
 
   // TIMEOUT via the live tick: a pending turn flips to "No response" after the
   // ceiling WITHOUT a new message. MUTATION: remove the timeout → stays "working".
+  it("TASK_START working evidence keeps Working past the 2 min ceiling", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(BASE)
+      const start: ChatRow = {
+        id: "t-rW",
+        actionType: "TASK_START",
+        timestamp: iso(BASE - 1_000),
+        agentName: "Dev Commander",
+        action: "Task started",
+        runId: "rW",
+      }
+      render(
+        <ChatPanel
+          workspaceId="ws-1"
+          status="RUNNING"
+          rows={[userRow("rW", 5_000), start]}
+          orchestratorName="Dev Commander"
+        />,
+      )
+      expect(screen.getByText("Working")).toBeTruthy()
+      expect(screen.getByText(/is working/i)).toBeTruthy()
+
+      act(() => {
+        vi.advanceTimersByTime(PENDING_TURN_TIMEOUT_MS + 30_000)
+      })
+
+      expect(screen.getByText("Working")).toBeTruthy()
+      expect(screen.getByText(/is working/i)).toBeTruthy()
+      expect(screen.queryByText("No response")).toBeNull()
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+    }
+  })
+
   it("times out a pending turn after PENDING_TURN_TIMEOUT_MS → indicator off + 'No response'", () => {
     vi.useFakeTimers()
     try {
@@ -1005,7 +1811,7 @@ describe("ChatPanel - working indicator (per-runId + timeout)", () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(BASE)
-      render(<ChatPanel workspaceId="ws-1" status="HIBERNATED" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
+      render(<ChatPanel workspaceId="ws-1" status="PAUSED" rows={[userRow("r1", 10_000)]} orchestratorName="Dev Commander" />)
       expect(screen.queryByText(/is working/i)).toBeNull()
     } finally {
       cleanup()

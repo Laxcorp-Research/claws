@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { CountBadge } from "@/components/ui/count-badge"
 import { WorkspaceContextMenu } from "./workspace-context-menu"
 import { timeAgo } from "@/lib/utils"
 
@@ -19,6 +20,7 @@ interface WorkspaceCardProps {
   source: string
   /** ISO timestamp when sticky heartbeat miss was set (any status). */
   heartbeatMissedAt?: string | null
+  pendingApprovalCount?: number
   isCreatorEnrolled: boolean
   onRename: (id: string, currentName: string) => void
   onDuplicate: (id: string) => void
@@ -28,7 +30,7 @@ interface WorkspaceCardProps {
 
 export function WorkspaceCard({
   id, name, status, apiStatus, agentCount, agentRoles, lastActive, monthlyCost, source,
-  heartbeatMissedAt, isCreatorEnrolled, onRename, onDuplicate, onDelete, onStopped,
+  heartbeatMissedAt, pendingApprovalCount = 0, isCreatorEnrolled, onRename, onDuplicate, onDelete, onStopped,
 }: WorkspaceCardProps) {
   const router = useRouter()
 
@@ -56,6 +58,7 @@ export function WorkspaceCard({
       <div className="flex justify-between items-start mb-1.5">
         <h3 className="text-sm font-semibold pr-2">{name}</h3>
         <div className="flex items-center gap-[4px] flex-shrink-0">
+          <CountBadge count={pendingApprovalCount} label="pending approvals" />
           <StatusBadge status={status} />
           <WorkspaceContextMenu
             workspaceId={id}

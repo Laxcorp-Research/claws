@@ -8,9 +8,12 @@
 // MUTATION: change ChatMessage's body to `detail` (alone) and the first test
 // renders an empty bubble → getByText("Reply failed") throws → fails.
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { ChatMessage } from "@/components/dashboard/chat-message"
+import { PLATFORM_HEARTBEAT_OK_TOKEN, PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
 afterEach(() => cleanup())
 
@@ -249,6 +252,67 @@ describe("ChatMessage - long-unbroken-token wrap (no horizontal overflow)", () =
     expect(bubble.className).toContain("overflow-wrap:anywhere")
     expect(bubble.className).not.toContain("break-all")
     expect(screen.getByText(LONG)).toBeTruthy()
+    const column = bubble.parentElement as HTMLElement
+    expect(column.className).toContain("min-w-0")
+  })
+
+  it("hides CLAWS_USER_MD_INTERVIEW_COMPLETE from rendered chat (MUTATION: raw-token-rendered → fail)", () => {
+    const raw = `Profile saved. ${PLATFORM_INTERVIEW_COMPLETE_TOKEN}`
+    render(
+      <ChatMessage
+        sender="agent"
+        senderName="Twitter Commander"
+        timestamp="08:00 UTC"
+        detail={raw}
+        action={`Replied: ${raw}`}
+      />,
+    )
+    expect(screen.getByText("Profile saved.")).toBeTruthy()
+    expect(document.body.textContent).not.toContain(PLATFORM_INTERVIEW_COMPLETE_TOKEN)
+    const src = readFileSync(join(process.cwd(), "src/components/dashboard/chat-message.tsx"), "utf8")
+    expect(src).toContain("polishChatRenderText")
+  })
+
+  it("hides trailing HEARTBEAT_OK from a full reply (MUTATION: raw-token-rendered → fail)", () => {
+    render(
+      <ChatMessage
+        sender="agent"
+        senderName="Twitter Commander"
+        timestamp="08:00 UTC"
+        detail={`Here's the recap.\n${PLATFORM_HEARTBEAT_OK_TOKEN}`}
+        action={`Replied: Here's the recap.\n${PLATFORM_HEARTBEAT_OK_TOKEN}`}
+      />,
+    )
+    expect(screen.getByText("Here's the recap.")).toBeTruthy()
+    expect(document.body.textContent).not.toContain(PLATFORM_HEARTBEAT_OK_TOKEN)
+  })
+
+  it("rewrites Scheduled 12:30 UTC so the claw never implies it will post", () => {
+    render(
+      <ChatMessage
+        sender="agent"
+        senderName="Twitter Commander"
+        timestamp="08:00 UTC"
+        detail="Scheduled 12:30 UTC"
+        action="Replied: Scheduled 12:30 UTC"
+      />,
+    )
+    expect(screen.getByText("proposed slot 12:30 UTC, pending your approval")).toBeTruthy()
+    expect(document.body.textContent).not.toContain("Scheduled 12:30 UTC")
+  })
+
+  it("rewrites queue them for immediate posting", () => {
+    render(
+      <ChatMessage
+        sender="agent"
+        senderName="Twitter Commander"
+        timestamp="19:34 UTC"
+        detail="I will queue them for immediate posting."
+        action="Replied: I will queue them for immediate posting."
+      />,
+    )
+    expect(screen.getByText("I will hold them pending your approval.")).toBeTruthy()
+    expect(document.body.textContent).not.toContain("immediate posting")
   })
 
   it("agent bubble uses overflow-wrap:anywhere too (markdown reply with a long token)", () => {

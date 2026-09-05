@@ -4,6 +4,12 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef, useCallback, useId, useState } from "react";
 import { createPortal } from "react-dom";
 
+export const CONTAINED_MODAL_CHROME_PX = 32;
+
+export function containedModalMaxHeightPx(viewportHeight: number): number {
+  return Math.max(200, viewportHeight - CONTAINED_MODAL_CHROME_PX);
+}
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -11,7 +17,11 @@ interface ModalProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  headerActions?: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  /** Viewport-capped shell: sticky chrome, body scrolls inside. */
+  contained?: boolean;
+  bodyTestId?: string;
 }
 
 const sizeClasses = {
@@ -23,7 +33,18 @@ const sizeClasses = {
 
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export function Modal({ open, onClose, title, description, children, footer, size = "md" }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  headerActions,
+  size = "md",
+  contained = false,
+  bodyTestId,
+}: ModalProps) {
   const titleId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -54,6 +75,9 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   // first useful render happens after hydration. This matches the
   // tooltip pattern in src/components/ui/tooltip.tsx.
   const [mounted, setMounted] = useState(false);
+  const [containedMaxHeightPx, setContainedMaxHeightPx] = useState<number | null>(
+    () => (contained && typeof window !== "undefined" ? containedModalMaxHeightPx(window.innerHeight) : null),
+  );
   // This is the canonical SSR-safe portal mount pattern documented by
   // the React team: createPortal cannot run during SSR, so we render
   // null on the server + first client paint, then flip `mounted` true
@@ -64,6 +88,14 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   // out-of-scope for this PR per minimum-scope rule).
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    if (!contained || !open) return;
+    const apply = () => setContainedMaxHeightPx(containedModalMaxHeightPx(window.innerHeight));
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [contained, open]);
 
   const trapFocus = useCallback((e: KeyboardEvent) => {
     if (e.key !== "Tab" || !boxRef.current) return;
@@ -125,9 +157,21 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   // to document.body. Same pattern as tooltip.tsx.
   if (!mounted) return null;
 
+  const titleBlock = (
+    <>
+      <h2 id={titleId} className="text-[15px] font-semibold mb-1">{title}</h2>
+      {description && (
+        <p className={cn("text-xs text-[var(--tx2)]", contained ? "mb-0" : "mb-3.5")}>{description}</p>
+      )}
+    </>
+  );
+
   return createPortal(
     <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.3)] z-50 flex items-center justify-center"
+      className={cn(
+        "fixed inset-0 bg-[rgba(0,0,0,0.3)] z-50 flex items-center justify-center",
+        contained && "p-[16px]",
+      )}
       onClick={(e) => { if (e.target === e.currentTarget) onCloseRef.current(); }}
     >
       <div
@@ -136,15 +180,43 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "bg-[var(--bg)] border border-[var(--bd)] rounded-xl p-5 shadow-modal w-full mx-4",
+          "bg-[var(--bg)] border border-[var(--bd)] rounded-xl p-5 shadow-modal w-full",
+          contained
+            ? "mx-0 max-h-[calc(100dvh-32px)] min-h-0 flex flex-col overflow-hidden"
+            : "mx-4",
           sizeClasses[size]
         )}
+        style={
+          contained && containedMaxHeightPx != null
+            ? { maxHeight: `${containedMaxHeightPx}px` }
+            : undefined
+        }
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id={titleId} className="text-[15px] font-semibold mb-1">{title}</h2>
-        {description && <p className="text-xs text-[var(--tx2)] mb-3.5">{description}</p>}
-        {children}
-        {footer && <div className="flex gap-1.5 justify-end mt-4">{footer}</div>}
+        {contained ? (
+          <>
+            <div className="shrink-0">
+              <div className="flex flex-col gap-[8px] min-[480px]:flex-row min-[480px]:items-start min-[480px]:justify-between">
+                <div className="min-w-0">{titleBlock}</div>
+                {headerActions}
+              </div>
+            </div>
+            <div
+              data-testid={bodyTestId}
+              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+            >
+              {children}
+            </div>
+            {footer && <div className="shrink-0 flex gap-1.5 justify-end pt-4">{footer}</div>}
+          </>
+        ) : (
+          <>
+            {titleBlock}
+            {headerActions}
+            {children}
+            {footer && <div className="flex gap-1.5 justify-end mt-4">{footer}</div>}
+          </>
+        )}
       </div>
     </div>,
     document.body

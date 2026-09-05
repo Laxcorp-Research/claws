@@ -7,6 +7,7 @@ import {
   warmIdleWhere,
   wakeHibernatedWhere,
 } from "@/lib/hibernation/predicates"
+import { shouldHibernateMissionAware } from "@/lib/hibernation/mission-idle"
 import {
   DEFAULT_HIBERNATION_CRON_CADENCE_MS,
   DEFAULT_WAKE_BUFFER_MS,
@@ -128,6 +129,17 @@ export async function GET(req: NextRequest) {
   )
 
   for (const candidate of hibernateCandidates) {
+    const missionOk = await shouldHibernateMissionAware({
+      workspaceId: candidate.workspaceId,
+      heartbeatCronExpressions: candidate.heartbeatCronExpressions,
+      now,
+    })
+    if (!missionOk) {
+      log.info("Hibernation cron: skip (mission-aware idle)", {
+        workspaceId: candidate.workspaceId,
+      })
+      continue
+    }
     const skipSync = Date.now() - startedAt > SYNC_BUDGET_CUTOFF_MS
     if (skipSync) syncSkippedForBudget++
     try {

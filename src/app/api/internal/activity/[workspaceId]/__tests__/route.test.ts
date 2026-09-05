@@ -14,6 +14,8 @@
 // labeled "MUTATION-anchored:". See the verification step at the end of
 // Phase B for the deliberate-break re-run.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { prismaMock } from "@/test/helpers/mock-prisma";
 import { createMockRequest } from "@/test/helpers/mock-request";
@@ -24,7 +26,26 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("@/lib/healing/spend-limit", () => ({
+  applyWorkspaceApiCost: vi.fn().mockResolvedValue({ enforced: false, resolved: false }),
+}))
+vi.mock("@/lib/alerts/customer-nudge", () => ({
+  sendCustomerNudge: vi.fn().mockResolvedValue({ sent: false, channel: "skipped" }),
+}))
+vi.mock("@/lib/openclaw/pending-approval", () => ({
+  createDeliverableApprovalFromFileVersion: vi.fn().mockResolvedValue({ created: false }),
+}))
+const mockNudgeDeliverableSyncNow = vi.fn().mockResolvedValue(undefined)
+vi.mock("@/lib/artifacts/nudge-sync-now", () => ({
+  nudgeDeliverableSyncNow: (...args: unknown[]) => mockNudgeDeliverableSyncNow(...args),
+}))
+const mockApprovalCommand = vi.fn().mockResolvedValue({ applied: false })
+vi.mock("@/lib/artifacts/approval-command", () => ({
+  applyInboundApprovalCommand: (...args: unknown[]) => mockApprovalCommand(...args),
+}))
+
 import { POST, __internal } from "@/app/api/internal/activity/[workspaceId]/route";
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge";
 
 const SECRET = "test_activity_secret_pr2";
 const WORKSPACE_ID = "ws-fixture-1";
@@ -72,6 +93,9 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
   beforeEach(() => {
     prevSecret = process.env.ACTIVITY_PIPELINE_SECRET;
     process.env.ACTIVITY_PIPELINE_SECRET = SECRET;
+    mockNudgeDeliverableSyncNow.mockClear();
+    mockApprovalCommand.mockClear();
+    vi.mocked(sendCustomerNudge).mockClear();
   });
 
   afterEach(() => {
@@ -621,7 +645,10 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       );
       expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
         where: { workspaceId: WORKSPACE_ID },
-        data: { lastChannelMessageAt: new Date("2026-07-19T08:15:00.000Z") },
+        data: {
+          lastChannelMessageAt: new Date("2026-07-19T08:15:00.000Z"),
+          lastActiveAt: new Date("2026-07-19T08:15:00.000Z"),
+        },
       });
     });
 
@@ -644,7 +671,10 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       );
       expect(prismaMock.containerState.updateMany).toHaveBeenCalledWith({
         where: { workspaceId: WORKSPACE_ID },
-        data: { lastChannelMessageAt: new Date("2026-07-19T09:00:00.000Z") },
+        data: {
+          lastChannelMessageAt: new Date("2026-07-19T09:00:00.000Z"),
+          lastActiveAt: new Date("2026-07-19T09:00:00.000Z"),
+        },
       });
     });
 
@@ -831,10 +861,13 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       ).mock.calls.filter(
         (c) => c[0]?.data?.actionType === "SYSTEM",
       );
-      expect(systemCreates.length).toBe(1);
-      expect(systemCreates[0][0].data.metadata).toContain("thinking_signature_poison");
-      expect(systemCreates[0][0].data.metadata).toContain('"needsImageHeal":true');
-      expect(systemCreates[0][0].data.metadata).toContain('"platformRotated":false');
+      const poison = systemCreates.filter((c) =>
+        String(c[0]?.data?.metadata ?? "").includes("thinking_signature_poison"),
+      );
+      expect(poison.length).toBe(1);
+      expect(poison[0][0].data.metadata).toContain("thinking_signature_poison");
+      expect(poison[0][0].data.metadata).toContain('"needsImageHeal":true');
+      expect(poison[0][0].data.metadata).toContain('"platformRotated":false');
     });
 
     it("dedup: prior heal in window → no second SYSTEM ledger", async () => {
@@ -887,6 +920,15 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       });
     });
 
+    it("scans raw incoming detail, never a render-stripped copy (MUTATION: strip before scan → fail)", () => {
+      const src = readFileSync(
+        join(process.cwd(), "src/app/api/internal/activity/[workspaceId]/route.ts"),
+        "utf8",
+      );
+      expect(src).toMatch(/eventSignalsUserMdInterviewComplete\(ev\)/);
+      expect(src).not.toContain("stripPlatformSentinels");
+    });
+
     it("does not stamp the flag on ordinary events (MUTATION: stamp every event → fail)", async () => {
       defaultMocks();
       await callRoute({ events: [makeEvent()] }, { secret: SECRET });
@@ -895,6 +937,130 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
           data: expect.objectContaining({ userMdInterviewCompletedAt: expect.any(Date) }),
         }),
       );
+    });
+  });
+
+  describe("deliverable sync-now nudge", () => {
+    it("nudges sync-now on TASK_COMPLETE only", async () => {
+      defaultMocks();
+      await callRoute(
+        { events: [makeEvent(), makeEvent({ type: "TASK_COMPLETE" })] },
+        { secret: SECRET },
+      );
+      expect(mockNudgeDeliverableSyncNow).toHaveBeenCalledTimes(1);
+      expect(mockNudgeDeliverableSyncNow).toHaveBeenCalledWith(WORKSPACE_ID);
+    });
+  });
+
+  describe("inbound APPROVE/REJECT commands", () => {
+    it("MESSAGE_RECEIVED passes detail text to applyInboundApprovalCommand", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_RECEIVED",
+              action: "Received from telegram: APPROVE",
+              detail: "APPROVE",
+              channelId: "telegram:1227037949",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      expect(mockApprovalCommand).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE_ID,
+        text: "APPROVE",
+        respondedBy: "telegram:1227037949",
+      });
+    });
+
+    it("falls back to action when detail is empty", async () => {
+      defaultMocks();
+      await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_RECEIVED",
+              action: "REJECT",
+              detail: null,
+              channelId: "webchat",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(mockApprovalCommand).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE_ID,
+        text: "REJECT",
+        respondedBy: "webchat",
+      });
+    });
+
+    it("does not call applyInboundApprovalCommand on MESSAGE_SENT", async () => {
+      defaultMocks();
+      await callRoute(
+        { events: [makeEvent({ type: "MESSAGE_SENT", detail: "APPROVE" })] },
+        { secret: SECRET },
+      );
+      expect(mockApprovalCommand).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("twitter 401 vs 402 protocol", () => {
+    it("does not customer-nudge on the Sep-1 web_fetch 401", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "ERROR",
+              action: "Tool web_fetch failed: Web fetch failed (401): SECURITY NOTICE",
+              detail:
+                "Web fetch failed (401): GET https://api.twitter.com/2/tweets/search/recent?query=AI%20agents",
+              metadata: {
+                toolName: "web_fetch",
+                error: "Web fetch failed (401): Unauthorized",
+              },
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      expect(sendCustomerNudge).not.toHaveBeenCalled();
+    });
+
+    it("nudges twitter-402-tier on an X 402 ERROR", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "ERROR",
+              action: "Tool exec failed: X API 402 Payment Required",
+              detail: "twitter-api 402",
+              metadata: { toolName: "exec" },
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      expect(sendCustomerNudge).toHaveBeenCalledWith({
+        workspaceId: WORKSPACE_ID,
+        condition: "twitter-402-tier",
+      });
+    });
+
+    it("routes twitter nudges through twitterNudgeFromActivity (MUTATION: inline /402/ revive → fail)", () => {
+      const src = readFileSync(
+        join(process.cwd(), "src/app/api/internal/activity/[workspaceId]/route.ts"),
+        "utf8",
+      );
+      expect(src).toContain("twitterNudgeFromActivity");
+      expect(src).not.toMatch(/\/402\/\.test/);
     });
   });
 });

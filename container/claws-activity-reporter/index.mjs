@@ -57,6 +57,11 @@ import {
   resolveSessionJsonlPath,
   stripThinkingFromSessionFile,
 } from "../thinking-signature-heal.mjs";
+import {
+  assertGatewayToken,
+  readJsonBody,
+  writeSharedFile,
+} from "./workspace-files.mjs";
 
 const ENDPOINT_BASE = process.env.CLAWS_ACTIVITY_ENDPOINT;
 const ACTIVITY_SECRET = process.env.CLAWS_ACTIVITY_SECRET;
@@ -694,6 +699,62 @@ async function handleSyncNow(req, res) {
   return true;
 }
 
+// ─── ARTIFACTS PR-2: PUT /internal/workspace-files ───────────────────────
+//
+// Platform live-write (cards / Files tab / decision sidecars) PUTs text into
+// a running container so the agent reads it next turn. auth:"plugin" means
+// the gateway does NOT check its own token; we do. Auth is the per-workspace
+// OPENCLAW_GATEWAY_TOKEN (Authorization: Bearer or X-Gateway-Token). The
+// metering secret is intentionally NOT accepted here - file writes are not
+// the same trust class as snapshot upload.
+//
+// Allowlist is shared/** text only (see workspace-files.mjs). Platform creates
+// FileVersion + ActivityLog after a 200; this handler only writes disk.
+function jsonEnd(res, status, body) {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(body));
+}
+
+async function handleWorkspaceFilesWrite(req, res) {
+  if (req.method !== "PUT") {
+    jsonEnd(res, 405, { ok: false, error: "method_not_allowed" });
+    return true;
+  }
+
+  const auth = assertGatewayToken(req);
+  if (!auth.ok) {
+    jsonEnd(res, auth.status, { ok: false, error: auth.error });
+    return true;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (err) {
+    if (err?.code === "payload_too_large") {
+      jsonEnd(res, 413, { ok: false, error: "too_large" });
+      return true;
+    }
+    jsonEnd(res, 400, { ok: false, error: "invalid_json" });
+    return true;
+  }
+
+  const logicalPath = typeof body?.path === "string" ? body.path : "";
+  const content = body?.content;
+  const dataDir = process.env.OPENCLAW_DATA_DIR || OPENCLAW_DATA_DIR;
+  const written = writeSharedFile({ dataDir, logicalPath, content });
+  if (!written.ok) {
+    const status =
+      written.error === "too_large" ? 413 : written.error === "path_not_allowed" ? 403 : 400;
+    jsonEnd(res, status, { ok: false, error: written.error });
+    return true;
+  }
+
+  jsonEnd(res, 200, { ok: true, path: written.path, bytes: written.bytes });
+  return true;
+}
+
 // ─── definePluginEntry-equivalent default export ─────────────────────────
 //
 // We deliberately do NOT import `definePluginEntry` from upstream because
@@ -761,6 +822,15 @@ const pluginEntry = {
       match: "exact",
       handler: handleSyncNow,
     });
+
+    // ARTIFACTS PR-2: human-owned shared/** live-write. Gateway token auth
+    // (not metering secret). Exact match; handler MAY await.
+    api.registerHttpRoute({
+      path: "/internal/workspace-files",
+      auth: "plugin",
+      match: "exact",
+      handler: handleWorkspaceFilesWrite,
+    });
   },
 };
 
@@ -792,5 +862,6 @@ export const __test__ = {
   isWebchatReplyTurn,
   extractAssistantReply,
   handleSyncNow,
+  handleWorkspaceFilesWrite,
   emitOverlayBootEvent,
 };

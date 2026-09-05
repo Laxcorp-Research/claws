@@ -45,6 +45,7 @@ import {
 } from './railway-client';
 import { log } from '@/lib/logger';
 import { DEFAULT_SYNC_TIMEOUT_MS, trySyncNow } from './sync-now';
+import { withTransientDeployRetry } from '@/lib/healing/guards';
 import { publishDeployEvent, clearDeployEvents } from '@/lib/deploy-events';
 import {
   assertNoPlaceholderEnvValues,
@@ -73,6 +74,12 @@ import {
   recordSuccessfulCreate,
 } from '@/lib/railway/governor';
 import { isRailwayCreateQuotaError } from '@/lib/railway/governor-budget';
+import { sendOwnerAlert } from '@/lib/alerts/owner-alert';
+import {
+  isRailwayDomainCapError,
+  publicDeployErrorMessage,
+  RailwayDomainCapError,
+} from '@/lib/openclaw/service-domain';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -201,10 +208,12 @@ function buildDeploymentCompletionData(
   generated: GeneratedWorkspace,
 ): DeploymentCompletionData {
   const envManifest = buildEnvManifest(generated['.env']);
+  const generatorSha = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? null;
   const snapshotPayload = {
     version: 1,
     fingerprintVersion: fingerprint.version,
     hash: fingerprint.hash,
+    generatorSha,
     areas: fingerprint.areas,
     envManifest,
     'openclaw.json': JSON.parse(generated['openclaw.json']),
@@ -223,6 +232,7 @@ function buildDeploymentCompletionData(
       fingerprintVersion: fingerprint.version,
       hash: fingerprint.hash,
       generatedAt: new Date().toISOString(),
+      generatorSha,
       areas: fingerprint.areas,
       envManifest,
     }),
@@ -453,14 +463,17 @@ export async function deployToCloud(
     let previousDeploymentId: string | null = null;
 
     if (workspace.containerId) {
+      const existingServiceId = workspace.containerId
       try {
-        log.info('Reusing existing Railway service', { serviceId: workspace.containerId, workspaceId, image });
-        const beforeStatus = await getServiceStatus(workspace.containerId);
+        log.info('Reusing existing Railway service', { serviceId: existingServiceId, workspaceId, image });
+        const beforeStatus = await getServiceStatus(existingServiceId);
         previousDeploymentId =
           beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
             ? null
             : beforeStatus.deploymentId;
-        result = await updateAndRedeployService(workspace.containerId, envVars, image);
+        result = await withTransientDeployRetry(() =>
+          updateAndRedeployService(existingServiceId, envVars, image, workspace.containerHost),
+        );
         if (!result.domain && workspace.containerHost) {
           result.domain = workspace.containerHost;
         }
@@ -487,7 +500,9 @@ export async function deployToCloud(
             beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
               ? null
               : beforeStatus.deploymentId;
-          result = await updateAndRedeployService(existingId, envVars, image);
+          result = await withTransientDeployRetry(() =>
+            updateAndRedeployService(existingId, envVars, image, workspace.containerHost),
+          );
         } else {
           if (opts.forbidCreate) {
             throw new Error(
@@ -499,7 +514,9 @@ export async function deployToCloud(
             data: { containerId: null, containerName: null, containerHost: null },
           });
           try {
-            result = await createServiceGoverned(workspaceId, { name: serviceName, envVars, image });
+            result = await withTransientDeployRetry(() =>
+              createServiceGoverned(workspaceId, { name: serviceName, envVars, image }),
+            );
           } catch (freshErr) {
             // Guard: auth outage on NEW provision fails loud - do not loop.
             if (isRailwayAuthOutageError(freshErr)) {
@@ -515,7 +532,9 @@ export async function deployToCloud(
       }
     } else {
       try {
-        result = await createServiceGoverned(workspaceId, { name: serviceName, envVars, image });
+        result = await withTransientDeployRetry(() =>
+          createServiceGoverned(workspaceId, { name: serviceName, envVars, image }),
+        );
       } catch (err: unknown) {
         // Fresh provision NotAuthorized → fail loud (no orphan clear/retry loop).
         if (isRailwayAuthOutageError(err) && !String(err).includes('already exists')) {
@@ -531,7 +550,9 @@ export async function deployToCloud(
             beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
               ? null
               : beforeStatus.deploymentId;
-          result = await updateAndRedeployService(existingId, envVars, image);
+          result = await withTransientDeployRetry(() =>
+            updateAndRedeployService(existingId, envVars, image, workspace.containerHost),
+          );
         } else {
           throw err;
         }
@@ -599,7 +620,22 @@ export async function deployToCloud(
       await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', error.queued.message);
       throw error;
     }
-    const message = error instanceof Error ? error.message : 'Unknown deployment error';
+    const message = publicDeployErrorMessage(error);
+    if (isRailwayDomainCapError(error)) {
+      try {
+        await sendOwnerAlert({
+          alertKey: 'railway-domain-cap',
+          title: 'Railway domain cap heal failed',
+          detail: `workspace ${workspaceId}`,
+          workspaceId,
+        });
+      } catch (alertErr) {
+        log.error('owner-alert railway-domain-cap failed', {
+          workspaceId,
+          error: alertErr instanceof Error ? alertErr.message : String(alertErr),
+        });
+      }
+    }
     await updateDeploymentStatus(deployment.id, workspaceId, 'FAILED', message);
     // Atomically converge Workspace + ContainerState rows on deploy failure.
     // ContainerState.containerPhase='STOPPED' is correct here: the ContainerPhase
@@ -617,6 +653,9 @@ export async function deployToCloud(
         data: { containerPhase: 'STOPPED' },
       }),
     ]);
+    if (isRailwayDomainCapError(error)) {
+      throw new RailwayDomainCapError();
+    }
     throw error;
   }
 }

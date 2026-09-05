@@ -13,6 +13,10 @@ import {
   hasValidator,
   IMPLEMENTED_SLUGS,
 } from "@/lib/tools/validators"
+import {
+  TWITTER_API_402_COPY,
+  TWITTER_API_VALIDATE_URL,
+} from "@/lib/tools/twitter-api-honesty"
 
 function mockFetchOnce(init: {
   status?: number
@@ -20,10 +24,12 @@ function mockFetchOnce(init: {
   json?: unknown
 }) {
   const status = init.status ?? 200
+  const payload = init.json ?? {}
   const response = {
     status,
     ok: init.ok ?? (status >= 200 && status < 300),
-    json: vi.fn().mockResolvedValue(init.json ?? {}),
+    json: vi.fn().mockResolvedValue(payload),
+    text: vi.fn().mockResolvedValue(JSON.stringify(payload)),
   }
   global.fetch = vi.fn().mockResolvedValue(response) as unknown as typeof fetch
   return response
@@ -84,7 +90,7 @@ describe("validateToolKey dispatch", () => {
 })
 
 describe("IMPLEMENTED_SLUGS", () => {
-  it("contains all 13 confident validators after PR #3a", () => {
+  it("contains all 14 confident validators including twitter-api", () => {
     expect([...IMPLEMENTED_SLUGS].sort()).toEqual(
       [
         "alpaca",
@@ -99,6 +105,7 @@ describe("IMPLEMENTED_SLUGS", () => {
         "stripe_api",
         "tavily",
         "twilio",
+        "twitter-api",
         "youtube-data-api",
       ].sort(),
     )
@@ -108,6 +115,7 @@ describe("IMPLEMENTED_SLUGS", () => {
     expect(hasValidator("stripe_api")).toBe(true)
     expect(hasValidator("binance")).toBe(true)
     expect(hasValidator("twilio")).toBe(true)
+    expect(hasValidator("twitter-api")).toBe(true)
     expect(hasValidator("mailgun")).toBe(false)
   })
 })
@@ -595,5 +603,53 @@ describe("beehiiv-api validator (multi-cred)", () => {
     const r1 = await validateToolKey("beehiiv-api", { BEEHIIV_API_KEY: "k" })
     expect(r1.valid).toBe(false)
     expect(r1.error).toMatch(/BEEHIIV_PUBLICATION_ID/i)
+  })
+})
+
+describe("twitter-api validator", () => {
+  const creds = { TWITTER_API_KEY: "AAAA-test-bearer" }
+
+  it("probes GET /2/users/by/username/X with Bearer, never /2/users/me", async () => {
+    mockFetchOnce({ status: 200, json: { data: { id: "1", username: "X" } } })
+    const result = await validateToolKey("twitter-api", creds)
+    expect(result.valid).toBe(true)
+    expect(result.unverified).toBeUndefined()
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { headers?: Record<string, string> },
+    ]
+    expect(url).toBe(TWITTER_API_VALIDATE_URL)
+    expect(url).not.toContain("/users/me")
+    expect(init.headers?.Authorization).toBe("Bearer AAAA-test-bearer")
+  })
+
+  it("401 after Bearer curl is invalid (reconnect)", async () => {
+    mockFetchOnce({
+      status: 401,
+      json: { title: "Unauthorized", detail: "Unauthorized" },
+    })
+    const result = await validateToolKey("twitter-api", creds)
+    expect(result.valid).toBe(false)
+    expect(result.error).toMatch(/invalid twitter\/x bearer/i)
+  })
+
+  it("402 is saved with a warning, not rejected as a dead key", async () => {
+    mockFetchOnce({ status: 402, json: { title: "Payment Required" } })
+    const result = await validateToolKey("twitter-api", creds)
+    expect(result.valid).toBe(true)
+    expect(result.warning).toBe(TWITTER_API_402_COPY)
+  })
+
+  it("403 Unsupported Authentication is not a dead key", async () => {
+    mockFetchOnce({
+      status: 403,
+      json: {
+        title: "Unsupported Authentication",
+        detail: "Authenticating with OAuth 2.0 Application-Only is forbidden",
+      },
+    })
+    const result = await validateToolKey("twitter-api", creds)
+    expect(result.valid).toBe(true)
+    expect(result.error).toBeUndefined()
   })
 })

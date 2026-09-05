@@ -5,10 +5,10 @@
 // Fire-and-forget by design (Option B, docs/OPENCLAW_GATEWAY_PROTOCOL.md §7):
 // the gateway ack is acceptance-time (<500ms live), the Orchestrator's reply
 // lands in ActivityLog minutes later via the PR-9/A-container reporter
-// extension and reaches the dashboard over the existing SSE stream. THIS
-// ROUTE WRITES NO ActivityLog ROW - the container's message_received hook
-// writes the canonical MESSAGE_RECEIVED (metadata.messageId = the runId we
-// return), and a route-side write would double-log every message (V3).
+// extension and reaches the dashboard over the existing SSE stream. A live
+// RUNNING send writes NO MESSAGE_RECEIVED row (V3) - the container hook owns
+// that canonical row. Boot/sleep holds persist a SYSTEM chat_send_held ledger
+// so the text does not vanish before flush.
 //
 // Status gate (V2, amendment 2): Workspace.status is the primary gate -
 // matching every existing container-contact route (health-monitor, restart,
@@ -17,7 +17,7 @@
 // gatewayToken cannot be contacted → GATEWAY_UNREACHABLE (the health
 // monitor's "no-container" failure kind proves the state exists).
 
-import { NextRequest } from "next/server"
+import { after, NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
@@ -36,11 +36,15 @@ import {
   type ChatSocketFactory,
   type SendChatResult,
 } from "@/lib/openclaw/gateway-chat-client"
+import { ledgerChatSendRejected } from "@/lib/openclaw/chat-send-reject"
+import { flushHeldChatSends, isHoldableChatStatus, ledgerChatSendHeld } from "@/lib/openclaw/chat-send-hold"
+import { wakeWorkspace } from "@/lib/hibernation/manager"
+import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import crypto from "node:crypto"
 
-// V1 p95 target is 5s; the function budget leaves headroom for the lazy
-// pairing path (connect → approve → reconnect → send) without a runaway
-// function. The client enforces its own ~10s internal cap.
+// HTTP returns 202 + runId before the gateway turn. Waiting here for
+// chat.send (or the reply) is the founder 19:34Z false-fail: the turn
+// ran, the reply landed, the client timed the wait into "failed".
 export const maxDuration = 30
 
 // Mirror of the reporter's DETAIL_MAX: a longer message would be truncated
@@ -49,11 +53,14 @@ const MESSAGE_MAX_CHARS = 4000
 
 // Test seam: route tests inject a fake client + socket factory. Production
 // always uses the real implementations.
+export type ChatRouteAfter = (fn: () => void | Promise<void>) => void
+
 export interface ChatRouteDeps {
   send: typeof sendChatMessage
   socketFactory?: ChatSocketFactory
+  after?: ChatRouteAfter
 }
-const defaultDeps: ChatRouteDeps = { send: sendChatMessage }
+const defaultDeps: ChatRouteDeps = { send: sendChatMessage, after }
 let deps: ChatRouteDeps = defaultDeps
 export function __setChatRouteDepsForTests(next: ChatRouteDeps | null) {
   deps = next ?? defaultDeps
@@ -102,20 +109,60 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   })
 
   // ─── Status gate (V2, amendment 1 error codes) ─────────────────────────
+  // Boot/sleep: hold the send with a runId and honest held state. STOPPED
+  // still 409. DRAFT/PAUSED stay transitioning.
+  if (isHoldableChatStatus(workspace.status)) {
+    if (workspace.status === "HIBERNATED") {
+      const owner = await prisma.workspace.findUnique({
+        where: { id },
+        select: {
+          user: {
+            select: {
+              trialUsed: true,
+              trialStartedAt: true,
+              trialEndsAt: true,
+              hasActiveSubscription: true,
+            },
+          },
+        },
+      })
+      const entitlement = owner?.user
+        ? canWakeHibernatedWorkspace(owner.user)
+        : { allowed: false as const }
+      if (!entitlement.allowed) {
+        return apiError(
+          "SUBSCRIPTION_REQUIRED",
+          "Your 3-day trial has ended. Subscribe to wake this Claw.",
+          402,
+        )
+      }
+    }
+    const runId = crypto.randomUUID()
+    await ledgerChatSendHeld({
+      workspaceId: id,
+      message,
+      runId,
+      holdReason: workspace.status,
+    })
+    if (workspace.status === "HIBERNATED") {
+      void wakeWorkspace(id)
+        .then(() => flushHeldChatSends(id))
+        .catch((err) => {
+          log.error("chat hold: wake/flush failed", {
+            workspaceId: id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        })
+    }
+    return apiSuccess({ runId, held: true, holdReason: workspace.status }, 202)
+  }
   switch (workspace.status) {
     case "RUNNING":
     case "ERROR": // attempt; the client maps the failure honestly (V2)
       break
-    case "HIBERNATED":
-      return apiError("WORKSPACE_HIBERNATED", "Your Claw is asleep. Wake it to chat.", 409)
     case "STOPPED":
       return apiError("WORKSPACE_STOPPED", "Your Claw is stopped. Redeploy it to chat.", 409)
-    case "DEPLOYING":
-    case "WAKING":
-    case "PROVISIONING_QUEUED":
-      return apiError("WORKSPACE_TRANSITIONING", "Your Claw is starting up - try again shortly.", 409)
     default:
-      // DRAFT / SETUP_INCOMPLETE / PAUSED (reserved, no writer)
       return apiError("WORKSPACE_TRANSITIONING", `Cannot chat while the workspace is ${workspace.status}.`, 409)
   }
 
@@ -168,27 +215,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       socketFactory: deps.socketFactory,
     })
 
-  let result: SendChatResult = await attempt()
+  const schedule = deps.after ?? after
+  schedule(async () => {
+    let result: SendChatResult = await attempt()
 
-  // V6: at most ONE retry, SAME idempotencyKey (the gateway dedupes on it -
-  // verified by the spike's T5 double-send), and only when no ack was
-  // received. A fresh key could double-deliver the message.
-  if (!result.ok && result.reason === "unreachable") {
-    result = await attempt()
-  }
+    // V6: at most ONE retry, SAME idempotencyKey (the gateway dedupes on it -
+    // verified by the spike's T5 double-send), and only when no ack was
+    // received. A fresh key could double-deliver the message.
+    if (!result.ok && result.reason === "unreachable") {
+      result = await attempt()
+    }
 
-  if (!result.ok) {
-    const status = result.reason === "transitioning" ? 409 : 502
-    const code = result.reason === "transitioning" ? "WORKSPACE_TRANSITIONING" : "GATEWAY_UNREACHABLE"
-    log.warn("chat send failed", { workspaceId: id, reason: result.reason, detail: result.detail })
-    return apiError(
-      code,
-      result.reason === "transitioning"
-        ? "Your Claw's gateway is starting up - try again shortly."
-        : "Could not reach your Claw. It may be restarting.",
-      status,
-    )
-  }
+    if (!result.ok) {
+      log.warn("chat send failed", { workspaceId: id, reason: result.reason, detail: result.detail })
+      await ledgerChatSendRejected({
+        workspaceId: id,
+        reason: result.reason,
+        detail: result.detail,
+      })
+    }
+  })
 
-  return apiSuccess({ runId: result.runId }, 202)
+  return apiSuccess({ runId: idempotencyKey }, 202)
 }

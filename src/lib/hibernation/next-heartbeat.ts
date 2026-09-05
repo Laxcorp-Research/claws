@@ -1,4 +1,5 @@
 import { nextRunsCroner, previousRunCroner } from "@/lib/schedule/croner-parse"
+import { cronTzOrUtc } from "@/lib/schedule/cron-tz"
 
 /** Grace after expected fire before Watchtower flags a miss. */
 
@@ -64,7 +65,7 @@ export function calculateNextHeartbeat(
       const cronExpr = extractCronExpression(job)
       if (!cronExpr) continue
       try {
-        const tz = extractCronTimezone(job)
+        const tz = cronTzOrUtc(extractCronTimezone(job))
         const runs = nextRunsCroner(cronExpr, 1, from, tz)
         const next = runs[0]
         if (!next) continue
@@ -163,13 +164,14 @@ export function lastExpectedCronFire(
       const cronExpr = extractCronExpression(job)
       if (!cronExpr) continue
       try {
-        const tz =
+        const rawTz =
           job &&
           typeof job === "object" &&
           (job as { schedule?: { tz?: unknown } }).schedule &&
           typeof (job as { schedule: { tz?: unknown } }).schedule.tz === "string"
             ? ((job as { schedule: { tz: string } }).schedule.tz as string)
             : undefined
+        const tz = cronTzOrUtc(rawTz)
         const prev = previousRunCroner(cronExpr, now, tz)
         if (!prev) continue
         if (!latest || prev > latest) latest = prev

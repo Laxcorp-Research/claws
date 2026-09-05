@@ -1,8 +1,10 @@
 import { cn } from "@/lib/utils";
+import { CountBadge } from "@/components/ui/count-badge";
 
 interface Tab {
   id: string;
   label: string;
+  badge?: number;
 }
 
 interface TabsProps {
@@ -36,13 +38,14 @@ export function Tabs({ tabs, activeTab, onTabChange }: TabsProps) {
               onTabChange(next.id)
             }}
             className={cn(
-              "py-2 px-[14px] text-xs cursor-pointer border-b-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--ac)]/30 whitespace-nowrap",
+              "inline-flex items-center gap-[6px] py-2 px-[14px] text-xs cursor-pointer border-b-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--ac)]/30 whitespace-nowrap",
               active
                 ? "text-[var(--tx)] border-b-[var(--tx)] font-medium"
                 : "text-[var(--tx2)] hover:text-[var(--tx)]"
             )}
           >
             {tab.label}
+            <CountBadge count={tab.badge ?? 0} label="pending approvals" />
           </button>
         );
       })}

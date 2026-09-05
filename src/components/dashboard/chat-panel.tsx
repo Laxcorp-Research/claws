@@ -3,8 +3,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ChatMessage, type ChatBubbleStatus } from "./chat-message"
+import { ChatMessage, type ChatBubbleStatus, type ChatTurnPhase } from "./chat-message"
+import { DocumentCard } from "./document-card"
+import { DELIVERABLE_EXTRACT_EVENT_KIND, titleFromDeliverablePath } from "@/lib/artifacts/deliverable-kind"
+import type { DeliverableKind } from "@/lib/artifacts/deliverable-kind"
+import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 import { cn } from "@/lib/utils"
+import {
+  formatWorkingLine,
+  isBlankAgentReplyBody,
+  polishChatRenderText,
+} from "@/lib/chat/chat-copy"
+import { collectWorkingRunIds } from "@/lib/chat/run-state"
+import { useChatRunState } from "@/hooks/use-chat-run-state"
 
 // Mirror of the send endpoint cap (src/app/api/workspaces/[id]/chat/route.ts
 // MESSAGE_MAX_CHARS) so the composer can't compose something the server will
@@ -15,7 +26,20 @@ const MESSAGE_MAX_CHARS = 4000
 // path; ERROR is attempted as a recovery path (the send endpoint maps the
 // failure honestly). Every other status disables the composer here and the
 // endpoint would 409/502 anyway.
-const SENDABLE_STATUSES: ReadonlySet<string> = new Set(["RUNNING", "ERROR"])
+const SENDABLE_STATUSES: ReadonlySet<string> = new Set([
+  "RUNNING",
+  "ERROR",
+  "HIBERNATED",
+  "WAKING",
+  "DEPLOYING",
+  "PROVISIONING_QUEUED",
+])
+const HOLDABLE_STATUSES: ReadonlySet<string> = new Set([
+  "HIBERNATED",
+  "WAKING",
+  "DEPLOYING",
+  "PROVISIONING_QUEUED",
+])
 
 // PR-9/C: rich per-state UX. Two surfaces resolve to ONE of these reasons so
 // they show the SAME words: (1) the disabled composer (pre-send, from the
@@ -122,6 +146,25 @@ export interface ChatRow {
   // 202 runId). Projected by formatLog so the working indicator can pair a
   // reply to its send per-turn.
   runId?: string | null
+  eventKind?: string | null
+  fileVersionId?: string | null
+  logicalPath?: string | null
+  preview?: string | null
+  deliverableKind?: DeliverableKind | null
+  humanRequestId?: string | null
+  holdStatus?: string | null
+}
+
+export interface ChatDocumentView {
+  key: string
+  kind: "document"
+  sortTs: number
+  title: string
+  preview: string
+  fileVersionId: string
+  logicalPath: string
+  deliverableKind: DeliverableKind
+  humanRequestId: string | null
 }
 
 // A message the composer rendered optimistically. The send endpoint writes NO
@@ -157,14 +200,6 @@ export interface ChatMessageView {
   failureCode?: string
 }
 
-function chatRowBody(row: ChatRow): string {
-  return row.detail && row.detail.length > 0 ? row.detail : row.action
-}
-
-function isNoReplyText(value: string | null | undefined): boolean {
-  return value?.trim() === "NO_REPLY"
-}
-
 /**
  * PR-9/B reconciliation (pure; unit-tested in chat-panel.test.tsx).
  *
@@ -184,7 +219,7 @@ export function reconcileChatMessages(
   rows: ChatRow[],
   orchestratorName: string,
 ): ChatMessageView[] {
-  const reconciledRunIds = new Set(
+  const receivedRunIds = new Set(
     rows
       .filter(
         (r) =>
@@ -194,12 +229,38 @@ export function reconcileChatMessages(
       )
       .map((r) => r.messageId as string),
   )
+  const heldRunIds = new Set(
+    rows
+      .filter(
+        (r) =>
+          r.actionType === "SYSTEM" &&
+          r.eventKind === CHAT_SEND_HELD_EVENT_KIND &&
+          typeof r.runId === "string" &&
+          r.runId.length > 0,
+      )
+      .map((r) => r.runId as string),
+  )
+  // Founder 19:34Z: gateway turn finished (MESSAGE_SENT) while a client
+  // sync-wait marked the optimistic bubble failed. A reply for that runId
+  // means the send landed - never keep the false-fail.
+  const repliedRunIds = new Set(
+    rows
+      .filter(
+        (r) =>
+          r.actionType === "MESSAGE_SENT" &&
+          typeof r.runId === "string" &&
+          r.runId.length > 0,
+      )
+      .map((r) => r.runId as string),
+  )
 
   const views: ChatMessageView[] = []
 
   for (const o of optimistic) {
-    // Reconciled → the streamed MESSAGE_RECEIVED below renders instead.
-    if (o.runId && reconciledRunIds.has(o.runId)) continue
+    // Reconciled → the streamed MESSAGE_RECEIVED or persisted hold row renders.
+    if (o.runId && (receivedRunIds.has(o.runId) || heldRunIds.has(o.runId))) continue
+    const status =
+      o.status === "failed" && o.runId && repliedRunIds.has(o.runId) ? "sent" : o.status
     views.push({
       key: o.tempId,
       sender: "user",
@@ -207,15 +268,32 @@ export function reconcileChatMessages(
       sortTs: o.createdAt,
       detail: o.text,
       action: o.text,
-      status: o.status,
+      status,
       runId: o.runId ?? null,
-      failureCode: o.failureCode,
+      failureCode: status === "failed" ? o.failureCode : undefined,
     })
   }
 
   for (const r of rows) {
+    if (r.actionType === "SYSTEM" && r.eventKind === CHAT_SEND_HELD_EVENT_KIND) {
+      const heldRunId = typeof r.runId === "string" && r.runId.length > 0 ? r.runId : null
+      if (heldRunId && receivedRunIds.has(heldRunId)) continue
+      const parsed = Date.parse(r.timestamp)
+      views.push({
+        key: r.id,
+        sender: "user",
+        senderName: "You",
+        sortTs: Number.isNaN(parsed) ? 0 : parsed,
+        detail: r.detail != null ? polishChatRenderText(r.detail) : null,
+        action: polishChatRenderText(r.detail && r.detail.length > 0 ? r.detail : r.action),
+        status: r.holdStatus === "flushed" ? "sent" : "held",
+        runId: heldRunId,
+      })
+      continue
+    }
+    if (r.actionType !== "MESSAGE_RECEIVED" && r.actionType !== "MESSAGE_SENT") continue
     const isUser = r.actionType === "MESSAGE_RECEIVED"
-    if (!isUser && isNoReplyText(chatRowBody(r))) continue
+    if (!isUser && isBlankAgentReplyBody(r.action, r.detail)) continue
     const parsed = Date.parse(r.timestamp)
     views.push({
       key: r.id,
@@ -224,8 +302,8 @@ export function reconcileChatMessages(
       // resolved display name (or the orchestrator's name as a fallback).
       senderName: isUser ? "You" : r.agentName || orchestratorName || "Agent",
       sortTs: Number.isNaN(parsed) ? 0 : parsed,
-      detail: r.detail ?? null,
-      action: r.action,
+      detail: r.detail != null ? polishChatRenderText(r.detail) : null,
+      action: polishChatRenderText(r.action),
       // The turn key lives in different metadata fields per row type: a user
       // send (MESSAGE_RECEIVED) carries it as messageId; the agent reply
       // (MESSAGE_SENT) carries it as runId. Normalize both into `runId` so
@@ -236,6 +314,43 @@ export function reconcileChatMessages(
 
   views.sort((a, b) => a.sortTs - b.sortTs)
   return views
+}
+
+export const LEDGER_COLLAPSE_WINDOW_MS = 5 * 60 * 1000
+
+export function documentViewsFromRows(rows: ChatRow[]): ChatDocumentView[] {
+  const views: ChatDocumentView[] = []
+  for (const r of rows) {
+    if (r.actionType !== "SYSTEM" || r.eventKind !== DELIVERABLE_EXTRACT_EVENT_KIND) continue
+    if (!r.fileVersionId || !r.logicalPath) continue
+    const parsed = Date.parse(r.timestamp)
+    views.push({
+      key: r.id,
+      kind: "document",
+      sortTs: Number.isNaN(parsed) ? 0 : parsed,
+      title: titleFromDeliverablePath(r.logicalPath),
+      preview: r.preview ?? "",
+      fileVersionId: r.fileVersionId,
+      logicalPath: r.logicalPath,
+      deliverableKind: r.deliverableKind ?? "report",
+      humanRequestId: r.humanRequestId ?? null,
+    })
+  }
+  views.sort((a, b) => a.sortTs - b.sortTs)
+  const collapsed: ChatDocumentView[] = []
+  for (const view of views) {
+    const prev = collapsed[collapsed.length - 1]
+    if (
+      prev &&
+      prev.logicalPath === view.logicalPath &&
+      view.sortTs - prev.sortTs <= LEDGER_COLLAPSE_WINDOW_MS
+    ) {
+      collapsed[collapsed.length - 1] = view
+      continue
+    }
+    collapsed.push(view)
+  }
+  return collapsed
 }
 
 // History endpoint rows and SSE rows are the SAME persisted ActivityLog rows.
@@ -265,6 +380,44 @@ export const PENDING_TICK_MS = 15 * 1000
 
 export type TurnState = "pending" | "no_response"
 
+export function collectWorkingAgentNames(
+  rows: ChatRow[],
+  pendingSinceMs: number,
+): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const ts = Date.parse(row.timestamp)
+    if (Number.isNaN(ts) || ts < pendingSinceMs) continue
+    const fromStart = row.actionType === "TASK_START"
+    const fromBlankReply =
+      row.actionType === "MESSAGE_SENT" && isBlankAgentReplyBody(row.action, row.detail)
+    if (!fromStart && !fromBlankReply) continue
+    const name = row.agentName.trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  return names
+}
+
+function oldestPendingUserTs(
+  views: ChatMessageView[],
+  statuses: Map<string, TurnState>,
+): number | null {
+  let oldest: number | null = null
+  for (const view of views) {
+    if (view.sender !== "user" || typeof view.runId !== "string" || view.runId.length === 0) {
+      continue
+    }
+    if (statuses.get(view.runId) !== "pending") continue
+    if (oldest === null || view.sortTs < oldest) oldest = view.sortTs
+  }
+  return oldest
+}
+
 // WORKING-INDICATOR FIX (replaces the old count-based isAgentWorking).
 //
 // The old logic was `(started user turns) − (agent replies) > 0`. It assumed
@@ -283,10 +436,34 @@ export type TurnState = "pending" | "no_response"
 //                   failure, because the send SUCCEEDED).
 // Because it's per-runId and time-bounded: a later replied turn resolves on its
 // own, and an earlier orphan ages out instead of holding the indicator hostage.
+export function collectPendingRunIds(views: ChatMessageView[]): string[] {
+  const replied = new Set<string>()
+  for (const v of views) {
+    if (v.sender === "agent" && typeof v.runId === "string" && v.runId.length > 0) {
+      replied.add(v.runId)
+    }
+  }
+  const ids: string[] = []
+  for (const v of views) {
+    if (v.sender !== "user") continue
+    if (v.status === "sending" || v.status === "failed" || v.status === "held") continue
+    if (typeof v.runId !== "string" || v.runId.length === 0) continue
+    if (replied.has(v.runId)) continue
+    ids.push(v.runId)
+  }
+  return ids
+}
+
+function sameIdList(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((id, i) => id === b[i])
+}
+
 export function computeTurnStatuses(
   views: ChatMessageView[],
   now: number,
   timeoutMs: number = PENDING_TURN_TIMEOUT_MS,
+  workingRunIds?: ReadonlySet<string>,
 ): Map<string, TurnState> {
   const repliedRunIds = new Set<string>()
   for (const v of views) {
@@ -300,11 +477,17 @@ export function computeTurnStatuses(
     if (v.sender !== "user") continue
     // No run started yet (pre-202) or the send failed (no run will start) →
     // not a pending turn; the bubble's own "Sending…"/"Failed to send" covers it.
-    if (v.status === "sending" || v.status === "failed") continue
+    if (v.status === "sending" || v.status === "failed" || v.status === "held") continue
     // Need the turn key to correlate a reply; a keyless user row can't be paired.
     if (typeof v.runId !== "string" || v.runId.length === 0) continue
     // The reply already arrived → resolved, nothing to show.
     if (repliedRunIds.has(v.runId)) continue
+    // TASK_START / TASK_COMPLETE for this runId means the turn is still
+    // working - do not age out to "No response" at 2 min (subagent turns).
+    if (workingRunIds?.has(v.runId)) {
+      statuses.set(v.runId, "pending")
+      continue
+    }
     statuses.set(v.runId, now - v.sortTs < timeoutMs ? "pending" : "no_response")
   }
   return statuses
@@ -312,6 +495,33 @@ export function computeTurnStatuses(
 
 // The agent owes a reply iff at least one turn is genuinely pending (unreplied
 // AND within the timeout). Drives the working indicator.
+export function computeTurnPhases(
+  views: ChatMessageView[],
+  rows: ChatRow[],
+): Map<string, ChatTurnPhase> {
+  const workingIds = new Set<string>()
+  for (const row of rows) {
+    if (row.actionType === "TASK_START" && typeof row.runId === "string" && row.runId.length > 0) {
+      workingIds.add(row.runId)
+    }
+  }
+  const replied = new Set<string>()
+  for (const v of views) {
+    if (v.sender === "agent" && typeof v.runId === "string" && v.runId.length > 0) {
+      replied.add(v.runId)
+    }
+  }
+  const phases = new Map<string, ChatTurnPhase>()
+  for (const v of views) {
+    if (v.sender !== "user" || typeof v.runId !== "string" || v.runId.length === 0) continue
+    if (v.status === "held" || v.status === "sending" || v.status === "failed") continue
+    if (replied.has(v.runId)) phases.set(v.runId, "done")
+    else if (workingIds.has(v.runId)) phases.set(v.runId, "working")
+    else phases.set(v.runId, "accepted")
+  }
+  return phases
+}
+
 export function hasPendingTurn(statuses: Map<string, TurnState>): boolean {
   for (const s of statuses.values()) {
     if (s === "pending") return true
@@ -336,21 +546,89 @@ export function preservePrependedScrollPosition(
   el.scrollTop = previous.scrollTop + (el.scrollHeight - previous.scrollHeight)
 }
 
-function WorkingIndicator({ orchestratorName }: { orchestratorName: string }) {
+// Remaining viewport under the pane's document offset. Used so fullHeight
+// cannot overshoot when chrome (command strip + health line + tabs) is taller
+// than the 260px CSS fallback. Document-relative (rect.top + scrollY) so a
+// mid-page scroll does not enlarge the pane and create empty space below.
+export const CHAT_PANE_MIN_PX = 240
+export const CHAT_PANE_BOTTOM_GAP_PX = 24
+
+export function chatPaneMaxHeightPx(args: {
+  paneOffsetTop: number
+  viewportHeight: number
+  bottomGap?: number
+}): number {
+  const gap = args.bottomGap ?? CHAT_PANE_BOTTOM_GAP_PX
+  return Math.max(CHAT_PANE_MIN_PX, Math.floor(args.viewportHeight - args.paneOffsetTop - gap))
+}
+
+// Composer grow: start at 2 lines, grow through 6 visible lines, then freeze
+// and scroll inside. Measure with height=0 and maxHeight=none so a CSS max-h
+// (or rows=2) cannot freeze scrollHeight at the visible box.
+export const COMPOSER_LINE_PX = 16
+export const COMPOSER_PAD_Y_PX = 16
+export const COMPOSER_MIN_ROWS = 2
+export const COMPOSER_MAX_ROWS = 6
+export const COMPOSER_MIN_HEIGHT_PX = COMPOSER_PAD_Y_PX + COMPOSER_LINE_PX * COMPOSER_MIN_ROWS
+export const COMPOSER_MAX_HEIGHT_PX = COMPOSER_PAD_Y_PX + COMPOSER_LINE_PX * COMPOSER_MAX_ROWS
+
+export function composerLineBox(style: {
+  lineHeight: string
+  paddingTop: string
+  paddingBottom: string
+}): { minH: number; maxH: number } {
+  const parsedLine = parseFloat(style.lineHeight)
+  const line = Number.isFinite(parsedLine) && parsedLine > 0 ? parsedLine : COMPOSER_LINE_PX
+  const pad =
+    (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) || COMPOSER_PAD_Y_PX
+  return {
+    minH: pad + line * COMPOSER_MIN_ROWS,
+    maxH: pad + line * COMPOSER_MAX_ROWS,
+  }
+}
+
+export function fitChatComposer(el: HTMLTextAreaElement): { height: number; overflowY: "hidden" | "auto" } {
+  const box = composerLineBox(getComputedStyle(el))
+  const prevMax = el.style.maxHeight
+  el.style.maxHeight = "none"
+  el.style.height = "0px"
+  el.style.overflowY = "hidden"
+  const raw = el.scrollHeight
+  const height = Math.min(box.maxH, Math.max(box.minH, raw))
+  el.style.height = `${height}px`
+  el.style.maxHeight = prevMax
+  el.style.overflowY = raw > box.maxH ? "auto" : "hidden"
+  return { height, overflowY: raw > box.maxH ? "auto" : "hidden" }
+}
+
+function WorkingIndicator({
+  orchestratorName,
+  agentNames,
+}: {
+  orchestratorName: string
+  agentNames: readonly string[]
+}) {
   const name = orchestratorName || "Orchestrator"
+  const extras = agentNames.filter((n) => n.trim().toLowerCase() !== name.toLowerCase())
+  const line = extras.length > 0 ? formatWorkingLine(name, extras) : null
+  // Opacity pulse only - translateY bounce expands the nearest scrollport
+  // (often the page) and paints empty space below the composer. Overflow is
+  // clipped and overflow-anchor is off so inserting this row cannot grow or
+  // re-anchor the document. Live-status lives in the already-visible header
+  // (role=status here made Chrome scroll this node into view).
   return (
-    <div className="flex flex-col gap-[3px] max-w-[85%] self-start items-start">
+    <div
+      data-working-indicator
+      className="flex max-w-[85%] min-w-0 flex-col items-start gap-[3px] self-start [overflow-anchor:none]"
+    >
       <div className="flex items-center gap-1.5 text-[10px] leading-none">
         <span className="font-semibold text-[var(--tx2)]">{name}</span>
       </div>
-      <div
-        role="status"
-        className="rounded-lg px-3 py-2 bg-[var(--bg2)] border border-[var(--bd)] inline-flex items-center gap-1"
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce [animation-delay:-0.3s]" aria-hidden="true" />
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce [animation-delay:-0.15s]" aria-hidden="true" />
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--tx3)] animate-bounce" aria-hidden="true" />
-        <span className="sr-only">{name} is working…</span>
+      <div className="inline-flex items-center gap-1 overflow-hidden rounded-lg border border-[var(--bd)] bg-[var(--bg2)] px-3 py-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse [animation-delay:-0.3s]" aria-hidden="true" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse [animation-delay:-0.15s]" aria-hidden="true" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--tx3)] animate-pulse" aria-hidden="true" />
+        {line ? <span className="text-[11px] text-[var(--tx2)]">{line}</span> : null}
       </div>
     </div>
   )
@@ -421,46 +699,74 @@ export function ChatPanel({
   const [historyLoading, setHistoryLoading] = useState(false)
   const [olderLoading, setOlderLoading] = useState(false)
   const [optimistic, setOptimistic] = useState<OptimisticMessage[]>([])
+  const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
+  const { rows: runStateRows } = useChatRunState(workspaceId, pendingRunIds)
   const [draft, setDraft] = useState("")
   // GAP #3: ref to the SCROLL CONTAINER (not a sentinel) so we move only this
   // element's scrollTop - never the page viewport (scrollIntoView moved all
   // scrollable ancestors and jumped the whole dashboard).
   const listRef = useRef<HTMLDivElement | null>(null)
+  const paneRef = useRef<HTMLElement | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const [paneMaxPx, setPaneMaxPx] = useState<number | undefined>(undefined)
   // Start pinned; recomputed on every user scroll. When the user scrolls up to
   // read history this goes false and new messages stop yanking them down.
   const nearBottomRef = useRef(true)
   const [showJump, setShowJump] = useState(false)
 
   const sendable = SENDABLE_STATUSES.has(status)
+  const holdable = HOLDABLE_STATUSES.has(status)
 
   // PR-9/C: tailored disabled-composer copy + (HIBERNATED only) an inline Wake
-  // CTA. An unmapped non-sendable status falls back to the legacy templated note
-  // rather than the "Failed to send" wording, which would be wrong here.
+  // CTA. Holdable boot/sleep states stay sendable; the note is honest hold copy.
   const unavailableReason = statusToReason(status)
   const unavailableCopy = chatUnavailableCopy(unavailableReason)
-  const composerNote =
-    unavailableReason === "unknown"
+  const composerNote = holdable
+    ? "Sends are held until the Claw is ready."
+    : unavailableReason === "unknown"
       ? `Chat is unavailable while your Claw is ${status.toLowerCase()}.`
       : unavailableCopy.message
   const showWake = unavailableCopy.cta === "wake" && !!onWake
 
   const persistedRows = useMemo(
-    () => mergePersistedChatRows(historyRows, rows),
-    [historyRows, rows],
+    () => mergePersistedChatRows(historyRows, [...rows, ...(runStateRows as ChatRow[])]),
+    [historyRows, rows, runStateRows],
   )
 
   const messages = useMemo(
     () => reconcileChatMessages(optimistic, persistedRows, orchestratorName),
     [optimistic, persistedRows, orchestratorName],
   )
+  const documents = useMemo(() => documentViewsFromRows(persistedRows), [persistedRows])
+  const timeline = useMemo(() => {
+    const items: Array<
+      | { sortTs: number; kind: "message"; message: ChatMessageView }
+      | { sortTs: number; kind: "document"; document: ChatDocumentView }
+    > = [
+      ...messages.map((message) => ({ sortTs: message.sortTs, kind: "message" as const, message })),
+      ...documents.map((document) => ({ sortTs: document.sortTs, kind: "document" as const, document })),
+    ]
+    items.sort((a, b) => a.sortTs - b.sortTs)
+    return items
+  }, [messages, documents])
 
   // Re-eval clock for time-bounded pending. Advanced ONLY by the tick effect
   // below while a turn is pending - a quiet panel never touches it (no idle
   // timer). Initialised lazily so SSR/first paint is stable.
   const [nowTick, setNowTick] = useState(() => Date.now())
 
+  const workingRunIds = useMemo(() => collectWorkingRunIds(persistedRows), [persistedRows])
+  const turnPhases = useMemo(() => computeTurnPhases(messages, persistedRows), [messages, persistedRows])
   // Per-turn pending state: runId-keyed + time-bounded (see computeTurnStatuses).
-  const turnStatuses = useMemo(() => computeTurnStatuses(messages, nowTick), [messages, nowTick])
+  // Working evidence (TASK_START) keeps the turn pending past the 2 min ceiling.
+  const turnStatuses = useMemo(
+    () => computeTurnStatuses(messages, nowTick, PENDING_TURN_TIMEOUT_MS, workingRunIds),
+    [messages, nowTick, workingRunIds],
+  )
+  const derivedPending = collectPendingRunIds(messages)
+  if (!sameIdList(pendingRunIds, derivedPending)) {
+    setPendingRunIds(derivedPending)
+  }
 
   // GAP #2 (fixed): the agent is "working" only while a turn is GENUINELY
   // pending - unreplied AND within PENDING_TURN_TIMEOUT_MS. Gated to a sendable
@@ -468,6 +774,10 @@ export function ChatPanel({
   // "No response" instead of sticking the indicator on forever.
   const pending = hasPendingTurn(turnStatuses)
   const working = sendable && pending
+  const workingAgentNames = useMemo(() => {
+    const since = oldestPendingUserTs(messages, turnStatuses)
+    return since == null ? [] : collectWorkingAgentNames(persistedRows, since)
+  }, [messages, persistedRows, turnStatuses])
   const prependScrollRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
 
   useEffect(() => {
@@ -518,7 +828,7 @@ export function ChatPanel({
     } else if (el) {
       setShowJump(true)
     }
-  }, [messages.length, working])
+  }, [messages.length, documents.length, working])
 
   useLayoutEffect(() => {
     const previous = prependScrollRef.current
@@ -526,7 +836,28 @@ export function ChatPanel({
     if (!previous || !el) return
     preservePrependedScrollPosition(el, previous)
     prependScrollRef.current = null
-  }, [messages.length])
+  }, [messages.length, documents.length])
+
+  useLayoutEffect(() => {
+    if (!fullHeight) {
+      setPaneMaxPx(undefined)
+      return
+    }
+    const pane = paneRef.current
+    if (!pane) return
+    const apply = () => {
+      const top = pane.getBoundingClientRect().top + window.scrollY
+      setPaneMaxPx(chatPaneMaxHeightPx({ paneOffsetTop: top, viewportHeight: window.innerHeight }))
+    }
+    apply()
+    window.addEventListener("resize", apply)
+    return () => window.removeEventListener("resize", apply)
+  }, [fullHeight])
+
+  useLayoutEffect(() => {
+    const el = composerRef.current
+    if (el) fitChatComposer(el)
+  }, [draft])
 
   // GAP #2 timeout tick: advance the clock WITHOUT a new message so a turn that
   // never replies flips from "working…" to "No response" once it crosses
@@ -545,6 +876,7 @@ export function ChatPanel({
   // PR-9/C: the core POST for ONE bubble + text - shared by a fresh send and
   // Retry. Marks the bubble failed (NEVER throws) and, on a non-202, captures
   // error.code so the failed bubble can render the matching per-state copy.
+  // No client abort or reply-wait: a timeout here is the 19:34Z false-fail.
   const performSend = useCallback(
     async (tempId: string, text: string) => {
       const mark = (patch: Partial<OptimisticMessage>) =>
@@ -559,8 +891,14 @@ export function ChatPanel({
           // Store runId so the optimistic bubble reconciles against the streamed
           // MESSAGE_RECEIVED (messageId === runId). Clear any prior failureCode
           // (a successful Retry).
-          const json = (await res.json().catch(() => null)) as { data?: { runId?: string } } | null
-          mark({ status: "sent", runId: json?.data?.runId, failureCode: undefined })
+          const json = (await res.json().catch(() => null)) as {
+            data?: { runId?: string; held?: boolean }
+          } | null
+          mark({
+            status: json?.data?.held ? "held" : "sent",
+            runId: json?.data?.runId,
+            failureCode: undefined,
+          })
         } else {
           // 409 (hibernated/stopped/transitioning) / 502 (gateway) / 429 (rate)
           // / 4xx - mark failed (NEVER throw) and capture error.code so the
@@ -651,12 +989,15 @@ export function ChatPanel({
 
   // fullHeight: bound the pane to the viewport (header + tabs + bottom gap ≈ 260px).
   // MUTATION: strip max-h-[calc(...)] → unit + Playwright viewport assertions fail.
+  // overflow-hidden clips bounce/table overflow so it cannot grow the document.
   return (
     <section
+      ref={paneRef}
       aria-label="Web chat"
+      style={fullHeight && paneMaxPx ? { maxHeight: paneMaxPx } : undefined}
       className={cn(
         "border border-[var(--bd)] rounded-lg mb-6",
-        fullHeight && "flex max-h-[calc(100vh-260px)] flex-col",
+        fullHeight && "flex max-h-[calc(100vh-260px)] flex-col overflow-hidden",
         className,
       )}
     >
@@ -665,14 +1006,19 @@ export function ChatPanel({
         <p className="text-[11px] text-[var(--tx3)] mt-0.5">
           Direct line to {orchestratorName || "your orchestrator"}. Conversations on connected channels appear in the activity feed.
         </p>
+        {working && (
+          <p role="status" className="sr-only">
+            {orchestratorName || "Orchestrator"} is working…
+          </p>
+        )}
       </div>
 
       <div
         ref={listRef}
         onScroll={handleScroll}
         className={cn(
-          "flex flex-col gap-3 p-3.5 min-h-[120px] overflow-y-auto",
-          fullHeight ? "min-h-0 flex-1" : "max-h-[360px]",
+          "flex min-w-0 flex-col gap-3 overflow-x-auto overflow-y-auto p-3.5 [overflow-anchor:none]",
+          fullHeight ? "min-h-0 flex-1" : "max-h-[360px] min-h-[120px]",
         )}
         role="log"
         aria-label="Chat messages"
@@ -699,26 +1045,42 @@ export function ChatPanel({
             </Button>
           </div>
         )}
-        {messages.length === 0 && !working ? (
+        {timeline.length === 0 && !working ? (
           <p className="text-[11px] text-[var(--tx3)] py-6 text-center">
             {historyLoading ? "Loading messages..." : "No messages yet. Say hello to get started."}
           </p>
         ) : (
-          messages.map((m, index) => {
-            const day = formatDay(m.sortTs)
-            const previousDay = index > 0 ? formatDay(messages[index - 1].sortTs) : null
-            // A user turn whose runId aged out with no reply → quiet "No
-            // response" note (distinct from a send failure: the send succeeded).
+          timeline.map((item, index) => {
+            const day = formatDay(item.sortTs)
+            const previousDay = index > 0 ? formatDay(timeline[index - 1].sortTs) : null
+            if (item.kind === "document") {
+              const d = item.document
+              return (
+                <div key={d.key} className="contents">
+                  {day !== previousDay && (
+                    <div className="self-center rounded-full bg-[var(--bg2)] px-3 py-1 text-[10px] text-[var(--tx3)]">
+                      {day}
+                    </div>
+                  )}
+                  <DocumentCard
+                    workspaceId={workspaceId}
+                    fileVersionId={d.fileVersionId}
+                    title={d.title}
+                    preview={d.preview}
+                    logicalPath={d.logicalPath}
+                    deliverableKind={d.deliverableKind}
+                    humanRequestId={d.humanRequestId}
+                    timestamp={formatClock(d.sortTs)}
+                    stateRevision={documents.length}
+                  />
+                </div>
+              )
+            }
+            const m = item.message
             const noResponse =
               m.sender === "user" &&
               typeof m.runId === "string" &&
               turnStatuses.get(m.runId) === "no_response"
-            // PR-9/C: a failed send shows the SAME tailored per-state copy as the
-            // disabled composer (keyed off the captured error.code) instead of a
-            // flat "Failed to send". The reason's `cta` drives the affordance -
-            // "wake" (send-time HIBERNATED, the mid-compose race) reuses the page's
-            // onWake; "retry" (transient) re-POSTs the same text. Symmetric to the
-            // pre-send composer so the two surfaces behave identically.
             const failure =
               m.status === "failed" ? chatUnavailableCopy(errorCodeToReason(m.failureCode)) : null
             return (
@@ -735,6 +1097,7 @@ export function ChatPanel({
                   detail={m.detail}
                   action={m.action}
                   status={m.status}
+                  turnPhase={m.sender === "user" && m.runId ? turnPhases.get(m.runId) ?? null : null}
                   noResponse={noResponse}
                   failureMessage={failure?.message ?? null}
                   onRetry={
@@ -750,11 +1113,13 @@ export function ChatPanel({
             )
           })
         )}
-        {working && <WorkingIndicator orchestratorName={orchestratorName} />}
+        {working && (
+          <WorkingIndicator orchestratorName={orchestratorName} agentNames={workingAgentNames} />
+        )}
       </div>
 
       <div className="shrink-0 border-t border-[var(--bd)] p-3.5">
-        {!sendable && (
+        {(!sendable || holdable) && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] text-[var(--tx3)]">{composerNote}</p>
             {showWake && (
@@ -766,15 +1131,19 @@ export function ChatPanel({
         )}
         <div className="flex items-end gap-2">
           <Textarea
+            ref={composerRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              fitChatComposer(e.currentTarget)
+            }}
             onKeyDown={onKeyDown}
             placeholder={sendable ? "Type a message…" : "Chat unavailable"}
             disabled={!sendable}
             maxLength={MESSAGE_MAX_CHARS}
-            rows={2}
+            rows={COMPOSER_MIN_ROWS}
             aria-label="Message"
-            className="flex-1"
+            className="flex-1 min-h-[48px] leading-4"
           />
           <Button
             variant="primary"

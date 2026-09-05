@@ -11,7 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
-import { AlertStack } from "@/components/dashboard/alert-stack"
+import { ClawHealthLine } from "@/components/dashboard/claw-health-line"
 import { CommandStrip } from "@/components/dashboard/command-strip"
 import { LiveOpsSection } from "@/components/dashboard/live-ops-section"
 import { MissionLog } from "@/components/dashboard/mission-log"
@@ -24,7 +24,10 @@ import {
   type MissionLogEntry,
 } from "@/components/dashboard/mission-log-utils"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
+import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
+import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
+import { FilesTab } from "@/components/dashboard/files-tab"
 import { RedeployProgressModal } from "@/components/dashboard/redeploy-progress-modal"
 import { getRedeployApiErrorMessage } from "@/components/dashboard/redeploy-error"
 import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redeploy"
@@ -61,6 +64,7 @@ interface DashboardStats {
   estimatedCostTodayCalls: number
   estimatedCostTodayIsEstimate?: boolean
   pendingReview: number
+  healedThisWeek?: number
 }
 
 interface WorkspaceInfo {
@@ -126,15 +130,26 @@ interface LogEntry {
   channelId?: string | null
   from?: string | null
   runId?: string | null
+  eventKind?: string | null
+  fileVersionId?: string | null
+  logicalPath?: string | null
+  preview?: string | null
+  deliverableKind?: "decision" | "report" | null
+  humanRequestId?: string | null
+  holdStatus?: string | null
 }
 
 interface PendingApprovalItem {
   id: string
+  fileVersionId: string
   title: string
-  description: string
-  agentName: string
-  agentSlug: string
+  preview: string
+  logicalPath: string
+  deliverableKind: "decision" | "report"
+  humanRequestId: string
   timestamp: string
+  decision?: "NONE" | "APPROVED" | "REJECTED" | "SUPERSEDED"
+  latestLabel?: string
 }
 
 interface SpendInfo {
@@ -216,6 +231,7 @@ type CostWindowPayload = {
 const DASHBOARD_TABS = [
   { id: "overview", label: "Overview" },
   { id: "chat", label: "Chat" },
+  { id: "files", label: "Files" },
   { id: "activity", label: "Activity" },
   { id: "conversations", label: "Conversations" },
   { id: "costs", label: "Costs" },
@@ -678,46 +694,9 @@ export default function DashboardPage() {
     void redeployFlow.startRedeploy()
   }, [redeployFlow])
 
-  const handleApprove = async (activityLogId: string) => {
-    try {
-      await mutateWithFeedback(
-        async () => {
-          const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ activityLogId, action: "approve" }),
-          })
-          if (!res.ok) throw new Error("Could not approve")
-          setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
-          fetchStats()
-        },
-        { message: "Approved", errorMessage: "Could not approve" },
-        showSnackbar,
-      )
-    } catch {
-      /* error snackbar already shown */
-    }
-  }
-
-  const handleReject = async (activityLogId: string, feedback?: string) => {
-    try {
-      await mutateWithFeedback(
-        async () => {
-          const res = await fetch(`/api/workspaces/${workspaceId}/respond`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ activityLogId, action: "reject", feedback }),
-          })
-          if (!res.ok) throw new Error("Could not reject")
-          setPendingApprovals((prev) => prev.filter((a) => a.id !== activityLogId))
-          fetchStats()
-        },
-        { message: "Rejected", errorMessage: "Could not reject" },
-        showSnackbar,
-      )
-    } catch {
-      /* error snackbar already shown */
-    }
+  const handleApprovalDecision = (humanRequestId: string) => {
+    setPendingApprovals((prev) => prev.filter((a) => a.humanRequestId !== humanRequestId && a.id !== humanRequestId))
+    fetchStats()
   }
 
   const handleAgentControl = async (agentId: string, action: "pause" | "resume" | "restart") => {
@@ -972,7 +951,7 @@ export default function DashboardPage() {
       })
     }
 
-    if (spendLimitReached) {
+    if (spendLimitReached && workspace?.status === "PAUSED") {
       list.push({
         key: "spend-limit",
         priority: 2,
@@ -1358,9 +1337,10 @@ export default function DashboardPage() {
     lastActive: a.lastActive ? relativeTime(a.lastActive) : undefined,
   }))
 
-  // PR-9/B: the dashboard chat reuses the SAME activity stream (no second
-  // EventSource). Filter the live logs to webchat MESSAGE_* rows - channelId
-  // keeps external-channel sends/receives (Slack, etc.) out of dashboard chat.
+  // Parent logs still feed chat as a secondary source. The panel itself
+  // subscribes to `/api/activity/<id>/stream?scope=chat-run-state` and merges
+  // by id until Done - the dashboard onInit replace cannot hide a live reply.
+  // Filter parent logs to webchat MESSAGE_* / TASK_* / chat ledger rows.
   const orchestratorName = agents.find((a) => a.role === "ORCHESTRATOR")?.name ?? "Orchestrator"
   const requestedTab = searchParams.get("tab") ?? "overview"
   const activeTab = DASHBOARD_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : "overview"
@@ -1373,8 +1353,13 @@ export default function DashboardPage() {
   const chatRows: ChatRow[] = logs
     .filter(
       (l) =>
-        (l.actionType === "MESSAGE_RECEIVED" || l.actionType === "MESSAGE_SENT") &&
-        l.channelId === "webchat",
+        (l.actionType === "SYSTEM" &&
+          (l.eventKind === DELIVERABLE_EXTRACT_EVENT_KIND ||
+            l.eventKind === CHAT_SEND_HELD_EVENT_KIND)) ||
+        l.actionType === "TASK_START" ||
+        l.actionType === "TASK_COMPLETE" ||
+        ((l.actionType === "MESSAGE_RECEIVED" || l.actionType === "MESSAGE_SENT") &&
+          l.channelId === "webchat"),
     )
     .map((l) => ({
       id: l.id,
@@ -1385,6 +1370,13 @@ export default function DashboardPage() {
       detail: l.detail ?? null,
       messageId: l.messageId ?? null,
       runId: l.runId ?? null,
+      eventKind: l.eventKind ?? null,
+      fileVersionId: l.fileVersionId ?? null,
+      logicalPath: l.logicalPath ?? null,
+      preview: l.preview ?? null,
+      deliverableKind: l.deliverableKind ?? null,
+      humanRequestId: l.humanRequestId ?? null,
+      holdStatus: l.holdStatus ?? null,
     }))
   const agentsActive = agents.filter((a) => a.status !== "paused").length
   const alertStackItems = alerts.map((alert) => ({
@@ -1491,7 +1483,20 @@ export default function DashboardPage() {
         />
       )}
 
-      <AlertStack alerts={alertStackItems} />
+      <ClawHealthLine
+        recoveredThisWeek={stats?.healedThisWeek ?? 0}
+        nudge={
+          alertStackItems[0]
+            ? {
+                id: alertStackItems[0].id,
+                variant: alertStackItems[0].variant,
+                icon: alertStackItems[0].icon,
+                message: alertStackItems[0].message,
+                cta: alertStackItems[0].cta,
+              }
+            : null
+        }
+      />
 
       {isEmpty ? (
         <div className="py-8">
@@ -1519,7 +1524,13 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <Tabs tabs={DASHBOARD_TABS} activeTab={activeTab} onTabChange={switchTab} />
+          <Tabs
+            tabs={DASHBOARD_TABS.map((tab) =>
+              tab.id === "overview" ? { ...tab, badge: pendingApprovals.length } : tab,
+            )}
+            activeTab={activeTab}
+            onTabChange={switchTab}
+          />
 
           <div hidden={activeTab !== "overview"}>
             <BriefingHeader
@@ -1537,12 +1548,9 @@ export default function DashboardPage() {
             />
             <div className="grid gap-3 md:grid-cols-2">
               <NeedsYouSection
-                approvals={pendingApprovals.map((a) => ({
-                  ...a,
-                  agentColor: agentColorMapRef.current[a.agentName] ?? AGENT_COLORS["WORKER"],
-                }))}
-                onApprove={handleApprove}
-                onReject={handleReject}
+                workspaceId={workspaceId}
+                approvals={pendingApprovals}
+                onDecision={handleApprovalDecision}
               />
               <section className="mb-6 rounded-lg border border-[var(--bd)] p-3.5" aria-label="Costs">
                 <div className="mb-2 flex items-center justify-between gap-3">
@@ -1624,7 +1632,7 @@ export default function DashboardPage() {
             </section>
           </div>
 
-          <div hidden={activeTab !== "chat"}>
+          <div hidden={activeTab !== "chat"} className="min-w-0 overflow-x-hidden">
             <ChatPanel
               workspaceId={workspaceId}
               status={workspace!.status}
@@ -1634,6 +1642,10 @@ export default function DashboardPage() {
               historyEnabled
               fullHeight
             />
+          </div>
+
+          <div hidden={activeTab !== "files"} className="min-w-0">
+            <FilesTab workspaceId={workspaceId} />
           </div>
 
           <div hidden={activeTab !== "activity"} className="sticky top-0">

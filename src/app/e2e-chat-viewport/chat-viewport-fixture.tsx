@@ -2,17 +2,31 @@
 
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
 
-const rows: ChatRow[] = Array.from({ length: 36 }, (_, i) => ({
-  id: `m-${i}`,
-  actionType: i % 2 === 0 ? "MESSAGE_RECEIVED" : "MESSAGE_SENT",
-  timestamp: `2026-07-14T12:${String(i % 60).padStart(2, "0")}:00.000Z`,
-  agentName: i % 2 === 0 ? "You" : "Dev Commander",
-  action: `Message ${i} - long enough to stack the chat pane past a naive min-height shell.`,
-  detail: `Message ${i} - long enough to stack the chat pane past a naive min-height shell.`,
-  messageId: i % 2 === 0 ? `r-${i}` : null,
-  runId: i % 2 === 1 ? `r-${i - 1}` : null,
-  channelId: "webchat",
-}))
+const rows: ChatRow[] = [
+  ...Array.from({ length: 36 }, (_, i) => ({
+    id: `m-${i}`,
+    actionType: i % 2 === 0 ? "MESSAGE_RECEIVED" : "MESSAGE_SENT",
+    timestamp: `2026-07-14T12:${String(i % 60).padStart(2, "0")}:00.000Z`,
+    agentName: i % 2 === 0 ? "You" : "Dev Commander",
+    action: `Message ${i} - long enough to stack the chat pane past a naive min-height shell.`,
+    detail: `Message ${i} - long enough to stack the chat pane past a naive min-height shell.`,
+    messageId: i % 2 === 0 ? `r-${i}` : null,
+    runId: i % 2 === 1 ? `r-${i - 1}` : null,
+    channelId: "webchat",
+  })),
+  // Fresh unreplied turn so the working dots mount. MUTATION: bounce on those
+  // dots used to inflate documentHeight past the viewport.
+  {
+    id: "m-pending",
+    actionType: "MESSAGE_RECEIVED",
+    timestamp: new Date().toISOString(),
+    agentName: "You",
+    action: "status?",
+    detail: "status?",
+    messageId: "r-pending",
+    channelId: "webchat",
+  },
+]
 
 export function ChatViewportFixture() {
   return (

@@ -63,6 +63,7 @@ describe("workflow-language", () => {
     expect(law).toContain("Reviewer reviews every worker output")
     expect(law).toContain("Scores below 8 loop back for revision (max 3)")
     expect(law).toContain("ask the user before acting")
+    expect(law).toContain("Critic approval is not human approval")
     // Ships locked - AUTO_PROCEED must not change emission this arc.
     expect(law).not.toContain("automatically proceed")
   })

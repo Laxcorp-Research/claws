@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { log } from "@/lib/logger"
+import { flushHeldChatSends } from "@/lib/openclaw/chat-send-hold"
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const user = await getSessionUser()
@@ -36,6 +37,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       data: { status: "RUNNING" },
     })
     log.deployEvent({ event: "completed", workspaceId, userId: user.id })
+    void flushHeldChatSends(workspaceId).catch((err) => {
+      log.warn("deploy complete: held chat flush failed", {
+        workspaceId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
   }
 
   return apiSuccess({ status: finalStatus })

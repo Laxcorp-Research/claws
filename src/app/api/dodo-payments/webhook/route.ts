@@ -12,6 +12,8 @@ import {
   decideRefundWorkspaceAction,
 } from "@/lib/marketplace/refund-policy"
 import { destroyContainer } from "@/lib/openclaw/deployer"
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
+import type { HealConditionId } from "@/lib/healing/conditions"
 
 /**
  * Ledger a subscription lifecycle webhook into AuditLog.
@@ -46,6 +48,33 @@ async function ledgerSubscriptionLifecycle(args: {
     log.error("dodo-webhook: failed to ledger subscription lifecycle", {
       userId: args.userId,
       eventType: args.eventType,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+async function nudgeOwnerWorkspaces(userId: string, condition: HealConditionId): Promise<void> {
+  try {
+    const workspaces = await prisma.workspace.findMany({
+      where: { userId },
+      select: { id: true },
+    })
+    for (const workspace of workspaces) {
+      try {
+        await sendCustomerNudge({ workspaceId: workspace.id, condition })
+      } catch (err) {
+        log.error("dodo-webhook: customer nudge failed", {
+          userId,
+          workspaceId: workspace.id,
+          condition,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  } catch (err) {
+    log.error("dodo-webhook: nudge workspace lookup failed", {
+      userId,
+      condition,
       error: err instanceof Error ? err.message : String(err),
     })
   }
@@ -319,6 +348,9 @@ async function handlePaymentFailed(data: Record<string, unknown> | undefined, me
       data: { userId: metadata.userId, clawTemplateId: metadata.templateId, amountPaid: 0, dodoPaymentId: data?.payment_id as string, status: "FAILED" },
     })
   }
+  if (metadata.userId) {
+    await nudgeOwnerWorkspaces(metadata.userId, "payment-failed")
+  }
 }
 
 async function handleSubscriptionActive(
@@ -437,6 +469,7 @@ async function handleSubscriptionOnHold(
       status: "on_hold",
       workspaceId: metadata.workspaceId,
     })
+    await nudgeOwnerWorkspaces(user.id, "subscription-on-hold")
   }
 }
 

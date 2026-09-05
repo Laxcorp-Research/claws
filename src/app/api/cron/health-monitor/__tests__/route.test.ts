@@ -33,6 +33,13 @@ vi.mock("@/lib/healing/stale-sync", () => ({
   clearParkedStaleSyncFlags: (...args: unknown[]) => mockClearParked(...args),
   healRunningStaleSync: (...args: unknown[]) => mockHealRunning(...args),
 }))
+vi.mock("@/lib/healing/runtime-heals", () => ({
+  planHealthRuntimeHeal: () => null,
+  scheduleHealthRuntimeHeal: vi.fn(),
+}))
+vi.mock("@/lib/healing/mission-resume", () => ({
+  maybeLedgerMissionInterrupted: vi.fn().mockResolvedValue(false),
+}))
 
 import { GET, __internal } from "@/app/api/cron/health-monitor/route";
 

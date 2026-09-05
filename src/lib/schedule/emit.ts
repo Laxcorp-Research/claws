@@ -1,5 +1,6 @@
 import type { ScheduleValue, TimeSlot, Weekday } from "@/lib/schedule/types"
 import { cronExprToIdSlug, heartbeatPayloadMessage } from "@/lib/openclaw/heartbeat-md-cron"
+import { DEFAULT_CRON_TZ, resolveAuthoredCronTz } from "@/lib/schedule/cron-tz"
 
 export type PlannedCron = {
   expr: string
@@ -29,11 +30,6 @@ function slotExpr(slot: TimeSlot): string {
   return `${slot.minute} ${slot.hour} * * ${formatDow(slot.weekdays)}`
 }
 
-function tzOrUndef(tz: string | null | undefined): string | undefined {
-  const t = tz?.trim()
-  return t && t.length > 0 ? t : undefined
-}
-
 function extraPlanned(
   expressions: string[] | undefined,
   tz: string | undefined,
@@ -52,32 +48,39 @@ function extraPlanned(
  */
 export function scheduleToCronExprs(
   value: ScheduleValue,
-  workspaceTimezone: string | null | undefined,
+  _workspaceTimezone: string | null | undefined,
 ): PlannedCron[] {
-  const wsTz = tzOrUndef(workspaceTimezone)
+  // B-3: evaluate in the schedule's own tz (UTC unless authored-tz pinned).
+  // Workspace timezone is NOT a fire tz. MUTATION: restore wsTz fallback → fail.
+  void _workspaceTimezone
 
   switch (value.mode) {
     case "off":
       return []
     case "hourly":
-      return [{ expr: "0 * * * *", tz: wsTz, idSuffix: "hourly" }]
+      return [{ expr: "0 * * * *", tz: DEFAULT_CRON_TZ, idSuffix: "hourly" }]
     case "every_6h":
-      return [{ expr: "0 */6 * * *", tz: wsTz, idSuffix: "every_6h" }]
+      return [{ expr: "0 */6 * * *", tz: DEFAULT_CRON_TZ, idSuffix: "every_6h" }]
     case "every_12h":
-      return [{ expr: "0 */12 * * *", tz: wsTz, idSuffix: "every_12h" }]
-    // daily/weekday: authored tz (stamped by the editor) wins; legacy rows
-    // without a stamp keep the workspace tz, so pre-existing schedules never
-    // shift on this change.
+      return [{ expr: "0 */12 * * *", tz: DEFAULT_CRON_TZ, idSuffix: "every_12h" }]
     case "daily": {
       const t = parseHhMm(value.time) ?? { hour: 8, minute: 0 }
-      return [{ expr: `${t.minute} ${t.hour} * * *`, tz: tzOrUndef(value.tz) ?? wsTz, idSuffix: "daily" }]
+      return [{
+        expr: `${t.minute} ${t.hour} * * *`,
+        tz: resolveAuthoredCronTz(value.tz),
+        idSuffix: "daily",
+      }]
     }
     case "weekday": {
       const t = parseHhMm(value.time) ?? { hour: 8, minute: 0 }
-      return [{ expr: `${t.minute} ${t.hour} * * 1-5`, tz: tzOrUndef(value.tz) ?? wsTz, idSuffix: "weekday" }]
+      return [{
+        expr: `${t.minute} ${t.hour} * * 1-5`,
+        tz: resolveAuthoredCronTz(value.tz),
+        idSuffix: "weekday",
+      }]
     }
     case "times": {
-      const tz = tzOrUndef(value.tz) ?? wsTz
+      const tz = resolveAuthoredCronTz(value.tz)
       const fromSlots = value.slots.map((slot) => ({
         expr: slotExpr(slot),
         tz,
@@ -89,12 +92,12 @@ export function scheduleToCronExprs(
       const n = value.everyMinutes
       const base =
         n >= 60 && n % 60 === 0
-          ? [{ expr: `0 */${n / 60} * * *`, tz: wsTz, idSuffix: `interval-${n}m` }]
-          : [{ expr: `*/${n} * * * *`, tz: wsTz, idSuffix: `interval-${n}m` }]
-      return [...base, ...extraPlanned(value.extraExpressions, wsTz)]
+          ? [{ expr: `0 */${n / 60} * * *`, tz: DEFAULT_CRON_TZ, idSuffix: `interval-${n}m` }]
+          : [{ expr: `*/${n} * * * *`, tz: DEFAULT_CRON_TZ, idSuffix: `interval-${n}m` }]
+      return [...base, ...extraPlanned(value.extraExpressions, DEFAULT_CRON_TZ)]
     }
     case "monthly": {
-      const tz = tzOrUndef(value.tz) ?? wsTz
+      const tz = resolveAuthoredCronTz(value.tz)
       const dom = value.day === "last" ? "L" : String(value.day)
       return [
         {
@@ -106,7 +109,7 @@ export function scheduleToCronExprs(
       ]
     }
     case "cron": {
-      const tz = tzOrUndef(value.tz) ?? wsTz
+      const tz = resolveAuthoredCronTz(value.tz)
       return value.expressions.map((expr) => ({
         expr: expr.trim(),
         tz,
@@ -156,7 +159,7 @@ export function emitHeartbeatJobs(args: {
     wakeMode: "now" as const,
       payload: {
         kind: "agentTurn" as const,
-        message: heartbeatPayloadMessage(p.expr),
+        message: heartbeatPayloadMessage(p.expr, p.tz),
       },
   }))
 }

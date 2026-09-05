@@ -84,11 +84,11 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
         runId: null,
       }),
     })
-    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: { where?: { metadata?: { contains?: string } } }) => {
-      // If this route regresses to the SSE init query shape (last 50 all-activity
-      // rows, no webchat metadata filter), the 50 non-chat rows win and the old
-      // webchat row is crowded out.
-      if (args.where?.metadata?.contains === '"channelId":"webchat"') {
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation((args: {
+      where?: { AND?: Array<{ OR?: Array<{ metadata?: { contains?: string } }> }> }
+    }) => {
+      const or = args.where?.AND?.[0]?.OR ?? []
+      if (or.some((clause) => clause.metadata?.contains === '"channelId":"webchat"')) {
         return Promise.resolve([olderWebchat] as never)
       }
       return Promise.resolve(crowdedOutBySseInit as never)
@@ -99,8 +99,24 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
     expect(prismaMock.activityLog.findMany).toHaveBeenCalledWith({
       where: {
         workspaceId: "ws-1",
-        actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
-        metadata: { contains: '"channelId":"webchat"' },
+        AND: [
+          {
+            OR: [
+              {
+                actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
+                metadata: { contains: '"channelId":"webchat"' },
+              },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"deliverable_extracted"' },
+              },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"chat_send_held"' },
+              },
+            ],
+          },
+        ],
       },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
       take: 26,
@@ -140,16 +156,56 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
     expect(prismaMock.activityLog.findMany).toHaveBeenLastCalledWith({
       where: {
         workspaceId: "ws-1",
-        actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
-        metadata: { contains: '"channelId":"webchat"' },
-        OR: [
-          { timestamp: { lt: new Date("2026-06-22T08:01:00.000Z") } },
-          { timestamp: new Date("2026-06-22T08:01:00.000Z"), id: { lt: "b" } },
+        AND: [
+          {
+            OR: [
+              {
+                actionType: { in: ["MESSAGE_RECEIVED", "MESSAGE_SENT"] },
+                metadata: { contains: '"channelId":"webchat"' },
+              },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"deliverable_extracted"' },
+              },
+              {
+                actionType: "SYSTEM",
+                metadata: { contains: '"eventKind":"chat_send_held"' },
+              },
+            ],
+          },
+          {
+            OR: [
+              { timestamp: { lt: new Date("2026-06-22T08:01:00.000Z") } },
+              { timestamp: new Date("2026-06-22T08:01:00.000Z"), id: { lt: "b" } },
+            ],
+          },
         ],
       },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
       take: 3,
     })
+  })
+
+  it("returns persisted chat_send_held SYSTEM rows so a refresh does not vanish the send", async () => {
+    const held = row({
+      id: "hold-1",
+      action: "Chat send held",
+      actionType: "SYSTEM",
+      detail: "hello while asleep",
+      metadata: JSON.stringify({
+        eventKind: "chat_send_held",
+        holdStatus: "held",
+        holdReason: "HIBERNATED",
+        runId: "run-hold",
+      }),
+    })
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([held] as never)
+    const { status, data } = await parseResponse(await get())
+    expect(status).toBe(200)
+    expect(data.data.rows).toEqual([formatActivityLog(held)])
+    expect(data.data.rows[0].eventKind).toBe("chat_send_held")
+    expect(data.data.rows[0].holdStatus).toBe("held")
+    expect(data.data.rows[0].runId).toBe("run-hold")
   })
 
   it("400 on an invalid before cursor", async () => {

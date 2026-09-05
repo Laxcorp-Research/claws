@@ -15,6 +15,10 @@ vi.mock('@/lib/api/auth', () => ({
   }),
 }));
 
+vi.mock("@/lib/artifacts/pending-approvals", () => ({
+  countPendingApprovalsByWorkspace: vi.fn().mockResolvedValue(new Map()),
+}))
+
 vi.mock('@/lib/models', () => ({
   DEFAULT_MODEL: {
     ORCHESTRATOR: 'anthropic/claude-haiku-4-5-20251001',
@@ -54,6 +58,7 @@ describe('GET /api/workspaces', () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
+    expect(data.data[0].pendingApprovalCount).toBe(0);
     expect(prismaMock.workspace.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'user-test-123' },

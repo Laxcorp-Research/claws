@@ -4,6 +4,8 @@ import { getComposio } from "@/lib/composio"
 import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
 import { IMPLEMENTED_SLUGS, hasValidator, validateToolKey, type ValidationResult } from "@/lib/tools/validators"
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
+import { nudgeStaleWebChatPendingApprovals } from "@/lib/artifacts/pending-approvals"
 
 // before: 55 - after: 300 (belt with staging cron scheduler routes)
 export const maxDuration = 300
@@ -252,6 +254,17 @@ export async function GET(req: NextRequest) {
             result: decision.result,
             status: decision.status,
           })
+          try {
+            await sendCustomerNudge({
+              workspaceId: connection.workspaceId,
+              condition: decision.status === "EXPIRED" ? "oauth-expired" : "tool-connection-error",
+            })
+          } catch (nudgeErr) {
+            log.error("connection-health: customer nudge failed", {
+              workspaceId: connection.workspaceId,
+              error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+            })
+          }
           continue
         }
 
@@ -361,6 +374,17 @@ export async function GET(req: NextRequest) {
           toolSlug: connection.toolSlug,
           connectionType: connection.connectionType,
         })
+        try {
+          await sendCustomerNudge({
+            workspaceId: connection.workspaceId,
+            condition: "tool-connection-error",
+          })
+        } catch (nudgeErr) {
+          log.error("connection-health: native nudge failed", {
+            workspaceId: connection.workspaceId,
+            error: nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr),
+          })
+        }
       } else {
         // Third-party outages, validator timeouts, 5xxs, and 429s are
         // outage-safe: write check metadata only. Mutation guard: changing
@@ -478,15 +502,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let pendingApprovalNudge = { scanned: 0, nudged: 0, skippedChannel: 0 }
+  try {
+    pendingApprovalNudge = await nudgeStaleWebChatPendingApprovals()
+  } catch (err) {
+    log.error("connection-health: pending-approval nudge failed", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   const durationMs = Date.now() - startedAt
   log.info("connection-health: sweep complete", {
     category: "connection_health",
     event: "run_complete",
     durationMs,
     ...summary,
+    pendingApprovalNudge,
   })
 
-  return Response.json({ success: true, data: { ...summary, durationMs } })
+  return Response.json({ success: true, data: { ...summary, pendingApprovalNudge, durationMs } })
 }
 
 export const __internal = {
