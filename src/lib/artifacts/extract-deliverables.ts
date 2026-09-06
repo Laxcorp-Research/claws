@@ -20,6 +20,7 @@ export {
   DELIVERABLE_PATH_PREFIX,
   titleFromDeliverablePath,
 } from "@/lib/artifacts/deliverable-kind"
+export const WORKING_FILE_EXTRACT_EVENT_KIND = "working_file_extracted"
 export const DELIVERABLE_MAX_BYTES = 256 * 1024
 export const DELIVERABLE_TEXT_EXT = new Set([".md", ".txt"])
 
@@ -28,15 +29,33 @@ export function hashFileContent(content: string): string {
 }
 
 /**
- * Agent writes often land under workspace-<slug>/shared/deliverables.
- * Canonicalize to platform shared/deliverables before the allowlist.
+ * Agent writes often land under workspace-<slug>/shared/...
+ * Canonicalize to platform shared/... before the allowlist.
  */
-const WORKSPACE_DELIVERABLE_RE = /(?:^|\/)workspace-[^/]+\/(shared\/deliverables\/.+)$/
+const WORKSPACE_SHARED_RE = /(?:^|\/)workspace-[^/]+\/(shared\/.+)$/
+
+/** Agent-maintained working files (history in Files tab). Not approval cards. */
+export const WORKING_SHARED_EXTRACT_FILES = new Set([
+  "shared/PIPELINE.md",
+  "shared/CLIENTS.md",
+  "shared/PROPOSALS.md",
+  "shared/PORTFOLIO.md",
+  "shared/WATCHLIST.md",
+  "shared/THESES.md",
+])
 
 export function canonicalizeDeliverableExtractPath(relativePath: string): string {
   const normalized = relativePath.replace(/\\/g, "/")
-  const match = normalized.match(WORKSPACE_DELIVERABLE_RE)
+  const match = normalized.match(WORKSPACE_SHARED_RE)
   return match?.[1] ?? normalized
+}
+
+export function isWorkingSharedExtractPath(relativePath: string): boolean {
+  if (typeof relativePath !== "string" || relativePath.length === 0) return false
+  if (relativePath.includes("\0")) return false
+  const canonical = canonicalizeDeliverableExtractPath(relativePath)
+  if (canonical.startsWith("/") || canonical.includes("://")) return false
+  return WORKING_SHARED_EXTRACT_FILES.has(canonical)
 }
 
 /**
@@ -109,10 +128,13 @@ export async function extractDeliverablesFromGzip(args: {
 
   for (const [rawPath, b64] of Object.entries(files)) {
     const logicalPath = canonicalizeDeliverableExtractPath(rawPath)
-    if (!isDeliverableExtractPath(logicalPath)) {
+    const isDeliverable = isDeliverableExtractPath(logicalPath)
+    const isWorking = isWorkingSharedExtractPath(logicalPath)
+    if (!isDeliverable && !isWorking) {
       if (
         logicalPath.startsWith(DELIVERABLE_PATH_PREFIX) ||
-        /(?:^|\/)workspace-[^/]+\/shared\/deliverables\//.test(rawPath.replace(/\\/g, "/"))
+        /(?:^|\/)workspace-[^/]+\/shared\/deliverables\//.test(rawPath.replace(/\\/g, "/")) ||
+        WORKING_SHARED_EXTRACT_FILES.has(logicalPath)
       ) {
         summary.skippedInvalid += 1
       }
@@ -168,7 +190,7 @@ export async function extractDeliverablesFromGzip(args: {
       },
     })
 
-    if (trigger === "MISSION") {
+    if (trigger === "MISSION" && isDeliverable) {
       try {
         await supersedeOlderPendingVersions({
           workspaceId: args.workspaceId,
@@ -184,10 +206,9 @@ export async function extractDeliverablesFromGzip(args: {
       }
     }
 
-    const kind = deliverableKind(logicalPath)
     const title = titleFromDeliverablePath(logicalPath)
     let humanRequestId: string | null = null
-    if (trigger === "MISSION" && isDecisionDeliverable(logicalPath)) {
+    if (trigger === "MISSION" && isDeliverable && isDecisionDeliverable(logicalPath)) {
       try {
         const approval = await createDeliverableApprovalFromFileVersion({
           workspaceId: args.workspaceId,
@@ -206,26 +227,29 @@ export async function extractDeliverablesFromGzip(args: {
     }
 
     const preview = previewFromContent(content)
+    const eventKind = isWorking ? WORKING_FILE_EXTRACT_EVENT_KIND : DELIVERABLE_EXTRACT_EVENT_KIND
     await prisma.activityLog.create({
       data: {
         workspaceId: args.workspaceId,
-        action: `Deliverable extracted: ${title}`,
+        action: isWorking
+          ? `Working file extracted: ${title}`
+          : `Deliverable extracted: ${title}`,
         actionType: "SYSTEM",
         detail: logicalPath,
         metadata: JSON.stringify({
-          eventKind: DELIVERABLE_EXTRACT_EVENT_KIND,
+          eventKind,
           fileVersionId: created.id,
           logicalPath,
           version: nextVersion,
           contentHash,
           trigger,
           preview,
-          deliverableKind: kind,
+          deliverableKind: isDeliverable ? deliverableKind(logicalPath) : null,
           humanRequestId,
         }),
       },
     })
-    if (trigger === "MISSION") {
+    if (trigger === "MISSION" && isDeliverable) {
       void notifyDeliverableExtracted({
         workspaceId: args.workspaceId,
         title,

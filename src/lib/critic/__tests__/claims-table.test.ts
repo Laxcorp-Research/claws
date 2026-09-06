@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
   CLAIMS_TABLE_STEP_MARKER,
+  CRITIC_DIMENSION_TABLE_HEADER,
   STRICT_8_DEFINITION,
   VERSION_A_CLAIMS_TABLE,
   VERSION_A_DRAFT,
@@ -10,6 +11,8 @@ import {
   VERSION_B_DRAFT,
   VERSION_B_FIRST_PERSON_FIXTURE,
   THIRD_PARTY_ABOUT_USER_FIXTURE,
+  hasFourDimensionScoreTable,
+  isBareMeanVerdict,
   reviewDraft,
   runWave0ClaimsHarness,
   strict8Passes,
@@ -164,5 +167,23 @@ describe("claims table procedure", () => {
     expect(wave0).toMatch(/\bPASS\b/)
     expect(wave0).toMatch(/\bREJECT\b/)
     expect(wave0).not.toMatch(/APPROVE\.|Verdict: \[APPROVED/)
+  })
+
+  it("rejects a bare mean and requires the four-dimension table", () => {
+    const bare = "Critic Verdict: PASS (8.0/10 mean)"
+    expect(isBareMeanVerdict(bare)).toBe(true)
+    expect(hasFourDimensionScoreTable(bare)).toBe(false)
+    const table = `${CRITIC_DIMENSION_TABLE_HEADER}
+| fit | 8 | restates the scar |
+| pricing | 8 | floor-safe |
+| specificity | 8 | named steps |
+| tone | 8 | operator |
+Verdict: PASS`
+    expect(hasFourDimensionScoreTable(table)).toBe(true)
+    expect(isBareMeanVerdict(`${bare}\n${table}`)).toBe(false)
+    const freelancer = ALL_TEMPLATES.find((x) => x.slug === "freelancer-revenue-engine")!
+    const critic = freelancer.agents.find((a) => a.agentSlug === "business-development-reviewer")!
+    expect(critic.soulMd).toContain(CRITIC_DIMENSION_TABLE_HEADER)
+    expect(critic.soulMd).toContain("Never a bare mean")
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { sanitizeHtml, sanitizeText, sanitizeMarkdown, sanitizeActivityText, sanitizeActivityDetail } from "../sanitize"
+import { sanitizeHtml, sanitizeText, sanitizeMarkdown, sanitizeActivityText, sanitizeActivityDetail, stripHostMachineryPaths } from "../sanitize"
 
 describe("sanitizeHtml", () => {
   it("preserves safe HTML", () => {
@@ -188,6 +188,34 @@ describe("sanitizeActivityText", () => {
     const result = sanitizeActivityText(input)
     expect(result).toContain("price")
     expect(result).toContain("threshold")
+  })
+})
+
+describe("stripHostMachineryPaths", () => {
+  it("rewrites container host paths to logical shared paths", () => {
+    const leaked =
+      "Proposal: `/home/node/.openclaw/shared/deliverables/proposal-draft.md`"
+    expect(stripHostMachineryPaths(leaked)).toBe(
+      "Proposal: `shared/deliverables/proposal-draft.md`",
+    )
+    expect(
+      stripHostMachineryPaths(
+        "| **Proposal** | `/home/node/.openclaw/shared/PIPELINE.md` |",
+      ),
+    ).not.toContain("/home/node/.openclaw/")
+    expect(
+      stripHostMachineryPaths(
+        "/home/node/.openclaw/workspace-revenue-commander/shared/PIPELINE.md",
+      ),
+    ).toBe("shared/PIPELINE.md")
+  })
+
+  it("sanitizeActivityDetail strips host paths from PIPELINE paste", () => {
+    const detail = sanitizeActivityDetail(
+      "# PIPELINE.md\n| **Proposal** | `/home/node/.openclaw/shared/deliverables/proposal-draft.md` |",
+    )
+    expect(detail).not.toContain("/home/node/.openclaw/")
+    expect(detail).toContain("shared/deliverables/proposal-draft.md")
   })
 })
 

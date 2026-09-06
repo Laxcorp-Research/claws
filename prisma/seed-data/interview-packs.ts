@@ -27,7 +27,8 @@ export const TEMPLATE_INTERVIEW_PACKS: Record<string, InterviewQuestion[]> = {
   ],
   "freelancer-revenue-engine": [
     q("niche", "What services do you sell, and who is the ideal client?", "niche"),
-    q("rate", "Floor rate, target rate, and anything you will not bid?", "rate card"),
+    q("rate", "What is your floor rate (the number you will not go below), your target rate, and anything you will not bid?", "floor rate"),
+    q("engagement", "Preferred engagement shape: fixed-price, hourly, or retainer? Any mix rules?", "engagement shape"),
     q("platforms", "Where do you hunt (Upwork, LinkedIn, inbound, all)?", "platforms"),
     q("proof", "2-3 wins or portfolio pieces the claw should cite?", "proof"),
     q("voice", "How should proposals sound (direct, warm, technical)?", "proposal voice"),

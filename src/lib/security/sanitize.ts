@@ -37,6 +37,21 @@ export function sanitizeText(dirty: string): string {
 
 const ACTIVITY_TEXT_MAX_LEN = 500
 
+const OPENCLAW_HOST_ROOT = "/home/node/.openclaw/"
+
+/**
+ * Chat/PIPELINE paste must never show container host paths.
+ * Missions keep absolute paths internally; the human sees logical names.
+ */
+export function stripHostMachineryPaths(text: string): string {
+  if (!text.includes(OPENCLAW_HOST_ROOT)) return text
+  return text.replace(/\/home\/node\/\.openclaw\/([^\s)`"'<>]+)/g, (_m, rest: string) => {
+    const workspaceShared = rest.match(/^workspace-[^/]+\/(shared\/.+)$/)
+    if (workspaceShared?.[1]) return workspaceShared[1]
+    return rest
+  })
+}
+
 /**
  * Normalize free-form activity-log text before it reaches the client.
  *
@@ -50,7 +65,7 @@ const ACTIVITY_TEXT_MAX_LEN = 500
  */
 export function sanitizeActivityText(raw: string | null | undefined): string {
   if (!raw) return ""
-  const cleaned = sanitizeText(raw).trim()
+  const cleaned = sanitizeText(stripHostMachineryPaths(raw)).trim()
   if (cleaned.length <= ACTIVITY_TEXT_MAX_LEN) return cleaned
   return cleaned.slice(0, ACTIVITY_TEXT_MAX_LEN) + "\u2026"
 }
@@ -63,7 +78,7 @@ const ACTIVITY_DETAIL_MAX_LEN = 4096
 
 export function sanitizeActivityDetail(raw: string | null | undefined): string | null {
   if (!raw) return null
-  const cleaned = sanitizeText(raw).trim()
+  const cleaned = sanitizeText(stripHostMachineryPaths(raw)).trim()
   if (cleaned.length === 0) return null
   if (cleaned.length <= ACTIVITY_DETAIL_MAX_LEN) return cleaned
   return cleaned.slice(0, ACTIVITY_DETAIL_MAX_LEN) + "\u2026"
