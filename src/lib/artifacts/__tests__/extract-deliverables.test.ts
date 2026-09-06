@@ -19,10 +19,12 @@ vi.mock("@/lib/artifacts/deliverable-notice", () => ({
 
 import {
   DELIVERABLE_EXTRACT_EVENT_KIND,
+  WORKING_FILE_EXTRACT_EVENT_KIND,
   canonicalizeDeliverableExtractPath,
   extractDeliverablesFromGzip,
   hashFileContent,
   isDeliverableExtractPath,
+  isWorkingSharedExtractPath,
 } from "@/lib/artifacts/extract-deliverables"
 
 describe("isDeliverableExtractPath", () => {
@@ -50,6 +52,16 @@ describe("isDeliverableExtractPath", () => {
     ).toBe("shared/deliverables/cycle.md")
     expect(isDeliverableExtractPath("workspace-orchestrator/shared/deliverables/x-smoke-cycle.md")).toBe(true)
     expect(isDeliverableExtractPath("workspace-orchestrator/SOUL.md")).toBe(false)
+  })
+
+  it("allows PIPELINE/CLIENTS/PROPOSALS working files and rejects USER.md", () => {
+    expect(isWorkingSharedExtractPath("shared/PIPELINE.md")).toBe(true)
+    expect(isWorkingSharedExtractPath("shared/CLIENTS.md")).toBe(true)
+    expect(isWorkingSharedExtractPath("shared/PROPOSALS.md")).toBe(true)
+    expect(isWorkingSharedExtractPath("workspace-revenue-commander/shared/PIPELINE.md")).toBe(true)
+    expect(isWorkingSharedExtractPath("shared/USER.md")).toBe(false)
+    expect(isWorkingSharedExtractPath("shared/VOICE.md")).toBe(false)
+    expect(isDeliverableExtractPath("shared/PIPELINE.md")).toBe(false)
   })
 })
 
@@ -191,6 +203,29 @@ describe("extractDeliverablesFromGzip", () => {
       }),
       data: { decision: "SUPERSEDED" },
     })
+  })
+
+  it("versions PIPELINE.md on change without an approval card", async () => {
+    const gzip = buildRuntimeStateGzipFixture({
+      "shared/PIPELINE.md": "## 2026-09-06 hunt\nL-201 scored 100",
+      "shared/USER.md": "ignore me",
+    })
+    const result = await extractDeliverablesFromGzip({ workspaceId: "ws-1", gzip })
+    expect(result.extracted).toBe(1)
+    expect(prismaMock.fileVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        logicalPath: "shared/PIPELINE.md",
+        trigger: "MISSION",
+      }),
+    })
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "Working file extracted: PIPELINE",
+        metadata: expect.stringContaining(WORKING_FILE_EXTRACT_EVENT_KIND),
+      }),
+    })
+    expect(mockCreateApproval).not.toHaveBeenCalled()
+    expect(mockNotify).not.toHaveBeenCalled()
   })
 
   it("MUTATION: finalize must call extract after persist", () => {

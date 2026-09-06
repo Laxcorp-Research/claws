@@ -1,5 +1,6 @@
 import type { SeedTemplate } from "./types"
 import { TWITTER_HEARTBEAT_MD } from "./wave-0-twitter"
+import { FREELANCER_HEARTBEAT_MD } from "./wave-1-freelancer"
 
 /**
  * INFRA-4 baseline mission scripts. Waves polish category excellence.
@@ -66,20 +67,7 @@ export const TEMPLATE_MISSION_SCRIPTS: Record<string, string> = {
     ),
   ]),
 
-  "freelancer-revenue-engine": missionDoc([
-    windowBlock(
-      "0 9,13,17 * * 1-5",
-      [
-        wake([USER]),
-        "Use tavily-search via Lead Hunter to find in-niche leads that clear the USER.md rate floor.",
-        "Delegate a proposal draft to Proposal Writer (project-scoping) and a next-step date to Project Manager (google-calendar, gmail-ops) per the canvas.",
-        "If invoices are due, delegate chase copy to Invoice & Collections (gmail-ops) without inventing balances.",
-        "Critic gate: Business Development Reviewer must approve outbound before send.",
-        memory(),
-      ],
-      "shared/deliverables/pipeline-cycle.md (leads touched, proposal status, invoice follow-ups)",
-    ),
-  ]),
+  "freelancer-revenue-engine": FREELANCER_HEARTBEAT_MD,
 
   "ecommerce-profit-maximizer": missionDoc([
     windowBlock(

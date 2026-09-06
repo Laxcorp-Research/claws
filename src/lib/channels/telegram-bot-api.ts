@@ -28,14 +28,18 @@ async function telegramCall(
   botToken: string,
   method: string,
   body: Record<string, unknown>,
-): Promise<{ ok: boolean; description?: string }> {
+): Promise<{ ok: boolean; description?: string; result?: Record<string, unknown> }> {
   const res = await fetch(`${TELEGRAM_API}/bot${botToken}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })
-  const json = (await res.json()) as { ok?: boolean; description?: string }
-  return { ok: Boolean(json.ok), description: json.description }
+  const json = (await res.json()) as {
+    ok?: boolean
+    description?: string
+    result?: Record<string, unknown>
+  }
+  return { ok: Boolean(json.ok), description: json.description, result: json.result }
 }
 
 /** Telegram Bot API hard limit for sendMessage text. */
@@ -55,13 +59,19 @@ export function chunkTelegramText(
   return chunks
 }
 
-export async function telegramSendMessage(args: {
+export type TelegramSendResult = {
+  ok: boolean
+  messageId?: number
+}
+
+export async function telegramSendMessageDetailed(args: {
   botToken: string
   chatId: string | number
   text: string
-}): Promise<boolean> {
+}): Promise<TelegramSendResult> {
   try {
     const chunks = chunkTelegramText(args.text)
+    let messageId: number | undefined
     for (const chunk of chunks) {
       const result = await telegramCall(args.botToken, "sendMessage", {
         chat_id: args.chatId,
@@ -69,16 +79,28 @@ export async function telegramSendMessage(args: {
       })
       if (!result.ok) {
         log.warn("telegram sendMessage failed", { description: result.description })
-        return false
+        return { ok: false }
+      }
+      if (messageId === undefined && typeof result.result?.message_id === "number") {
+        messageId = result.result.message_id
       }
     }
-    return true
+    return { ok: true, messageId }
   } catch (err) {
     log.warn("telegram sendMessage error", {
       error: err instanceof Error ? err.message : String(err),
     })
-    return false
+    return { ok: false }
   }
+}
+
+export async function telegramSendMessage(args: {
+  botToken: string
+  chatId: string | number
+  text: string
+}): Promise<boolean> {
+  const result = await telegramSendMessageDetailed(args)
+  return result.ok
 }
 
 /** Point Telegram updates at the platform wake-on-channel webhook (hibernated claws). */

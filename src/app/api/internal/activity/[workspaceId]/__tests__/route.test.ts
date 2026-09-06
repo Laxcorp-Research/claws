@@ -1062,5 +1062,31 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       expect(src).toContain("twitterNudgeFromActivity");
       expect(src).not.toMatch(/\/402\/\.test/);
     });
+
+    it("strips host paths from MESSAGE_SENT before persist (MUTATION: store raw /home/node → fail)", async () => {
+      defaultMocks();
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "MESSAGE_SENT",
+              action: "Replied: PIPELINE",
+              detail:
+                "| **Proposal** | `/home/node/.openclaw/shared/deliverables/proposal-draft.md` |",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+      expect(res.status).toBe(200);
+      const call = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.data.detail).not.toContain("/home/node/.openclaw/");
+      expect(call.data.detail).toContain("shared/deliverables/proposal-draft.md");
+      const src = readFileSync(
+        join(process.cwd(), "src/app/api/internal/activity/[workspaceId]/route.ts"),
+        "utf8",
+      );
+      expect(src).toContain("stripHostMachineryPaths");
+    });
   });
 });
