@@ -50,6 +50,7 @@
 
 import crypto from "node:crypto"
 import { log } from "@/lib/logger"
+import { alpacaAccountUrl } from "@/lib/quant/risk-limits"
 import {
   TWITTER_API_402_COPY,
   TWITTER_API_VALIDATE_URL,
@@ -334,8 +335,8 @@ async function validateBinance(
 
 /**
  * Alpaca: two-header authentication (APCA-API-KEY-ID + APCA-API-SECRET-KEY)
- * against /v2/account on the live endpoint. Paper trading endpoint differs
- * but accepts the same auth format; we probe live first.
+ * against /v2/account. Paper keys (PK…) probe paper-api only. Live keys
+ * probe api.alpaca.markets. Never treat a paper key as live-valid.
  */
 async function validateAlpaca(
   credentials: Record<string, string>,
@@ -347,7 +348,7 @@ async function validateAlpaca(
   )
   if (miss) return miss
 
-  const res = await fetch("https://api.alpaca.markets/v2/account", {
+  const res = await fetch(alpacaAccountUrl(credentials.ALPACA_API_KEY_ID), {
     headers: {
       "APCA-API-KEY-ID": credentials.ALPACA_API_KEY_ID,
       "APCA-API-SECRET-KEY": credentials.ALPACA_API_SECRET_KEY,

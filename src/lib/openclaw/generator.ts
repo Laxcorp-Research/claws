@@ -42,6 +42,7 @@ import {
 } from '@/lib/openclaw/message-delivery';
 import { CLAIMS_TABLE_STEP_MARKER, STRICT_8_DEFINITION } from '@/lib/critic/claims-table';
 import { CRITIC_NE_HUMAN_COPY, mergeOutboundDenyIntoTools, overlayMissionLaw, TOOL_STATUS_TRUTH_COPY } from '@/lib/openclaw/delivery-rail';
+import { QUANT_TEMPLATE_SLUG, quantContainerEnvLines } from '@/lib/quant/risk-limits';
 import { reprobeWorkspaceToolConnections } from '@/lib/tools/reprobe-on-deploy';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
@@ -1362,6 +1363,14 @@ function generateEnvFile(
   // Timezone - container process TZ is always UTC (matches buildRailwayEnvVars).
   // Workspace timezone remains for cron schedule.tz + USER.md context only.
   lines.push('TZ=UTC');
+
+  if (workspace.clawTemplate?.slug === QUANT_TEMPLATE_SLUG) {
+    lines.push('')
+    lines.push('# Quant risk rail (machine-owned; LLM cannot override)')
+    for (const line of quantContainerEnvLines(workspace.deliveryMode)) {
+      lines.push(line)
+    }
+  }
 
   return lines.join('\n');
 }

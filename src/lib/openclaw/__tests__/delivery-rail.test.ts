@@ -32,6 +32,7 @@ describe("B-3 delivery rail", () => {
   it("AUTO_PROCEED still denies tools that are not autonomous-capable", () => {
     expect(shouldDenyOutboundAction({ deliveryMode: "AUTO_PROCEED", toolName: "message" })).toBe(true)
     expect(outboundDenyList("AUTO_PROCEED")).toContain("message")
+    expect(shouldDenyOutboundAction({ deliveryMode: "AUTO_PROCEED", toolName: "exec" })).toBe(true)
   })
 
   it("merge is mechanical (not prose-only)", () => {
