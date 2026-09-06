@@ -5,6 +5,12 @@ import {
 import type { WorkflowDeliveryMode } from "@/lib/openclaw/workflow-language"
 import { TWITTER_TOKEN_CANNOT_POST_COPY } from "@/lib/tools/twitter-api-honesty"
 
+export {
+  evaluateQuantPaperOrder,
+  isAlpacaLiveUrl,
+  QUANT_LLM_CANNOT_OVERRIDE_COPY,
+} from "@/lib/quant/risk-limits"
+
 /**
  * Mechanical "Ask before acting" rail.
  * Outbound post/send/execute tools stay denied until the human flips

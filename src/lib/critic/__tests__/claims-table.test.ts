@@ -185,5 +185,13 @@ Verdict: PASS`
     const critic = freelancer.agents.find((a) => a.agentSlug === "business-development-reviewer")!
     expect(critic.soulMd).toContain(CRITIC_DIMENSION_TABLE_HEADER)
     expect(critic.soulMd).toContain("Never a bare mean")
+    const quantTable = `${CRITIC_DIMENSION_TABLE_HEADER}
+| thesis-quality | 8 | stop present |
+| risk-adherence | 8 | under cap |
+| evidence | 8 | tavily id |
+| regime-fit | 8 | in-universe |
+Verdict: PASS`
+    expect(hasFourDimensionScoreTable(quantTable)).toBe(true)
+    expect(isBareMeanVerdict(`${bare}\n${quantTable}`)).toBe(false)
   })
 })

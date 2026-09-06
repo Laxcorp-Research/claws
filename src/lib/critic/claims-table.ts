@@ -16,6 +16,12 @@ export const CLAIMS_TABLE_STEP_MARKER = "Claims table (mandatory)"
 
 export const CRITIC_DIMENSION_TABLE_HEADER = "| Dimension | Score | Anchor |"
 export const CRITIC_SCORE_DIMENSIONS = ["fit", "pricing", "specificity", "tone"] as const
+export const QUANT_CRITIC_SCORE_DIMENSIONS = [
+  "thesis-quality",
+  "risk-adherence",
+  "evidence",
+  "regime-fit",
+] as const
 
 const BARE_MEAN_VERDICT_RE = /\bPASS\b[^\n]{0,40}\bmean\b/i
 
@@ -50,11 +56,21 @@ Verdict vocabulary is PASS or REJECT only. There is no pass-with-warning.
 
 ${STRICT_8_DEFINITION}`
 
+function hasNamedDimensionScoreTable(
+  text: string,
+  dimensions: readonly string[],
+): boolean {
+  if (!/\|\s*Dimension\s*\|\s*Score\s*\|\s*Anchor\s*\|/i.test(text)) return false
+  return dimensions.every((dim) =>
+    new RegExp(`\\|\\s*${dim}\\s*\\|\\s*\\d+(?:\\.\\d+)?\\s*\\|`, "i").test(text),
+  )
+}
+
 export function hasFourDimensionScoreTable(text: string | null | undefined): boolean {
   if (!text) return false
-  if (!/\|\s*Dimension\s*\|\s*Score\s*\|\s*Anchor\s*\|/i.test(text)) return false
-  return CRITIC_SCORE_DIMENSIONS.every((dim) =>
-    new RegExp(`\\|\\s*${dim}\\s*\\|\\s*\\d+(?:\\.\\d+)?\\s*\\|`, "i").test(text),
+  return (
+    hasNamedDimensionScoreTable(text, CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, QUANT_CRITIC_SCORE_DIMENSIONS)
   )
 }
 

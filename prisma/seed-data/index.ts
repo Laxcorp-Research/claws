@@ -9,6 +9,7 @@ import { applyInterviewSeed } from "./interview-packs"
 import { applyMissionScripts } from "./mission-scripts"
 import { applyWave0Twitter } from "./wave-0-twitter"
 import { applyWave1Freelancer } from "./wave-1-freelancer"
+import { applyWave1Quant } from "./wave-1-quant"
 import type { SeedTemplate } from "./types"
 
 export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
@@ -28,6 +29,14 @@ export {
   FREELANCER_FIRST_MISSION_PROSE,
   INVOICE_ESCALATION_LADDER,
 } from "./wave-1-freelancer"
+export {
+  applyWave1Quant,
+  QUANT_WAVE1_SLUG,
+  QUANT_HEARTBEAT_MD,
+  QUANT_FIRST_MISSION_PROSE,
+  INVENTED_BACKTEST_FIXTURE,
+  DRAWDOWN_LADDER,
+} from "./wave-1-quant"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -42,6 +51,7 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   .map(applyMissionScripts)
   .map(applyWave0Twitter)
   .map(applyWave1Freelancer)
+  .map(applyWave1Quant)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)

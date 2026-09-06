@@ -21,7 +21,8 @@ export const TEMPLATE_INTERVIEW_PACKS: Record<string, InterviewQuestion[]> = {
   "quant-trader": [
     q("universe", "Which markets and instruments are in-bounds (equities, crypto, perps, prediction markets)?", "tradable universe"),
     q("accounts", "Which brokerage or exchange accounts should the claw use, and which are paper vs live?", "account map"),
-    q("risk_floors", "What is max position size, daily loss limit, and kill-switch rule?", "risk floors"),
+    q("risk_floors", "What is max position size, daily loss limit, and kill-switch rule? These may only tighten the container QUANT_* caps (2% name / 3% daily). The model cannot raise them.", "risk floors"),
+    q("delivery_mode", "Default is ALERT-ONLY: theses and alerts, no orders. Autonomous paper-execute is opt-in and still bound by container QUANT_* limits the model cannot override. Which mode?", "delivery mode"),
     q("horizon", "Typical hold time and whether overnight risk is allowed?", "horizon"),
     q("reporting", "How do you want P&L reported (cadence, currency, what to flag)?", "reporting prefs"),
   ],

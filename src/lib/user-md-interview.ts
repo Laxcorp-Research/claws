@@ -5,6 +5,10 @@ import {
   FREELANCER_FIRST_MISSION_PROSE,
   FREELANCER_WAVE1_SLUG,
 } from "../../prisma/seed-data/wave-1-freelancer"
+import {
+  QUANT_FIRST_MISSION_PROSE,
+  QUANT_WAVE1_SLUG,
+} from "../../prisma/seed-data/wave-1-quant"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
 import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
@@ -84,7 +88,9 @@ If the human says "update my profile", rewrite that file from the conversation a
       ? `\n\n${TWITTER_FIRST_MISSION_PROSE}`
       : input.templateSlug === FREELANCER_WAVE1_SLUG
         ? `\n\n${FREELANCER_FIRST_MISSION_PROSE}`
-        : ""
+        : input.templateSlug === QUANT_WAVE1_SLUG
+          ? `\n\n${QUANT_FIRST_MISSION_PROSE}`
+          : ""
   return `${always}
 
 ## First-boot interview
