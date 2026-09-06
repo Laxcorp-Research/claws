@@ -38,6 +38,12 @@ export const UNPACK_NODE_SCRIPT = [
   'if(process.env.CLAWS_ENV_GZ_B64)w(path.join(d,".env"),g(process.env.CLAWS_ENV_GZ_B64));else if(process.env.CLAWS_ENV_B64)w(path.join(d,".env"),b(process.env.CLAWS_ENV_B64));',
   'if(process.env.CLAWS_FILES_GZ_B64){const f=JSON.parse(g(process.env.CLAWS_FILES_GZ_B64));for(const[p,c]of Object.entries(f))if(safe(p))w(path.join(d,p),String(c))}else if(process.env.CLAWS_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_FILES_B64));for(const[p,c]of Object.entries(f))if(safe(p))w(path.join(d,p),String(c))};',
   'if(process.env.CLAWS_SEED_FILES_GZ_B64){const f=JSON.parse(g(process.env.CLAWS_SEED_FILES_GZ_B64));for(const[p,c]of Object.entries(f))if(safe(p))wa(path.join(d,p),String(c))}else if(process.env.CLAWS_SEED_FILES_B64){const f=JSON.parse(b(process.env.CLAWS_SEED_FILES_B64));for(const[p,c]of Object.entries(f))if(safe(p))wa(path.join(d,p),String(c))};',
+  // INFRA-5 A4: relative shared/... from a worker cwd must hit host shared/.
+  // Target is ../shared (equals /home/node/.openclaw/shared in prod). Do not
+  // replace an existing real directory. No single quotes: this script is
+  // embedded in a sh -e string.
+  'const ln=()=>{const h=path.join(d,"shared");fs.mkdirSync(h,{recursive:true});for(const n of fs.readdirSync(d)){if(!n.startsWith("workspace-"))continue;const ws=path.join(d,n);try{if(!fs.statSync(ws).isDirectory())continue}catch(e){continue}const l=path.join(ws,"shared");if(fs.existsSync(l))continue;try{fs.symlinkSync(path.join("..","shared"),l,"dir")}catch(e){if(process.platform==="win32")fs.symlinkSync(h,l,"junction");else throw e}}};',
+  'ln();',
   'console.log("Unpack complete. Files:",fs.readdirSync(d).join(", "))',
 ].join('');
 
