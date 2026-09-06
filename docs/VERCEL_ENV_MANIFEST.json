@@ -103,6 +103,41 @@
       "whereCreated": "Vercel optional; falls back to NEXTAUTH_URL then staging host — set Production explicitly to prod host"
     },
     {
+      "name": "ADMIN_ALERT_EMAIL",
+      "purpose": "Founder-plane email sink for sendOwnerAlert and credit-pool-monitor. Never a customer inbox.",
+      "required": true,
+      "surfaces": ["src/lib/alerts/owner-alert.ts", "src/app/api/cron/credit-pool-monitor"],
+      "whereCreated": "Vercel Production + Preview (Sensitive). Must match the Resend-verified founder inbox"
+    },
+    {
+      "name": "FOUNDER_TELEGRAM_BOT_TOKEN",
+      "purpose": "Bot token for sendOwnerAlert founder Telegram fan-out (not a workspace claw bot)",
+      "required": true,
+      "surfaces": ["src/lib/alerts/owner-alert.ts"],
+      "whereCreated": "Vercel Production + Preview (Sensitive). Founder-plane bot, chat 1227037949"
+    },
+    {
+      "name": "FOUNDER_TELEGRAM_CHAT_ID",
+      "purpose": "Founder Telegram chat id for sendOwnerAlert (1227037949)",
+      "required": true,
+      "surfaces": ["src/lib/alerts/owner-alert.ts"],
+      "whereCreated": "Vercel Production + Preview (Sensitive)"
+    },
+    {
+      "name": "RAILWAY_CREATE_DAILY_CAP",
+      "purpose": "Max Railway service creates per UTC day before governor blocks (default 25)",
+      "required": false,
+      "surfaces": ["src/lib/railway/governor-budget.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default 25 if unset"
+    },
+    {
+      "name": "RAILWAY_CREATE_SAFETY_MARGIN",
+      "purpose": "Reserve Railway create slots so a burst cannot consume the full daily cap (default 2)",
+      "required": false,
+      "surfaces": ["src/lib/railway/governor-budget.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default 2 if unset"
+    },
+    {
       "name": "MARKETPLACE_PUBLISH_ENABLED",
       "purpose": "Server gate for creator publish wizards + POST publish APIs",
       "required": false,

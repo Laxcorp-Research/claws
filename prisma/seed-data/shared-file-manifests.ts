@@ -224,13 +224,50 @@ const LOG = stub({
   starter: "_No sessions logged. Habit & Recovery Tracker appends daily rows._",
 })
 
+const PIPELINE = stub({
+  path: "shared/PIPELINE.md",
+  title: "PIPELINE.md",
+  maintainedBy: "lead-hunter",
+  schema: [
+    "id: short lead id",
+    "score: 0-100",
+    "status: new | scored | proposed | won | dropped",
+    "source: tavily tool result",
+  ],
+  starter: "_No hunt yet. WAVE-1 Lead Hunter maintains this file._",
+})
+
+const CLIENTS = stub({
+  path: "shared/CLIENTS.md",
+  title: "CLIENTS.md",
+  maintainedBy: "project-manager",
+  schema: [
+    "client: name",
+    "scope: signed deliverables",
+    "invoices: amount and ladder step",
+  ],
+  starter: "_No clients yet. WAVE-1 PM and Invoice maintain this file._",
+})
+
+const PROPOSALS = stub({
+  path: "shared/PROPOSALS.md",
+  title: "PROPOSALS.md",
+  maintainedBy: "proposal-writer",
+  schema: [
+    "lead-id: from PIPELINE.md",
+    "verdict: PASS | REJECT | awaiting-human",
+    "price: number or placeholder",
+  ],
+  starter: "_No proposals yet. WAVE-1 Proposal Writer maintains this file._",
+})
+
 /**
  * Named files per template slug (MEMORY.md is prepended by applySharedFiles).
  * Every one of the 20 slugs must appear - empty array = MEMORY.md only.
  */
 export const TEMPLATE_NAMED_FILES: Record<string, SeedSharedFile[]> = {
   "quant-trader": [PORTFOLIO],
-  "freelancer-revenue-engine": [],
+  "freelancer-revenue-engine": [PIPELINE, CLIENTS, PROPOSALS],
   "ecommerce-profit-maximizer": [],
   "youtube-channel-os": [VOICE_YOUTUBE],
   "twitter-growth-machine": [VOICE_TWITTER],

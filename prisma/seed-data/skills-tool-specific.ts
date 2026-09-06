@@ -40,7 +40,21 @@ Do not:
 - Use Tavily as a substitute when a Bearer-header curl to twitter-api returns 401 (tell the human the Bearer is dead; reconnect in Manage Tools).
 - Treat web_fetch 401 on api.twitter.com as a dead token. web_fetch does not send Authorization. Retry with curl and an Authorization Bearer header.
 - Treat twitter-api 402 as "down". 402 is tier-not-entitled: run Tavily-only and tell the human X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
-- Pull more than 3 queries per heartbeat window.`,
+- Pull more than 3 queries per heartbeat window.
+
+## Freelancer lead-scan patterns
+
+Lead Hunter hunts with Tavily only. Upwork is an empty-credential stub: never claim an Upwork search ran.
+
+Patterns:
+1. Niche + buyer: \`<USER.md service> for <ideal client> (RFP OR "looking for" OR "need a")\` + recency. max_results 5.
+2. Floor bind: drop any result that names a budget below the USER.md floor. Do not "relationship play" it.
+3. Extract: if a result URL is the brief, extract that URL instead of a second vague search.
+
+Do not:
+- Query "freelance jobs" with no niche (noise).
+- Invent a posting, budget, or client name when Tavily is down (mark DEGRADED).
+- Write "found on Upwork".`,
     type: "TOOL_SPECIFIC",
     category: "SEARCH",
     icon: "🔎",
@@ -1709,7 +1723,16 @@ Every \`composio.tools.execute\` response follows:
 Check \`successful\` before trusting \`data\`. Common failures:
 - **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Gmail" to the human.
 - **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.
+
+## Freelancer draft-only (invoice + proposal)
+
+Invoice & Collections and Project Manager draft with Gmail. They never send.
+
+- Proposal and invoice copy stay drafts until the human says send.
+- Never-send-without-approval: do not call \`GMAIL_SEND_EMAIL\` unless the human explicitly approved that exact draft in this session.
+- If OAuth is missing or revoked: draft the copy in the deliverable file and say "reconnect Gmail". Never claim you sent.
+- Chase copy follows the Day-0 to +30 ladder. No legal threats.`,
     type: "TOOL_SPECIFIC",
     category: "EMAIL_SENDER",
     icon: "📧",
@@ -1791,7 +1814,15 @@ Every \`composio.tools.execute\` response follows:
 Check \`successful\` before trusting \`data\`. Common failures:
 - **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Google Calendar" to the human.
 - **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.
+
+## Freelancer check-in holds
+
+Project Manager may create a hold titled \`[Claws] <client> check-in\`.
+
+- Never invite the client without the human's explicit approval.
+- If Calendar is missing or revoked: write the date into PIPELINE.md only. Do not invent an event.
+- Daily async holds are for the human, not the client.`,
     type: "TOOL_SPECIFIC",
     category: "CALENDAR",
     icon: "🗓️",

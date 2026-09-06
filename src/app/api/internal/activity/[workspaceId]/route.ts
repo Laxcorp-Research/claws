@@ -53,6 +53,7 @@ import { eventSignalsUserMdInterviewComplete } from "@/lib/user-md-interview";
 import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
 import { applyInboundApprovalCommand } from "@/lib/artifacts/approval-command";
 import { twitterNudgeFromActivity } from "@/lib/tools/twitter-api-honesty";
+import { stripHostMachineryPaths } from "@/lib/security/sanitize";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -535,8 +536,8 @@ export async function POST(
           // dashboard filters by agentSlug, so a stale row is still
           // attributable to the right agent slot.
           agentSlug: agent?.agentSlug ?? resolvedAgentId ?? null,
-          action: ev.action,
-          detail: ev.detail,
+          action: stripHostMachineryPaths(ev.action),
+          detail: ev.detail ? stripHostMachineryPaths(ev.detail) : ev.detail,
           actionType: ev.type,
           channelId: ev.channelId,
           metadata: JSON.stringify({

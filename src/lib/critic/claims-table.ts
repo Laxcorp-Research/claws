@@ -14,6 +14,11 @@ export type ClaimRow = {
 
 export const CLAIMS_TABLE_STEP_MARKER = "Claims table (mandatory)"
 
+export const CRITIC_DIMENSION_TABLE_HEADER = "| Dimension | Score | Anchor |"
+export const CRITIC_SCORE_DIMENSIONS = ["fit", "pricing", "specificity", "tone"] as const
+
+const BARE_MEAN_VERDICT_RE = /\bPASS\b[^\n]{0,40}\bmean\b/i
+
 export const STRICT_8_DEFINITION =
   "Strict-8: overall (mean of the scored dimensions) is at or above the knob AND no dimension is below knob minus 2. Verdict is PASS or REJECT only. There is no pass-with-warning."
 
@@ -44,6 +49,20 @@ URLs: only URLs present in a tool result may appear in the draft. Otherwise repl
 Verdict vocabulary is PASS or REJECT only. There is no pass-with-warning.
 
 ${STRICT_8_DEFINITION}`
+
+export function hasFourDimensionScoreTable(text: string | null | undefined): boolean {
+  if (!text) return false
+  if (!/\|\s*Dimension\s*\|\s*Score\s*\|\s*Anchor\s*\|/i.test(text)) return false
+  return CRITIC_SCORE_DIMENSIONS.every((dim) =>
+    new RegExp(`\\|\\s*${dim}\\s*\\|\\s*\\d+(?:\\.\\d+)?\\s*\\|`, "i").test(text),
+  )
+}
+
+/** Bare "PASS (8.0/10 mean)" with no dimension table. Chat must not ship this. */
+export function isBareMeanVerdict(text: string | null | undefined): boolean {
+  if (!text) return false
+  return BARE_MEAN_VERDICT_RE.test(text) && !hasFourDimensionScoreTable(text)
+}
 
 export function formatClaimsTable(rows: ClaimRow[]): string {
   const lines = ["| Claim | Source |", "| --- | --- |"]

@@ -9,7 +9,14 @@ const SHARED = "/home/node/.openclaw/shared"
 
 const EXPECTED_NAMED: Record<string, string[]> = {
   "quant-trader": ["shared/PORTFOLIO.md"],
-  "freelancer-revenue-engine": [],
+  "freelancer-revenue-engine": [
+    "shared/PIPELINE.md",
+    "shared/CLIENTS.md",
+    "shared/PROPOSALS.md",
+    "shared/deliverables/proposal-draft.md",
+    "shared/deliverables/invoice-cycle.md",
+    "shared/deliverables/weekly-pipeline.md",
+  ],
   "ecommerce-profit-maximizer": [],
   "youtube-channel-os": ["shared/VOICE.md"],
   "twitter-growth-machine": [
@@ -37,6 +44,9 @@ const EXPECTED_NAMED: Record<string, string[]> = {
 
 const PROSE_BINDS: Array<{ slug: string; agentSlug: string; needle: string }> = [
   { slug: "quant-trader", agentSlug: "portfolio-tracker", needle: `${SHARED}/PORTFOLIO.md` },
+  { slug: "freelancer-revenue-engine", agentSlug: "lead-hunter", needle: `${SHARED}/PIPELINE.md` },
+  { slug: "freelancer-revenue-engine", agentSlug: "proposal-writer", needle: `${SHARED}/PROPOSALS.md` },
+  { slug: "freelancer-revenue-engine", agentSlug: "project-manager", needle: `${SHARED}/CLIENTS.md` },
   { slug: "twitter-growth-machine", agentSlug: "content-writer", needle: `${SHARED}/VOICE.md` },
   { slug: "youtube-channel-os", agentSlug: "script-builder", needle: `${SHARED}/VOICE.md` },
   { slug: "newsletter-empire", agentSlug: "draft-writer", needle: `${SHARED}/VOICE.md` },
@@ -77,7 +87,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(57)
+    expect(total).toBe(63)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
