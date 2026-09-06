@@ -42,6 +42,11 @@ import {
 } from '@/lib/openclaw/message-delivery';
 import { CLAIMS_TABLE_STEP_MARKER, STRICT_8_DEFINITION } from '@/lib/critic/claims-table';
 import { CRITIC_NE_HUMAN_COPY, mergeOutboundDenyIntoTools, overlayMissionLaw, TOOL_STATUS_TRUTH_COPY } from '@/lib/openclaw/delivery-rail';
+import {
+  collectAttachedSkillSlugs,
+  disableBundledWebSearch,
+  mergeSkillShadowDenyIntoTools,
+} from '@/lib/openclaw/skill-shadow-deny';
 import { QUANT_TEMPLATE_SLUG, quantContainerEnvLines } from '@/lib/quant/risk-limits';
 import { reprobeWorkspaceToolConnections } from '@/lib/tools/reprobe-on-deploy';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
@@ -532,6 +537,7 @@ function generateOpenClawConfig(
   const customApiSkillSlugs = Array.from(
     deriveCustomApiIdentities(workspace.customToolConnections ?? []).values(),
   ).map((identity) => identity.slug);
+  const attachedSkillSlugs = collectAttachedSkillSlugs(workspace);
 
   // Build agents.list - one entry per agent in the Claw
   const agentsList = runtimeAgents.map(agent => {
@@ -594,6 +600,11 @@ function generateOpenClawConfig(
     entry.tools = mergeOutboundDenyIntoTools(
       entry.tools as Record<string, unknown> | undefined,
       workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
+    );
+
+    entry.tools = mergeSkillShadowDenyIntoTools(
+      entry.tools as Record<string, unknown> | undefined,
+      attachedSkillSlugs,
     );
 
     return entry;
@@ -702,6 +713,19 @@ function generateOpenClawConfig(
     config.tools as Record<string, unknown>,
     workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
   );
+
+  // Attached search skills replace bundled web_search. Deny the shadow so
+  // agents cannot call kimi/web_search when tavily-search is on the claw.
+  const toolsAfterShadow = mergeSkillShadowDenyIntoTools(
+    config.tools as Record<string, unknown>,
+    attachedSkillSlugs,
+  );
+  const shadowDeny = Array.isArray(toolsAfterShadow.deny)
+    ? (toolsAfterShadow.deny as unknown[]).filter((d): d is string => typeof d === 'string')
+    : [];
+  config.tools = shadowDeny.includes('web_search')
+    ? disableBundledWebSearch(toolsAfterShadow)
+    : toolsAfterShadow;
 
   // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
   // non-null when CLAWS_MCP_LONGTAIL_ENABLED=true AND the workspace has
@@ -2130,7 +2154,16 @@ function generateToolsMd(
   const spawnSection = agent.role === 'ORCHESTRATOR'
     ? generateOrchestratorSpawnToolsSection()
     : '';
-  const searchSection = workspaceHasSearchBackend(workspace)
+  const searchSkillAttached = collectAttachedSkillSlugs(workspace).some(
+    (slug) => slug === 'tavily-search' || slug === 'brave-search',
+  );
+  const searchSection = searchSkillAttached
+    ? `
+## Web Search
+
+\`web_search\` is denied. A search skill is attached on this Claw. Call the attached skill, not the bundled tool. Use \`web_fetch\` for specific URLs.
+`
+    : workspaceHasSearchBackend(workspace)
     ? ''
     : `
 ## Web Search

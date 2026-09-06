@@ -99,3 +99,30 @@ Minimum gate for such PRs:
 3. `npm run build` green — paste the final `✓ Compiled successfully` (or
    equivalent) line in the PR description.
 4. Linter diagnostics clean on every file in the diff.
+
+## Rule 38 - main is promote-only
+
+The only legal pull request targeting `main` is the promote PR, whose head
+branch is `staging`. Feature work opens against `staging`. `.github/workflows/lane-gate.yml`
+fails any other `pull_request` to `main`.
+
+**Repo branch-protection note:** after this workflow exists on `main` (it
+arrives via promote, same as every other change), add the check
+`PRs to main must come from staging` as a required status check on `main`.
+Do not allow administrators to bypass it for routine merges. Direct pushes
+to `main` stay blocked.
+
+**Incident #509:** `gh pr create` without `--base staging` defaulted to
+`main` and merged Quant overlay `69c0dd3`. That skip meant
+`promote-to-production.yml` never ran. Confirm it carried **no** Prisma
+migration:
+
+```
+$ git diff --name-only 69c0dd3^1 69c0dd3 -- prisma/migrations/
+# (empty)
+$ git log -1 --format=%P 69c0dd3
+f30bc3b4aa1089dc8005c47207a52d24f7e754f4 99286cdee86428005c341f8610c16a71880df589
+```
+
+First parent is previous `main` (`f30bc3b`). The path filter listed nothing
+under `prisma/migrations/`. Never again: always `gh pr create --base staging`.

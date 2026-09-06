@@ -12,6 +12,13 @@ import {
   QUANT_MAX_POSITION_PCT_DEFAULT,
   QUANT_TEMPLATE_SLUG,
 } from "../../src/lib/quant/risk-limits"
+import {
+  AFRM_PACKET_FIXTURE,
+  DECORATIVE_EQUITY_FIXTURE,
+  REJECT_MISSING_TABLE,
+  REJECT_UNSOURCED_FIGURE,
+  UNKNOWN_UNTIL_BROKER,
+} from "../../src/lib/quant/critic-gate"
 
 export const QUANT_WAVE1_SLUG = QUANT_TEMPLATE_SLUG
 
@@ -141,10 +148,10 @@ Deliverable: ${SHARED}/deliverables/paper-ticket.md
 
 ## window 0 20 * * 1-5
 1. Wake. Read ${USER}, ${PORTFOLIO}, ${THESES}.
-2. Portfolio Tracker: EOD risk report. Marks from tools or [YOUR NUMBER]. Never invent P&L.
-3. Failure: alpaca missing → report "marks unknown". Do not invent a day P&L.
-4. Apply the drawdown ladder. If 3% or 5% rung, say the halt in chat.
-5. Critic gate the report for invented marks. Paste the report verbatim.
+2. Portfolio Tracker: EOD risk report. Marks from tool:alpaca or ${UNKNOWN_UNTIL_BROKER}. Never invent P&L. Never $100k.
+3. Failure: alpaca missing → report ${UNKNOWN_UNTIL_BROKER}. Do not invent a day P&L. Do not size the ladder against a synthetic book.
+4. Apply the drawdown ladder only against broker equity. If 3% or 5% rung, say the halt in chat.
+5. Critic: reviewQuantPacket on the report (claims table mandatory). Paste the report verbatim.
 6. Write ${SHARED}/deliverables/eod-risk-report.md.
 Deliverable: ${SHARED}/deliverables/eod-risk-report.md
 `
@@ -301,19 +308,21 @@ const BACKTESTER_AGENTS = `# Execution
 
 const TRACKER_SOUL = `# Identity
 
-You are Portfolio Tracker. You keep ${PORTFOLIO} honest. Marks come from tools or [YOUR NUMBER].
+You are Portfolio Tracker. You keep ${PORTFOLIO} honest. Marks come from tools or ${UNKNOWN_UNTIL_BROKER}. Never a decorative book.
 
 # Ledger
 
 Every row: symbol, side, qty, avg, mark source, thesis pointer. No fill → no row.
+No broker connected: Equity and Day P&L are ${UNKNOWN_UNTIL_BROKER}. Do not write $100k or any other invented equity. Ban: ${DECORATIVE_EQUITY_FIXTURE.split("\n")[0]}.
 
 # EOD risk report
 
-Use the Format in deliverables/eod-risk-report.md. Invented P&L is a lie.
+Use the Format in deliverables/eod-risk-report.md. Invented P&L is a lie. The report goes through reviewQuantPacket. Missing claims table is ${REJECT_MISSING_TABLE}. A $ figure without a tool-alpaca or PORTFOLIO line is ${REJECT_UNSOURCED_FIGURE}.
 
 # Never
 
 - Never invent a fill or a day P&L.
+- Never size the drawdown ladder against a synthetic book.
 - Never modify a row without a tool fill or a human note.
 `
 
@@ -358,7 +367,7 @@ Does the setup match ${USER} universe, horizon, and overnight rule? Out-of-unive
 # ${CLAIMS_TABLE_STEP_MARKER}
 
 | Claim | Source |
-covering every factual claim. Source is USER.md, shared/THESES.md, a tool result id, or ${URL_PLACEHOLDER}.
+covering every factual claim. Source is a tool result id (tool: / tavily: / tool:alpaca:) or a PORTFOLIO.md / WATCHLIST.md / THESES.md line. Not a URL. Not USER.md. ${URL_PLACEHOLDER} is not a source. reviewQuantPacket is the net - thesis and EOD both go through it.
 
 # Verdict
 
@@ -371,8 +380,10 @@ ONE thing to fix on REJECT. Rewritten example line required.
 - No stop
 - Size above QUANT_MAX_POSITION_PCT
 - Live Alpaca URL
-- Missing claims table
+- ${REJECT_MISSING_TABLE}: no \`| Claim | Source |\`. Fixture: ${AFRM_PACKET_FIXTURE.split("\n")[0]} (task briefing).
+- ${REJECT_UNSOURCED_FIGURE}: any $ figure without a valid source. Fixture: ${DECORATIVE_EQUITY_FIXTURE.split("\n")[0]} ($100k synthetic).
 - Bare mean with no dimension table
+- Equity or day P&L as a number while the broker is disconnected (write ${UNKNOWN_UNTIL_BROKER})
 `
 
 const CRITIC_AGENTS = `# Execution
@@ -431,17 +442,17 @@ export const WAVE1_PORTFOLIO_MD = fileDoc({
     "side: long | short",
     "qty: size",
     "avg: entry mark",
-    "mark-source: tool id or [YOUR NUMBER]",
+    "mark-source: tool id or unknown until a broker is connected",
     "thesis: THESES.md id",
   ],
   format: `## <date> book
-Equity: number or unknown
-Day P&L: number or unknown
+Equity: number from tool:alpaca or unknown until a broker is connected
+Day P&L: number from tool:alpaca or unknown until a broker is connected
 Rung: 0 | 1% | 3% | 5%
 Rows:
 - symbol / side / qty / avg / mark-source / thesis`,
   example: `## 2026-09-08 book
-Equity: unknown (alpaca not connected this window)
+Equity: unknown
 Day P&L: unknown
 Rung: 0
 Rows:
@@ -541,7 +552,7 @@ NVDA long, alpaca-paper. After-hours print +1.8% (tool:tavily:r3). Entry [YOUR N
 ## Claims table
 | Claim | Source |
 | After-hours print +1.8% | tool:tavily:r3 |
-| Size under container cap | QUANT_MAX_POSITION_PCT |
+| Size under container cap | shared/PORTFOLIO.md:8 |
 
 ## Critic
 ${CRITIC_DIMENSION_TABLE_HEADER}
@@ -577,7 +588,7 @@ Fill: none. Drafted, awaiting your approval to paper-execute.`,
     title: "eod-risk-report.md",
     maintainedBy: "trade-commander after Portfolio Tracker",
     schema: [
-      "equity / day P&L: tool or unknown",
+      "equity / day P&L: tool:alpaca or unknown until a broker is connected",
       "rung on the drawdown ladder",
       "open names",
       "one change or no change",
