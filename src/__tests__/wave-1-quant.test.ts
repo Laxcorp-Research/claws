@@ -14,6 +14,13 @@ import {
   STRICT_8_DEFINITION,
 } from "@/lib/critic/claims-table"
 import { QUANT_LLM_CANNOT_OVERRIDE_COPY } from "@/lib/quant/risk-limits"
+import {
+  AFRM_PACKET_FIXTURE,
+  DECORATIVE_EQUITY_FIXTURE,
+  REJECT_MISSING_TABLE,
+  REJECT_UNSOURCED_FIGURE,
+  UNKNOWN_UNTIL_BROKER,
+} from "@/lib/quant/critic-gate"
 import { formatInterviewBootSection, getInterviewPack } from "@/lib/user-md-interview"
 import { AUTONOMOUS_CAPABLE_TOOLS } from "@/lib/openclaw/delivery-rail"
 
@@ -65,6 +72,11 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     expect(soul).toContain("| Claim | Source |")
     expect(soul).toContain(INVENTED_BACKTEST_FIXTURE)
     expect(soul).toContain(STRICT_8_DEFINITION)
+    expect(soul).toContain(REJECT_MISSING_TABLE)
+    expect(soul).toContain(REJECT_UNSOURCED_FIGURE)
+    expect(soul).toContain(AFRM_PACKET_FIXTURE.split("\n")[0])
+    expect(soul).toContain(DECORATIVE_EQUITY_FIXTURE.split("\n")[0])
+    expect(soul).toContain("reviewQuantPacket")
     expect(soul).toMatch(/\bPASS\b/)
     expect(soul).toMatch(/\bREJECT\b/)
     expect(soul).not.toMatch(/present best-with-warning/)
@@ -153,5 +165,18 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     expect(commander).not.toContain("The market is a complex adaptive system")
     expect(commander).not.toContain("Speed matters less than accuracy")
     expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual([])
+  })
+
+  it("PORTFOLIO and EOD stay unknown until a broker is connected", () => {
+    const files = quant().files ?? []
+    const portfolio = files.find((f) => f.path === "shared/PORTFOLIO.md")
+    const eod = files.find((f) => f.path === "shared/deliverables/eod-risk-report.md")
+    expect(portfolio?.content).toContain(`Equity: ${UNKNOWN_UNTIL_BROKER}`)
+    expect(portfolio?.content).toContain("unknown until a broker is connected")
+    expect(portfolio?.content).not.toMatch(/\$100k/)
+    expect(eod?.content).toContain(`Equity: ${UNKNOWN_UNTIL_BROKER}`)
+    expect(eod?.content).toContain("unknown until a broker is connected")
+    expect(agent("portfolio-tracker").soulMd).toContain(UNKNOWN_UNTIL_BROKER)
+    expect(agent("portfolio-tracker").soulMd).toContain("reviewQuantPacket")
   })
 })
