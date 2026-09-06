@@ -761,7 +761,7 @@ Use \`paper-api\` for paper trading. Never curl \`api.alpaca.markets\` from this
 
 ## Quant paper-keys path
 - Default QUANT_DELIVERY_MODE is ALERT_ONLY: GET account/positions only. Never POST /v2/orders.
-- Autonomous paper-execute still requires the delivery rail (\`evaluateQuantPaperOrder\`). Live host is always denied. QUANT_* env is machine-owned — the model cannot raise caps or clear the kill switch.
+- Autonomous paper-execute still requires the delivery rail (\`evaluateQuantPaperOrder\`). Live host is always denied. QUANT_* env is machine-owned - the model cannot raise caps or clear the kill switch.
 - Paper keys start with \`PK\`. Probe \`paper-api.alpaca.markets\` only for those keys.
 - No-invented-backtests: this skill does not return historical Sharpe. If you did not pull a series, write "no backtest: no series".`,
     type: "TOOL_SPECIFIC",
