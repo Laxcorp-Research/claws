@@ -415,9 +415,21 @@ describe("alpaca validator (multi-cred)", () => {
     await validateToolKey("alpaca", creds)
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     const headers = init?.headers as Record<string, string>
-    expect(String(url)).toContain("api.alpaca.markets")
+    expect(String(url)).toContain("paper-api.alpaca.markets")
+    expect(String(url)).not.toContain("://api.alpaca.markets")
     expect(headers["APCA-API-KEY-ID"]).toBe("PK-key")
     expect(headers["APCA-API-SECRET-KEY"]).toBe("alpaca-secret")
+  })
+
+  it("probes live host only for non-PK keys", async () => {
+    mockFetchOnce({ status: 200 })
+    await validateToolKey("alpaca", {
+      ALPACA_API_KEY_ID: "AK-live",
+      ALPACA_API_SECRET_KEY: "alpaca-secret",
+    })
+    const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(String(url)).toContain("://api.alpaca.markets")
+    expect(String(url)).not.toContain("paper-api.alpaca.markets")
   })
 })
 
