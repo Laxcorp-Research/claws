@@ -1,6 +1,7 @@
 import type { SeedTemplate } from "./types"
 import { TWITTER_HEARTBEAT_MD } from "./wave-0-twitter"
 import { FREELANCER_HEARTBEAT_MD } from "./wave-1-freelancer"
+import { QUANT_HEARTBEAT_MD } from "./wave-1-quant"
 
 /**
  * INFRA-4 baseline mission scripts. Waves polish category excellence.
@@ -52,20 +53,7 @@ function memory(): string {
 const USER = "USER.md"
 
 export const TEMPLATE_MISSION_SCRIPTS: Record<string, string> = {
-  "quant-trader": missionDoc([
-    windowBlock(
-      "*/30 8-16 * * 1-5",
-      [
-        wake([USER, "PORTFOLIO.md"]),
-        "Use tavily-search plus the attached venue skills (polymarket-trading, binance-trading, coinbase-trading, alpaca-trading) via Market Scanner to list in-universe moves since the last tick.",
-        "Delegate signal scoring to Signal Analyst and size/kill-switch check to Risk Manager per the canvas. Backtester only if a rule change is proposed.",
-        "Critic gate: Trade Thesis Reviewer must score the thesis before any live ticket is treated as ready. Paper vs live follows USER.md.",
-        "Ask Portfolio Tracker to refresh shared/PORTFOLIO.md with fills and open risk.",
-        memory(),
-      ],
-      "shared/deliverables/market-hours-scan.md (opportunities, rejected names, and whether a ticket is blocked)",
-    ),
-  ]),
+  "quant-trader": QUANT_HEARTBEAT_MD,
 
   "freelancer-revenue-engine": FREELANCER_HEARTBEAT_MD,
 

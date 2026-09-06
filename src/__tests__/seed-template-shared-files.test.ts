@@ -8,7 +8,15 @@ import { expandSeedFilesForAgents } from "@/lib/workspace-seed-files"
 const SHARED = "/home/node/.openclaw/shared"
 
 const EXPECTED_NAMED: Record<string, string[]> = {
-  "quant-trader": ["shared/PORTFOLIO.md"],
+  "quant-trader": [
+    "shared/PORTFOLIO.md",
+    "shared/WATCHLIST.md",
+    "shared/THESES.md",
+    "shared/deliverables/pre-market-scan.md",
+    "shared/deliverables/trade-thesis.md",
+    "shared/deliverables/paper-ticket.md",
+    "shared/deliverables/eod-risk-report.md",
+  ],
   "freelancer-revenue-engine": [
     "shared/PIPELINE.md",
     "shared/CLIENTS.md",
@@ -44,6 +52,8 @@ const EXPECTED_NAMED: Record<string, string[]> = {
 
 const PROSE_BINDS: Array<{ slug: string; agentSlug: string; needle: string }> = [
   { slug: "quant-trader", agentSlug: "portfolio-tracker", needle: `${SHARED}/PORTFOLIO.md` },
+  { slug: "quant-trader", agentSlug: "market-scanner", needle: `${SHARED}/WATCHLIST.md` },
+  { slug: "quant-trader", agentSlug: "signal-analyst", needle: `${SHARED}/THESES.md` },
   { slug: "freelancer-revenue-engine", agentSlug: "lead-hunter", needle: `${SHARED}/PIPELINE.md` },
   { slug: "freelancer-revenue-engine", agentSlug: "proposal-writer", needle: `${SHARED}/PROPOSALS.md` },
   { slug: "freelancer-revenue-engine", agentSlug: "project-manager", needle: `${SHARED}/CLIENTS.md` },
@@ -87,7 +97,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(63)
+    expect(total).toBe(69)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
