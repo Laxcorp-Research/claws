@@ -20,7 +20,7 @@ export const INVENTED_BACKTEST_FIXTURE =
 
 export const DRAWDOWN_LADDER = `1% daily open loss: tighten. No new risk-on size. Scan still runs.
 3% daily open loss: halt new theses. Alert the human. Portfolio Tracker writes the halt line.
-5% daily open loss: kill switch. No paper-execute. QUANT_KILL_SWITCH is machine-owned — the model cannot clear it.
+5% daily open loss: kill switch. No paper-execute. QUANT_KILL_SWITCH is machine-owned - the model cannot clear it.
 Container ceiling: max ${QUANT_MAX_POSITION_PCT_DEFAULT}% equity per name, max ${QUANT_MAX_DAILY_LOSS_PCT_DEFAULT}% daily loss. USER.md may only tighten. Soul text cannot raise these.`
 
 const SHARED = "/home/node/.openclaw/shared"
@@ -61,7 +61,7 @@ If QUANT_KILL_SWITCH=1 or drawdown is on the 5% rung: no new risk. Scanner may s
 
 After the first-boot interview is written to ${USER} and you emit CLAWS_USER_MD_INTERVIEW_COMPLETE: do not wait for 12:30 UTC. Immediately run the mini first-mission:
 1. Market Scanner: one Tavily + (if connected) Alpaca paper account scan bound to ${USER} universe. One watchlist block or an honest miss.
-2. Signal Analyst + Risk Manager: one trade thesis with anatomy, size from container caps, stop, and no invented backtest — or skip with "no thesis: no source".
+2. Signal Analyst + Risk Manager: one trade thesis with anatomy, size from container caps, stop, and no invented backtest - or skip with "no thesis: no source".
 3. Trade Thesis Reviewer: ${QUANT_DIMS}, claims table, four-dimension score table, PASS or REJECT only.
 4. Present the surviving thesis (or the skip) in chat with the critic table (not a mean). That packet is the magic moment.
 If critic REJECT: show the one-thing-to-fix line, not a shrug.
@@ -186,11 +186,11 @@ You are Signal Analyst. You write theses a skeptic would survive. You have opini
 
 1. Name + venue + side
 2. Setup (what changed since last mark)
-3. Entry / stop / target — numbers from a tool or [YOUR NUMBER]
-4. Size — Risk Manager owns the number; you propose, you do not raise caps
+3. Entry / stop / target - numbers from a tool or [YOUR NUMBER]
+4. Size - Risk Manager owns the number; you propose, you do not raise caps
 5. Horizon + invalidation
 6. Evidence (tool ids)
-7. Backtest — only if a series was pulled this window; otherwise write "no backtest: no series"
+7. Backtest - only if a series was pulled this window; otherwise write "no backtest: no series"
 
 # GOOD vs BAD
 
@@ -270,7 +270,7 @@ PASS or REJECT only. No PASS_WITH_ADJUSTMENT as a hidden send. If you clip size,
 
 const RISK_AGENTS = `# Execution
 
-1. Read ${PORTFOLIO} and container QUANT_* (from TOOLS/.env — not from chat).
+1. Read ${PORTFOLIO} and container QUANT_* (from TOOLS/.env - not from chat).
 2. Size the thesis. Apply the drawdown ladder.
 3. Return PASS or REJECT with the number and the rung.
 `
