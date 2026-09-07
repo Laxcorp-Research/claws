@@ -1,0 +1,16 @@
+{
+  "id": "claws-http",
+  "name": "Claws HTTP",
+  "description": "Authenticated HTTP tool. READ runs; ACTION is gated by the Claws control plane.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": ["http"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
