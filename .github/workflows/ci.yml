@@ -5,6 +5,11 @@ on:
     branches: [main, staging]
   push:
     branches: [main, staging]
+  workflow_dispatch:
+
+# Staging branch protection requires: "Lint, Type Check & Build" AND "E2E Tests".
+# Do not merge to staging while E2E is cancelled or pending. e2e-tests concurrency
+# has cancel-in-progress: false so a newer PR cannot kill this gate.
 
 env:
   NODE_VERSION: '20'
