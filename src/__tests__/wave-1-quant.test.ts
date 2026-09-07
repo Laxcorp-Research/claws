@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { ALL_TEMPLATES } from "../../prisma/seed-data"
 import { ALL_SKILLS } from "../../prisma/seed-data/skills-index"
@@ -185,5 +187,17 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     expect(eod?.content).toContain("unknown until a broker is connected")
     expect(agent("portfolio-tracker").soulMd).toContain(UNKNOWN_UNTIL_BROKER)
     expect(agent("portfolio-tracker").soulMd).toContain("reviewQuantPacket")
+  })
+
+  it("MUTATION: gateHttpCall sizes trading ACTIONs before a card (rail-bypass fails)", () => {
+    const gate = readFileSync(join(process.cwd(), "src/lib/openclaw/http-action.ts"), "utf8")
+    expect(gate).toContain("evaluateTradingActionRisk")
+    expect(gate).toMatch(/!risk\.decision\.allow/)
+    const rail = readFileSync(join(process.cwd(), "src/lib/quant/trading-action-gate.ts"), "utf8")
+    expect(rail).toContain("evaluateQuantRiskManager")
+    expect(rail).toContain("alpaca-trading")
+    expect(rail).toContain("binance-trading")
+    expect(rail).toContain("coinbase-trading")
+    expect(rail).toContain("polymarket-trading")
   })
 })

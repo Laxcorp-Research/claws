@@ -36,7 +36,8 @@ export function renderHttpActionBodyPlain(args: {
     const symbol = String(body.symbol ?? "").toUpperCase()
     if (!side || qty == null || String(qty).trim().length === 0 || !symbol) return ""
     const limit = body.limit_price ?? body.limitPrice
-    const stop = body.stop_price ?? body.stopPrice
+    const stopLoss = isRecord(body.stop_loss) ? body.stop_loss : null
+    const stop = body.stop_price ?? body.stopPrice ?? stopLoss?.stop_price ?? stopLoss?.stopPrice
     const at = limit != null && String(limit).length > 0 ? ` @ $${formatHttpMoney(limit)}` : ""
     const stopBit =
       stop != null && String(stop).length > 0 && String(stop) !== String(limit)

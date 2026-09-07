@@ -21,6 +21,12 @@ export type HttpRailDenyReason =
   | "permit_mismatch"
   | "permit_consumed"
   | "not_autonomous"
+  | "notional-cap"
+  | "risk-cap"
+  | "invalid-size"
+  | "equity-unknown"
+  | "live-alpaca-host"
+  | "missing-container-limits"
 
 export type HttpPermitView = {
   skill: string

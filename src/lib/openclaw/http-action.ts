@@ -21,6 +21,7 @@ import {
   type HttpActionCardView,
 } from "@/lib/openclaw/http-action-card"
 import { consumeHttpPermit, resolveHttpPermit } from "@/lib/openclaw/http-permit"
+import { evaluateTradingActionRisk } from "@/lib/quant/trading-action-gate"
 
 export type HttpGateOp = "gate" | "ledger"
 
@@ -206,6 +207,35 @@ export async function gateHttpCall(args: {
     permit,
     toolId,
   })
+
+  const risk = evaluateTradingActionRisk({
+    skill: args.skill,
+    method: args.method,
+    host: target.host,
+    path: target.path,
+    url: args.url,
+    body: args.body,
+  })
+  if (risk.apply && !risk.decision.allow) {
+    const overwrite =
+      risk.decision.reason === "live-alpaca-host" ||
+      decision.status === "pending" ||
+      decision.status === "allow"
+    if (overwrite) {
+      const reason = risk.decision.reason
+      const denied = await writeDeniedLedger({
+        workspaceId: args.workspaceId,
+        toolId,
+        skill: args.skill,
+        method: args.method,
+        host: target.host,
+        path: target.path,
+        reason,
+        agentSlug: args.agentSlug,
+      })
+      return { status: "deny", reason, toolId, ledgerId: denied.id }
+    }
+  }
 
   return finalizeGateDecision({
     workspaceId: args.workspaceId,
