@@ -79,6 +79,7 @@ import {
   type WorkflowDeliveryMode,
 } from '@/lib/openclaw/workflow-language';
 import { twitterApiToolsMdHonestyLines } from '@/lib/tools/twitter-api-honesty';
+import { httpContractForSkill } from '@/lib/openclaw/skill-http-contracts';
 import type { ApiKeySource } from '@/generated/prisma/client';
 import yaml from 'yaml';
 
@@ -2526,12 +2527,20 @@ function generateSkillFiles(
       requires.env = marketplaceEnv;
     }
 
+    const httpContract = httpContractForSkill(skill.slug);
+
     const openclawMeta: Record<string, unknown> = {
       ...(skill.emoji && { emoji: skill.emoji }),
       ...(envFrontmatter?.primaryEnv && { primaryEnv: envFrontmatter.primaryEnv }),
       ...(!envFrontmatter && marketplaceEnv?.[0] && { primaryEnv: marketplaceEnv[0] }),
       ...(Object.keys(requires).length > 0 && { requires }),
     };
+    if (httpContract) {
+      openclawMeta.http = {
+        auth: httpContract.auth,
+        endpoints: httpContract.endpoints,
+      };
+    }
 
     const frontmatter: Record<string, unknown> = {
       name: skill.slug,

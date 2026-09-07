@@ -8,6 +8,7 @@ import {
 import {
   CLOCK_TZ_COPY,
   CRITIC_NE_HUMAN_COPY,
+  OUTBOUND_ACTION_DENY,
   SIDECAR_DECISION_TRUTH_COPY,
   deliveryProseViolations,
   looksLikeApprovalRequest,
@@ -27,6 +28,11 @@ describe("B-3 delivery rail", () => {
     expect(shouldDenyOutboundAction({ deliveryMode: "APPROVAL_REQUIRED", toolName: "exec" })).toBe(true)
     expect(shouldDenyOutboundAction({ deliveryMode: "APPROVAL_REQUIRED", toolName: "TWITTER_CREATION_OF_A_POST" })).toBe(true)
     expect(shouldDenyOutboundAction({ deliveryMode: "APPROVAL_REQUIRED", toolName: "web_search" })).toBe(false)
+  })
+
+  it("does not put http on the outbound deny list (class is the gate)", () => {
+    expect(OUTBOUND_ACTION_DENY).not.toContain("http")
+    expect(shouldDenyOutboundAction({ deliveryMode: "APPROVAL_REQUIRED", toolName: "http" })).toBe(false)
   })
 
   it("AUTO_PROCEED still denies tools that are not autonomous-capable", () => {
