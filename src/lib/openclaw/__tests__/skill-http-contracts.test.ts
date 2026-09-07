@@ -10,11 +10,18 @@ import {
 } from "@/lib/openclaw/skill-http-contracts"
 import { rewriteSkillMdForHttp, stripApiFallbackBlocks } from "@/lib/openclaw/skill-http-md"
 import {
+  FAIL_CLOSED_PINNED_IMAGE,
+  IMAGE_15_HTTP_SKILLS,
+  httpSkillsShippedOnImage,
+} from "@/lib/openclaw/http-image-profiles"
+import {
   NOT_YET_CALLABLE_BADGE,
   httpHonestStatusLabel,
   httpSkillStatusBadge,
   isHttpToolCallable,
 } from "@/lib/openclaw/skill-http-status"
+
+const IMAGE_16 = "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-16"
 
 describe("INFRA-5 PR-4 skill http contracts", () => {
   it("covers every TOOL_SPECIFIC skill (30/30)", () => {
@@ -30,9 +37,21 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
     for (const skill of TOOL_SPECIFIC_SKILLS) {
       for (const toolSlug of skill.compatibleTools ?? []) {
         expect(HTTP_SKILL_BY_TOOL_SLUG[toolSlug], `${skill.slug} / ${toolSlug}`).toBe(skill.slug)
-        expect(isHttpToolCallable(toolSlug)).toBe(true)
+        expect(isHttpToolCallable(toolSlug, IMAGE_16)).toBe(true)
       }
     }
+  })
+
+  it("A5: -15 ships only tavily/twitter/alpaca; -16 ships all 30", () => {
+    expect(httpSkillsShippedOnImage(FAIL_CLOSED_PINNED_IMAGE)).toEqual([...IMAGE_15_HTTP_SKILLS])
+    expect(httpSkillsShippedOnImage(IMAGE_16).sort()).toEqual(Object.keys(SKILL_HTTP_CONTRACTS).sort())
+    expect(isHttpToolCallable("tavily", FAIL_CLOSED_PINNED_IMAGE)).toBe(true)
+    expect(isHttpToolCallable("hubspot", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
+    expect(isHttpToolCallable("gmail", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
+    expect(isHttpToolCallable("shopify", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
+    expect(isHttpToolCallable("hubspot", IMAGE_16)).toBe(true)
+    expect(isHttpToolCallable("gmail", IMAGE_16)).toBe(true)
+    expect(isHttpToolCallable("shopify", IMAGE_16)).toBe(true)
   })
 
   it("does not declare a composio execute catch-all", () => {
@@ -72,7 +91,8 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
   it("A5: skill without a contract badges not yet callable, not Connected/PENDING", () => {
     expect(httpSkillStatusBadge("not-yet-written-skill")).toBe(NOT_YET_CALLABLE_BADGE)
     expect(httpSkillStatusBadge("tavily-search")).toBe("callable")
-    expect(httpHonestStatusLabel("hubspot", "Connected")).toBe("Connected")
+    expect(httpHonestStatusLabel("hubspot", "Connected")).toBe(NOT_YET_CALLABLE_BADGE)
+    expect(httpHonestStatusLabel("hubspot", "Connected", IMAGE_16)).toBe("Connected")
     expect(httpHonestStatusLabel("unknown-extra-tool", "Connected")).toBe("Connected")
     expect(NOT_YET_CALLABLE_BADGE).not.toMatch(/PENDING|Connected/i)
   })

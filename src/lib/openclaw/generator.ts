@@ -82,6 +82,7 @@ import { twitterApiToolsMdHonestyLines } from '@/lib/tools/twitter-api-honesty';
 import { httpContractForSkill } from '@/lib/openclaw/skill-http-contracts';
 import { rewriteSkillMdForHttp } from '@/lib/openclaw/skill-http-md';
 import { httpHonestStatusLabel } from '@/lib/openclaw/skill-http-status';
+import { FAIL_CLOSED_PINNED_IMAGE } from '@/lib/openclaw/http-image-profiles';
 import type { ApiKeySource } from '@/generated/prisma/client';
 import yaml from 'yaml';
 
@@ -471,12 +472,19 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   );
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
   const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug, activeWorkers);
+  const stableImage = await prisma.openClawVersion.findFirst({
+    where: { isStable: true },
+    orderBy: { releasedAt: 'desc' },
+    select: { dockerImage: true },
+  });
+  const pinnedDockerImage = stableImage?.dockerImage ?? FAIL_CLOSED_PINNED_IMAGE;
   const workspaceFiles = generateAllWorkspaceFiles(
     workspaceWithChannels,
     orchestrator,
     workers,
     critic,
     mcpEmission !== null,
+    pinnedDockerImage,
   );
 
   const logicalSeeds = resolveWorkspaceSeedFiles({
@@ -1562,6 +1570,7 @@ function generateAllWorkspaceFiles(
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   mcpEnabled: boolean,
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
 ): { workspaces: Record<string, AgentWorkspaceFiles>; workflowFenceCorrected: boolean } {
   const allAgents = [orchestrator, ...workers, critic];
   const workspaces: Record<string, AgentWorkspaceFiles> = {};
@@ -1576,6 +1585,7 @@ function generateAllWorkspaceFiles(
       workers,
       critic,
       mcpEnabled,
+      pinnedDockerImage,
     );
     if (agent.role === 'ORCHESTRATOR' && files.workflowFenceCorrected) {
       workflowFenceCorrected = true;
@@ -1602,6 +1612,7 @@ function generateAgentWorkspaceFiles(
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   mcpEnabled: boolean,
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
 ): AgentWorkspaceFiles & { workflowFenceCorrected?: boolean } {
   const isOrchestrator = agent.role === 'ORCHESTRATOR';
   const clawName = workspace.clawTemplate?.name ?? workspace.name;
@@ -1612,7 +1623,7 @@ function generateAgentWorkspaceFiles(
     'AGENTS.md': agentsMdResult.text,
     'USER.md': generateUserMd(workspace),
     'IDENTITY.md': generateIdentityMd(agent),
-    'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled),
+    'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled, pinnedDockerImage),
     'HEARTBEAT.md': isOrchestrator
       ? generateHeartbeatMd(orchestrator, workspace)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
@@ -2125,12 +2136,15 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
  * Credentialed PENDING (validator-less API_KEY) emits into .env - calling
  * it unavailable is how the fire claw reported "Twitter API (PENDING)".
  */
-export function toolConnectionRuntimeStatusLabel(toolConn: {
-  connectionType: string;
-  status: string;
-  encryptedCredentials: string | null;
-  toolSlug?: string;
-}): string {
+export function toolConnectionRuntimeStatusLabel(
+  toolConn: {
+    connectionType: string;
+    status: string;
+    encryptedCredentials: string | null;
+    toolSlug?: string;
+  },
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
+): string {
   let label: string
   if (isApiKeyToolEmitEligible(toolConn)) {
     label =
@@ -2144,13 +2158,14 @@ export function toolConnectionRuntimeStatusLabel(toolConn: {
   } else {
     label = `${toolConn.status} (agent should treat as unavailable until reconnected)`;
   }
-  return httpHonestStatusLabel(toolConn.toolSlug, label);
+  return httpHonestStatusLabel(toolConn.toolSlug, label, pinnedDockerImage);
 }
 
 function generateToolsMd(
   workspace: WorkspaceWithRelations,
   agent: AgentWithRelations,
   mcpEnabled: boolean,
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
 ): string {
   const mcpSection = mcpEnabled ? MCP_LONGTAIL_TOOLS_MD_SECTION : '';
   // D6-b: every agent learns its real delivery surfaces (dashboard web chat
@@ -2197,7 +2212,7 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
       catalogTool?.name ||
       toolConn.toolSlug;
 
-    const statusLabel = toolConnectionRuntimeStatusLabel(toolConn);
+    const statusLabel = toolConnectionRuntimeStatusLabel(toolConn, pinnedDockerImage);
     const honestyLines = twitterApiToolsMdHonestyLines(toolConn.toolSlug);
     const lastProbe = toolConn.lastTestedAt
       ? new Date(toolConn.lastTestedAt).toISOString()
