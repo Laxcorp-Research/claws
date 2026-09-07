@@ -20,6 +20,18 @@ describe("http action card (A1 never blind-approve)", () => {
         },
       }),
     ).toBe("BUY 166 MU @ $1,017 stop $1,005")
+    expect(
+      renderHttpActionBodyPlain({
+        skill: "alpaca-trading",
+        body: {
+          side: "buy",
+          qty: "1",
+          symbol: "MU",
+          limit_price: "1010",
+          stop_loss: { stop_price: "990" },
+        },
+      }),
+    ).toBe("BUY 1 MU @ $1,010 stop $990")
   })
 
   it("renders composio-wrapped gmail arguments", () => {
