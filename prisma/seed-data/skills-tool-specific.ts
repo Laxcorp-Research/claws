@@ -1269,85 +1269,36 @@ Check \`successful\` before trusting \`data\`. Common failures:
   {
     name: "Shopify Store",
     slug: "shopify-store",
-    description: "Manage orders and products in Shopify via Composio OAuth",
+    description: "Manage products, inventory, and prices via the Shopify Admin API",
     skillMd: `## E-com store-operator path
 
-Use the \`http\` tool. Auth is injected (Composio X-API-Key + user_id + connected_account_id). Do not pass keys.
+Use the \`http\` tool. Auth is injected (\`X-Shopify-Access-Token\` from \`$SHOPIFY_ADMIN_TOKEN\`). Do not pass keys.
 
-- READ: SHOPIFY_GET_PRODUCTS. Inventory and current price.
-- ACTION (approval-gated): SHOPIFY_CREATE_PRODUCT, SHOPIFY_CREATE_ORDER, and any price or listing write. Draft the card. Do not fire it.
+- READ: GET \`{ $SHOPIFY_STORE_DOMAIN }/admin/api/.../products.json\` and \`inventory_levels.json\`. Inventory and current price.
+- ACTION (approval-gated): POST products, PUT/PATCH variants (price), and any listing write. Draft the card. Do not fire it.
 - Never invent on-hand, a Buy Box owner, or ROAS. Ban: "ROAS 6.2 over 90 days (no campaign id)".
 - Price change and ROAS<1.0 48h pause are ACTION cards. Critic approval is not human approval.
 
 ## Authentication
 
-This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
-- \`$COMPOSIO_API_KEY\` - platform secret
-- \`$COMPOSIO_USER_ID\` - \`claws_<user_id>\`, scopes every call to this workspace's user
-- \`$COMPOSIO_CONNECTED_ACCOUNT_ID\` - the OAuth connection for this toolkit
-
-No OAuth tokens enter the container. Composio handles refresh/rotation/revocation server-side.
+Host is \`$SHOPIFY_STORE_DOMAIN\` and must be a single-label \`*.myshopify.com\` shop. The runtime injects \`X-Shopify-Access-Token\` from \`$SHOPIFY_ADMIN_TOKEN\`. Do not send that header yourself.
 
 ## Key operations
 
-**Create order - \`SHOPIFY_CREATE_ORDER\`:**
+**List products (READ):** GET \`https://$SHOPIFY_STORE_DOMAIN/admin/api/2024-10/products.json\`
 
-\`\`\`bash
-curl -X POST https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_CREATE_ORDER \\
-  -H "X-API-Key: $COMPOSIO_API_KEY" \\
-  -H "content-type: application/json" \\
-  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"line_items":[{"variant_id":12345,"quantity":2}],"customer":{"email":"buyer@example.com"},"financial_status":"pending"}}'
-\`\`\`
+**Inventory (READ):** GET \`https://$SHOPIFY_STORE_DOMAIN/admin/api/2024-10/inventory_levels.json\`
 
-Or via Node (OpenClaw's skill runtime has \`fetch()\` natively):
+**Create product (ACTION):** POST \`https://$SHOPIFY_STORE_DOMAIN/admin/api/2024-10/products.json\` with a product + variant price body.
 
-\`\`\`javascript
-const r = await fetch("https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_CREATE_ORDER", {
-  method: "POST",
-  headers: {
-    "X-API-Key": process.env.COMPOSIO_API_KEY,
-    "content-type": "application/json",
-  },
-  body: JSON.stringify({
-    user_id: process.env.COMPOSIO_USER_ID,
-    connected_account_id: process.env.COMPOSIO_CONNECTED_ACCOUNT_ID,
-    arguments: {"line_items":[{"variant_id":12345,"quantity":2}],"customer":{"email":"buyer@example.com"},"financial_status":"pending"},
-  }),
-})
-const { data, successful, error } = await r.json()
-if (!successful) throw new Error(error ?? "composio.tools.execute failed")
-\`\`\`
-
-**List products - \`SHOPIFY_GET_PRODUCTS\`:**
-
-\`\`\`bash
-curl -X POST https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_GET_PRODUCTS \\
-  -H "X-API-Key: $COMPOSIO_API_KEY" \\
-  -H "content-type: application/json" \\
-  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"limit":25,"status":"active"}}'
-# Response: { data: { products: [{ id, title, vendor, variants: [...] }] }, successful: true }
-\`\`\`
-
-**Create product - \`SHOPIFY_CREATE_PRODUCT\`:**
-
-\`\`\`bash
-curl -X POST https://backend.composio.dev/api/v3/tools/execute/SHOPIFY_CREATE_PRODUCT \\
-  -H "X-API-Key: $COMPOSIO_API_KEY" \\
-  -H "content-type: application/json" \\
-  -d '{"user_id":"'"$COMPOSIO_USER_ID"'","connected_account_id":"'"$COMPOSIO_CONNECTED_ACCOUNT_ID"'","arguments":{"title":"Alpha Tee","body_html":"<p>Limited drop.</p>","vendor":"LaxClaws","variants":[{"price":"25.00","option1":"Default"}]}}'
-# Response: { data: { product: { id, title, handle, variants } }, successful: true }
-\`\`\`
+**Price change (ACTION):** PUT \`https://$SHOPIFY_STORE_DOMAIN/admin/api/2024-10/variants/{id}.json\` \`{ "variant": { "price": "29.00" } }\`
 
 ## Response shape + error handling
 
-Every \`composio.tools.execute\` response follows:
-\`\`\`json
-{ "data": { ... }, "successful": true, "error": null }
-\`\`\`
-Check \`successful\` before trusting \`data\`. Common failures:
-- **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect Shopify" to the human.
-- **Rate limits** - HTTP 429 with Composio forwarding the provider's throttle headers. Backoff and retry.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+Admin REST returns \`{ products }\` / \`{ product }\` / \`{ variant }\` / \`{ inventory_levels }\`. Common failures:
+- AUTH (401) - \`$SHOPIFY_ADMIN_TOKEN\` missing or revoked. Surface "reconnect Shopify" to the human.
+- SCOPE (403) - token lacks \`read_products\` / \`write_products\` / \`read_inventory\`.
+- RATE (429) - honor Retry-After. Do not invent inventory or price.`,
     type: "TOOL_SPECIFIC",
     category: "FINANCE",
     icon: "🛍️",

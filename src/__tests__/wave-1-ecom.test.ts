@@ -148,6 +148,7 @@ describe("WAVE-1 E-Commerce Profit Maximizer prose contracts", () => {
     expect(shopify?.skillMd).toContain("E-com store-operator path")
     expect(shopify?.skillMd).toContain("http")
     expect(shopify?.skillMd).toContain("ACTION (approval-gated)")
+    expect(shopify?.skillMd).toContain("X-Shopify-Access-Token")
     expect(shopify?.skillMd).toContain("ROAS 6.2 over 90 days (no campaign id)")
   })
 

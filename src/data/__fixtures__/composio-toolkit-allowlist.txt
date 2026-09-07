@@ -37,7 +37,6 @@ outlook
 pipedrive
 quickbooks
 salesforce
-shopify
 slack
 toggl
 twitter

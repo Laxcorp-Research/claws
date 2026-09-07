@@ -283,19 +283,18 @@ describe("POST /api/tools/[workspaceId]/oauth/initiate", () => {
     expect(mockConnectedAccountsInitiate).not.toHaveBeenCalled()
   })
 
-  it("dual-mode BYOK toolkit (shopify - OAUTH2 + API_KEY, no managed): BYOK takes precedence", async () => {
-    // PR2.9 design decision (Option 1, data-grounded): for the 6 dual-mode
-    // RED-2 toolkits (shopify, lever, metaads, pipedrive, webflow,
-    // follow_up_boss), BYOK is the shipping path. Custom OAuth
-    // registration becomes optional, not required.
+  it("dual-mode BYOK toolkit (lever - OAUTH2 + API_KEY, no managed): BYOK takes precedence", async () => {
+    // Shopify Admin is native API_KEY now. Remaining dual-mode Composio
+    // brokers (lever, metaads, pipedrive, webflow, follow_up_boss) still
+    // take BYOK over custom OAuth registration.
     mockToolkitsGet.mockResolvedValue({
-      slug: "shopify",
-      name: "Shopify",
+      slug: "lever",
+      name: "Lever",
       composioManagedAuthSchemes: [],
       authConfigDetails: [{ mode: "OAUTH2" }, { mode: "API_KEY" }],
     })
 
-    const { status, data } = await callRoute("shopify")
+    const { status, data } = await callRoute("lever")
     expect(status).toBe(200)
     expect(data.data.mode).toBe("byok")
   })

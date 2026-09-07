@@ -48,7 +48,6 @@ export const CHEAP_OPS: Record<string, CheapOp> = {
   notion: { op: "NOTION_GET_ABOUT_ME", args: {} },
   linear: { op: "LINEAR_GET_CURRENT_USER", args: {} },
   clickup: { op: "CLICKUP_GET_AUTHORIZED_USER", args: {} },
-  shopify: { op: "SHOPIFY_GET_SHOP_DETAILS", args: {} },
   jira: { op: "JIRA_GET_CURRENT_USER", args: {} },
   calendly: { op: "CALENDLY_GET_CURRENT_USER", args: {} },
   kit: { op: "KIT_GET_ACCOUNT", args: {} },

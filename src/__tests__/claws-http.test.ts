@@ -138,6 +138,23 @@ describe("claws-http auth profiles", () => {
     expect(resolveAuthProfile("gmail-ops")?.profile).toBe("composio")
     expect(resolveAuthProfile("hubspot-crm")?.profile).toBe("composio")
     expect(resolveAuthProfile("apollo-search")?.profile).toBe("x-api-key")
+    expect(resolveAuthProfile("shopify-store")?.profile).toBe("shopify-admin")
+  })
+
+  it("shopify-admin injects X-Shopify-Access-Token and never echoes the token in errors", () => {
+    const out = applyAuthProfile({
+      profile: resolveAuthProfile("shopify-store"),
+      env: { SHOPIFY_ADMIN_TOKEN: "shpat_fixture" },
+    })
+    expect(out.ok).toBe(true)
+    if (!out.ok) throw new Error("expected ok")
+    expect(out.headers["X-Shopify-Access-Token"]).toBe("shpat_fixture")
+    const missing = applyAuthProfile({
+      profile: resolveAuthProfile("shopify-store"),
+      env: {},
+    })
+    expect(missing).toEqual({ ok: false, code: "AUTH", message: "SHOPIFY_ADMIN_TOKEN is not set" })
+    expect(JSON.stringify(missing)).not.toMatch(/shpat_/)
   })
 
   it("composio injects X-API-Key plus user_id and connected_account_id", () => {
@@ -217,6 +234,9 @@ describe("claws-http structured errors and caps", () => {
   it("lists Authorization and provider keys as forbidden caller headers", () => {
     expect(callerSuppliedForbiddenHeaders({ Authorization: "Bearer stolen" })).toEqual(["authorization"])
     expect(callerSuppliedForbiddenHeaders({ "X-API-Key": "x" })).toEqual(["x-api-key"])
+    expect(callerSuppliedForbiddenHeaders({ "X-Shopify-Access-Token": "shpat_x" })).toEqual([
+      "x-shopify-access-token",
+    ])
   })
 })
 
