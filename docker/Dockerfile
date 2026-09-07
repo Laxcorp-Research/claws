@@ -29,3 +29,6 @@ COPY container/thinking-signature-heal.mjs /opt/thinking-signature-heal.mjs
 # deployer at deploy time. See container/claws-activity-reporter/ for the
 # manifest + entry. Path is referenced verbatim in src/lib/openclaw/generator.ts.
 COPY container/claws-activity-reporter /opt/claws-activity-reporter
+# INFRA-5: authenticated HTTP tool. Loaded via plugins.load.paths.
+# Auth is injected from env; the control plane gates READ vs ACTION.
+COPY container/claws-http /opt/claws-http

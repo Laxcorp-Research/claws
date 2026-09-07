@@ -1818,7 +1818,19 @@ describe('generateWorkspace', () => {
       );
       const result = await generateWorkspace('ws-test-1');
       const config = JSON.parse(result['openclaw.json']);
-      expect(config.plugins?.load?.paths).toEqual(['/opt/claws-activity-reporter']);
+      expect(config.plugins?.load?.paths).toEqual([
+        '/opt/claws-activity-reporter',
+        '/opt/claws-http',
+      ]);
+    });
+
+    it('enables claws-http with a strict empty config', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildMockWorkspace()
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      expect(config.plugins?.entries?.['claws-http']).toEqual({ enabled: true });
     });
   });
 

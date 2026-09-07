@@ -832,11 +832,14 @@ function generateOpenClawConfig(
   // is the entire permitted config - any other field would fail the
   // openclaw.json strict() validation and the gateway would refuse to boot.
   config.plugins = {
-    load: { paths: ['/opt/claws-activity-reporter'] },
+    load: { paths: ['/opt/claws-activity-reporter', '/opt/claws-http'] },
     entries: {
       'claws-activity-reporter': {
         enabled: true,
         hooks: { allowConversationAccess: true },
+      },
+      'claws-http': {
+        enabled: true,
       },
       'admin-http-rpc': {
         enabled: true,
