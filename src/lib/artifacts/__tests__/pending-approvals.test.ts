@@ -73,6 +73,7 @@ describe("hydratePendingApprovals", () => {
     expect(views).toEqual([
       expect.objectContaining({
         id: "hr-1",
+        kind: "deliverable",
         fileVersionId: "fv-1",
         title: "x-content-cycle",
         logicalPath: "shared/deliverables/x-content-cycle.md",
@@ -84,6 +85,36 @@ describe("hydratePendingApprovals", () => {
     ])
     expect(views[0]?.preview).toContain("Draft A")
     expect(JSON.stringify(views)).not.toMatch(/Unknown/)
+  })
+
+  it("hydrates an HTTP ACTION card without a FileVersion", async () => {
+    const views = await hydratePendingApprovals("ws-1", [
+      {
+        id: "hr-http",
+        timestamp: new Date("2026-09-07T00:00:00.000Z"),
+        action: "HTTP ACTION: POST paper-api.alpaca.markets/v2/orders",
+        metadata: JSON.stringify({
+          eventKind: "http_action",
+          bodyHash: "abc",
+          card: {
+            skill: "alpaca-trading",
+            method: "POST",
+            host: "paper-api.alpaca.markets",
+            path: "/v2/orders",
+            bodyPlain: "BUY 166 MU @ $1,017 stop $1,005",
+          },
+        }),
+      },
+    ])
+    expect(views).toEqual([
+      expect.objectContaining({
+        kind: "http_action",
+        humanRequestId: "hr-http",
+        isDecidable: true,
+        preview: "BUY 166 MU @ $1,017 stop $1,005",
+      }),
+    ])
+    expect(views[0]?.httpAction?.bodyPlain).toBe("BUY 166 MU @ $1,017 stop $1,005")
   })
 
   it("drops HUMAN_REQUEST rows with no fileVersionId", async () => {
@@ -167,6 +198,24 @@ describe("countPendingApprovalsByWorkspace", () => {
     const counts = await countPendingApprovalsByWorkspace(["ws-1", "ws-2"])
     expect(counts.get("ws-1")).toBe(1)
     expect(counts.get("ws-2")).toBeUndefined()
+  })
+
+  it("counts open HTTP ACTION requests", async () => {
+    const httpMeta = JSON.stringify({
+      eventKind: "http_action",
+      card: {
+        skill: "alpaca-trading",
+        method: "POST",
+        host: "paper-api.alpaca.markets",
+        path: "/v2/orders",
+        bodyPlain: "BUY 166 MU @ $1,017 stop $1,005",
+      },
+    })
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ id: "hr-http", workspaceId: "ws-1", metadata: httpMeta }])
+      .mockResolvedValueOnce([])
+    const counts = await countPendingApprovalsByWorkspace(["ws-1"])
+    expect(counts.get("ws-1")).toBe(1)
   })
 })
 

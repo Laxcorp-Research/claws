@@ -14,6 +14,10 @@ import {
 } from "@/lib/artifacts/deliverable-kind"
 import type { ApprovalDecisionState } from "@/lib/artifacts/approval-version"
 import { loadApprovalVersionStates, reconcileSupersededVersions } from "@/lib/artifacts/supersede-versions"
+import {
+  parseHttpActionCardFromMetadata,
+  type HttpActionCardView,
+} from "@/lib/openclaw/http-action-card"
 
 /** Email (web-chat-only) after this many hours without Approve/Reject. */
 export const PENDING_APPROVAL_NUDGE_AFTER_MS = 4 * 60 * 60 * 1000
@@ -22,16 +26,18 @@ export const PENDING_APPROVAL_NUDGE_CONDITION = "pending-approval-unactioned" as
 
 export type PendingApprovalView = {
   id: string
+  kind: "deliverable" | "http_action"
   fileVersionId: string
   title: string
   preview: string
   logicalPath: string
-  deliverableKind: DeliverableKind
+  deliverableKind: DeliverableKind | "http_action"
   humanRequestId: string
   timestamp: string
   decision: ApprovalDecisionState
   latestLabel: string
   isDecidable: boolean
+  httpAction?: HttpActionCardView
 }
 
 export function respondedRequestIds(
@@ -97,6 +103,25 @@ export async function hydratePendingApprovals(
 
   const out: PendingApprovalView[] = []
   for (const { req, meta } of parsed) {
+    const httpAction = parseHttpActionCardFromMetadata(req.metadata)
+    if (httpAction) {
+      out.push({
+        id: req.id,
+        kind: "http_action",
+        fileVersionId: "",
+        title: sanitizeActivityText(`${httpAction.skill} ${httpAction.method} ${httpAction.host}${httpAction.path}`),
+        preview: sanitizeActivityText(httpAction.bodyPlain),
+        logicalPath: `${httpAction.host}${httpAction.path}`,
+        deliverableKind: "http_action",
+        humanRequestId: req.id,
+        timestamp: req.timestamp.toISOString(),
+        decision: "NONE",
+        latestLabel: "",
+        isDecidable: true,
+        httpAction,
+      })
+      continue
+    }
     const fileVersionId = meta.fileVersionId
     if (!fileVersionId) continue
     const fv = byId.get(fileVersionId)
@@ -109,6 +134,7 @@ export async function hydratePendingApprovals(
     )
     out.push({
       id: req.id,
+      kind: "deliverable",
       fileVersionId,
       title,
       preview,
@@ -146,6 +172,7 @@ export async function countPendingApprovalsByWorkspace(
   const done = respondedRequestIds(responses)
   const open = requests.filter((req) => {
     if (done.has(req.id)) return false
+    if (parseHttpActionCardFromMetadata(req.metadata)) return true
     return Boolean(parseDeliverableMetadata(req.metadata).fileVersionId)
   })
   const byWorkspace = new Map<string, typeof open>()
@@ -165,6 +192,10 @@ export async function countPendingApprovalsByWorkspace(
     const states = await loadApprovalVersionStates({ workspaceId, logicalPaths: paths })
     let n = 0
     for (const req of rows) {
+      if (parseHttpActionCardFromMetadata(req.metadata)) {
+        n += 1
+        continue
+      }
       const fvId = parseDeliverableMetadata(req.metadata).fileVersionId
       if (fvId && states.get(fvId)?.isDecidable) n += 1
     }
@@ -224,6 +255,7 @@ export async function nudgeStaleWebChatPendingApprovals(
     const states = await loadApprovalVersionStates({ workspaceId, logicalPaths: paths })
     const open = rows.filter((row) => {
       if (done.has(row.id)) return false
+      if (parseHttpActionCardFromMetadata(row.metadata)) return true
       const fvId = parseDeliverableMetadata(row.metadata).fileVersionId
       return Boolean(fvId && states.get(fvId)?.isDecidable)
     })

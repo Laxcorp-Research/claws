@@ -137,19 +137,28 @@ interface LogEntry {
   deliverableKind?: "decision" | "report" | null
   humanRequestId?: string | null
   holdStatus?: string | null
+  toolId?: string | null
 }
 
 interface PendingApprovalItem {
   id: string
+  kind?: "deliverable" | "http_action"
   fileVersionId: string
   title: string
   preview: string
   logicalPath: string
-  deliverableKind: "decision" | "report"
+  deliverableKind: "decision" | "report" | "http_action"
   humanRequestId: string
   timestamp: string
   decision?: "NONE" | "APPROVED" | "REJECTED" | "SUPERSEDED"
   latestLabel?: string
+  httpAction?: {
+    skill: string
+    method: string
+    host: string
+    path: string
+    bodyPlain: string
+  }
 }
 
 interface SpendInfo {

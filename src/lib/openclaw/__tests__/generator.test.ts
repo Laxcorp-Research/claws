@@ -743,6 +743,15 @@ describe('generateWorkspace', () => {
     expect(orchWorkspace.skills['tavily-search']['SKILL.md']).toContain('tavily-search');
   });
 
+  it('emits metadata.openclaw.http contract in SKILL.md frontmatter', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const md = result.workspaces[orchKey!].skills['tavily-search']['SKILL.md'];
+    expect(md).toContain('auth: tavily-body-key');
+    expect(md).toContain('api.tavily.com');
+    expect(md).toContain('class: READ');
+  });
+
   it('throws if workspace not found', async () => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Not found')
