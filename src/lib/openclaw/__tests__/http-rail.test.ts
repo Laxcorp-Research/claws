@@ -9,6 +9,7 @@ import { AUTONOMOUS_CAPABLE_TOOLS } from "@/lib/openclaw/delivery-rail"
 const alpaca = httpContractForSkill("alpaca-trading")
 const twitter = httpContractForSkill("twitter-api")
 const tavily = httpContractForSkill("tavily-search")
+const hubspot = httpContractForSkill("hubspot-crm")
 
 const order = {
   side: "buy",
@@ -155,6 +156,44 @@ describe("evaluateHttpCall", () => {
         path: "/v2/orders",
         body: order,
         toolId: "tool:alpaca-trading:live",
+      }),
+    ).toMatchObject({ status: "deny", reason: "undeclared" })
+  })
+
+  it("Composio READ is allowed; ACTION is pending; execute catch-all is undeclared", () => {
+    expect(hubspot).not.toBeNull()
+    expect(
+      evaluateHttpCall({
+        contract: hubspot,
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/HUBSPOT_HUBSPOT_LIST_CONTACTS",
+        body: { arguments: {} },
+        toolId: "tool:hubspot-crm:list",
+      }),
+    ).toEqual({
+      status: "allow",
+      class: "READ",
+      toolId: "tool:hubspot-crm:list",
+    })
+    const pending = evaluateHttpCall({
+      contract: hubspot,
+      method: "POST",
+      host: "backend.composio.dev",
+      path: "/api/v3/tools/execute/HUBSPOT_CREATE_CONTACT",
+      body: { arguments: { email: "a@b.com", firstname: "Ada" } },
+      deliveryMode: "ALERT_ONLY",
+      toolId: "tool:hubspot-crm:create",
+    })
+    expect(pending.status).toBe("pending")
+    expect(
+      evaluateHttpCall({
+        contract: hubspot,
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute",
+        body: { arguments: { email: "a@b.com" } },
+        toolId: "tool:hubspot-crm:bare",
       }),
     ).toMatchObject({ status: "deny", reason: "undeclared" })
   })

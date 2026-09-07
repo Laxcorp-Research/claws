@@ -30,6 +30,22 @@ function fixedDate(daysAgo: number): Date {
   return d
 }
 
+describe("ToolRow - A5 http callable badge", () => {
+  it("shows Connected when the mapped skill has an http contract", () => {
+    render(
+      <ToolRow
+        name="Tavily"
+        toolSlug="tavily"
+        description="SEARCH"
+        connectionStatus="connected"
+        connectionType="API_KEY"
+      />,
+    )
+    expect(screen.getByText("Connected")).toBeDefined()
+    expect(screen.queryByText("not yet callable")).toBeNull()
+  })
+})
+
 describe("ToolRow - OAUTH_COMPOSIO CONNECTED rendering (PR #4 Commit 6)", () => {
   it("renders 'Connected N days ago' instead of the static description when connectedAt is supplied", () => {
     render(

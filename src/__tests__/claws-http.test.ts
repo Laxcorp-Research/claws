@@ -134,9 +134,15 @@ describe("claws-http auth profiles", () => {
     })
   })
 
+  it("composio skill slugs resolve without a composio- prefix", () => {
+    expect(resolveAuthProfile("gmail-ops")?.profile).toBe("composio")
+    expect(resolveAuthProfile("hubspot-crm")?.profile).toBe("composio")
+    expect(resolveAuthProfile("apollo-search")?.profile).toBe("x-api-key")
+  })
+
   it("composio injects X-API-Key plus user_id and connected_account_id", () => {
     const out = applyAuthProfile({
-      profile: resolveAuthProfile("composio-gmail"),
+      profile: resolveAuthProfile("gmail-ops"),
       env: {
         COMPOSIO_API_KEY: "ck-live",
         COMPOSIO_USER_ID: "usr-1",

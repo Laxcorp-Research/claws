@@ -1425,6 +1425,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           {requiredTools.map((tool) => (
             <ToolRow
               key={tool.slug}
+              toolSlug={tool.slug}
               name={tool.name}
               description={tool.category}
               connectionStatus={tool.status}
@@ -1484,6 +1485,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
             return (
               <ToolRow
                 key={tool.slug}
+                toolSlug={tool.slug}
                 name={tool.name}
                 description={
                   tool.customized
@@ -1565,6 +1567,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
           {extraTools.map((tool) => (
             <ToolRow
               key={tool.slug}
+              toolSlug={tool.slug}
               name={tool.name}
               description={tool.category}
               connectionStatus={tool.status}

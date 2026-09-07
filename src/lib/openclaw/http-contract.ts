@@ -9,6 +9,10 @@ export const HTTP_AUTH_PROFILES = [
   "alpaca-dual-header",
   "tavily-body-key",
   "composio",
+  "x-api-key",
+  "query-key",
+  "binance-key",
+  "twilio-basic",
 ] as const
 export type HttpAuthProfile = (typeof HTTP_AUTH_PROFILES)[number]
 
@@ -18,6 +22,7 @@ export const FORBIDDEN_CALLER_HEADER_NAMES = [
   "apca-api-key-id",
   "apca-api-secret-key",
   "x-api-key",
+  "x-mbx-apikey",
 ] as const
 
 export interface HttpEndpoint {

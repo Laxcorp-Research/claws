@@ -6,25 +6,14 @@ export const TOOL_SPECIFIC_SKILLS: SeedSkill[] = [
     slug: "tavily-search",
     description: "Real-time web search via the Tavily API",
     skillMd: `## Authentication
-Set \`$TAVILY_API_KEY\` to your Tavily API key.
+Auth is injected by the http tool from \`$TAVILY_API_KEY\`. Do not pass the key.
 
-## Key Endpoints
+## Endpoints (http tool only)
 
-**Search:**
-\`\`\`bash
-curl -X POST https://api.tavily.com/search \\
-  -H "Content-Type: application/json" \\
-  -d '{"api_key":"'$TAVILY_API_KEY'","query":"latest AI news","max_results":5}'
-\`\`\`
+- READ POST https://api.tavily.com/search - body \`{ query, max_results }\`. Optional \`search_depth: "advanced"\`.
+- READ POST https://api.tavily.com/extract - body \`{ urls: [...] }\`.
 
-**Extract (content from URL):**
-\`\`\`bash
-curl -X POST https://api.tavily.com/extract \\
-  -H "Content-Type: application/json" \\
-  -d '{"api_key":"'$TAVILY_API_KEY'","urls":["https://example.com"]}'
-\`\`\`
-
-Use \`search_depth: "advanced"\` for deeper results. Default returns title, url, content, and score.
+Default search returns title, url, content, and score.
 
 ## Scout query patterns (Trend Scout and similar)
 
@@ -37,9 +26,9 @@ Patterns:
 
 Do not:
 - Query "AI agents trending" (noise).
-- Use Tavily as a substitute when a Bearer-header curl to twitter-api returns 401 (tell the human the Bearer is dead; reconnect in Manage Tools).
-- Treat web_fetch 401 on api.twitter.com as a dead token. web_fetch does not send Authorization. Retry with curl and an Authorization Bearer header.
-- Treat twitter-api 402 as "down". 402 is tier-not-entitled: run Tavily-only and tell the human X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
+- Use Tavily as a substitute when twitter-api returns AUTH (401). Tell the human the Bearer is dead; reconnect in Manage Tools.
+- web_fetch api.twitter.com. That host is not a public page. Use the http tool for twitter-api.
+- Treat twitter-api PAYMENT (402) as "down". 402 is tier-not-entitled: run Tavily-only and tell the human X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
 - Pull more than 3 queries per heartbeat window.
 
 ## Freelancer lead-scan patterns
@@ -335,44 +324,34 @@ curl "https://api.instantly.ai/api/v1/analytics/campaign/summary?api_key=$INSTAN
     slug: "twitter-api",
     description: "Read and search tweets via the Twitter/X API (Bearer; drafts only, human posts)",
     skillMd: `## Authentication
-Set \`$TWITTER_API_KEY\` to the Twitter/X Bearer token (app-only). This toolkit is read-focused. The claw drafts; the human posts. Do not treat Bearer as a user-OAuth posting key.
+Auth is injected by the http tool from the Twitter/X Bearer token (app-only). This toolkit is read-focused. The claw drafts; the human posts. Do not treat Bearer as a user-OAuth posting key. Do not pass Authorization.
 
-## Endpoints used per mission
+## Endpoints used per mission (http tool only)
 
-**Morning / first-mission (Trend Scout):** \`GET /2/tweets/search/recent\`
+**Morning / first-mission (Trend Scout):** READ GET https://api.twitter.com/2/tweets/search/recent
 Query = USER.md niche terms, recency 6h, max_results 10-20. Fields: author_id, created_at, public_metrics, text.
 
-\`\`\`bash
-curl "https://api.twitter.com/2/tweets/search/recent?query=evals%20agents&max_results=10&tweet.fields=created_at,public_metrics" \\
-  -H "Authorization: Bearer $TWITTER_API_KEY"
-\`\`\`
+**Content cycle (Engagement):** READ GET https://api.twitter.com/2/tweets/:id for a candidate reply target. Confirm text and metrics before writing a line.
 
-**Content cycle (Engagement):** \`GET /2/tweets/:id\` for a candidate reply target. Confirm text and metrics before writing a line.
+**Evening recap (Analytics):** READ GET https://api.twitter.com/2/users/:id/tweets for today's posts only (max_results 10) + lookup for any known ids.
 
-**Evening recap (Analytics):** \`GET /2/users/:id/tweets\` for today's posts only (max_results 10) + lookup for any known ids.
+Never web_fetch api.twitter.com or api.x.com. Never GET /2/users/me (app-only forbidden, SCOPE 403 Unsupported Authentication; not a dead token).
 
-\`\`\`bash
-curl "https://api.twitter.com/2/users/{id}/tweets?max_results=10&tweet.fields=created_at,public_metrics" \\
-  -H "Authorization: Bearer $TWITTER_API_KEY"
-\`\`\`
+## Typed errors (from the http tool)
 
-## Rate-limit behavior
+- RATE (429): the tool honors Retry-After with a bounded retry. Then DEGRADED. Do not tight-loop.
+- AUTH (401): token is dead. Stop. Tell the human to reconnect in Manage Tools. Do not invent a timeline. Do not degrade to Tavily.
+- SCOPE (403) on /2/users/me: wrong endpoint for app-only Bearer. Do not reconnect.
+- PAYMENT (402): X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
+- UPSTREAM (5xx): one retry inside the tool. Then DEGRADED.
 
-Call these endpoints with \`curl\` and \`-H "Authorization: Bearer $TWITTER_API_KEY"\`. Never \`web_fetch\` api.twitter.com or api.x.com (no Authorization header; those hosts then 401 even when the Bearer is live). Never GET /2/users/me (app-only forbidden, 403 Unsupported Authentication; not a dead token).
-
-- 429: wait for reset (or 60s if unknown), one retry, then DEGRADED. Do not tight-loop.
-- 401 after a Bearer curl: token is dead. Stop. Tell the human to reconnect in Manage Tools. Do not invent a timeline. Do not degrade to Tavily.
-- web_fetch 401 on api.twitter.com: missing Authorization, not token-dead. Retry with curl. Reconnect is not the remedy.
-- 403 Unsupported Authentication on /2/users/me: wrong endpoint for app-only Bearer. Do not reconnect.
-- 402: X API returned 402 Payment Required - add credits/upgrade at developer.x.com; running Tavily-only until then. Reconnect is not a remedy.
-- 5xx: one retry. Then DEGRADED.
+POST /2/tweets is ACTION. Under ALERT-ONLY it stays pending. Do not treat a pending card as a sent tweet.
 
 ## What NOT to fetch
 
 - Full-archive / all-time search
 - DMs, email, phone
 - Follower dumps or block lists
-- POST /2/tweets (this claw does not post on Bearer)
 - GET /2/users/me
 - User lookup sprees outside the mission
 
@@ -730,40 +709,25 @@ curl -X POST "https://api.coinbase.com/api/v3/brokerage/orders" \\
     slug: "alpaca-trading",
     description: "US stock trading via Alpaca Markets API",
     skillMd: `## Authentication
-Set \`$ALPACA_API_KEY_ID\` and \`$ALPACA_API_SECRET_KEY\` for Alpaca.
+Auth is injected by the http tool from \`$ALPACA_API_KEY_ID\` and \`$ALPACA_API_SECRET_KEY\`. Do not pass APCA headers.
 
-## Key Endpoints
+## Endpoints (http tool only)
 
-**Get Account:**
-\`\`\`bash
-curl https://paper-api.alpaca.markets/v2/account \\
-  -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
-  -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET_KEY"
-\`\`\`
+- READ GET https://paper-api.alpaca.markets/v2/account
+- READ GET https://paper-api.alpaca.markets/v2/positions
+- READ GET https://paper-api.alpaca.markets/v2/clock
+- READ GET https://data.alpaca.markets/v2/stocks/{symbol}/quotes/latest (and /snapshot, /bars)
+- ACTION POST https://paper-api.alpaca.markets/v2/orders - body must name side, qty or notional, and symbol. Optional limit_price / stop_price.
 
-**Place Order:**
-\`\`\`bash
-curl -X POST https://paper-api.alpaca.markets/v2/orders \\
-  -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
-  -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"symbol":"AAPL","qty":"1","side":"buy","type":"market","time_in_force":"day"}'
-\`\`\`
-
-**Get Positions:**
-\`\`\`bash
-curl https://paper-api.alpaca.markets/v2/positions \\
-  -H "APCA-API-KEY-ID: $ALPACA_API_KEY_ID" \\
-  -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET_KEY"
-\`\`\`
-
-Use \`paper-api\` for paper trading. Never curl \`api.alpaca.markets\` from this skill.
+Use paper-api for paper trading. Live host api.alpaca.markets is undeclared and denied.
 
 ## Quant paper-keys path
-- Default QUANT_DELIVERY_MODE is ALERT_ONLY: GET account/positions only. Never POST /v2/orders.
-- Autonomous paper-execute still requires the delivery rail (\`evaluateQuantPaperOrder\`). Live host is always denied. QUANT_* env is machine-owned - the model cannot raise caps or clear the kill switch.
-- Paper keys start with \`PK\`. Probe \`paper-api.alpaca.markets\` only for those keys.
-- No-invented-backtests: this skill does not return historical Sharpe. If you did not pull a series, write "no backtest: no series".`,
+- Default QUANT_DELIVERY_MODE is ALERT_ONLY: GET account/positions/quotes only. POST /v2/orders is ACTION and stays pending. Do not treat a pending card as a fill.
+- Autonomous paper-execute still requires the delivery rail (\`evaluateQuantPaperOrder\`) and an http permit. Live host is always denied. QUANT_* env is machine-owned - the model cannot raise caps or clear the kill switch.
+- Paper keys start with \`PK\`. Probe paper-api.alpaca.markets only for those keys.
+- Size vs paper equity from the account READ. Cite the ledger tool id. Do not invent equity.
+- No-invented-backtests: this skill does not return historical Sharpe. If you did not pull a series, write "no backtest: no series".
+- Typed errors: AUTH (401), PAYMENT (402), SCOPE (403), RATE (429), UPSTREAM (5xx). Key the failure-branch off the code.`,
     type: "TOOL_SPECIFIC",
     category: "TRADING",
     icon: "📈",
@@ -1389,15 +1353,15 @@ Check \`successful\` before trusting \`data\`. Common failures:
     slug: "google-search-console",
     description: "Search performance and indexing data via Composio",
     skillMd: `## Authentication
-Via Composio OAuth - auth managed automatically.
+Auth is injected by the http tool from \`$GSC_API_KEY\` (catalog API_KEY). Do not pass Authorization. This is not a Composio skill.
 
 ## Capabilities
 - Query search analytics (clicks, impressions, CTR, position)
 - Inspect URL indexing status
-- Submit sitemaps
+- Submit sitemaps (ACTION; stays pending until Approve)
 - View crawl errors and coverage reports
 
-Composio handles the full OAuth2 flow. No manual token management required.`,
+Use the http tool only. Do not curl or web_fetch googleapis.com for these hosts.`,
     type: "TOOL_SPECIFIC",
     category: "ANALYTICS",
     icon: "📊",

@@ -5,6 +5,7 @@ export const FORBIDDEN_CALLER_HEADER_NAMES = [
   "apca-api-key-id",
   "apca-api-secret-key",
   "x-api-key",
+  "x-mbx-apikey",
 ]
 
 export const MAX_RESPONSE_BYTES = 256 * 1024
@@ -19,7 +20,41 @@ export const AUTH_PROFILES = {
     keyEnv: "ALPACA_API_KEY_ID",
     secretEnv: "ALPACA_API_SECRET_KEY",
   },
+  "apollo-search": { profile: "x-api-key", env: "APOLLO_API_KEY", header: "X-Api-Key" },
+  "clay-enrichment": { profile: "bearer", env: "CLAY_API_KEY" },
+  "instantly-email": { profile: "query-key", env: "INSTANTLY_API_KEY", query: "api_key" },
+  "binance-trading": { profile: "binance-key", env: "BINANCE_API_KEY" },
+  "coinbase-trading": { profile: "bearer", env: "COINBASE_API_KEY" },
+  "polymarket-trading": { profile: "bearer", env: "POLYMARKET_API_KEY" },
+  "google-search-console": { profile: "bearer", env: "GSC_API_KEY" },
+  "ahrefs-seo": { profile: "bearer", env: "AHREFS_API_KEY" },
+  "twilio-sms": {
+    profile: "twilio-basic",
+    sidEnv: "TWILIO_ACCOUNT_SID",
+    tokenEnv: "TWILIO_AUTH_TOKEN",
+  },
 }
+
+export const COMPOSIO_SKILLS = [
+  "hubspot-crm",
+  "salesforce-crm",
+  "linkedin-api",
+  "youtube-data-api",
+  "convertkit-newsletter",
+  "linear-pm",
+  "asana-pm",
+  "clickup-pm",
+  "jira-pm",
+  "slack-messaging",
+  "notion-docs",
+  "shopify-store",
+  "google-analytics",
+  "calendly-scheduling",
+  "gmail-ops",
+  "google-calendar",
+  "github-ops",
+  "twitter-oauth",
+]
 
 export const COMPOSIO_PROFILE = {
   profile: "composio",
@@ -40,7 +75,9 @@ export function callerSuppliedForbiddenHeaders(headers) {
 
 export function resolveAuthProfile(skill) {
   if (AUTH_PROFILES[skill]) return AUTH_PROFILES[skill]
-  if (typeof skill === "string" && skill.startsWith("composio-")) return COMPOSIO_PROFILE
+  if (typeof skill === "string" && (COMPOSIO_SKILLS.includes(skill) || skill.startsWith("composio-"))) {
+    return COMPOSIO_PROFILE
+  }
   return null
 }
 
@@ -49,6 +86,7 @@ export function applyAuthProfile(args) {
   const env = args.env ?? {}
   const headers = { ...(args.headers ?? {}) }
   let body = args.body
+  let searchParams
 
   if (!profile) {
     return { ok: false, code: "AUTH", message: "no auth profile for skill" }
@@ -96,6 +134,37 @@ export function applyAuthProfile(args) {
     return { ok: true, headers, body }
   }
 
+  if (profile.profile === "x-api-key") {
+    const key = env[profile.env]
+    if (!key) return { ok: false, code: "AUTH", message: `${profile.env} is not set` }
+    headers[profile.header ?? "X-Api-Key"] = key
+    return { ok: true, headers, body }
+  }
+
+  if (profile.profile === "query-key") {
+    const key = env[profile.env]
+    if (!key) return { ok: false, code: "AUTH", message: `${profile.env} is not set` }
+    searchParams = { [profile.query ?? "api_key"]: key }
+    return { ok: true, headers, body, searchParams }
+  }
+
+  if (profile.profile === "binance-key") {
+    const key = env[profile.env]
+    if (!key) return { ok: false, code: "AUTH", message: `${profile.env} is not set` }
+    headers["X-MBX-APIKEY"] = key
+    return { ok: true, headers, body }
+  }
+
+  if (profile.profile === "twilio-basic") {
+    const sid = env[profile.sidEnv]
+    const token = env[profile.tokenEnv]
+    if (!sid || !token) {
+      return { ok: false, code: "AUTH", message: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set" }
+    }
+    headers.Authorization = `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`
+    return { ok: true, headers, body }
+  }
+
   return { ok: false, code: "AUTH", message: `unknown auth profile ${profile.profile}` }
 }
 
@@ -136,6 +205,15 @@ export function capResponseBytes(text, max = MAX_RESPONSE_BYTES) {
 export function httpActionUrl(activityEndpoint, workspaceId) {
   const base = String(activityEndpoint ?? "").replace(/\/activity\/?$/, "")
   return `${base}/http-action/${workspaceId}`
+}
+
+export function applySearchParams(url, searchParams) {
+  if (!searchParams || typeof searchParams !== "object") return url
+  const parsed = new URL(url)
+  for (const [key, value] of Object.entries(searchParams)) {
+    parsed.searchParams.set(key, String(value))
+  }
+  return parsed.toString()
 }
 
 export function structuredError(code, extra = {}) {
