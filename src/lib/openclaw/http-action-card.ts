@@ -18,12 +18,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+function unwrapActionBody(body: unknown): unknown {
+  if (isRecord(body) && isRecord(body.arguments)) return body.arguments
+  return body
+}
+
 export function renderHttpActionBodyPlain(args: {
   skill: string
   body: unknown
 }): string {
   const skill = args.skill.trim()
-  const body = args.body
+  const body = unwrapActionBody(args.body)
 
   if (skill === "alpaca-trading" && isRecord(body)) {
     const side = String(body.side ?? "").toUpperCase()
@@ -44,16 +49,47 @@ export function renderHttpActionBodyPlain(args: {
     if (typeof body.text === "string" && body.text.trim().length > 0) return body.text.trim()
   }
 
-  if (skill === "gmail-ops" && isRecord(body)) {
-    const to = body.to ?? body.recipient
+  if ((skill === "gmail-ops" || skill === "salesforce-crm") && isRecord(body)) {
+    const to = body.to ?? body.recipient ?? body.recipient_email ?? body.email
     const subject = body.subject
-    const text = body.body ?? body.text ?? body.html
+    const text = body.body ?? body.text ?? body.html ?? body.message
     const lines = [
       to != null ? `to ${Array.isArray(to) ? to.join(", ") : String(to)}` : null,
       subject != null ? `subject ${String(subject)}` : null,
       text != null ? String(text) : null,
     ].filter((line): line is string => Boolean(line && line.trim()))
-    return lines.join("\n")
+    if (lines.length > 0) return lines.join("\n")
+  }
+
+  if ((skill === "slack-messaging" || skill === "linkedin-api" || skill === "twitter-oauth") && isRecord(body)) {
+    const text = body.text ?? body.message ?? body.body
+    if (typeof text === "string" && text.trim().length > 0) {
+      const channel = body.channel ?? body.channel_id
+      return channel != null ? `${String(channel)}: ${text.trim()}` : text.trim()
+    }
+  }
+
+  if (skill === "instantly-email" && isRecord(body)) {
+    const to = body.email ?? body.to
+    const subject = body.subject ?? body.campaign_name ?? body.name
+    const text = body.body ?? body.message
+    const lines = [
+      to != null ? `to ${String(to)}` : null,
+      subject != null ? `subject ${String(subject)}` : null,
+      text != null ? String(text) : null,
+    ].filter((line): line is string => Boolean(line && line.trim()))
+    if (lines.length > 0) return lines.join("\n")
+  }
+
+  if ((skill === "binance-trading" || skill === "coinbase-trading" || skill === "polymarket-trading") && isRecord(body)) {
+    const side = String(body.side ?? "").toUpperCase()
+    const symbol = String(body.symbol ?? body.product_id ?? body.market ?? "").toUpperCase()
+    const qty = body.qty ?? body.quantity ?? body.base_size ?? body.size
+    if (side && symbol && qty != null && String(qty).trim().length > 0) {
+      const price = body.price ?? body.limit_price
+      const at = price != null ? ` @ $${formatHttpMoney(price)}` : ""
+      return `${side} ${qty} ${symbol}${at}`.replace(/\s+/g, " ").trim()
+    }
   }
 
   if (typeof body === "string") return body.trim()

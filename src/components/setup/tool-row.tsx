@@ -6,6 +6,7 @@ import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react"
 import type { ToolAuthMode } from "@/data/tool-catalog"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { Tooltip } from "@/components/ui/tooltip"
+import { toolRowConnectedBadge } from "@/lib/openclaw/skill-http-status"
 
 export type ToolRowStatus =
   | "connected"
@@ -30,6 +31,8 @@ export type ToolRowStatus =
 
 interface ToolRowProps {
   name: string
+  /** Catalog / connection slug. Used for A5 "not yet callable" when the skill has no http contract. */
+  toolSlug?: string
   description?: string
   connectionStatus: ToolRowStatus
   connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "NO_AUTH"
@@ -103,7 +106,7 @@ function daysAgoLabel(from: ToolRowProps["connectedAt"]): string | null {
   return `Connected ${days} days ago`
 }
 
-export function ToolRow({ name, description, connectionStatus, connectionType, authMode, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, testDisabledReason, onDisconnect, onReconnect, onRevoke, onDemote, onRestore, onDismiss, onRemove, className }: ToolRowProps) {
+export function ToolRow({ name, toolSlug, description, connectionStatus, connectionType, authMode, composioOAuthAvailable = false, swappable, errorMessage, warningMessage, connectedAt, onConnect, onSwap, onTest, testDisabledReason, onDisconnect, onReconnect, onRevoke, onDemote, onRestore, onDismiss, onRemove, className }: ToolRowProps) {
   const isError = connectionStatus === "error"
   const isTesting = connectionStatus === "testing"
   const needsCredentials = connectionStatus === "needs-credentials"
@@ -163,7 +166,7 @@ export function ToolRow({ name, description, connectionStatus, connectionType, a
         <div className="flex flex-none items-center gap-1.5">
           {(connectionStatus === "connected" || isTesting) && (
             <>
-              <span className="text-[10px] text-[var(--ok)] font-medium">Connected</span>
+              <span className={cn("text-[10px] font-medium", toolRowConnectedBadge(toolSlug) === "Connected" ? "text-[var(--ok)]" : "text-[var(--tx3)]")}>{toolRowConnectedBadge(toolSlug)}</span>
               {/* PR #5: two Test-button modes on CONNECTED rows.
                   Enabled   → onTest passed, no testDisabledReason.
                   Disabled  → testDisabledReason passed (Asana-class toolkit

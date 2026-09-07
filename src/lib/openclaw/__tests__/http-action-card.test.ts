@@ -22,6 +22,18 @@ describe("http action card (A1 never blind-approve)", () => {
     ).toBe("BUY 166 MU @ $1,017 stop $1,005")
   })
 
+  it("renders composio-wrapped gmail arguments", () => {
+    expect(
+      renderHttpActionBodyPlain({
+        skill: "gmail-ops",
+        body: {
+          user_id: "claws_1",
+          arguments: { to: "ops@example.com", subject: "Daily", body: "Numbers look fine." },
+        },
+      }),
+    ).toBe("to ops@example.com\nsubject Daily\nNumbers look fine.")
+  })
+
   it("renders tweet text and gmail to/subject/body", () => {
     expect(
       renderHttpActionBodyPlain({

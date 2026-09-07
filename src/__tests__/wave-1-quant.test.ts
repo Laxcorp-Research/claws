@@ -139,7 +139,9 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
   it("alpaca-trading SKILL.md is paper-first and forbids invented backtests", () => {
     const alpaca = ALL_SKILLS.find((s) => s.slug === "alpaca-trading")
     expect(alpaca?.skillMd).toContain("Quant paper-keys path")
-    expect(alpaca?.skillMd).toContain("Never curl `api.alpaca.markets`")
+    expect(alpaca?.skillMd).toContain("Live host api.alpaca.markets is undeclared and denied")
+    expect(alpaca?.skillMd).toContain("http tool")
+    expect(alpaca?.skillMd).not.toMatch(/\bcurl\b/)
     expect(alpaca?.skillMd).toContain("no backtest: no series")
     expect(alpaca?.skillMd).toContain("ALERT_ONLY")
   })

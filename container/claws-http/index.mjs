@@ -7,6 +7,7 @@
 
 import {
   applyAuthProfile,
+  applySearchParams,
   callerSuppliedForbiddenHeaders,
   capResponseBytes,
   classifyHttpStatus,
@@ -171,7 +172,7 @@ async function performHttp(args, deps = {}) {
       init.headers["Content-Type"] = init.headers["Content-Type"] ?? "application/json"
       init.body = typeof authed.body === "string" ? authed.body : JSON.stringify(authed.body)
     }
-    lastRes = await fetchFn(args.url, init)
+    lastRes = await fetchFn(applySearchParams(args.url, authed.searchParams), init)
     lastText = await lastRes.text()
     if (lastRes.status !== 429 || attempt === MAX_429_RETRIES) break
     const waitMs = parseRetryAfterMs(lastRes.headers.get?.("retry-after") ?? lastRes.headers.get?.("Retry-After"))

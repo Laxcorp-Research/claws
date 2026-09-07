@@ -80,6 +80,8 @@ import {
 } from '@/lib/openclaw/workflow-language';
 import { twitterApiToolsMdHonestyLines } from '@/lib/tools/twitter-api-honesty';
 import { httpContractForSkill } from '@/lib/openclaw/skill-http-contracts';
+import { rewriteSkillMdForHttp } from '@/lib/openclaw/skill-http-md';
+import { httpHonestStatusLabel } from '@/lib/openclaw/skill-http-status';
 import type { ApiKeySource } from '@/generated/prisma/client';
 import yaml from 'yaml';
 
@@ -2127,17 +2129,22 @@ export function toolConnectionRuntimeStatusLabel(toolConn: {
   connectionType: string;
   status: string;
   encryptedCredentials: string | null;
+  toolSlug?: string;
 }): string {
+  let label: string
   if (isApiKeyToolEmitEligible(toolConn)) {
-    return toolConn.status === 'PENDING'
-      ? 'Connected (saved; unverified until first use)'
-      : 'Connected';
+    label =
+      toolConn.status === 'PENDING'
+        ? 'Connected (saved; unverified until first use)'
+        : 'Connected';
+  } else if (toolConn.status === 'CONNECTED') {
+    label = 'Connected';
+  } else if (toolConn.status === 'NEEDS_CREDENTIALS') {
+    label = 'Needs credentials (partial data - agent should treat as unavailable)';
+  } else {
+    label = `${toolConn.status} (agent should treat as unavailable until reconnected)`;
   }
-  if (toolConn.status === 'CONNECTED') return 'Connected';
-  if (toolConn.status === 'NEEDS_CREDENTIALS') {
-    return 'Needs credentials (partial data - agent should treat as unavailable)';
-  }
-  return `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+  return httpHonestStatusLabel(toolConn.toolSlug, label);
 }
 
 function generateToolsMd(
@@ -2558,7 +2565,8 @@ function generateSkillFiles(
     const rawBody = skill.skillMd || `# ${skill.name}\n\nNo instructions provided.`;
     // Strip any seed-carried frontmatter block - the generator-built
     // frontmatter above is authoritative. See stripLeadingFrontmatter docs.
-    const body = stripLeadingFrontmatter(rawBody);
+    const stripped = stripLeadingFrontmatter(rawBody);
+    const body = httpContract ? rewriteSkillMdForHttp(stripped, httpContract) : stripped;
 
     skills[skill.slug] = {
       'SKILL.md': `---\n${yamlStr}---\n\n${body}`,
