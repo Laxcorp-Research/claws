@@ -192,6 +192,7 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
   it("MUTATION: gateHttpCall sizes trading ACTIONs before a card (rail-bypass fails)", () => {
     const gate = readFileSync(join(process.cwd(), "src/lib/openclaw/http-action.ts"), "utf8")
     expect(gate).toContain("evaluateTradingActionRisk")
+    expect(gate).toMatch(/!risk\.decision\.allow/)
     const rail = readFileSync(join(process.cwd(), "src/lib/quant/trading-action-gate.ts"), "utf8")
     expect(rail).toContain("evaluateQuantRiskManager")
     expect(rail).toContain("alpaca-trading")

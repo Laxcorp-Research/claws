@@ -312,7 +312,8 @@ describe("POST /api/internal/http-action/[workspaceId]", () => {
   it("MUTATION: gateHttpCall must run evaluateQuantRiskManager (rail-bypass fails)", () => {
     const gate = readFileSync(join(process.cwd(), "src/lib/openclaw/http-action.ts"), "utf8")
     expect(gate).toContain("evaluateTradingActionRisk")
-    expect(gate).toMatch(/sizeBeforeCard/)
+    expect(gate).toMatch(/!risk\.decision\.allow/)
+    expect(gate).toContain("writeDeniedLedger")
     const rail = readFileSync(join(process.cwd(), "src/lib/quant/trading-action-gate.ts"), "utf8")
     expect(rail).toContain("evaluateQuantRiskManager")
     expect(rail).toContain("binance-trading")
