@@ -62,6 +62,39 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
     }
   })
 
+  it("classifies Shopify Admin GET as READ and variant PUT as ACTION on *.myshopify.com", () => {
+    const shopify = httpContractForSkill("shopify-store")
+    expect(shopify?.auth).toBe("shopify-admin")
+    expect(
+      matchHttpEndpoint(shopify!, {
+        method: "GET",
+        host: "laxclaws-dev.myshopify.com",
+        path: "/admin/api/2024-10/products.json",
+      })?.class,
+    ).toBe("READ")
+    expect(
+      matchHttpEndpoint(shopify!, {
+        method: "PUT",
+        host: "laxclaws-dev.myshopify.com",
+        path: "/admin/api/2024-10/variants/123.json",
+      })?.class,
+    ).toBe("ACTION")
+    expect(
+      matchHttpEndpoint(shopify!, {
+        method: "GET",
+        host: "evil.myshopify.com.example",
+        path: "/admin/api/2024-10/products.json",
+      }),
+    ).toBeNull()
+    expect(
+      matchHttpEndpoint(shopify!, {
+        method: "GET",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/SHOPIFY_GET_PRODUCTS",
+      }),
+    ).toBeNull()
+  })
+
   it("classifies HubSpot list as READ and create as ACTION", () => {
     const hubspot = httpContractForSkill("hubspot-crm")
     expect(hubspot).not.toBeNull()

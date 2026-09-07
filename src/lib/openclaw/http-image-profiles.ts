@@ -4,7 +4,7 @@
  *
  * -15 baked tavily / twitter / alpaca only.
  * -16+ bakes the remaining 27 (Composio X-API-Key + injected ids, twilio,
- * ahrefs, binance/coinbase/polymarket, ...).
+ * ahrefs, binance/coinbase/polymarket, shopify-admin on source / -17 image).
  *
  * MUTATION: mark gmail/shopify shipped on -15 → skill-http-contracts.test.ts fails.
  */

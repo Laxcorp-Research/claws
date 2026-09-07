@@ -202,11 +202,12 @@ export const SKILL_HTTP_CONTRACTS: Readonly<Record<string, HttpSkillContract>> =
   },
   "shopify-store": {
     skill: "shopify-store",
-    auth: "composio",
+    auth: "shopify-admin",
     endpoints: [
-      composioOp("SHOPIFY_GET_PRODUCTS", "READ"),
-      composioOp("SHOPIFY_CREATE_ORDER", "ACTION"),
-      composioOp("SHOPIFY_CREATE_PRODUCT", "ACTION"),
+      { method: "GET", host: "*.myshopify.com", path: "/admin/api", class: "READ" },
+      { method: "POST", host: "*.myshopify.com", path: "/admin/api", class: "ACTION" },
+      { method: "PUT", host: "*.myshopify.com", path: "/admin/api", class: "ACTION" },
+      { method: "PATCH", host: "*.myshopify.com", path: "/admin/api", class: "ACTION" },
     ],
   },
   "google-search-console": {

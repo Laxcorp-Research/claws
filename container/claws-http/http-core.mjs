@@ -6,6 +6,7 @@ export const FORBIDDEN_CALLER_HEADER_NAMES = [
   "apca-api-secret-key",
   "x-api-key",
   "x-mbx-apikey",
+  "x-shopify-access-token",
 ]
 
 export const MAX_RESPONSE_BYTES = 256 * 1024
@@ -33,6 +34,10 @@ export const AUTH_PROFILES = {
     sidEnv: "TWILIO_ACCOUNT_SID",
     tokenEnv: "TWILIO_AUTH_TOKEN",
   },
+  "shopify-store": {
+    profile: "shopify-admin",
+    tokenEnv: "SHOPIFY_ADMIN_TOKEN",
+  },
 }
 
 export const COMPOSIO_SKILLS = [
@@ -47,7 +52,6 @@ export const COMPOSIO_SKILLS = [
   "jira-pm",
   "slack-messaging",
   "notion-docs",
-  "shopify-store",
   "google-analytics",
   "calendly-scheduling",
   "gmail-ops",
@@ -162,6 +166,13 @@ export function applyAuthProfile(args) {
       return { ok: false, code: "AUTH", message: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set" }
     }
     headers.Authorization = `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`
+    return { ok: true, headers, body }
+  }
+
+  if (profile.profile === "shopify-admin") {
+    const token = env[profile.tokenEnv ?? "SHOPIFY_ADMIN_TOKEN"]
+    if (!token) return { ok: false, code: "AUTH", message: "SHOPIFY_ADMIN_TOKEN is not set" }
+    headers["X-Shopify-Access-Token"] = token
     return { ok: true, headers, body }
   }
 

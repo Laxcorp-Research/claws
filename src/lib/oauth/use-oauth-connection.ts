@@ -40,7 +40,7 @@ export type OAuthPollStatus = "PENDING" | "ACTIVE" | "FAILED"
 
 /**
  * BYOK apiKeyForm payload - what the wizard renders when a toolkit is
- * API-key-brokered through Composio (typefully, jotform, toggl, shopify,
+ * API-key-brokered through Composio (typefully, jotform, toggl,
  * lever, metaads, pipedrive, webflow, follow_up_boss). The user provides
  * the key inline; no OAuth popup; submit POSTs to
  * /api/tools/[workspaceId]/byok/submit. See PR2.9.

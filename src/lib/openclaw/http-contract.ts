@@ -13,6 +13,7 @@ export const HTTP_AUTH_PROFILES = [
   "query-key",
   "binance-key",
   "twilio-basic",
+  "shopify-admin",
 ] as const
 export type HttpAuthProfile = (typeof HTTP_AUTH_PROFILES)[number]
 
@@ -23,6 +24,7 @@ export const FORBIDDEN_CALLER_HEADER_NAMES = [
   "apca-api-secret-key",
   "x-api-key",
   "x-mbx-apikey",
+  "x-shopify-access-token",
 ] as const
 
 export interface HttpEndpoint {
@@ -95,6 +97,17 @@ export function callerSuppliedForbiddenHeaders(
   return hits
 }
 
+export function httpHostMatches(declared: string, actual: string): boolean {
+  const expected = normalizeHttpHost(declared)
+  const host = normalizeHttpHost(actual)
+  if (expected === host) return true
+  if (!expected.startsWith("*.")) return false
+  const suffix = expected.slice(1)
+  if (!host.endsWith(suffix) || host.length <= suffix.length) return false
+  const label = host.slice(0, -suffix.length)
+  return label.length > 0 && !label.includes(".")
+}
+
 export function matchHttpEndpoint(
   contract: HttpSkillContract,
   args: { method: string; host: string; path: string },
@@ -104,7 +117,7 @@ export function matchHttpEndpoint(
   const path = normalizeHttpPath(args.path)
   for (const endpoint of contract.endpoints) {
     if (endpoint.method !== method) continue
-    if (normalizeHttpHost(endpoint.host) !== host) continue
+    if (!httpHostMatches(endpoint.host, host)) continue
     const declared = normalizeHttpPath(endpoint.path)
     if (path === declared || path.startsWith(`${declared}/`)) return endpoint
   }
