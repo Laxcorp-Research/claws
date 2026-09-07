@@ -44,6 +44,32 @@ describe("ToolRow - A5 http callable badge", () => {
     expect(screen.getByText("Connected")).toBeDefined()
     expect(screen.queryByText("not yet callable")).toBeNull()
   })
+
+  it("A5: HubSpot stays not yet callable on image -15 and Connected on -16", () => {
+    const { rerender } = render(
+      <ToolRow
+        name="HubSpot"
+        toolSlug="hubspot"
+        description="CRM"
+        connectionStatus="connected"
+        connectionType="OAUTH_COMPOSIO"
+        pinnedDockerImage="ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-15"
+      />,
+    )
+    expect(screen.getByText("not yet callable")).toBeDefined()
+    rerender(
+      <ToolRow
+        name="HubSpot"
+        toolSlug="hubspot"
+        description="CRM"
+        connectionStatus="connected"
+        connectionType="OAUTH_COMPOSIO"
+        pinnedDockerImage="ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-16"
+      />,
+    )
+    expect(screen.getByText("Connected")).toBeDefined()
+    expect(screen.queryByText("not yet callable")).toBeNull()
+  })
 })
 
 describe("ToolRow - OAUTH_COMPOSIO CONNECTED rendering (PR #4 Commit 6)", () => {

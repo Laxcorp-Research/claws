@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
+import { resolveDeployImage } from "@/lib/openclaw/deployer"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
@@ -61,6 +62,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
       slug: customIdentities.get(conn.id)?.slug ?? conn.id,
     })),
     composioOAuthAvailable: Boolean(process.env.COMPOSIO_API_KEY?.trim()),
+    pinnedDockerImage: await resolveDeployImage(),
   })
 }
 

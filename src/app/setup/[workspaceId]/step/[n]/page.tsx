@@ -432,6 +432,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [isLoading, setIsLoading] = useState(true)
   const [toolsLoadError, setToolsLoadError] = useState<string | null>(null)
   const [composioOAuthAvailable, setComposioOAuthAvailable] = useState(false)
+  const [pinnedDockerImage, setPinnedDockerImage] = useState<string | undefined>(undefined)
   const [apiKeyModal, setApiKeyModal] = useState<{ open: boolean; tool: ToolState | null }>({ open: false, tool: null })
   // PR2.9: BYOK modal state. Distinct from `apiKeyModal` because:
   //   - apiKeyModal is for direct API_KEY tools (our DB stores the key,
@@ -533,6 +534,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         }
         if (toolsData.success) {
           setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
+          if (typeof toolsData.data.pinnedDockerImage === "string") {
+            setPinnedDockerImage(toolsData.data.pinnedDockerImage)
+          }
         }
         await refreshDriftState()
         const existingConnections: ServerConnectionSummary[] = toolsData.success
@@ -595,6 +599,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     const data = await res.json()
     if (!data.success) return false
     setComposioOAuthAvailable(Boolean(data.data.composioOAuthAvailable))
+    if (typeof data.data.pinnedDockerImage === "string") {
+      setPinnedDockerImage(data.data.pinnedDockerImage)
+    }
     const existing: ServerConnectionSummary[] = data.data.connections
     setCustomApis(data.data.customConnections ?? [])
     // PR2.9-fix3: server response is authoritative. `mergeRefreshedTools`
@@ -666,6 +673,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         : []
       if (toolsData.success) {
         setComposioOAuthAvailable(Boolean(toolsData.data.composioOAuthAvailable))
+        if (typeof toolsData.data.pinnedDockerImage === "string") {
+          setPinnedDockerImage(toolsData.data.pinnedDockerImage)
+        }
         setCustomApis(toolsData.data.customConnections ?? [])
       }
       setTools(
@@ -1436,6 +1446,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               // machine), so we look it up via the catalog. Slug-drift
               // tests enforce presence for every OAUTH_COMPOSIO entry.
               authMode={getToolBySlug(tool.slug)?.authMode}
+              pinnedDockerImage={pinnedDockerImage}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
@@ -1495,7 +1506,8 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                 connectionStatus={tool.status}
                 connectionType={tool.connectionType}
                 authMode={getToolBySlug(tool.slug)?.authMode}
-                composioOAuthAvailable={composioOAuthAvailable}
+                pinnedDockerImage={pinnedDockerImage}
+              composioOAuthAvailable={composioOAuthAvailable}
                 errorMessage={tool.errorMessage}
                 warningMessage={tool.warningMessage}
                 connectedAt={tool.connectedAt}
@@ -1573,6 +1585,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               connectionStatus={tool.status}
               connectionType={tool.connectionType}
               authMode={getToolBySlug(tool.slug)?.authMode}
+              pinnedDockerImage={pinnedDockerImage}
               composioOAuthAvailable={composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
