@@ -88,19 +88,19 @@ export function HttpActionCard({
         <dl className="mt-[6px] grid gap-[4px] text-[12px] leading-snug text-[var(--tx2)]">
           <div>
             <dt className="text-[10px] uppercase tracking-[0.04em] text-[var(--tx3)]">Skill</dt>
-            <dd className="text-[var(--tx)]">{card.skill || "—"}</dd>
+            <dd className="text-[var(--tx)]">{card.skill || "-"}</dd>
           </div>
           <div>
             <dt className="text-[10px] uppercase tracking-[0.04em] text-[var(--tx3)]">Method</dt>
-            <dd className="text-[var(--tx)]">{card.method || "—"}</dd>
+            <dd className="text-[var(--tx)]">{card.method || "-"}</dd>
           </div>
           <div>
             <dt className="text-[10px] uppercase tracking-[0.04em] text-[var(--tx3)]">Host</dt>
-            <dd className="text-[var(--tx)]">{card.host || "—"}</dd>
+            <dd className="text-[var(--tx)]">{card.host || "-"}</dd>
           </div>
           <div>
             <dt className="text-[10px] uppercase tracking-[0.04em] text-[var(--tx3)]">Path</dt>
-            <dd className="text-[var(--tx)]">{card.path || "—"}</dd>
+            <dd className="text-[var(--tx)]">{card.path || "-"}</dd>
           </div>
           <div>
             <dt className="text-[10px] uppercase tracking-[0.04em] text-[var(--tx3)]">Body</dt>
@@ -111,7 +111,7 @@ export function HttpActionCard({
         </dl>
         {!renderable && (
           <p className="mt-[8px] text-[11px] text-[var(--err)]" data-testid="http-action-violations">
-            Action payload missing — cannot approve ({violations.join(", ")})
+            Action payload missing - cannot approve ({violations.join(", ")})
           </p>
         )}
         {showButtons && (
