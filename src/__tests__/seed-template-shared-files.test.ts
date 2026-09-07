@@ -25,7 +25,16 @@ const EXPECTED_NAMED: Record<string, string[]> = {
     "shared/deliverables/invoice-cycle.md",
     "shared/deliverables/weekly-pipeline.md",
   ],
-  "ecommerce-profit-maximizer": [],
+  "ecommerce-profit-maximizer": [
+    "shared/SKUS.md",
+    "shared/PRICING.md",
+    "shared/ADS.md",
+    "shared/deliverables/inventory-check.md",
+    "shared/deliverables/pricing-recommendation.md",
+    "shared/deliverables/listing-audit.md",
+    "shared/deliverables/ad-review.md",
+    "shared/deliverables/product-pnl.md",
+  ],
   "youtube-channel-os": ["shared/VOICE.md"],
   "twitter-growth-machine": [
     "shared/VOICE.md",
@@ -57,6 +66,9 @@ const PROSE_BINDS: Array<{ slug: string; agentSlug: string; needle: string }> = 
   { slug: "freelancer-revenue-engine", agentSlug: "lead-hunter", needle: `${SHARED}/PIPELINE.md` },
   { slug: "freelancer-revenue-engine", agentSlug: "proposal-writer", needle: `${SHARED}/PROPOSALS.md` },
   { slug: "freelancer-revenue-engine", agentSlug: "project-manager", needle: `${SHARED}/CLIENTS.md` },
+  { slug: "ecommerce-profit-maximizer", agentSlug: "store-commander", needle: `${SHARED}/SKUS.md` },
+  { slug: "ecommerce-profit-maximizer", agentSlug: "pricing-intel", needle: `${SHARED}/SKUS.md` },
+  { slug: "ecommerce-profit-maximizer", agentSlug: "ad-optimizer", needle: `${SHARED}/ADS.md` },
   { slug: "twitter-growth-machine", agentSlug: "content-writer", needle: `${SHARED}/VOICE.md` },
   { slug: "youtube-channel-os", agentSlug: "script-builder", needle: `${SHARED}/VOICE.md` },
   { slug: "newsletter-empire", agentSlug: "draft-writer", needle: `${SHARED}/VOICE.md` },
@@ -97,7 +109,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(69)
+    expect(total).toBe(77)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {

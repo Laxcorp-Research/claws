@@ -2,6 +2,7 @@ import type { SeedTemplate } from "./types"
 import { TWITTER_HEARTBEAT_MD } from "./wave-0-twitter"
 import { FREELANCER_HEARTBEAT_MD } from "./wave-1-freelancer"
 import { QUANT_HEARTBEAT_MD } from "./wave-1-quant"
+import { ECOM_HEARTBEAT_MD } from "./wave-1-ecom"
 
 /**
  * INFRA-4 baseline mission scripts. Waves polish category excellence.
@@ -57,19 +58,7 @@ export const TEMPLATE_MISSION_SCRIPTS: Record<string, string> = {
 
   "freelancer-revenue-engine": FREELANCER_HEARTBEAT_MD,
 
-  "ecommerce-profit-maximizer": missionDoc([
-    windowBlock(
-      "0 8 * * *",
-      [
-        wake([USER]),
-        "Use tavily-search via Product Researcher for demand notes, then Shopify-store skills on Listing Optimizer, Pricing Intel, Review Manager, and Ad Optimizer per the canvas.",
-        "Do not auto-discount SKUs USER.md marks sacred. Flag margin floor breaches.",
-        "Critic gate: Ecommerce Quality Gate reviews claims and pricing before anything is treated as live.",
-        memory(),
-      ],
-      "shared/deliverables/daily-store-brief.md (revenue notes, price checks, review queue, ad pauses)",
-    ),
-  ]),
+  "ecommerce-profit-maximizer": ECOM_HEARTBEAT_MD,
 
   "youtube-channel-os": missionDoc([
     windowBlock(
