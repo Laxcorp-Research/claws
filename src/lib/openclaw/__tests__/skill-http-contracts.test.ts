@@ -44,7 +44,7 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
 
   it("A5: -15 ships only tavily/twitter/alpaca; -16 ships all 30", () => {
     expect(httpSkillsShippedOnImage(FAIL_CLOSED_PINNED_IMAGE)).toEqual([...IMAGE_15_HTTP_SKILLS])
-    expect(httpSkillsShippedOnImage(IMAGE_16).sort()).toEqual(Object.keys(SKILL_HTTP_CONTRACTS).sort())
+    expect([...httpSkillsShippedOnImage(IMAGE_16)].sort()).toEqual(Object.keys(SKILL_HTTP_CONTRACTS).sort())
     expect(isHttpToolCallable("tavily", FAIL_CLOSED_PINNED_IMAGE)).toBe(true)
     expect(isHttpToolCallable("hubspot", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
     expect(isHttpToolCallable("gmail", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
