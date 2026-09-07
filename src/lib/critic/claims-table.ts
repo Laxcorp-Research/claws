@@ -22,6 +22,12 @@ export const QUANT_CRITIC_SCORE_DIMENSIONS = [
   "evidence",
   "regime-fit",
 ] as const
+export const ECOM_CRITIC_SCORE_DIMENSIONS = [
+  "margin-truth",
+  "listing-quality",
+  "policy-compliance",
+  "evidence",
+] as const
 
 const BARE_MEAN_VERDICT_RE = /\bPASS\b[^\n]{0,40}\bmean\b/i
 
@@ -70,7 +76,8 @@ export function hasFourDimensionScoreTable(text: string | null | undefined): boo
   if (!text) return false
   return (
     hasNamedDimensionScoreTable(text, CRITIC_SCORE_DIMENSIONS) ||
-    hasNamedDimensionScoreTable(text, QUANT_CRITIC_SCORE_DIMENSIONS)
+    hasNamedDimensionScoreTable(text, QUANT_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, ECOM_CRITIC_SCORE_DIMENSIONS)
   )
 }
 

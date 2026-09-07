@@ -1270,7 +1270,16 @@ Check \`successful\` before trusting \`data\`. Common failures:
     name: "Shopify Store",
     slug: "shopify-store",
     description: "Manage orders and products in Shopify via Composio OAuth",
-    skillMd: `## Authentication
+    skillMd: `## E-com store-operator path
+
+Use the \`http\` tool. Auth is injected (Composio X-API-Key + user_id + connected_account_id). Do not pass keys.
+
+- READ: SHOPIFY_GET_PRODUCTS. Inventory and current price.
+- ACTION (approval-gated): SHOPIFY_CREATE_PRODUCT, SHOPIFY_CREATE_ORDER, and any price or listing write. Draft the card. Do not fire it.
+- Never invent on-hand, a Buy Box owner, or ROAS. Ban: "ROAS 6.2 over 90 days (no campaign id)".
+- Price change and ROAS<1.0 48h pause are ACTION cards. Critic approval is not human approval.
+
+## Authentication
 
 This skill calls Composio's REST endpoint at runtime using three env vars the Claws runtime injects (never stored in this container):
 - \`$COMPOSIO_API_KEY\` - platform secret
