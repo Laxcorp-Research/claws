@@ -5,6 +5,8 @@ import {
   isSafeSeedRelativePath,
   parseSeedFiles,
   resolveWorkspaceSeedFiles,
+  SHARED_WORKSPACE_LINK_REL,
+  shouldCreateSharedWorkspaceLink,
 } from "@/lib/workspace-seed-files"
 
 describe("workspace seed files helpers", () => {
@@ -70,5 +72,11 @@ describe("workspace seed files helpers", () => {
   it("parseSeedFiles returns null for garbage (legacy dual-read trigger)", () => {
     expect(parseSeedFiles({ not: "array" })).toBeNull()
     expect(parseSeedFiles(null)).toBeNull()
+  })
+
+  it("INFRA-5 A4: link only when absent (real dir is not clobbered)", () => {
+    expect(SHARED_WORKSPACE_LINK_REL).toBe("../shared")
+    expect(shouldCreateSharedWorkspaceLink({ exists: false })).toBe(true)
+    expect(shouldCreateSharedWorkspaceLink({ exists: true })).toBe(false)
   })
 })

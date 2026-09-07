@@ -4,9 +4,10 @@
  * Snapshot.files[] is birth content.
  * - memory/MEMORY.md fans into every workspace-{agentId}/ (per-agent memory).
  * - coordination files unpack ONCE under shared/ (host:
- *   /home/node/.openclaw/shared/). OpenClaw -13 sandbox defaults to mode
- *   "off" and tools.fs.workspaceOnly is unset, so every agent's read/write
- *   tools can reach that sibling path.
+ *   /home/node/.openclaw/shared/). INFRA-5 A4: boot unpack then symlinks
+ *   workspace-{id}/shared -> ../shared so relative `shared/...` resolves from
+ *   every agent cwd. A sibling absolute path is not enough: the Critic
+ *   read tool starts in workspace-{id}/.
  * Install copies onto Workspace.seedFiles. Unpack writes IF-ABSENT so
  * hibernation/agent writes survive redeploy.
  *
@@ -20,7 +21,19 @@ export interface SeedSharedFile {
 
 export const SHARED_SEED_DIR = "shared"
 export const SHARED_HOST_ROOT = "/home/node/.openclaw/shared"
+/** Relative symlink target from workspace-{id}/shared (INFRA-5 A4). */
+export const SHARED_WORKSPACE_LINK_REL = "../shared"
 export const PER_AGENT_MEMORY_PATH = "memory/MEMORY.md"
+
+/**
+ * Create the per-agent `shared` link only when the path is absent.
+ * A real directory (hibernated fork) is left alone. Never clobber.
+ */
+export function shouldCreateSharedWorkspaceLink(existing: {
+  exists: boolean
+}): boolean {
+  return existing.exists !== true
+}
 
 const MAX_SEED_PATH = 80
 const MAX_SEED_CONTENT = 8_000

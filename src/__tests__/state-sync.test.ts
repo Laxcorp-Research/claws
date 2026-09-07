@@ -93,6 +93,27 @@ describe("bundleRuntimeState", () => {
       fs.rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it("does not double-walk workspace-*/shared when it is a symlink to host shared/", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-state-link-"))
+    try {
+      fs.mkdirSync(path.join(dir, "shared"), { recursive: true })
+      fs.writeFileSync(path.join(dir, "shared", "THESES.md"), "# T-002\n")
+      fs.mkdirSync(path.join(dir, "workspace-quant-worker"), { recursive: true })
+      const link = path.join(dir, "workspace-quant-worker", "shared")
+      try {
+        fs.symlinkSync(path.join("..", "shared"), link, "dir")
+      } catch {
+        fs.symlinkSync(path.join(dir, "shared"), link, "junction")
+      }
+      const { files } = mod.bundleRuntimeState(dir)
+      const keys = Object.keys(files)
+      expect(keys).toContain("shared/THESES.md")
+      expect(keys).not.toContain("workspace-quant-worker/shared/THESES.md")
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("runStateSync - Blob-only status mapping", () => {
