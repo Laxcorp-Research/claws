@@ -27,6 +27,7 @@ export type HttpRailDenyReason =
   | "equity-unknown"
   | "live-alpaca-host"
   | "missing-container-limits"
+  | "fixture-miss"
 
 export type HttpPermitView = {
   skill: string
@@ -74,6 +75,7 @@ export function evaluateHttpCall(args: {
   deliveryMode?: string | null
   permit?: HttpPermitView | null
   toolId?: string
+  composioOverrides?: Readonly<Record<string, HttpClass>>
 }): HttpRailDecision {
   const skill = args.contract?.skill ?? args.skill ?? "http"
   const toolId = args.toolId ?? mintHttpToolId(skill)
@@ -84,11 +86,15 @@ export function evaluateHttpCall(args: {
   if (!args.contract) {
     return { status: "deny", reason: "undeclared", toolId }
   }
-  const endpoint = matchHttpEndpoint(args.contract, {
-    method: args.method,
-    host: args.host,
-    path: args.path,
-  })
+  const endpoint = matchHttpEndpoint(
+    args.contract,
+    {
+      method: args.method,
+      host: args.host,
+      path: args.path,
+    },
+    { composioOverrides: args.composioOverrides },
+  )
   if (!endpoint) {
     return { status: "deny", reason: "undeclared", toolId }
   }

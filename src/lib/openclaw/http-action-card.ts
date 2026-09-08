@@ -93,6 +93,17 @@ export function renderHttpActionBodyPlain(args: {
     }
   }
 
+  if ((skill === "shopify-store") && isRecord(body)) {
+    const variant = isRecord(body.variant) ? body.variant : body
+    const price = variant.price ?? body.price
+    const id = variant.id ?? body.id
+    const sku = variant.sku ?? body.sku
+    if (price != null && String(price).trim().length > 0) {
+      const who = sku != null ? String(sku) : id != null ? `variant ${String(id)}` : "variant"
+      return `${who} price ${String(price)}`
+    }
+  }
+
   if (typeof body === "string") return body.trim()
   if (body == null) return ""
   if (Array.isArray(body) && body.length === 0) return ""

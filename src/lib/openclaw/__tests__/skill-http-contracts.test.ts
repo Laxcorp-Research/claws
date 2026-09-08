@@ -121,6 +121,18 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
     ).toBeNull()
   })
 
+  it("classifies unlisted GMAIL_GET_PROFILE via prefix as READ", () => {
+    const gmail = httpContractForSkill("gmail-ops")
+    expect(gmail?.composioOpPrefix).toBe("GMAIL_")
+    expect(
+      matchHttpEndpoint(gmail!, {
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/GMAIL_GET_PROFILE",
+      })?.class,
+    ).toBe("READ")
+  })
+
   it("A5: skill without a contract badges not yet callable, not Connected/PENDING", () => {
     expect(httpSkillStatusBadge("not-yet-written-skill")).toBe(NOT_YET_CALLABLE_BADGE)
     expect(httpSkillStatusBadge("tavily-search")).toBe("callable")

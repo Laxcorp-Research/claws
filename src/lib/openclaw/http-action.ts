@@ -22,8 +22,19 @@ import {
 } from "@/lib/openclaw/http-action-card"
 import { consumeHttpPermit, resolveHttpPermit } from "@/lib/openclaw/http-permit"
 import { evaluateTradingActionRisk } from "@/lib/quant/trading-action-gate"
+import { composioOverridesForTemplate } from "@/lib/openclaw/composio-op-class"
+import {
+  isHttpFixtureEnabled,
+  lookupHttpFixture,
+  serializeHttpFixtureBody,
+} from "@/lib/openclaw/http-fixture"
 
 export type HttpGateOp = "gate" | "ledger"
+
+export type HttpFixturePayload = {
+  httpStatus: number
+  body: unknown
+}
 
 export type HttpGateResult = {
   status: "allow" | "deny" | "pending"
@@ -33,6 +44,8 @@ export type HttpGateResult = {
   card?: HttpActionCardView
   requestId?: string
   ledgerId?: string
+  fixture?: HttpFixturePayload
+  fixtureLedged?: boolean
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -164,7 +177,16 @@ export async function gateHttpCall(args: {
 }): Promise<HttpGateResult> {
   const target = parseHttpTarget({ url: args.url, host: args.host, path: args.path })
   const contract = httpContractForSkill(args.skill)
-  const toolId = mintHttpToolId(args.skill)
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: args.workspaceId },
+    select: {
+      deliveryMode: true,
+      httpFixtureMode: true,
+      clawTemplate: { select: { slug: true } },
+    },
+  })
+  const fixtureOn = isHttpFixtureEnabled(workspace?.httpFixtureMode ?? false)
+  const toolId = mintHttpToolId(args.skill, { fixture: fixtureOn })
   if (!target) {
     const denied = await writeDeniedLedger({
       workspaceId: args.workspaceId,
@@ -179,10 +201,6 @@ export async function gateHttpCall(args: {
     return { status: "deny", reason: "undeclared", toolId, ledgerId: denied.id }
   }
 
-  const workspace = await prisma.workspace.findUnique({
-    where: { id: args.workspaceId },
-    select: { deliveryMode: true },
-  })
   const resolved = contract
     ? await resolveHttpPermit({
         workspaceId: args.workspaceId,
@@ -206,6 +224,7 @@ export async function gateHttpCall(args: {
     deliveryMode: workspace?.deliveryMode ?? "APPROVAL_REQUIRED",
     permit,
     toolId,
+    composioOverrides: composioOverridesForTemplate(workspace?.clawTemplate?.slug),
   })
 
   const risk = evaluateTradingActionRisk({
@@ -243,9 +262,11 @@ export async function gateHttpCall(args: {
     method: args.method,
     host: target.host,
     path: target.path,
+    url: args.url,
     body: args.body,
     agentSlug: args.agentSlug,
     decision,
+    fixtureOn,
   })
 }
 
@@ -255,9 +276,11 @@ async function finalizeGateDecision(args: {
   method: string
   host: string
   path: string
+  url?: string
   body?: unknown
   agentSlug?: string | null
   decision: HttpRailDecision
+  fixtureOn: boolean
 }): Promise<HttpGateResult> {
   const { decision } = args
   if (decision.status === "pending") {
@@ -341,6 +364,59 @@ async function finalizeGateDecision(args: {
     }
   }
 
+  if (args.fixtureOn) {
+    const recording = lookupHttpFixture({
+      skill: args.skill,
+      method: args.method,
+      path: args.path,
+      url: args.url,
+      body: args.body,
+    })
+    if (!recording) {
+      const ledger = await writeDeniedLedger({
+        workspaceId: args.workspaceId,
+        toolId: decision.toolId,
+        skill: args.skill,
+        method: args.method,
+        host: args.host,
+        path: args.path,
+        reason: "fixture-miss",
+        agentSlug: args.agentSlug,
+      })
+      return {
+        status: "deny",
+        reason: "fixture-miss",
+        toolId: decision.toolId,
+        ledgerId: ledger.id,
+      }
+    }
+    const serialized = serializeHttpFixtureBody(recording.body)
+    const ledger = await writeHttpLedger({
+      workspaceId: args.workspaceId,
+      agentSlug: args.agentSlug,
+      row: buildHttpLedgerRow({
+        toolId: decision.toolId,
+        skill: args.skill,
+        method: args.method,
+        host: args.host,
+        path: args.path,
+        class: decision.class,
+        status: "ok",
+        httpStatus: recording.httpStatus,
+        bytes: Buffer.byteLength(serialized, "utf8"),
+        durationMs: 0,
+      }),
+    })
+    return {
+      status: "allow",
+      class: decision.class,
+      toolId: decision.toolId,
+      fixture: { httpStatus: recording.httpStatus, body: recording.body },
+      fixtureLedged: true,
+      ledgerId: ledger.id,
+    }
+  }
+
   return { status: "allow", class: decision.class, toolId: decision.toolId }
 }
 
@@ -363,7 +439,10 @@ async function writeDeniedLedger(args: {
       method: args.method,
       host: args.host,
       path: args.path,
-      class: args.reason === "undeclared" || args.reason === "caller_auth" ? "READ" : "ACTION",
+      class:
+        args.reason === "undeclared" || args.reason === "caller_auth" || args.reason === "fixture-miss"
+          ? "READ"
+          : "ACTION",
       status: "denied",
       errorCode: args.reason,
       bytes: 0,

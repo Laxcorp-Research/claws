@@ -29,6 +29,26 @@ describe("http ledger", () => {
     expect(claimsSourceMatchesLedger("tool:other:1", row)).toBe(false)
     const parsed = parseHttpLedgerFromMetadata(JSON.stringify(row))
     expect(parsed?.toolId).toBe(id)
+    const fixtureId = mintHttpToolId("shopify-store", { fixture: true })
+    expect(fixtureId).toMatch(/^tool:fixture:shopify-store:[a-f0-9]{12}$/)
+    expect(
+      parseHttpLedgerFromMetadata(
+        JSON.stringify(
+          buildHttpLedgerRow({
+            toolId: fixtureId,
+            skill: "shopify-store",
+            method: "GET",
+            host: "laxclaws-dev.myshopify.com",
+            path: "/admin/api/2024-10/products.json",
+            class: "READ",
+            status: "ok",
+            httpStatus: 200,
+            bytes: 12,
+            durationMs: 1,
+          }),
+        ),
+      )?.toolId,
+    ).toBe(fixtureId)
   })
 
   it("hashes bodies so permits bind to the exact payload", () => {
