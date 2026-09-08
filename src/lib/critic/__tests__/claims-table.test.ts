@@ -193,5 +193,12 @@ Verdict: PASS`
 Verdict: PASS`
     expect(hasFourDimensionScoreTable(quantTable)).toBe(true)
     expect(isBareMeanVerdict(`${bare}\n${quantTable}`)).toBe(false)
+    const youtubeTable = `${CRITIC_DIMENSION_TABLE_HEADER}
+| hook | 8 | 0-8s names the cost |
+| retention-logic | 8 | pattern interrupt |
+| originality | 8 | not a clone |
+| policy | 9 | no medical claim |
+Verdict: PASS`
+    expect(hasFourDimensionScoreTable(youtubeTable)).toBe(true)
   })
 })

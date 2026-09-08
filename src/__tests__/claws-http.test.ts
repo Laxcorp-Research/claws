@@ -139,6 +139,8 @@ describe("claws-http auth profiles", () => {
     expect(resolveAuthProfile("hubspot-crm")?.profile).toBe("composio")
     expect(resolveAuthProfile("apollo-search")?.profile).toBe("x-api-key")
     expect(resolveAuthProfile("shopify-store")?.profile).toBe("shopify-admin")
+    expect(resolveAuthProfile("beehiiv-api")?.profile).toBe("bearer")
+    expect(resolveAuthProfile("beehiiv-api")?.env).toBe("BEEHIIV_API_KEY")
   })
 
   it("shopify-admin injects X-Shopify-Access-Token and never echoes the token in errors", () => {
@@ -155,6 +157,21 @@ describe("claws-http auth profiles", () => {
     })
     expect(missing).toEqual({ ok: false, code: "AUTH", message: "SHOPIFY_ADMIN_TOKEN is not set" })
     expect(JSON.stringify(missing)).not.toMatch(/shpat_/)
+  })
+
+  it("beehiiv bearer injects Authorization from BEEHIIV_API_KEY", () => {
+    const out = applyAuthProfile({
+      profile: resolveAuthProfile("beehiiv-api"),
+      env: { BEEHIIV_API_KEY: "bh_fixture" },
+    })
+    expect(out.ok).toBe(true)
+    if (!out.ok) throw new Error("expected ok")
+    expect(out.headers.Authorization).toBe("Bearer bh_fixture")
+    const missing = applyAuthProfile({
+      profile: resolveAuthProfile("beehiiv-api"),
+      env: {},
+    })
+    expect(missing).toEqual({ ok: false, code: "AUTH", message: "BEEHIIV_API_KEY is not set" })
   })
 
   it("composio injects X-API-Key plus user_id and connected_account_id", () => {

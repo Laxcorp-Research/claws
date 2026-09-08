@@ -142,6 +142,15 @@ const SKILL_HTTP_CONTRACTS_RAW: Readonly<Record<string, HttpSkillContract>> = {
       composioOp("YOUTUBE_SEARCH_YOU_TUBE", "READ"),
       composioOp("YOUTUBE_GET_CHANNEL_STATISTICS", "READ"),
       composioOp("YOUTUBE_LIST_USER_PLAYLISTS", "READ"),
+      composioOp("YOUTUBE_UPDATE_VIDEO", "ACTION"),
+    ],
+  },
+  "beehiiv-api": {
+    skill: "beehiiv-api",
+    auth: "bearer",
+    endpoints: [
+      { method: "GET", host: "api.beehiiv.com", path: "/v2/publications", class: "READ" },
+      { method: "POST", host: "api.beehiiv.com", path: "/v2/publications", class: "ACTION" },
     ],
   },
   "convertkit-newsletter": {
@@ -341,6 +350,7 @@ export const HTTP_SKILL_BY_TOOL_SLUG: Readonly<Record<string, string>> = {
   "twitter-api": "twitter-api",
   linkedin: "linkedin-api",
   youtube: "youtube-data-api",
+  "beehiiv-api": "beehiiv-api",
   convertkit: "convertkit-newsletter",
   binance: "binance-trading",
   coinbase: "coinbase-trading",

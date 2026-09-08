@@ -28,6 +28,24 @@ export const ECOM_CRITIC_SCORE_DIMENSIONS = [
   "policy-compliance",
   "evidence",
 ] as const
+export const YOUTUBE_CRITIC_SCORE_DIMENSIONS = [
+  "hook",
+  "retention-logic",
+  "originality",
+  "policy",
+] as const
+export const NEWSLETTER_CRITIC_SCORE_DIMENSIONS = [
+  "subject-promise",
+  "issue-density",
+  "voice-fit",
+  "policy",
+] as const
+export const PODCAST_CRITIC_SCORE_DIMENSIONS = [
+  "guest-fit",
+  "brief-clarity",
+  "repurpose-plan",
+  "policy",
+] as const
 
 const BARE_MEAN_VERDICT_RE = /\bPASS\b[^\n]{0,40}\bmean\b/i
 
@@ -77,7 +95,10 @@ export function hasFourDimensionScoreTable(text: string | null | undefined): boo
   return (
     hasNamedDimensionScoreTable(text, CRITIC_SCORE_DIMENSIONS) ||
     hasNamedDimensionScoreTable(text, QUANT_CRITIC_SCORE_DIMENSIONS) ||
-    hasNamedDimensionScoreTable(text, ECOM_CRITIC_SCORE_DIMENSIONS)
+    hasNamedDimensionScoreTable(text, ECOM_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, YOUTUBE_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, NEWSLETTER_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, PODCAST_CRITIC_SCORE_DIMENSIONS)
   )
 }
 

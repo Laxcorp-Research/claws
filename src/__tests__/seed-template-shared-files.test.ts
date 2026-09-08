@@ -35,15 +35,42 @@ const EXPECTED_NAMED: Record<string, string[]> = {
     "shared/deliverables/ad-review.md",
     "shared/deliverables/product-pnl.md",
   ],
-  "youtube-channel-os": ["shared/VOICE.md"],
+  "youtube-channel-os": [
+    "shared/VOICE.md",
+    "shared/VIDEOS.md",
+    "shared/IDEAS.md",
+    "shared/CALENDAR.md",
+    "shared/deliverables/trend-scan.md",
+    "shared/deliverables/idea-slate.md",
+    "shared/deliverables/scored-titles.md",
+    "shared/deliverables/script-draft.md",
+    "shared/deliverables/seo-metadata.md",
+    "shared/deliverables/post-publish-6h.md",
+  ],
   "twitter-growth-machine": [
     "shared/VOICE.md",
     "shared/deliverables/x-morning-trends.md",
     "shared/deliverables/x-content-cycle.md",
     "shared/deliverables/x-daily-recap.md",
   ],
-  "newsletter-empire": ["shared/VOICE.md"],
-  "podcast-production-studio": ["shared/GUEST_PIPELINE.md"],
+  "newsletter-empire": [
+    "shared/VOICE.md",
+    "shared/ISSUES.md",
+    "shared/SUBSCRIBERS.md",
+    "shared/deliverables/research-slate.md",
+    "shared/deliverables/issue-draft.md",
+    "shared/deliverables/growth-note.md",
+    "shared/deliverables/sponsor-pitch.md",
+  ],
+  "podcast-production-studio": [
+    "shared/SHOW_BIBLE.md",
+    "shared/GUEST_PIPELINE.md",
+    "shared/deliverables/guest-board.md",
+    "shared/deliverables/outreach-email.md",
+    "shared/deliverables/guest-brief.md",
+    "shared/deliverables/show-notes.md",
+    "shared/deliverables/repurpose-plan.md",
+  ],
   "b2b-sales-machine": ["shared/ICP.md", "shared/SEQUENCE.md"],
   "agency-operations-os": ["shared/CAPACITY.md"],
   "founders-chief-of-staff": ["shared/ACTION_LOG.md"],
@@ -109,7 +136,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(77)
+    expect(total).toBe(98)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
