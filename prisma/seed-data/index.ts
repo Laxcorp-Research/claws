@@ -11,6 +11,9 @@ import { applyWave0Twitter } from "./wave-0-twitter"
 import { applyWave1Freelancer } from "./wave-1-freelancer"
 import { applyWave1Quant } from "./wave-1-quant"
 import { applyWave1Ecom } from "./wave-1-ecom"
+import { applyWave2Youtube } from "./wave-2-youtube"
+import { applyWave2Newsletter } from "./wave-2-newsletter"
+import { applyWave2Podcast } from "./wave-2-podcast"
 import type { SeedTemplate } from "./types"
 
 export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
@@ -46,6 +49,27 @@ export {
   INVENTED_ROAS_FIXTURE,
   ROAS_PAUSE_RULE,
 } from "./wave-1-ecom"
+export {
+  applyWave2Youtube,
+  YOUTUBE_WAVE2_SLUG,
+  YOUTUBE_HEARTBEAT_MD,
+  YOUTUBE_FIRST_MISSION_PROSE,
+  INVENTED_CTR_FIXTURE,
+} from "./wave-2-youtube"
+export {
+  applyWave2Newsletter,
+  NEWSLETTER_WAVE2_SLUG,
+  NEWSLETTER_HEARTBEAT_MD,
+  NEWSLETTER_FIRST_MISSION_PROSE,
+  INVENTED_OPEN_RATE_FIXTURE,
+} from "./wave-2-newsletter"
+export {
+  applyWave2Podcast,
+  PODCAST_WAVE2_SLUG,
+  PODCAST_HEARTBEAT_MD,
+  PODCAST_FIRST_MISSION_PROSE,
+  INVENTED_GUEST_FIXTURE,
+} from "./wave-2-podcast"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -62,6 +86,9 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   .map(applyWave1Freelancer)
   .map(applyWave1Quant)
   .map(applyWave1Ecom)
+  .map(applyWave2Youtube)
+  .map(applyWave2Newsletter)
+  .map(applyWave2Podcast)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)

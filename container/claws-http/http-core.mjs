@@ -38,6 +38,7 @@ export const AUTH_PROFILES = {
     profile: "shopify-admin",
     tokenEnv: "SHOPIFY_ADMIN_TOKEN",
   },
+  "beehiiv-api": { profile: "bearer", env: "BEEHIIV_API_KEY" },
 }
 
 export const COMPOSIO_SKILLS = [

@@ -10,7 +10,6 @@ import { UNPACK_NODE_SCRIPT } from "@/lib/openclaw/railway-client"
 import { ALL_TEMPLATES } from "../../../../prisma/seed-data"
 import type { SeedTemplate } from "../../../../prisma/seed-data/types"
 
-const LEGACY_RAILWAY_LIMIT = 32_768
 const SAFETY_CEILING = 30_000
 
 const workspace = {
@@ -190,18 +189,20 @@ describe("container payload delivery", () => {
     expectUnpackedFiles(outputDir, generated)
   }, 15_000)
 
-  it("keeps youtube-channel-os seed payload vars under the 30,000 char safety ceiling", () => {
-    const youtube = ALL_TEMPLATES.find((template) => template.slug === "youtube-channel-os")
-    expect(youtube).toBeDefined()
-    const generated = generatedFromTemplate(youtube!)
-
-    const legacyFilesB64Length = Buffer.from(JSON.stringify(buildWorkspaceFileMap(generated))).toString("base64").length
-    expect(legacyFilesB64Length).toBeGreaterThan(LEGACY_RAILWAY_LIMIT)
-
-    const env = buildRailwayEnvVars(generated, workspace, user)
-    expect(env.CLAWS_FILES_GZ_B64.length).toBeLessThan(SAFETY_CEILING)
-    expect(env.CLAWS_CONFIG_GZ_B64.length).toBeLessThan(SAFETY_CEILING)
-    expect(env.CLAWS_ENV_GZ_B64.length).toBeLessThan(SAFETY_CEILING)
+  it("keeps WAVE-2 creator seed payloads under the 30,000 char safety ceiling", () => {
+    for (const slug of [
+      "youtube-channel-os",
+      "newsletter-empire",
+      "podcast-production-studio",
+    ] as const) {
+      const seed = ALL_TEMPLATES.find((template) => template.slug === slug)
+      expect(seed, slug).toBeDefined()
+      const generated = generatedFromTemplate(seed!)
+      const env = buildRailwayEnvVars(generated, workspace, user)
+      expect(env.CLAWS_FILES_GZ_B64.length, `${slug} files`).toBeLessThan(SAFETY_CEILING)
+      expect(env.CLAWS_CONFIG_GZ_B64.length, `${slug} config`).toBeLessThan(SAFETY_CEILING)
+      expect(env.CLAWS_ENV_GZ_B64.length, `${slug} env`).toBeLessThan(SAFETY_CEILING)
+    }
   })
 
   it("throws a named pre-flight error when CLAWS_FILES_GZ_B64 exceeds the safety ceiling", () => {

@@ -24,9 +24,9 @@ import {
 const IMAGE_16 = "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-16"
 
 describe("INFRA-5 PR-4 skill http contracts", () => {
-  it("covers every TOOL_SPECIFIC skill (30/30)", () => {
+  it("covers every TOOL_SPECIFIC skill (31/31)", () => {
     const slugs = TOOL_SPECIFIC_SKILLS.map((skill) => skill.slug).sort()
-    expect(slugs).toHaveLength(30)
+    expect(slugs).toHaveLength(31)
     expect(Object.keys(SKILL_HTTP_CONTRACTS).sort()).toEqual(slugs)
     for (const slug of slugs) {
       expect(httpContractForSkill(slug), slug).not.toBeNull()
@@ -42,7 +42,7 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
     }
   })
 
-  it("A5: -15 ships only tavily/twitter/alpaca; -16 ships all 30", () => {
+  it("A5: -15 ships only tavily/twitter/alpaca; -16 ships all contracted skills", () => {
     expect(httpSkillsShippedOnImage(FAIL_CLOSED_PINNED_IMAGE)).toEqual([...IMAGE_15_HTTP_SKILLS])
     expect([...httpSkillsShippedOnImage(IMAGE_16)].sort()).toEqual(Object.keys(SKILL_HTTP_CONTRACTS).sort())
     expect(isHttpToolCallable("tavily", FAIL_CLOSED_PINNED_IMAGE)).toBe(true)
@@ -119,6 +119,40 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
         path: "/api/v3/tools/execute",
       }),
     ).toBeNull()
+  })
+
+  it("classifies Beehiiv GET as READ and POST as ACTION; YouTube update as ACTION", () => {
+    const beehiiv = httpContractForSkill("beehiiv-api")
+    expect(beehiiv?.auth).toBe("bearer")
+    expect(
+      matchHttpEndpoint(beehiiv!, {
+        method: "GET",
+        host: "api.beehiiv.com",
+        path: "/v2/publications/pub_fixture/posts",
+      })?.class,
+    ).toBe("READ")
+    expect(
+      matchHttpEndpoint(beehiiv!, {
+        method: "POST",
+        host: "api.beehiiv.com",
+        path: "/v2/publications/pub_fixture/posts",
+      })?.class,
+    ).toBe("ACTION")
+    const youtube = httpContractForSkill("youtube-data-api")
+    expect(
+      matchHttpEndpoint(youtube!, {
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/YOUTUBE_UPDATE_VIDEO",
+      })?.class,
+    ).toBe("ACTION")
+    expect(
+      matchHttpEndpoint(youtube!, {
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS",
+      })?.class,
+    ).toBe("READ")
   })
 
   it("classifies unlisted GMAIL_GET_PROFILE via prefix as READ", () => {

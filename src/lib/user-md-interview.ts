@@ -13,6 +13,18 @@ import {
   ECOM_FIRST_MISSION_PROSE,
   ECOM_WAVE1_SLUG,
 } from "../../prisma/seed-data/wave-1-ecom"
+import {
+  YOUTUBE_FIRST_MISSION_PROSE,
+  YOUTUBE_WAVE2_SLUG,
+} from "../../prisma/seed-data/wave-2-youtube"
+import {
+  NEWSLETTER_FIRST_MISSION_PROSE,
+  NEWSLETTER_WAVE2_SLUG,
+} from "../../prisma/seed-data/wave-2-newsletter"
+import {
+  PODCAST_FIRST_MISSION_PROSE,
+  PODCAST_WAVE2_SLUG,
+} from "../../prisma/seed-data/wave-2-podcast"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
 import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
@@ -96,7 +108,13 @@ If the human says "update my profile", rewrite that file from the conversation a
           ? `\n\n${QUANT_FIRST_MISSION_PROSE}`
           : input.templateSlug === ECOM_WAVE1_SLUG
             ? `\n\n${ECOM_FIRST_MISSION_PROSE}`
-            : ""
+            : input.templateSlug === YOUTUBE_WAVE2_SLUG
+              ? `\n\n${YOUTUBE_FIRST_MISSION_PROSE}`
+              : input.templateSlug === NEWSLETTER_WAVE2_SLUG
+                ? `\n\n${NEWSLETTER_FIRST_MISSION_PROSE}`
+                : input.templateSlug === PODCAST_WAVE2_SLUG
+                  ? `\n\n${PODCAST_FIRST_MISSION_PROSE}`
+                  : ""
   return `${always}
 
 ## First-boot interview

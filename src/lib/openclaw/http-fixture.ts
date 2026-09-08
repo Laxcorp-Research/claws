@@ -282,6 +282,77 @@ export const HTTP_FIXTURE_RECORDINGS: readonly HttpFixtureRecording[] = [
       },
     },
   },
+  {
+    skill: "youtube-data-api",
+    method: "POST",
+    path: "/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS",
+    httpStatus: 200,
+    body: {
+      successful: true,
+      data: {
+        statistics: { viewCount: "240110", subscriberCount: "12840", videoCount: "42" },
+        snippet: { title: "Cursor Clips", customUrl: "@cursor-clips" },
+      },
+    },
+  },
+  {
+    skill: "youtube-data-api",
+    method: "POST",
+    path: "/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE",
+    httpStatus: 200,
+    body: {
+      successful: true,
+      data: {
+        items: [
+          {
+            id: { videoId: "dQwFixture01" },
+            snippet: { title: "I scored 12 titles 1-10", publishedAt: "2026-09-01T14:00:00Z" },
+          },
+          {
+            id: { videoId: "dQwFixture02" },
+            snippet: { title: "Thumbnail brief in 8 minutes", publishedAt: "2026-08-20T14:00:00Z" },
+          },
+        ],
+      },
+    },
+  },
+  {
+    skill: "youtube-data-api",
+    method: "POST",
+    path: "/api/v3/tools/execute/YOUTUBE_UPDATE_VIDEO",
+    httpStatus: 200,
+    body: {
+      successful: true,
+      data: { id: "dQwFixture01", snippet: { title: "I scored 12 titles 1-10" } },
+    },
+  },
+  {
+    skill: "beehiiv-api",
+    method: "GET",
+    path: "/v2/publications",
+    pathMatch: "includes",
+    httpStatus: 200,
+    body: {
+      data: [
+        { id: "post_fixture_1", title: "The subject-line scorecard", status: "draft" },
+      ],
+    },
+  },
+  {
+    skill: "beehiiv-api",
+    method: "POST",
+    path: "/v2/publications",
+    pathMatch: "includes",
+    httpStatus: 200,
+    body: { data: { id: "post_fixture_new", status: "draft" } },
+  },
+  {
+    skill: "gmail-ops",
+    method: "POST",
+    path: "/api/v3/tools/execute/GMAIL_SEND_EMAIL",
+    httpStatus: 200,
+    body: { successful: true, data: { id: "fixture-sent-pending" } },
+  },
 ]
 
 export function lookupHttpFixture(args: {
