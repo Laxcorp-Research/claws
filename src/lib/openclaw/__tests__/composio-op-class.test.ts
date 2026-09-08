@@ -46,7 +46,9 @@ describe("composio op classifier", () => {
       expect(assertRecommendedOpClassified(row), `${row.template} ${row.skill} ${row.op}`).toBe(true)
     }
     expect(unique.length).toBe(new Set(rows.map((r) => r.op)).size)
-    expect(unique.length).toBe(60)
+    // WAVE-2: Newsletter draft-writer moved from convertkit-newsletter (KIT_* plus
+    // cheap KIT_GET_ACCOUNT) to beehiiv-api (bearer). YouTube gained UPDATE_VIDEO.
+    expect(unique.length).toBe(57)
   })
 
   it("prefix classifies unknown GMAIL GET as READ and unknown write as ACTION", () => {

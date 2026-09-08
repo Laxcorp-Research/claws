@@ -130,8 +130,9 @@ Deliverable: ${SHARED}/deliverables/guest-brief.md
 Deliverable: ${SHARED}/deliverables/show-notes.md
 
 ## window 0 16 * * 5
-1. Wake. Content Repurposer: 10-20 piece plan format.
-2. Write ${SHARED}/deliverables/repurpose-plan.md. Paste verbatim.
+1. Wake. Read the guest brief and show-notes.
+2. Content Repurposer: 10-20 piece plan format. No invented download counts.
+3. Write ${SHARED}/deliverables/repurpose-plan.md. Paste verbatim.
 Deliverable: ${SHARED}/deliverables/repurpose-plan.md
 `
 
