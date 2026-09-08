@@ -1450,7 +1450,7 @@ Use when: significant ranking drop (>5 positions on target keyword), technical i
   ),
   tools: [
     { slug: "anthropic_api", name: "Anthropic (Claude)", category: "AI", connectionType: "API_KEY", required: true },
-    { slug: "google-search-console", name: "Google Search Console", category: "SEO", connectionType: "OAUTH_COMPOSIO", required: true },
+    { slug: "google-search-console", name: "Google Search Console", category: "SEO", connectionType: "API_KEY", required: true },
     { slug: "google-analytics", name: "Google Analytics", category: "Analytics", connectionType: "OAUTH_COMPOSIO", required: true },
     { slug: "ahrefs", name: "Ahrefs", category: "SEO", connectionType: "API_KEY", required: false, alternatives: ["semrush"] },
     { slug: "tavily", name: "Tavily", category: "Search", connectionType: "API_KEY", required: false },
