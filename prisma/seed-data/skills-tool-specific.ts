@@ -1342,7 +1342,8 @@ Admin REST returns \`{ products }\` / \`{ product }\` / \`{ variant }\` / \`{ in
   {
     name: "Google Search Console",
     slug: "google-search-console",
-    description: "Search performance and indexing data via Composio",
+    description:
+      "Search performance and indexing via GSC_API_KEY (catalog API_KEY). Not a Composio skill: composio-toolkit-allowlist.txt has no googlesearchconsole toolkit.",
     skillMd: `## Authentication
 Auth is injected by the http tool from \`$GSC_API_KEY\` (catalog API_KEY). Do not pass Authorization. This is not a Composio skill.
 

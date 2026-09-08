@@ -5,6 +5,11 @@ import {
   STRICT_8_DEFINITION,
   YOUTUBE_CRITIC_SCORE_DIMENSIONS,
 } from "../../src/lib/critic/claims-table"
+import {
+  REJECT_UNSOURCED_CTR,
+  UNSOURCED_CTR_LIFT_FIXTURE,
+  YOUR_CTR_PLACEHOLDER,
+} from "../../src/lib/critic/youtube-ctr-gate"
 
 export const YOUTUBE_WAVE2_SLUG = "youtube-channel-os"
 
@@ -25,7 +30,7 @@ const TITLE_RUBRIC = `Title CTR rubric (score 1-10, then ship only 8+):
 5-6 Specific audience, weak promise. Example 5: "Thumbnail tips for faceless channels."
 7 Clear promise + constraint. Example 7: "I rewrote 12 titles. Only 3 cleared 8/10 CTR."
 8 Specific + proof hook + searchable noun. GOOD 8: "I scored 12 titles 1-10. The 8+ pattern is noun + number + stakes."
-9 Named artifact + outcome. GOOD 9: "The 8-word title that lifted CTR from 2.1% to 5.4% (same thumbnail)."
+9 Named artifact + outcome. GOOD 9: "The 8-word title that lifted CTR from ${YOUR_CTR_PLACEHOLDER} to ${YOUR_CTR_PLACEHOLDER} (same thumbnail)."
 10 Rare. Named result + constraint + searchable entity. GOOD 10: "Stop writing 'ultimate guide'. Score this 12-title set against USER.md voice."`
 
 const THUMB_BRIEF = `Thumbnail brief format:
@@ -222,7 +227,7 @@ You are Title & Thumbnail Architect. CTR is a score, not a vibe.
 6. "Why your titles do not get clicks" - 6
 7. "I rewrote 12 titles. Only 3 cleared 8/10 CTR." - 7
 8. "I scored 12 titles 1-10. The 8+ pattern is noun + number + stakes." - 8
-9. "The 8-word title that lifted CTR from 2.1% to 5.4% (same thumbnail)." - 9
+9. "The 8-word title that lifted CTR from ${YOUR_CTR_PLACEHOLDER} to ${YOUR_CTR_PLACEHOLDER} (same thumbnail)." - 9
 10. "Stop writing ultimate guide. Score this 12-title set against USER.md voice." - 10
 
 Ship only rows 8-10 unless the human asks for the full set as a teaching artifact.
@@ -305,6 +310,8 @@ ${STRICT_8_DEFINITION}
 Reject immediately:
 - ${INVENTED_CTR_FIXTURE}
 - ${INVENTED_RETENTION_FIXTURE}
+- ${UNSOURCED_CTR_LIFT_FIXTURE} (${REJECT_UNSOURCED_CTR} unless a youtube-data-api tool id sources both percents)
+- numeric CTR percents with no tool id. Use ${YOUR_CTR_PLACEHOLDER}.
 - policy: guaranteed income, medical advice, harassment
 - hook that the script does not pay off (retention-logic)
 - clone of another channel's title with no original angle (originality)

@@ -25,6 +25,22 @@ import {
   PODCAST_FIRST_MISSION_PROSE,
   PODCAST_WAVE2_SLUG,
 } from "../../prisma/seed-data/wave-2-podcast"
+import {
+  B2B_FIRST_MISSION_PROSE,
+  B2B_WAVE3_SLUG,
+} from "../../prisma/seed-data/wave-3-b2b"
+import {
+  AGENCY_FIRST_MISSION_PROSE,
+  AGENCY_WAVE3_SLUG,
+} from "../../prisma/seed-data/wave-3-agency"
+import {
+  COS_FIRST_MISSION_PROSE,
+  COS_WAVE3_SLUG,
+} from "../../prisma/seed-data/wave-3-cos"
+import {
+  SEO_FIRST_MISSION_PROSE,
+  SEO_WAVE3_SLUG,
+} from "../../prisma/seed-data/wave-3-seo"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
 import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
@@ -114,7 +130,15 @@ If the human says "update my profile", rewrite that file from the conversation a
                 ? `\n\n${NEWSLETTER_FIRST_MISSION_PROSE}`
                 : input.templateSlug === PODCAST_WAVE2_SLUG
                   ? `\n\n${PODCAST_FIRST_MISSION_PROSE}`
-                  : ""
+                  : input.templateSlug === B2B_WAVE3_SLUG
+                    ? `\n\n${B2B_FIRST_MISSION_PROSE}`
+                    : input.templateSlug === AGENCY_WAVE3_SLUG
+                      ? `\n\n${AGENCY_FIRST_MISSION_PROSE}`
+                      : input.templateSlug === COS_WAVE3_SLUG
+                        ? `\n\n${COS_FIRST_MISSION_PROSE}`
+                        : input.templateSlug === SEO_WAVE3_SLUG
+                          ? `\n\n${SEO_FIRST_MISSION_PROSE}`
+                          : ""
   return `${always}
 
 ## First-boot interview

@@ -46,6 +46,30 @@ export const PODCAST_CRITIC_SCORE_DIMENSIONS = [
   "repurpose-plan",
   "policy",
 ] as const
+export const B2B_CRITIC_SCORE_DIMENSIONS = [
+  "relevance",
+  "compliance",
+  "specificity",
+  "tone",
+] as const
+export const AGENCY_CRITIC_SCORE_DIMENSIONS = [
+  "scope-integrity",
+  "utilization-truth",
+  "margin-truth",
+  "client-clarity",
+] as const
+export const COS_CRITIC_SCORE_DIMENSIONS = [
+  "briefing-completeness",
+  "commitment-fidelity",
+  "tone",
+  "off-limits",
+] as const
+export const SEO_CRITIC_SCORE_DIMENSIONS = [
+  "eeat",
+  "intent-fit",
+  "ymyl-safety",
+  "evidence",
+] as const
 
 const BARE_MEAN_VERDICT_RE = /\bPASS\b[^\n]{0,40}\bmean\b/i
 
@@ -98,7 +122,11 @@ export function hasFourDimensionScoreTable(text: string | null | undefined): boo
     hasNamedDimensionScoreTable(text, ECOM_CRITIC_SCORE_DIMENSIONS) ||
     hasNamedDimensionScoreTable(text, YOUTUBE_CRITIC_SCORE_DIMENSIONS) ||
     hasNamedDimensionScoreTable(text, NEWSLETTER_CRITIC_SCORE_DIMENSIONS) ||
-    hasNamedDimensionScoreTable(text, PODCAST_CRITIC_SCORE_DIMENSIONS)
+    hasNamedDimensionScoreTable(text, PODCAST_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, B2B_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, AGENCY_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, COS_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, SEO_CRITIC_SCORE_DIMENSIONS)
   )
 }
 

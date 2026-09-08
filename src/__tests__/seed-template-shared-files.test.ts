@@ -14,6 +14,7 @@ const EXPECTED_NAMED: Record<string, string[]> = {
     "shared/THESES.md",
     "shared/deliverables/pre-market-scan.md",
     "shared/deliverables/trade-thesis.md",
+    "shared/deliverables/trade-alert.md",
     "shared/deliverables/paper-ticket.md",
     "shared/deliverables/eod-risk-report.md",
   ],
@@ -71,10 +72,42 @@ const EXPECTED_NAMED: Record<string, string[]> = {
     "shared/deliverables/show-notes.md",
     "shared/deliverables/repurpose-plan.md",
   ],
-  "b2b-sales-machine": ["shared/ICP.md", "shared/SEQUENCE.md"],
-  "agency-operations-os": ["shared/CAPACITY.md"],
-  "founders-chief-of-staff": ["shared/ACTION_LOG.md"],
-  "seo-empire-builder": ["shared/CONTENT_CAL.md"],
+  "b2b-sales-machine": [
+    "shared/ICP.md",
+    "shared/SEQUENCES.md",
+    "shared/PIPELINE.md",
+    "shared/deliverables/icp-refresh.md",
+    "shared/deliverables/enrich-shortlist.md",
+    "shared/deliverables/sequence-draft.md",
+    "shared/deliverables/reply-triage.md",
+    "shared/deliverables/pipeline-report.md",
+  ],
+  "agency-operations-os": [
+    "shared/CLIENTS.md",
+    "shared/CAPACITY.md",
+    "shared/SOW.md",
+    "shared/deliverables/capacity-brief.md",
+    "shared/deliverables/change-order.md",
+    "shared/deliverables/client-status.md",
+    "shared/deliverables/cash-flow.md",
+  ],
+  "founders-chief-of-staff": [
+    "shared/BRIEFING.md",
+    "shared/ACTION_LOG.md",
+    "shared/COMMITMENTS.md",
+    "shared/deliverables/morning-briefing.md",
+    "shared/deliverables/meeting-prep.md",
+    "shared/deliverables/exec-comms.md",
+  ],
+  "seo-empire-builder": [
+    "shared/KEYWORDS.md",
+    "shared/CONTENT_CAL.md",
+    "shared/BACKLINKS.md",
+    "shared/deliverables/keyword-clusters.md",
+    "shared/deliverables/content-brief.md",
+    "shared/deliverables/tech-audit.md",
+    "shared/deliverables/rank-report.md",
+  ],
   "real-estate-agent-os": ["shared/MARKET.md", "shared/LISTINGS.md"],
   "recruiter-os": [],
   "medical-practice-manager": [],
@@ -101,10 +134,10 @@ const PROSE_BINDS: Array<{ slug: string; agentSlug: string; needle: string }> = 
   { slug: "newsletter-empire", agentSlug: "draft-writer", needle: `${SHARED}/VOICE.md` },
   { slug: "podcast-production-studio", agentSlug: "guest-researcher-booker", needle: `${SHARED}/GUEST_PIPELINE.md` },
   { slug: "b2b-sales-machine", agentSlug: "icp-researcher", needle: `${SHARED}/ICP.md` },
-  { slug: "b2b-sales-machine", agentSlug: "sequence-writer", needle: `${SHARED}/SEQUENCE.md` },
-  { slug: "agency-operations-os", agentSlug: "resource-allocator", needle: `${SHARED}/CAPACITY.md` },
-  { slug: "founders-chief-of-staff", agentSlug: "action-tracker", needle: `${SHARED}/ACTION_LOG.md` },
-  { slug: "seo-empire-builder", agentSlug: "keyword-strategist", needle: `${SHARED}/CONTENT_CAL.md` },
+  { slug: "b2b-sales-machine", agentSlug: "sequence-writer", needle: `${SHARED}/SEQUENCES.md` },
+  { slug: "agency-operations-os", agentSlug: "intake-scoping-agent", needle: `${SHARED}/SOW.md` },
+  { slug: "founders-chief-of-staff", agentSlug: "briefing-compiler", needle: `${SHARED}/BRIEFING.md` },
+  { slug: "seo-empire-builder", agentSlug: "keyword-strategist", needle: `${SHARED}/KEYWORDS.md` },
   { slug: "real-estate-agent-os", agentSlug: "market-intel-agent", needle: `${SHARED}/MARKET.md` },
   { slug: "real-estate-agent-os", agentSlug: "client-communicator", needle: `${SHARED}/LISTINGS.md` },
   { slug: "health-fitness-commander", agentSlug: "workout-planner", needle: `${SHARED}/PROGRAM.md` },
@@ -136,7 +169,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(98)
+    expect(total).toBe(122)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
