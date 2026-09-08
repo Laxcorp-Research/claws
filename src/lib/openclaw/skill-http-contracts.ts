@@ -1,22 +1,55 @@
-import type { HttpClass, HttpEndpoint, HttpSkillContract } from "@/lib/openclaw/http-contract"
-
-const COMPOSIO_HOST = "backend.composio.dev"
+import {
+  COMPOSIO_EXECUTE_HOST,
+  type HttpClass,
+  type HttpEndpoint,
+  type HttpSkillContract,
+} from "@/lib/openclaw/http-contract"
 
 function composioOp(operation: string, klass: HttpClass): HttpEndpoint {
   return {
     method: "POST",
-    host: COMPOSIO_HOST,
+    host: COMPOSIO_EXECUTE_HOST,
     path: `/api/v3/tools/execute/${operation}`,
     class: klass,
     operation,
   }
 }
 
+/** Toolkit prefix used to classify undeclared ops fail-closed at match time. */
+export const COMPOSIO_OP_PREFIX_BY_SKILL: Readonly<Record<string, string>> = {
+  "hubspot-crm": "HUBSPOT_",
+  "salesforce-crm": "SALESFORCE_",
+  "linkedin-api": "LINKEDIN_",
+  "youtube-data-api": "YOUTUBE_",
+  "convertkit-newsletter": "KIT_",
+  "linear-pm": "LINEAR_",
+  "asana-pm": "ASANA_",
+  "clickup-pm": "CLICKUP_",
+  "jira-pm": "JIRA_",
+  "slack-messaging": "SLACK_",
+  "notion-docs": "NOTION_",
+  "google-analytics": "GOOGLE_ANALYTICS_",
+  "calendly-scheduling": "CALENDLY_",
+  "gmail-ops": "GMAIL_",
+  "google-calendar": "GOOGLECALENDAR_",
+  "github-ops": "GITHUB_",
+  "twitter-oauth": "TWITTER_",
+}
+
+function withComposioPrefix(contract: HttpSkillContract): HttpSkillContract {
+  if (contract.auth !== "composio") return contract
+  const prefix = COMPOSIO_OP_PREFIX_BY_SKILL[contract.skill]
+  if (!prefix) {
+    throw new Error(`composio skill ${contract.skill} is missing COMPOSIO_OP_PREFIX_BY_SKILL`)
+  }
+  return { ...contract, composioOpPrefix: prefix }
+}
+
 /**
  * Declared READ/ACTION endpoints. A skill without a row is not callable
  * via the http rail (A5: badge "not yet callable").
  */
-export const SKILL_HTTP_CONTRACTS: Readonly<Record<string, HttpSkillContract>> = {
+const SKILL_HTTP_CONTRACTS_RAW: Readonly<Record<string, HttpSkillContract>> = {
   "tavily-search": {
     skill: "tavily-search",
     auth: "tavily-body-key",
@@ -292,6 +325,10 @@ export const SKILL_HTTP_CONTRACTS: Readonly<Record<string, HttpSkillContract>> =
     ],
   },
 }
+
+export const SKILL_HTTP_CONTRACTS: Readonly<Record<string, HttpSkillContract>> = Object.fromEntries(
+  Object.entries(SKILL_HTTP_CONTRACTS_RAW).map(([slug, contract]) => [slug, withComposioPrefix(contract)]),
+) as Readonly<Record<string, HttpSkillContract>>
 
 /** Catalog tool slug → TOOL_SPECIFIC skill that owns the http contract. */
 export const HTTP_SKILL_BY_TOOL_SLUG: Readonly<Record<string, string>> = {

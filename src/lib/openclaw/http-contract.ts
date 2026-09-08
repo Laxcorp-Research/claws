@@ -1,4 +1,8 @@
+import { classifyComposioOp } from "@/lib/openclaw/composio-op-class"
+
 export const HTTP_CLASSES = ["READ", "ACTION"] as const
+export const COMPOSIO_EXECUTE_HOST = "backend.composio.dev"
+export const COMPOSIO_EXECUTE_PATH_PREFIX = "/api/v3/tools/execute/"
 export type HttpClass = (typeof HTTP_CLASSES)[number]
 
 export const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const
@@ -39,6 +43,8 @@ export interface HttpSkillContract {
   skill: string
   auth: HttpAuthProfile
   endpoints: HttpEndpoint[]
+  /** Composio toolkit prefix (GMAIL_). Unlisted ops under this prefix classify fail-closed. */
+  composioOpPrefix?: string
 }
 
 export function isHttpClass(value: unknown): value is HttpClass {
@@ -108,9 +114,25 @@ export function httpHostMatches(declared: string, actual: string): boolean {
   return label.length > 0 && !label.includes(".")
 }
 
+export function parseComposioExecuteOp(args: {
+  method: string
+  host: string
+  path: string
+}): string | null {
+  if (args.method.trim().toUpperCase() !== "POST") return null
+  if (normalizeHttpHost(args.host) !== COMPOSIO_EXECUTE_HOST) return null
+  const path = normalizeHttpPath(args.path)
+  if (path === "/api/v3/tools/execute") return null
+  if (!path.startsWith(COMPOSIO_EXECUTE_PATH_PREFIX)) return null
+  const op = path.slice(COMPOSIO_EXECUTE_PATH_PREFIX.length)
+  if (!op || op.includes("/") || !/^[A-Z][A-Z0-9_]*$/.test(op)) return null
+  return op
+}
+
 export function matchHttpEndpoint(
   contract: HttpSkillContract,
   args: { method: string; host: string; path: string },
+  opts?: { composioOverrides?: Readonly<Record<string, HttpClass>> },
 ): HttpEndpoint | null {
   const method = args.method.trim().toUpperCase()
   const host = normalizeHttpHost(args.host)
@@ -121,7 +143,16 @@ export function matchHttpEndpoint(
     const declared = normalizeHttpPath(endpoint.path)
     if (path === declared || path.startsWith(`${declared}/`)) return endpoint
   }
-  return null
+  if (contract.auth !== "composio" || !contract.composioOpPrefix) return null
+  const op = parseComposioExecuteOp({ method, host, path })
+  if (!op || !op.startsWith(contract.composioOpPrefix)) return null
+  return {
+    method: "POST",
+    host: COMPOSIO_EXECUTE_HOST,
+    path: `${COMPOSIO_EXECUTE_PATH_PREFIX}${op}`,
+    class: classifyComposioOp(op, opts?.composioOverrides),
+    operation: op,
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -148,5 +179,9 @@ export function parseHttpSkillContract(raw: unknown): HttpSkillContract | null {
       ...(typeof item.operation === "string" ? { operation: item.operation } : {}),
     })
   }
-  return { skill: raw.skill.trim(), auth: raw.auth, endpoints }
+  const prefix =
+    typeof raw.composioOpPrefix === "string" && raw.composioOpPrefix.trim().length > 0
+      ? raw.composioOpPrefix.trim()
+      : undefined
+  return { skill: raw.skill.trim(), auth: raw.auth, endpoints, ...(prefix ? { composioOpPrefix: prefix } : {}) }
 }

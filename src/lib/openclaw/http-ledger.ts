@@ -18,9 +18,10 @@ export interface HttpLedgerRow {
   durationMs: number
 }
 
-export function mintHttpToolId(skill: string): string {
+export function mintHttpToolId(skill: string, opts?: { fixture?: boolean }): string {
   const slug = skill.trim() || "http"
-  return `tool:${slug}:${randomBytes(6).toString("hex")}`
+  const hex = randomBytes(6).toString("hex")
+  return opts?.fixture ? `tool:fixture:${slug}:${hex}` : `tool:${slug}:${hex}`
 }
 
 export function httpBodyHash(body: unknown): string {

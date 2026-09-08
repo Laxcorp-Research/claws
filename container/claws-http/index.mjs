@@ -136,6 +136,45 @@ async function performHttp(args, deps = {}) {
     }
   }
 
+  if (decision.fixture) {
+    const bodyText =
+      typeof decision.fixture.body === "string"
+        ? decision.fixture.body
+        : JSON.stringify(decision.fixture.body ?? null)
+    const capped = capResponseBytes(bodyText)
+    const durationMs = Date.now() - started
+    const toolId = decision.toolId
+    if (!decision.fixtureLedged) {
+      await postControlPlane(
+        "ledger",
+        {
+          toolId,
+          skill: args.skill,
+          method: args.method,
+          url: args.url,
+          class: decision.class ?? "READ",
+          status: "ok",
+          httpStatus: decision.fixture.httpStatus,
+          bytes: capped.bytes,
+          durationMs,
+        },
+        deps,
+      )
+    }
+    return {
+      result: {
+        ok: true,
+        fixture: true,
+        toolId,
+        httpStatus: decision.fixture.httpStatus,
+        truncated: capped.truncated,
+        bytes: capped.bytes,
+        body: capped.text,
+      },
+      skipLedger: true,
+    }
+  }
+
   const profile = resolveAuthProfile(args.skill)
   const authed = applyAuthProfile({ profile, env, headers: args.headers, body: args.body })
   if (!authed.ok) {

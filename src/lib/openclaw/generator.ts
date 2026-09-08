@@ -2564,6 +2564,7 @@ function generateSkillFiles(
       openclawMeta.http = {
         auth: httpContract.auth,
         endpoints: httpContract.endpoints,
+        ...(httpContract.composioOpPrefix ? { composioOpPrefix: httpContract.composioOpPrefix } : {}),
       };
     }
 

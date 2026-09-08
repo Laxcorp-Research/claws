@@ -365,6 +365,39 @@ describe("claws-http performHttp", () => {
     expect(posted.api_key).toBe("tvly-real")
   })
 
+  it("fixture allow skips auth and never fetches upstream", async () => {
+    const { fetchFn, calls } = controlPlaneFetch({
+      gate: jsonResponse(200, {
+        success: true,
+        data: {
+          status: "allow",
+          class: "READ",
+          toolId: "tool:fixture:shopify-store:abcabcabcabc",
+          fixture: {
+            httpStatus: 200,
+            body: { products: [{ title: "Merino Crew Tee" }] },
+          },
+          fixtureLedged: true,
+        },
+      }),
+    })
+    const out = await httpPlugin.performHttp(
+      {
+        skill: "shopify-store",
+        method: "GET",
+        url: "https://laxclaws-dev.myshopify.com/admin/api/2024-10/products.json",
+      },
+      { ...CP, fetch: fetchFn, env: {} },
+    )
+    expect(out.result).toMatchObject({
+      ok: true,
+      fixture: true,
+      toolId: "tool:fixture:shopify-store:abcabcabcabc",
+      httpStatus: 200,
+    })
+    expect(splitCalls(calls).upstream).toHaveLength(0)
+  })
+
   it("size cap truncates an oversize 200 body", async () => {
     const { fetchFn } = controlPlaneFetch({
       gate: gateAllow("tool:tavily-search:big"),

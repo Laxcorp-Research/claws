@@ -55,6 +55,8 @@ describe("POST /api/internal/http-action/[workspaceId]", () => {
     ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: WORKSPACE_ID,
       deliveryMode: "APPROVAL_REQUIRED",
+      httpFixtureMode: false,
+      clawTemplate: null,
     })
     ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
     ;(prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockImplementation(
@@ -320,5 +322,138 @@ describe("POST /api/internal/http-action/[workspaceId]", () => {
     expect(rail).toContain("coinbase-trading")
     expect(rail).toContain("polymarket-trading")
     expect(rail).not.toMatch(/evaluateQuantRiskManager\s*=\s*\(\s*\)\s*=>\s*\{\s*allow:\s*true/)
+  })
+
+  it("fixture Shopify GET allows a recorded body and mints tool:fixture", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "APPROVAL_REQUIRED",
+      httpFixtureMode: true,
+      clawTemplate: { slug: "ecommerce-profit-maximizer" },
+    })
+    const { status, data } = await parseResponse(
+      await call(
+        {
+          op: "gate",
+          skill: "shopify-store",
+          method: "GET",
+          url: "https://laxclaws-dev.myshopify.com/admin/api/2024-10/products.json",
+        },
+        { secret: SECRET },
+      ),
+    )
+    expect(status).toBe(200)
+    expect(data.data.status).toBe("allow")
+    expect(data.data.class).toBe("READ")
+    expect(data.data.toolId).toMatch(/^tool:fixture:shopify-store:[a-f0-9]{12}$/)
+    expect(data.data.fixture.httpStatus).toBe(200)
+    expect(data.data.fixture.body.products[0].variants[0].sku).toBe("TEE-NAVY")
+    expect(data.data.fixtureLedged).toBe(true)
+  })
+
+  it("fixture Shopify price PUT stays pending with a card (not auto-approved)", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "APPROVAL_REQUIRED",
+      httpFixtureMode: true,
+      clawTemplate: { slug: "ecommerce-profit-maximizer" },
+    })
+    const { data } = await parseResponse(
+      await call(
+        {
+          op: "gate",
+          skill: "shopify-store",
+          method: "PUT",
+          url: "https://laxclaws-dev.myshopify.com/admin/api/2024-10/variants/9010000000001.json",
+          body: { variant: { id: 9010000000001, sku: "TEE-NAVY", price: "52.00" } },
+        },
+        { secret: SECRET },
+      ),
+    )
+    expect(data.data.status).toBe("pending")
+    expect(data.data.toolId).toMatch(/^tool:fixture:shopify-store:/)
+    expect(data.data.card.bodyPlain).toMatch(/TEE-NAVY price 52\.00/)
+    expect(data.data.fixture).toBeUndefined()
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ actionType: "HUMAN_REQUEST" }),
+      }),
+    )
+  })
+
+  it("fixture-miss denies a READ with no recording", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "APPROVAL_REQUIRED",
+      httpFixtureMode: true,
+      clawTemplate: null,
+    })
+    const { data } = await parseResponse(
+      await call(
+        {
+          op: "gate",
+          skill: "shopify-store",
+          method: "GET",
+          url: "https://laxclaws-dev.myshopify.com/admin/api/2024-10/shop.json",
+        },
+        { secret: SECRET },
+      ),
+    )
+    expect(data.data).toMatchObject({ status: "deny", reason: "fixture-miss" })
+  })
+
+  it("MUTATION: production CLAWS_ENV ignores httpFixtureMode", async () => {
+    const prev = process.env.CLAWS_ENV
+    process.env.CLAWS_ENV = "production"
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "APPROVAL_REQUIRED",
+      httpFixtureMode: true,
+      clawTemplate: null,
+    })
+    try {
+      const { data } = await parseResponse(
+        await call(
+          {
+            op: "gate",
+            skill: "tavily-search",
+            method: "POST",
+            url: "https://api.tavily.com/search",
+            body: { query: "micron" },
+          },
+          { secret: SECRET },
+        ),
+      )
+      expect(data.data.status).toBe("allow")
+      expect(data.data.toolId).toMatch(/^tool:tavily-search:/)
+      expect(data.data.fixture).toBeUndefined()
+    } finally {
+      if (prev === undefined) delete process.env.CLAWS_ENV
+      else process.env.CLAWS_ENV = prev
+    }
+  })
+
+  it("166-share packet stays notional-cap on a fixture workspace", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "APPROVAL_REQUIRED",
+      httpFixtureMode: true,
+      clawTemplate: { slug: "quant-trader" },
+    })
+    const { data } = await parseResponse(
+      await call(
+        {
+          op: "gate",
+          skill: "alpaca-trading",
+          method: "POST",
+          host: "paper-api.alpaca.markets",
+          path: "/v2/orders",
+          body: order166,
+        },
+        { secret: SECRET },
+      ),
+    )
+    expect(data.data).toMatchObject({ status: "deny", reason: "notional-cap" })
+    expect(data.data.card).toBeUndefined()
   })
 })
