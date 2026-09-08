@@ -37,8 +37,8 @@ export const TEMPLATE_INTERVIEW_PACKS: Record<string, InterviewQuestion[]> = {
   "ecommerce-profit-maximizer": [
     q("store", "Store URL, platform (Shopify etc.), and primary markets?", "store"),
     q("margins", "Target gross margin and SKUs that are sacred vs flexible?", "margins"),
-    q("brand", "Brand voice, claims you never make, competitors to watch?", "brand"),
-    q("ads", "Paid channels in play and monthly ceiling?", "ads"),
+    q("brands", "Brand voice, claims you never make, competitors to watch?", "brands"),
+    q("channels", "Sales and paid channels in play (Shopify, Amazon, ads) and monthly ad ceiling?", "channels"),
     q("ops", "Who handles fulfillment and what should never be auto-discounted?", "ops constraints"),
   ],
   "youtube-channel-os": [

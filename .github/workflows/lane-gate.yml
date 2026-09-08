@@ -1,0 +1,26 @@
+# Rule 38: the only legal PR into main is promote's PR (head = staging).
+# Incident: #509 defaulted to main because `gh pr create` omitted --base staging.
+# This workflow is a no-checkout mechanical check. It only runs after the
+# file exists on main (via promote). Until then, see docs/CONTRIBUTING.md.
+name: Lane gate
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  staging-only:
+    name: PRs to main must come from staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless head.ref is staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEAD_REF="${{ github.head_ref }}"
+          # LANE_GATE_ASSERT: head_ref_is_staging
+          if [ "$HEAD_REF" != "staging" ]; then
+            echo "::error::Rule 38: pull requests targeting main must have head.ref=staging (the promote PR). This head is '${HEAD_REF}'. Open against staging, then promote. See docs/CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "LANE_GATE_ASSERT: head_ref_is_staging"

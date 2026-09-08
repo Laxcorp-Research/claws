@@ -190,6 +190,30 @@ export const API_KEY_TOOLS: ToolDefinition[] = [
       { envVar: "TWILIO_AUTH_TOKEN", label: "Auth Token", required: true, primary: false, placeholder: "Your Twilio auth token" },
     ],
   },
+  {
+    slug: "shopify",
+    name: "Shopify",
+    connectionType: "API_KEY",
+    category: "ECOMMERCE",
+    helpUrl: "https://admin.shopify.com/settings/apps/development",
+    description: "Shopify Admin API (store domain + Admin API access token)",
+    credentialFields: [
+      {
+        envVar: "SHOPIFY_STORE_DOMAIN",
+        label: "Store domain",
+        required: true,
+        primary: true,
+        placeholder: "your-store.myshopify.com",
+      },
+      {
+        envVar: "SHOPIFY_ADMIN_TOKEN",
+        label: "Admin API access token",
+        required: true,
+        primary: false,
+        placeholder: "shpat_...",
+      },
+    ],
+  },
   { slug: "posthog", name: "PostHog", connectionType: "API_KEY", category: "ANALYTICS", helpUrl: "https://app.posthog.com/settings/project-details", description: "Product analytics", credentialFields: singleApiKey("POSTHOG_API_KEY") },
   { slug: "mixpanel", name: "Mixpanel", connectionType: "API_KEY", category: "ANALYTICS", helpUrl: "https://mixpanel.com/settings/project", description: "Event-based analytics", credentialFields: singleApiKey("MIXPANEL_API_SECRET", { label: "API Secret" }) },
   { slug: "elevenlabs", name: "ElevenLabs", connectionType: "API_KEY", category: "VOICE", helpUrl: "https://elevenlabs.io/settings/api", credentialFields: singleApiKey("ELEVENLABS_API_KEY") },
@@ -281,7 +305,6 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   // docs/COMPOSIO_RUNTIME_CONTRACT.md "Custom OAuth toolkits (operator tracker)".
   { slug: "twitter", name: "Twitter/X", connectionType: "OAUTH_COMPOSIO", category: "SOCIAL", composioToolkitId: "twitter", authMode: "custom-oauth-required", description: "Social media", comingSoon: true, comingSoonReason: "OAuth app registration in progress with Twitter Developer", credentialFields: [] },
   { slug: "convertkit", name: "ConvertKit", connectionType: "OAUTH_COMPOSIO", category: "NEWSLETTER", composioToolkitId: "kit", authMode: "managed-oauth", description: "Email marketing (Kit)", credentialFields: [] },
-  { slug: "shopify", name: "Shopify", connectionType: "OAUTH_COMPOSIO", category: "ECOMMERCE", composioToolkitId: "shopify", authMode: "byok-api-key", description: "E-commerce platform", credentialFields: [] },
   { slug: "jira", name: "Jira", connectionType: "OAUTH_COMPOSIO", category: "PROJECT_MANAGEMENT", composioToolkitId: "jira", authMode: "managed-oauth", description: "Issue tracking", credentialFields: [] },
   { slug: "calendly", name: "Calendly", connectionType: "OAUTH_COMPOSIO", category: "CALENDAR", composioToolkitId: "calendly", authMode: "managed-oauth", description: "Scheduling", credentialFields: [] },
   // ─── PR2.8a additions (19) ───
@@ -298,8 +321,9 @@ export const OAUTH_TOOLS: ToolDefinition[] = [
   //                       form, no popup. Covers typefully, jotform,
   //                       toggl (API_KEY-only on Composio) AND the dual-
   //                       mode toolkits we ship via API_KEY for now
-  //                       (shopify, lever, metaads, pipedrive, webflow,
-  //                       follow_up_boss). Custom OAuth registration
+  //                       (lever, metaads, pipedrive, webflow,
+  //                       follow_up_boss). Shopify Admin is native API_KEY.
+  //                       Custom OAuth registration
   //                       remains an OPTIONAL future upgrade for these
   //                       six, not a launch prerequisite.
   //   - requires-custom-oauth → no API_KEY mode + no managed scheme.
@@ -387,7 +411,7 @@ export const ALL_TOOLS: ToolDefinition[] = [...API_KEY_TOOLS, ...OAUTH_TOOLS, ..
  * radius.
  */
 export const ALL_TOOL_SLUGS = [
-  // API_KEY_TOOLS (29) - keep ordering aligned with the declaration above
+  // API_KEY_TOOLS (30) - keep ordering aligned with the declaration above
   "anthropic_api",
   "tavily",
   "serp_api",
@@ -410,6 +434,7 @@ export const ALL_TOOL_SLUGS = [
   "ahrefs",
   "semrush",
   "twilio",
+  "shopify",
   "posthog",
   "mixpanel",
   "elevenlabs",
@@ -417,7 +442,7 @@ export const ALL_TOOL_SLUGS = [
   "vidiq",
   "salesforce-api",
   "beehiiv-api",
-  // OAUTH_TOOLS (17)
+  // OAUTH_TOOLS (16)
   "hubspot",
   "salesforce",
   "gmail",
@@ -432,7 +457,6 @@ export const ALL_TOOL_SLUGS = [
   "linkedin",
   "twitter",
   "convertkit",
-  "shopify",
   "jira",
   "calendly",
   // PR2.8a Composio additions (19)

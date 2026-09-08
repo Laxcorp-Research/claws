@@ -29,6 +29,7 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
   let deliverableKind: "decision" | "report" | null = null
   let humanRequestId: string | null = null
   let holdStatus: string | null = null
+  let toolId: string | null = null
 
   if (log.metadata) {
     try {
@@ -38,6 +39,7 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
       from = typeof m.from === "string" ? m.from : null
       runId = typeof m.runId === "string" ? m.runId : null
       holdStatus = typeof m.holdStatus === "string" ? m.holdStatus : null
+      toolId = typeof m.toolId === "string" ? m.toolId : null
       const doc = parseDeliverableMetadata(log.metadata)
       eventKind = doc.eventKind
       fileVersionId = doc.fileVersionId
@@ -70,5 +72,6 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
     deliverableKind,
     humanRequestId,
     holdStatus,
+    toolId,
   }
 }

@@ -10,6 +10,7 @@ import { applyMissionScripts } from "./mission-scripts"
 import { applyWave0Twitter } from "./wave-0-twitter"
 import { applyWave1Freelancer } from "./wave-1-freelancer"
 import { applyWave1Quant } from "./wave-1-quant"
+import { applyWave1Ecom } from "./wave-1-ecom"
 import type { SeedTemplate } from "./types"
 
 export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
@@ -37,6 +38,14 @@ export {
   INVENTED_BACKTEST_FIXTURE,
   DRAWDOWN_LADDER,
 } from "./wave-1-quant"
+export {
+  applyWave1Ecom,
+  ECOM_WAVE1_SLUG,
+  ECOM_HEARTBEAT_MD,
+  ECOM_FIRST_MISSION_PROSE,
+  INVENTED_ROAS_FIXTURE,
+  ROAS_PAUSE_RULE,
+} from "./wave-1-ecom"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -52,6 +61,7 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   .map(applyWave0Twitter)
   .map(applyWave1Freelancer)
   .map(applyWave1Quant)
+  .map(applyWave1Ecom)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)

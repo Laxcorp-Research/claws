@@ -56,6 +56,35 @@ describe("NeedsYouSection", () => {
     expect(heading.className).not.toContain("text-[#")
   })
 
+  it("renders an HTTP ACTION card with the order body", () => {
+    render(
+      <NeedsYouSection
+        workspaceId="ws-1"
+        approvals={[
+          {
+            kind: "http_action",
+            title: "alpaca-trading POST paper-api.alpaca.markets/v2/orders",
+            preview: "BUY 166 MU @ $1,017 stop $1,005",
+            humanRequestId: "hr-http",
+            timestamp: "2026-09-07T00:00:00.000Z",
+            httpAction: {
+              skill: "alpaca-trading",
+              method: "POST",
+              host: "paper-api.alpaca.markets",
+              path: "/v2/orders",
+              bodyPlain: "BUY 166 MU @ $1,017 stop $1,005",
+            },
+          },
+        ]}
+      />,
+    )
+    expect(screen.getByTestId("http-action-card")).toBeTruthy()
+    expect(screen.getByTestId("http-action-body").textContent).toBe(
+      "BUY 166 MU @ $1,017 stop $1,005",
+    )
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy()
+  })
+
   it("MUTATION: blind-approve card restored as Needs you renderer fails", () => {
     const src = readFileSync(
       join(process.cwd(), "src/components/dashboard/needs-you-section.tsx"),

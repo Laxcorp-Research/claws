@@ -167,6 +167,53 @@ describe("respondToDeliverable", () => {
     )
   })
 
+  it("approves an HTTP ACTION by issuing a one-shot permit (no FileVersion)", async () => {
+    const httpRow = {
+      id: "hr-http",
+      action: "HTTP ACTION: POST paper-api.alpaca.markets/v2/orders",
+      agentName: "Quant",
+      agentSlug: "quant-commander",
+      metadata: JSON.stringify({
+        eventKind: "http_action",
+        bodyHash: "abc123",
+        card: {
+          skill: "alpaca-trading",
+          method: "POST",
+          host: "paper-api.alpaca.markets",
+          path: "/v2/orders",
+          bodyPlain: "BUY 166 MU @ $1,017 stop $1,005",
+        },
+      }),
+    }
+    ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where?: { actionType?: unknown } }) => {
+        if (args.where?.actionType === "HUMAN_REQUEST") return httpRow
+        return null
+      },
+    )
+    const result = await respondToDeliverable({
+      workspaceId: "ws-1",
+      activityLogId: "hr-http",
+      action: "approve",
+      respondedBy: "founder@test.com",
+    })
+    expect(result).toMatchObject({
+      ok: true,
+      originalRequestId: "hr-http",
+      fileVersionId: null,
+    })
+    expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actionType: "HUMAN_APPROVE",
+          metadata: expect.stringContaining("http_permit"),
+        }),
+      }),
+    )
+    expect(mockApply).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
   it("MUTATION: sidecar write without push leaves the agent unaware", async () => {
     await respondToDeliverable({
       workspaceId: "ws-1",

@@ -1,0 +1,10 @@
+{
+  "name": "@claws/http",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claws authenticated HTTP overlay plugin.",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  }
+}

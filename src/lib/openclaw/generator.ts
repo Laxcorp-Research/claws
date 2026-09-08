@@ -42,6 +42,11 @@ import {
 } from '@/lib/openclaw/message-delivery';
 import { CLAIMS_TABLE_STEP_MARKER, STRICT_8_DEFINITION } from '@/lib/critic/claims-table';
 import { CRITIC_NE_HUMAN_COPY, mergeOutboundDenyIntoTools, overlayMissionLaw, TOOL_STATUS_TRUTH_COPY } from '@/lib/openclaw/delivery-rail';
+import {
+  collectAttachedSkillSlugs,
+  disableBundledWebSearch,
+  mergeSkillShadowDenyIntoTools,
+} from '@/lib/openclaw/skill-shadow-deny';
 import { QUANT_TEMPLATE_SLUG, quantContainerEnvLines } from '@/lib/quant/risk-limits';
 import { reprobeWorkspaceToolConnections } from '@/lib/tools/reprobe-on-deploy';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
@@ -74,6 +79,10 @@ import {
   type WorkflowDeliveryMode,
 } from '@/lib/openclaw/workflow-language';
 import { twitterApiToolsMdHonestyLines } from '@/lib/tools/twitter-api-honesty';
+import { httpContractForSkill } from '@/lib/openclaw/skill-http-contracts';
+import { rewriteSkillMdForHttp } from '@/lib/openclaw/skill-http-md';
+import { httpHonestStatusLabel } from '@/lib/openclaw/skill-http-status';
+import { FAIL_CLOSED_PINNED_IMAGE } from '@/lib/openclaw/http-image-profiles';
 import type { ApiKeySource } from '@/generated/prisma/client';
 import yaml from 'yaml';
 
@@ -463,12 +472,19 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   );
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
   const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug, activeWorkers);
+  const stableImage = await prisma.openClawVersion.findFirst({
+    where: { isStable: true },
+    orderBy: { releasedAt: 'desc' },
+    select: { dockerImage: true },
+  });
+  const pinnedDockerImage = stableImage?.dockerImage ?? FAIL_CLOSED_PINNED_IMAGE;
   const workspaceFiles = generateAllWorkspaceFiles(
     workspaceWithChannels,
     orchestrator,
     workers,
     critic,
     mcpEmission !== null,
+    pinnedDockerImage,
   );
 
   const logicalSeeds = resolveWorkspaceSeedFiles({
@@ -532,6 +548,7 @@ function generateOpenClawConfig(
   const customApiSkillSlugs = Array.from(
     deriveCustomApiIdentities(workspace.customToolConnections ?? []).values(),
   ).map((identity) => identity.slug);
+  const attachedSkillSlugs = collectAttachedSkillSlugs(workspace);
 
   // Build agents.list - one entry per agent in the Claw
   const agentsList = runtimeAgents.map(agent => {
@@ -594,6 +611,11 @@ function generateOpenClawConfig(
     entry.tools = mergeOutboundDenyIntoTools(
       entry.tools as Record<string, unknown> | undefined,
       workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
+    );
+
+    entry.tools = mergeSkillShadowDenyIntoTools(
+      entry.tools as Record<string, unknown> | undefined,
+      attachedSkillSlugs,
     );
 
     return entry;
@@ -703,6 +725,19 @@ function generateOpenClawConfig(
     workspace.deliveryMode === 'AUTO_PROCEED' ? 'AUTO_PROCEED' : 'APPROVAL_REQUIRED',
   );
 
+  // Attached search skills replace bundled web_search. Deny the shadow so
+  // agents cannot call kimi/web_search when tavily-search is on the claw.
+  const toolsAfterShadow = mergeSkillShadowDenyIntoTools(
+    config.tools as Record<string, unknown>,
+    attachedSkillSlugs,
+  );
+  const shadowDeny = Array.isArray(toolsAfterShadow.deny)
+    ? (toolsAfterShadow.deny as unknown[]).filter((d): d is string => typeof d === 'string')
+    : [];
+  config.tools = shadowDeny.includes('web_search')
+    ? disableBundledWebSearch(toolsAfterShadow)
+    : toolsAfterShadow;
+
   // C-engine B1: MCP long-tail block (flag-gated; mcpEmission is only
   // non-null when CLAWS_MCP_LONGTAIL_ENABLED=true AND the workspace has
   // uncurated connected tools AND a Tool Router session resolved).
@@ -807,11 +842,14 @@ function generateOpenClawConfig(
   // is the entire permitted config - any other field would fail the
   // openclaw.json strict() validation and the gateway would refuse to boot.
   config.plugins = {
-    load: { paths: ['/opt/claws-activity-reporter'] },
+    load: { paths: ['/opt/claws-activity-reporter', '/opt/claws-http'] },
     entries: {
       'claws-activity-reporter': {
         enabled: true,
         hooks: { allowConversationAccess: true },
+      },
+      'claws-http': {
+        enabled: true,
       },
       'admin-http-rpc': {
         enabled: true,
@@ -1532,6 +1570,7 @@ function generateAllWorkspaceFiles(
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   mcpEnabled: boolean,
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
 ): { workspaces: Record<string, AgentWorkspaceFiles>; workflowFenceCorrected: boolean } {
   const allAgents = [orchestrator, ...workers, critic];
   const workspaces: Record<string, AgentWorkspaceFiles> = {};
@@ -1546,6 +1585,7 @@ function generateAllWorkspaceFiles(
       workers,
       critic,
       mcpEnabled,
+      pinnedDockerImage,
     );
     if (agent.role === 'ORCHESTRATOR' && files.workflowFenceCorrected) {
       workflowFenceCorrected = true;
@@ -1572,6 +1612,7 @@ function generateAgentWorkspaceFiles(
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   mcpEnabled: boolean,
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
 ): AgentWorkspaceFiles & { workflowFenceCorrected?: boolean } {
   const isOrchestrator = agent.role === 'ORCHESTRATOR';
   const clawName = workspace.clawTemplate?.name ?? workspace.name;
@@ -1582,7 +1623,7 @@ function generateAgentWorkspaceFiles(
     'AGENTS.md': agentsMdResult.text,
     'USER.md': generateUserMd(workspace),
     'IDENTITY.md': generateIdentityMd(agent),
-    'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled),
+    'TOOLS.md': generateToolsMd(workspace, agent, mcpEnabled, pinnedDockerImage),
     'HEARTBEAT.md': isOrchestrator
       ? generateHeartbeatMd(orchestrator, workspace)
       : '# HEARTBEAT.md\n\n# No heartbeat tasks for this agent.\n',
@@ -2095,27 +2136,36 @@ If a tool call fails because a connection is missing, expired, revoked, unauthor
  * Credentialed PENDING (validator-less API_KEY) emits into .env - calling
  * it unavailable is how the fire claw reported "Twitter API (PENDING)".
  */
-export function toolConnectionRuntimeStatusLabel(toolConn: {
-  connectionType: string;
-  status: string;
-  encryptedCredentials: string | null;
-}): string {
+export function toolConnectionRuntimeStatusLabel(
+  toolConn: {
+    connectionType: string;
+    status: string;
+    encryptedCredentials: string | null;
+    toolSlug?: string;
+  },
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
+): string {
+  let label: string
   if (isApiKeyToolEmitEligible(toolConn)) {
-    return toolConn.status === 'PENDING'
-      ? 'Connected (saved; unverified until first use)'
-      : 'Connected';
+    label =
+      toolConn.status === 'PENDING'
+        ? 'Connected (saved; unverified until first use)'
+        : 'Connected';
+  } else if (toolConn.status === 'CONNECTED') {
+    label = 'Connected';
+  } else if (toolConn.status === 'NEEDS_CREDENTIALS') {
+    label = 'Needs credentials (partial data - agent should treat as unavailable)';
+  } else {
+    label = `${toolConn.status} (agent should treat as unavailable until reconnected)`;
   }
-  if (toolConn.status === 'CONNECTED') return 'Connected';
-  if (toolConn.status === 'NEEDS_CREDENTIALS') {
-    return 'Needs credentials (partial data - agent should treat as unavailable)';
-  }
-  return `${toolConn.status} (agent should treat as unavailable until reconnected)`;
+  return httpHonestStatusLabel(toolConn.toolSlug, label, pinnedDockerImage);
 }
 
 function generateToolsMd(
   workspace: WorkspaceWithRelations,
   agent: AgentWithRelations,
   mcpEnabled: boolean,
+  pinnedDockerImage: string = FAIL_CLOSED_PINNED_IMAGE,
 ): string {
   const mcpSection = mcpEnabled ? MCP_LONGTAIL_TOOLS_MD_SECTION : '';
   // D6-b: every agent learns its real delivery surfaces (dashboard web chat
@@ -2130,7 +2180,16 @@ function generateToolsMd(
   const spawnSection = agent.role === 'ORCHESTRATOR'
     ? generateOrchestratorSpawnToolsSection()
     : '';
-  const searchSection = workspaceHasSearchBackend(workspace)
+  const searchSkillAttached = collectAttachedSkillSlugs(workspace).some(
+    (slug) => slug === 'tavily-search' || slug === 'brave-search',
+  );
+  const searchSection = searchSkillAttached
+    ? `
+## Web Search
+
+\`web_search\` is denied. A search skill is attached on this Claw. Call the attached skill, not the bundled tool. Use \`web_fetch\` for specific URLs.
+`
+    : workspaceHasSearchBackend(workspace)
     ? ''
     : `
 ## Web Search
@@ -2153,7 +2212,7 @@ Use \`web_fetch\` for specific URLs. To enable search, connect Tavily, Brave Sea
       catalogTool?.name ||
       toolConn.toolSlug;
 
-    const statusLabel = toolConnectionRuntimeStatusLabel(toolConn);
+    const statusLabel = toolConnectionRuntimeStatusLabel(toolConn, pinnedDockerImage);
     const honestyLines = twitterApiToolsMdHonestyLines(toolConn.toolSlug);
     const lastProbe = toolConn.lastTestedAt
       ? new Date(toolConn.lastTestedAt).toISOString()
@@ -2493,12 +2552,21 @@ function generateSkillFiles(
       requires.env = marketplaceEnv;
     }
 
+    const httpContract = httpContractForSkill(skill.slug);
+
     const openclawMeta: Record<string, unknown> = {
       ...(skill.emoji && { emoji: skill.emoji }),
       ...(envFrontmatter?.primaryEnv && { primaryEnv: envFrontmatter.primaryEnv }),
       ...(!envFrontmatter && marketplaceEnv?.[0] && { primaryEnv: marketplaceEnv[0] }),
       ...(Object.keys(requires).length > 0 && { requires }),
     };
+    if (httpContract) {
+      openclawMeta.http = {
+        auth: httpContract.auth,
+        endpoints: httpContract.endpoints,
+        ...(httpContract.composioOpPrefix ? { composioOpPrefix: httpContract.composioOpPrefix } : {}),
+      };
+    }
 
     const frontmatter: Record<string, unknown> = {
       name: skill.slug,
@@ -2513,7 +2581,8 @@ function generateSkillFiles(
     const rawBody = skill.skillMd || `# ${skill.name}\n\nNo instructions provided.`;
     // Strip any seed-carried frontmatter block - the generator-built
     // frontmatter above is authoritative. See stripLeadingFrontmatter docs.
-    const body = stripLeadingFrontmatter(rawBody);
+    const stripped = stripLeadingFrontmatter(rawBody);
+    const body = httpContract ? rewriteSkillMdForHttp(stripped, httpContract) : stripped;
 
     skills[skill.slug] = {
       'SKILL.md': `---\n${yamlStr}---\n\n${body}`,

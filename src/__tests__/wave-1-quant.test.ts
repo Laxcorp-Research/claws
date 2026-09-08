@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { ALL_TEMPLATES } from "../../prisma/seed-data"
 import { ALL_SKILLS } from "../../prisma/seed-data/skills-index"
@@ -14,6 +16,13 @@ import {
   STRICT_8_DEFINITION,
 } from "@/lib/critic/claims-table"
 import { QUANT_LLM_CANNOT_OVERRIDE_COPY } from "@/lib/quant/risk-limits"
+import {
+  AFRM_PACKET_FIXTURE,
+  DECORATIVE_EQUITY_FIXTURE,
+  REJECT_MISSING_TABLE,
+  REJECT_UNSOURCED_FIGURE,
+  UNKNOWN_UNTIL_BROKER,
+} from "@/lib/quant/critic-gate"
 import { formatInterviewBootSection, getInterviewPack } from "@/lib/user-md-interview"
 import { AUTONOMOUS_CAPABLE_TOOLS } from "@/lib/openclaw/delivery-rail"
 
@@ -50,6 +59,11 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     expect(DRAWDOWN_LADDER).toContain("5% daily")
     expect(soul).toContain(QUANT_LLM_CANNOT_OVERRIDE_COPY)
     expect(soul).toContain("QUANT_MAX_POSITION_PCT")
+    expect(soul).toContain("QUANT_MAX_NOTIONAL_PCT")
+    expect(soul).toContain("QUANT_MAX_RISK_PCT")
+    expect(soul).toContain("evaluateQuantRiskManager")
+    expect(soul).toContain("166 MU")
+    expect(soul).toContain("Labor Day")
     expect(soul).toContain("PASS or REJECT only")
     expect(agent("risk-manager").agentsMd).not.toContain("PASS_WITH_ADJUSTMENT")
   })
@@ -65,6 +79,11 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     expect(soul).toContain("| Claim | Source |")
     expect(soul).toContain(INVENTED_BACKTEST_FIXTURE)
     expect(soul).toContain(STRICT_8_DEFINITION)
+    expect(soul).toContain(REJECT_MISSING_TABLE)
+    expect(soul).toContain(REJECT_UNSOURCED_FIGURE)
+    expect(soul).toContain(AFRM_PACKET_FIXTURE.split("\n")[0])
+    expect(soul).toContain(DECORATIVE_EQUITY_FIXTURE.split("\n")[0])
+    expect(soul).toContain("reviewQuantPacket")
     expect(soul).toMatch(/\bPASS\b/)
     expect(soul).toMatch(/\bREJECT\b/)
     expect(soul).not.toMatch(/present best-with-warning/)
@@ -127,7 +146,9 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
   it("alpaca-trading SKILL.md is paper-first and forbids invented backtests", () => {
     const alpaca = ALL_SKILLS.find((s) => s.slug === "alpaca-trading")
     expect(alpaca?.skillMd).toContain("Quant paper-keys path")
-    expect(alpaca?.skillMd).toContain("Never curl `api.alpaca.markets`")
+    expect(alpaca?.skillMd).toContain("Live host api.alpaca.markets is undeclared and denied")
+    expect(alpaca?.skillMd).toContain("http tool")
+    expect(alpaca?.skillMd).not.toMatch(/\bcurl\b/)
     expect(alpaca?.skillMd).toContain("no backtest: no series")
     expect(alpaca?.skillMd).toContain("ALERT_ONLY")
   })
@@ -153,5 +174,30 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     expect(commander).not.toContain("The market is a complex adaptive system")
     expect(commander).not.toContain("Speed matters less than accuracy")
     expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual([])
+  })
+
+  it("PORTFOLIO and EOD stay unknown until a broker is connected", () => {
+    const files = quant().files ?? []
+    const portfolio = files.find((f) => f.path === "shared/PORTFOLIO.md")
+    const eod = files.find((f) => f.path === "shared/deliverables/eod-risk-report.md")
+    expect(portfolio?.content).toContain(`Equity: ${UNKNOWN_UNTIL_BROKER}`)
+    expect(portfolio?.content).toContain("unknown until a broker is connected")
+    expect(portfolio?.content).not.toMatch(/\$100k/)
+    expect(eod?.content).toContain(`Equity: ${UNKNOWN_UNTIL_BROKER}`)
+    expect(eod?.content).toContain("unknown until a broker is connected")
+    expect(agent("portfolio-tracker").soulMd).toContain(UNKNOWN_UNTIL_BROKER)
+    expect(agent("portfolio-tracker").soulMd).toContain("reviewQuantPacket")
+  })
+
+  it("MUTATION: gateHttpCall sizes trading ACTIONs before a card (rail-bypass fails)", () => {
+    const gate = readFileSync(join(process.cwd(), "src/lib/openclaw/http-action.ts"), "utf8")
+    expect(gate).toContain("evaluateTradingActionRisk")
+    expect(gate).toMatch(/!risk\.decision\.allow/)
+    const rail = readFileSync(join(process.cwd(), "src/lib/quant/trading-action-gate.ts"), "utf8")
+    expect(rail).toContain("evaluateQuantRiskManager")
+    expect(rail).toContain("alpaca-trading")
+    expect(rail).toContain("binance-trading")
+    expect(rail).toContain("coinbase-trading")
+    expect(rail).toContain("polymarket-trading")
   })
 })

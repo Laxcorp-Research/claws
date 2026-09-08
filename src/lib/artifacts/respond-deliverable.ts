@@ -8,6 +8,15 @@ import { resolveCustomerNudge } from "@/lib/alerts/customer-nudge"
 import { PENDING_APPROVAL_NUDGE_CONDITION } from "@/lib/artifacts/pending-approvals"
 import { respondFailureMessage } from "@/lib/artifacts/approval-version"
 import { loadApprovalVersionStates } from "@/lib/artifacts/supersede-versions"
+import {
+  parseHttpActionCardFromMetadata,
+  isHttpActionCardRenderable,
+} from "@/lib/openclaw/http-action-card"
+import {
+  bodyHashFromHttpActionMetadata,
+  isHttpActionRequestMetadata,
+  issueHttpPermitOnApprove,
+} from "@/lib/openclaw/http-permit"
 
 export type DeliverableRespondAction = "approve" | "reject"
 
@@ -71,6 +80,94 @@ export async function findLatestPendingDeliverableApproval(args: {
   return null
 }
 
+async function respondToHttpAction(args: {
+  workspaceId: string
+  requestId: string
+  originalRequest: { action: string; agentName: string | null; agentSlug: string | null; metadata: string | null }
+  action: DeliverableRespondAction
+  feedback?: string | null
+  respondedBy: string
+}): Promise<DeliverableRespondResult> {
+  const existingResponse = await prisma.activityLog.findFirst({
+    where: {
+      workspaceId: args.workspaceId,
+      actionType: { in: ["HUMAN_APPROVE", "HUMAN_REJECT"] },
+      metadata: { contains: args.requestId },
+    },
+  })
+  if (existingResponse) {
+    const kind = existingResponse.actionType === "HUMAN_REJECT" ? "already_rejected" : "already_approved"
+    return fail(kind, 409)
+  }
+
+  const card = parseHttpActionCardFromMetadata(args.originalRequest.metadata)
+  if (!card || !isHttpActionCardRenderable(card)) {
+    return fail("missing_body", 400)
+  }
+
+  if (args.action === "approve") {
+    const bodyHash = bodyHashFromHttpActionMetadata(args.originalRequest.metadata)
+    if (!bodyHash) return fail("missing_body", 400)
+    const issued = await issueHttpPermitOnApprove({
+      workspaceId: args.workspaceId,
+      requestId: args.requestId,
+      respondedBy: args.respondedBy,
+      card,
+      bodyHash,
+    })
+    try {
+      await resolveCustomerNudge({
+        workspaceId: args.workspaceId,
+        condition: PENDING_APPROVAL_NUDGE_CONDITION,
+      })
+    } catch {
+      /* resolve is best-effort; the decision already landed */
+    }
+    return {
+      ok: true,
+      id: issued.id,
+      action: "approve",
+      originalRequestId: args.requestId,
+      fileVersionId: null,
+      liveWriteOk: null,
+    }
+  }
+
+  const responseLog = await prisma.activityLog.create({
+    data: {
+      workspaceId: args.workspaceId,
+      agentName: args.originalRequest.agentName,
+      agentSlug: args.originalRequest.agentSlug,
+      action: `Human rejected: ${args.originalRequest.action}${args.feedback ? ` - "${args.feedback}"` : ""}`,
+      actionType: "HUMAN_REJECT",
+      metadata: JSON.stringify({
+        originalRequestId: args.requestId,
+        fileVersionId: null,
+        feedback: args.feedback || null,
+        respondedBy: args.respondedBy,
+        respondedAt: new Date().toISOString(),
+        eventKind: "http_action",
+      }),
+    },
+  })
+  try {
+    await resolveCustomerNudge({
+      workspaceId: args.workspaceId,
+      condition: PENDING_APPROVAL_NUDGE_CONDITION,
+    })
+  } catch {
+    /* resolve is best-effort; the decision already landed */
+  }
+  return {
+    ok: true,
+    id: responseLog.id,
+    action: "reject",
+    originalRequestId: args.requestId,
+    fileVersionId: null,
+    liveWriteOk: null,
+  }
+}
+
 export async function respondToDeliverable(args: {
   workspaceId: string
   activityLogId?: string
@@ -93,6 +190,17 @@ export async function respondToDeliverable(args: {
     where: { id: requestId, workspaceId: args.workspaceId, actionType: "HUMAN_REQUEST" },
   })
   if (!originalRequest) return fail("pending_approval_not_found", 404)
+
+  if (isHttpActionRequestMetadata(originalRequest.metadata)) {
+    return respondToHttpAction({
+      workspaceId: args.workspaceId,
+      requestId,
+      originalRequest,
+      action: args.action,
+      feedback: args.feedback,
+      respondedBy: args.respondedBy,
+    })
+  }
 
   const meta = parseDeliverableMetadata(originalRequest.metadata)
   const resolvedFileVersionId = meta.fileVersionId ?? args.fileVersionId ?? null

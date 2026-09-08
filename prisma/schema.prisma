@@ -307,6 +307,10 @@ model Workspace {
   maxRevisionRounds           Int            @default(3)
   deliveryMode                DeliveryMode   @default(APPROVAL_REQUIRED)
 
+  // INFRA-5b: HTTP fixture rail for staging rigs. Control plane ignores this
+  // when CLAWS_ENV=production even if true. Default false.
+  httpFixtureMode             Boolean        @default(false)
+
   // PR-B: opt out of critical-alert pushes (Telegram, fallback email) for
   // container-unhealthy / cron-job-failed / heartbeat-missed / state-sync-stale.
   // Default false → alerts ON by default. See src/lib/alerts/critical-alert-push.ts.

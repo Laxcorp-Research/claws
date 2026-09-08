@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { gunzipSync } from "node:zlib"
@@ -186,6 +186,65 @@ describe("INFRA-2 birth-only seed files (the trap)", () => {
       rmSync(outputDir, { recursive: true, force: true })
     }
   }, 15_000)
+
+  it("from a worker cwd, relative shared/THESES.md resolves (INFRA-5 A4)", () => {
+    const generated = generatedWithSeeds()
+    generated.workspaces["workspace-quant-worker"] = {
+      ...generated.workspaces["workspace-twitter-commander"],
+    }
+    generated.seedFiles = {
+      ...generated.seedFiles,
+      "shared/THESES.md": "# THESES.md\n\nT-002 MU long - worker must read this.\n",
+    }
+    const env = buildRailwayEnvVars(generated, workspace, user)
+    const outputDir = executeUnpack(env)
+    const workerCwd = path.join(outputDir, "workspace-quant-worker")
+    const criticCwd = path.join(outputDir, "workspace-twitter-commander")
+    const hostShared = path.join(outputDir, "shared")
+    try {
+      expect(realpathSync(path.join(workerCwd, "shared"))).toBe(realpathSync(hostShared))
+      expect(realpathSync(path.join(criticCwd, "shared"))).toBe(realpathSync(hostShared))
+
+      // Separate process whose cwd is the worker workspace: same as an
+      // agent read of relative shared/THESES.md. Vitest workers cannot chdir.
+      const fromWorkerCwd = execFileSync(
+        process.execPath,
+        ["-e", "process.stdout.write(require('fs').readFileSync('shared/THESES.md','utf8'))"],
+        { cwd: workerCwd, encoding: "utf8" },
+      )
+      expect(fromWorkerCwd).toContain("T-002 MU long")
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true })
+    }
+  }, 15_000)
+
+  it("does not replace a real workspace-*/shared directory", () => {
+    const generated = generatedWithSeeds()
+    const env = buildRailwayEnvVars(generated, workspace, user)
+    const outputDir = executeUnpack(env)
+    const forkDir = path.join(outputDir, "workspace-twitter-commander", "shared")
+    try {
+      rmSync(forkDir, { recursive: true, force: true })
+      mkdirSync(forkDir, { recursive: true })
+      writeFileSync(path.join(forkDir, "LOCAL.md"), "fork stays")
+      executeUnpack(env, outputDir)
+      expect(readFileSync(path.join(forkDir, "LOCAL.md"), "utf8")).toBe("fork stays")
+      expect(realpathSync(forkDir)).not.toBe(realpathSync(path.join(outputDir, "shared")))
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true })
+    }
+  }, 15_000)
+
+  it("MUTATION: unpack still symlinkSyncs workspace shared (drop → fail)", () => {
+    expect(UNPACK_NODE_SCRIPT).toContain("symlinkSync")
+    expect(UNPACK_NODE_SCRIPT).toContain('startsWith("workspace-")')
+    expect(UNPACK_NODE_SCRIPT).toContain('path.join("..","shared")')
+    const railway = readFileSync(
+      path.join(process.cwd(), "src/lib/openclaw/railway-client.ts"),
+      "utf8",
+    )
+    expect(railway).toMatch(/INFRA-5 A4/)
+  })
 
   it("keeps twitter seed payload under the 30,000 char safety ceiling", () => {
     const generated = generatedWithSeeds()

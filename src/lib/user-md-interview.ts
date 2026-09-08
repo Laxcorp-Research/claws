@@ -9,6 +9,10 @@ import {
   QUANT_FIRST_MISSION_PROSE,
   QUANT_WAVE1_SLUG,
 } from "../../prisma/seed-data/wave-1-quant"
+import {
+  ECOM_FIRST_MISSION_PROSE,
+  ECOM_WAVE1_SLUG,
+} from "../../prisma/seed-data/wave-1-ecom"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
 import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
@@ -90,7 +94,9 @@ If the human says "update my profile", rewrite that file from the conversation a
         ? `\n\n${FREELANCER_FIRST_MISSION_PROSE}`
         : input.templateSlug === QUANT_WAVE1_SLUG
           ? `\n\n${QUANT_FIRST_MISSION_PROSE}`
-          : ""
+          : input.templateSlug === ECOM_WAVE1_SLUG
+            ? `\n\n${ECOM_FIRST_MISSION_PROSE}`
+            : ""
   return `${always}
 
 ## First-boot interview

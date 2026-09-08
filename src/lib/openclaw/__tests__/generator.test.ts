@@ -743,6 +743,15 @@ describe('generateWorkspace', () => {
     expect(orchWorkspace.skills['tavily-search']['SKILL.md']).toContain('tavily-search');
   });
 
+  it('emits metadata.openclaw.http contract in SKILL.md frontmatter', async () => {
+    const result = await generateWorkspace('ws-test-1');
+    const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
+    const md = result.workspaces[orchKey!].skills['tavily-search']['SKILL.md'];
+    expect(md).toContain('auth: tavily-body-key');
+    expect(md).toContain('api.tavily.com');
+    expect(md).toContain('class: READ');
+  });
+
   it('throws if workspace not found', async () => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Not found')
@@ -1296,20 +1305,40 @@ describe('generateWorkspace', () => {
     expect(toolsMd).toContain('Manage Tools');
   });
 
-  it('leaves tools.web.search enabled (no enabled:false) when a search backend is connected', async () => {
-    // Default fixture has CONNECTED tavily - wiring finding: only skills.entries,
-    // not tools.web.search provider/apiKey. We still leave web_search enabled.
+  it('denies web_search when tavily-search is attached (MUTATION: drop mergeSkillShadowDenyIntoTools → fail)', async () => {
+    // Default fixture: CONNECTED tavily + orchestrator has tavily-search.
+    // Fire #3 used kimi web_search instead of the attached skill.
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
-    expect(config.tools?.web?.search?.enabled).not.toBe(false);
+    expect(config.tools?.deny).toContain('web_search');
+    expect(config.tools?.web?.search?.enabled).toBe(false);
     expect(config.skills.entries.tavily.enabled).toBe(true);
     expect(config.skills.entries.tavily.env.TAVILY_API_KEY).toBe('real-tavily-key');
-    // Finding: connecting Tavily wires skills.entries only - nothing reaches tools.web.search.
     expect(config.tools?.web?.search?.apiKey).toBeUndefined();
     expect(config.tools?.web?.search?.provider).toBeUndefined();
 
+    const orch = config.agents.list.find((a: { name: string }) => a.name === 'Test Commander');
+    expect(orch.tools.deny).toContain('web_search');
+
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
-    expect(result.workspaces[orchKey!]['TOOLS.md']).not.toContain('## Web Search');
+    expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('## Web Search');
+    expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('web_search');
+    expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('attached skill');
+    expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('web_fetch');
+  });
+
+  it('does not deny web_search when a search backend is connected but no search skill is attached', async () => {
+    const ws = buildMockWorkspace();
+    for (const agent of ws.agents) {
+      agent.skills = [];
+    }
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+    const result = await generateWorkspace('ws-test-1');
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.tools?.deny ?? []).not.toContain('web_search');
+    expect(config.tools?.web?.search?.enabled).not.toBe(false);
+    expect(config.skills.entries.tavily.enabled).toBe(true);
   });
 
   it('emits NO bindings key - Orchestrator routing is via default:true (#117, dead config removed)', async () => {
@@ -1789,7 +1818,19 @@ describe('generateWorkspace', () => {
       );
       const result = await generateWorkspace('ws-test-1');
       const config = JSON.parse(result['openclaw.json']);
-      expect(config.plugins?.load?.paths).toEqual(['/opt/claws-activity-reporter']);
+      expect(config.plugins?.load?.paths).toEqual([
+        '/opt/claws-activity-reporter',
+        '/opt/claws-http',
+      ]);
+    });
+
+    it('enables claws-http with a strict empty config', async () => {
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildMockWorkspace()
+      );
+      const result = await generateWorkspace('ws-test-1');
+      const config = JSON.parse(result['openclaw.json']);
+      expect(config.plugins?.entries?.['claws-http']).toEqual({ enabled: true });
     });
   });
 
