@@ -22,6 +22,10 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock("@/lib/alerts/customer-nudge", () => ({
+  sendCustomerNudge: vi.fn().mockResolvedValue({ sent: false, channel: "skipped" }),
+}))
+
 import { wakeWorkspace, WAKEABLE_WORKSPACE_STATUSES } from "@/lib/hibernation/manager"
 
 const WS = "ws-late-wake"

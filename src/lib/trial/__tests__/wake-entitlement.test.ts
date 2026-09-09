@@ -44,6 +44,20 @@ describe("canWakeHibernatedWorkspace", () => {
     expect(r.needsSubscription).toBe(true)
   })
 
+  it("on_hold is grace with update_card warning, never silent subscribed", () => {
+    const r = canWakeHibernatedWorkspace({
+      trialUsed: true,
+      trialStartedAt: PAST,
+      trialEndsAt: PAST,
+      hasActiveSubscription: true,
+      subscriptionStatus: "on_hold",
+    })
+    expect(r.allowed).toBe(true)
+    expect(r.reason).toBe("subscription_on_hold")
+    expect(r.warning).toBe("update_card")
+    expect(r.reason).not.toBe("subscribed")
+  })
+
   it("MUTATION: must delegate to checkDeployEligibility (single truth)", () => {
     const src = readFileSync(
       join(process.cwd(), "src/lib/trial/wake-entitlement.ts"),

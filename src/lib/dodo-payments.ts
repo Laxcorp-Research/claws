@@ -156,12 +156,38 @@ export async function createCommunityCheckout(params: {
   })
 }
 
-export function checkDeployEligibility(user: {
+export const SUBSCRIPTION_ELIGIBILITY_SELECT = {
+  trialUsed: true,
+  trialStartedAt: true,
+  trialEndsAt: true,
+  hasActiveSubscription: true,
+  subscriptionStatus: true,
+} as const
+
+export type DeployEligibilityUser = {
   trialUsed: boolean
   trialStartedAt: Date | null
   trialEndsAt: Date | null
   hasActiveSubscription: boolean
-}): { canDeploy: boolean; reason: string; needsSubscription: boolean; isFirstDeploy: boolean } {
+  subscriptionStatus?: string | null
+}
+
+export type DeployEligibility = {
+  canDeploy: boolean
+  reason: string
+  needsSubscription: boolean
+  isFirstDeploy: boolean
+  warning?: "update_card"
+}
+
+/** Dunning. Access stays for grace; never report as silent subscribed. */
+export function isSubscriptionOnHold(
+  user: Pick<DeployEligibilityUser, "subscriptionStatus">,
+): boolean {
+  return user.subscriptionStatus === "on_hold"
+}
+
+export function checkDeployEligibility(user: DeployEligibilityUser): DeployEligibility {
   const now = new Date()
 
   if (!user.trialUsed) {
@@ -170,6 +196,17 @@ export function checkDeployEligibility(user: {
 
   if (user.trialEndsAt && user.trialEndsAt > now) {
     return { canDeploy: true, reason: "trial_active", needsSubscription: false, isFirstDeploy: false }
+  }
+
+  // MUTATION: falling through to hasActiveSubscription → reason "subscribed" on on_hold.
+  if (isSubscriptionOnHold(user)) {
+    return {
+      canDeploy: true,
+      reason: "subscription_on_hold",
+      needsSubscription: false,
+      isFirstDeploy: false,
+      warning: "update_card",
+    }
   }
 
   if (user.hasActiveSubscription) {

@@ -105,6 +105,14 @@ export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
     3,
     "owner-alert",
   ),
+  "digest-missed": policy(
+    "digest-missed",
+    "owner-only",
+    "owner",
+    "sendOwnerAlert",
+    0,
+    "owner-alert",
+  ),
 }
 
 export function getHealPolicy(id: HealConditionId): HealPolicy {

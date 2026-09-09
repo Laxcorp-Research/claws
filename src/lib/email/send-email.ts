@@ -47,6 +47,7 @@ export type EmailKind =
   | "credit_pool_alert"
   | "owner_alert"
   | "customer_nudge"
+  | "daily_digest"
 
 export type SendEmailArgs = {
   kind: EmailKind
@@ -66,10 +67,10 @@ export type SendEmailArgs = {
 }
 
 export type SendEmailResult =
-  | { ok: true; attempts: number }
+  | { ok: true; attempts: number; resendId?: string }
   | { ok: false; attempts: number; reason: string }
 
-type AttemptOutcome = { ok: true } | { ok: false; reason: string }
+type AttemptOutcome = { ok: true; resendId?: string } | { ok: false; reason: string }
 
 async function attemptSend(payload: {
   from: string
@@ -86,7 +87,8 @@ async function attemptSend(payload: {
     if (error) {
       return { ok: false, reason: error.message || error.name || "resend-error-response" }
     }
-    return { ok: true }
+    const id = (res as { data?: { id?: string } | null } | null)?.data?.id
+    return { ok: true, resendId: typeof id === "string" && id.length > 0 ? id : undefined }
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) }
   }
@@ -99,6 +101,7 @@ async function ledgerEmailAttempt(args: {
   attempts: number
   ok: boolean
   reason?: string
+  resendId?: string
 }): Promise<void> {
   for (const workspaceId of args.workspaceIds) {
     try {
@@ -115,6 +118,7 @@ async function ledgerEmailAttempt(args: {
             to: args.to,
             attempts: args.attempts,
             reason: args.reason ?? null,
+            resendId: args.resendId ?? null,
           }),
         },
       })
@@ -152,9 +156,23 @@ export async function sendEmail(args: SendEmailArgs): Promise<SendEmailResult> {
 
   const workspaceIds = args.workspaceIds ?? []
   if (outcome.ok) {
-    log.info("send-email: delivered", { kind: args.kind, to: args.to, attempts })
-    await ledgerEmailAttempt({ workspaceIds, kind: args.kind, to: args.to, attempts, ok: true })
-    return { ok: true, attempts }
+    log.info("send-email: delivered", {
+      kind: args.kind,
+      to: args.to,
+      attempts,
+      resendId: outcome.resendId ?? null,
+    })
+    await ledgerEmailAttempt({
+      workspaceIds,
+      kind: args.kind,
+      to: args.to,
+      attempts,
+      ok: true,
+      resendId: outcome.resendId,
+    })
+    return outcome.resendId
+      ? { ok: true, attempts, resendId: outcome.resendId }
+      : { ok: true, attempts }
   }
 
   log.error("send-email: failed", {

@@ -7,6 +7,7 @@ import { isPastDueHint } from "@/lib/hibernation/wake-geometry"
 import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { maybeResumeInterruptedMission } from "@/lib/healing/mission-resume"
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
 
 // P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot - when a claw
 // wakes past a due heartbeat hint, the container overlay should fire one
@@ -200,6 +201,7 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
           trialStartedAt: true,
           trialEndsAt: true,
           hasActiveSubscription: true,
+          subscriptionStatus: true,
         },
       },
     },
@@ -242,6 +244,20 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
       }),
     ])
     return
+  }
+
+  if (entitlement.warning === "update_card") {
+    try {
+      await sendCustomerNudge({
+        workspaceId,
+        condition: "subscription-on-hold",
+      })
+    } catch (err) {
+      log.warn("on_hold nudge failed during wake", {
+        workspaceId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   const wakeStart = Date.now()

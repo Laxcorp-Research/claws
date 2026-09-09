@@ -69,6 +69,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       trialStartedAt: true,
       trialEndsAt: true,
       hasActiveSubscription: true,
+      subscriptionStatus: true,
     },
   })
 

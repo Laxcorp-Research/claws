@@ -39,6 +39,14 @@ describe("customer nudge", () => {
     expect(text).toContain("Raise the spend limit")
   })
 
+  it("subscription-on-hold asks to update the card, not silent subscribed", () => {
+    expect(isUserOnlyNudgeCondition("subscription-on-hold")).toBe(true)
+    const text = buildCustomerNudgeText("subscription-on-hold")
+    expect(text).toContain("on hold")
+    expect(text).toContain("Update your card in Settings > Billing.")
+    expect(text).not.toContain("\u2014")
+  })
+
   it("pending-approval-unactioned is user-only and asks to open the dashboard", () => {
     expect(isUserOnlyNudgeCondition("pending-approval-unactioned")).toBe(true)
     expect(getHealPolicy("pending-approval-unactioned").ruling).toBe("user-only")

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
+import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
 import {
   ledgerToolStatusProbe,
   probeAndPersistApiKeyConnection,
@@ -13,6 +14,41 @@ export type ReprobeSummary = {
   errors: number
   unverified: number
   skipped: number
+}
+
+export function nudgeConditionForToolError(args: {
+  toolSlug: string
+  error?: string | null
+  warning?: string | null
+  message?: string | null
+}): "twitter-402-tier" | "tool-connection-error" {
+  const blob = `${args.error ?? ""} ${args.warning ?? ""} ${args.message ?? ""}`
+  if (args.toolSlug === "twitter-api" && /402/.test(blob)) return "twitter-402-tier"
+  return "tool-connection-error"
+}
+
+async function nudgeProbeErrors(
+  workspaceId: string,
+  results: ApiKeyProbeResult[],
+): Promise<void> {
+  const errors = results.filter((r) => r.outcome === "error")
+  if (errors.length === 0) return
+
+  const conditions = new Set<"twitter-402-tier" | "tool-connection-error">()
+  for (const row of errors) {
+    conditions.add(nudgeConditionForToolError(row))
+  }
+  for (const condition of conditions) {
+    try {
+      await sendCustomerNudge({ workspaceId, condition })
+    } catch (err) {
+      log.warn("tool re-probe nudge failed", {
+        workspaceId,
+        condition,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 }
 
 export async function reprobeWorkspaceToolConnections(
@@ -56,6 +92,7 @@ export async function reprobeWorkspaceToolConnections(
         status: r.status,
       })),
     })
+    await nudgeProbeErrors(workspaceId, results)
   }
 
   return {

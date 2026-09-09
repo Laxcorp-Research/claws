@@ -102,6 +102,42 @@ describe("BillingDashboard Batch A / A6 - runningClaws estimate", () => {
     expect(screen.queryByText("2 running Claws × $79")).toBeNull()
     expect(screen.queryByText("$158")).toBeNull()
   })
+
+  it("on_hold shows update-card warning, not Subscription active", async () => {
+    const billing = {
+      success: true,
+      data: {
+        hasActiveSubscription: true,
+        subscriptionStatus: "on_hold",
+        plan: "On hold",
+        activeClaws: 1,
+        runningClaws: 1,
+        pausedClaws: 0,
+        thisMonthTotal: 0,
+        trialUsed: true,
+        trialStartedAt: null,
+        trialEndsAt: null,
+      },
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("/api/user/billing")) {
+          return Promise.resolve({ json: () => Promise.resolve(billing) })
+        }
+        if (url.includes("/api/workspaces")) {
+          return Promise.resolve({ json: () => Promise.resolve({ success: true, data: [] }) })
+        }
+        return Promise.resolve({ json: () => Promise.resolve({ success: false }) })
+      }) as unknown as typeof fetch,
+    )
+
+    render(<BillingDashboard />)
+    await screen.findByText("Billing summary")
+    expect(screen.getByText("Billing is on hold")).toBeTruthy()
+    expect(screen.getByText(/Update your card/)).toBeTruthy()
+    expect(screen.queryByText("Subscription active")).toBeNull()
+  })
 })
 
 describe("BillingDashboard billing portal", () => {

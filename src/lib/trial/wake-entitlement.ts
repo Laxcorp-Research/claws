@@ -3,23 +3,20 @@
  * Expired+ungrated / unsubscribed claws must not resurrect via any wake path.
  */
 
-import { checkDeployEligibility } from "@/lib/dodo-payments"
+import { checkDeployEligibility, type DeployEligibilityUser } from "@/lib/dodo-payments"
 
-export type WakeEntitlementUser = {
-  trialUsed: boolean
-  trialStartedAt: Date | null
-  trialEndsAt: Date | null
-  hasActiveSubscription: boolean
-}
+export type WakeEntitlementUser = DeployEligibilityUser
 
 export type WakeEntitlementResult = {
   allowed: boolean
   reason: string
   needsSubscription: boolean
+  warning?: "update_card"
 }
 
 /**
  * Trial still active OR subscribed (identical to checkDeployEligibility.canDeploy).
+ * on_hold is grace + warning, never silent subscribed.
  * MUTATION: inventing a second rule set → deploy vs wake drift.
  */
 export function canWakeHibernatedWorkspace(
@@ -30,6 +27,7 @@ export function canWakeHibernatedWorkspace(
     allowed: e.canDeploy,
     reason: e.reason,
     needsSubscription: e.needsSubscription,
+    warning: e.warning,
   }
 }
 

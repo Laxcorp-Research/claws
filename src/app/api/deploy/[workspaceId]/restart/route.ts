@@ -47,7 +47,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
 
   const owner = await prisma.user.findUniqueOrThrow({
     where: { id: user.id },
-    select: { trialUsed: true, trialStartedAt: true, trialEndsAt: true, hasActiveSubscription: true },
+    select: { trialUsed: true, trialStartedAt: true, trialEndsAt: true, hasActiveSubscription: true, subscriptionStatus: true },
   })
   const eligibility = checkDeployEligibility(owner)
   if (!eligibility.canDeploy) {
