@@ -1,10 +1,15 @@
 {
-  "$documentation": "Per-GHSA rationale and re-audit deadline (2026-07-15) live in docs/LAUNCH_BLOCKERS.md. Filed by PR2.8a-fix1-deps; re-audited 2026-06-11 (GH #72): protobufjs entries cleared via in-range bump to 7.6.3. 2026-06-21: GHSA-88fw-hqm2-52qc (hono) and GHSA-p6gq-j5cr-w38f (nodemailer) CLEARED via dependency bump — hono override ^4.12.25, nodemailer direct + override ^9.0.1 — so both allowlist entries were removed (fixed on the merits, no longer suppressed). Remaining entries are all next, fixed upstream in 16.2.5, pending the dedicated Next-bump PR.",
+  "$documentation": "Per-GHSA rationale in docs/LAUNCH_BLOCKERS.md. Gate fails on high/critical not in allowlist. 2026-09-09: GHSA-p293-qw3h-jr36 / GHSA-2xp9-vwfh-vxw4 / GHSA-rgj7-g3m4-5g8c are next 16.2.11 advisories (fix in 16.3.3); GHSA-2x7j-588g-ccc2 is nodemailer via next-auth. Dedicated next bump stays a separate PR. Vercel hosts Linux, not the Windows RCE surface.",
   "low": false,
   "moderate": false,
   "high": true,
   "critical": true,
   "skip-dev": true,
   "report-type": "full",
-  "allowlist": []
+  "allowlist": [
+    "GHSA-p293-qw3h-jr36",
+    "GHSA-2xp9-vwfh-vxw4",
+    "GHSA-rgj7-g3m4-5g8c",
+    "GHSA-2x7j-588g-ccc2"
+  ]
 }
