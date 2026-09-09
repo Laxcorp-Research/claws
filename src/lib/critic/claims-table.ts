@@ -70,6 +70,36 @@ export const SEO_CRITIC_SCORE_DIMENSIONS = [
   "ymyl-safety",
   "evidence",
 ] as const
+export const RE_CRITIC_SCORE_DIMENSIONS = [
+  "fair-housing",
+  "cma-accuracy",
+  "speed-to-lead",
+  "tone",
+] as const
+export const RECRUITER_CRITIC_SCORE_DIMENSIONS = [
+  "anti-bias",
+  "rubric-fidelity",
+  "screening-clarity",
+  "evidence",
+] as const
+export const MEDICAL_CRITIC_SCORE_DIMENSIONS = [
+  "hipaa",
+  "reminder-scope",
+  "consent",
+  "evidence",
+] as const
+export const LAW_CRITIC_SCORE_DIMENSIONS = [
+  "zero-advice",
+  "conflict-check",
+  "emergency-triage",
+  "evidence",
+] as const
+export const HOME_CRITIC_SCORE_DIMENSIONS = [
+  "safety-first",
+  "dispatch-fit",
+  "follow-up",
+  "evidence",
+] as const
 
 const BARE_MEAN_VERDICT_RE = /\bPASS\b[^\n]{0,40}\bmean\b/i
 
@@ -126,7 +156,12 @@ export function hasFourDimensionScoreTable(text: string | null | undefined): boo
     hasNamedDimensionScoreTable(text, B2B_CRITIC_SCORE_DIMENSIONS) ||
     hasNamedDimensionScoreTable(text, AGENCY_CRITIC_SCORE_DIMENSIONS) ||
     hasNamedDimensionScoreTable(text, COS_CRITIC_SCORE_DIMENSIONS) ||
-    hasNamedDimensionScoreTable(text, SEO_CRITIC_SCORE_DIMENSIONS)
+    hasNamedDimensionScoreTable(text, SEO_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, RE_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, RECRUITER_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, MEDICAL_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, LAW_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, HOME_CRITIC_SCORE_DIMENSIONS)
   )
 }
 

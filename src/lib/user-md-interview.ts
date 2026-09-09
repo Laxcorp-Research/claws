@@ -41,6 +41,26 @@ import {
   SEO_FIRST_MISSION_PROSE,
   SEO_WAVE3_SLUG,
 } from "../../prisma/seed-data/wave-3-seo"
+import {
+  RE_FIRST_MISSION_PROSE,
+  RE_WAVE4_SLUG,
+} from "../../prisma/seed-data/wave-4-real-estate"
+import {
+  RECRUITER_FIRST_MISSION_PROSE,
+  RECRUITER_WAVE4_SLUG,
+} from "../../prisma/seed-data/wave-4-recruiter"
+import {
+  MEDICAL_FIRST_MISSION_PROSE,
+  MEDICAL_WAVE4_SLUG,
+} from "../../prisma/seed-data/wave-4-medical"
+import {
+  LAW_FIRST_MISSION_PROSE,
+  LAW_WAVE4_SLUG,
+} from "../../prisma/seed-data/wave-4-law"
+import {
+  HOME_FIRST_MISSION_PROSE,
+  HOME_WAVE4_SLUG,
+} from "../../prisma/seed-data/wave-4-home"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
 import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
@@ -138,7 +158,17 @@ If the human says "update my profile", rewrite that file from the conversation a
                         ? `\n\n${COS_FIRST_MISSION_PROSE}`
                         : input.templateSlug === SEO_WAVE3_SLUG
                           ? `\n\n${SEO_FIRST_MISSION_PROSE}`
-                          : ""
+                          : input.templateSlug === RE_WAVE4_SLUG
+                            ? `\n\n${RE_FIRST_MISSION_PROSE}`
+                            : input.templateSlug === RECRUITER_WAVE4_SLUG
+                              ? `\n\n${RECRUITER_FIRST_MISSION_PROSE}`
+                              : input.templateSlug === MEDICAL_WAVE4_SLUG
+                                ? `\n\n${MEDICAL_FIRST_MISSION_PROSE}`
+                                : input.templateSlug === LAW_WAVE4_SLUG
+                                  ? `\n\n${LAW_FIRST_MISSION_PROSE}`
+                                  : input.templateSlug === HOME_WAVE4_SLUG
+                                    ? `\n\n${HOME_FIRST_MISSION_PROSE}`
+                                    : ""
   return `${always}
 
 ## First-boot interview
