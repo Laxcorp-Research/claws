@@ -7,10 +7,12 @@ import {
   preferNumericTelegramAllowFrom,
 } from "@/lib/openclaw/channel-config"
 import { telegramSendMessage } from "@/lib/channels/telegram-bot-api"
+import { sendEmail } from "@/lib/email/send-email"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
 import {
   computeDigestStats,
   DAILY_DIGEST_EVENT_KIND,
+  formatDailyDigestEmailHtml,
   formatDailyDigestMessage,
   utcDigestDayStart,
 } from "@/lib/digest/daily-health-digest"
@@ -23,6 +25,7 @@ import {
   hasConnectedTelegramForDigest,
   parseDigestWorkspaceIdOverride,
 } from "@/lib/digest/digest-eligibility"
+import { watchDigestMissed } from "@/lib/digest/digest-missed"
 
 export const maxDuration = 55
 
@@ -62,31 +65,6 @@ export async function GET(req: NextRequest) {
 
   for (const ws of workspaces) {
     try {
-      if (!ws.channelConfigEncrypted) {
-        skipped++
-        continue
-      }
-      let config
-      try {
-        config = parseChannelConfigBlob(ws.channelConfigEncrypted, decrypt)
-      } catch {
-        skipped++
-        continue
-      }
-      if (!hasConnectedTelegramForDigest(config, ws.user?.email ?? null)) {
-        skipped++
-        continue
-      }
-
-      // Re-resolve botToken/chatId for send (hasConnectedTelegram already gated).
-      // Prefer numeric chat id when username + id both exist (message-tool safety).
-      const telegram = config.telegram
-      const chatId = preferNumericTelegramAllowFrom(telegram?.allowFrom)?.[0]
-      if (!telegram?.botToken || chatId === undefined || chatId === null) {
-        skipped++
-        continue
-      }
-
       // IDEMPOTENCY: skip+ledger if a delivered digest already exists today (UTC).
       const already = await prisma.activityLog.findFirst({
         where: {
@@ -109,13 +87,35 @@ export async function GET(req: NextRequest) {
             timestamp: now,
             metadata: JSON.stringify({
               eventKind: DAILY_DIGEST_EVENT_KIND,
-              channel: "telegram",
+              channel: "skipped",
               delivered: false,
               skipped: true,
               reason: "already-sent-today",
             }),
           },
         })
+        skipped++
+        continue
+      }
+
+      let telegramReady = false
+      let botToken: string | undefined
+      let chatId: string | number | undefined
+      if (ws.channelConfigEncrypted) {
+        try {
+          const config = parseChannelConfigBlob(ws.channelConfigEncrypted, decrypt)
+          if (hasConnectedTelegramForDigest(config, ws.user?.email ?? null)) {
+            botToken = config.telegram?.botToken
+            chatId = preferNumericTelegramAllowFrom(config.telegram?.allowFrom)?.[0]
+            telegramReady = Boolean(botToken && chatId !== undefined && chatId !== null)
+          }
+        } catch {
+          telegramReady = false
+        }
+      }
+
+      const ownerEmail = ws.user?.email?.trim() || null
+      if (!telegramReady && !ownerEmail) {
         skipped++
         continue
       }
@@ -163,30 +163,61 @@ export async function GET(req: NextRequest) {
         stats,
       })
 
-      const ok = await telegramSendMessage({
-        botToken: telegram.botToken,
-        chatId,
-        text,
-      })
+      let channel: "telegram" | "email" = "email"
+      let delivered = false
+      let resendId: string | null = null
+      let failDetail: string | null = null
+
+      if (telegramReady && botToken && chatId !== undefined && chatId !== null) {
+        const ok = await telegramSendMessage({
+          botToken,
+          chatId,
+          text,
+        })
+        if (ok) {
+          channel = "telegram"
+          delivered = true
+        } else {
+          failDetail = "telegram-send-failed"
+        }
+      }
+
+      if (!delivered && ownerEmail) {
+        const emailOk = await sendEmail({
+          kind: "daily_digest",
+          workspaceIds: [ws.id],
+          to: ownerEmail,
+          subject: `Claws digest - ${ws.name || "Unnamed Claw"}`,
+          html: formatDailyDigestEmailHtml(text),
+        })
+        if (emailOk.ok) {
+          channel = "email"
+          delivered = true
+          resendId = emailOk.resendId ?? null
+        } else {
+          failDetail = failDetail ?? emailOk.reason ?? "email-send-failed"
+        }
+      }
 
       await prisma.activityLog.create({
         data: {
           workspaceId: ws.id,
-          action: "Daily digest sent",
-          detail: ok ? null : "telegram-send-failed",
-          actionType: "SYSTEM",
+          action: delivered ? "Daily digest sent" : "Daily digest failed",
+          detail: delivered ? null : failDetail,
+          actionType: delivered ? "SYSTEM" : "ERROR",
           timestamp: now,
           metadata: JSON.stringify({
             eventKind: DAILY_DIGEST_EVENT_KIND,
-            channel: "telegram",
-            delivered: ok,
+            channel,
+            delivered,
+            resendId,
             stats,
             costSource: costResolved.source,
           }),
         },
       })
 
-      if (ok) sent++
+      if (delivered) sent++
       else errors++
     } catch (err) {
       errors++
@@ -197,16 +228,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const miss = await watchDigestMissed(now)
+
   log.info("daily-digest: pass complete", {
     candidates: workspaces.length,
     sent,
     skipped,
     errors,
+    digestMissed: miss.alerted,
     override: overrideIds != null,
   })
 
   return Response.json({
     success: true,
-    data: { candidates: workspaces.length, sent, skipped, errors },
+    data: {
+      candidates: workspaces.length,
+      sent,
+      skipped,
+      errors,
+      digestMissed: miss.alerted,
+    },
   })
 }

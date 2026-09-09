@@ -240,6 +240,7 @@ export async function drainProvisioningQueueHead(schedule: (fn: () => void | Pro
               trialStartedAt: true,
               trialEndsAt: true,
               hasActiveSubscription: true,
+              subscriptionStatus: true,
             },
           },
         },

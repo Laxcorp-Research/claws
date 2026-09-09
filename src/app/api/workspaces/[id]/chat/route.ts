@@ -122,6 +122,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               trialStartedAt: true,
               trialEndsAt: true,
               hasActiveSubscription: true,
+              subscriptionStatus: true,
             },
           },
         },

@@ -2,12 +2,14 @@
  * Morning digest candidate selection.
  *
  * Default predicate (all must hold):
- *   - connected Telegram channel (botToken + allowFrom[0]) - post-query
  *   - heartbeat armed: ContainerState.nextHeartbeatAt IS NOT NULL
  *   - ever-deployed: Deployment status COMPLETED|SUPERSEDED (hibernate
  *     retires COMPLETED → SUPERSEDED; COMPLETED-only would drop sleepers)
  *   - status ∉ {DRAFT, SETUP_INCOMPLETE, STOPPED}
  *   - HIBERNATED included (sleep is normal life)
+ *
+ * Delivery: Telegram when connected, else owner email. Web-chat-only claws
+ * are candidates (channelConfigEncrypted may be null).
  *
  * DAILY_DIGEST_WORKSPACE_IDS = optional debug override (restricts to those
  * ids); the predicate still applies - override is not a bypass.
@@ -37,18 +39,16 @@ export function parseDigestWorkspaceIdOverride(
 
 /**
  * Prisma `where` for digest SQL prefilter.
- * Telegram connectivity is confirmed post-query (encrypted blob).
+ * Channel is optional: email is the web-chat-only path.
  */
 export function digestCandidateWhere(overrideIds: string[] | null): {
   status: { notIn: DigestExcludedStatus[] }
-  channelConfigEncrypted: { not: null }
   deployments: { some: { status: { in: ["COMPLETED", "SUPERSEDED"] } } }
   containerState: { nextHeartbeatAt: { not: null } }
   id?: { in: string[] }
 } {
   return {
     status: { notIn: [...DIGEST_EXCLUDED_STATUSES] },
-    channelConfigEncrypted: { not: null },
     deployments: {
       some: { status: { in: ["COMPLETED", "SUPERSEDED"] } },
     },

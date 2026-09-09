@@ -10,6 +10,7 @@ export const OWNER_ALERT_KEYS = [
   "detector-anomaly",
   "owner-plane-test",
   "silent-wake",
+  "digest-missed",
 ] as const
 
 export type OwnerAlertKey = (typeof OWNER_ALERT_KEYS)[number]

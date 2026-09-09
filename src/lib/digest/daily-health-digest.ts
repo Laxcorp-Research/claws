@@ -1,6 +1,6 @@
 /**
  * Morning health digest - table from ActivityLog receipts (not prose).
- * Sent via Telegram using the same Bot API path as critical alerts.
+ * Telegram when connected; owner email otherwise (Resend id ledgered).
  */
 
 export const DAILY_DIGEST_EVENT_KIND = "daily_digest_sent"
@@ -67,6 +67,14 @@ export function formatDailyDigestMessage(args: {
     `Strands: ${s.strands}`,
     `Errors: ${s.errorsAgent24h} agent · ${s.errorsExternal24h} external`,
   ].join("\n")
+}
+
+export function formatDailyDigestEmailHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+  return `<pre style="font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;white-space:pre-wrap;margin:0;">${escaped}</pre>`
 }
 
 export type DigestActivityRow = {

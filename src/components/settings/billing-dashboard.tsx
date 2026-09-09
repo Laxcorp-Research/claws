@@ -10,6 +10,9 @@ import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 
 interface BillingData {
   hasActiveSubscription: boolean
+  subscriptionStatus?: string | null
+  plan?: string
+  planPrice?: string
   activeClaws: number
   runningClaws: number
   pausedClaws: number
@@ -168,9 +171,12 @@ export function BillingDashboard() {
   const trialEnd = data.trialEndsAt ? new Date(data.trialEndsAt) : null
   const trialActive = trialEnd && trialEnd > now
   const trialExpired = data.trialUsed && !trialActive
-  const showTrialExpiredBanner = trialExpired && !data.hasActiveSubscription
+  const onHold = data.subscriptionStatus === "on_hold"
+  const showTrialExpiredBanner = trialExpired && !data.hasActiveSubscription && !onHold
   const showSubscribedBanner =
-    data.hasActiveSubscription && (subscribedReturn || Boolean(subscribeMessage?.includes("active")))
+    data.hasActiveSubscription &&
+    !onHold &&
+    (subscribedReturn || Boolean(subscribeMessage?.includes("active")))
 
   const trialStatusLabel = !data.trialUsed
     ? "Available"
@@ -183,13 +189,24 @@ export function BillingDashboard() {
     : trialActive
       ? `Ends ${formatDate(data.trialEndsAt)} · $79/mo after`
       : data.hasActiveSubscription
-        ? "Subscribed - trial complete"
+        ? onHold
+          ? "On hold - update your card"
+          : "Subscribed - trial complete"
         : data.trialStartedAt
           ? `Ended · started ${formatDate(data.trialStartedAt)}`
           : "Trial ended - subscribe to redeploy"
 
   return (
     <div>
+      {onHold && (
+        <AlertBanner variant="warning">
+          <p className="font-medium">Billing is on hold</p>
+          <p className="mt-0.5 opacity-80">
+            Update your card in Settings &gt; Billing. Grace access continues until the card is updated.
+          </p>
+        </AlertBanner>
+      )}
+
       {showSubscribedBanner && (
         <AlertBanner variant="info">
           <p className="font-medium">Subscription active</p>

@@ -88,4 +88,25 @@ describe('GET /api/user/billing', () => {
     expect(json.data.planPrice).toContain('$79');
     expect(json.data.nextBillingDate).toBeDefined();
   });
+
+  it('on_hold is On hold + update-card, never silent Active', async () => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-hold' });
+    (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      hasActiveSubscription: true,
+      subscriptionStatus: 'on_hold',
+      subscriptionId: 'sub-hold',
+      subscriptionEndsAt: null,
+      trialUsed: true,
+      trialStartedAt: new Date(),
+      trialEndsAt: new Date(),
+    });
+    (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const res = await GET();
+    const json = await res.json();
+    expect(json.data.plan).toBe('On hold');
+    expect(json.data.subscriptionStatus).toBe('on_hold');
+    expect(json.data.planPrice).toContain('update your card');
+    expect(json.data.plan).not.toBe('Active');
+  });
 });

@@ -81,6 +81,50 @@ describe('checkDeployEligibility', () => {
     expect(result.canDeploy).toBe(true);
     expect(result.isFirstDeploy).toBe(true);
   });
+
+  it('on_hold is grace + update-card warning, never silent subscribed', () => {
+    const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const result = checkDeployEligibility({
+      trialUsed: true,
+      trialStartedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+      trialEndsAt: pastDate,
+      hasActiveSubscription: true,
+      subscriptionStatus: "on_hold",
+    });
+    expect(result.canDeploy).toBe(true);
+    expect(result.reason).toBe("subscription_on_hold");
+    expect(result.warning).toBe("update_card");
+    expect(result.needsSubscription).toBe(false);
+    expect(result.reason).not.toBe("subscribed");
+  });
+
+  it('MUTATION: on_hold must be checked before hasActiveSubscription', () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/dodo-payments.ts"), "utf8");
+    const hold = src.indexOf('isSubscriptionOnHold(user)');
+    const subscribed = src.indexOf("reason: \"subscribed\"");
+    expect(hold).toBeGreaterThan(0);
+    expect(subscribed).toBeGreaterThan(hold);
+  });
+
+  it('MUTATION: eligibility selects must include subscriptionStatus', () => {
+    const files = [
+      'src/app/api/cron/health-monitor/route.ts',
+      'src/app/api/cron/hibernation/route.ts',
+      'src/lib/healing/silent-wake.ts',
+      'src/lib/hibernation/manager.ts',
+      'src/lib/railway/governor.ts',
+      'src/lib/hibernation/wake-on-channel.ts',
+      'src/app/api/workspaces/[id]/chat/route.ts',
+      'src/app/api/deploy/[workspaceId]/cloud/route.ts',
+      'src/app/api/dashboard/[workspaceId]/wake/route.ts',
+      'src/app/api/deploy/[workspaceId]/restart/route.ts',
+      'src/app/api/deploy/[workspaceId]/redeploy/route.ts',
+    ];
+    for (const rel of files) {
+      const src = readFileSync(join(process.cwd(), rel), 'utf8');
+      expect(src, rel).toContain('subscriptionStatus: true');
+    }
+  });
 });
 
 describe('getTemplateProductId', () => {

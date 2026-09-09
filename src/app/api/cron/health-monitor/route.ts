@@ -25,6 +25,9 @@ import {
   scheduleHealthRuntimeHeal,
 } from "@/lib/healing/runtime-heals"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
+import { nudgeOnHoldOwners } from "@/lib/billing/on-hold-nudge"
+import { watchDigestMissed } from "@/lib/digest/digest-missed"
+import { nudgePersistedToolErrors } from "@/lib/tools/nudge-error-connections"
 
 // PR-3 - Health Monitor cron.
 //
@@ -781,6 +784,7 @@ export async function GET(req: NextRequest) {
             trialStartedAt: true,
             trialEndsAt: true,
             hasActiveSubscription: true,
+            subscriptionStatus: true,
           },
         },
       },
@@ -1012,6 +1016,27 @@ export async function GET(req: NextRequest) {
     errors.push(`stranded-adopter: ${err instanceof Error ? err.message : String(err)}`)
   }
 
+  let onHoldNudged = 0
+  try {
+    onHoldNudged = (await nudgeOnHoldOwners()).nudged
+  } catch (err) {
+    errors.push(`on-hold-nudge: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  let toolErrorNudged = 0
+  try {
+    toolErrorNudged = (await nudgePersistedToolErrors()).nudged
+  } catch (err) {
+    errors.push(`tool-error-nudge: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  let digestMissed = false
+  try {
+    digestMissed = (await watchDigestMissed(new Date(startedAt))).alerted
+  } catch (err) {
+    errors.push(`digest-missed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   const durationMs = Date.now() - startedAt
   log.info("health-monitor: pass complete", {
     workspacesProbed: candidates.length,
@@ -1024,6 +1049,9 @@ export async function GET(req: NextRequest) {
     missedWakeFlagged,
     wokeLateNeverBeatFlagged,
     strandedAdopted,
+    onHoldNudged,
+    toolErrorNudged,
+    digestMissed,
     errorCount: errors.length,
     durationMs,
   })
@@ -1041,6 +1069,9 @@ export async function GET(req: NextRequest) {
       missedWakeFlagged,
       wokeLateNeverBeatFlagged,
       strandedAdopted,
+      onHoldNudged,
+      toolErrorNudged,
+      digestMissed,
       errorCount: errors.length,
       durationMs,
     },
