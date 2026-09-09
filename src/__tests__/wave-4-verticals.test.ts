@@ -189,6 +189,9 @@ describe("WAVE-4 Law Firm Intake OS", () => {
       "shared/deliverables/intake-pack.md",
     ])
     expect(parseHeartbeatWindowScripts(agent(slug, "intake-commander").heartbeatMd).length).toBe(4)
+    expect(agent(slug, "intake-commander").heartbeatMd).toMatch(
+      /does not constitute legal advice|Never advise/i,
+    )
   })
 
   it("same-session mini-mission", () => {

@@ -1,4 +1,34 @@
+import { parseHeartbeatWindowScripts } from "../../src/lib/openclaw/heartbeat-md-cron"
 import type { SeedSharedFile, SeedTemplate } from "./types"
+
+/** Append WAVE-4 window steps onto INFRA-4 HEARTBEAT.md. Never replace it. */
+export function mergeHeartbeatOverlay(base: string, overlay: string): string {
+  const extras = parseHeartbeatWindowScripts(overlay)
+  let out = base
+  for (const extra of extras) {
+    const heading = `## window ${extra.cron}`
+    const start = out.indexOf(heading)
+    if (start < 0) continue
+    const afterHeading = start + heading.length
+    const nextWindow = out.indexOf("\n## window ", afterHeading)
+    const sectionEnd = nextWindow >= 0 ? nextWindow : out.length
+    const section = out.slice(start, sectionEnd)
+    const delivMatch = section.match(/\nDeliverable:\s+.+$/m)
+    if (!delivMatch || delivMatch.index == null) continue
+    const existingSteps = parseHeartbeatWindowScripts(section)[0]?.steps ?? []
+    const toAdd = extra.steps.filter((step) => {
+      if (/^Wake\./i.test(step)) return false
+      if (/^Write /i.test(step)) return false
+      return !existingSteps.includes(step)
+    })
+    if (toAdd.length === 0) continue
+    const startNum = existingSteps.length + 1
+    const block = toAdd.map((s, i) => `${startNum + i}. ${s}`).join("\n")
+    const insertAt = start + delivMatch.index
+    out = `${out.slice(0, insertAt)}\n${block}${out.slice(insertAt)}`
+  }
+  return out
+}
 
 export type Wave4AgentAddendum = {
   soulMd: string
@@ -60,7 +90,9 @@ export function applyWave4Overlay(args: {
         ...agent,
         soulMd: `${agent.soulMd}\n\n${add.soulMd}`,
         heartbeatMd:
-          agent.role === "ORCHESTRATOR" ? args.heartbeatMd : agent.heartbeatMd,
+          agent.role === "ORCHESTRATOR"
+            ? mergeHeartbeatOverlay(agent.heartbeatMd, args.heartbeatMd)
+            : agent.heartbeatMd,
         qualityThreshold:
           agent.role === "CRITIC"
             ? (agent.qualityThreshold ?? 8)

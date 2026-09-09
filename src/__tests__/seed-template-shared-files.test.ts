@@ -108,11 +108,32 @@ const EXPECTED_NAMED: Record<string, string[]> = {
     "shared/deliverables/tech-audit.md",
     "shared/deliverables/rank-report.md",
   ],
-  "real-estate-agent-os": ["shared/MARKET.md", "shared/LISTINGS.md"],
-  "recruiter-os": [],
-  "medical-practice-manager": [],
-  "law-firm-intake-os": [],
-  "home-services-dispatcher": [],
+  "real-estate-agent-os": [
+    "shared/MARKET.md",
+    "shared/LISTINGS.md",
+    "shared/deliverables/cma.md",
+  ],
+  "recruiter-os": [
+    "shared/SCORECARD.md",
+    "shared/SCREENING.md",
+    "shared/ATS.md",
+    "shared/deliverables/screening-pack.md",
+  ],
+  "medical-practice-manager": [
+    "shared/RECALL.md",
+    "shared/REMINDERS.md",
+    "shared/deliverables/reminder-draft.md",
+  ],
+  "law-firm-intake-os": [
+    "shared/INTAKE.md",
+    "shared/CONFLICTS.md",
+    "shared/deliverables/intake-pack.md",
+  ],
+  "home-services-dispatcher": [
+    "shared/TRIAGE.md",
+    "shared/DISPATCH.md",
+    "shared/deliverables/dispatch-board.md",
+  ],
   "health-fitness-commander": ["shared/PROGRAM.md", "shared/LOG.md"],
   "student-accelerator": [],
   "job-hunter-os": [],
@@ -169,7 +190,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(122)
+    expect(total).toBe(136)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
