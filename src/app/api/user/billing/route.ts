@@ -10,6 +10,7 @@ export async function GET() {
     where: { id: user.id },
     select: {
       hasActiveSubscription: true,
+      subscriptionStatus: true,
       subscriptionId: true,
       subscriptionEndsAt: true,
       trialUsed: true,
@@ -30,10 +31,19 @@ export async function GET() {
   const paused = workspaces.filter((w) => w.status === "PAUSED").length
   const totalCost = workspaces.reduce((sum, w) => sum + w.currentMonthApiCost, 0)
 
+  const onHold = dbUser.subscriptionStatus === "on_hold"
+  const plan = onHold ? "On hold" : dbUser.hasActiveSubscription ? "Active" : "Inactive"
+  const planPrice = onHold
+    ? "On hold - update your card"
+    : dbUser.hasActiveSubscription
+      ? "$79/mo per Claw"
+      : "No active subscription"
+
   return apiSuccess({
     hasActiveSubscription: dbUser.hasActiveSubscription,
-    plan: dbUser.hasActiveSubscription ? "Active" : "Inactive",
-    planPrice: dbUser.hasActiveSubscription ? "$79/mo per Claw" : "No active subscription",
+    subscriptionStatus: dbUser.subscriptionStatus,
+    plan,
+    planPrice,
     activeClaws: active.length,
     runningClaws: running,
     pausedClaws: paused,

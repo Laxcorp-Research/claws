@@ -174,6 +174,7 @@ export async function GET(req: NextRequest) {
             trialStartedAt: true,
             trialEndsAt: true,
             hasActiveSubscription: true,
+            subscriptionStatus: true,
           },
         },
       },

@@ -438,9 +438,10 @@ async function handleSubscriptionCancelled(
 }
 
 /**
- * Renewal dunning. Keep access (hasActiveSubscription=true) and stamp
+ * Renewal dunning. Keep access (hasActiveSubscription=true, grace) and stamp
  * subscriptionStatus=on_hold so trial-expiry stop SKIPSs (be82fa9 race).
- * ABSENT before GRACE-24 - webhook :206-:280 had no on_hold writer.
+ * Eligibility reason is subscription_on_hold + update_card warning, never
+ * silent subscribed. Customer nudge: update your card.
  */
 async function handleSubscriptionOnHold(
   data: Record<string, unknown> | undefined,

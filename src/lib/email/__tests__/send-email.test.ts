@@ -55,7 +55,7 @@ describe("sendEmail - honest success", () => {
       html: "<p>h</p>",
     })
 
-    expect(result).toEqual({ ok: true, attempts: 1 })
+    expect(result).toEqual({ ok: true, attempts: 1, resendId: "em-1" })
     expect(mockSend).toHaveBeenCalledTimes(1)
     expect(mockSend).toHaveBeenCalledWith({
       from: DEFAULT_EMAIL_FROM,
@@ -76,6 +76,7 @@ describe("sendEmail - honest success", () => {
         to: "user@example.com",
         attempts: 1,
       })
+      expect(meta.resendId).toBe("em-1")
     }
   })
 
@@ -169,7 +170,7 @@ describe("sendEmail - honest failure (the whole point)", () => {
       html: "h",
     })
 
-    expect(result).toEqual({ ok: true, attempts: 1 })
+    expect(result).toEqual({ ok: true, attempts: 1, resendId: "em-3" })
   })
 })
 
@@ -188,7 +189,7 @@ describe("sendEmail - critical retry + escalation", () => {
       html: "h",
     })
 
-    expect(result).toEqual({ ok: true, attempts: 2 })
+    expect(result).toEqual({ ok: true, attempts: 2, resendId: "em-4" })
     expect(mockSend).toHaveBeenCalledTimes(2)
     expect(mockSendCriticalAlert).not.toHaveBeenCalled()
     const meta = JSON.parse(activityCreateCalls()[0].metadata)

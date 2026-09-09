@@ -37,6 +37,9 @@ describe("digestCandidateWhere", () => {
       "SUPERSEDED",
     ])
     expect(where.id).toBeUndefined()
+    expect(
+      "channelConfigEncrypted" in (where as Record<string, unknown>),
+    ).toBe(false)
   })
 
   it("debug override restricts id.in but keeps the predicate", () => {
@@ -89,6 +92,8 @@ describe("daily-digest route uses eligibility module", () => {
     expect(src).toContain("digestCandidateWhere")
     expect(src).toContain("hasConnectedTelegramForDigest")
     expect(src).toContain("parseDigestWorkspaceIdOverride")
+    expect(src).toContain('kind: "daily_digest"')
+    expect(src).toContain("watchDigestMissed")
     // Old broad predicate must not return.
     expect(src).not.toMatch(/status:\s*\{\s*not:\s*"DRAFT"\s*\}/)
   })

@@ -64,6 +64,14 @@ describe("HEAL_REGISTRY coverage", () => {
     expect(row.escalate).toBe("owner-alert")
   })
 
+  it("digest-missed is owner-only owner-alert", () => {
+    const row = getHealPolicy("digest-missed")
+    expect(row.ruling).toBe("owner-only")
+    expect(row.plane).toBe("owner")
+    expect(row.existingHeal).toBe("sendOwnerAlert")
+    expect(row.escalate).toBe("owner-alert")
+  })
+
   it("heartbeat-missed-wake escalates owner, not customer-only", () => {
     const row = getHealPolicy("heartbeat-missed-wake")
     expect(row.plane).toBe("owner")

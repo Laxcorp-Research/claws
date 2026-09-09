@@ -45,6 +45,15 @@ vi.mock("@/lib/healing/silent-wake", async (orig) => {
   const actual = await orig<typeof import("@/lib/healing/silent-wake")>()
   return { ...actual, scheduleSilentWakeHeal: mockScheduleSilentWake }
 })
+vi.mock("@/lib/digest/digest-missed", () => ({
+  watchDigestMissed: vi.fn().mockResolvedValue({ alerted: false }),
+}))
+vi.mock("@/lib/billing/on-hold-nudge", () => ({
+  nudgeOnHoldOwners: vi.fn().mockResolvedValue({ nudged: 0 }),
+}))
+vi.mock("@/lib/tools/nudge-error-connections", () => ({
+  nudgePersistedToolErrors: vi.fn().mockResolvedValue({ nudged: 0 }),
+}))
 
 import { GET, __internal } from "@/app/api/cron/health-monitor/route";
 
@@ -1446,6 +1455,9 @@ describe("GET end-to-end", () => {
     expect(src).toContain("healRunningStaleSync");
     expect(src).toContain("clearParkedStaleSyncFlags");
     expect(src).toContain("heal.alert");
+    expect(src).toContain("watchDigestMissed");
+    expect(src).toContain("nudgeOnHoldOwners");
+    expect(src).toContain("nudgePersistedToolErrors");
   });
 
   it("sets stateSyncStaleDetectedAt for healthy workspace missing ContainerState row, after 2 consecutive probes", async () => {

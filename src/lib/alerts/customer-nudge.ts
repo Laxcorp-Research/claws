@@ -30,8 +30,8 @@ const NUDGE_COPY: Partial<Record<HealConditionId, NudgeCopy>> = {
     action: "Add credits or upgrade at developer.x.com.",
   },
   "subscription-on-hold": {
-    tried: "Billing is on hold; the claw cannot keep running on a frozen plan.",
-    action: "Update payment method in Settings > Billing.",
+    tried: "Billing is on hold; the claw is in grace until the card is updated.",
+    action: "Update your card in Settings > Billing.",
   },
   "payment-failed": {
     tried: "The last payment attempt failed.",
