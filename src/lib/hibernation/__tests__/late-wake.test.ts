@@ -14,12 +14,15 @@ vi.mock("@/lib/openclaw/deployer", () => ({
 vi.mock("@/lib/healing/mission-resume", () => ({
   maybeResumeInterruptedMission: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock("@/lib/openclaw/chat-send-hold", () => ({
+  flushHeldChatSends: vi.fn().mockResolvedValue(undefined),
+}))
 
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
-import { wakeWorkspace } from "@/lib/hibernation/manager"
+import { wakeWorkspace, WAKEABLE_WORKSPACE_STATUSES } from "@/lib/hibernation/manager"
 
 const WS = "ws-late-wake"
 const cron = JSON.stringify([
@@ -103,7 +106,10 @@ describe("wakeWorkspace - late-wake semantics (P2.3)", () => {
         }),
       }),
     )
-    expect(mockDeploy).toHaveBeenCalledWith(WS, { forbidCreate: true })
+    expect(mockDeploy).toHaveBeenCalledWith(WS, {
+      forbidCreate: true,
+      preserveHibernationOnFailure: true,
+    })
 
     vi.useRealTimers()
   })
@@ -113,7 +119,9 @@ describe("wakeWorkspace - late-wake semantics (P2.3)", () => {
       join(process.cwd(), "src/lib/hibernation/manager.ts"),
       "utf8",
     )
-    expect(src).toContain("deployToCloud(workspaceId, { forbidCreate: true })")
+    expect(src).toContain("forbidCreate: true")
+    expect(src).toContain("preserveHibernationOnFailure: true")
+    expect(src).toContain("WAKEABLE_WORKSPACE_STATUSES")
     expect(src).not.toMatch(/await deployToCloud\(workspaceId\)\s*$/m)
   })
 
@@ -195,6 +203,56 @@ describe("wakeWorkspace - late-wake semantics (P2.3)", () => {
       expect.objectContaining({
         where: { id: WS },
         data: { status: "STOPPED" },
+      }),
+    )
+  })
+
+  it("ERROR status is wakeable (failed wake stays in scheduler)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-20T12:10:00.000Z"))
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WS,
+      status: "ERROR",
+      user: ACTIVE_OWNER,
+      containerState: {
+        nextHeartbeatAt: new Date("2026-07-20T12:00:00.000Z"),
+        heartbeatCronExpressions: cron,
+        heartbeatInterval: null,
+        avgWakeDurationMs: 44_448,
+        runtimeStateSnapshot: null,
+      },
+    })
+    ;(prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      heartbeatCronExpressions: cron,
+      heartbeatInterval: null,
+      avgWakeDurationMs: 44_448,
+    })
+
+    await wakeWorkspace(WS)
+    expect(mockDeploy).toHaveBeenCalled()
+    expect(WAKEABLE_WORKSPACE_STATUSES).toContain("ERROR")
+    vi.useRealTimers()
+  })
+
+  it("wake deploy failure restores HIBERNATED and rethrows", async () => {
+    mockDeploy.mockRejectedValue(new Error("domain cap"))
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WS,
+      status: "HIBERNATED",
+      user: ACTIVE_OWNER,
+      containerState: {
+        nextHeartbeatAt: new Date("2026-07-20T16:00:00.000Z"),
+        heartbeatCronExpressions: cron,
+        heartbeatInterval: null,
+        avgWakeDurationMs: 44_448,
+        runtimeStateSnapshot: null,
+      },
+    })
+
+    await expect(wakeWorkspace(WS)).rejects.toThrow("domain cap")
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: "HIBERNATED" },
       }),
     )
   })

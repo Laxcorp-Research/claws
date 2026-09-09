@@ -19,10 +19,12 @@ import { sendCriticalAlert, sendResolveAlert } from "@/lib/alerts/critical-alert
 import { clearParkedStaleSyncFlags, healRunningStaleSync } from "@/lib/healing/stale-sync"
 import { ledgerHealAttempt } from "@/lib/healing/ledger"
 import { maybeLedgerMissionInterrupted } from "@/lib/healing/mission-resume"
+import { scheduleSilentWakeHeal, missedWakeWorkspaceWhere } from "@/lib/healing/silent-wake"
 import {
   planHealthRuntimeHeal,
   scheduleHealthRuntimeHeal,
 } from "@/lib/healing/runtime-heals"
+import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 
 // PR-3 - Health Monitor cron.
 //
@@ -747,7 +749,7 @@ export async function GET(req: NextRequest) {
         plan: healPlan,
       })
     }
-    if (probe.result.kind === "failure") {
+    if (probe.result.kind === "failure" && probe.result.reason !== "no-container") {
       try {
         await maybeLedgerMissionInterrupted({
           workspaceId: ws.id,
@@ -765,19 +767,21 @@ export async function GET(req: NextRequest) {
   const graceCutoff = new Date(startedAt - HEARTBEAT_MISS_GRACE_MS)
   try {
     const hibernatedArmed = await prisma.workspace.findMany({
-      where: {
-        status: "HIBERNATED",
-        containerState: {
-          // P2.3: ≤ so grace-edge (exactly now−grace) is eligible for the detector.
-          nextHeartbeatAt: { lte: graceCutoff },
-        },
-      },
+      where: missedWakeWorkspaceWhere(graceCutoff),
       select: {
         id: true,
         status: true,
         heartbeatMissedAt: true,
         containerState: {
           select: { nextHeartbeatAt: true },
+        },
+        user: {
+          select: {
+            trialUsed: true,
+            trialStartedAt: true,
+            trialEndsAt: true,
+            hasActiveSubscription: true,
+          },
         },
       },
     })
@@ -828,19 +832,29 @@ export async function GET(req: NextRequest) {
         continue
       }
 
+      if (heartbeatMissedAt instanceof Date) {
+        scheduleSilentWakeHeal({ workspaceId: ws.id, trigger: "missed-wake" })
+      }
+
       if (heartbeatMissedAt instanceof Date && ws.heartbeatMissedAt === null) {
         missedWakeFlagged++
-        pushCriticalAlert(
-          ws.id,
-          "heartbeat-missed",
-          `Missed wake: HIBERNATED past nextHeartbeatAt=${nextAt.toISOString()} with no boot since`,
-        )
+        const entitlement = ws.user
+          ? canWakeHibernatedWorkspace(ws.user)
+          : { allowed: false, reason: "owner_missing", needsSubscription: true }
+        // Customer nudge only when the user must subscribe. Owner is never silent.
+        if (entitlement.needsSubscription) {
+          pushCriticalAlert(
+            ws.id,
+            "heartbeat-missed",
+            `Missed wake: past nextHeartbeatAt=${nextAt.toISOString()} with no boot since`,
+          )
+        }
         try {
           await prisma.activityLog.create({
             data: {
               workspaceId: ws.id,
               action: "Heartbeat missed",
-              detail: `Missed wake: HIBERNATED past nextHeartbeatAt=${nextAt.toISOString()} with no boot since`,
+              detail: `Missed wake: past nextHeartbeatAt=${nextAt.toISOString()} with no boot since`,
               actionType: "ERROR",
               timestamp: new Date(startedAt),
               metadata: JSON.stringify({

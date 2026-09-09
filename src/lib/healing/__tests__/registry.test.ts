@@ -55,6 +55,22 @@ describe("HEAL_REGISTRY coverage", () => {
     expect(row.escalate).toBe("owner-alert")
   })
 
+  it("silent-wake retries wake with backoff then owner-alert (never silent)", () => {
+    const row = getHealPolicy("silent-wake")
+    expect(row.ruling).toBe("platform")
+    expect(row.plane).toBe("owner")
+    expect(row.existingHeal).toContain("retryWakeWithBackoff")
+    expect(row.retries).toBe(3)
+    expect(row.escalate).toBe("owner-alert")
+  })
+
+  it("heartbeat-missed-wake escalates owner, not customer-only", () => {
+    const row = getHealPolicy("heartbeat-missed-wake")
+    expect(row.plane).toBe("owner")
+    expect(row.retries).toBe(3)
+    expect(row.escalate).toBe("owner-alert")
+  })
+
   it("spend-limit-100 is platform-enforced with customer nudge", () => {
     const row = getHealPolicy("spend-limit-100")
     expect(row.ruling).toBe("platform")

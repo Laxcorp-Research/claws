@@ -28,6 +28,13 @@ export const CRASH_RESTART_GUARD_NAMES = [
   "cap",
 ] as const
 
+export const SILENT_WAKE_BACKOFF_MS = [0, 15 * 60 * 1000, 60 * 60 * 1000] as const
+export const SILENT_WAKE_CAP_24H = 3
+
+export const SILENT_WAKE_GUARD_NAMES = ["entitlement", "backoff", "cap"] as const
+
+export type SilentWakeGuardName = (typeof SILENT_WAKE_GUARD_NAMES)[number]
+
 export type CrashRestartGuardName = (typeof CRASH_RESTART_GUARD_NAMES)[number]
 
 export const MAX_TRANSIENT_DEPLOY_ATTEMPTS = 2
@@ -80,6 +87,29 @@ export function evaluateCrashRestartGuards(input: {
   }
   const backoffIdx = Math.min(input.attemptsInHour, CRASH_RESTART_BACKOFF_MS.length - 1)
   const backoffMs = CRASH_RESTART_BACKOFF_MS[backoffIdx]
+  if (
+    input.lastAttemptAt &&
+    input.now.getTime() - input.lastAttemptAt.getTime() < backoffMs
+  ) {
+    return { allowed: false, blockedBy: "backoff", escalateOwner: false }
+  }
+  return { allowed: true, blockedBy: null, escalateOwner: false }
+}
+
+/**
+ * Silent-wake: retry scheduled wake with backoff, then cap → owner.
+ * Entitlement is checked by the executor (customer nudge, no wake).
+ */
+export function evaluateSilentWakeGuards(input: {
+  attemptsInWindow: number
+  lastAttemptAt: Date | null
+  now: Date
+}): GuardDecision<SilentWakeGuardName> {
+  if (input.attemptsInWindow >= SILENT_WAKE_CAP_24H) {
+    return { allowed: false, blockedBy: "cap", escalateOwner: true }
+  }
+  const backoffIdx = Math.min(input.attemptsInWindow, SILENT_WAKE_BACKOFF_MS.length - 1)
+  const backoffMs = SILENT_WAKE_BACKOFF_MS[backoffIdx]
   if (
     input.lastAttemptAt &&
     input.now.getTime() - input.lastAttemptAt.getTime() < backoffMs

@@ -40,6 +40,11 @@ vi.mock("@/lib/healing/runtime-heals", () => ({
 vi.mock("@/lib/healing/mission-resume", () => ({
   maybeLedgerMissionInterrupted: vi.fn().mockResolvedValue(false),
 }))
+const mockScheduleSilentWake = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/healing/silent-wake", async (orig) => {
+  const actual = await orig<typeof import("@/lib/healing/silent-wake")>()
+  return { ...actual, scheduleSilentWakeHeal: mockScheduleSilentWake }
+})
 
 import { GET, __internal } from "@/app/api/cron/health-monitor/route";
 
@@ -66,6 +71,16 @@ function makeWs(overrides: Partial<Record<string, unknown>> = {}) {
     deployments: [{ completedAt: new Date(Date.now() - 20 * 60 * 1000) }],
     ...overrides,
   };
+}
+
+function isMissedWakeQuery(where: { status?: unknown } | undefined): boolean {
+  const status = where?.status
+  if (status === "HIBERNATED") return true
+  if (status && typeof status === "object" && status !== null && "in" in status) {
+    const list = (status as { in: unknown }).in
+    return Array.isArray(list) && list.includes("HIBERNATED")
+  }
+  return false
 }
 
 function makeReq(opts: { auth?: string } = {}) {
@@ -133,6 +148,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   mockClearParked.mockReset()
   mockHealRunning.mockReset()
+  mockScheduleSilentWake.mockReset()
   mockClearParked.mockResolvedValue(0)
   mockHealRunning.mockResolvedValue({ cleared: false, alert: false, synced: false })
   // P4 stranded adopter sibling pass - default empty (no stranded deploys).
@@ -995,7 +1011,7 @@ describe("GET end-to-end", () => {
     try {
       (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
         (args: { where?: { status?: unknown } }) => {
-          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (isMissedWakeQuery(args?.where)) return Promise.resolve([]);
           return Promise.resolve([
             makeWs({
               id: "ws-miss",
@@ -1045,7 +1061,7 @@ describe("GET end-to-end", () => {
     try {
       (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
         (args: { where?: { status?: unknown; containerState?: unknown } }) => {
-          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (isMissedWakeQuery(args?.where)) return Promise.resolve([]);
           if (args?.where && "containerState" in args.where && !("status" in args.where)) {
             return Promise.resolve([]);
           }
@@ -1093,7 +1109,7 @@ describe("GET end-to-end", () => {
       const nextHeartbeatAt = new Date("2026-07-20T08:00:00.000Z");
       (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
         (args: { where?: { status?: unknown; containerState?: unknown } }) => {
-          if (args?.where?.status === "HIBERNATED") {
+          if (isMissedWakeQuery(args?.where)) {
             return Promise.resolve([
               {
                 id: "ws-fixture-july",
@@ -1135,7 +1151,57 @@ describe("GET end-to-end", () => {
             metadata: expect.stringContaining("heartbeat_missed_wake"),
           }),
         }),
+      )
+      expect(mockScheduleSilentWake).toHaveBeenCalledWith({
+        workspaceId: "ws-fixture-july",
+        trigger: "missed-wake",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ERROR 9-day past nextHeartbeatAt still flags + silent-wake (no 48h drop)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-09T00:20:00.000Z"));
+    try {
+      const nextHeartbeatAt = new Date("2026-08-18T12:00:00.000Z");
+      (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        (args: { where?: { status?: unknown; containerState?: unknown } }) => {
+          if (isMissedWakeQuery(args?.where)) {
+            return Promise.resolve([
+              {
+                id: "ws-canary",
+                status: "ERROR",
+                heartbeatMissedAt: null,
+                containerState: { nextHeartbeatAt },
+                user: {
+                  trialUsed: true,
+                  trialStartedAt: new Date("2026-07-01T00:00:00.000Z"),
+                  trialEndsAt: new Date("2026-07-29T00:00:00.000Z"),
+                  hasActiveSubscription: true,
+                },
+              },
+            ]);
+          }
+          if (args?.where && "containerState" in args.where && !("status" in args.where)) {
+            return Promise.resolve([]);
+          }
+          return Promise.resolve([]);
+        },
       );
+      (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+      (prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({} as never);
+
+      const res = await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.missedWakeFlagged).toBe(1);
+      expect(mockScheduleSilentWake).toHaveBeenCalledWith({
+        workspaceId: "ws-canary",
+        trigger: "missed-wake",
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -1152,7 +1218,7 @@ describe("GET end-to-end", () => {
     try {
       (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
         (args: { where?: { status?: unknown; containerState?: unknown } }) => {
-          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (isMissedWakeQuery(args?.where)) return Promise.resolve([]);
           if (args?.where && "containerState" in args.where && !("status" in args.where)) {
             return Promise.resolve([
               {
@@ -1205,7 +1271,7 @@ describe("GET end-to-end", () => {
     try {
       (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
         (args: { where?: { status?: unknown; containerState?: unknown } }) => {
-          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (isMissedWakeQuery(args?.where)) return Promise.resolve([]);
           if (args?.where && "containerState" in args.where && !("status" in args.where)) {
             return Promise.resolve([
               {
@@ -1252,7 +1318,7 @@ describe("GET end-to-end", () => {
     try {
       (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockImplementation(
         (args: { where?: { status?: unknown; containerState?: unknown } }) => {
-          if (args?.where?.status === "HIBERNATED") return Promise.resolve([]);
+          if (isMissedWakeQuery(args?.where)) return Promise.resolve([]);
           if (args?.where && "containerState" in args.where && !("status" in args.where)) {
             return Promise.resolve([
               {
