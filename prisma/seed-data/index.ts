@@ -11,6 +11,13 @@ import { applyWave0Twitter } from "./wave-0-twitter"
 import { applyWave1Freelancer } from "./wave-1-freelancer"
 import { applyWave1Quant } from "./wave-1-quant"
 import { applyWave1Ecom } from "./wave-1-ecom"
+import { applyWave2Youtube } from "./wave-2-youtube"
+import { applyWave2Newsletter } from "./wave-2-newsletter"
+import { applyWave2Podcast } from "./wave-2-podcast"
+import { applyWave3B2b } from "./wave-3-b2b"
+import { applyWave3Agency } from "./wave-3-agency"
+import { applyWave3Cos } from "./wave-3-cos"
+import { applyWave3Seo } from "./wave-3-seo"
 import type { SeedTemplate } from "./types"
 
 export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
@@ -46,6 +53,52 @@ export {
   INVENTED_ROAS_FIXTURE,
   ROAS_PAUSE_RULE,
 } from "./wave-1-ecom"
+export {
+  applyWave2Youtube,
+  YOUTUBE_WAVE2_SLUG,
+  YOUTUBE_HEARTBEAT_MD,
+  YOUTUBE_FIRST_MISSION_PROSE,
+  INVENTED_CTR_FIXTURE,
+} from "./wave-2-youtube"
+export {
+  applyWave2Newsletter,
+  NEWSLETTER_WAVE2_SLUG,
+  NEWSLETTER_HEARTBEAT_MD,
+  NEWSLETTER_FIRST_MISSION_PROSE,
+  INVENTED_OPEN_RATE_FIXTURE,
+} from "./wave-2-newsletter"
+export {
+  applyWave2Podcast,
+  PODCAST_WAVE2_SLUG,
+  PODCAST_HEARTBEAT_MD,
+  PODCAST_FIRST_MISSION_PROSE,
+  INVENTED_GUEST_FIXTURE,
+} from "./wave-2-podcast"
+export {
+  applyWave3B2b,
+  B2B_WAVE3_SLUG,
+  B2B_HEARTBEAT_MD,
+  B2B_FIRST_MISSION_PROSE,
+} from "./wave-3-b2b"
+export {
+  applyWave3Agency,
+  AGENCY_WAVE3_SLUG,
+  AGENCY_HEARTBEAT_MD,
+  AGENCY_FIRST_MISSION_PROSE,
+} from "./wave-3-agency"
+export {
+  applyWave3Cos,
+  COS_WAVE3_SLUG,
+  COS_HEARTBEAT_MD,
+  COS_FIRST_MISSION_PROSE,
+  COS_CRITIC_KNOB,
+} from "./wave-3-cos"
+export {
+  applyWave3Seo,
+  SEO_WAVE3_SLUG,
+  SEO_HEARTBEAT_MD,
+  SEO_FIRST_MISSION_PROSE,
+} from "./wave-3-seo"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -62,6 +115,13 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   .map(applyWave1Freelancer)
   .map(applyWave1Quant)
   .map(applyWave1Ecom)
+  .map(applyWave2Youtube)
+  .map(applyWave2Newsletter)
+  .map(applyWave2Podcast)
+  .map(applyWave3B2b)
+  .map(applyWave3Agency)
+  .map(applyWave3Cos)
+  .map(applyWave3Seo)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)

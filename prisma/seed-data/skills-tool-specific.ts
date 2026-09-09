@@ -530,7 +530,13 @@ Every \`composio.tools.execute\` response follows:
 Check \`successful\` before trusting \`data\`. Common failures:
 - **Revoked OAuth** - \`successful: false\`, \`error\` carries a provider-specific message. Surface "reconnect YouTube" to the human.
 - **Quota** - YouTube Data API quota exhausted; backoff and report remaining quota if present.
-- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.`,
+- **Missing env vars** - request rejected locally with \`COMPOSIO_*\` not set. Check the container's env if this ever fires in prod.
+
+## YouTube Channel OS path
+- READ YOUTUBE_GET_CHANNEL_STATISTICS and YOUTUBE_SEARCH_YOU_TUBE (video list) via the http tool. Cite tool:youtube-data-api ids.
+- ACTION YOUTUBE_UPDATE_VIDEO stays pending until a human approves. Say drafted, awaiting your approval to change the video.
+- Do not invent CTR or retention. Ban: "This title did 18% CTR last month (no video id)".
+- Typed errors: AUTH (401), PAYMENT (402), SCOPE (403), RATE (429), UPSTREAM (5xx).`,
     type: "TOOL_SPECIFIC",
     category: "CONTENT",
     icon: "🎬",
@@ -540,11 +546,36 @@ Check \`successful\` before trusting \`data\`. Common failures:
     isBuiltIn: false,
     permissions: ["internet_access"],
   },
-  // `beehiiv-newsletter` and `substack-newsletter` skills removed in PR #4 -
-  // Composio has no `beehiiv` or `substack` toolkit. Beehiiv users can instead
-  // use `beehiiv-api` (API_KEY_TOOLS, direct-token) via the MarketplaceSkill
-  // `beehiiv-newsletter` row in marketplace-skills.ts. Substack has no current
-  // remediation path; tracked in the umbrella drift issue.
+  {
+    name: "Beehiiv Newsletter",
+    slug: "beehiiv-api",
+    description: "List posts and subscribers, and create issues via the Beehiiv REST API",
+    skillMd: `## Authentication
+Auth is injected by the http tool from \`$BEEHIIV_API_KEY\` as Bearer. Do not pass Authorization. Publication id is \`$BEEHIIV_PUBLICATION_ID\`.
+
+## Endpoints (http tool only)
+
+- READ GET https://api.beehiiv.com/v2/publications/{id}/posts
+- READ GET https://api.beehiiv.com/v2/publications/{id}/subscriptions
+- ACTION POST https://api.beehiiv.com/v2/publications/{id}/posts - create an issue. Stays pending until a human approves.
+
+ConvertKit is not Beehiiv. Do not call kit endpoints from this skill.
+
+## Newsletter Empire path
+- Default is draft-only. POST create-issue is ACTION. Say drafted, awaiting your approval to send the issue.
+- Do not invent open rates or list size. Ban: "This subject hit 62% open rate (no send id)".
+- Deliverability crisis: if bounce or complaint READ is high, hold. Do not send a apology blast.
+- Typed errors: AUTH (401), PAYMENT (402), SCOPE (403), RATE (429), UPSTREAM (5xx).`,
+    type: "TOOL_SPECIFIC",
+    category: "CONTENT",
+    icon: "✉️",
+    compatibleTools: ["beehiiv-api"],
+    requiresToolConnection: true,
+    requiredToolCategory: "CONTENT",
+    isBuiltIn: false,
+    permissions: ["internet_access"],
+  },
+  // Substack has no current remediation path; tracked in the umbrella drift issue.
   {
     name: "ConvertKit Newsletter",
     slug: "convertkit-newsletter",
@@ -1311,7 +1342,8 @@ Admin REST returns \`{ products }\` / \`{ product }\` / \`{ variant }\` / \`{ in
   {
     name: "Google Search Console",
     slug: "google-search-console",
-    description: "Search performance and indexing data via Composio",
+    description:
+      "Search performance and indexing via GSC_API_KEY (catalog API_KEY). Not a Composio skill: composio-toolkit-allowlist.txt has no googlesearchconsole toolkit.",
     skillMd: `## Authentication
 Auth is injected by the http tool from \`$GSC_API_KEY\` (catalog API_KEY). Do not pass Authorization. This is not a Composio skill.
 

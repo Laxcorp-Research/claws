@@ -275,13 +275,19 @@ export function decideMissedWake(args: {
 }): Date | null | undefined {
   // Sticky miss: this detector never clears (activity roller + beat evidence only).
   // MUTATION: clearIfSet on non-HIBERNATED / in-grace → wipe late-wake sticky.
-  if (args.workspaceStatus !== "HIBERNATED") return undefined
+  // HIBERNATED plus ERROR from a failed wake. RUNNING stays Watchtower.
+  // MUTATION: restoring MAX_AGE here → 9-day silence after 48h.
+  if (
+    args.workspaceStatus !== "HIBERNATED" &&
+    args.workspaceStatus !== "ERROR" &&
+    args.workspaceStatus !== "WAKING"
+  ) {
+    return undefined
+  }
   if (!args.nextHeartbeatAt) return undefined
 
   const graceMs = args.graceMs ?? HEARTBEAT_MISS_GRACE_MS
   const expectedMs = args.nextHeartbeatAt.getTime()
-  const age = args.nowMs - expectedMs
-  if (age > HEARTBEAT_MISS_MAX_AGE_MS) return undefined
   // P2.3: miss when expected ≤ now − grace (grace-edge inclusive).
   if (expectedMs > args.nowMs - graceMs) return undefined
   if (args.hasBootSinceExpected) {

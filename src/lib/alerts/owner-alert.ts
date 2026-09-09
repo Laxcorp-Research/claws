@@ -9,6 +9,7 @@ export const OWNER_ALERT_KEYS = [
   "heal-exhausted",
   "detector-anomaly",
   "owner-plane-test",
+  "silent-wake",
 ] as const
 
 export type OwnerAlertKey = (typeof OWNER_ALERT_KEYS)[number]

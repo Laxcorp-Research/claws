@@ -12,6 +12,7 @@ import { rewriteSkillMdForHttp, stripApiFallbackBlocks } from "@/lib/openclaw/sk
 import {
   FAIL_CLOSED_PINNED_IMAGE,
   IMAGE_15_HTTP_SKILLS,
+  IMAGE_17_AUTH_SKILLS,
   httpSkillsShippedOnImage,
 } from "@/lib/openclaw/http-image-profiles"
 import {
@@ -22,11 +23,12 @@ import {
 } from "@/lib/openclaw/skill-http-status"
 
 const IMAGE_16 = "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-16"
+const IMAGE_17 = "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-17"
 
 describe("INFRA-5 PR-4 skill http contracts", () => {
-  it("covers every TOOL_SPECIFIC skill (30/30)", () => {
+  it("covers every TOOL_SPECIFIC skill (31/31)", () => {
     const slugs = TOOL_SPECIFIC_SKILLS.map((skill) => skill.slug).sort()
-    expect(slugs).toHaveLength(30)
+    expect(slugs).toHaveLength(31)
     expect(Object.keys(SKILL_HTTP_CONTRACTS).sort()).toEqual(slugs)
     for (const slug of slugs) {
       expect(httpContractForSkill(slug), slug).not.toBeNull()
@@ -37,21 +39,30 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
     for (const skill of TOOL_SPECIFIC_SKILLS) {
       for (const toolSlug of skill.compatibleTools ?? []) {
         expect(HTTP_SKILL_BY_TOOL_SLUG[toolSlug], `${skill.slug} / ${toolSlug}`).toBe(skill.slug)
-        expect(isHttpToolCallable(toolSlug, IMAGE_16)).toBe(true)
+        expect(isHttpToolCallable(toolSlug, IMAGE_17)).toBe(true)
       }
     }
   })
 
-  it("A5: -15 ships only tavily/twitter/alpaca; -16 ships all 30", () => {
+  it("A5: -15 ships tavily/twitter/alpaca; -16 omits beehiiv+shopify-admin; -17 ships all", () => {
     expect(httpSkillsShippedOnImage(FAIL_CLOSED_PINNED_IMAGE)).toEqual([...IMAGE_15_HTTP_SKILLS])
-    expect([...httpSkillsShippedOnImage(IMAGE_16)].sort()).toEqual(Object.keys(SKILL_HTTP_CONTRACTS).sort())
+    const on16 = [...httpSkillsShippedOnImage(IMAGE_16)].sort()
+    const all = Object.keys(SKILL_HTTP_CONTRACTS).sort()
+    const deferred = new Set<string>(IMAGE_17_AUTH_SKILLS)
+    expect(on16).toEqual(all.filter((skill) => !deferred.has(skill)))
+    expect(on16).not.toContain("beehiiv-api")
+    expect(on16).not.toContain("shopify-store")
+    expect([...httpSkillsShippedOnImage(IMAGE_17)].sort()).toEqual(all)
     expect(isHttpToolCallable("tavily", FAIL_CLOSED_PINNED_IMAGE)).toBe(true)
     expect(isHttpToolCallable("hubspot", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
     expect(isHttpToolCallable("gmail", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
     expect(isHttpToolCallable("shopify", FAIL_CLOSED_PINNED_IMAGE)).toBe(false)
     expect(isHttpToolCallable("hubspot", IMAGE_16)).toBe(true)
     expect(isHttpToolCallable("gmail", IMAGE_16)).toBe(true)
-    expect(isHttpToolCallable("shopify", IMAGE_16)).toBe(true)
+    expect(isHttpToolCallable("shopify", IMAGE_16)).toBe(false)
+    expect(isHttpToolCallable("beehiiv-api", IMAGE_16)).toBe(false)
+    expect(isHttpToolCallable("shopify", IMAGE_17)).toBe(true)
+    expect(isHttpToolCallable("beehiiv-api", IMAGE_17)).toBe(true)
   })
 
   it("does not declare a composio execute catch-all", () => {
@@ -119,6 +130,40 @@ describe("INFRA-5 PR-4 skill http contracts", () => {
         path: "/api/v3/tools/execute",
       }),
     ).toBeNull()
+  })
+
+  it("classifies Beehiiv GET as READ and POST as ACTION; YouTube update as ACTION", () => {
+    const beehiiv = httpContractForSkill("beehiiv-api")
+    expect(beehiiv?.auth).toBe("bearer")
+    expect(
+      matchHttpEndpoint(beehiiv!, {
+        method: "GET",
+        host: "api.beehiiv.com",
+        path: "/v2/publications/pub_fixture/posts",
+      })?.class,
+    ).toBe("READ")
+    expect(
+      matchHttpEndpoint(beehiiv!, {
+        method: "POST",
+        host: "api.beehiiv.com",
+        path: "/v2/publications/pub_fixture/posts",
+      })?.class,
+    ).toBe("ACTION")
+    const youtube = httpContractForSkill("youtube-data-api")
+    expect(
+      matchHttpEndpoint(youtube!, {
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/YOUTUBE_UPDATE_VIDEO",
+      })?.class,
+    ).toBe("ACTION")
+    expect(
+      matchHttpEndpoint(youtube!, {
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS",
+      })?.class,
+    ).toBe("READ")
   })
 
   it("classifies unlisted GMAIL_GET_PROFILE via prefix as READ", () => {

@@ -476,6 +476,34 @@ describe("decideMissedWake - HIBERNATED past nextHeartbeatAt", () => {
     })
     expect(inGrace).toBeUndefined()
   })
+
+  it("ERROR past window still flags (failed wake stays in Watchtower)", () => {
+    const result = decideMissedWake({
+      workspaceStatus: "ERROR",
+      nextHeartbeatAt: new Date("2026-07-20T08:00:00.000Z"),
+      hasBootSinceExpected: false,
+      currentFlag: null,
+      nowMs: new Date("2026-07-20T08:20:00.000Z").getTime(),
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
+
+  it("MUTATION: 9-day silence still flags (no 48h max-age no-op)", () => {
+    const src = readFileSync(join(__dirname, "../next-heartbeat.ts"), "utf8")
+    const fn = src.match(
+      /export function decideMissedWake\([\s\S]*?^export function decideWokeLateNeverBeat/m,
+    )?.[0]
+    expect(fn).toBeTruthy()
+    expect(fn).not.toContain("HEARTBEAT_MISS_MAX_AGE_MS")
+    const result = decideMissedWake({
+      workspaceStatus: "ERROR",
+      nextHeartbeatAt: new Date("2026-08-18T12:00:00.000Z"),
+      hasBootSinceExpected: false,
+      currentFlag: null,
+      nowMs: new Date("2026-09-09T00:00:00.000Z").getTime(),
+    })
+    expect(result).toBeInstanceOf(Date)
+  })
 })
 
 describe("decideWokeLateNeverBeat - post-cron boot without beat", () => {

@@ -89,7 +89,8 @@ describe("warmIdleWhere alwaysOn exemption (PR-C #10)", () => {
 
   it("wakeHibernatedWhere does NOT filter alwaysOn (wake is always the safe direction)", () => {
     const where = wakeHibernatedWhere()
-    expect(where).not.toHaveProperty("workspace")
+    expect(where).not.toHaveProperty("alwaysOn")
+    expect(JSON.stringify(where)).not.toContain("alwaysOn")
   })
 })
 
@@ -138,16 +139,16 @@ describe("imminent-beat exemption (HEARTBEAT_IMMINENT_EXEMPT_MS)", () => {
     expect(code).toMatch(/warmIdleWhere[\s\S]*nextHeartbeatNotImminent/)
   })
 
-  it("wakeHibernatedWhere includes imminent claws (no sleep exemption)", () => {
+  it("wakeHibernatedWhere includes ERROR workspace status (failed wake stays schedulable)", () => {
     const where = wakeHibernatedWhere()
-    expect(where).toEqual({
-      containerPhase: "HIBERNATED",
-      nextHeartbeatAt: { not: null },
-    })
-    // No gt:exemptUntil / OR-null sleep shape on wake.
+    expect(where.nextHeartbeatAt).toEqual({ not: null })
+    expect(where.OR).toEqual(
+      expect.arrayContaining([
+        { containerPhase: "HIBERNATED" },
+        { workspace: { status: "ERROR" } },
+      ]),
+    )
     expect(JSON.stringify(where)).not.toContain('"gt"')
-    expect(where).not.toHaveProperty("OR")
-    expect(where).not.toHaveProperty("AND")
   })
 
   it("MUTATION: apply sleep exemption to wake → wake-window test fails", () => {
@@ -182,6 +183,7 @@ describe("imminent-beat exemption (HEARTBEAT_IMMINENT_EXEMPT_MS)", () => {
     expect(JSON.stringify(buggyWakeWhere)).toContain('"gt"')
     // Shipped wake must stay free of that filter.
     expect(JSON.stringify(wakeHibernatedWhere())).not.toContain('"gt"')
+    expect(JSON.stringify(wakeHibernatedWhere())).toContain("ERROR")
   })
 })
 

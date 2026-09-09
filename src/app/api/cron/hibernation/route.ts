@@ -18,6 +18,7 @@ import {
 } from "@/lib/hibernation/wake-geometry"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { ledgerHealAttempt } from "@/lib/healing/ledger"
+import { scheduleSilentWakeHeal } from "@/lib/healing/silent-wake"
 import type { HealConditionId } from "@/lib/healing/conditions"
 
 // before: 55 - Vercel FUNCTION_INVOCATION_TIMEOUT when wakes awaited inline.
@@ -56,6 +57,10 @@ function scheduleWake(workspaceId: string, reason: "eligible" | "stuck"): void {
         condition,
         outcome: "failed",
         detail: String(err),
+      })
+      scheduleSilentWakeHeal({
+        workspaceId,
+        trigger: reason === "stuck" ? "stuck-hibernated" : "wake-failed",
       })
       log.error("Hibernation cron: wake failed (after)", {
         workspaceId,
@@ -218,6 +223,10 @@ export async function GET(req: NextRequest) {
         workspaceId: candidate.workspaceId,
         reason: entitlement.reason,
       })
+      scheduleSilentWakeHeal({
+        workspaceId: candidate.workspaceId,
+        trigger: "entitlement-denied",
+      })
       continue
     }
 
@@ -247,6 +256,10 @@ export async function GET(req: NextRequest) {
       log.info("Hibernation cron: skip stuck wake (entitlement denied)", {
         workspaceId: stuck.workspaceId,
         reason: entitlement.reason,
+      })
+      scheduleSilentWakeHeal({
+        workspaceId: stuck.workspaceId,
+        trigger: "entitlement-denied",
       })
       continue
     }

@@ -165,6 +165,87 @@ export const HTTP_FIXTURE_RECORDINGS: readonly HttpFixtureRecording[] = [
     },
   },
   {
+    skill: "alpaca-trading",
+    method: "POST",
+    path: "/v2/orders",
+    httpStatus: 200,
+    body: {
+      id: "fixture-paper-order-pending",
+      status: "accepted",
+      symbol: "MU",
+      qty: "1",
+      side: "buy",
+      type: "limit",
+      time_in_force: "day",
+      limit_price: "120",
+      filled_qty: "0",
+    },
+  },
+  {
+    skill: "apollo-search",
+    method: "POST",
+    path: "/api/v1/mixed_people/search",
+    httpStatus: 200,
+    body: {
+      people: [
+        {
+          id: "fixture-apollo-1",
+          name: "Ada Example",
+          title: "VP Sales",
+          organization: { name: "Fixture SaaS Co", estimated_num_employees: 80 },
+        },
+      ],
+    },
+  },
+  {
+    skill: "instantly-email",
+    method: "GET",
+    path: "/api/v1/analytics",
+    httpStatus: 200,
+    body: { campaign_id: "fixture-seq-1", sent: 12, replies: 1 },
+  },
+  {
+    skill: "instantly-email",
+    method: "POST",
+    path: "/api/v1/campaign/create",
+    httpStatus: 200,
+    body: { campaign_id: "fixture-seq-pending", status: "draft" },
+  },
+  {
+    skill: "google-search-console",
+    method: "GET",
+    path: "/webmasters/v3/sites",
+    pathMatch: "includes",
+    httpStatus: 200,
+    body: { siteEntry: [{ siteUrl: "https://fixture.example/", permissionLevel: "siteOwner" }] },
+  },
+  {
+    skill: "google-search-console",
+    method: "PUT",
+    path: "/webmasters/v3/sites",
+    pathMatch: "includes",
+    httpStatus: 200,
+    body: { siteUrl: "https://fixture.example/" },
+  },
+  {
+    skill: "google-analytics",
+    method: "POST",
+    path: "/api/v3/tools/execute/GOOGLE_ANALYTICS_LIST_ACCOUNTS",
+    httpStatus: 200,
+    body: {
+      successful: true,
+      data: { accounts: [{ name: "accounts/fixture-ga", displayName: "Fixture GA" }] },
+    },
+  },
+  {
+    skill: "ahrefs-seo",
+    method: "GET",
+    path: "/v3/site-explorer/backlinks",
+    pathMatch: "includes",
+    httpStatus: 200,
+    body: { backlinks: [{ url_from: "https://fixture-ref.example/post", url_to: "https://fixture.example/" }] },
+  },
+  {
     skill: "shopify-store",
     method: "GET",
     path: "/admin/api/2024-10/products.json",
@@ -281,6 +362,77 @@ export const HTTP_FIXTURE_RECORDINGS: readonly HttpFixtureRecording[] = [
         results: [{ id: "1", properties: { email: "ada@example.com", firstname: "Ada" } }],
       },
     },
+  },
+  {
+    skill: "youtube-data-api",
+    method: "POST",
+    path: "/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS",
+    httpStatus: 200,
+    body: {
+      successful: true,
+      data: {
+        statistics: { viewCount: "240110", subscriberCount: "12840", videoCount: "42" },
+        snippet: { title: "Cursor Clips", customUrl: "@cursor-clips" },
+      },
+    },
+  },
+  {
+    skill: "youtube-data-api",
+    method: "POST",
+    path: "/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE",
+    httpStatus: 200,
+    body: {
+      successful: true,
+      data: {
+        items: [
+          {
+            id: { videoId: "dQwFixture01" },
+            snippet: { title: "I scored 12 titles 1-10", publishedAt: "2026-09-01T14:00:00Z" },
+          },
+          {
+            id: { videoId: "dQwFixture02" },
+            snippet: { title: "Thumbnail brief in 8 minutes", publishedAt: "2026-08-20T14:00:00Z" },
+          },
+        ],
+      },
+    },
+  },
+  {
+    skill: "youtube-data-api",
+    method: "POST",
+    path: "/api/v3/tools/execute/YOUTUBE_UPDATE_VIDEO",
+    httpStatus: 200,
+    body: {
+      successful: true,
+      data: { id: "dQwFixture01", snippet: { title: "I scored 12 titles 1-10" } },
+    },
+  },
+  {
+    skill: "beehiiv-api",
+    method: "GET",
+    path: "/v2/publications",
+    pathMatch: "includes",
+    httpStatus: 200,
+    body: {
+      data: [
+        { id: "post_fixture_1", title: "The subject-line scorecard", status: "draft" },
+      ],
+    },
+  },
+  {
+    skill: "beehiiv-api",
+    method: "POST",
+    path: "/v2/publications",
+    pathMatch: "includes",
+    httpStatus: 200,
+    body: { data: { id: "post_fixture_new", status: "draft" } },
+  },
+  {
+    skill: "gmail-ops",
+    method: "POST",
+    path: "/api/v3/tools/execute/GMAIL_SEND_EMAIL",
+    httpStatus: 200,
+    body: { successful: true, data: { id: "fixture-sent-pending" } },
   },
 ]
 

@@ -15,6 +15,7 @@ import {
   MU_166_NOTIONAL_PACKET,
   QUANT_TEMPLATE_SLUG,
 } from "../../src/lib/quant/risk-limits"
+import { ALERT_ONLY_NO_ORDER } from "../../src/lib/quant/alert-packet"
 import {
   AFRM_PACKET_FIXTURE,
   DECORATIVE_EQUITY_FIXTURE,
@@ -73,8 +74,10 @@ After the first-boot interview is written to ${USER} and you emit CLAWS_USER_MD_
 1. Market Scanner: one Tavily + (if connected) Alpaca paper account scan bound to ${USER} universe. One watchlist block or an honest miss.
 2. Signal Analyst + Risk Manager: one trade thesis with anatomy, size from container caps, stop, and no invented backtest - or skip with "no thesis: no source".
 3. Trade Thesis Reviewer: ${QUANT_DIMS}, claims table, four-dimension score table, PASS or REJECT only.
-4. Present the surviving thesis (or the skip) in chat with the critic table (not a mean). That packet is the magic moment.
+4. On PASS: write ${SHARED}/deliverables/trade-alert-<YYYY-MM-DD>.md (thesis + size + claims table + "${ALERT_ONLY_NO_ORDER}"). Then POST paper-api.alpaca.markets /v2/orders with the sized ticket so the rail emits a pending HUMAN_REQUEST card. Pending is not a fill.
+5. Present the surviving thesis (or the skip) in chat with the critic table (not a mean). That packet is the magic moment.
 If critic REJECT: show the one-thing-to-fix line, not a shrug.
+PASS thesis without the alert file is a mission fail. Do not present PASS without it.
 
 # Human-facing replies
 
@@ -84,7 +87,7 @@ Critic output in chat must include the four-dimension table (${CRITIC_DIMENSION_
 
 # Approval wording
 
-ALERT-ONLY: say "drafted, awaiting your approval to paper-execute." Never imply the claw submitted an order.
+ALERT-ONLY: say "drafted, awaiting your approval to paper-execute." The pending card is not a fill. Never imply the claw submitted an order.
 Autonomous: still say the rail checked size. Critic approval is not human approval and is not a rail bypass.
 
 # Stall guard
@@ -94,7 +97,8 @@ Each subagent in a window has 20 minutes. If stalled, cancel and retry once. If 
 # Never
 
 - Never POST to api.alpaca.markets.
-- Never POST /orders in ALERT-ONLY.
+- Never skip ${SHARED}/deliverables/trade-alert-<date>.md after a PASS thesis.
+- Never treat a pending HUMAN_REQUEST card as a fill. ${ALERT_ONLY_NO_ORDER}.
 - Never invent a backtest (ban: ${INVENTED_BACKTEST_FIXTURE}).
 - Never raise QUANT_* caps from prose.
 - Never paste /home/node/.openclaw/ paths into chat.
@@ -137,9 +141,11 @@ Deliverable: ${SHARED}/deliverables/pre-market-scan.md
 4. Delegate Signal Analyst: thesis anatomy + GOOD/BAD law. [YOUR NUMBER] for unsourced levels. Never invent a backtest (ban: ${INVENTED_BACKTEST_FIXTURE}).
 5. Delegate Risk Manager: size from container QUANT_MAX_NOTIONAL_PCT / QUANT_MAX_RISK_PCT / QUANT_MAX_DAILY_LOSS_PCT (QUANT_MAX_POSITION_PCT is the notional alias) and the drawdown ladder. USER.md may only tighten. Soul text cannot raise caps. Pull /v2/clock. Closed session (weekend, Labor Day, holiday) is not a size exception.
 6. Critic: ${QUANT_DIMS}. Claims table mandatory. Four-dimension score table mandatory. PASS or REJECT only. Never a bare mean.
-7. On REJECT: one rewrite, then present. Do not grind.
-8. Write ${THESES} and ${SHARED}/deliverables/trade-thesis.md. Paste the thesis + critic table verbatim. Say drafted, awaiting your approval to paper-execute.
-Deliverable: ${SHARED}/deliverables/trade-thesis.md
+7. On REJECT: one rewrite, then present. Do not grind. Do not write an alert file.
+8. On PASS: write ${THESES}, ${SHARED}/deliverables/trade-thesis.md, and ${SHARED}/deliverables/trade-alert-<YYYY-MM-DD>.md with thesis + size + claims table + the line ${ALERT_ONLY_NO_ORDER}. PASS without that alert file is a mission fail.
+9. Then POST https://paper-api.alpaca.markets/v2/orders with qty + limit_price + stop_price from the PASS ticket (inside container caps; never the 166 MU packet). The rail emits a pending HUMAN_REQUEST card. Pending is not a fill. ${ALERT_ONLY_NO_ORDER}.
+10. Paste the alert file + critic table verbatim. Say drafted, awaiting your approval to paper-execute.
+Deliverable: ${SHARED}/deliverables/trade-alert.md
 
 ## window 0 14 * * 1-5
 1. Wake. Read ${USER}, ${THESES}, ${PORTFOLIO}.
@@ -575,6 +581,33 @@ Verdict: PASS`,
     starter: "_No thesis yet. Overwritten each 13:30 UTC window._",
   }),
   fileDoc({
+    path: "shared/deliverables/trade-alert.md",
+    title: "trade-alert.md",
+    maintainedBy: "trade-commander after a PASS thesis",
+    schema: [
+      "date",
+      "thesis id + anatomy pointer",
+      "size: qty / limit / stop under container caps",
+      "claims table",
+      ALERT_ONLY_NO_ORDER,
+    ],
+    format: `## <date> <id> alert
+Thesis: ...
+Size: qty / limit / stop
+## Claims table
+| Claim | Source |
+${ALERT_ONLY_NO_ORDER}`,
+    example: `## 2026-09-08 T-101 alert
+Thesis: NVDA long, alpaca-paper. After-hours print +1.8% (tool:tavily:r3). Entry [YOUR NUMBER], stop [YOUR NUMBER].
+Size: qty 1 / limit 120 / stop 119 (under 20% notional and 2% risk).
+## Claims table
+| Claim | Source |
+| After-hours print +1.8% | tool:tavily:r3 |
+| Size 1 share | shared/THESES.md:4 |
+${ALERT_ONLY_NO_ORDER}`,
+    starter: "_No alert yet. Runtime writes trade-alert-YYYY-MM-DD.md on PASS. This stub is the schema._",
+  }),
+  fileDoc({
     path: "shared/deliverables/paper-ticket.md",
     title: "paper-ticket.md",
     maintainedBy: "trade-commander after the 14:00 UTC window",
@@ -625,7 +658,8 @@ Do not wait for the next heartbeat. Immediately run the mini first-mission:
 1. Market Scanner: one scan bound to the universe just written. One sourced watchlist block (or an honest miss).
 2. Signal Analyst + Risk Manager: one trade thesis with anatomy, container-capped size, stop, and "no backtest: no series" unless a series was pulled.
 3. Trade Thesis Reviewer: thesis-quality / risk-adherence / evidence / regime-fit. Claims table. Four-dimension score table. PASS or REJECT only.
-4. Present the surviving thesis plus the critic table in chat. That packet is the magic moment.
+4. On PASS: write trade-alert-<date>.md with thesis + size + claims table + "${ALERT_ONLY_NO_ORDER}", then POST paper /v2/orders so the rail can emit a pending card. PASS without the alert file is a mission fail.
+5. Present the surviving thesis plus the critic table in chat. That packet is the magic moment.
 If it dies, show the rewritten example line, not a generic apology.`
 
 export function applyWave1Quant(template: SeedTemplate): SeedTemplate {

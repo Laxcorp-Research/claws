@@ -43,6 +43,7 @@ export const TEMPLATE_INTERVIEW_PACKS: Record<string, InterviewQuestion[]> = {
   ],
   "youtube-channel-os": [
     q("channel", "Channel name, niche, and who the viewer is?", "channel"),
+    q("handle", "Channel handle (@...) as it appears on YouTube?", "channel handle"),
     q("format", "Typical video length, series vs one-offs, upload cadence?", "format"),
     q("voice", "On-camera / narration voice: do and don't?", "voice"),
     q("proof", "2-3 videos that are on-brand?", "proof"),

@@ -74,6 +74,44 @@ describe("http fixture mode", () => {
       }),
     ).toBeNull()
     expect(HTTP_FIXTURE_RECORDINGS.length).toBeGreaterThan(8)
+    expect(
+      lookupHttpFixture({
+        skill: "youtube-data-api",
+        method: "POST",
+        path: "/api/v3/tools/execute/YOUTUBE_GET_CHANNEL_STATISTICS",
+        body: { arguments: {} },
+      })?.httpStatus,
+    ).toBe(200)
+    expect(
+      lookupHttpFixture({
+        skill: "youtube-data-api",
+        method: "POST",
+        path: "/api/v3/tools/execute/YOUTUBE_SEARCH_YOU_TUBE",
+        body: { arguments: {} },
+      })?.body,
+    ).toMatchObject({ successful: true })
+    expect(
+      lookupHttpFixture({
+        skill: "beehiiv-api",
+        method: "GET",
+        path: "/v2/publications/pub_fixture/posts",
+      })?.httpStatus,
+    ).toBe(200)
+    expect(
+      lookupHttpFixture({
+        skill: "beehiiv-api",
+        method: "POST",
+        path: "/v2/publications/pub_fixture/posts",
+      })?.httpStatus,
+    ).toBe(200)
+    expect(
+      lookupHttpFixture({
+        skill: "gmail-ops",
+        method: "POST",
+        path: "/api/v3/tools/execute/GMAIL_SEND_EMAIL",
+        body: { arguments: {} },
+      }),
+    ).not.toBeNull()
   })
 
   it("query-shape prefers an exact key set", () => {

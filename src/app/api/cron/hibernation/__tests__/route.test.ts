@@ -20,6 +20,11 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+const mockScheduleSilentWake = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/healing/silent-wake", () => ({
+  scheduleSilentWakeHeal: (...args: unknown[]) => mockScheduleSilentWake(...args),
+}))
+
 const afterCallbacks: Array<() => unknown> = []
 const mockAfter = vi.fn((cb: () => unknown) => {
   afterCallbacks.push(cb)
@@ -82,6 +87,7 @@ beforeEach(() => {
   mockHibernate.mockReset()
   mockWake.mockReset()
   mockAfter.mockClear()
+  mockScheduleSilentWake.mockReset()
   afterCallbacks.length = 0
   mockHibernate.mockResolvedValue({ hibernated: true })
   mockWake.mockResolvedValue(undefined)
@@ -334,8 +340,11 @@ describe("hibernation cron - wake after() fan-out", () => {
     const json = await res.json()
     expect(res.status).toBe(200)
     expect(json.data.woke).toBe(0)
-    expect(mockAfter).not.toHaveBeenCalled()
     expect(mockWake).not.toHaveBeenCalled()
+    expect(mockScheduleSilentWake).toHaveBeenCalledWith({
+      workspaceId: "expired-ws",
+      trigger: "entitlement-denied",
+    })
 
     vi.useRealTimers()
   })

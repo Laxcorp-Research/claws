@@ -22,6 +22,7 @@ describe("mission_interrupted resume copy", () => {
       "utf8",
     )
     expect(health).toContain("maybeLedgerMissionInterrupted")
+    expect(health).toContain('probe.result.reason !== "no-container"')
     const registry = readFileSync(join(process.cwd(), "src/lib/healing/registry.ts"), "utf8")
     expect(registry).toContain("mission_interrupted")
     expect(registry).toContain("auto-resume on wake")

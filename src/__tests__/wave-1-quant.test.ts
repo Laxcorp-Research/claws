@@ -110,6 +110,7 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
       "shared/THESES.md",
       "shared/deliverables/pre-market-scan.md",
       "shared/deliverables/trade-thesis.md",
+      "shared/deliverables/trade-alert.md",
       "shared/deliverables/paper-ticket.md",
       "shared/deliverables/eod-risk-report.md",
     ]) {
@@ -141,6 +142,8 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     expect(md).toContain("evaluateQuantPaperOrder")
     expect(md).toContain("no thesis: no source")
     expect(md).toContain("ALERT-ONLY")
+    expect(md).toContain("trade-alert-")
+    expect(md).toContain("/v2/orders")
   })
 
   it("alpaca-trading SKILL.md is paper-first and forbids invented backtests", () => {

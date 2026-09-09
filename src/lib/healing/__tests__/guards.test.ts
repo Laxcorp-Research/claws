@@ -12,8 +12,11 @@ import {
   CRASH_RESTART_GUARD_NAMES,
   evaluateAutoRedeployGuards,
   evaluateCrashRestartGuards,
+  evaluateSilentWakeGuards,
   isTransientDeployError,
   MAX_TRANSIENT_DEPLOY_ATTEMPTS,
+  SILENT_WAKE_BACKOFF_MS,
+  SILENT_WAKE_CAP_24H,
   withTransientDeployRetry,
 } from "@/lib/healing/guards"
 
@@ -106,6 +109,26 @@ describe("crash-restart guard matrix", () => {
         now: NOW,
       }).blockedBy,
     ).toBe("backoff")
+  })
+})
+
+describe("silent-wake guard matrix", () => {
+  it("caps at 3/24h then owner; first attempt has zero backoff", () => {
+    expect(SILENT_WAKE_CAP_24H).toBe(3)
+    expect(SILENT_WAKE_BACKOFF_MS[0]).toBe(0)
+    const first = evaluateSilentWakeGuards({
+      attemptsInWindow: 0,
+      lastAttemptAt: null,
+      now: NOW,
+    })
+    expect(first.allowed).toBe(true)
+    const capped = evaluateSilentWakeGuards({
+      attemptsInWindow: SILENT_WAKE_CAP_24H,
+      lastAttemptAt: null,
+      now: NOW,
+    })
+    expect(capped.blockedBy).toBe("cap")
+    expect(capped.escalateOwner).toBe(true)
   })
 })
 

@@ -307,6 +307,11 @@ export type DeployToCloudOptions = {
    * Orphan adopt-by-name is still reuse, not create.
    */
   forbidCreate?: boolean;
+  /**
+   * Hibernation wake: do not terminalize Workspace to ERROR / phase STOPPED.
+   * The wake catch restores HIBERNATED so the claw stays in the scheduler.
+   */
+  preserveHibernationOnFailure?: boolean;
 };
 
 export async function deployToCloud(
@@ -643,16 +648,20 @@ export async function deployToCloud(
     // is non-functional and needs a rebuild - which is what STOPPED semantically
     // means under the post-PR-#52 vocabulary. updateMany avoids throwing when
     // a first-time deploy failure happens before ContainerState is created.
-    await prisma.$transaction([
-      prisma.workspace.update({
-        where: { id: workspaceId },
-        data: { status: 'ERROR' },
-      }),
-      prisma.containerState.updateMany({
-        where: { workspaceId },
-        data: { containerPhase: 'STOPPED' },
-      }),
-    ]);
+    // Wake failures must NOT leave ERROR/STOPPED or the hibernation cron
+    // drops the claw (silent-wake #43).
+    if (!opts.preserveHibernationOnFailure) {
+      await prisma.$transaction([
+        prisma.workspace.update({
+          where: { id: workspaceId },
+          data: { status: 'ERROR' },
+        }),
+        prisma.containerState.updateMany({
+          where: { workspaceId },
+          data: { containerPhase: 'STOPPED' },
+        }),
+      ]);
+    }
     if (isRailwayDomainCapError(error)) {
       throw new RailwayDomainCapError();
     }
