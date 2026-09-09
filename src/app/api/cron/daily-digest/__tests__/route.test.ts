@@ -46,7 +46,7 @@ vi.mock("@/lib/channels/telegram-bot-api", () => ({
   telegramSendMessage: (...a: unknown[]) => mockTelegram(...a),
 }))
 
-const mockHasTelegram = vi.fn(() => true)
+const mockHasTelegram = vi.fn()
 vi.mock("@/lib/digest/digest-eligibility", () => ({
   digestCandidateWhere: () => ({}),
   hasConnectedTelegramForDigest: (...a: unknown[]) => mockHasTelegram(...a),
