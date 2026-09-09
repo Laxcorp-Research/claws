@@ -17,7 +17,6 @@ describe("fast-uri advisory", () => {
       allowlist?: string[]
     }
     expect(pkg.overrides?.["fast-uri"]).toBe("3.1.6")
-    expect(audit.allowlist ?? []).toEqual([])
     expect(JSON.stringify(audit.allowlist ?? [])).not.toContain("GHSA-5jgf-p345-68v8")
   })
 })

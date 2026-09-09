@@ -120,10 +120,16 @@ export function warmIdleWhere(now: Date) {
  *
  * MUTATION: restoring `nextHeartbeatAt: { gt: now }` here → past-due never wakes.
  * MUTATION: adding nextHeartbeatNotImminent / gt:exemptUntil here → wake-window fails.
+ * MUTATION: drop workspace status ERROR → failed wakes leave the scheduler.
  */
 export function wakeHibernatedWhere() {
   return {
-    containerPhase: "HIBERNATED" as const,
     nextHeartbeatAt: { not: null },
+    OR: [
+      { containerPhase: "HIBERNATED" as const },
+      // Failed wake / probe-escalation must stay schedulable. STOPPED +
+      // null hint (trial destroy) stays out.
+      { workspace: { status: "ERROR" as const } },
+    ],
   }
 }

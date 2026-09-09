@@ -186,6 +186,9 @@ export async function hibernateWorkspace(
   }
 }
 
+/** Failed wake must stay schedulable. STOPPED (trial destroy) is not a wake. */
+export const WAKEABLE_WORKSPACE_STATUSES = ["HIBERNATED", "WAKING", "ERROR"] as const
+
 export async function wakeWorkspace(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
@@ -207,7 +210,7 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
     return
   }
 
-  if (workspace.status !== "HIBERNATED" && workspace.status !== "WAKING") {
+  if (!(WAKEABLE_WORKSPACE_STATUSES as readonly string[]).includes(workspace.status)) {
     log.warn("Cannot wake: wrong status", { workspaceId, status: workspace.status })
     return
   }
@@ -262,7 +265,10 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
       }),
     ])
 
-    await deployToCloud(workspaceId, { forbidCreate: true })
+    await deployToCloud(workspaceId, {
+      forbidCreate: true,
+      preserveHibernationOnFailure: true,
+    })
 
     const wakeDuration = Date.now() - wakeStart
     const existingState = await prisma.containerState.findUnique({
@@ -350,5 +356,6 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
         }),
       ])
       .catch(() => {})
+    throw err
   }
 }
