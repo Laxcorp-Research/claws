@@ -22,8 +22,9 @@ import {
   normalizeContextNote,
 } from "@/lib/openclaw/workflow-language"
 import {
-  AUTO_PROCEED_DISABLED_COPY,
-} from "@/lib/openclaw/validate-topology"
+  AUTONOMOUS_CAPABLE_TOOL_DEFS,
+  AUTONOMOUS_CONSENT_INTRO,
+} from "@/lib/openclaw/delivery-rail"
 import {
   REGULATED_QUALITY_THRESHOLD_FLOOR,
   isRegulatedTemplateSlug,
@@ -119,6 +120,7 @@ function WorkflowKnobsPanel() {
     setDeliveryMode,
     updateAgentProperty,
   } = useBuilderStore()
+  const [autonomousConfirmOpen, setAutonomousConfirmOpen] = useState(false)
 
   const critic = nodes.find((n) => (n.data as AgentNodeData).role === "CRITIC")
   const orch = nodes.find((n) => (n.data as AgentNodeData).role === "ORCHESTRATOR")
@@ -199,16 +201,50 @@ function WorkflowKnobsPanel() {
         <CustomSelect
           value={deliveryMode}
           onChange={(val) => {
-            if (val === "AUTO_PROCEED") return
+            if (val === "AUTO_PROCEED") {
+              setAutonomousConfirmOpen(true)
+              return
+            }
             setDeliveryMode("APPROVAL_REQUIRED")
           }}
           options={[
             { value: "APPROVAL_REQUIRED", label: "Ask before acting" },
-            { value: "AUTO_PROCEED", label: "Autonomous (unavailable)" },
+            { value: "AUTO_PROCEED", label: "Autonomous" },
           ]}
         />
-        <p className="mt-1 text-[9px] text-[var(--tx3)]">{AUTO_PROCEED_DISABLED_COPY}</p>
+        <p className="mt-1 text-[9px] text-[var(--tx3)]">{AUTONOMOUS_CONSENT_INTRO}</p>
+        <ul className="mt-1 space-y-[2px] text-[9px] text-[var(--tx2)]">
+          {AUTONOMOUS_CAPABLE_TOOL_DEFS.map((tool) => (
+            <li key={tool.skill}>
+              {tool.label}: {tool.consentLine}
+            </li>
+          ))}
+        </ul>
       </div>
+
+      <ConfirmDialog
+        open={autonomousConfirmOpen}
+        onClose={() => setAutonomousConfirmOpen(false)}
+        onConfirm={() => {
+          setDeliveryMode("AUTO_PROCEED")
+          setAutonomousConfirmOpen(false)
+        }}
+        title="Turn on Autonomous"
+        description={AUTONOMOUS_CONSENT_INTRO}
+        confirmLabel="I consent"
+        cancelLabel="Keep asking"
+        variant="warning"
+      >
+        <ul className="space-y-[4px] text-[11px] text-[var(--tx)]">
+          {AUTONOMOUS_CAPABLE_TOOL_DEFS.map((tool) => (
+            <li key={tool.skill}>
+              <span className="font-medium">{tool.label}</span>
+              {" - "}
+              {tool.consentLine}
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
 
       <div className="rounded-[6px] bg-[var(--bg2)] px-2 py-1.5 text-[10px] text-[var(--tx2)] leading-snug">
         <span className="font-medium text-[var(--tx)]">Live law preview: </span>

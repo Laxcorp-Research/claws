@@ -68,6 +68,7 @@ export async function notifyDeliverableExtracted(args: {
         logicalPath: args.logicalPath,
         channel: result.channel,
         sent: result.sent,
+        messageId: result.sent ? result.messageId ?? null : null,
         reason: result.sent ? null : result.reason,
       }),
     },

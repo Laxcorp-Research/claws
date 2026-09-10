@@ -3,7 +3,24 @@ import { decrypt } from "@/lib/encryption"
 import { log } from "@/lib/logger"
 import { hasValidator, validateToolKey } from "@/lib/tools/validators"
 
+export const SEP9_HEALTHY_TOKEN_TRANSIENT =
+  "Provider didn't respond within 10 seconds"
+
 export const TOOL_STATUS_REPROBE_EVENT_KIND = "tool_status_reprobe"
+
+/** ERROR only on definitive 401/403. 429/5xx/timeouts are silent retry. */
+export function isDefinitiveAuthProbeFailure(args: {
+  valid: boolean
+  error?: string | null
+}): boolean {
+  if (args.valid) return false
+  const error = args.error ?? ""
+  return (
+    /\b401\b|\b403\b|\b402\b/i.test(error) ||
+    /invalid .{0,60}(api key|bearer|token)/i.test(error) ||
+    /payment required/i.test(error)
+  )
+}
 
 export type ProbeTrigger = "redeploy" | "user_request"
 
@@ -19,7 +36,7 @@ export type ApiKeyProbeInput = {
 export type ApiKeyProbeResult = {
   connectionId: string
   toolSlug: string
-  outcome: "connected" | "error" | "pending" | "unverified" | "skipped"
+  outcome: "connected" | "error" | "pending" | "unverified" | "skipped" | "retry"
   status: string
   valid: boolean
   unverified?: boolean
@@ -112,6 +129,25 @@ export async function probeAndPersistApiKeyConnection(
 
   const validated = await validateToolKey(conn.toolSlug, credentials)
 
+  if (!validated.valid && !isDefinitiveAuthProbeFailure(validated)) {
+    await prisma.toolConnection.update({
+      where: { id: conn.id },
+      data: { lastTestedAt: new Date() },
+    })
+    return {
+      ok: true,
+      result: {
+        connectionId: conn.id,
+        toolSlug: conn.toolSlug,
+        outcome: "retry",
+        status: conn.status,
+        valid: false,
+        error: validated.error,
+        warning: validated.warning,
+      },
+    }
+  }
+
   if (!validated.valid) {
     const updated = await prisma.toolConnection.update({
       where: { id: conn.id },
@@ -146,22 +182,17 @@ export async function probeAndPersistApiKeyConnection(
   }
 
   if (validated.warning) {
-    const updated = await prisma.toolConnection.update({
+    await prisma.toolConnection.update({
       where: { id: conn.id },
-      data: {
-        status: "PENDING",
-        lastTestedAt: new Date(),
-        lastError: validated.warning,
-      },
-      select: { status: true },
+      data: { lastTestedAt: new Date() },
     })
     return {
       ok: true,
       result: {
         connectionId: conn.id,
         toolSlug: conn.toolSlug,
-        outcome: "pending",
-        status: updated.status,
+        outcome: "retry",
+        status: conn.status,
         valid: true,
         warning: validated.warning,
       },

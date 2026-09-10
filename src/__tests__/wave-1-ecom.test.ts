@@ -166,7 +166,7 @@ describe("WAVE-1 E-Commerce Profit Maximizer prose contracts", () => {
 
   it("critic knob stays 8; exec stays non-autonomous; pause is not a silent write", () => {
     expect(agent("ecommerce-quality-gate").qualityThreshold).toBe(8)
-    expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual([])
+    expect(AUTONOMOUS_CAPABLE_TOOLS).not.toContain("shopify-store")
     expect(agent("ad-optimizer").soulMd).toContain("Never pause or raise budget without a human-approved ACTION card")
     expect(agent("store-commander").soulMd).toContain(ROAS_PAUSE_RULE)
   })

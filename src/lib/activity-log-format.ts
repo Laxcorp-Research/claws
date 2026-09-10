@@ -30,6 +30,7 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
   let humanRequestId: string | null = null
   let holdStatus: string | null = null
   let toolId: string | null = null
+  let sessionKey: string | null = null
 
   if (log.metadata) {
     try {
@@ -40,6 +41,7 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
       runId = typeof m.runId === "string" ? m.runId : null
       holdStatus = typeof m.holdStatus === "string" ? m.holdStatus : null
       toolId = typeof m.toolId === "string" ? m.toolId : null
+      sessionKey = typeof m.sessionKey === "string" ? m.sessionKey : null
       const doc = parseDeliverableMetadata(log.metadata)
       eventKind = doc.eventKind
       fileVersionId = doc.fileVersionId
@@ -73,5 +75,6 @@ export function formatActivityLog(log: ActivityLogFormatInput) {
     humanRequestId,
     holdStatus,
     toolId,
+    sessionKey,
   }
 }

@@ -1,4 +1,4 @@
-import { telegramSendMessage } from "@/lib/channels/telegram-bot-api"
+import { telegramSendMessageDetailed } from "@/lib/channels/telegram-bot-api"
 import { log } from "@/lib/logger"
 import {
   preferNumericTelegramAllowFrom,
@@ -6,7 +6,7 @@ import {
 } from "@/lib/openclaw/channel-config"
 
 export type ClawChannelSendResult =
-  | { sent: true; channel: "telegram" | "discord" | "slack" }
+  | { sent: true; channel: "telegram" | "discord" | "slack"; messageId?: number }
   | { sent: false; channel: "none"; reason: "web-chat-only" | "send-failed" }
 
 async function discordSendMessage(args: {
@@ -88,13 +88,13 @@ export async function sendAsClawChannel(
   const telegram = config.telegram
   const telegramChat = preferNumericTelegramAllowFrom(telegram?.allowFrom)?.[0]
   if (telegram?.botToken && telegramChat !== undefined && telegramChat !== null) {
-    const ok = await telegramSendMessage({
+    const result = await telegramSendMessageDetailed({
       botToken: telegram.botToken,
       chatId: telegramChat,
       text,
     })
-    return ok
-      ? { sent: true, channel: "telegram" }
+    return result.ok
+      ? { sent: true, channel: "telegram", messageId: result.messageId }
       : { sent: false, channel: "none", reason: "send-failed" }
   }
 

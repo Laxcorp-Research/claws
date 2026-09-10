@@ -97,7 +97,9 @@ describe("builder-topology", () => {
     expect(src).toContain("formatWorkflowLawSection")
     expect(src).toContain("updateConnectionContextNote")
     expect(src).toContain("workflow-fence-card")
-    expect(src).toContain("AUTO_PROCEED_DISABLED_COPY")
+    expect(src).toContain("AUTONOMOUS_CONSENT_INTRO")
+    expect(src).toContain("I consent")
+    expect(src).not.toContain("AUTO_PROCEED_DISABLED_COPY")
     expect(src).not.toContain("CONDITION_OPTIONS")
   })
 

@@ -7,6 +7,7 @@
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
+import { isDefinitiveAuthProbeFailure } from "@/lib/tools/probe-api-key"
 import { nudgeConditionForToolError } from "@/lib/tools/reprobe-on-deploy"
 
 export async function nudgePersistedToolErrors(): Promise<{ nudged: number }> {
@@ -21,6 +22,12 @@ export async function nudgePersistedToolErrors(): Promise<{ nudged: number }> {
       toolSlug: row.toolSlug,
       error: row.lastError,
     })
+    if (
+      condition !== "twitter-402-tier" &&
+      !isDefinitiveAuthProbeFailure({ valid: false, error: row.lastError })
+    ) {
+      continue
+    }
     const set = conditionsByWorkspace.get(row.workspaceId) ?? new Set()
     set.add(condition)
     conditionsByWorkspace.set(row.workspaceId, set)

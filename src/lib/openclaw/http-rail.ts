@@ -6,7 +6,10 @@ import {
   type HttpClass,
   type HttpSkillContract,
 } from "@/lib/openclaw/http-contract"
-import { AUTONOMOUS_CAPABLE_TOOLS } from "@/lib/openclaw/delivery-rail"
+import {
+  AUTONOMOUS_CAPABLE_TOOLS,
+  httpCallSupportsAutonomous,
+} from "@/lib/openclaw/delivery-rail"
 import { httpBodyHash, mintHttpToolId } from "@/lib/openclaw/http-ledger"
 import {
   buildHttpActionCard,
@@ -49,7 +52,7 @@ export type HttpRailDecision =
     }
 
 export function httpSkillSupportsAutonomous(skill: string): boolean {
-  return AUTONOMOUS_CAPABLE_TOOLS.includes(skill)
+  return (AUTONOMOUS_CAPABLE_TOOLS as readonly string[]).includes(skill)
 }
 
 export function permitCoversCall(
@@ -113,12 +116,21 @@ export function evaluateHttpCall(args: {
     return { status: "deny", reason: "missing_body", toolId }
   }
 
+  const autonomousCall =
+    args.deliveryMode === "AUTO_PROCEED" &&
+    httpCallSupportsAutonomous({
+      skill: args.contract.skill,
+      method: args.method,
+      host: args.host,
+      path: args.path,
+    })
+
   if (args.permit) {
     if (args.permit.consumedAt) {
       return { status: "deny", reason: "permit_consumed", toolId }
     }
     if (
-      !permitCoversCall(args.permit, {
+      permitCoversCall(args.permit, {
         skill: args.contract.skill,
         method: args.method,
         host: args.host,
@@ -126,19 +138,18 @@ export function evaluateHttpCall(args: {
         body: args.body,
       })
     ) {
+      return { status: "allow", class: "ACTION", toolId }
+    }
+    if (!autonomousCall) {
       return { status: "deny", reason: "permit_mismatch", toolId }
     }
+  }
+
+  if (autonomousCall) {
     return { status: "allow", class: "ACTION", toolId }
   }
 
-  if (
-    args.deliveryMode === "AUTO_PROCEED" &&
-    httpSkillSupportsAutonomous(args.contract.skill)
-  ) {
-    return { status: "allow", class: "ACTION", toolId }
-  }
-
-  if (args.deliveryMode === "AUTO_PROCEED") {
+  if (args.deliveryMode === "AUTO_PROCEED" && !httpSkillSupportsAutonomous(args.contract.skill)) {
     return { status: "deny", reason: "not_autonomous", toolId }
   }
 
