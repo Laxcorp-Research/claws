@@ -97,6 +97,7 @@ const SSE_DERIVED_FIELDS: ReadonlyArray<string> = [
   "humanRequestId",
   "holdStatus",
   "toolId",
+  "sessionKey",
 ]
 
 function getActivityLogScalarFields(): string[] {
