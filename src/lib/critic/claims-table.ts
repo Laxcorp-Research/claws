@@ -100,6 +100,30 @@ export const HOME_CRITIC_SCORE_DIMENSIONS = [
   "follow-up",
   "evidence",
 ] as const
+export const HEALTH_CRITIC_SCORE_DIMENSIONS = [
+  "safety",
+  "evidence",
+  "personalization",
+  "practicality",
+] as const
+export const STUDENT_CRITIC_SCORE_DIMENSIONS = [
+  "integrity",
+  "learning-not-answers",
+  "spaced-repetition",
+  "evidence",
+] as const
+export const JOB_CRITIC_SCORE_DIMENSIONS = [
+  "ats-fit",
+  "star-truth",
+  "negotiation-integrity",
+  "evidence",
+] as const
+export const DEV_CRITIC_SCORE_DIMENSIONS = [
+  "severity-fit",
+  "cvss",
+  "standup-clarity",
+  "evidence",
+] as const
 
 const BARE_MEAN_VERDICT_RE = /\bPASS\b[^\n]{0,40}\bmean\b/i
 
@@ -161,7 +185,11 @@ export function hasFourDimensionScoreTable(text: string | null | undefined): boo
     hasNamedDimensionScoreTable(text, RECRUITER_CRITIC_SCORE_DIMENSIONS) ||
     hasNamedDimensionScoreTable(text, MEDICAL_CRITIC_SCORE_DIMENSIONS) ||
     hasNamedDimensionScoreTable(text, LAW_CRITIC_SCORE_DIMENSIONS) ||
-    hasNamedDimensionScoreTable(text, HOME_CRITIC_SCORE_DIMENSIONS)
+    hasNamedDimensionScoreTable(text, HOME_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, HEALTH_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, STUDENT_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, JOB_CRITIC_SCORE_DIMENSIONS) ||
+    hasNamedDimensionScoreTable(text, DEV_CRITIC_SCORE_DIMENSIONS)
   )
 }
 

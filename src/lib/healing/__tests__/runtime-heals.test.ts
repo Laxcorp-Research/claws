@@ -96,3 +96,13 @@ describe("B-2 registry rows", () => {
     expect(wake).toContain("version-update applies here")
   })
 })
+
+describe("thinking-signature-poison auto-redeploy", () => {
+  it("MUTATION: chatting idle-5min must not block poison heal", () => {
+    const src = readFileSync(join(process.cwd(), "src/lib/healing/runtime-heals.ts"), "utf8")
+    expect(src).toContain('args.condition === "thinking-signature-poison"')
+    expect(src).toContain("skipIdle: poison")
+    expect(src).toContain("excludeBlocked: poison")
+    expect(src).toContain("scheduleThinkingSignatureHeal")
+  })
+})

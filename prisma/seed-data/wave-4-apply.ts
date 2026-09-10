@@ -84,7 +84,7 @@ export function applyWave4Overlay(args: {
     agents: args.template.agents.map((agent) => {
       const add = args.addenda[agent.agentSlug]
       if (!add) {
-        throw new Error(`WAVE-4 ${args.slug}: missing prose for ${agent.agentSlug}`)
+        throw new Error(`wave overlay ${args.slug}: missing prose for ${agent.agentSlug}`)
       }
       return {
         ...agent,

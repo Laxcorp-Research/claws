@@ -56,6 +56,9 @@ import {
   markHealAttempt,
   resolveSessionJsonlPath,
   stripThinkingFromSessionFile,
+  stripThinkingFromAllSessionFiles,
+  isRawLlmErrorText,
+  userFacingPoisonCopy,
 } from "../thinking-signature-heal.mjs";
 import {
   assertGatewayToken,
@@ -210,6 +213,20 @@ const reporter = new ActivityReporter();
  * Uses TASK_START (allowed ingest type) with metadata.clawsOverlaySha.
  */
 export function emitOverlayBootEvent() {
+  try {
+    const stripped = stripThinkingFromAllSessionFiles(OPENCLAW_DATA_DIR);
+    if (stripped.blocksStripped > 0) {
+      console.log(
+        `[claws-activity-reporter] boot strip thinking blocks files=${stripped.files} blocks=${stripped.blocksStripped}`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[claws-activity-reporter] boot strip failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
   const sha =
     typeof process.env.CLAWS_OVERLAY_SHA === "string" && process.env.CLAWS_OVERLAY_SHA.length > 0
       ? process.env.CLAWS_OVERLAY_SHA
@@ -462,9 +479,13 @@ function handleAgentEnd(event, ctx) {
   // live in the PR-9/0 spike, doc §8 risk 4).
   const turnHealth =
     reply.stopReason === "error" || reply.errorMessage || fullError ? "error" : "ok";
-  const { text: detail, truncated } = clipWithFlag(
-    turnHealth === "error" && !reply.text ? reply.errorMessage ?? "" : reply.text,
-  );
+  const rawReply =
+    turnHealth === "error" && !reply.text ? reply.errorMessage ?? "" : reply.text;
+  const safeReply =
+    isRawLlmErrorText(rawReply) || isRawLlmErrorText(fullError)
+      ? userFacingPoisonCopy()
+      : rawReply;
+  const { text: detail, truncated } = clipWithFlag(safeReply);
   // C2: usage trimmed to exactly these four keys (metadata only - the ingest
   // route owns apiCost and hard-codes it null; PR-2b scope).
   const usage = reply.usage

@@ -206,5 +206,31 @@ describe("thinking-signature heal overlay (-11)", () => {
     )
     expect(proxy).toContain("healThinkingSignatureOnce")
     expect(proxy).toContain("thinking-signature-heal.mjs")
+    expect(proxy).toContain("userFacingPoisonCopy")
+    expect(proxy).toContain("thinking-signature heal missed")
+  })
+
+  it("user-facing copy matches platform; boot strip walks session jsonl", () => {
+    expect(heal.POISON_RECOVERING_LINE).toBe(
+      "Your Claw hit a problem - recovering (~1 min)",
+    )
+    expect(heal.userFacingPoisonCopy()).toContain(heal.POISON_RESOLVE_LINE)
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-heal-boot-"))
+    const sessDir = path.join(dir, "agents", "twitter-commander", "sessions")
+    fs.mkdirSync(sessDir, { recursive: true })
+    const line = JSON.stringify({
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "x", thinkingSignature: "sig" },
+          { type: "text", text: "ok" },
+        ],
+      },
+    })
+    fs.writeFileSync(path.join(sessDir, "abc.jsonl"), `${line}\n`)
+    const stripped = heal.stripThinkingFromAllSessionFiles(dir)
+    expect(stripped.files).toBe(1)
+    expect(stripped.blocksStripped).toBe(1)
   })
 })

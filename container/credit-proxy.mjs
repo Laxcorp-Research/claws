@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import {
   healThinkingSignatureOnce,
   isThinkingSignatureReject,
+  userFacingPoisonCopy,
 } from './thinking-signature-heal.mjs';
 import { postActivityEvent, OPENCLAW_DATA_DIR } from './state-sync.mjs';
 
@@ -376,6 +377,24 @@ async function handleApiCall(req, res, body, parsed) {
         );
         return;
       }
+
+      // Heal missed (nothing-to-strip / dedup). Never forward raw Anthropic JSON.
+      console.warn(
+        `[credit-proxy] thinking-signature heal missed reason=${heal.reason} sessionKey=${sessionKey}`,
+      );
+      anthropicRes = {
+        status: 503,
+        headers: {
+          get: () => 'application/json',
+        },
+      };
+      responseBody = JSON.stringify({
+        type: 'error',
+        error: {
+          type: 'api_error',
+          message: userFacingPoisonCopy(),
+        },
+      });
     }
 
     await handleBufferedResponseFromText(
@@ -660,6 +679,7 @@ export const __test__ = {
   handleBufferedResponseFromText,
   isThinkingSignatureReject,
   healThinkingSignatureOnce,
+  userFacingPoisonCopy,
 };
 
 // ─── Start Server (entrypoint only - vitest imports must not listen) ───
