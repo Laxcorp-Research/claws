@@ -516,6 +516,22 @@ function handleAgentEnd(event, ctx) {
         : "Replied";
   replyRecord.detail = detail;
   reporter.add(replyRecord);
+
+  // Webchat LLM errors land as TASK_COMPLETE (event.success is true). The
+  // TASK_FAILED BYOK strip above never runs. Strip here so a chatting
+  // poisoned session heals without waiting for idle-5min redeploy.
+  if (turnHealth === "error" && (isRawLlmErrorText(rawReply) || isRawLlmErrorText(fullError))) {
+    const sessionKey =
+      typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
+    const agentId = typeof ctx?.agentId === "string" ? ctx.agentId : null;
+    setImmediate(() => {
+      void maybeHealPoisonedSession({
+        sessionKey,
+        agentId,
+        fullError: [fullError, rawReply].filter(Boolean).join("\n"),
+      });
+    });
+  }
 }
 
 /**

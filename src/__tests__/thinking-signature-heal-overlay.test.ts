@@ -208,6 +208,13 @@ describe("thinking-signature heal overlay (-11)", () => {
     expect(proxy).toContain("thinking-signature-heal.mjs")
     expect(proxy).toContain("userFacingPoisonCopy")
     expect(proxy).toContain("thinking-signature heal missed")
+    const reporter = readFileSync(
+      path.join(process.cwd(), "container/claws-activity-reporter/index.mjs"),
+      "utf8",
+    )
+    expect(reporter).toContain("stripThinkingFromAllSessionFiles")
+    expect(reporter).toContain("Webchat LLM errors land as TASK_COMPLETE")
+    expect(reporter).toContain("void maybeHealPoisonedSession")
   })
 
   it("user-facing copy matches platform; boot strip walks session jsonl", () => {
