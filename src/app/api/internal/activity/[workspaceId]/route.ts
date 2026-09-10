@@ -300,31 +300,33 @@ export async function ledgerThinkingSignaturePoison(
     event: detectInput,
     priorHealInWindow: Boolean(prior),
   });
-  if (decision.kind !== "ledger") return;
-
-  await prisma.activityLog.create({
-    data: {
+  if (decision.kind === "ledger") {
+    await prisma.activityLog.create({
+      data: {
+        workspaceId,
+        agentSlug: event.agentId,
+        action: "Thinking signature poison detected",
+        detail:
+          "Cron/LLM rejected for invalid thinking signature. Platform cannot rotate live sessions - flagged for -11 image self-heal (strip/retry).",
+        actionType: "SYSTEM",
+        timestamp: new Date(),
+        metadata: JSON.stringify({
+          eventKind: THINKING_SIGNATURE_POISON_EVENT_KIND,
+          sessionKey: decision.sessionKey,
+          needsImageHeal: true,
+          platformRotated: false,
+          sourceActionType: event.type,
+          sourceAction: event.action,
+        }),
+      },
+    });
+    log.info("thinking_signature_poison ledgered", {
       workspaceId,
-      agentSlug: event.agentId,
-      action: "Thinking signature poison detected",
-      detail:
-        "Cron/LLM rejected for invalid thinking signature. Platform cannot rotate live sessions - flagged for -11 image self-heal (strip/retry).",
-      actionType: "SYSTEM",
-      timestamp: new Date(),
-      metadata: JSON.stringify({
-        eventKind: THINKING_SIGNATURE_POISON_EVENT_KIND,
-        sessionKey: decision.sessionKey,
-        needsImageHeal: true,
-        platformRotated: false,
-        sourceActionType: event.type,
-        sourceAction: event.action,
-      }),
-    },
-  });
-  log.info("thinking_signature_poison ledgered", {
-    workspaceId,
-    sessionKey: decision.sessionKey,
-  });
+      sessionKey: decision.sessionKey,
+    });
+  }
+  // Dedup still schedules: a prior ledger + idle-blocked first try must retry
+  // on the next poison event (first backoff step is 0ms).
   const host = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     select: { containerHost: true },

@@ -61,6 +61,22 @@ import {
   HOME_FIRST_MISSION_PROSE,
   HOME_WAVE4_SLUG,
 } from "../../prisma/seed-data/wave-4-home"
+import {
+  HEALTH_FIRST_MISSION_PROSE,
+  HEALTH_WAVE5_SLUG,
+} from "../../prisma/seed-data/wave-5-health"
+import {
+  STUDENT_FIRST_MISSION_PROSE,
+  STUDENT_WAVE5_SLUG,
+} from "../../prisma/seed-data/wave-5-student"
+import {
+  JOB_FIRST_MISSION_PROSE,
+  JOB_WAVE5_SLUG,
+} from "../../prisma/seed-data/wave-5-job"
+import {
+  DEV_FIRST_MISSION_PROSE,
+  DEV_WAVE5_SLUG,
+} from "../../prisma/seed-data/wave-5-dev"
 import { SHARED_HOST_ROOT } from "@/lib/workspace-seed-files"
 import { PLATFORM_INTERVIEW_COMPLETE_TOKEN } from "@/lib/chat/platform-sentinels"
 
@@ -135,40 +151,30 @@ If the human says "update my profile", rewrite that file from the conversation a
   const bullets = input.pack
     .map((q) => `- ${q.id}: ${q.prompt} (${q.coverage})`)
     .join("\n")
-  const firstMission =
-    input.templateSlug === TWITTER_WAVE0_SLUG
-      ? `\n\n${TWITTER_FIRST_MISSION_PROSE}`
-      : input.templateSlug === FREELANCER_WAVE1_SLUG
-        ? `\n\n${FREELANCER_FIRST_MISSION_PROSE}`
-        : input.templateSlug === QUANT_WAVE1_SLUG
-          ? `\n\n${QUANT_FIRST_MISSION_PROSE}`
-          : input.templateSlug === ECOM_WAVE1_SLUG
-            ? `\n\n${ECOM_FIRST_MISSION_PROSE}`
-            : input.templateSlug === YOUTUBE_WAVE2_SLUG
-              ? `\n\n${YOUTUBE_FIRST_MISSION_PROSE}`
-              : input.templateSlug === NEWSLETTER_WAVE2_SLUG
-                ? `\n\n${NEWSLETTER_FIRST_MISSION_PROSE}`
-                : input.templateSlug === PODCAST_WAVE2_SLUG
-                  ? `\n\n${PODCAST_FIRST_MISSION_PROSE}`
-                  : input.templateSlug === B2B_WAVE3_SLUG
-                    ? `\n\n${B2B_FIRST_MISSION_PROSE}`
-                    : input.templateSlug === AGENCY_WAVE3_SLUG
-                      ? `\n\n${AGENCY_FIRST_MISSION_PROSE}`
-                      : input.templateSlug === COS_WAVE3_SLUG
-                        ? `\n\n${COS_FIRST_MISSION_PROSE}`
-                        : input.templateSlug === SEO_WAVE3_SLUG
-                          ? `\n\n${SEO_FIRST_MISSION_PROSE}`
-                          : input.templateSlug === RE_WAVE4_SLUG
-                            ? `\n\n${RE_FIRST_MISSION_PROSE}`
-                            : input.templateSlug === RECRUITER_WAVE4_SLUG
-                              ? `\n\n${RECRUITER_FIRST_MISSION_PROSE}`
-                              : input.templateSlug === MEDICAL_WAVE4_SLUG
-                                ? `\n\n${MEDICAL_FIRST_MISSION_PROSE}`
-                                : input.templateSlug === LAW_WAVE4_SLUG
-                                  ? `\n\n${LAW_FIRST_MISSION_PROSE}`
-                                  : input.templateSlug === HOME_WAVE4_SLUG
-                                    ? `\n\n${HOME_FIRST_MISSION_PROSE}`
-                                    : ""
+  const firstBySlug: Record<string, string> = {
+    [TWITTER_WAVE0_SLUG]: TWITTER_FIRST_MISSION_PROSE,
+    [FREELANCER_WAVE1_SLUG]: FREELANCER_FIRST_MISSION_PROSE,
+    [QUANT_WAVE1_SLUG]: QUANT_FIRST_MISSION_PROSE,
+    [ECOM_WAVE1_SLUG]: ECOM_FIRST_MISSION_PROSE,
+    [YOUTUBE_WAVE2_SLUG]: YOUTUBE_FIRST_MISSION_PROSE,
+    [NEWSLETTER_WAVE2_SLUG]: NEWSLETTER_FIRST_MISSION_PROSE,
+    [PODCAST_WAVE2_SLUG]: PODCAST_FIRST_MISSION_PROSE,
+    [B2B_WAVE3_SLUG]: B2B_FIRST_MISSION_PROSE,
+    [AGENCY_WAVE3_SLUG]: AGENCY_FIRST_MISSION_PROSE,
+    [COS_WAVE3_SLUG]: COS_FIRST_MISSION_PROSE,
+    [SEO_WAVE3_SLUG]: SEO_FIRST_MISSION_PROSE,
+    [RE_WAVE4_SLUG]: RE_FIRST_MISSION_PROSE,
+    [RECRUITER_WAVE4_SLUG]: RECRUITER_FIRST_MISSION_PROSE,
+    [MEDICAL_WAVE4_SLUG]: MEDICAL_FIRST_MISSION_PROSE,
+    [LAW_WAVE4_SLUG]: LAW_FIRST_MISSION_PROSE,
+    [HOME_WAVE4_SLUG]: HOME_FIRST_MISSION_PROSE,
+    [HEALTH_WAVE5_SLUG]: HEALTH_FIRST_MISSION_PROSE,
+    [STUDENT_WAVE5_SLUG]: STUDENT_FIRST_MISSION_PROSE,
+    [JOB_WAVE5_SLUG]: JOB_FIRST_MISSION_PROSE,
+    [DEV_WAVE5_SLUG]: DEV_FIRST_MISSION_PROSE,
+  }
+  const mission = input.templateSlug ? firstBySlug[input.templateSlug] : undefined
+  const firstMission = mission ? `\n\n${mission}` : ""
   return `${always}
 
 ## First-boot interview

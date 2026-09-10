@@ -62,6 +62,7 @@ export async function countHealAttempts(args: {
   workspaceId: string
   condition: HealConditionId
   since: Date
+  excludeBlocked?: boolean
 }): Promise<{ count: number; lastAt: Date | null }> {
   const rows = await prisma.activityLog.findMany({
     where: {
@@ -74,9 +75,19 @@ export async function countHealAttempts(args: {
       ],
     },
     orderBy: { timestamp: "desc" },
-    select: { timestamp: true },
+    select: { timestamp: true, metadata: true },
   })
-  const list = Array.isArray(rows) ? rows : []
+  let list = Array.isArray(rows) ? rows : []
+  if (args.excludeBlocked) {
+    list = list.filter((row) => {
+      try {
+        const meta = JSON.parse(row.metadata ?? "{}") as { outcome?: string }
+        return meta.outcome !== "blocked"
+      } catch {
+        return true
+      }
+    })
+  }
   return { count: list.length, lastAt: list[0]?.timestamp ?? null }
 }
 
@@ -113,13 +124,19 @@ export async function executeAutoRedeploy(args: {
 
   const now = new Date()
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const poison = args.condition === "thinking-signature-poison"
   const attempts = await countHealAttempts({
     workspaceId: args.workspaceId,
     condition: args.condition,
     since,
+    excludeBlocked: poison,
   })
   const { hasInFlightRuns } = await loadInFlightWork(args.workspaceId, now)
-  const idle = hasInFlightRuns ? 0 : await idleMsFor(args.workspaceId, now)
+  const idle = poison
+    ? AUTO_REDEPLOY_IDLE_MS
+    : hasInFlightRuns
+      ? 0
+      : await idleMsFor(args.workspaceId, now)
   const synced = await syncIfPossible(args.containerHost)
   const decision = evaluateAutoRedeployGuards({
     syncSucceeded: synced,
@@ -127,6 +144,7 @@ export async function executeAutoRedeploy(args: {
     attemptsInWindow: attempts.count,
     lastAttemptAt: attempts.lastAt,
     now,
+    skipIdle: poison,
   })
 
   if (!decision.allowed) {

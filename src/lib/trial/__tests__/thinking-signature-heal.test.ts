@@ -5,6 +5,10 @@ import {
   isThinkingSignaturePoison,
   decideThinkingSignatureHeal,
   THINKING_SIGNATURE_POISON_RE,
+  sanitizeUserFacingLlmError,
+  userFacingPoisonCopy,
+  POISON_RECOVERING_LINE,
+  POISON_RESOLVE_LINE,
 } from "@/lib/trial/thinking-signature-heal"
 
 describe("thinking-signature heal detection", () => {
@@ -42,14 +46,46 @@ describe("thinking-signature heal detection", () => {
     ).toBe(false)
   })
 
-  it("detection matrix: HEARTBEAT never matches", () => {
+  it("detection matrix: HEARTBEAT with thinking-signature text IS poison", () => {
     expect(
       isThinkingSignaturePoison({
         type: "HEARTBEAT",
         action: "Invalid `signature` in `thinking` block",
         detail: "Invalid `signature` in `thinking` block",
       }),
-    ).toBe(false)
+    ).toBe(true)
+  })
+
+  it("detection matrix: raw Anthropic JSON on MESSAGE_SENT is poison", () => {
+    expect(
+      isThinkingSignaturePoison({
+        type: "MESSAGE_SENT",
+        detail: JSON.stringify({
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            message: "messages.11.content.0: Invalid signature in thinking block",
+          },
+        }),
+      }),
+    ).toBe(true)
+  })
+
+  it("user-facing copy never contains raw API JSON (MUTATION: raw-error-rendered → fail)", () => {
+    const raw = JSON.stringify({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: "messages.11.content.0: Invalid `signature` in `thinking` block",
+      },
+    })
+    const shown = sanitizeUserFacingLlmError(raw)
+    expect(shown).toBe(userFacingPoisonCopy())
+    expect(shown).toContain(POISON_RECOVERING_LINE)
+    expect(shown).toContain(POISON_RESOLVE_LINE)
+    expect(shown).not.toMatch(/invalid_request_error/)
+    expect(shown).not.toMatch(/"type"\s*:\s*"error"/)
+    expect(shown).not.toMatch(/messages\.\d+\.content/)
   })
 
   it("single-heal idempotency: prior heal in window → dedup skip", () => {
