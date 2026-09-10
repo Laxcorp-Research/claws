@@ -39,6 +39,7 @@ describe("auto-redeploy guard matrix", () => {
     }
     expect(src).toContain("if (!input.syncSucceeded)")
     expect(src).toContain("AUTO_REDEPLOY_IDLE_MS")
+    expect(src).toContain("skipIdle")
     expect(src).toContain("AUTO_REDEPLOY_BACKOFF_MS")
     expect(src).toContain("AUTO_REDEPLOY_CAP_24H")
     expect(src).not.toContain("fingerprint-config-drift")
@@ -73,6 +74,19 @@ describe("auto-redeploy guard matrix", () => {
         lastAttemptAt: new Date(NOW.getTime() - AUTO_REDEPLOY_BACKOFF_MS[1] + 1000),
       }).blockedBy,
     ).toBe("backoff")
+    expect(
+      evaluateAutoRedeployGuards({
+        ...base,
+        idleMs: 0,
+        skipIdle: true,
+      }).allowed,
+    ).toBe(true)
+    expect(
+      evaluateAutoRedeployGuards({
+        ...base,
+        idleMs: 0,
+      }).blockedBy,
+    ).toBe("idle-5min")
     const cap = evaluateAutoRedeployGuards({
       ...base,
       attemptsInWindow: AUTO_REDEPLOY_CAP_24H,

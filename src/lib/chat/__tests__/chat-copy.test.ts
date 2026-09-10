@@ -29,6 +29,20 @@ describe("chat copy polish", () => {
     )
   })
 
+  it("MUTATION: raw-error-rendered → fail", () => {
+    const raw = JSON.stringify({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: "messages.11.content.0: Invalid `signature` in `thinking` block",
+      },
+    })
+    const shown = polishChatRenderText(raw)
+    expect(shown).toContain("Your Claw hit a problem - recovering (~1 min)")
+    expect(shown).not.toMatch(/invalid_request_error/)
+    expect(shown).not.toMatch(/"type":"error"/)
+  })
+
   it("does not rewrite admin or badge Scheduled copy", () => {
     expect(rewriteScheduledSlotCopy("Security Update Scheduled")).toBe("Security Update Scheduled")
     expect(rewriteScheduledSlotCopy("Scheduled")).toBe("Scheduled")

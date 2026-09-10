@@ -18,6 +18,15 @@ import { applyWave3B2b } from "./wave-3-b2b"
 import { applyWave3Agency } from "./wave-3-agency"
 import { applyWave3Cos } from "./wave-3-cos"
 import { applyWave3Seo } from "./wave-3-seo"
+import { applyWave4RealEstate } from "./wave-4-real-estate"
+import { applyWave4Recruiter } from "./wave-4-recruiter"
+import { applyWave4Medical } from "./wave-4-medical"
+import { applyWave4Law } from "./wave-4-law"
+import { applyWave4Home } from "./wave-4-home"
+import { applyWave5Health } from "./wave-5-health"
+import { applyWave5Student } from "./wave-5-student"
+import { applyWave5Job } from "./wave-5-job"
+import { applyWave5Dev } from "./wave-5-dev"
 import type { SeedTemplate } from "./types"
 
 export { TEMPLATE_SKILL_ATTACH, applySkillAttach } from "./skill-attach-map"
@@ -99,6 +108,60 @@ export {
   SEO_HEARTBEAT_MD,
   SEO_FIRST_MISSION_PROSE,
 } from "./wave-3-seo"
+export {
+  applyWave4RealEstate,
+  RE_WAVE4_SLUG,
+  RE_HEARTBEAT_MD,
+  RE_FIRST_MISSION_PROSE,
+} from "./wave-4-real-estate"
+export {
+  applyWave4Recruiter,
+  RECRUITER_WAVE4_SLUG,
+  RECRUITER_HEARTBEAT_MD,
+  RECRUITER_FIRST_MISSION_PROSE,
+} from "./wave-4-recruiter"
+export {
+  applyWave4Medical,
+  MEDICAL_WAVE4_SLUG,
+  MEDICAL_HEARTBEAT_MD,
+  MEDICAL_FIRST_MISSION_PROSE,
+} from "./wave-4-medical"
+export {
+  applyWave4Law,
+  LAW_WAVE4_SLUG,
+  LAW_HEARTBEAT_MD,
+  LAW_FIRST_MISSION_PROSE,
+} from "./wave-4-law"
+export {
+  applyWave4Home,
+  HOME_WAVE4_SLUG,
+  HOME_HEARTBEAT_MD,
+  HOME_FIRST_MISSION_PROSE,
+} from "./wave-4-home"
+export {
+  applyWave5Health,
+  HEALTH_WAVE5_SLUG,
+  HEALTH_HEARTBEAT_MD,
+  HEALTH_FIRST_MISSION_PROSE,
+} from "./wave-5-health"
+export {
+  applyWave5Student,
+  STUDENT_WAVE5_SLUG,
+  STUDENT_HEARTBEAT_MD,
+  STUDENT_FIRST_MISSION_PROSE,
+} from "./wave-5-student"
+export {
+  applyWave5Job,
+  JOB_WAVE5_SLUG,
+  JOB_HEARTBEAT_MD,
+  JOB_FIRST_MISSION_PROSE,
+} from "./wave-5-job"
+export {
+  applyWave5Dev,
+  DEV_WAVE5_SLUG,
+  DEV_HEARTBEAT_MD,
+  DEV_FIRST_MISSION_PROSE,
+} from "./wave-5-dev"
 
 export const ALL_TEMPLATES: SeedTemplate[] = [
   ...MONEY_MAKING_TEMPLATES,
@@ -122,6 +185,15 @@ export const ALL_TEMPLATES: SeedTemplate[] = [
   .map(applyWave3Agency)
   .map(applyWave3Cos)
   .map(applyWave3Seo)
+  .map(applyWave4RealEstate)
+  .map(applyWave4Recruiter)
+  .map(applyWave4Medical)
+  .map(applyWave4Law)
+  .map(applyWave4Home)
+  .map(applyWave5Health)
+  .map(applyWave5Student)
+  .map(applyWave5Job)
+  .map(applyWave5Dev)
 
 const slugs = ALL_TEMPLATES.map((t) => t.slug)
 const orders = ALL_TEMPLATES.map((t) => t.sortOrder)

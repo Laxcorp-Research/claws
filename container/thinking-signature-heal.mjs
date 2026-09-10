@@ -332,3 +332,57 @@ export function stripThinkingFromSessionFile(filePath) {
   fs.writeFileSync(filePath, text, "utf8")
   return { ok: true, blocksStripped }
 }
+
+/** Align with platform src/lib/trial/thinking-signature-heal.ts (hyphen only). */
+export const POISON_RECOVERING_LINE =
+  "Your Claw hit a problem - recovering (~1 min)"
+
+export const POISON_RESOLVE_LINE =
+  "This session cannot answer until it is healthy. Stay here; no need to resend."
+
+export function userFacingPoisonCopy() {
+  return `${POISON_RECOVERING_LINE}\n${POISON_RESOLVE_LINE}`
+}
+
+const RAW_ANTHROPIC_ERROR_RE =
+  /"type"\s*:\s*"invalid_request_error"|invalid_request_error|"type"\s*:\s*"error"/i
+
+export function isRawLlmErrorText(text) {
+  if (typeof text !== "string" || text.length === 0) return false
+  if (THINKING_SIGNATURE_POISON_RE.test(text)) return true
+  if (RAW_ANTHROPIC_ERROR_RE.test(text) && /thinking|signature|messages\.\d+/i.test(text)) {
+    return true
+  }
+  return false
+}
+
+export function sanitizeUserFacingLlmError(text) {
+  if (!isRawLlmErrorText(text)) return text
+  return userFacingPoisonCopy()
+}
+
+/**
+ * Boot-time strip so a redeploy that restored poisoned jsonl still yields a
+ * usable session (strip, not rotate).
+ */
+export function stripThinkingFromAllSessionFiles(dataDir) {
+  const agentsDir = path.join(dataDir, "agents")
+  if (!dataDir || !fs.existsSync(agentsDir)) {
+    return { files: 0, blocksStripped: 0 }
+  }
+  let files = 0
+  let blocksStripped = 0
+  for (const agent of fs.readdirSync(agentsDir)) {
+    const sess = path.join(agentsDir, agent, "sessions")
+    if (!fs.existsSync(sess) || !fs.statSync(sess).isDirectory()) continue
+    for (const name of fs.readdirSync(sess)) {
+      if (!name.endsWith(".jsonl")) continue
+      const result = stripThinkingFromSessionFile(path.join(sess, name))
+      if (result.blocksStripped > 0) {
+        files += 1
+        blocksStripped += result.blocksStripped
+      }
+    }
+  }
+  return { files, blocksStripped }
+}

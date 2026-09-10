@@ -51,11 +51,16 @@ export function evaluateAutoRedeployGuards(input: {
   attemptsInWindow: number
   lastAttemptAt: Date | null
   now: Date
+  /**
+   * thinking-signature-poison: a poisoned session cannot serve the chatting
+   * user. Skip idle-5min so the first backoff step (0ms) can fire immediately.
+   */
+  skipIdle?: boolean
 }): GuardDecision<AutoRedeployGuardName> {
   if (!input.syncSucceeded) {
     return { allowed: false, blockedBy: "sync-succeeded", escalateOwner: false }
   }
-  if (input.idleMs < AUTO_REDEPLOY_IDLE_MS) {
+  if (!input.skipIdle && input.idleMs < AUTO_REDEPLOY_IDLE_MS) {
     return { allowed: false, blockedBy: "idle-5min", escalateOwner: false }
   }
   if (input.attemptsInWindow >= AUTO_REDEPLOY_CAP_24H) {

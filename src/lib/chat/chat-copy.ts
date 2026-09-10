@@ -2,6 +2,7 @@ import {
   isProtocolOnlyChatBody,
   stripPlatformSentinels,
 } from "@/lib/chat/platform-sentinels"
+import { sanitizeUserFacingLlmError } from "@/lib/trial/thinking-signature-heal"
 
 const SCHEDULED_SLOT_RE = /\bScheduled\s+(\d{1,2}:\d{2})\s+UTC\b/gi
 const QUEUE_THEM_IMMEDIATE_RE = /\bqueue them for immediate posting\b/gi
@@ -24,7 +25,9 @@ export function rewriteImmediatePostingCopy(text: string): string {
 }
 
 export function polishChatRenderText(text: string): string {
-  return rewriteImmediatePostingCopy(rewriteScheduledSlotCopy(stripPlatformSentinels(text)))
+  return sanitizeUserFacingLlmError(
+    rewriteImmediatePostingCopy(rewriteScheduledSlotCopy(stripPlatformSentinels(text))),
+  )
 }
 
 export function isBlankAgentReplyBody(

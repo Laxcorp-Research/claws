@@ -39,6 +39,11 @@ const mockNudgeDeliverableSyncNow = vi.fn().mockResolvedValue(undefined)
 vi.mock("@/lib/artifacts/nudge-sync-now", () => ({
   nudgeDeliverableSyncNow: (...args: unknown[]) => mockNudgeDeliverableSyncNow(...args),
 }))
+const mockScheduleThinkingSignatureHeal = vi.fn()
+vi.mock("@/lib/healing/runtime-heals", () => ({
+  scheduleThinkingSignatureHeal: (...args: unknown[]) =>
+    mockScheduleThinkingSignatureHeal(...args),
+}))
 const mockApprovalCommand = vi.fn().mockResolvedValue({ applied: false })
 vi.mock("@/lib/artifacts/approval-command", () => ({
   applyInboundApprovalCommand: (...args: unknown[]) => mockApprovalCommand(...args),
@@ -95,6 +100,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
     process.env.ACTIVITY_PIPELINE_SECRET = SECRET;
     mockNudgeDeliverableSyncNow.mockClear();
     mockApprovalCommand.mockClear();
+    mockScheduleThinkingSignatureHeal.mockClear();
     vi.mocked(sendCustomerNudge).mockClear();
   });
 
@@ -868,6 +874,29 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
       expect(poison[0][0].data.metadata).toContain("thinking_signature_poison");
       expect(poison[0][0].data.metadata).toContain('"needsImageHeal":true');
       expect(poison[0][0].data.metadata).toContain('"platformRotated":false');
+      expect(mockScheduleThinkingSignatureHeal).toHaveBeenCalledTimes(1);
+    });
+
+    it("HEARTBEAT with Invalid signature ledgers and schedules heal", async () => {
+      defaultMocks();
+      ;(prismaMock.activityLog.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      const res = await callRoute(
+        {
+          events: [
+            makeEvent({
+              type: "HEARTBEAT",
+              action: "Invalid signature in thinking block",
+              detail: "Invalid signature in thinking block",
+              sessionKey: "agent:twitter-commander:main",
+            }),
+          ],
+        },
+        { secret: SECRET },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockScheduleThinkingSignatureHeal).toHaveBeenCalledTimes(1);
     });
 
     it("dedup: prior heal in window → no second SYSTEM ledger", async () => {
@@ -895,6 +924,7 @@ describe("POST /api/internal/activity/[workspaceId]", () => {
         (c) => c[0]?.data?.actionType === "SYSTEM",
       );
       expect(systemCreates.length).toBe(0);
+      expect(mockScheduleThinkingSignatureHeal).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -108,15 +108,52 @@ const EXPECTED_NAMED: Record<string, string[]> = {
     "shared/deliverables/tech-audit.md",
     "shared/deliverables/rank-report.md",
   ],
-  "real-estate-agent-os": ["shared/MARKET.md", "shared/LISTINGS.md"],
-  "recruiter-os": [],
-  "medical-practice-manager": [],
-  "law-firm-intake-os": [],
-  "home-services-dispatcher": [],
-  "health-fitness-commander": ["shared/PROGRAM.md", "shared/LOG.md"],
-  "student-accelerator": [],
-  "job-hunter-os": [],
-  "developer-productivity-os": [],
+  "real-estate-agent-os": [
+    "shared/MARKET.md",
+    "shared/LISTINGS.md",
+    "shared/deliverables/cma.md",
+  ],
+  "recruiter-os": [
+    "shared/SCORECARD.md",
+    "shared/SCREENING.md",
+    "shared/ATS.md",
+    "shared/deliverables/screening-pack.md",
+  ],
+  "medical-practice-manager": [
+    "shared/RECALL.md",
+    "shared/REMINDERS.md",
+    "shared/deliverables/reminder-draft.md",
+  ],
+  "law-firm-intake-os": [
+    "shared/INTAKE.md",
+    "shared/CONFLICTS.md",
+    "shared/deliverables/intake-pack.md",
+  ],
+  "home-services-dispatcher": [
+    "shared/TRIAGE.md",
+    "shared/DISPATCH.md",
+    "shared/deliverables/dispatch-board.md",
+  ],
+  "health-fitness-commander": [
+    "shared/PROGRAM.md",
+    "shared/LOG.md",
+    "shared/deliverables/workout-plan.md",
+  ],
+  "student-accelerator": [
+    "shared/COURSES.md",
+    "shared/DEADLINES.md",
+    "shared/deliverables/study-plan.md",
+  ],
+  "job-hunter-os": [
+    "shared/TARGETS.md",
+    "shared/APPLICATIONS.md",
+    "shared/deliverables/application-pack.md",
+  ],
+  "developer-productivity-os": [
+    "shared/ISSUES.md",
+    "shared/STANDUP.md",
+    "shared/deliverables/pr-review.md",
+  ],
 }
 
 const PROSE_BINDS: Array<{ slug: string; agentSlug: string; needle: string }> = [
@@ -142,6 +179,9 @@ const PROSE_BINDS: Array<{ slug: string; agentSlug: string; needle: string }> = 
   { slug: "real-estate-agent-os", agentSlug: "client-communicator", needle: `${SHARED}/LISTINGS.md` },
   { slug: "health-fitness-commander", agentSlug: "workout-planner", needle: `${SHARED}/PROGRAM.md` },
   { slug: "health-fitness-commander", agentSlug: "habit-recovery-tracker", needle: `${SHARED}/LOG.md` },
+  { slug: "student-accelerator", agentSlug: "study-planner", needle: `${SHARED}/COURSES.md` },
+  { slug: "job-hunter-os", agentSlug: "opportunity-scout", needle: `${SHARED}/TARGETS.md` },
+  { slug: "developer-productivity-os", agentSlug: "issue-triager", needle: `${SHARED}/ISSUES.md` },
 ]
 
 describe("INFRA-2 seed shared-file manifests", () => {
@@ -169,7 +209,7 @@ describe("INFRA-2 seed shared-file manifests", () => {
         expect(file.content).toContain("## Entries")
       }
     }
-    expect(total).toBe(122)
+    expect(total).toBe(146)
   })
 
   it("seed snapshot builder emits files[] (MUTATION: drop files pass-through → fail)", () => {
@@ -192,7 +232,10 @@ describe("INFRA-2 seed shared-file manifests", () => {
       const template = ALL_TEMPLATES.find((t) => t.slug === bind.slug)!
       const agent = template.agents.find((a) => a.agentSlug === bind.agentSlug)
       expect(agent, `${bind.slug}/${bind.agentSlug}`).toBeTruthy()
-      expect(agent!.agentsMd, `${bind.slug}/${bind.agentSlug}`).toContain(bind.needle)
+      expect(
+        `${agent!.agentsMd}\n${agent!.soulMd}`,
+        `${bind.slug}/${bind.agentSlug}`,
+      ).toContain(bind.needle)
     }
   })
 
