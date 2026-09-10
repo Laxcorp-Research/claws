@@ -63,7 +63,7 @@ describe("notifyDeliverableExtracted", () => {
     mockSend.mockReset()
     mockParse.mockReset()
     mockParse.mockReturnValue({ telegram: { botToken: "t", allowFrom: ["1"] } })
-    mockSend.mockResolvedValue({ sent: true, channel: "telegram" })
+    mockSend.mockResolvedValue({ sent: true, channel: "telegram", messageId: 44122 })
     ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       channelConfigEncrypted: "{}",
     })
@@ -89,6 +89,7 @@ describe("notifyDeliverableExtracted", () => {
       data: expect.objectContaining({
         action: "Deliverable notice sent via telegram",
         actionType: "SYSTEM",
+        metadata: expect.stringContaining('"messageId":44122'),
       }),
     })
   })

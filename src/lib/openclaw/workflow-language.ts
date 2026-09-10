@@ -29,7 +29,6 @@ export type WorkflowLawKnobs = {
   criticDisplayName: string
   qualityThreshold: number
   maxRevisionRounds: number
-  /** Ships locked: generator emits APPROVAL_REQUIRED language only this arc. */
   deliveryMode: WorkflowDeliveryMode
 }
 
@@ -56,19 +55,20 @@ export function formatDelegationSentence(edge: WorkflowEdgeInput): string {
 
 /**
  * Return-path + review law (always ends the Workflow section).
- * Ships locked to APPROVAL_REQUIRED phrasing regardless of schema enum.
+ * Delivery sentence follows the knob. Domain-noun-free.
  */
 export function formatWorkflowLawSection(knobs: WorkflowLawKnobs): string {
   const threshold = knobs.qualityThreshold
   const rounds = knobs.maxRevisionRounds
-  // deliveryMode is accepted for fingerprint/snapshot knobs but emission is
-  // locked to APPROVAL_REQUIRED this arc (AUTO_PROCEED UI-disabled).
-  void knobs.deliveryMode
+  const delivery =
+    knobs.deliveryMode === "AUTO_PROCEED"
+      ? "Delivery mode: opted-in actions may proceed. Critic approval is not human approval; the human flip is the consent."
+      : "Delivery mode: ask the user before acting. Critic approval is not human approval; nothing ships without the human's explicit approve."
   return [
     `Results return to ${knobs.orchestratorDisplayName} automatically.`,
     `${knobs.criticDisplayName} reviews every worker output before anything reaches the user.`,
     `Scores below ${threshold} loop back for revision (max ${rounds}).`,
-    `Delivery mode: ask the user before acting. Critic approval is not human approval; nothing ships without the human's explicit approve.`,
+    delivery,
   ].join(" ")
 }
 

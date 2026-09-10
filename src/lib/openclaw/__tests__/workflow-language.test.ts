@@ -62,10 +62,19 @@ describe("workflow-language", () => {
     })
     expect(law).toContain("Reviewer reviews every worker output")
     expect(law).toContain("Scores below 8 loop back for revision (max 3)")
-    expect(law).toContain("ask the user before acting")
+    expect(law).toContain("opted-in actions may proceed")
+    expect(law).toContain("the human flip is the consent")
     expect(law).toContain("Critic approval is not human approval")
-    // Ships locked - AUTO_PROCEED must not change emission this arc.
+    expect(law).not.toContain("ask the user before acting")
     expect(law).not.toContain("automatically proceed")
+    const ask = formatWorkflowLawSection({
+      orchestratorDisplayName: "Commander",
+      criticDisplayName: "Reviewer",
+      qualityThreshold: 8,
+      maxRevisionRounds: 3,
+      deliveryMode: "APPROVAL_REQUIRED",
+    })
+    expect(ask).toContain("ask the user before acting")
   })
 
   it("fence round-trip: prose outside survives byte-identical; corrected when fence changes", () => {

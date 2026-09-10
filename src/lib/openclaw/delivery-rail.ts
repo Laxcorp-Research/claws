@@ -2,6 +2,8 @@ import {
   CLAIMS_TABLE_STEP_MARKER,
   CRITIC_CLAIMS_TABLE_LAW,
 } from "@/lib/critic/claims-table"
+import { ALPACA_PAPER_HOST, isAlpacaLiveUrl } from "@/lib/quant/risk-limits"
+import { normalizeHttpHost, normalizeHttpPath } from "@/lib/openclaw/http-contract"
 import type { WorkflowDeliveryMode } from "@/lib/openclaw/workflow-language"
 import { TWITTER_TOKEN_CANNOT_POST_COPY } from "@/lib/tools/twitter-api-honesty"
 
@@ -20,8 +22,41 @@ export {
 
 export const OUTBOUND_ACTION_DENY = ["message", "exec", "process"] as const
 
-/** Tools that may run unattended when deliveryMode is AUTO_PROCEED. Empty until a tool opts in. */
-export const AUTONOMOUS_CAPABLE_TOOLS: readonly string[] = []
+export type AutonomousCapableTool = {
+  skill: string
+  label: string
+  consentLine: string
+}
+
+/**
+ * Opt-in ACTION tools for AUTO_PROCEED. Endpoint-gated in
+ * httpCallSupportsAutonomous: alpaca paper POST /v2/orders, twitter POST
+ * /2/tweets, gmail GMAIL_SEND_EMAIL. Live broker hosts stay denied.
+ */
+export const AUTONOMOUS_CAPABLE_TOOL_DEFS: readonly AutonomousCapableTool[] = [
+  {
+    skill: "alpaca-trading",
+    label: "Alpaca paper orders",
+    consentLine: "Paper-host POST /v2/orders. Live broker hosts stay denied. Risk caps still apply.",
+  },
+  {
+    skill: "twitter-api",
+    label: "Twitter posts",
+    consentLine: "POST /2/tweets only.",
+  },
+  {
+    skill: "gmail-ops",
+    label: "Gmail send",
+    consentLine: "GMAIL_SEND_EMAIL only.",
+  },
+]
+
+export const AUTONOMOUS_CAPABLE_TOOLS: readonly string[] = AUTONOMOUS_CAPABLE_TOOL_DEFS.map(
+  (row) => row.skill,
+)
+
+export const AUTONOMOUS_CONSENT_INTRO =
+  "Autonomous runs only the tools listed below after you flip this knob. Ask-before-acting stays the default. Live broker hosts stay denied. Risk caps still apply."
 
 const WRITE_TOOL_RE =
   /(tweet|create_post|creation_of_a_post|send_tweet|publish_post|post_tweet)/i
@@ -47,7 +82,33 @@ export function isOutboundActionTool(name: string): boolean {
 }
 
 export function toolSupportsAutonomous(name: string): boolean {
-  return AUTONOMOUS_CAPABLE_TOOLS.includes(name)
+  return (AUTONOMOUS_CAPABLE_TOOLS as readonly string[]).includes(name)
+}
+
+export function httpCallSupportsAutonomous(args: {
+  skill: string
+  method: string
+  host: string
+  path: string
+}): boolean {
+  const method = args.method.trim().toUpperCase()
+  const host = normalizeHttpHost(args.host)
+  const path = normalizeHttpPath(args.path)
+  if (isAlpacaLiveUrl(`https://${host}${path}`)) return false
+  if (args.skill === "alpaca-trading") {
+    return (
+      method === "POST" &&
+      (host === ALPACA_PAPER_HOST || host.endsWith(`.${ALPACA_PAPER_HOST}`)) &&
+      (path === "/v2/orders" || path.startsWith("/v2/orders/"))
+    )
+  }
+  if (args.skill === "twitter-api") {
+    return method === "POST" && path === "/2/tweets"
+  }
+  if (args.skill === "gmail-ops") {
+    return method === "POST" && /\/GMAIL_SEND_EMAIL$/.test(path)
+  }
+  return false
 }
 
 export function shouldDenyOutboundAction(args: {

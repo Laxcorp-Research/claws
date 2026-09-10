@@ -126,6 +126,7 @@ async function ledgerNudge(args: {
   channel: "telegram" | "discord" | "slack" | "email" | "dashboard" | "skipped"
   delivered: boolean
   reason?: string
+  messageId?: number
 }): Promise<void> {
   try {
     await prisma.activityLog.create({
@@ -144,6 +145,7 @@ async function ledgerNudge(args: {
           channel: args.channel,
           delivered: args.delivered,
           reason: args.reason ?? null,
+          messageId: args.messageId ?? null,
         }),
       },
     })
@@ -208,6 +210,7 @@ export async function sendCustomerNudge(args: {
       eventKind: CUSTOMER_NUDGE_EVENT_KIND,
       channel: channelResult.channel,
       delivered: true,
+      messageId: channelResult.messageId,
     })
     const email = workspace.user?.email
     if (email) {
@@ -287,6 +290,7 @@ export async function resolveCustomerNudge(args: {
       eventKind: CUSTOMER_NUDGE_RESOLVE_EVENT_KIND,
       channel: channelResult.channel,
       delivered: true,
+      messageId: channelResult.messageId,
     })
     return { sent: true }
   }

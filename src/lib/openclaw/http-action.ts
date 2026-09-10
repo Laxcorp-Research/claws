@@ -20,7 +20,7 @@ import {
   parseHttpActionCardFromMetadata,
   type HttpActionCardView,
 } from "@/lib/openclaw/http-action-card"
-import { consumeHttpPermit, resolveHttpPermit } from "@/lib/openclaw/http-permit"
+import { consumeHttpPermit, permitMatchesCall, resolveHttpPermit } from "@/lib/openclaw/http-permit"
 import { evaluateTradingActionRisk } from "@/lib/quant/trading-action-gate"
 import { composioOverridesForTemplate } from "@/lib/openclaw/composio-op-class"
 import {
@@ -336,7 +336,7 @@ async function finalizeGateDecision(args: {
   }
 
   if (decision.class === "ACTION") {
-    const consumed = await consumeHttpPermit({
+    const found = await resolveHttpPermit({
       workspaceId: args.workspaceId,
       skill: args.skill,
       method: args.method,
@@ -344,7 +344,7 @@ async function finalizeGateDecision(args: {
       path: args.path,
       body: args.body,
     })
-    if (!consumed.ok) {
+    if (found.kind === "consumed") {
       const ledger = await writeDeniedLedger({
         workspaceId: args.workspaceId,
         toolId: decision.toolId,
@@ -352,14 +352,52 @@ async function finalizeGateDecision(args: {
         method: args.method,
         host: args.host,
         path: args.path,
-        reason: consumed.reason === "consumed" ? "permit_consumed" : "permit_mismatch",
+        reason: "permit_consumed",
         agentSlug: args.agentSlug,
       })
       return {
         status: "deny",
-        reason: consumed.reason === "consumed" ? "permit_consumed" : "permit_mismatch",
+        reason: "permit_consumed",
         toolId: decision.toolId,
         ledgerId: ledger.id,
+      }
+    }
+    if (found.kind === "unused") {
+      if (
+        permitMatchesCall(found.permit, {
+          skill: args.skill,
+          method: args.method,
+          host: args.host,
+          path: args.path,
+          body: args.body,
+        })
+      ) {
+        const consumed = await consumeHttpPermit({
+          workspaceId: args.workspaceId,
+          skill: args.skill,
+          method: args.method,
+          host: args.host,
+          path: args.path,
+          body: args.body,
+        })
+        if (!consumed.ok) {
+          const ledger = await writeDeniedLedger({
+            workspaceId: args.workspaceId,
+            toolId: decision.toolId,
+            skill: args.skill,
+            method: args.method,
+            host: args.host,
+            path: args.path,
+            reason: consumed.reason === "consumed" ? "permit_consumed" : "permit_mismatch",
+            agentSlug: args.agentSlug,
+          })
+          return {
+            status: "deny",
+            reason: consumed.reason === "consumed" ? "permit_consumed" : "permit_mismatch",
+            toolId: decision.toolId,
+            ledgerId: ledger.id,
+          }
+        }
       }
     }
   }

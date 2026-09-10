@@ -155,7 +155,7 @@ describe("WAVE-2 YouTube Channel OS prose contracts", () => {
 
   it("critic knob stays 8; exec stays non-autonomous", () => {
     expect(agent(slug, "content-quality-gate").qualityThreshold).toBe(8)
-    expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual([])
+    expect(AUTONOMOUS_CAPABLE_TOOLS).not.toContain("youtube-data-api")
     expect(agent(slug, "channel-commander").soulMd).toContain(
       "Never PATCH YouTube metadata without a human-approved ACTION card",
     )
