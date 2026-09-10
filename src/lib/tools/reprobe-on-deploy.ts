@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
 import {
+  isDefinitiveAuthProbeFailure,
   ledgerToolStatusProbe,
   probeAndPersistApiKeyConnection,
   skipResultForFailure,
@@ -31,7 +32,11 @@ async function nudgeProbeErrors(
   workspaceId: string,
   results: ApiKeyProbeResult[],
 ): Promise<void> {
-  const errors = results.filter((r) => r.outcome === "error")
+  const errors = results.filter((r) => {
+    if (r.outcome !== "error") return false
+    if (nudgeConditionForToolError(r) === "twitter-402-tier") return true
+    return isDefinitiveAuthProbeFailure({ valid: false, error: r.error })
+  })
   if (errors.length === 0) return
 
   const conditions = new Set<"twitter-402-tier" | "tool-connection-error">()

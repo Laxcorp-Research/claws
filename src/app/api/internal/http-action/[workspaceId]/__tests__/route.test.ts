@@ -456,4 +456,94 @@ describe("POST /api/internal/http-action/[workspaceId]", () => {
     expect(data.data).toMatchObject({ status: "deny", reason: "notional-cap" })
     expect(data.data.card).toBeUndefined()
   })
+
+  it("AUTO_PROCEED within-caps paper order allows without a HUMAN_REQUEST card", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "AUTO_PROCEED",
+      httpFixtureMode: false,
+      clawTemplate: { slug: "quant-trader" },
+    })
+    const { status, data } = await parseResponse(
+      await call(
+        {
+          op: "gate",
+          skill: "alpaca-trading",
+          method: "POST",
+          host: "paper-api.alpaca.markets",
+          path: "/v2/orders",
+          body: order1,
+        },
+        { secret: SECRET },
+      ),
+    )
+    expect(status).toBe(200)
+    expect(data.data.status).toBe("allow")
+    expect(data.data.class).toBe("ACTION")
+    expect(data.data.card).toBeUndefined()
+    expect(data.data.requestId).toBeUndefined()
+    const humanRequests = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call) => (call[0] as { data?: { actionType?: string } })?.data?.actionType === "HUMAN_REQUEST",
+    )
+    expect(humanRequests).toHaveLength(0)
+  })
+
+  it("AUTO_PROCEED over-cap paper order is still denied with no card", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "AUTO_PROCEED",
+      httpFixtureMode: false,
+      clawTemplate: { slug: "quant-trader" },
+    })
+    const { data } = await parseResponse(
+      await call(
+        {
+          op: "gate",
+          skill: "alpaca-trading",
+          method: "POST",
+          host: "paper-api.alpaca.markets",
+          path: "/v2/orders",
+          body: order166,
+        },
+        { secret: SECRET },
+      ),
+    )
+    expect(data.data).toMatchObject({ status: "deny", reason: "notional-cap" })
+    expect(data.data.card).toBeUndefined()
+    const humanRequests = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call) => (call[0] as { data?: { actionType?: string } })?.data?.actionType === "HUMAN_REQUEST",
+    )
+    expect(humanRequests).toHaveLength(0)
+  })
+
+  it("AUTO_PROCEED live Alpaca host stays denied", async () => {
+    ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: WORKSPACE_ID,
+      deliveryMode: "AUTO_PROCEED",
+      httpFixtureMode: false,
+      clawTemplate: { slug: "quant-trader" },
+    })
+    const { data } = await parseResponse(
+      await call(
+        {
+          op: "gate",
+          skill: "alpaca-trading",
+          method: "POST",
+          url: "https://api.alpaca.markets/v2/orders",
+          body: order1,
+        },
+        { secret: SECRET },
+      ),
+    )
+    expect(data.data).toMatchObject({ status: "deny", reason: "live-alpaca-host" })
+  })
+
+  it("MUTATION: AUTO_PROCEED must still call evaluateTradingActionRisk (bypass → fail)", () => {
+    const gate = readFileSync(join(process.cwd(), "src/lib/openclaw/http-action.ts"), "utf8")
+    const overwrite = gate.indexOf("decision.status === \"allow\"")
+    const riskCall = gate.indexOf("evaluateTradingActionRisk")
+    expect(riskCall).toBeGreaterThan(-1)
+    expect(overwrite).toBeGreaterThan(riskCall)
+    expect(gate).toMatch(/overwrite/)
+  })
 })

@@ -24,7 +24,7 @@ import {
   UNKNOWN_UNTIL_BROKER,
 } from "@/lib/quant/critic-gate"
 import { formatInterviewBootSection, getInterviewPack } from "@/lib/user-md-interview"
-import { AUTONOMOUS_CAPABLE_TOOLS } from "@/lib/openclaw/delivery-rail"
+import { AUTONOMOUS_CAPABLE_TOOLS, shouldDenyOutboundAction } from "@/lib/openclaw/delivery-rail"
 
 function quant() {
   const t = ALL_TEMPLATES.find((x) => x.slug === "quant-trader")
@@ -176,7 +176,8 @@ describe("WAVE-1 Quant Trader prose contracts", () => {
     const commander = agent("trade-commander").soulMd
     expect(commander).not.toContain("The market is a complex adaptive system")
     expect(commander).not.toContain("Speed matters less than accuracy")
-    expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual([])
+    expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual(["alpaca-trading", "twitter-api", "gmail-ops"])
+    expect(shouldDenyOutboundAction({ deliveryMode: "AUTO_PROCEED", toolName: "exec" })).toBe(true)
   })
 
   it("PORTFOLIO and EOD stay unknown until a broker is connected", () => {

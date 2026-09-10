@@ -221,21 +221,117 @@ describe("evaluateHttpCall", () => {
     expect(src).toContain("openclawMeta.http")
   })
 
-  it("AUTO_PROCEED still pending-denies ACTION until the skill opts in", () => {
-    expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual([])
-    const decision = evaluateHttpCall({
-      contract: alpaca,
+  it("AUTO_PROCEED allows opted-in paper POST /v2/orders, tweets, and GMAIL_SEND_EMAIL", () => {
+    expect(AUTONOMOUS_CAPABLE_TOOLS).toEqual(["alpaca-trading", "twitter-api", "gmail-ops"])
+    expect(
+      evaluateHttpCall({
+        contract: alpaca,
+        method: "POST",
+        host: "paper-api.alpaca.markets",
+        path: "/v2/orders",
+        body: order,
+        deliveryMode: "AUTO_PROCEED",
+        toolId: "tool:alpaca-trading:auto",
+      }),
+    ).toEqual({
+      status: "allow",
+      class: "ACTION",
+      toolId: "tool:alpaca-trading:auto",
+    })
+    expect(
+      evaluateHttpCall({
+        contract: twitter,
+        method: "POST",
+        host: "api.twitter.com",
+        path: "/2/tweets",
+        body: { text: "hello from claws" },
+        deliveryMode: "AUTO_PROCEED",
+        toolId: "tool:twitter-api:auto",
+      }),
+    ).toEqual({
+      status: "allow",
+      class: "ACTION",
+      toolId: "tool:twitter-api:auto",
+    })
+    const gmail = httpContractForSkill("gmail-ops")
+    expect(
+      evaluateHttpCall({
+        contract: gmail,
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/GMAIL_SEND_EMAIL",
+        body: { arguments: { recipient_email: "a@b.com", subject: "hi", body: "x" } },
+        deliveryMode: "AUTO_PROCEED",
+        toolId: "tool:gmail-ops:send",
+      }),
+    ).toEqual({
+      status: "allow",
+      class: "ACTION",
+      toolId: "tool:gmail-ops:send",
+    })
+  })
+
+  it("AUTO_PROCEED still cards non-opted endpoints on an opted skill; denies non-opted skills", () => {
+    const gmail = httpContractForSkill("gmail-ops")
+    const label = evaluateHttpCall({
+      contract: gmail,
+      method: "POST",
+      host: "backend.composio.dev",
+      path: "/api/v3/tools/execute/GMAIL_ADD_LABEL_TO_EMAIL",
+      body: {
+        arguments: {
+          message_id: "m1",
+          label: "x",
+          recipient_email: "a@b.com",
+          subject: "keep card readable",
+          body: "x",
+        },
+      },
+      deliveryMode: "AUTO_PROCEED",
+      toolId: "tool:gmail-ops:label",
+    })
+    expect(label.status).toBe("pending")
+    expect(
+      evaluateHttpCall({
+        contract: hubspot,
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/HUBSPOT_CREATE_CONTACT",
+        body: { arguments: { email: "a@b.com", firstname: "Ada" } },
+        deliveryMode: "AUTO_PROCEED",
+        toolId: "tool:hubspot-crm:create",
+      }),
+    ).toEqual({
+      status: "deny",
+      reason: "not_autonomous",
+      toolId: "tool:hubspot-crm:create",
+    })
+  })
+
+  it("AUTO_PROCEED leftover unused permit for a different body still allows the opted-in call", () => {
+    const leftover = {
+      skill: "alpaca-trading",
       method: "POST",
       host: "paper-api.alpaca.markets",
       path: "/v2/orders",
-      body: order,
-      deliveryMode: "AUTO_PROCEED",
-      toolId: "tool:alpaca-trading:auto",
-    })
-    expect(decision).toEqual({
-      status: "deny",
-      reason: "not_autonomous",
-      toolId: "tool:alpaca-trading:auto",
+      bodyHash: httpBodyHash(order),
+      consumedAt: null,
+    }
+    expect(
+      evaluateHttpCall({
+        contract: alpaca,
+        method: "POST",
+        host: "paper-api.alpaca.markets",
+        path: "/v2/orders",
+        body: { ...order, qty: "1" },
+        deliveryMode: "AUTO_PROCEED",
+        permit: leftover,
+        toolId: "tool:alpaca-trading:auto-swap",
+      }),
+    ).toEqual({
+      status: "allow",
+      class: "ACTION",
+      toolId: "tool:alpaca-trading:auto-swap",
     })
   })
 })

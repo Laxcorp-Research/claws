@@ -657,6 +657,45 @@ describe("reconcileChatMessages - optimistic dedupe by messageId === runId", () 
     })
   })
 
+  it("drops subagent and narration bubbles; overlay boot is a platform line", () => {
+    const rows: ChatRow[] = [
+      {
+        id: "sub",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-10T08:00:00.000Z",
+        agentName: "Critic",
+        action: "Replied: subagent draft",
+        detail: "subagent draft",
+        sessionKey: "agent:twitter-commander:subagent:critic:7f2b",
+        runId: "r-sub",
+      },
+      {
+        id: "task",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-10T08:00:01.000Z",
+        agentName: "Twitter Commander",
+        action: "Task started: critic",
+        detail: "Task started: critic",
+        sessionKey: "agent:twitter-commander:main",
+        runId: "r-task",
+      },
+      {
+        id: "boot",
+        actionType: "MESSAGE_SENT",
+        timestamp: "2026-09-10T08:00:02.000Z",
+        agentName: "Twitter Commander",
+        action: "Claws overlay boot 2026.5.22-18",
+        detail: "Claws overlay boot 2026.5.22-18",
+        sessionKey: "agent:twitter-commander:main",
+        runId: "r-boot",
+      },
+    ]
+    const views = reconcileChatMessages([], rows, "Twitter Commander")
+    expect(views.map((v) => v.key)).toEqual(["boot"])
+    expect(views[0]?.sender).toBe("platform")
+    expect(views[0]?.detail).toContain("Claws overlay boot")
+  })
+
   it("three-source dedupe: history row + SSE row + optimistic bubble render one user message", () => {
     const persisted: ChatRow = {
       id: "same-db-row",

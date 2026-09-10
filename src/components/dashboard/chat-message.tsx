@@ -61,7 +61,7 @@ export function MarkdownBody({ content }: { content: string }): ReactElement {
 }
 
 interface ChatMessageProps {
-  sender: "user" | "agent"
+  sender: "user" | "agent" | "platform"
   senderName: string
   timestamp: string
   // PR-9/B GRACEFUL-DEGRADATION GUARD (verified from the container reporter,
@@ -104,12 +104,17 @@ interface ChatMessageProps {
 
 export function ChatMessage({ sender, senderName, timestamp, detail, action, status, turnPhase, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
-  // NEVER `detail` alone - see the guard note above. Empty-string detail also
-  // falls through to action. Polish (strip sentinels + scheduled-slot rewrite)
-  // AFTER that pick so activity ingest can still scan raw detail; this is
-  // render-only.
+  const isPlatform = sender === "platform"
   const rawBody = (detail && detail.length > 0 ? detail : action) || ""
   const body = polishChatRenderText(rawBody)
+
+  if (isPlatform) {
+    return (
+      <div className="self-center max-w-[85%] text-center text-[10px] leading-[1.4] text-[var(--tx3)] px-[8px] py-[5px]">
+        {body}
+      </div>
+    )
+  }
 
   return (
     <div className={cn("flex min-w-0 max-w-[85%] flex-col gap-[3px]", isUser ? "self-end items-end" : "self-start items-start")}>

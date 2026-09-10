@@ -135,6 +135,32 @@ describe("reprobeWorkspaceToolConnections", () => {
     })
   })
 
+  it("does not nudge 429/timeout retry outcomes (Sep-9 healthy-token fixture)", async () => {
+    mockProbe.mockResolvedValue({
+      ok: true,
+      result: {
+        connectionId: "c1",
+        toolSlug: "twitter-api",
+        outcome: "retry",
+        status: "CONNECTED",
+        valid: false,
+        error: "Provider didn't respond within 10 seconds",
+      },
+    })
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "c1",
+        workspaceId: "ws-1",
+        toolSlug: "twitter-api",
+        connectionType: "API_KEY",
+        status: "CONNECTED",
+        encryptedCredentials: "{}",
+      },
+    ])
+    await reprobeWorkspaceToolConnections("ws-1")
+    expect(mockNudge).not.toHaveBeenCalled()
+  })
+
   it("MUTATION: generateWorkspace must call reprobe before baking TOOLS.md", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/openclaw/generator.ts"), "utf8")
     expect(src).toContain("reprobeWorkspaceToolConnections")

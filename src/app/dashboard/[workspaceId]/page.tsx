@@ -138,6 +138,7 @@ interface LogEntry {
   humanRequestId?: string | null
   holdStatus?: string | null
   toolId?: string | null
+  sessionKey?: string | null
 }
 
 interface PendingApprovalItem {
@@ -1386,6 +1387,7 @@ export default function DashboardPage() {
       deliverableKind: l.deliverableKind ?? null,
       humanRequestId: l.humanRequestId ?? null,
       holdStatus: l.holdStatus ?? null,
+      sessionKey: l.sessionKey ?? null,
     }))
   const agentsActive = agents.filter((a) => a.status !== "paused").length
   const alertStackItems = alerts.map((alert) => ({

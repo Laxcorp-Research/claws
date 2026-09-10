@@ -324,4 +324,21 @@ describe("ChatMessage - long-unbroken-token wrap (no horizontal overflow)", () =
     expect(bubble.className).toContain("overflow-wrap:anywhere")
     expect(bubble.className).not.toContain("break-all")
   })
+
+  it("platform sender is a centered line, not a bubble", () => {
+    const { container } = render(
+      <ChatMessage
+        sender="platform"
+        senderName="Claws"
+        timestamp="08:00 UTC"
+        detail="Your Claw hit a problem - recovering (~1 min)"
+        action="Your Claw hit a problem - recovering (~1 min)"
+      />,
+    )
+    expect(container.querySelector('[class*="rounded-lg"]')).toBeNull()
+    expect(screen.getByText("Your Claw hit a problem - recovering (~1 min)")).toBeTruthy()
+    const line = screen.getByText("Your Claw hit a problem - recovering (~1 min)")
+    expect(line.className).toContain("text-[10px]")
+    expect(line.className).toContain("text-[var(--tx3)]")
+  })
 })

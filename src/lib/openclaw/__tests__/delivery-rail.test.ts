@@ -15,6 +15,7 @@ import {
   mergeOutboundDenyIntoTools,
   outboundDenyList,
   overlayMissionLaw,
+  httpCallSupportsAutonomous,
   shouldDenyOutboundAction,
   TOOL_STATUS_TRUTH_COPY,
 } from "@/lib/openclaw/delivery-rail"
@@ -39,6 +40,57 @@ describe("B-3 delivery rail", () => {
     expect(shouldDenyOutboundAction({ deliveryMode: "AUTO_PROCEED", toolName: "message" })).toBe(true)
     expect(outboundDenyList("AUTO_PROCEED")).toContain("message")
     expect(shouldDenyOutboundAction({ deliveryMode: "AUTO_PROCEED", toolName: "exec" })).toBe(true)
+  })
+
+  it("httpCallSupportsAutonomous is paper-order / tweet / gmail-send only", () => {
+    expect(
+      httpCallSupportsAutonomous({
+        skill: "alpaca-trading",
+        method: "POST",
+        host: "paper-api.alpaca.markets",
+        path: "/v2/orders",
+      }),
+    ).toBe(true)
+    expect(
+      httpCallSupportsAutonomous({
+        skill: "alpaca-trading",
+        method: "POST",
+        host: "api.alpaca.markets",
+        path: "/v2/orders",
+      }),
+    ).toBe(false)
+    expect(
+      httpCallSupportsAutonomous({
+        skill: "twitter-api",
+        method: "POST",
+        host: "api.twitter.com",
+        path: "/2/tweets",
+      }),
+    ).toBe(true)
+    expect(
+      httpCallSupportsAutonomous({
+        skill: "twitter-api",
+        method: "GET",
+        host: "api.twitter.com",
+        path: "/2/tweets/search/recent",
+      }),
+    ).toBe(false)
+    expect(
+      httpCallSupportsAutonomous({
+        skill: "gmail-ops",
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/GMAIL_SEND_EMAIL",
+      }),
+    ).toBe(true)
+    expect(
+      httpCallSupportsAutonomous({
+        skill: "gmail-ops",
+        method: "POST",
+        host: "backend.composio.dev",
+        path: "/api/v3/tools/execute/GMAIL_ADD_LABEL_TO_EMAIL",
+      }),
+    ).toBe(false)
   })
 
   it("merge is mechanical (not prose-only)", () => {

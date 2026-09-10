@@ -15,6 +15,7 @@ import {
   polishChatRenderText,
 } from "@/lib/chat/chat-copy"
 import { collectWorkingRunIds } from "@/lib/chat/run-state"
+import { isPlatformInjectionBody, shouldDropChatBubble } from "@/lib/chat/transcript-filter"
 import { useChatRunState } from "@/hooks/use-chat-run-state"
 
 // Mirror of the send endpoint cap (src/app/api/workspaces/[id]/chat/route.ts
@@ -153,6 +154,7 @@ export interface ChatRow {
   deliverableKind?: DeliverableKind | null
   humanRequestId?: string | null
   holdStatus?: string | null
+  sessionKey?: string | null
 }
 
 export interface ChatDocumentView {
@@ -185,7 +187,7 @@ export interface OptimisticMessage {
 
 export interface ChatMessageView {
   key: string
-  sender: "user" | "agent"
+  sender: "user" | "agent" | "platform"
   senderName: string
   sortTs: number
   detail: string | null
@@ -292,15 +294,27 @@ export function reconcileChatMessages(
       continue
     }
     if (r.actionType !== "MESSAGE_RECEIVED" && r.actionType !== "MESSAGE_SENT") continue
+    if (
+      shouldDropChatBubble({
+        actionType: r.actionType,
+        sessionKey: r.sessionKey,
+        action: r.action,
+        detail: r.detail,
+      })
+    ) {
+      continue
+    }
     const isUser = r.actionType === "MESSAGE_RECEIVED"
     if (!isUser && isBlankAgentReplyBody(r.action, r.detail)) continue
     const parsed = Date.parse(r.timestamp)
+    const bodyForPlatform = polishChatRenderText(
+      r.detail && r.detail.length > 0 ? r.detail : r.action,
+    )
+    const platform = !isUser && isPlatformInjectionBody(bodyForPlatform)
     views.push({
       key: r.id,
-      sender: isUser ? "user" : "agent",
-      // Clean sender name: the user is always "You"; the agent reply uses its
-      // resolved display name (or the orchestrator's name as a fallback).
-      senderName: isUser ? "You" : r.agentName || orchestratorName || "Agent",
+      sender: isUser ? "user" : platform ? "platform" : "agent",
+      senderName: isUser ? "You" : platform ? "Claws" : r.agentName || orchestratorName || "Agent",
       sortTs: Number.isNaN(parsed) ? 0 : parsed,
       detail: r.detail != null ? polishChatRenderText(r.detail) : null,
       action: polishChatRenderText(r.action),
