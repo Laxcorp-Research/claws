@@ -788,7 +788,7 @@ describe("claws-activity-reporter - overlay boot emission-version (PR-2 -8)", ()
   });
 });
 
-describe("claws-activity-reporter — 9.4 before_agent_run gate", () => {
+describe("claws-activity-reporter - 9.4 before_agent_run gate", () => {
   it("registers before_agent_run without timeoutMs (100ms footgun)", async () => {
     vi.resetModules();
     delete process.env.CLAWS_ACTIVITY_ENDPOINT;

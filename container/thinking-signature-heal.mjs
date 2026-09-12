@@ -292,7 +292,7 @@ export async function healThinkingSignatureOnce(args) {
 
 /**
  * Resolve agents/<id>/sessions/<uuid>.jsonl from sessionKey / agentId.
- * Legacy 5.22 volumes only — 9.4 canonical store is sqlite.
+ * Legacy 5.22 volumes only - 9.4 canonical store is sqlite.
  */
 export function resolveAgentIdFromSession(sessionKey, agentId) {
   let agent = typeof agentId === "string" && agentId.length > 0 ? agentId : null
@@ -413,7 +413,7 @@ export function tryOpenNodeSqliteAdapter(filePath) {
 }
 
 /**
- * Generic TEXT-column walker. Schema is not vendored — any TEXT/CLOB/JSON
+ * Generic TEXT-column walker. Schema is not vendored - any TEXT/CLOB/JSON
  * cell that parses as JSON (or jsonl) has thinking parts stripped in place.
  *
  * @param {string} filePath

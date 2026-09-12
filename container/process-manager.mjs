@@ -374,7 +374,7 @@ async function main() {
   }
 
   // 9.4: convert leftover jsonl / cron JSON stores to sqlite BEFORE gateway.
-  // Fail closed — SessionStoreMigrationRequiredError is a boot refuse.
+  // Fail closed - SessionStoreMigrationRequiredError is a boot refuse.
   try {
     const migration = await runRuntimeVolumeMigration({
       dataDir: OPENCLAW_DATA_DIR,

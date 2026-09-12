@@ -1,7 +1,7 @@
 // Vendored from OpenClaw runtime's src/skills/runtime/env-overrides.ts @ v2026.9.4.
 // Only `sanitizeSkillEnvOverrides` + `isAlwaysBlockedSkillEnvKey` are needed
 // for the contract test; the outer apply/revert + logger/config machinery
-// is out of scope — we only test the allow/block decision given an overrides
+// is out of scope - we only test the allow/block decision given an overrides
 // record + an allowlist.
 //
 // See README.md in this directory for source provenance and re-sync.

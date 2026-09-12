@@ -12,7 +12,7 @@
  * openclaw.json if doctor mutated it.
  *
  * Ledger: eventKind=runtime_volume_migration (registry: runtime-volume-migration).
- * soakCounts=false — first-wake conversion is not a soak defect.
+ * soakCounts=false - first-wake conversion is not a soak defect.
  */
 
 import fs from "node:fs"

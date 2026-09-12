@@ -1371,7 +1371,7 @@ describe('generateWorkspace', () => {
     expect(config.skills.entries.tavily.enabled).toBe(true);
   });
 
-  it('emits NO bindings key — Orchestrator routing is via systemAgent (#117)', async () => {
+  it('emits NO bindings key - Orchestrator routing is via systemAgent (#117)', async () => {
     // Regression guard: we used to emit
     //   bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]
     // believing it routed all channels to the Orchestrator. Upstream's binding

@@ -8,7 +8,7 @@ runtime's tier-1 + tier-2 env-var sanitizer without triggering the
 `"Blocked skill env overrides for <slug>"` WARN.
 
 Testing against a vendored copy (instead of importing the runtime as an
-npm dep) because the OpenClaw runtime is not published as a package —
+npm dep) because the OpenClaw runtime is not published as a package -
 it ships only as the container image. The dist `plugin-sdk/` inside the
 image is container-internal, not a public surface.
 
@@ -29,7 +29,7 @@ image is container-internal, not a public surface.
 |---|---|
 | `sanitize-env-vars.ts` | `src/agents/sandbox/sanitize-env-vars.ts` (decision functions only; live plugin secret inventory omitted) |
 | `host-env-security.ts` + `host-env-security-policy.json` | `src/infra/host-env-security.ts` + `src/infra/host-env-security-policy.json` (`isDangerousHostEnvVarName` + `isDangerousHostEnvOverrideVarName`) |
-| `skill-env-sanitizer.ts` | `src/skills/runtime/env-overrides.ts` (partial — `sanitizeSkillEnvOverrides` + `isAlwaysBlockedSkillEnvKey` only). **Path moved** from `src/agents/skills/env-overrides.ts` (404 on 9.4). |
+| `skill-env-sanitizer.ts` | `src/skills/runtime/env-overrides.ts` (partial - `sanitizeSkillEnvOverrides` + `isAlwaysBlockedSkillEnvKey` only). **Path moved** from `src/agents/skills/env-overrides.ts` (404 on 9.4). |
 
 Each vendored file has a leading comment pointing back here.
 
@@ -46,4 +46,4 @@ Each vendored file has a leading comment pointing back here.
 - `applySkillEnvOverrides` / snapshot apply/revert (mutates `process.env`).
 - `getCurrentPluginMetadataSnapshot` / `listKnownSecretEnvVarNames` (live plugin inventory). Pattern list is the 9.4 source of truth for generator emit.
 - Config-graph navigation (`resolveSkillConfig`).
-- The runtime WARN log string itself — contract test asserts `result.blocked`.
+- The runtime WARN log string itself - contract test asserts `result.blocked`.

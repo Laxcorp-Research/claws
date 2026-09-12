@@ -228,7 +228,7 @@ const OPENCLAW_AGENT_ID_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/i;
 /**
  * Converts agent name to a valid OpenClaw agent ID.
  * Must already equal 9.4 `normalizeAgentId` (lowercase alphanumeric + hyphens,
- * ≤64) so a leftover `agents.list` migration would not skip us — we emit
+ * ≤64) so a leftover `agents.list` migration would not skip us - we emit
  * keyed `agents.entries` directly.
  */
 export function toAgentId(name: string): string {
@@ -558,7 +558,7 @@ function generateOpenClawConfig(
   ).map((identity) => identity.slug);
   const attachedSkillSlugs = collectAttachedSkillSlugs(workspace);
 
-  // Build agents.entries — keyed roster for OpenClaw 9.4 (strict, no `list`).
+  // Build agents.entries - keyed roster for OpenClaw 9.4 (strict, no `list`).
   const orchestratorAgentId = toAgentId(orchestrator.name);
   const agentsEntries: Record<string, JsonObject> = {};
   for (const agent of runtimeAgents) {

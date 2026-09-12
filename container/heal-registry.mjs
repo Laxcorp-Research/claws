@@ -1,5 +1,5 @@
 /**
- * Overlay heal registry — which boot/runtime repairs count against a soak.
+ * Overlay heal registry - which boot/runtime repairs count against a soak.
  *
  * thinking_signature_heal is a live defect class (counts).
  * runtime_volume_migration is a one-shot jsonl/cron-JSON → sqlite conversion
