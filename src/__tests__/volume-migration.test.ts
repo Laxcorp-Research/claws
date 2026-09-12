@@ -14,7 +14,7 @@ function migrateFs(dir: string, sessions: string) {
 }
 
 describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
-  it("detects sessions.json + cron JSON as legacy (jsonl archive is not boot-blocking)", async () => {
+  it("detects sessions.json as legacy (jsonl archive and cron/jobs.json are not boot-blocking)", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-"))
     try {
       const sessions = path.join(dir, "agents", "orch", "sessions")
@@ -30,10 +30,24 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
       const mod = await import("../../container/volume-migration.mjs")
       const detected = mod.detectLegacyRuntimeVolume(dir)
       expect(detected.legacy).toBe(true)
-      expect(detected.reasons).toEqual(
-        expect.arrayContaining(["sessions.json:orch", "cron-json"]),
-      )
+      expect(detected.reasons).toEqual(["sessions.json:orch"])
+      expect(detected.reasons).not.toContain("cron-json")
       expect(detected.reasons).not.toContain("jsonl-without-sqlite:orch")
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("does not treat leftover cron/jobs.json as legacy after sessions.json is gone", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-cron-"))
+    try {
+      fs.mkdirSync(path.join(dir, "cron"), { recursive: true })
+      fs.writeFileSync(path.join(dir, "cron", "jobs.json"), "[]")
+      const mod = await import("../../container/volume-migration.mjs")
+      expect(mod.detectLegacyRuntimeVolume(dir)).toEqual({
+        legacy: false,
+        reasons: [],
+      })
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
@@ -211,6 +225,31 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
         spawnSyncImpl,
       })
       expect(fs.readFileSync(cfg, "utf8")).toBe('{"owned":true}')
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("succeeds when doctor converts sessions.json but leaves cron/jobs.json (9.4 still loads it)", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-cron-left-"))
+    try {
+      const sessions = path.join(dir, "agents", "orch", "sessions")
+      fs.mkdirSync(sessions, { recursive: true })
+      fs.writeFileSync(path.join(sessions, "sessions.json"), "{}")
+      fs.mkdirSync(path.join(dir, "cron"), { recursive: true })
+      fs.writeFileSync(path.join(dir, "cron", "jobs.json"), "[]")
+      const spawnSyncImpl = vi.fn(() => {
+        migrateFs(dir, sessions)
+        return { status: 0, stderr: "", error: undefined }
+      })
+      const mod = await import("../../container/volume-migration.mjs")
+      const result = await mod.runRuntimeVolumeMigration({
+        dataDir: dir,
+        appDir: "/app",
+        spawnSyncImpl,
+      })
+      expect(result.ran).toBe(true)
+      expect(fs.existsSync(path.join(dir, "cron", "jobs.json"))).toBe(true)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
