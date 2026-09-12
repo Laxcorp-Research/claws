@@ -17,6 +17,8 @@
 // waiting. The success/401/malformed paths never schedule a retry timer, so
 // they resolve on microtasks alone.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 vi.mock('@/lib/logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), deployEvent: vi.fn() },
@@ -340,3 +342,16 @@ describe('removeLatestDeployment - hibernated-with-service is legal', () => {
     expect(body.query).not.toContain('deploymentRemove');
   });
 });
+
+describe("9.4 Railway trustedProxies boot patch", () => {
+  it("MUTATION: boot unpack still writes the CGNAT/private CIDRs 9.4 attribution needs", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/lib/openclaw/railway-client.ts"),
+      "utf8",
+    )
+    expect(src).toContain("100.64.0.0/10")
+    expect(src).toContain("10.0.0.0/8")
+    expect(src).toContain("172.16.0.0/12")
+    expect(src).toContain("c.gateway.trustedProxies=tp")
+  })
+})

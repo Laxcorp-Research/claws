@@ -645,12 +645,23 @@ function generateOpenClawConfig(
     allowedOrigins.push(`https://${workspace.containerHost}`);
   }
 
+  // 9.4 rejects Gateway-authenticated routes (chat websocket, `/`) when
+  // Railway's edge (observed 100.64.0.3) sends forwarding headers and the
+  // proxy is not in trustedProxies: 403 proxy_attribution_required.
+  // Attribution only - auth stays token. CIDR-aware per 9.4 zod-schema.
+  const trustedProxies = [
+    '100.64.0.0/10',
+    '10.0.0.0/8',
+    '172.16.0.0/12',
+  ]
+
   // Build the final config - ONLY use fields that exist in OpenClaw's Zod schema
   const config: JsonObject = {
     gateway: {
       mode: 'local',
       bind: 'lan',  // Required for Docker (0.0.0.0)
       port: 18789,
+      trustedProxies,
       controlUi: {
         allowedOrigins,
       },

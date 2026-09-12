@@ -328,6 +328,11 @@ describe('generateWorkspace', () => {
     expect(config.gateway.port).toBe(18789);
     expect(config.gateway.mode).toBe('local');
     expect(config.gateway.bind).toBe('lan');
+    expect(config.gateway.trustedProxies).toEqual([
+      '100.64.0.0/10',
+      '10.0.0.0/8',
+      '172.16.0.0/12',
+    ]);
 
     expect(config.agents).toBeDefined();
     expect(roster(config)).toHaveLength(3);
