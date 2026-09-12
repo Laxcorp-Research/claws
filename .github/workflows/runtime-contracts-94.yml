@@ -101,12 +101,12 @@ jobs:
           # 9.4 boot refuse is leftover sessions.json (storePath), not leftover jsonl archive.
           if [ -f "$vol/agents/test-commander/sessions/sessions.json" ]; then
             echo "::error::sessions.json still present after doctor --fix (9.4 would refuse boot)"
-            find "$vol" -type f | head -50
+            find "$vol" -type f 2>/dev/null | head -50 || true
             exit 1
           fi
           echo "volume files after migration:"
-          find "$vol" -type f | head -50
-          sqlite_hit="$(find "$vol" -name 'openclaw-agent.sqlite' -o -name '*.sqlite' | head -5 || true)"
+          find "$vol" -type f 2>/dev/null | head -50 || true
+          sqlite_hit="$(find "$vol" \( -name 'openclaw-agent.sqlite' -o -name '*.sqlite' \) 2>/dev/null | head -5 || true)"
           if [ -z "$sqlite_hit" ]; then
             echo "::warning::no sqlite file after doctor; sessions.json is gone so 9.4 will not refuse boot"
           else
