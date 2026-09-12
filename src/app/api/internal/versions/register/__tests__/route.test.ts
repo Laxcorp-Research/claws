@@ -27,6 +27,10 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("@/lib/openclaw/runtime-autoupdate", () => ({
+  notifyCandidateRegistered: vi.fn().mockResolvedValue({ bump: "date-tuple", alerted: false }),
+}));
+
 import { POST } from "@/app/api/internal/versions/register/route";
 
 const PIPELINE_SECRET = "test_pipeline_secret_pr1";

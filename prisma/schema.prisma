@@ -1303,6 +1303,15 @@ model OpenClawVersion {
   stableAt   DateTime?
   testedAt   DateTime?
 
+  // RUNTIME-9.4 PR-3: autoupdate lane. Orphan unpromoted candidates get
+  // supersededAt so they stop stale-pinging. soakGreenAt is the 24h soak
+  // signal. lastStalePingAt / lastSoakAlertAt prevent silent drops while
+  // still rate-limiting pings to once per day.
+  supersededAt     DateTime?
+  soakGreenAt      DateTime?
+  lastStalePingAt  DateTime?
+  lastSoakAlertAt  DateTime?
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }

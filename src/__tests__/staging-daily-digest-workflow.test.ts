@@ -15,10 +15,11 @@ describe("staging-daily-digest.yml (dedicated 06:00Z fire)", () => {
     expect(existsSync(DEDICATED), "staging-daily-digest.yml missing").toBe(true)
   })
 
-  it("schedules only 0 6 * * * and curls /api/cron/daily-digest", () => {
+  it("schedules only 0 6 * * * and curls /api/cron/daily-digest plus runtime-autoupdate", () => {
     const yml = readFileSync(DEDICATED, "utf8")
     expect(yml).toContain('cron: "0 6 * * *"')
     expect(yml).toContain("/api/cron/daily-digest")
+    expect(yml).toContain("/api/cron/runtime-autoupdate")
     expect(yml).toContain("STAGING_CRON_SECRET")
     expect(yml).toContain("staging.app.buildclaws.ai")
     expect(yml).toContain("group: staging-daily-digest")

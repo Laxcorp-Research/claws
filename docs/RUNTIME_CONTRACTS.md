@@ -207,39 +207,26 @@ That is historical evidence the overlay did **not** survive those soaks.
 
 ---
 
-## 5. RUNTIME-AUTOUPDATE lane (proposed, not built)
+## 5. RUNTIME-AUTOUPDATE lane (PR-3)
 
 OpenClaw `YYYY.M.D` is **not semver**. `9.3 → 9.4` can rewrite schema, session
 store, and hook policy. **Do not auto-promote date-tuple bumps.**
 
 | Class | Example | Promote rule |
 |---|---|---|
-| Overlay patch | `2026.5.22-18` → `2026.5.22-19` (same upstream tag) | Auto if R1–R15 green |
-| Date-tuple (treat as minor/major) | `2026.5.22` → `2026.9.4` | Founder ACK, same bar as migrations |
-| Upstream `-N` revision | `2026.7.1` → `2026.7.1-2` | Founder ACK unless ledger says schema-class unchanged **and** soak green |
+| Overlay patch | `2026.5.22-18` → `2026.5.22-19` (same upstream tag) | Auto after soak green (`POST /api/internal/runtime/soak-signal`) |
+| Date-tuple (treat as minor/major) | `2026.5.22` → `2026.9.4` | Founder ACK via `promote-openclaw-image.yml` (migration-class) |
+| Upstream `-N` revision | `2026.7.1` → `2026.7.1-2` | Founder ACK (same as date-tuple) |
 
-Pipeline (daily, not only Monday):
+Pipeline (daily):
 
-1. Detect newest stable GitHub release (already in `build-openclaw-image.yml`,
-   currently weekly Mon 06:00 UTC).
-2. Candidate build + register (`isCandidate`, no pin).
-3. Clone-tag contract job: parse generator output with that tag’s
-   `OpenClawSchema`; grep this ledger’s symbols in the clone; fail closed.
-4. Per-workspace soak override (PR-2): one Twitter-clone workspace, never
-   KEEP canary → exec smoke + one fixture fire.
-5. Staging pin of the **candidate row only if** an explicit soak flag is set
-   (still not production `isStable`). 24h soak: rig beats, **zero**
-   thinking-signature heals, healthz live, catch-up skip ledger empty.
-6. Owner alert with one-tap promote (`promote-openclaw-image`). Auto-promote
-   **overlay `-N` only**.
-
-**Size:** ~6–8 eng days / 3 PRs.
-
-| PR | Scope | Days |
-|---|---|---|
-| AUTO-1 | Clone-tag contract CI vs this ledger; daily detect | 2 |
-| AUTO-2 | Per-workspace candidate soak override + Twitter-clone fixture (not KEEP) | 2–3 |
-| AUTO-3 | 24h soak signals (beats, zero heals) + owner one-tap; auto-promote overlay `-N` only | 2–3 |
+1. Detect newest stable GitHub release (`build-openclaw-image.yml` cron `0 6 * * *`).
+2. Candidate build + register (`isCandidate`, no pin) → owner alert `runtime-candidate-ready`.
+3. Clone-tag contract job on PRs (`runtime-contracts-94.yml` for the 9.4 port).
+4. Per-workspace soak override (PR-2) on a Twitter clone, never KEEP.
+5. `soak-signal` `{ green: true }` after 24h zero-heal quotes. Overlay `-N` auto-pins `isStable`. Date-tuple sends founder ACK copy, does **not** pin.
+6. Stale candidates (`>14d` unsoaked, not superseded): daily `/api/cron/runtime-autoupdate` owner ping (`runtime-candidate-stale`). Never silence (24h cooldown, not a drop).
+7. Six orphan historical candidates (`2026.6.10`, `6.11`, `7.1`, `7.1-2`, `8.1`, `9.2`) marked `supersededAt` in the PR-3 migration. **Not** `2026.9.4`.
 
 Rollback: leave `isStable` on the previous row; soak override off; do not
 rewrite `:latest`. 9.4 `OPENCLAW_CONFIG_READONLY=1` is the right long-term
