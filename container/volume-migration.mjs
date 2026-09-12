@@ -1,6 +1,6 @@
 /**
  * 9.4 wake-path volume heal: run `openclaw doctor --fix` BEFORE gateway start
- * so leftover sessions.json / cron JSON convert to sqlite.
+ * so leftover sessions.json converts to sqlite.
  *
  * 9.4 `assertSessionStoreMigrationComplete` throws if a non-sqlite session
  * store (sessions.json) remains. Leftover jsonl after import is archive, not
@@ -53,8 +53,13 @@ function hasSessionsIndex(sessionsDir) {
 }
 
 /**
- * True when this data dir still has a 5.22-shaped session or cron store that
- * 9.4 will refuse (or that doctor --fix is responsible for converting).
+ * True when this data dir still has a 5.22-shaped session store that 9.4 will
+ * refuse (SessionStoreMigrationRequiredError).
+ *
+ * cron/jobs.json is not boot-blocking on 9.4: the runtime still loads that
+ * file. Treating leftover jobs.json as a refuse (when doctor converted
+ * sessions.json) crash-looped the Twitter soak on 2026.9.4-1
+ * (leftover=cron-json, gateway never started).
  */
 export function detectLegacyRuntimeVolume(dataDir) {
   const reasons = []
@@ -65,17 +70,6 @@ export function detectLegacyRuntimeVolume(dataDir) {
     if (hasSessionsIndex(sessionsDir)) {
       reasons.push(`sessions.json:${agentId}`)
     }
-  }
-
-  const cronJson = path.join(dataDir, "cron", "jobs.json")
-  const cronSqliteCandidates = [
-    path.join(dataDir, "cron", "cron.sqlite"),
-    path.join(dataDir, "cron", "jobs.sqlite"),
-    path.join(dataDir, "cron", "openclaw-cron.sqlite"),
-  ]
-  const cronSqlitePresent = cronSqliteCandidates.some((p) => fs.existsSync(p))
-  if (fs.existsSync(cronJson) && !cronSqlitePresent) {
-    reasons.push("cron-json")
   }
 
   return { legacy: reasons.length > 0, reasons }
