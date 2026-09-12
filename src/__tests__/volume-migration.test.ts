@@ -14,7 +14,7 @@ function migrateFs(dir: string, sessions: string) {
 }
 
 describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
-  it("detects sessions.json + jsonl-without-sqlite + cron JSON as legacy", async () => {
+  it("detects sessions.json + cron JSON as legacy (jsonl archive is not boot-blocking)", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-"))
     try {
       const sessions = path.join(dir, "agents", "orch", "sessions")
@@ -31,8 +31,25 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
       const detected = mod.detectLegacyRuntimeVolume(dir)
       expect(detected.legacy).toBe(true)
       expect(detected.reasons).toEqual(
-        expect.arrayContaining(["sessions.json:orch", "jsonl-without-sqlite:orch", "cron-json"]),
+        expect.arrayContaining(["sessions.json:orch", "cron-json"]),
       )
+      expect(detected.reasons).not.toContain("jsonl-without-sqlite:orch")
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("does not treat leftover jsonl as legacy once sessions.json is gone", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-jsonl-"))
+    try {
+      const sessions = path.join(dir, "agents", "orch", "sessions")
+      fs.mkdirSync(sessions, { recursive: true })
+      fs.writeFileSync(
+        path.join(sessions, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"),
+        "{}\n",
+      )
+      const mod = await import("../../container/volume-migration.mjs")
+      expect(mod.detectLegacyRuntimeVolume(dir).legacy).toBe(false)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
@@ -199,6 +216,31 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
     }
   })
 
+  it("succeeds when doctor removes sessions.json even if jsonl remains and sqlite is absent", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-archive-"))
+    try {
+      const sessions = path.join(dir, "agents", "orch", "sessions")
+      fs.mkdirSync(sessions, { recursive: true })
+      fs.writeFileSync(path.join(sessions, "sessions.json"), "{}")
+      fs.writeFileSync(
+        path.join(sessions, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"),
+        "{}\n",
+      )
+      const spawnSyncImpl = vi.fn(() => {
+        fs.unlinkSync(path.join(sessions, "sessions.json"))
+        return { status: 0, stderr: "", error: undefined }
+      })
+      const mod = await import("../../container/volume-migration.mjs")
+      const result = await mod.runRuntimeVolumeMigration({
+        dataDir: dir,
+        appDir: "/app",
+        spawnSyncImpl,
+      })
+      expect(result.ran).toBe(true)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
   it("MUTATION: process-manager must call runRuntimeVolumeMigration before spawnGateway", () => {
     const src = readFileSync(
       path.join(process.cwd(), "container/process-manager.mjs"),

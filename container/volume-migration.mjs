@@ -1,13 +1,14 @@
 /**
  * 9.4 wake-path volume heal: run `openclaw doctor --fix` BEFORE gateway start
- * so leftover sessions.json / jsonl stores and cron JSON convert to sqlite.
+ * so leftover sessions.json / cron JSON convert to sqlite.
  *
  * 9.4 `assertSessionStoreMigrationComplete` throws if a non-sqlite session
- * store remains. Doctor must finish (or we refuse boot). Generator-owned
- * Generator emit sets OPENCLAW_CONFIG_READONLY=1 so the gateway/doctor cannot
- * rewrite openclaw.json at runtime. 9.4 doctor --fix still aborts the whole
- * command under that env (observed CI: exit 1 before session import). Wake
- * unsets the flag for this spawn only, then restores generator-owned
+ * store (sessions.json) remains. Leftover jsonl after import is archive, not
+ * a boot refuse.
+ *
+ * Generator emit sets OPENCLAW_CONFIG_READONLY=1 so the gateway cannot rewrite
+ * openclaw.json. 9.4 doctor --fix still aborts the whole command under that
+ * env. Wake unsets the flag for this spawn only, then restores generator-owned
  * openclaw.json if doctor mutated it.
  *
  * Ledger: eventKind=runtime_volume_migration (registry: runtime-volume-migration).
@@ -41,21 +42,14 @@ function listAgentIds(dataDir) {
   }
 }
 
-function hasJsonlOrSessionsIndex(sessionsDir) {
-  let entries
+function hasSessionsIndex(sessionsDir) {
   try {
-    entries = fs.readdirSync(sessionsDir, { withFileTypes: true })
+    return fs.readdirSync(sessionsDir, { withFileTypes: true }).some(
+      (ent) => ent.isFile() && ent.name === "sessions.json",
+    )
   } catch {
-    return { sessionsJson: false, jsonl: false }
+    return false
   }
-  let sessionsJson = false
-  let jsonl = false
-  for (const ent of entries) {
-    if (!ent.isFile()) continue
-    if (ent.name === "sessions.json") sessionsJson = true
-    if (ent.name.endsWith(".jsonl") && !ent.name.includes(".jsonl.")) jsonl = true
-  }
-  return { sessionsJson, jsonl }
 }
 
 /**
@@ -68,14 +62,8 @@ export function detectLegacyRuntimeVolume(dataDir) {
 
   for (const agentId of listAgentIds(dataDir)) {
     const sessionsDir = path.join(dataDir, "agents", agentId, "sessions")
-    const sqlite = agentSqlitePath(dataDir, agentId)
-    const sqlitePresent = fs.existsSync(sqlite)
-    const { sessionsJson, jsonl } = hasJsonlOrSessionsIndex(sessionsDir)
-    if (sessionsJson) {
+    if (hasSessionsIndex(sessionsDir)) {
       reasons.push(`sessions.json:${agentId}`)
-    }
-    if (jsonl && !sqlitePresent) {
-      reasons.push(`jsonl-without-sqlite:${agentId}`)
     }
   }
 
