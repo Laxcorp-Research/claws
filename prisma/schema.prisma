@@ -311,6 +311,13 @@ model Workspace {
   // when CLAWS_ENV=production even if true. Default false.
   httpFixtureMode             Boolean        @default(false)
 
+  // RUNTIME-9.4 PR-2: per-workspace candidate image soak. Deployer may read
+  // OpenClawVersion.isLatest (isCandidate register) instead of isStable.
+  // Honored only for flagged staging clones; KEEP canary and production
+  // CLAWS_ENV always stay on isStable. Default false. Not a generator input
+  // (fingerprint-excluded).
+  candidateRuntimeSoak        Boolean        @default(false)
+
   // PR-B: opt out of critical-alert pushes (Telegram, fallback email) for
   // container-unhealthy / cron-job-failed / heartbeat-missed / state-sync-stale.
   // Default false → alerts ON by default. See src/lib/alerts/critical-alert-push.ts.

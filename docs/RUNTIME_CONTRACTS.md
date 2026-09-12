@@ -13,7 +13,7 @@ pin evidence only.
 | Upstream tag | `v2026.5.22` (`buildSourceTag`) |
 | Overlay sources | `docker/Dockerfile`, `container/*`, emit from `src/lib/openclaw/generator.ts` |
 | Newest upstream surveyed | `v2026.9.4` (published 2026-09-11, `openclaw` package `2026.9.4`) |
-| Phase A candidate (2026-09-12) | Image `ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4` built + registered `isStable=false` / `isLatest=true`. Staging pin **unchanged** (`2026.5.22-18`). Live Twitter fire **not run** (no per-workspace candidate deploy; KEEP canary left hibernated). Overlay vs 9.4: **breaks** — see §4. |
+| Phase A candidate (2026-09-12) | Image `ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4` built + registered `isStable=false` / `isLatest=true`. Staging pin **unchanged** (`2026.5.22-18`). Per-workspace soak: `Workspace.candidateRuntimeSoak` (PR-2). KEEP canary stays hibernated on 5.22-18. |
 | Companion | [OPENCLAW_GATEWAY_PROTOCOL.md](./OPENCLAW_GATEWAY_PROTOCOL.md), [COMPOSIO_RUNTIME_CONTRACT.md](./COMPOSIO_RUNTIME_CONTRACT.md) |
 
 **Coupling model:** the overlay does **not** `import()` hashed `dist/*.js` at
@@ -134,8 +134,8 @@ promote.
 | # | Contract | How we lock it today | 9.4 status |
 |---|---|---|---|
 | R1 | Build does not move `:candidate` or `:latest` | `src/__tests__/build-openclaw-image-workflow.test.ts` (`STOP_MOVING_CANDIDATE_ASSERT`) | still required |
-| R2 | Register is XOR `isStable` / `isCandidate`; candidate → `isLatest` only | `src/app/api/internal/versions/register/__tests__/route.test.ts` | `resolveDeployImage()` still reads **`isStable` only** — candidate register does not pin staging (PR-2) |
-| R3 | Force-update refuses non-stable | `src/__tests__/api/admin/versions.test.ts` | **blocks** per-workspace 9.4 soak without PR-2 override |
+| R2 | Register is XOR `isStable` / `isCandidate`; candidate → `isLatest` only | `src/app/api/internal/versions/register/__tests__/route.test.ts` | `resolveDeployImage()` reads **`isLatest` only** when `Workspace.candidateRuntimeSoak` is true **and** `mayDeployCandidateImage` passes (staging clone, never KEEP, never production). Unflagged / KEEP / prod still `isStable` only. |
+| R3 | Force-update refuses non-stable | `src/__tests__/api/admin/versions.test.ts` | **blocks** fleet pin to 9.4. Per-workspace soak is the admin `candidate-soak` flag + next `deployToCloud`, not force-update. |
 | R4 | `openclaw.json` emission (`agents.entries`, plugins, deny, channels) | `generator.test.ts` + `runtime-contracts-r15.test.ts` + clone-tag | **ported** — no `list` / `default: true`; `OPENCLAW_CONFIG_READONLY=1` |
 | R5 | Heartbeat croner jobs + `session:agent:<slug>:main` | heartbeat-schedule + generator cron tests + clone-tag `croner@10.0.1` | overlay lock + clone-tag |
 | R6 | Activity reporter: `{ outcome: "pass" }`, no 100ms on `before_agent_run` | `claws-activity-reporter.test.ts` | **ported** — fail-closed gate is explicitly non-blocking |
@@ -144,10 +144,10 @@ promote.
 | R9 | State-sync sqlite bundle; no `sessions.json` rebuild over sqlite | `state-sync.test.ts` + `rebuild-sessions-index.test.ts` | **ported** |
 | R10 | Skill env sanitizer vs vendored OpenClaw 9.4 | `sanitizer-contract.test.ts` | **re-vendored** `v2026.9.4` (`env-overrides.ts` new path) |
 | R11 | Beat evidence (HEARTBEAT / poll-marker TASK_START) | `beat-evidence-contract.test.ts` | overlay_boot must not clear sticky |
-| R12 | Live exec write `shared/deliverables/smoke.md` | `.github/workflows/runtime-contracts-94.yml` exec-smoke job (image); KEEP canary never used | clone soak still PR-2 |
-| R13 | Live mission/cron enqueue + extract + approve | same receipt | needs candidate soak workspace (PR-2) |
-| R14 | Hibernate hold + flush | sqlite in state-sync bundle; live soak PR-2 | jsonl-only flush closed on overlay; live HWD still PR-2 |
-| R15 | Gateway healthz `{"ok":true,"status":"live"}` | process-manager + volume migration before gateway | first signal after candidate boot (PR-2 soak) |
+| R12 | Live exec write `shared/deliverables/smoke.md` | `.github/workflows/runtime-contracts-94.yml` exec-smoke job (image); KEEP canary never used | clone soak: flag `candidateRuntimeSoak` on a **clone**, never `cmr3fo19r000404jlze8o7dm8` |
+| R13 | Live mission/cron enqueue + extract + approve | same receipt | candidate soak workspace (interview-free + `httpFixtureMode`) |
+| R14 | Hibernate hold + flush | sqlite in state-sync bundle; live soak quotes HWD on the clone | jsonl-only flush closed on overlay; live HWD quotes on flagged clone |
+| R15 | Gateway healthz `{"ok":true,"status":"live"}` | process-manager + volume migration before gateway | first signal after candidate boot on the flagged clone |
 
 KEEP Twitter/X Growth Machine (5) `cmr3fo19r000404jlze8o7dm8` is the archive
 canary. **Never** delete, wake-onto-candidate, or use as cleanup. Fixture fire
@@ -189,16 +189,21 @@ That is historical evidence the overlay did **not** survive those soaks.
    move `:candidate` / `:latest` (R1).
 2. Do **not** run `promote-openclaw-image`. Do **not** `force-update` (requires
    `isStable`).
-3. Overlay port (this PR): generator emits keyed `agents.entries` +
+3. Overlay port (PR-1): generator emits keyed `agents.entries` +
    `ownership: explicit` + `systemAgent`; sqlite heal/state-sync; wake-path
    `openclaw doctor --fix --non-interactive` before gateway; sanitizer
    re-vendored from `v2026.9.4`; `OPENCLAW_CONFIG_READONLY=1`. Clone-tag CI
    walks R1–R15 vs unsuffixed `v2026.9.4`. **Staging pin is still
    `2026.5.22-18`.**
-4. Staging live fire still needs a **per-workspace candidate image override**
-   (PR-2). `resolveDeployImage()` still returns `isStable` only. Waking the
-   KEEP Twitter canary would deploy **5.22-18**, not the candidate — and must
-   not be used as the soak rig.
+4. Staging live fire: admin `POST /api/admin/workspaces/:id/candidate-soak`
+   `{ enabled: true }` on a **Twitter clone** (never KEEP
+   `cmr3fo19r000404jlze8o7dm8`). Next `deployToCloud` / HWD wake pulls
+   `OpenClawVersion.isLatest` (currently `2026.9.4`). Dashboard PATCH cannot
+   set the flag. Production `CLAWS_ENV` cannot honor it. Interview stamp +
+   `httpFixtureMode` default on so the fire is interview-free + fixture.
+   Quote: fixture fire, three window beats, decision push, nap/wake, zero
+   `thinking-signature` / volume-migration heals over 24h. **Staging pin is
+   still `2026.5.22-18` until founder ACK promote.**
 
 ---
 
@@ -220,8 +225,8 @@ Pipeline (daily, not only Monday):
 2. Candidate build + register (`isCandidate`, no pin).
 3. Clone-tag contract job: parse generator output with that tag’s
    `OpenClawSchema`; grep this ledger’s symbols in the clone; fail closed.
-4. **New:** per-workspace soak override (one Twitter-clone workspace, never
-   KEEP canary) → exec smoke + one fixture fire.
+4. Per-workspace soak override (PR-2): one Twitter-clone workspace, never
+   KEEP canary → exec smoke + one fixture fire.
 5. Staging pin of the **candidate row only if** an explicit soak flag is set
    (still not production `isStable`). 24h soak: rig beats, **zero**
    thinking-signature heals, healthz live, catch-up skip ledger empty.
