@@ -61,6 +61,11 @@ vi.mock('@/lib/composio', () => ({
 
 import { generateWorkspace } from '@/lib/openclaw/generator';
 
+function roster(config: { agents?: { list?: unknown; entries?: Record<string, Record<string, unknown>> } }) {
+  expect(config.agents).not.toHaveProperty('list');
+  return Object.entries(config.agents?.entries ?? {}).map(([id, e]) => ({ id, ...e }));
+}
+
 const PLATFORM_KEY = 'ak_test_platform_key';
 const MCP_URL = 'https://backend.composio.dev/tool_router/trs_test123/mcp';
 
@@ -311,9 +316,9 @@ describe('(d) per-agent token-tax scoping', () => {
     const result = await generateWorkspace('ws-mcp-1');
     const config = JSON.parse(result['openclaw.json']);
 
-    const orch = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Commander');
-    const worker = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Analyst');
-    const critic = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Reviewer');
+    const orch = roster(config).find((a: Record<string, unknown>) => a.name === 'Commander');
+    const worker = roster(config).find((a: Record<string, unknown>) => a.name === 'Analyst');
+    const critic = roster(config).find((a: Record<string, unknown>) => a.name === 'Reviewer');
 
     expect(worker.tools.deny).toContain('composio__*');
     expect(critic.tools.deny).toContain('composio__*');
@@ -327,7 +332,7 @@ describe('(d) per-agent token-tax scoping', () => {
     const result = await generateWorkspace('ws-mcp-1');
     const config = JSON.parse(result['openclaw.json']);
 
-    for (const agent of config.agents.list) {
+    for (const agent of roster(config)) {
       expect(agent.tools.deny).toEqual(expect.arrayContaining(['message', 'exec']));
       expect(agent.tools.deny).not.toContain('composio__*');
     }

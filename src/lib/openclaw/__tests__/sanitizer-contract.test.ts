@@ -25,7 +25,12 @@ vi.mock("@/lib/crypto", () => ({
 }))
 
 import { generateWorkspace } from "@/lib/openclaw/generator"
-import { sanitizeSkillEnvOverrides } from "@/test/fixtures/openclaw-sanitizer/skill-env-sanitizer"
+import {
+  isAlwaysBlockedSkillEnvKey,
+  sanitizeSkillEnvOverrides,
+} from "@/test/fixtures/openclaw-sanitizer/skill-env-sanitizer"
+import { isDangerousHostEnvOverrideVarName } from "@/test/fixtures/openclaw-sanitizer/host-env-security"
+import { sanitizeEnvVars } from "@/test/fixtures/openclaw-sanitizer/sanitize-env-vars"
 import { ALL_TOOLS, type ToolDefinition } from "@/data/tool-catalog"
 
 // ─── Helpers ────────────────────────────────────────────
@@ -352,6 +357,10 @@ describe("PR #3a sanitizer contract - catalog-wide integrity check", () => {
       for (const f of tool.credentialFields) {
         const upper = f.envVar.toUpperCase()
         expect(BLANKET_BLOCKED_NAMES.has(upper)).toBe(false)
+        expect(
+          isAlwaysBlockedSkillEnvKey(f.envVar),
+          `Tool ${tool.slug} declared envVar '${f.envVar}' which 9.4 always-blocks even on allowlist`,
+        ).toBe(false)
         for (const prefix of BLANKET_BLOCKED_PREFIXES) {
           expect(
             upper.startsWith(prefix),
@@ -360,5 +369,12 @@ describe("PR #3a sanitizer contract - catalog-wide integrity check", () => {
         }
       }
     }
+  })
+
+  it("9.4 re-vendor: _ADMIN_KEY pattern + host override names", () => {
+    expect(sanitizeEnvVars({ FOO_ADMIN_KEY: "x" }).blocked).toContain("FOO_ADMIN_KEY")
+    expect(isDangerousHostEnvOverrideVarName("GITHUB_TOKEN")).toBe(true)
+    expect(isDangerousHostEnvOverrideVarName("HOME")).toBe(true)
+    expect(isAlwaysBlockedSkillEnvKey("NODE_OPTIONS")).toBe(true)
   })
 })

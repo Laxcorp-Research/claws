@@ -7,7 +7,7 @@
 // Key findings incorporated:
 //   1. Each agent gets its OWN flat workspace dir (not nested under a parent)
 //   2. AGENTS.md = per-agent operating instructions (NOT multi-agent definitions)
-//   3. Multi-agent defined via agents.list[] in openclaw.json
+//   3. Multi-agent defined via agents.entries (keyed ids) in openclaw.json
 //   4. Orchestrator→Worker communication via sessions_spawn (NOT sessions_send)
 //   5. No reportsTo - hierarchy is depth-based via spawn depth
 //   6. No CONNECTED_TOOLS.md - tool info goes in TOOLS.md + skill SKILL.md
@@ -222,16 +222,25 @@ function resolveModel(dbModel: string): string {
 // Agent ID Utils
 // ---------------------------------------------------------------------------
 
+/** 9.4 AgentsSchema.entries key: /^[a-z0-9_][a-z0-9_-]{0,63}$/i */
+const OPENCLAW_AGENT_ID_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/i;
+
 /**
  * Converts agent name to a valid OpenClaw agent ID.
- * OpenClaw normalizes agent IDs to lowercase alphanumeric + hyphens.
+ * Must already equal 9.4 `normalizeAgentId` (lowercase alphanumeric + hyphens,
+ * ≤64) so a leftover `agents.list` migration would not skip us — we emit
+ * keyed `agents.entries` directly.
  */
 export function toAgentId(name: string): string {
-  return name
+  const id = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .substring(0, 64);
+  if (!OPENCLAW_AGENT_ID_RE.test(id)) {
+    throw new Error(`toAgentId produced an id that fails the 9.4 entries-key contract: ${JSON.stringify(id)} (from ${JSON.stringify(name)})`);
+  }
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -389,9 +398,8 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // `orchestrator.agentSlug` directly - both resolve to the same value
   // for current rows (slug stored at create-time by route.ts via the
   // same slugifier) but `toAgentId(name)` is the same source-of-truth
-  // the rest of this generator uses (see agentsList build below at
-  // generator.ts:252), so any future drift between the stored slug and
-  // the slug emitted into openclaw.json's agents.list is impossible.
+  // the rest of this generator uses (see agents.entries build below), so any future drift between the stored slug and
+  // the slug emitted into openclaw.json's agents.entries keys is impossible.
   const orchestratorAgentSlug = toAgentId(orchestrator.name);
   const heartbeat = resolveHeartbeatSchedule(
     orchestrator.heartbeatFrequency,
@@ -513,7 +521,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 // THIS FILE IS STRICTLY VALIDATED by OpenClaw's Zod schema.
 // Rules:
 //   - .strict() objects: unknown keys cause validation failure
-//   - agents.list[].id is the ONLY required field per agent
+//   - agents.entries keys are the agent ids (no inner `id`, no `default: true`)
 //   - Empty {} is valid (but useless)
 // ---------------------------------------------------------------------------
 
@@ -550,13 +558,14 @@ function generateOpenClawConfig(
   ).map((identity) => identity.slug);
   const attachedSkillSlugs = collectAttachedSkillSlugs(workspace);
 
-  // Build agents.list - one entry per agent in the Claw
-  const agentsList = runtimeAgents.map(agent => {
+  // Build agents.entries — keyed roster for OpenClaw 9.4 (strict, no `list`).
+  const orchestratorAgentId = toAgentId(orchestrator.name);
+  const agentsEntries: Record<string, JsonObject> = {};
+  for (const agent of runtimeAgents) {
     const agentId = toAgentId(agent.name);
     const isOrchestrator = agent.role === 'ORCHESTRATOR';
 
     const entry: JsonObject = {
-      id: agentId,
       name: agent.name,
       // Each agent gets its own workspace directory
       // OpenClaw resolves these relative to OPENCLAW_STATE_DIR
@@ -564,7 +573,7 @@ function generateOpenClawConfig(
       model: resolveModel(agent.model),
     };
 
-    // Per-agent thinking effort → agents.list[].thinkingDefault (runtime-native
+    // Per-agent thinking effort → agents.entries[].thinkingDefault (runtime-native
     // key, levels off|minimal|low|medium|high). null/invalid → omit so the
     // runtime default applies. Models without reasoning ignore it at run time.
     if (isThinkingLevel(agent.thinkingDefault)) {
@@ -572,12 +581,10 @@ function generateOpenClawConfig(
     }
 
     if (isOrchestrator) {
-      // `default: true` is THE routing mechanism: OpenClaw's route resolution
-      // falls back to the default agent for any inbound traffic without an
-      // exact-channel binding, so all channel/webchat messages land on the
-      // Orchestrator. (A channel:'*' binding does NOT do this - see the
-      // comment at the config assembly below and #117.)
-      entry.default = true;
+      // Routing: 9.4 `ownership: "explicit"` forbids `default: true`.
+      // Dashboard / unmatched-channel fallback is
+      // `agents.defaults.systemAgent.agentId` (see config assembly).
+      // A channel:'*' binding is still a no-op (#117).
       // Allow orchestrator to spawn workers and critic as subagents.
       // Do NOT set subagents.model - that latent default overrides the target
       // worker's list model when sessions_spawn omits agentId (self-target →
@@ -618,8 +625,8 @@ function generateOpenClawConfig(
       attachedSkillSlugs,
     );
 
-    return entry;
-  });
+    agentsEntries[agentId] = entry;
+  }
 
   // Heartbeat config - only the orchestrator runs heartbeats.
   // All modes emit cron/jobs.json (shared croner path). agents.defaults.heartbeat
@@ -649,6 +656,7 @@ function generateOpenClawConfig(
       },
     },
     agents: {
+      ownership: 'explicit',
       defaults: {
         model: resolveModel(orchestrator.model),
         heartbeat: heartbeatInterval,
@@ -657,18 +665,20 @@ function generateOpenClawConfig(
           maxChildrenPerAgent: Math.max(5, activeWorkers.length + 1),
           maxSpawnDepth: 2,
         },
+        // 9.4 routing: explicit ownership cannot combine with default:true.
+        // systemAgent.agentId is the unmatched-channel / dashboard fallback.
+        systemAgent: { agentId: orchestratorAgentId },
       },
-      list: agentsList,
+      entries: agentsEntries,
     },
     // NO `bindings` key - deliberately (#117). We previously emitted
     // `bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]`
     // believing it routed all channel traffic to the Orchestrator. It was a
     // no-op: OpenClaw's binding index is an exact-string map keyed by channel
-    // name (upstream src/routing/resolve-route.ts @ v2026.5.22), so
+    // name (upstream src/routing/resolve-route.ts @ v2026.5.22 / 9.4), so
     // channel:'*' only matches a channel literally named "*". Routing to the
-    // Orchestrator actually works because it carries `default: true` in
-    // agents.list (route resolution falls back to the default agent). See
-    // docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 and §8 risk 2.
+    // Orchestrator is `agents.defaults.systemAgent.agentId` under
+    // `ownership: "explicit"`. See docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 / §8 risk 2.
   };
 
   // Add channels if any are configured
@@ -1401,6 +1411,7 @@ function generateEnvFile(
   // Timezone - container process TZ is always UTC (matches buildRailwayEnvVars).
   // Workspace timezone remains for cron schedule.tz + USER.md context only.
   lines.push('TZ=UTC');
+  lines.push('OPENCLAW_CONFIG_READONLY=1');
 
   if (workspace.clawTemplate?.slug === QUANT_TEMPLATE_SLUG) {
     lines.push('')
@@ -2300,7 +2311,7 @@ Always pass \`agentId\` on \`sessions_spawn\`; never pass a model param (models 
 function generatePausedWorkerToolsSection(agents: AgentWithRelations[]): string {
   const pausedWorkers = agents.filter((agent) => agent.role === 'WORKER' && agent.isPaused);
   if (pausedWorkers.length === 0) return '';
-  // Runtime 2026.5.22-6 has no agents.list disable flag. This instruction-level
+  // Runtime 9.4 has no agents.entries disable flag. This instruction-level
   // guard is therefore honest fallback enforcement for delegation. Scheduled
   // worker cron emission is guarded separately if that path is ever introduced.
   return `

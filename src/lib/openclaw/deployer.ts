@@ -1129,6 +1129,8 @@ export function buildRailwayEnvVars(
     TZ: 'UTC',
     NODE_ENV: 'production',
     PORT: '18789',
+    // 9.4: doctor must not rewrite generator-owned openclaw.json.
+    OPENCLAW_CONFIG_READONLY: '1',
   };
 
   if (Object.keys(seedFiles).length > 0) {

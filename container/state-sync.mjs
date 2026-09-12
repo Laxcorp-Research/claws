@@ -119,6 +119,7 @@ export const ORPHAN_RETAIN_MAX_BYTES = 5 * 1024 * 1024
 export function shouldIncludeSessionArtifact(fileName, liveIds, opts = {}) {
   const retainOrphans = opts.retainOrphans ?? retainOrphanSessionsEnabled()
   if (fileName === "sessions.json") return true
+  if (fileName.endsWith(".sqlite")) return true
   // Indexed agents: always drop reset leftovers.
   if (liveIds !== null && fileName.includes(".jsonl.reset.")) return false
   // No index → ship everything (fail-open).
@@ -155,6 +156,11 @@ export function isMainSessionKey(sessionKey) {
  * @returns {{ rebuilt: boolean, agentId?: string, mainUuid?: string, count?: number, reason: string }}
  */
 export function rebuildSessionsIndexFromDisk(sessionsDir, agentId) {
+  const sqlitePath = path.join(sessionsDir, "..", "agent", "openclaw-agent.sqlite")
+  if (fs.existsSync(sqlitePath)) {
+    return { rebuilt: false, reason: "sqlite-store-present", agentId }
+  }
+
   const indexPath = path.join(sessionsDir, "sessions.json")
   let existingKeys = 0
   if (fs.existsSync(indexPath)) {
