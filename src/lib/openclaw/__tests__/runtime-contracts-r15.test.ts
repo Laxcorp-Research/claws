@@ -132,13 +132,16 @@ describe("RUNTIME_CONTRACTS R1–R15 overlay locks (9.4)", () => {
     expect(slice).not.toContain('metadata?.eventKind === "overlay_boot"')
   })
 
-  it("R12–R14: KEEP canary id is documented; volume migration is a non-soak heal", () => {
+  it("R12–R14: KEEP canary id is documented; volume migration is a non-soak heal; candidate soak never KEEP", () => {
     const contracts = src("docs/RUNTIME_CONTRACTS.md")
     expect(contracts).toContain("cmr3fo19r000404jlze8o7dm8")
     const registry = src("container/heal-registry.mjs")
     expect(registry).toContain("runtime_volume_migration")
     expect(registry).toContain("runtime-volume-migration")
     expect(registry).toMatch(/runtime_volume_migration[\s\S]*soakCounts:\s*false/)
+    const soak = src("src/lib/openclaw/candidate-soak.ts")
+    expect(soak).toContain("cmr3fo19r000404jlze8o7dm8")
+    expect(src("src/lib/openclaw/deployer.ts")).toContain("mayDeployCandidateImage")
   })
 
   it("R15: gateway spawn + healthz path still present", () => {

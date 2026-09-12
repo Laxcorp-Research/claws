@@ -396,10 +396,24 @@ describe('buildWorkspaceConfigFingerprint', () => {
     expect(after.areas).toEqual(before.areas);
   });
 
-  it('MUTATION: alwaysOn must not appear in any fingerprint area projection', async () => {
+  it("MUTATION: alwaysOn must not appear in any fingerprint area projection", async () => {
     const fingerprint = await fingerprintFor(baseWorkspace({ alwaysOn: true }));
     const serializedAreas = JSON.stringify(fingerprint.areas);
     expect(serializedAreas).not.toContain('alwaysOn');
+  });
+
+  it("changing only candidateRuntimeSoak does not change the hash (fingerprint exclusion, RUNTIME-9.4 PR-2)", async () => {
+    const before = await fingerprintFor(baseWorkspace({ candidateRuntimeSoak: false }));
+    const after = await fingerprintFor(baseWorkspace({ candidateRuntimeSoak: true }));
+
+    expect(after.hash).toBe(before.hash);
+    expect(after.areas).toEqual(before.areas);
+  });
+
+  it("MUTATION: candidateRuntimeSoak must not appear in any fingerprint area projection", async () => {
+    const fingerprint = await fingerprintFor(baseWorkspace({ candidateRuntimeSoak: true }));
+    const serializedAreas = JSON.stringify(fingerprint.areas);
+    expect(serializedAreas).not.toContain("candidateRuntimeSoak");
   });
 
   it('changing only connection health metadata does not change the hash', async () => {

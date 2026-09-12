@@ -170,6 +170,117 @@ describe("resolveDeployImage (unit)", () => {
   });
 });
 
+const CANDIDATE_DOCKER_IMAGE = "ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4"
+const CANDIDATE_ROW = {
+  id: "ver-candidate",
+  version: "2026.9.4",
+  dockerImage: CANDIDATE_DOCKER_IMAGE,
+  imageDigest: "sha256:" + "b".repeat(64),
+  buildSourceTag: "v2026.9.4",
+  isStable: false,
+  isLatest: true,
+  stableAt: null,
+  releasedAt: new Date("2026-09-11T00:00:00Z"),
+}
+
+describe("resolveDeployImage candidate soak (RUNTIME-9.4 PR-2)", () => {
+  let prevClaws: string | undefined
+  let prevImage: string | undefined
+
+  beforeEach(() => {
+    prevClaws = process.env.CLAWS_ENV
+    prevImage = process.env.OPENCLAW_DOCKER_IMAGE
+    process.env.CLAWS_ENV = "staging"
+  })
+
+  afterEach(() => {
+    if (prevClaws === undefined) delete process.env.CLAWS_ENV
+    else process.env.CLAWS_ENV = prevClaws
+    if (prevImage === undefined) delete process.env.OPENCLAW_DOCKER_IMAGE
+    else process.env.OPENCLAW_DOCKER_IMAGE = prevImage
+  })
+
+  it("flagged staging clone uses isLatest dockerImage, not isStable", async () => {
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where?: { isLatest?: boolean; isStable?: boolean } }) => {
+        if (args.where?.isLatest === true) return CANDIDATE_ROW
+        if (args.where?.isStable === true) return STABLE_ROW
+        return null
+      },
+    )
+
+    const image = await resolveDeployImage({
+      workspaceId: "ws-clone",
+      candidateSoak: true,
+    })
+    expect(image).toBe(CANDIDATE_DOCKER_IMAGE)
+    const firstCall = (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mock
+      .calls[0][0]
+    expect(firstCall.where).toEqual({ isLatest: true })
+  })
+
+  it("KEEP canary stays on isStable even when flagged on staging", async () => {
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
+      STABLE_ROW,
+    )
+    const image = await resolveDeployImage({
+      workspaceId: "cmr3fo19r000404jlze8o7dm8",
+      candidateSoak: true,
+    })
+    expect(image).toBe(STABLE_DOCKER_IMAGE)
+    const findFirstArgs = (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mock
+      .calls[0][0]
+    expect(findFirstArgs.where).toEqual({ isStable: true })
+    expect(
+      (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mock.calls,
+    ).toHaveLength(1)
+  })
+
+  it("production CLAWS_ENV stays on isStable even when flagged", async () => {
+    process.env.CLAWS_ENV = "production"
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
+      STABLE_ROW,
+    )
+    const image = await resolveDeployImage({
+      workspaceId: "ws-clone",
+      candidateSoak: true,
+    })
+    expect(image).toBe(STABLE_DOCKER_IMAGE)
+    const findFirstArgs = (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mock
+      .calls[0][0]
+    expect(findFirstArgs.where).toEqual({ isStable: true })
+  })
+
+  it("unflagged staging clone stays on isStable", async () => {
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
+      STABLE_ROW,
+    )
+    const image = await resolveDeployImage({
+      workspaceId: "ws-clone",
+      candidateSoak: false,
+    })
+    expect(image).toBe(STABLE_DOCKER_IMAGE)
+    const findFirstArgs = (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mock
+      .calls[0][0]
+    expect(findFirstArgs.where).toEqual({ isStable: true })
+  })
+
+  it("falls back to isStable when soak is flagged but no isLatest row exists", async () => {
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where?: { isLatest?: boolean; isStable?: boolean } }) => {
+        if (args.where?.isLatest === true) return null
+        if (args.where?.isStable === true) return STABLE_ROW
+        return null
+      },
+    )
+    const image = await resolveDeployImage({
+      workspaceId: "ws-clone",
+      candidateSoak: true,
+    })
+    expect(image).toBe(STABLE_DOCKER_IMAGE)
+  })
+})
+
 describe("deployToCloud writes Deployment.containerImage and threads image to Railway", () => {
   beforeEach(() => {
     mockCreateService.mockReset();
@@ -312,5 +423,38 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     } finally {
       delete process.env.OPENCLAW_DOCKER_IMAGE;
     }
+  });
+
+  it("flagged staging clone persists isLatest image on Deployment.containerImage", async () => {
+    const prevClaws = process.env.CLAWS_ENV;
+    process.env.CLAWS_ENV = "staging";
+    (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
+      workspaceStub({ containerId: null, candidateRuntimeSoak: true }),
+    );
+    (prismaMock.user.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-1",
+      trialUsed: false,
+      apiKeys: [],
+    });
+    (prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where?: { isLatest?: boolean; isStable?: boolean } }) => {
+        if (args.where?.isLatest === true) return CANDIDATE_ROW;
+        if (args.where?.isStable === true) return STABLE_ROW;
+        return null;
+      },
+    );
+    mockCreateService.mockResolvedValue({ serviceId: "svc-new", domain: "svc-new.up.railway.app" });
+    mockGetServiceStatus.mockResolvedValue({ status: "SUCCESS", deploymentId: "dep-rw-1", healthy: true });
+
+    try {
+      await deployToCloud("ws-1");
+    } finally {
+      if (prevClaws === undefined) delete process.env.CLAWS_ENV;
+      else process.env.CLAWS_ENV = prevClaws;
+    }
+
+    const depCreateArgs = (prismaMock.deployment.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(depCreateArgs.data.containerImage).toBe(CANDIDATE_DOCKER_IMAGE);
+    expect(mockCreateService.mock.calls[0][0].image).toBe(CANDIDATE_DOCKER_IMAGE);
   });
 });
