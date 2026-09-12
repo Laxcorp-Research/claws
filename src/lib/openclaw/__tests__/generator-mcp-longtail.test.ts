@@ -61,9 +61,18 @@ vi.mock('@/lib/composio', () => ({
 
 import { generateWorkspace } from '@/lib/openclaw/generator';
 
-function roster(config: { agents?: { list?: unknown; entries?: Record<string, Record<string, unknown>> } }) {
+type RosterAgent = Record<string, unknown> & {
+  id: string
+  name?: string
+  tools?: { deny?: string[] }
+}
+
+function roster(config: {
+  agents?: { list?: unknown; entries?: Record<string, Record<string, unknown>> }
+}): RosterAgent[] {
   expect(config.agents).not.toHaveProperty('list');
-  return Object.entries(config.agents?.entries ?? {}).map(([id, e]) => ({ id, ...e }));
+  const entries: Record<string, Record<string, unknown>> = config.agents?.entries ?? {};
+  return Object.entries(entries).map(([id, e]) => ({ id, ...e }));
 }
 
 const PLATFORM_KEY = 'ak_test_platform_key';
@@ -320,10 +329,10 @@ describe('(d) per-agent token-tax scoping', () => {
     const worker = roster(config).find((a: Record<string, unknown>) => a.name === 'Analyst');
     const critic = roster(config).find((a: Record<string, unknown>) => a.name === 'Reviewer');
 
-    expect(worker.tools.deny).toContain('composio__*');
-    expect(critic.tools.deny).toContain('composio__*');
-    expect(orch.tools.deny).not.toContain('composio__*');
-    expect(orch.tools.deny).toEqual(expect.arrayContaining(['message', 'exec']));
+    expect(worker?.tools?.deny).toContain('composio__*');
+    expect(critic?.tools?.deny).toContain('composio__*');
+    expect(orch?.tools?.deny).not.toContain('composio__*');
+    expect(orch?.tools?.deny).toEqual(expect.arrayContaining(['message', 'exec']));
   });
 
   it('emits no composio deny when the workspace is not MCP-enabled', async () => {
@@ -333,8 +342,8 @@ describe('(d) per-agent token-tax scoping', () => {
     const config = JSON.parse(result['openclaw.json']);
 
     for (const agent of roster(config)) {
-      expect(agent.tools.deny).toEqual(expect.arrayContaining(['message', 'exec']));
-      expect(agent.tools.deny).not.toContain('composio__*');
+      expect(agent.tools?.deny).toEqual(expect.arrayContaining(['message', 'exec']));
+      expect(agent.tools?.deny).not.toContain('composio__*');
     }
   });
 });

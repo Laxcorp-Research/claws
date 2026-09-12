@@ -49,16 +49,26 @@ import { TWITTER_API_402_COPY, TWITTER_TOKEN_CANNOT_POST_COPY } from '@/lib/tool
 import { CLOCK_TZ_COPY, CRITIC_NE_HUMAN_COPY, TOOL_STATUS_TRUTH_COPY } from '@/lib/openclaw/delivery-rail';
 import { CLAIMS_TABLE_STEP_MARKER } from '@/lib/critic/claims-table';
 
+type RosterAgent = Record<string, unknown> & {
+  id: string
+  name?: string
+  model?: string
+  thinkingDefault?: string
+  default?: boolean
+  tools?: { deny?: string[] }
+  subagents?: { allowAgents?: string[]; requireAgentId?: boolean; model?: string }
+}
+
 /** 9.4 keyed roster. Fails if the generator revives agents.list. */
 function roster(config: {
   agents?: {
     list?: unknown
     entries?: Record<string, Record<string, unknown>>
   }
-}): Array<Record<string, unknown> & { id: string }> {
+}): RosterAgent[] {
   expect(config.agents).toBeDefined()
   expect(config.agents, '9.4 emit must not include agents.list').not.toHaveProperty('list')
-  const entries = config.agents?.entries ?? {}
+  const entries: Record<string, Record<string, unknown>> = config.agents?.entries ?? {}
   return Object.entries(entries).map(([id, e]) => ({ id, ...e }))
 }
 
@@ -460,7 +470,7 @@ describe('generateWorkspace', () => {
       (a: Record<string, unknown>) => a.name === 'Test Commander'
     );
     expect(orchestrator).toBeDefined();
-    expect(orchestrator.model).toBe('anthropic/claude-haiku-4-5-20251001');
+    expect(orchestrator!.model).toBe('anthropic/claude-haiku-4-5-20251001');
 
     const worker = roster(config).find(
       (a: Record<string, unknown>) => a.name === 'Data Analyst'
@@ -486,7 +496,7 @@ describe('generateWorkspace', () => {
     const byName = (name: string) =>
       roster(config).find((a: Record<string, unknown>) => a.name === name);
 
-    expect(byName('Test Commander').thinkingDefault).toBe('high');
+    expect(byName('Test Commander')!.thinkingDefault).toBe('high');
     expect(byName('Data Analyst')).not.toHaveProperty('thinkingDefault');
     expect(byName('Quality Reviewer')).not.toHaveProperty('thinkingDefault');
   });
@@ -1241,9 +1251,9 @@ describe('generateWorkspace', () => {
     expect(orchestrator).not.toHaveProperty('default');
     expect(config.agents.ownership).toBe('explicit');
     expect(config.agents.defaults.systemAgent.agentId).toBe(orchestrator!.id);
-    expect(orchestrator.subagents).toBeDefined();
-    expect(orchestrator.subagents.allowAgents).toContain('data-analyst');
-    expect(orchestrator.subagents.allowAgents).toContain('quality-reviewer');
+    expect(orchestrator!.subagents).toBeDefined();
+    expect(orchestrator!.subagents?.allowAgents).toContain('data-analyst');
+    expect(orchestrator!.subagents?.allowAgents).toContain('quality-reviewer');
   });
 
   it('B-hardening: no subagents.model anywhere; orchestrator requireAgentId; worker models intact', async () => {
@@ -1337,8 +1347,8 @@ describe('generateWorkspace', () => {
     expect(config.tools?.web?.search?.apiKey).toBeUndefined();
     expect(config.tools?.web?.search?.provider).toBeUndefined();
 
-    const orch = roster(config).find((a: { name: string }) => a.name === 'Test Commander');
-    expect(orch.tools.deny).toContain('web_search');
+    const orch = roster(config).find((a) => a.name === 'Test Commander');
+    expect(orch?.tools?.deny).toContain('web_search');
 
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
     expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('## Web Search');
@@ -1390,7 +1400,7 @@ describe('generateWorkspace', () => {
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
 
     expect(worker).toBeUndefined();
-    expect(orchestrator.subagents.allowAgents).not.toContain('data-analyst');
+    expect(orchestrator!.subagents?.allowAgents).not.toContain('data-analyst');
     expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('Worker Data Analyst is paused - do not delegate to it.');
   });
 

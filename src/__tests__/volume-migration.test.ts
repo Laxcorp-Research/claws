@@ -4,6 +4,15 @@ import os from "node:os"
 import path from "node:path"
 import { readFileSync } from "node:fs"
 
+function migrateFs(dir: string, sessions: string) {
+  fs.unlinkSync(path.join(sessions, "sessions.json"))
+  fs.mkdirSync(path.join(dir, "agents", "orch", "agent"), { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, "agents", "orch", "agent", "openclaw-agent.sqlite"),
+    "sql",
+  )
+}
+
 describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
   it("detects sessions.json + jsonl-without-sqlite + cron JSON as legacy", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-"))
@@ -52,13 +61,13 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
       fs.mkdirSync(sessions, { recursive: true })
       fs.writeFileSync(path.join(sessions, "sessions.json"), "{}")
 
-      const spawnSyncImpl = vi.fn(() => {
-        fs.unlinkSync(path.join(sessions, "sessions.json"))
-        fs.mkdirSync(path.join(dir, "agents", "orch", "agent"), { recursive: true })
-        fs.writeFileSync(
-          path.join(dir, "agents", "orch", "agent", "openclaw-agent.sqlite"),
-          "sql",
-        )
+      const spawnSyncImpl = vi.fn((
+        _cmd: string,
+        _args: string[],
+        opts: { env?: NodeJS.ProcessEnv },
+      ) => {
+        expect(opts.env?.OPENCLAW_CONFIG_READONLY).toBeUndefined()
+        migrateFs(dir, sessions)
         return { status: 0, stderr: "", error: undefined }
       })
       const ledger = vi.fn(async () => ({ ok: true }))
@@ -68,17 +77,21 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
         appDir: "/app",
         spawnSyncImpl,
         ledger,
+        env: { ...process.env, OPENCLAW_CONFIG_READONLY: "1" },
       })
       expect(result.ran).toBe(true)
+      expect(spawnSyncImpl).toHaveBeenCalledTimes(1)
       expect(spawnSyncImpl).toHaveBeenCalledWith(
         "node",
         ["openclaw.mjs", "doctor", "--fix", "--non-interactive"],
         expect.objectContaining({ cwd: "/app", timeout: 120_000 }),
       )
       expect(ledger).toHaveBeenCalledTimes(1)
-      const event = ledger.mock.calls[0][0] as {
-        metadata: { eventKind: string; registry: string; soakCounts: boolean }
-      }
+      const event = (
+        ledger.mock.calls[0] as unknown as [
+          { metadata: { eventKind: string; registry: string; soakCounts: boolean } },
+        ]
+      )[0]
       expect(event.metadata.eventKind).toBe("runtime_volume_migration")
       expect(event.metadata.registry).toBe("runtime-volume-migration")
       expect(event.metadata.soakCounts).toBe(false)
@@ -126,6 +139,13 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
           spawnSyncImpl,
         }),
       ).rejects.toThrow(/left a legacy volume/)
+      expect(spawnSyncImpl).toHaveBeenCalledTimes(2)
+      expect(spawnSyncImpl).toHaveBeenNthCalledWith(
+        2,
+        "node",
+        ["openclaw.mjs", "doctor", "--session-sqlite", "import", "--session-sqlite-all-agents"],
+        expect.objectContaining({ cwd: "/app" }),
+      )
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
@@ -138,12 +158,7 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
       fs.mkdirSync(sessions, { recursive: true })
       fs.writeFileSync(path.join(sessions, "sessions.json"), "{}")
       const spawnSyncImpl = vi.fn(() => {
-        fs.unlinkSync(path.join(sessions, "sessions.json"))
-        fs.mkdirSync(path.join(dir, "agents", "orch", "agent"), { recursive: true })
-        fs.writeFileSync(
-          path.join(dir, "agents", "orch", "agent", "openclaw-agent.sqlite"),
-          "sql",
-        )
+        migrateFs(dir, sessions)
         return { status: 1, stderr: "OPENCLAW_CONFIG_READONLY", error: undefined }
       })
       const mod = await import("../../container/volume-migration.mjs")
@@ -154,6 +169,31 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
       })
       expect(result.ran).toBe(true)
       expect(result.doctorStatus).toBe(1)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("restores generator-owned openclaw.json after doctor mutates it", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-restore-"))
+    try {
+      const sessions = path.join(dir, "agents", "orch", "sessions")
+      fs.mkdirSync(sessions, { recursive: true })
+      fs.writeFileSync(path.join(sessions, "sessions.json"), "{}")
+      const cfg = path.join(dir, "openclaw.json")
+      fs.writeFileSync(cfg, '{"owned":true}')
+      const spawnSyncImpl = vi.fn(() => {
+        fs.writeFileSync(cfg, '{"mutated":true}')
+        migrateFs(dir, sessions)
+        return { status: 0, stderr: "", error: undefined }
+      })
+      const mod = await import("../../container/volume-migration.mjs")
+      await mod.runRuntimeVolumeMigration({
+        dataDir: dir,
+        appDir: "/app",
+        spawnSyncImpl,
+      })
+      expect(fs.readFileSync(cfg, "utf8")).toBe('{"owned":true}')
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }

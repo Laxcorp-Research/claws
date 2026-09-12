@@ -4,8 +4,11 @@
  *
  * 9.4 `assertSessionStoreMigrationComplete` throws if a non-sqlite session
  * store remains. Doctor must finish (or we refuse boot). Generator-owned
- * openclaw.json stays read-only via OPENCLAW_CONFIG_READONLY=1 — doctor is
- * allowed to migrate runtime state, not rewrite our emit.
+ * Generator emit sets OPENCLAW_CONFIG_READONLY=1 so the gateway/doctor cannot
+ * rewrite openclaw.json at runtime. 9.4 doctor --fix still aborts the whole
+ * command under that env (observed CI: exit 1 before session import). Wake
+ * unsets the flag for this spawn only, then restores generator-owned
+ * openclaw.json if doctor mutated it.
  *
  * Ledger: eventKind=runtime_volume_migration (registry: runtime-volume-migration).
  * soakCounts=false — first-wake conversion is not a soak defect.
@@ -110,11 +113,53 @@ export function buildVolumeMigrationLedgerEvent({ reasons, doctorStatus, nowMs =
   }
 }
 
+function snapshotOpenclawJson(dataDir) {
+  const filePath = path.join(dataDir, "openclaw.json")
+  try {
+    return { filePath, body: fs.readFileSync(filePath, "utf8") }
+  } catch {
+    return null
+  }
+}
+
+function restoreOpenclawJson(snapshot) {
+  if (!snapshot) return false
+  fs.writeFileSync(snapshot.filePath, snapshot.body, "utf8")
+  return true
+}
+
+function doctorSpawnEnv(env, dataDir) {
+  const spawnEnv = {
+    ...env,
+    OPENCLAW_STATE_DIR: dataDir,
+    OPENCLAW_DATA_DIR: dataDir,
+  }
+  // 9.4 doctor --fix exits 1 immediately under these flags (config-immutable).
+  delete spawnEnv.OPENCLAW_CONFIG_READONLY
+  delete spawnEnv.OPENCLAW_NIX_MODE
+  return spawnEnv
+}
+
+function spawnDoctor(spawnSyncImpl, { appDir, env, dataDir, doctorArgs }) {
+  return spawnSyncImpl("node", ["openclaw.mjs", "doctor", ...doctorArgs], {
+    cwd: appDir,
+    env: doctorSpawnEnv(env, dataDir),
+    encoding: "utf8",
+    timeout: DOCTOR_FIX_TIMEOUT_MS,
+  })
+}
+
+function doctorExitStatus(result) {
+  if (typeof result?.status === "number") return result.status
+  if (result?.error) return 1
+  return 0
+}
+
 /**
  * @param {object} args
  * @param {string} args.dataDir
  * @param {string} args.appDir
- * @param {typeof spawnSync} [args.spawnSyncImpl]
+ * @param {Function} [args.spawnSyncImpl]
  * @param {(event: object) => Promise<unknown>|unknown} [args.ledger]
  * @param {number} [args.nowMs]
  * @param {NodeJS.ProcessEnv} [args.env]
@@ -134,27 +179,40 @@ export async function runRuntimeVolumeMigration(args) {
     return { ran: false, reason: "not-legacy", reasons: [] }
   }
 
-  // --non-interactive: wake has no TTY. Safe session/cron sqlite migrations
-  // still run; we do not want doctor rewriting generator-owned openclaw.json
-  // (OPENCLAW_CONFIG_READONLY=1). Config-write refusals must not block boot
-  // if the volume is no longer legacy.
-  const result = spawnSyncImpl(
-    "node",
-    ["openclaw.mjs", "doctor", "--fix", "--non-interactive"],
-    {
-      cwd: appDir,
-      env: { ...env, OPENCLAW_STATE_DIR: dataDir, OPENCLAW_DATA_DIR: dataDir },
-      encoding: "utf8",
-      timeout: DOCTOR_FIX_TIMEOUT_MS,
-    },
-  )
+  // --non-interactive: wake has no TTY. CONFIG_READONLY is unset for this
+  // spawn so session/cron sqlite import can run; generator-owned openclaw.json
+  // is snapshotted and restored afterward.
+  const configSnapshot = snapshotOpenclawJson(dataDir)
+  const spawnArgs = { appDir, env, dataDir }
+  let result
+  try {
+    result = spawnDoctor(spawnSyncImpl, {
+      ...spawnArgs,
+      doctorArgs: ["--fix", "--non-interactive"],
+    })
+    if (result?.error) {
+      throw new Error(
+        `openclaw doctor --fix failed to spawn: ${result.error.message}`,
+      )
+    }
+    // 8.1+ doctor --fix sometimes skips per-agent sessions.json. Targeted
+    // import is the documented recovery; still restore generator config after.
+    if (detectLegacyRuntimeVolume(dataDir).legacy) {
+      result = spawnDoctor(spawnSyncImpl, {
+        ...spawnArgs,
+        doctorArgs: ["--session-sqlite", "import", "--session-sqlite-all-agents"],
+      })
+      if (result?.error) {
+        throw new Error(
+          `openclaw doctor --session-sqlite import failed to spawn: ${result.error.message}`,
+        )
+      }
+    }
+  } finally {
+    restoreOpenclawJson(configSnapshot)
+  }
 
-  const doctorStatus =
-    typeof result.status === "number"
-      ? result.status
-      : result.error
-        ? 1
-        : 0
+  const doctorStatus = doctorExitStatus(result)
 
   const event = buildVolumeMigrationLedgerEvent({
     reasons: detected.reasons,
@@ -165,15 +223,9 @@ export async function runRuntimeVolumeMigration(args) {
     await ledger(event)
   }
 
-  if (result.error) {
-    throw new Error(
-      `openclaw doctor --fix failed to spawn: ${result.error.message}`,
-    )
-  }
-
   const leftover = detectLegacyRuntimeVolume(dataDir)
   if (leftover.legacy) {
-    const stderr = typeof result.stderr === "string" ? result.stderr.slice(0, 2000) : ""
+    const stderr = typeof result?.stderr === "string" ? result.stderr.slice(0, 2000) : ""
     throw new Error(
       `openclaw doctor --fix left a legacy volume (exit ${doctorStatus}; leftover=${leftover.reasons.join(", ")}; before=${detected.reasons.join(", ")})${stderr ? `: ${stderr}` : ""}`,
     )

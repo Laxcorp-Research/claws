@@ -79,6 +79,9 @@ jobs:
           echo '[]' > "$vol/cron/jobs.json"
           echo '{"agent:test-commander:main":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}' > "$vol/agents/test-commander/sessions/sessions.json"
           echo '{}' > "$vol/agents/test-commander/sessions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+          # Exercise the overlay wake path (unsets CONFIG_READONLY for doctor,
+          # restores generator-owned openclaw.json). Raw `doctor --fix` under
+          # CONFIG_READONLY=1 exits 1 before session import on 9.4.
           docker run --rm --user 0 \
             --entrypoint node \
             -e OPENCLAW_CONFIG_READONLY=1 \
@@ -86,7 +89,8 @@ jobs:
             -e OPENCLAW_DATA_DIR=/home/node/.openclaw \
             -v "$vol:/home/node/.openclaw" \
             claws-overlay-94-ci \
-            /app/openclaw.mjs doctor --fix --non-interactive
+            --input-type=module \
+            -e 'import { runRuntimeVolumeMigration } from "/usr/local/bin/volume-migration.mjs"; const r = await runRuntimeVolumeMigration({ dataDir: "/home/node/.openclaw", appDir: "/app" }); console.log(JSON.stringify(r));'
           docker run --rm --user 0 \
             --entrypoint /bin/sh \
             -v "$vol:/home/node/.openclaw" \
