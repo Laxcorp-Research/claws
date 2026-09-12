@@ -85,13 +85,35 @@ describe("bundleRuntimeState", () => {
 
       const { files } = mod.bundleRuntimeState(dir)
       const keys = Object.keys(files)
-      expect(keys).toContain("agents/main/sessions/s1.jsonl")
+      expect(keys).not.toContain("agents/main/sessions/s1.jsonl")
       expect(keys).toContain("agents/main/agent/openclaw-agent.sqlite")
       expect(keys).toContain("workspace-orchestrator/MEMORY.md")
       expect(keys).not.toContain("openclaw.json")
       expect(keys).not.toContain(".env")
       expect(keys.some((k: string) => k.startsWith("cron/"))).toBe(false)
       expect(keys.some((k: string) => k.startsWith("node_modules/"))).toBe(false)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("after 9.4 doctor: sqlite present + leftover jsonl → sqlite only (under 50MB cap)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-state-sqlite-canon-"))
+    try {
+      const sess = path.join(dir, "agents", "twitter-commander", "sessions")
+      const agent = path.join(dir, "agents", "twitter-commander", "agent")
+      fs.mkdirSync(sess, { recursive: true })
+      fs.mkdirSync(agent, { recursive: true })
+      fs.writeFileSync(path.join(agent, "openclaw-agent.sqlite"), "sql")
+      fs.writeFileSync(
+        path.join(sess, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"),
+        "leftover-jsonl\n".repeat(100),
+      )
+      const { files } = mod.bundleRuntimeState(dir)
+      const keys = Object.keys(files)
+      expect(keys).toContain("agents/twitter-commander/agent/openclaw-agent.sqlite")
+      expect(keys.some((k: string) => k.endsWith(".jsonl"))).toBe(false)
+      expect(keys).not.toContain("agents/twitter-commander/sessions/sessions.json")
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }

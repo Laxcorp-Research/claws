@@ -116,8 +116,33 @@ export const ORPHAN_RETAIN_MAX_BYTES = 5 * 1024 * 1024
  * When indexed + retain orphans (default): include not-in-index uuid.jsonl
  * (caller still size-guards via ORPHAN_RETAIN_MAX_BYTES). Always drop reset leftovers.
  */
+function isJsonlSessionArtifact(fileName) {
+  return (
+    fileName.endsWith(".jsonl") ||
+    fileName.includes("trajectory") ||
+    fileName.includes(".jsonl.")
+  )
+}
+
+export function agentSqlitePresent(dataDir, agentId) {
+  try {
+    return fs.existsSync(path.join(dataDir, "agents", agentId, "agent", "openclaw-agent.sqlite"))
+  } catch {
+    return false
+  }
+}
+
 export function shouldIncludeSessionArtifact(fileName, liveIds, opts = {}) {
   const retainOrphans = opts.retainOrphans ?? retainOrphanSessionsEnabled()
+  // 9.4 doctor converts sessions.json → sqlite. Leftover jsonl plus sqlite
+  // blew the 50MB blob-token cap on the Twitter soak (54MB, HTTP 400).
+  // Canonical store is sqlite; do not ship jsonl/sessions.json beside it.
+  if (opts.sqlitePresent === true) {
+    if (fileName === "sessions.json") return false
+    if (isJsonlSessionArtifact(fileName)) return false
+    if (fileName.endsWith(".sqlite")) return true
+    return true
+  }
   if (fileName === "sessions.json") return true
   if (fileName.endsWith(".sqlite")) return true
   // Indexed agents: always drop reset leftovers.
@@ -125,11 +150,7 @@ export function shouldIncludeSessionArtifact(fileName, liveIds, opts = {}) {
   // No index → ship everything (fail-open).
   if (liveIds === null) return true
 
-  const isJsonlOrTrajectory =
-    fileName.endsWith(".jsonl") ||
-    fileName.includes("trajectory") ||
-    fileName.includes(".jsonl.")
-  if (!isJsonlOrTrajectory) return true
+  if (!isJsonlSessionArtifact(fileName)) return true
 
   const m = fileName.match(UUID_RE)
   if (!m) return true // unrecognized name - keep rather than drop live data
@@ -298,7 +319,8 @@ export function bundleRuntimeState(dataDir = OPENCLAW_DATA_DIR) {
         if (sess) {
           const sessionsDir = path.join(dataDir, sess.sessionsPrefix)
           const liveIds = liveIdsFor(sessionsDir, sess.agentId)
-          if (!shouldIncludeSessionArtifact(sess.fileName, liveIds)) continue
+          const sqlitePresent = agentSqlitePresent(dataDir, sess.agentId)
+          if (!shouldIncludeSessionArtifact(sess.fileName, liveIds, { sqlitePresent })) continue
           // Size-guard retained orphans (in-index files keep prior unlimited path).
           if (
             liveIds !== null &&

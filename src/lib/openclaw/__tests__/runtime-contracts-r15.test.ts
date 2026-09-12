@@ -108,6 +108,8 @@ describe("RUNTIME_CONTRACTS R1–R15 overlay locks (9.4)", () => {
     const sync = src("container/state-sync.mjs")
     expect(sync).toContain("sqlite-store-present")
     expect(sync).toContain('fileName.endsWith(".sqlite")')
+    expect(sync).toContain("sqlitePresent")
+    expect(sync).toContain("isJsonlSessionArtifact")
   })
 
   it("R10: sanitizer vendor is 9.4 (env-overrides path + _ADMIN_KEY + override names)", () => {
