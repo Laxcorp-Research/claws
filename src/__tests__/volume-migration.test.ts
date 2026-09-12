@@ -114,7 +114,7 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
       expect(spawnSyncImpl).toHaveBeenCalledTimes(1)
       expect(spawnSyncImpl).toHaveBeenCalledWith(
         "node",
-        ["openclaw.mjs", "doctor", "--fix", "--non-interactive"],
+        ["openclaw.mjs", "doctor", "--fix", "--non-interactive", "--yes"],
         expect.objectContaining({ cwd: "/app", timeout: 120_000 }),
       )
       expect(ledger).toHaveBeenCalledTimes(1)
@@ -225,6 +225,50 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
         spawnSyncImpl,
       })
       expect(fs.readFileSync(cfg, "utf8")).toBe('{"owned":true}')
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("archives leftover workspace setup files so 9.4 gateway is not exit-78 blocked", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-ws-setup-"))
+    try {
+      const sessions = path.join(dir, "agents", "orch", "sessions")
+      fs.mkdirSync(sessions, { recursive: true })
+      fs.writeFileSync(path.join(sessions, "sessions.json"), "{}")
+      const ws = path.join(dir, "workspace-twitter-commander")
+      fs.mkdirSync(ws, { recursive: true })
+      const setup = path.join(ws, "openclaw-workspace-state.json")
+      fs.writeFileSync(setup, "{}")
+      const spawnSyncImpl = vi.fn(() => {
+        migrateFs(dir, sessions)
+        return { status: 0, stderr: "", error: undefined }
+      })
+      const mod = await import("../../container/volume-migration.mjs")
+      const result = await mod.runRuntimeVolumeMigration({
+        dataDir: dir,
+        appDir: "/app",
+        spawnSyncImpl,
+        nowMs: 1_700_000_000_000,
+      })
+      expect(result.ran).toBe(true)
+      expect(fs.existsSync(setup)).toBe(false)
+      expect(
+        fs.existsSync(
+          path.join(
+            dir,
+            ".claws",
+            "archive",
+            "workspace-setup",
+            "1700000000000",
+            "workspace-twitter-commander",
+            "openclaw-workspace-state.json",
+          ),
+        ),
+      ).toBe(true)
+      expect(result.archivedWorkspaceSetup).toEqual([
+        "workspace-twitter-commander/openclaw-workspace-state.json",
+      ])
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }

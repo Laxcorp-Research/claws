@@ -54,13 +54,83 @@ function hasSessionsIndex(sessionsDir) {
 
 /**
  * True when this data dir still has a 5.22-shaped session store that 9.4 will
- * refuse (SessionStoreMigrationRequiredError).
+ * refuse (SessionStoreMigrationRequiredError), or leftover workspace-setup
+ * files that 9.4 gates with StartupMaintenanceRequiredError (exit 78).
  *
  * cron/jobs.json is not boot-blocking on 9.4: the runtime still loads that
  * file. Treating leftover jobs.json as a refuse (when doctor converted
  * sessions.json) crash-looped the Twitter soak on 2026.9.4-1
  * (leftover=cron-json, gateway never started).
+ *
+ * Workspace setup: 9.4 doctor --fix often leaves
+ * workspace-<agent>/openclaw-workspace-state.json (upstream 8.x/9.x gap). After
+ * doctor we archive those files so gateway can start. soakCounts=false.
  */
+export function listWorkspaceSetupLegacyFiles(dataDir) {
+  const files = []
+  if (!dataDir) return files
+
+  const pushIfFile = (filePath) => {
+    try {
+      if (fs.statSync(filePath).isFile()) files.push(filePath)
+    } catch {
+      /* missing */
+    }
+  }
+
+  try {
+    for (const ent of fs.readdirSync(dataDir, { withFileTypes: true })) {
+      if (ent.isDirectory() && ent.name.startsWith("workspace-")) {
+        const ws = path.join(dataDir, ent.name)
+        pushIfFile(path.join(ws, "openclaw-workspace-state.json"))
+        pushIfFile(path.join(ws, ".openclaw", "workspace-state.json"))
+        pushIfFile(`${ws}.attested`)
+        pushIfFile(`${ws}.attested.doctor-importing`)
+      }
+    }
+  } catch {
+    /* missing dataDir */
+  }
+
+  const attDir = path.join(dataDir, "workspace-attestations")
+  try {
+    for (const ent of fs.readdirSync(attDir, { withFileTypes: true })) {
+      if (
+        ent.isFile() &&
+        (ent.name.endsWith(".attested") || ent.name.endsWith(".attested.doctor-importing"))
+      ) {
+        files.push(path.join(attDir, ent.name))
+      }
+    }
+  } catch {
+    /* no attestation dir */
+  }
+
+  return files
+}
+
+export function archiveWorkspaceSetupLegacy(dataDir, nowMs = Date.now()) {
+  const files = listWorkspaceSetupLegacyFiles(dataDir)
+  if (files.length === 0) return { archived: [] }
+  const destRoot = path.join(
+    dataDir,
+    ".claws",
+    "archive",
+    "workspace-setup",
+    String(nowMs),
+  )
+  fs.mkdirSync(destRoot, { recursive: true })
+  const archived = []
+  for (const src of files) {
+    const rel = path.relative(dataDir, src)
+    const dest = path.join(destRoot, rel)
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.renameSync(src, dest)
+    archived.push(rel.replaceAll("\\", "/"))
+  }
+  return { archived }
+}
+
 export function detectLegacyRuntimeVolume(dataDir) {
   const reasons = []
   if (!dataDir) return { legacy: false, reasons }
@@ -72,7 +142,15 @@ export function detectLegacyRuntimeVolume(dataDir) {
     }
   }
 
+  for (const filePath of listWorkspaceSetupLegacyFiles(dataDir)) {
+    reasons.push(`workspace-setup:${path.relative(dataDir, filePath).replaceAll("\\", "/")}`)
+  }
+
   return { legacy: reasons.length > 0, reasons }
+}
+
+function leftoverSessionReasons(reasons) {
+  return reasons.filter((r) => r.startsWith("sessions.json:"))
 }
 
 export function buildVolumeMigrationLedgerEvent({ reasons, doctorStatus, nowMs = Date.now() }) {
@@ -170,7 +248,7 @@ export async function runRuntimeVolumeMigration(args) {
   try {
     result = spawnDoctor(spawnSyncImpl, {
       ...spawnArgs,
-      doctorArgs: ["--fix", "--non-interactive"],
+      doctorArgs: ["--fix", "--non-interactive", "--yes"],
     })
     if (result?.error) {
       throw new Error(
@@ -179,7 +257,7 @@ export async function runRuntimeVolumeMigration(args) {
     }
     // 8.1+ doctor --fix sometimes skips per-agent sessions.json. Targeted
     // import is the documented recovery; still restore generator config after.
-    if (detectLegacyRuntimeVolume(dataDir).legacy) {
+    if (leftoverSessionReasons(detectLegacyRuntimeVolume(dataDir).reasons).length > 0) {
       result = spawnDoctor(spawnSyncImpl, {
         ...spawnArgs,
         doctorArgs: ["--session-sqlite", "import", "--session-sqlite-all-agents"],
@@ -206,18 +284,21 @@ export async function runRuntimeVolumeMigration(args) {
   }
 
   const leftover = detectLegacyRuntimeVolume(dataDir)
-  if (leftover.legacy) {
+  const sessionLeftover = leftoverSessionReasons(leftover.reasons)
+  if (sessionLeftover.length > 0) {
     const stderr = typeof result?.stderr === "string" ? result.stderr.slice(0, 2000) : ""
     throw new Error(
-      `openclaw doctor --fix left a legacy volume (exit ${doctorStatus}; leftover=${leftover.reasons.join(", ")}; before=${detected.reasons.join(", ")})${stderr ? `: ${stderr}` : ""}`,
+      `openclaw doctor --fix left a legacy volume (exit ${doctorStatus}; leftover=${sessionLeftover.join(", ")}; before=${detected.reasons.join(", ")})${stderr ? `: ${stderr}` : ""}`,
     )
   }
+  const archived = archiveWorkspaceSetupLegacy(dataDir, nowMs)
 
   return {
     ran: true,
     reason: "doctor-fix",
     reasons: detected.reasons,
     doctorStatus,
+    archivedWorkspaceSetup: archived.archived,
     ledgerEvent: event,
   }
 }
