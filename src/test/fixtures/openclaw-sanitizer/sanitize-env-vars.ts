@@ -19,6 +19,8 @@ const BLOCKED_ENV_VAR_PATTERNS: ReadonlyArray<RegExp> = [
   /^AWS_(SECRET_ACCESS_KEY|SECRET_KEY|SESSION_TOKEN)$/i,
   /^(GH|GITHUB)_TOKEN$/i,
   /^(AZURE|AZURE_OPENAI|COHERE|AI_GATEWAY|OPENROUTER)_API_KEY$/i,
+  /_ADMIN_KEY$/i,
+  // 9.4 `SECRET_ENV_NAME_RE` from src/secrets/secret-env-name.ts
   /_?(API_KEY|TOKEN|PASSWORD|PRIVATE_KEY|SECRET)$/i,
 ]
 
@@ -46,11 +48,13 @@ export type EnvSanitizationOptions = {
   customAllowedPatterns?: ReadonlyArray<RegExp>
 }
 
+const MAX_ENV_VAR_VALUE_BYTES = 32768
+
 export function validateEnvVarValue(value: string): string | undefined {
   if (value.includes("\0")) {
     return "Contains null bytes"
   }
-  if (value.length > 32768) {
+  if (Buffer.byteLength(value, "utf8") > MAX_ENV_VAR_VALUE_BYTES) {
     return "Value exceeds maximum length"
   }
   if (/^[A-Za-z0-9+/=]{80,}$/.test(value)) {

@@ -32,8 +32,7 @@ import type { SeedTemplate } from "../../../prisma/seed-data/types"
 
 const SKILL_BY_SLUG = new Map(ALL_SKILLS.map((s) => [s.slug, s]))
 
-type OpenClawListEntry = {
-  id: string
+type OpenClawEntry = {
   name: string
   skills?: string[]
 }
@@ -152,7 +151,10 @@ function countEmittedSkillFiles(result: Awaited<ReturnType<typeof generateWorksp
 }
 
 function assertRoundTrip(template: SeedTemplate, result: Awaited<ReturnType<typeof generateWorkspace>>) {
-  const config = JSON.parse(result["openclaw.json"]) as { agents: { list: OpenClawListEntry[] } }
+  const config = JSON.parse(result["openclaw.json"]) as {
+    agents: { entries: Record<string, OpenClawEntry>; list?: unknown }
+  }
+  expect(config.agents).not.toHaveProperty("list")
   let emitted = 0
 
   for (const agent of template.agents) {
@@ -167,7 +169,7 @@ function assertRoundTrip(template: SeedTemplate, result: Awaited<ReturnType<type
       emitted += 1
     }
 
-    const listEntry = config.agents.list.find((a) => a.id === toAgentId(agent.name))
+    const listEntry = config.agents.entries[toAgentId(agent.name)]
     expect(listEntry, `openclaw.json missing ${agent.agentSlug}`).toBeTruthy()
     if (agent.skills.length > 0) {
       expect([...listEntry!.skills ?? []].sort()).toEqual([...agent.skills].sort())
@@ -275,9 +277,12 @@ describe("INFRA-3 install → generate skill round-trip", () => {
     const emptyResult = await generateFromSeed(empty)
     expect(countEmittedSkillFiles(emptyResult)).toBe(0)
     const emptyConfig = JSON.parse(emptyResult["openclaw.json"]) as {
-      agents: { list: OpenClawListEntry[] }
+      agents: { entries: Record<string, OpenClawEntry>; list?: unknown }
     }
-    expect(emptyConfig.agents.list.every((a) => !a.skills || a.skills.length === 0)).toBe(true)
+    expect(emptyConfig.agents).not.toHaveProperty("list")
+    expect(
+      Object.values(emptyConfig.agents.entries).every((a) => !a.skills || a.skills.length === 0),
+    ).toBe(true)
 
     expect(
       live.agents.every((a) => a.skills.length === 0),

@@ -1,0 +1,114 @@
+name: Runtime 9.4 contracts
+
+# Clone-tag (R1–R15 symbols vs unsuffixed upstream_tag) + overlay image exec smoke.
+# Overlay-source locks also run in unit-tests via runtime-contracts-r15.test.ts.
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  NODE_VERSION: '20'
+  OPENCLAW_CANDIDATE: '2026.9.4'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: laxcorp-research/openclaw-runtime
+
+jobs:
+  clone-tag:
+    name: Clone-tag contracts vs v2026.9.4
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Clone OpenClaw at unsuffixed upstream_tag
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "v${OPENCLAW_CANDIDATE}" https://github.com/openclaw/openclaw.git /tmp/openclaw # unsuffixed upstream_tag
+      - name: Grep 9.4 contract symbols
+        run: node scripts/runtime-contracts-clone-tag.mjs /tmp/openclaw "v${OPENCLAW_CANDIDATE}"
+
+  exec-smoke:
+    name: Rule-36 exec smoke inside 9.4 overlay image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ vars.GHCR_READ_USER }}
+          password: ${{ secrets.GHCR_READ_PAT }}
+      - name: Pull 9.4 base and bake overlay
+        run: |
+          set -euo pipefail
+          BASE="${REGISTRY}/${IMAGE_NAME}:base-${OPENCLAW_CANDIDATE}"
+          docker pull "$BASE"
+          docker build -f docker/Dockerfile --build-arg "BASE_IMAGE=$BASE" -t claws-overlay-94-ci .
+      - name: Doctor --fix legacy volume + write smoke.md
+        run: |
+          set -euo pipefail
+          vol="$(mktemp -d)"
+          mkdir -p "$vol/agents/test-commander/sessions" \
+                   "$vol/workspace-test-commander/shared/deliverables" \
+                   "$vol/cron"
+          cat > "$vol/openclaw.json" <<'JSON'
+          {
+            "gateway": { "mode": "local", "bind": "lan", "port": 18789 },
+            "agents": {
+              "ownership": "explicit",
+              "defaults": { "systemAgent": { "agentId": "test-commander" } },
+              "entries": {
+                "test-commander": {
+                  "name": "Test Commander",
+                  "workspace": "/home/node/.openclaw/workspace-test-commander",
+                  "model": "anthropic/claude-haiku-4-5-20251001"
+                }
+              }
+            }
+          }
+          JSON
+          echo '[]' > "$vol/cron/jobs.json"
+          echo '{"agent:test-commander:main":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}' > "$vol/agents/test-commander/sessions/sessions.json"
+          printf '%s\n' '{"type":"message","timestamp":"2026-05-22T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}' > "$vol/agents/test-commander/sessions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+          # Exercise the overlay wake path (unsets CONFIG_READONLY for doctor,
+          # restores generator-owned openclaw.json). Raw `doctor --fix` under
+          # CONFIG_READONLY=1 exits 1 before session import on 9.4.
+          docker run --rm --user 0 \
+            --entrypoint node \
+            -e OPENCLAW_CONFIG_READONLY=1 \
+            -e OPENCLAW_STATE_DIR=/home/node/.openclaw \
+            -e OPENCLAW_DATA_DIR=/home/node/.openclaw \
+            -v "$vol:/home/node/.openclaw" \
+            claws-overlay-94-ci \
+            --input-type=module \
+            -e 'import { runRuntimeVolumeMigration } from "/usr/local/bin/volume-migration.mjs"; const r = await runRuntimeVolumeMigration({ dataDir: "/home/node/.openclaw", appDir: "/app" }); console.log(JSON.stringify(r));'
+          docker run --rm --user 0 \
+            --entrypoint /bin/sh \
+            -v "$vol:/home/node/.openclaw" \
+            claws-overlay-94-ci \
+            -c 'mkdir -p /home/node/.openclaw/workspace-test-commander/shared/deliverables && printf "# rule-36 exec smoke\n" > /home/node/.openclaw/workspace-test-commander/shared/deliverables/smoke.md'
+          test -f "$vol/workspace-test-commander/shared/deliverables/smoke.md"
+          echo "SMOKE_OK"
+          # 9.4 boot refuse is leftover sessions.json (storePath), not leftover jsonl archive.
+          if [ -f "$vol/agents/test-commander/sessions/sessions.json" ]; then
+            echo "::error::sessions.json still present after doctor --fix (9.4 would refuse boot)"
+            find "$vol" -type f 2>/dev/null | head -50 || true
+            exit 1
+          fi
+          echo "volume files after migration:"
+          find "$vol" -type f 2>/dev/null | head -50 || true
+          sqlite_hit="$(find "$vol" \( -name 'openclaw-agent.sqlite' -o -name '*.sqlite' \) 2>/dev/null | head -5 || true)"
+          if [ -z "$sqlite_hit" ]; then
+            echo "::warning::no sqlite file after doctor; sessions.json is gone so 9.4 will not refuse boot"
+          else
+            echo "sqlite: $sqlite_hit"
+          fi
