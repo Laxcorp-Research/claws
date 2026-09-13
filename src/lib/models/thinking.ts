@@ -1,5 +1,5 @@
 /**
- * Per-agent thinking effort. Maps 1:1 to OpenClaw's `agents.entries[].thinkingDefault`
+ * Per-agent thinking effort. Maps 1:1 to OpenClaw's `agents.list[].thinkingDefault`
  * (verified against runtime dist: levels off|minimal|low|medium|high; models
  * without reasoning support ignore the setting at run time).
  */

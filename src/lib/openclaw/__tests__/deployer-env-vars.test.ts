@@ -135,7 +135,6 @@ describe('buildRailwayEnvVars - Composio security boundary (PR #4 Commit 2)', ()
     // Non-Composio env vars unchanged.
     expect(env.CLAWS_CREDIT_MODE).toBe('false');
     expect(env.OPENCLAW_GATEWAY_TOKEN).toBe('tok-abc-123');
-    expect(env.OPENCLAW_CONFIG_READONLY).toBe('1');
   });
 
   // PR2: two tests deleted here because they passed `undefined` as

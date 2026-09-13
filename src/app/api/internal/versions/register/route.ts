@@ -27,7 +27,6 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { log } from "@/lib/logger";
-import { notifyCandidateRegistered } from "@/lib/openclaw/runtime-autoupdate";
 
 // Stable releases: 2026.5.20 (the common case).
 // Stable corrections (upstream convention from openclaw/openclaw RELEASING.md):
@@ -212,19 +211,6 @@ export async function POST(req: NextRequest) {
       buildSourceTag: result.row.buildSourceTag,
       clearedPriorFlagCount: result.clearedCount,
     });
-
-    if (result.transition === "candidate") {
-      await notifyCandidateRegistered({
-        id: result.row.id,
-        version: result.row.version,
-        buildSourceTag: result.row.buildSourceTag,
-      }).catch((err) => {
-        log.warn("runtime-autoupdate: candidate alert failed", {
-          version: result.row.version,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    }
 
     return apiSuccess({
       id: result.row.id,

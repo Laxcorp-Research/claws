@@ -8,7 +8,7 @@ import {
 describe("thinking levels (runtime contract)", () => {
   it("matches OpenClaw's thinkingDefault levels exactly, in order", () => {
     // Runtime source of truth: control-ui sessions bundle `h=[off,minimal,low,medium,high]`
-    // and config key agents.entries[].thinkingDefault. Reordering or renaming breaks
+    // and config key agents.list[].thinkingDefault. Reordering or renaming breaks
     // generated configs.
     expect(THINKING_LEVELS).toEqual(["off", "minimal", "low", "medium", "high"])
   })

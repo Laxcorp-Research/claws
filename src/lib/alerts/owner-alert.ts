@@ -11,9 +11,6 @@ export const OWNER_ALERT_KEYS = [
   "owner-plane-test",
   "silent-wake",
   "digest-missed",
-  "runtime-candidate-ready",
-  "runtime-candidate-stale",
-  "hibernation-refuse-unsafe",
 ] as const
 
 export type OwnerAlertKey = (typeof OWNER_ALERT_KEYS)[number]

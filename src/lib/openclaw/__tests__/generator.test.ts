@@ -49,29 +49,6 @@ import { TWITTER_API_402_COPY, TWITTER_TOKEN_CANNOT_POST_COPY } from '@/lib/tool
 import { CLOCK_TZ_COPY, CRITIC_NE_HUMAN_COPY, TOOL_STATUS_TRUTH_COPY } from '@/lib/openclaw/delivery-rail';
 import { CLAIMS_TABLE_STEP_MARKER } from '@/lib/critic/claims-table';
 
-type RosterAgent = Record<string, unknown> & {
-  id: string
-  name?: string
-  model?: string
-  thinkingDefault?: string
-  default?: boolean
-  tools?: { deny?: string[] }
-  subagents?: { allowAgents?: string[]; requireAgentId?: boolean; model?: string }
-}
-
-/** 9.4 keyed roster. Fails if the generator revives agents.list. */
-function roster(config: {
-  agents?: {
-    list?: unknown
-    entries?: Record<string, Record<string, unknown>>
-  }
-}): RosterAgent[] {
-  expect(config.agents).toBeDefined()
-  expect(config.agents, '9.4 emit must not include agents.list').not.toHaveProperty('list')
-  const entries: Record<string, Record<string, unknown>> = config.agents?.entries ?? {}
-  return Object.entries(entries).map(([id, e]) => ({ id, ...e }))
-}
-
 const runtimeChannelsSchema2026052206 = z.object({
   telegram: z.object({
     botToken: z.string().min(1),
@@ -316,8 +293,8 @@ describe('generateWorkspace', () => {
     )
     const result = await generateWorkspace('ws-test-1')
     expect(result).toHaveProperty('openclaw.json')
-    const config = JSON.parse(result['openclaw.json'])
-    expect(roster(config)).toHaveLength(3)
+    const config = JSON.parse(result['openclaw.json']) as { agents: { list: unknown[] } }
+    expect(config.agents.list).toHaveLength(3)
   })
 
   it('generates valid JSON for openclaw.json', async () => {
@@ -328,19 +305,9 @@ describe('generateWorkspace', () => {
     expect(config.gateway.port).toBe(18789);
     expect(config.gateway.mode).toBe('local');
     expect(config.gateway.bind).toBe('lan');
-    expect(config.gateway.trustedProxies).toEqual([
-      '100.64.0.0/10',
-      '10.0.0.0/8',
-      '172.16.0.0/12',
-    ]);
 
     expect(config.agents).toBeDefined();
-    expect(roster(config)).toHaveLength(3);
-    expect(config.agents).not.toHaveProperty('list');
-    expect(config.agents.ownership).toBe('explicit');
-    expect(JSON.stringify(config)).not.toMatch(/"default"\s*:\s*true/);
-    expect(config.agents.defaults.systemAgent.agentId).toBe('test-commander');
-    expect(result['.env']).toMatch(/^OPENCLAW_CONFIG_READONLY=1$/m);
+    expect(config.agents.list).toHaveLength(3);
   });
 
   it('Lifecycle P6: openclaw.json tools.deny includes dir_list (mutation: drop merge → fail)', async () => {
@@ -471,24 +438,24 @@ describe('generateWorkspace', () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
 
-    const orchestrator = roster(config).find(
+    const orchestrator = config.agents.list.find(
       (a: Record<string, unknown>) => a.name === 'Test Commander'
     );
     expect(orchestrator).toBeDefined();
-    expect(orchestrator!.model).toBe('anthropic/claude-haiku-4-5-20251001');
+    expect(orchestrator.model).toBe('anthropic/claude-haiku-4-5-20251001');
 
-    const worker = roster(config).find(
+    const worker = config.agents.list.find(
       (a: Record<string, unknown>) => a.name === 'Data Analyst'
     );
     expect(worker!.model).toBe('anthropic/claude-sonnet-4-6');
 
-    const critic = roster(config).find(
+    const critic = config.agents.list.find(
       (a: Record<string, unknown>) => a.name === 'Quality Reviewer'
     );
     expect(critic!.model).toBe('anthropic/claude-opus-4-6');
   });
 
-  it('emits agents.entries[].thinkingDefault only for a valid stored level', async () => {
+  it('emits agents.list[].thinkingDefault only for a valid stored level', async () => {
     const ws = buildMockWorkspace();
     const agents = ws.agents as Array<Record<string, unknown>>;
     agents[0].thinkingDefault = 'high';       // valid → emitted
@@ -499,9 +466,9 @@ describe('generateWorkspace', () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
     const byName = (name: string) =>
-      roster(config).find((a: Record<string, unknown>) => a.name === name);
+      config.agents.list.find((a: Record<string, unknown>) => a.name === name);
 
-    expect(byName('Test Commander')!.thinkingDefault).toBe('high');
+    expect(byName('Test Commander').thinkingDefault).toBe('high');
     expect(byName('Data Analyst')).not.toHaveProperty('thinkingDefault');
     expect(byName('Quality Reviewer')).not.toHaveProperty('thinkingDefault');
   });
@@ -994,7 +961,7 @@ describe('generateWorkspace', () => {
       enabled: true,
       env: { [envVar]: 'crm-secret-key' },
     });
-    for (const agent of roster(config)) {
+    for (const agent of config.agents.list) {
       expect(agent.skills).toContain(customSlug);
     }
 
@@ -1246,19 +1213,17 @@ describe('generateWorkspace', () => {
     expect(agents).toMatch(/PASS or REJECT only/);
   });
 
-  it('sets orchestrator as systemAgent with subagents config (no default:true)', async () => {
+  it('sets orchestrator as default agent with subagents config', async () => {
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
 
-    const orchestrator = roster(config).find(
+    const orchestrator = config.agents.list.find(
       (a: Record<string, unknown>) => a.name === 'Test Commander'
     );
-    expect(orchestrator).not.toHaveProperty('default');
-    expect(config.agents.ownership).toBe('explicit');
-    expect(config.agents.defaults.systemAgent.agentId).toBe(orchestrator!.id);
-    expect(orchestrator!.subagents).toBeDefined();
-    expect(orchestrator!.subagents?.allowAgents).toContain('data-analyst');
-    expect(orchestrator!.subagents?.allowAgents).toContain('quality-reviewer');
+    expect(orchestrator.default).toBe(true);
+    expect(orchestrator.subagents).toBeDefined();
+    expect(orchestrator.subagents.allowAgents).toContain('data-analyst');
+    expect(orchestrator.subagents.allowAgents).toContain('quality-reviewer');
   });
 
   it('B-hardening: no subagents.model anywhere; orchestrator requireAgentId; worker models intact', async () => {
@@ -1266,7 +1231,7 @@ describe('generateWorkspace', () => {
     // Mutation: drop requireAgentId → expect(true) fails.
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
-    const list = roster(config) as Array<{
+    const list = config.agents.list as Array<{
       id: string;
       name: string;
       model: string;
@@ -1352,8 +1317,8 @@ describe('generateWorkspace', () => {
     expect(config.tools?.web?.search?.apiKey).toBeUndefined();
     expect(config.tools?.web?.search?.provider).toBeUndefined();
 
-    const orch = roster(config).find((a) => a.name === 'Test Commander');
-    expect(orch?.tools?.deny).toContain('web_search');
+    const orch = config.agents.list.find((a: { name: string }) => a.name === 'Test Commander');
+    expect(orch.tools.deny).toContain('web_search');
 
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
     expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('## Web Search');
@@ -1376,21 +1341,23 @@ describe('generateWorkspace', () => {
     expect(config.skills.entries.tavily.enabled).toBe(true);
   });
 
-  it('emits NO bindings key - Orchestrator routing is via systemAgent (#117)', async () => {
+  it('emits NO bindings key - Orchestrator routing is via default:true (#117, dead config removed)', async () => {
     // Regression guard: we used to emit
     //   bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]
     // believing it routed all channels to the Orchestrator. Upstream's binding
-    // index is an exact-string map (channel:'*' matches nothing). 9.4 forbids
-    // default:true with ownership=explicit; routing is systemAgent.agentId.
+    // index is an exact-string map (channel:'*' matches nothing); routing
+    // works via the default-agent fallback. The dead key misled readers, so
+    // the generator must not emit it - and the actual mechanism must hold.
     // See docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 / §8 risk 2.
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config).not.toHaveProperty('bindings');
-    expect(config.agents).not.toHaveProperty('list');
-    expect(roster(config).filter((a) => a.default === true)).toHaveLength(0);
-    expect(config.agents.ownership).toBe('explicit');
-    expect(config.agents.defaults.systemAgent.agentId).toBe('test-commander');
+    const defaults = config.agents.list.filter(
+      (a: Record<string, unknown>) => a.default === true
+    );
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0].name).toBe('Test Commander');
   });
 
   it('K3 fallback: paused Workers are excluded from runtime agents and get Orchestrator guidance', async () => {
@@ -1400,12 +1367,12 @@ describe('generateWorkspace', () => {
 
     const result = await generateWorkspace('ws-test-1');
     const config = JSON.parse(result['openclaw.json']);
-    const worker = roster(config).find((a: Record<string, unknown>) => a.name === 'Data Analyst');
-    const orchestrator = roster(config).find((a: Record<string, unknown>) => a.name === 'Test Commander');
+    const worker = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Data Analyst');
+    const orchestrator = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Test Commander');
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
 
     expect(worker).toBeUndefined();
-    expect(orchestrator!.subagents?.allowAgents).not.toContain('data-analyst');
+    expect(orchestrator.subagents.allowAgents).not.toContain('data-analyst');
     expect(result.workspaces[orchKey!]['TOOLS.md']).toContain('Worker Data Analyst is paused - do not delegate to it.');
   });
 
@@ -2080,7 +2047,7 @@ describe('generateWorkspace', () => {
         models?: { providers?: { openrouter?: { baseUrl?: string; api?: string } } };
       };
 
-      expect(roster(config).some((a) => a.model === 'openrouter/openai/gpt-4o-mini')).toBe(true);
+      expect(config.agents.list.some((a) => a.model === 'openrouter/openai/gpt-4o-mini')).toBe(true);
       expect(config.models?.providers?.openrouter?.baseUrl).toBe('https://openrouter.ai/api/v1');
       expect(config.models?.providers?.openrouter?.api).toBe('openai-completions');
       expect(result['.env']).toContain('OPENROUTER_API_KEY=decrypted-encrypted-openrouter-key');

@@ -50,10 +50,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     orderBy: { createdAt: "asc" },
   })
   const customIdentities = deriveCustomApiIdentities(customConnections)
-  const soakRow = await prisma.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { candidateRuntimeSoak: true },
-  })
 
   return apiSuccess({
     // hasCredentials is a boolean projection - never return ciphertext.
@@ -66,10 +62,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
       slug: customIdentities.get(conn.id)?.slug ?? conn.id,
     })),
     composioOAuthAvailable: Boolean(process.env.COMPOSIO_API_KEY?.trim()),
-    pinnedDockerImage: await resolveDeployImage({
-      workspaceId,
-      candidateSoak: soakRow?.candidateRuntimeSoak === true,
-    }),
+    pinnedDockerImage: await resolveDeployImage(),
   })
 }
 

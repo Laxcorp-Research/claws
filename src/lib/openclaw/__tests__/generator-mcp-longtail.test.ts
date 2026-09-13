@@ -61,20 +61,6 @@ vi.mock('@/lib/composio', () => ({
 
 import { generateWorkspace } from '@/lib/openclaw/generator';
 
-type RosterAgent = Record<string, unknown> & {
-  id: string
-  name?: string
-  tools?: { deny?: string[] }
-}
-
-function roster(config: {
-  agents?: { list?: unknown; entries?: Record<string, Record<string, unknown>> }
-}): RosterAgent[] {
-  expect(config.agents).not.toHaveProperty('list');
-  const entries: Record<string, Record<string, unknown>> = config.agents?.entries ?? {};
-  return Object.entries(entries).map(([id, e]) => ({ id, ...e }));
-}
-
 const PLATFORM_KEY = 'ak_test_platform_key';
 const MCP_URL = 'https://backend.composio.dev/tool_router/trs_test123/mcp';
 
@@ -325,14 +311,14 @@ describe('(d) per-agent token-tax scoping', () => {
     const result = await generateWorkspace('ws-mcp-1');
     const config = JSON.parse(result['openclaw.json']);
 
-    const orch = roster(config).find((a: Record<string, unknown>) => a.name === 'Commander');
-    const worker = roster(config).find((a: Record<string, unknown>) => a.name === 'Analyst');
-    const critic = roster(config).find((a: Record<string, unknown>) => a.name === 'Reviewer');
+    const orch = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Commander');
+    const worker = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Analyst');
+    const critic = config.agents.list.find((a: Record<string, unknown>) => a.name === 'Reviewer');
 
-    expect(worker?.tools?.deny).toContain('composio__*');
-    expect(critic?.tools?.deny).toContain('composio__*');
-    expect(orch?.tools?.deny).not.toContain('composio__*');
-    expect(orch?.tools?.deny).toEqual(expect.arrayContaining(['message', 'exec']));
+    expect(worker.tools.deny).toContain('composio__*');
+    expect(critic.tools.deny).toContain('composio__*');
+    expect(orch.tools.deny).not.toContain('composio__*');
+    expect(orch.tools.deny).toEqual(expect.arrayContaining(['message', 'exec']));
   });
 
   it('emits no composio deny when the workspace is not MCP-enabled', async () => {
@@ -341,9 +327,9 @@ describe('(d) per-agent token-tax scoping', () => {
     const result = await generateWorkspace('ws-mcp-1');
     const config = JSON.parse(result['openclaw.json']);
 
-    for (const agent of roster(config)) {
-      expect(agent.tools?.deny).toEqual(expect.arrayContaining(['message', 'exec']));
-      expect(agent.tools?.deny).not.toContain('composio__*');
+    for (const agent of config.agents.list) {
+      expect(agent.tools.deny).toEqual(expect.arrayContaining(['message', 'exec']));
+      expect(agent.tools.deny).not.toContain('composio__*');
     }
   });
 });

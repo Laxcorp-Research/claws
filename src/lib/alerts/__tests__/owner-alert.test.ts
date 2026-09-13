@@ -85,6 +85,5 @@ describe("sendOwnerAlert", () => {
     expect(src).toContain("sendEmail")
     expect(src).toContain('channel: "both"')
     expect(src).not.toMatch(/if \(ok\) return \{ sent: true, channel: "telegram" \}/)
-    expect(src).toContain("hibernation-refuse-unsafe")
   })
 })

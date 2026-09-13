@@ -78,67 +78,17 @@ describe("bundleRuntimeState", () => {
       fs.writeFileSync(path.join(dir, "node_modules", "p", "x.js"), "1")
       fs.mkdirSync(path.join(dir, "agents", "main", "sessions"), { recursive: true })
       fs.writeFileSync(path.join(dir, "agents", "main", "sessions", "s1.jsonl"), "{}\n")
-      fs.mkdirSync(path.join(dir, "agents", "main", "agent"), { recursive: true })
-      fs.writeFileSync(path.join(dir, "agents", "main", "agent", "openclaw-agent.sqlite"), "sql")
       fs.mkdirSync(path.join(dir, "workspace-orchestrator"), { recursive: true })
       fs.writeFileSync(path.join(dir, "workspace-orchestrator", "MEMORY.md"), "# mem")
 
       const { files } = mod.bundleRuntimeState(dir)
       const keys = Object.keys(files)
-      expect(keys).not.toContain("agents/main/sessions/s1.jsonl")
-      expect(keys).toContain("agents/main/agent/openclaw-agent.sqlite")
+      expect(keys).toContain("agents/main/sessions/s1.jsonl")
       expect(keys).toContain("workspace-orchestrator/MEMORY.md")
       expect(keys).not.toContain("openclaw.json")
       expect(keys).not.toContain(".env")
       expect(keys.some((k: string) => k.startsWith("cron/"))).toBe(false)
       expect(keys.some((k: string) => k.startsWith("node_modules/"))).toBe(false)
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it("after 9.4 doctor: sqlite present + leftover jsonl → sqlite only (under 50MB cap)", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-state-sqlite-canon-"))
-    try {
-      const sess = path.join(dir, "agents", "twitter-commander", "sessions")
-      const agent = path.join(dir, "agents", "twitter-commander", "agent")
-      fs.mkdirSync(sess, { recursive: true })
-      fs.mkdirSync(agent, { recursive: true })
-      fs.writeFileSync(path.join(agent, "openclaw-agent.sqlite"), "sql")
-      fs.writeFileSync(
-        path.join(sess, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"),
-        "leftover-jsonl\n".repeat(100),
-      )
-      const { files } = mod.bundleRuntimeState(dir)
-      const keys = Object.keys(files)
-      expect(keys).toContain("agents/twitter-commander/agent/openclaw-agent.sqlite")
-      expect(keys.some((k: string) => k.endsWith(".jsonl"))).toBe(false)
-      expect(keys).not.toContain("agents/twitter-commander/sessions/sessions.json")
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it("excludes logs/caches/exec-approvals and keeps sqlite + MEMORY.md (9.4 history)", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-state-bulk-"))
-    try {
-      const agent = path.join(dir, "agents", "twitter-commander", "agent")
-      fs.mkdirSync(agent, { recursive: true })
-      fs.writeFileSync(path.join(agent, "openclaw-agent.sqlite"), "sql-history")
-      fs.mkdirSync(path.join(dir, "workspace-twitter-commander"), { recursive: true })
-      fs.writeFileSync(path.join(dir, "workspace-twitter-commander", "MEMORY.md"), "# mem")
-      fs.mkdirSync(path.join(dir, "logs"), { recursive: true })
-      fs.writeFileSync(path.join(dir, "logs", "gateway.log"), "log-bulk")
-      fs.mkdirSync(path.join(dir, "cache"), { recursive: true })
-      fs.writeFileSync(path.join(dir, "cache", "blob"), "cache-bulk")
-      fs.writeFileSync(path.join(dir, "exec-approvals.json"), '{"version":1}')
-      const { files } = mod.bundleRuntimeState(dir)
-      const keys = Object.keys(files)
-      expect(keys).toContain("agents/twitter-commander/agent/openclaw-agent.sqlite")
-      expect(keys).toContain("workspace-twitter-commander/MEMORY.md")
-      expect(keys.some((k: string) => k.startsWith("logs/"))).toBe(false)
-      expect(keys.some((k: string) => k.startsWith("cache/"))).toBe(false)
-      expect(keys).not.toContain("exec-approvals.json")
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
@@ -378,53 +328,6 @@ describe("near-cap WARNING hysteresis (PR-2 -8)", () => {
     expect(mod.evaluateNearCap(rearmBelow - 1).emit).toBe(false)
     expect(mod.__getNearCapArmed()).toBe(true)
     expect(mod.evaluateNearCap(warnAt).emit).toBe(true)
-  })
-})
-
-describe("size-aware sync cap", () => {
-  it("lockstep 80MB hard cap and 50MB soft target with control plane", () => {
-    const limits = readFileSync(resolve(process.cwd(), "src/lib/openclaw/state-sync-limits.ts"), "utf8")
-    expect(mod.ABSOLUTE_MAX_COMPRESSED_BYTES).toBe(80 * 1024 * 1024)
-    expect(mod.SOFT_TARGET_COMPRESSED_BYTES).toBe(50 * 1024 * 1024)
-    expect(limits).toContain("80 * 1024 * 1024")
-    expect(limits).toContain("50 * 1024 * 1024")
-  })
-
-  it("trims non-essential over soft target; sqlite + MEMORY remain", () => {
-    const gzipSync = (buf: Buffer) => {
-      const parsed = JSON.parse(buf.toString()) as { files: Record<string, string> }
-      if (Object.prototype.hasOwnProperty.call(parsed.files, "agents/x/fat.bin")) {
-        return Buffer.alloc(51 * 1024 * 1024)
-      }
-      return Buffer.alloc(100)
-    }
-    const result = mod.applySizeAwareBundle(
-      {
-        files: {
-          "agents/x/agent/openclaw-agent.sqlite": "c3Fs",
-          "agents/x/fat.bin": "eA==",
-          "workspace-x/MEMORY.md": "bWVt",
-        },
-        totalSize: 10,
-      },
-      { gzipSync },
-    )
-    expect(result.warning).toBe("trimmed-nonessential")
-    expect(result.bundle.files["agents/x/fat.bin"]).toBeUndefined()
-    expect(result.bundle.files["agents/x/agent/openclaw-agent.sqlite"]).toBe("c3Fs")
-    expect(result.bundle.files["workspace-x/MEMORY.md"]).toBe("bWVt")
-    expect(result.dropped).toContain("agents/x/fat.bin")
-  })
-
-  it("still returns a payload when compressed stays over hard cap (never silent refuse)", () => {
-    const gzipSync = () => Buffer.alloc(81 * 1024 * 1024)
-    const result = mod.applySizeAwareBundle(
-      { files: { "workspace-x/MEMORY.md": "bWVt" }, totalSize: 1 },
-      { gzipSync },
-    )
-    expect(result.stillOverHard).toBe(true)
-    expect(result.compressed.length).toBe(81 * 1024 * 1024)
-    expect(result.bundle.files["workspace-x/MEMORY.md"]).toBe("bWVt")
   })
 })
 

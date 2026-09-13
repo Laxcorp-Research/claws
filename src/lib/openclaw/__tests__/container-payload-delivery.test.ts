@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
-import { buildRailwayEnvVars, buildWorkspaceFileMap } from "@/lib/openclaw/deployer"
+import { buildRailwayEnvVars } from "@/lib/openclaw/deployer"
 import type { GeneratedWorkspace } from "@/lib/openclaw/generator"
 import { UNPACK_NODE_SCRIPT } from "@/lib/openclaw/railway-client"
 import { ALL_TEMPLATES } from "../../../../prisma/seed-data"
@@ -31,6 +31,29 @@ function setRequiredEnv() {
   process.env.METERING_ENDPOINT = "https://staging.app.buildclaws.ai/api/internal/metering"
   process.env.METERING_MASTER_SECRET = "test-metering-secret"
   delete process.env.COMPOSIO_API_KEY
+}
+
+function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
+  const files: Record<string, string> = {}
+  const cronContent = generated["cron/jobs.json"]
+  if (cronContent && cronContent !== "[]") files["cron/jobs.json"] = cronContent
+
+  for (const [dirName, agentFiles] of Object.entries(generated.workspaces)) {
+    for (const [fileName, content] of Object.entries(agentFiles)) {
+      if (fileName === "skills" && typeof content === "object") {
+        const skills = content as Record<string, Record<string, string>>
+        for (const [skillName, skillFiles] of Object.entries(skills)) {
+          for (const [skillFile, skillContent] of Object.entries(skillFiles)) {
+            files[`${dirName}/skills/${skillName}/${skillFile}`] = skillContent
+          }
+        }
+      } else if (typeof content === "string") {
+        files[`${dirName}/${fileName}`] = content
+      }
+    }
+  }
+
+  return files
 }
 
 function executeUnpack(envVars: Record<string, string>): string {
@@ -190,21 +213,6 @@ describe("container payload delivery", () => {
       /Container payload CLAWS_FILES_GZ_B64 is \d+ chars - exceeds the 30,000 safety ceiling \(Railway hard limit 32,768\)\. Workspace too large to deploy\./,
     )
   })
-
-  it("R16: empty cron/jobs.json still unpacks (removes stale store)", () => {
-    const generated = minimalGenerated()
-    generated["cron/jobs.json"] = "[]"
-    const files = buildWorkspaceFileMap(generated)
-    expect(files["cron/jobs.json"]).toBe("[]")
-    const outputDir = executeUnpack({
-      CLAWS_FILES_B64: Buffer.from(JSON.stringify(files)).toString("base64"),
-    })
-    try {
-      expect(readFileSync(path.join(outputDir, "cron", "jobs.json"), "utf8")).toBe("[]")
-    } finally {
-      rmSync(outputDir, { recursive: true, force: true })
-    }
-  }, 15_000)
 
   it("still unpacks legacy CLAWS_FILES_B64 payloads byte-identically", () => {
     const generated = minimalGenerated()

@@ -89,18 +89,6 @@ describe("PATCH /api/workspaces/[id]", () => {
     const call = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(call.data).not.toHaveProperty("containerId")
   })
-
-  it("ignores candidateRuntimeSoak from dashboard PATCH (admin soak route only)", async () => {
-    const req = createMockRequest("http://localhost:3000/api/workspaces/ws-1", {
-      method: "PATCH",
-      body: { candidateRuntimeSoak: true, alwaysOn: false },
-    })
-    await PATCH(req, { params: Promise.resolve({ id: "ws-1" }) })
-
-    const call = (prismaMock.workspace.update as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(call.data).not.toHaveProperty("candidateRuntimeSoak")
-    expect(call.data).toHaveProperty("alwaysOn", false)
-  })
 })
 
 describe("DELETE /api/workspaces/[id]", () => {

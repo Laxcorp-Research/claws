@@ -64,23 +64,3 @@ jobs:
             echo "::error::daily-digest returned HTTP $code (expected 200)"
             exit 1
           fi
-
-      - name: GET /api/cron/runtime-autoupdate
-        env:
-          STAGING_CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          url="${STAGING_APP}/api/cron/runtime-autoupdate"
-          echo "? GET $url"
-          code=$(curl -sS -o /tmp/autoupdate-body.txt -w "%{http_code}" \
-            -H "Authorization: Bearer ${STAGING_CRON_SECRET}" \
-            --max-time 60 \
-            "$url" || echo "000")
-          body=$(head -c 800 /tmp/autoupdate-body.txt || true)
-          echo "  HTTP $code"
-          echo "  body: $body"
-          if [ "$code" != "200" ]; then
-            echo "::error::runtime-autoupdate returned HTTP $code (expected 200)"
-            exit 1
-          fi

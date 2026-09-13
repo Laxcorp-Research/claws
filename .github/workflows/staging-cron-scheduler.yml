@@ -98,9 +98,9 @@ jobs:
               ;;
             "")
               # workflow_dispatch — exercise every vercel.json cron path once
-              # (daily-digest + runtime-autoupdate included for path parity;
-              # schedule fires from staging-daily-digest.yml only)
-              PATHS='["/api/admin/payouts/release","/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/aggregate-credit-usage","/api/cron/credit-pool-monitor","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/provisioning-queue","/api/cron/connection-health","/api/cron/enforce-trial-expiry","/api/cron/daily-digest","/api/cron/runtime-autoupdate","/api/cron/refresh-model-catalog"]'
+              # (daily-digest included for path parity; schedule fires from
+              # staging-daily-digest.yml only)
+              PATHS='["/api/admin/payouts/release","/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/aggregate-credit-usage","/api/cron/credit-pool-monitor","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/provisioning-queue","/api/cron/connection-health","/api/cron/enforce-trial-expiry","/api/cron/daily-digest","/api/cron/refresh-model-catalog"]'
               ;;
             *)
               echo "::error::Unexpected schedule expression: $SCHEDULE"

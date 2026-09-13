@@ -26,8 +26,6 @@ import {
   CATCHUP_OVERLAY_MARKER,
   runHeartbeatCatchupOnBoot,
 } from './heartbeat-catchup.mjs';
-import { archiveExecApprovalsLegacy, runRuntimeVolumeMigration } from './volume-migration.mjs';
-import { reemitCanonicalCronStore } from './cron-store.mjs';
 
 const CREDIT_MODE = process.env.CLAWS_CREDIT_MODE === 'true';
 const GATEWAY_PORT = process.env.PORT || '18789';
@@ -371,62 +369,6 @@ async function main() {
   } catch (err) {
     console.error(
       `[process-manager] rebuild-index failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  // 9.4: convert leftover jsonl / cron JSON stores to sqlite BEFORE gateway.
-  // Fail closed - SessionStoreMigrationRequiredError is a boot refuse.
-  try {
-    const migration = await runRuntimeVolumeMigration({
-      dataDir: OPENCLAW_DATA_DIR,
-      appDir: OPENCLAW_APP_DIR,
-      ledger: (event) => postActivityEvent(event),
-    });
-    if (migration.ran) {
-      console.log(
-        `[process-manager] runtime volume migration: ${JSON.stringify({
-          reasons: migration.reasons,
-          doctorStatus: migration.doctorStatus,
-        })}`,
-      );
-    } else {
-      console.log(`[process-manager] runtime volume migration skipped (${migration.reason})`);
-    }
-  } catch (err) {
-    console.error(
-      `[process-manager] runtime volume migration failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    process.exit(1);
-  }
-
-  try {
-    const archivedExec = archiveExecApprovalsLegacy(OPENCLAW_DATA_DIR);
-    if (archivedExec.archived.length > 0) {
-      console.log(
-        `[process-manager] archived leftover exec-approvals: ${JSON.stringify(archivedExec.archived)}`,
-      );
-    }
-  } catch (err) {
-    console.error(
-      `[process-manager] exec-approvals archive failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-
-  try {
-    const cronEmit = reemitCanonicalCronStore({
-      dataDir: OPENCLAW_DATA_DIR,
-      env: process.env,
-    });
-    console.log(`[process-manager] canonical cron store: ${JSON.stringify(cronEmit)}`);
-  } catch (err) {
-    console.error(
-      `[process-manager] canonical cron re-emit failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
     );
   }
 
