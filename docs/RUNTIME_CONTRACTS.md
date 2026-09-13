@@ -102,7 +102,8 @@ changed.
 | Dist / package | Upstream source | Symbol | Why |
 |---|---|---|---|
 | `/app/node_modules/croner` via `createRequire("/app/package.json")` | `croner@10.0.1` (still pinned in 9.4 `package.json`) | `Cron`, `previousRuns`, `nextRun` | `container/heartbeat-catchup.mjs` (`-13`). Image has no `cron-parser`. |
-| `cron/jobs.json` | `src/cron/persisted-shape.ts` | `getInvalidPersistedCronJobReason` (`missing-id`, …) | Jobs without string `id` are dropped at load. 9.1+ quarantines malformed rows instead of blocking boot. |
+| `cron/jobs.json` | `src/cron/store.ts` | `resolveDefaultCronStorePath`, `loadCronStore`, `saveCronStore` | **R16:** 9.4 canonical cron store is this JSON file (plus `jobs-state.json`), **not** sqlite. Overlay emits it on every deploy (upsert by job id; `[]` removes stale Claws-managed jobs). Catch-up reads the same path. |
+| `cron/jobs.json` shape | `src/cron/persisted-shape.ts` | `getInvalidPersistedCronJobReason` (`missing-id`, …) | Jobs without string `id` are dropped at load. 9.1+ quarantines malformed rows instead of blocking boot. |
 | `dist/extensions/admin-http-rpc/` | `extensions/admin-http-rpc/src/methods.ts` | `health`, `cron.run` | Catch-up: `POST /api/v1/admin/rpc` `{ method: "cron.run", params: { id, mode: "force" } }` after `health`. **Still allowlisted on 9.4.** |
 | (jobs service) | `src/cron/service/jobs.ts` | `sessionTarget` | Overlay must not emit `sessionTarget: "main"` + `payload.kind: "agentTurn"` (5.22 dropped that pair). Overlay uses `session:agent:<slug>:main`. |
 
@@ -126,7 +127,7 @@ Re-verify on any candidate that claims “chat still works”.
 ## 2. Rule-36 / contract-suite checklist
 
 Walk this list on **every** candidate image. Overlay-source locks live in
-`src/lib/openclaw/__tests__/runtime-contracts-r15.test.ts`. Clone-tag greps
+`src/lib/openclaw/__tests__/runtime-contracts-r15.test.ts` (includes R16). Clone-tag greps
 run in `.github/workflows/runtime-contracts-94.yml` against unsuffixed
 `upstream_tag` `v2026.9.4`. Staging pin is still `2026.5.22-18` until soak
 promote.
@@ -148,6 +149,7 @@ promote.
 | R13 | Live mission/cron enqueue + extract + approve | same receipt | candidate soak workspace (interview-free + `httpFixtureMode`) |
 | R14 | Hibernate hold + flush | sqlite in state-sync bundle; live soak quotes HWD on the clone | jsonl-only flush closed on overlay; live HWD quotes on flagged clone |
 | R15 | Gateway healthz `{"ok":true,"status":"live"}` | process-manager + volume migration before gateway | first signal after candidate boot on the flagged clone |
+| R16 | 9.4 cron canonical store is `cron/jobs.json` (not sqlite); emit/upsert on every deploy | `container/cron-store.mjs` + `buildWorkspaceFileMap` always writes jobs.json (including `[]`); clone-tag greps `src/cron/store.ts` | redeploy with a changed schedule → jobs.json reflects it → beat fires |
 
 KEEP Twitter/X Growth Machine (5) `cmr3fo19r000404jlze8o7dm8` is the archive
 canary. **Never** delete, wake-onto-candidate, or use as cleanup. Fixture fire
@@ -172,7 +174,7 @@ Stable tags after `v2026.5.22` (2026-05-24): `2026.5.26`, `5.27`, `5.28`,
 | **Config schema** | Roster is keyed `agents.entries` (strict Zod). Load migrates `agents.list` only when ids already normalize. `default: true` stripped after capture. `OPENCLAW_CONFIG_READONLY=1` (9.4) blocks doctor/config rewrites of deployment-managed `openclaw.json`. Schema versions in 9.4 package.json: `state: 17`, `agent: 19`. |
 | **Tools** | Glob deny still exists. MCP skip via tool-policy matcher still the long-tail path. Host-network / sandbox bind / MCP HTTP redirect / stdio env filters tightened (6.6+). `tools.web.search.enabled` still valid. |
 | **Sessions / thinking** | Transcripts became core (5.26). SQLite is canonical by 8.x; 9.4 **refuses boot** on leftover `sessions.json` / non-sqlite stores. Thinking-signature heal that rewrites jsonl will no-op. 9.2: session tools default to all-session visibility (`tools.sessions.visibility`). |
-| **Cron** | `croner` still `10.0.1`. `cron/jobs.json` still loaded; `missing-id` still drops. 6.5: doctor migrates cron JSON → SQLite before runtime. 9.1: malformed cron rows **quarantined** instead of blocking boot. `health` + `cron.run` still on admin HTTP RPC. |
+| **Cron** | `croner` still `10.0.1`. **R16:** 9.4 still loads `cron/jobs.json` via `resolveDefaultCronStorePath` / `loadCronStore` (JSON, not sqlite). Overlay unpacks that file on every deploy (including `[]` to drop stale Claws jobs) and re-emits after restore. `missing-id` still drops. 9.1: malformed cron rows **quarantined** instead of blocking boot. `health` + `cron.run` still on admin HTTP RPC. |
 | **Sandbox** | Env sanitizer still at `src/agents/sandbox/sanitize-env-vars.ts`. Skill env-overrides path moved (9.4 404 on old file). Daytona backend (8.1). Attachment reads must not cross sibling agent sandboxes (9.4). |
 | **Plugins** | SDK deprecations (`before_agent_start`, root `openclaw/plugin-sdk` imports — 6.34). `before_agent_run` is a fail-closed **gate** (9.x). Unified Plugins UI (9.4). `allowConversationAccess` still on `PluginEntrySchema`. |
 
@@ -193,7 +195,7 @@ That is historical evidence the overlay did **not** survive those soaks.
    `ownership: explicit` + `systemAgent`; sqlite heal/state-sync; wake-path
    `openclaw doctor --fix --non-interactive` before gateway; sanitizer
    re-vendored from `v2026.9.4`; `OPENCLAW_CONFIG_READONLY=1`. Clone-tag CI
-   walks R1–R15 vs unsuffixed `v2026.9.4`. **Staging pin is still
+   walks R1–R16 vs unsuffixed `v2026.9.4`. **Staging pin is still
    `2026.5.22-18`.**
 4. Staging live fire: admin `POST /api/admin/workspaces/:id/candidate-soak`
    `{ enabled: true }` on a **Twitter clone** (never KEEP

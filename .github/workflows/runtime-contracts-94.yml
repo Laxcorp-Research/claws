@@ -1,6 +1,6 @@
 name: Runtime 9.4 contracts
 
-# Clone-tag (R1–R15 symbols vs unsuffixed upstream_tag) + overlay image exec smoke.
+# Clone-tag (R1–R16 symbols vs unsuffixed upstream_tag) + overlay image exec smoke.
 # Overlay-source locks also run in unit-tests via runtime-contracts-r15.test.ts.
 
 on:

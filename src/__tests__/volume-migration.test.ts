@@ -335,4 +335,41 @@ describe("runtime volume migration (jsonl → sqlite doctor --fix)", () => {
     expect(spawnAt).toBeGreaterThan(migAt)
     expect(src).toContain("process.exit(1)")
   })
+
+  it("archives leftover exec-approvals.json at boot (like workspace-setup)", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-volmig-exec-"))
+    try {
+      const srcFile = path.join(dir, "exec-approvals.json")
+      fs.writeFileSync(srcFile, '{"version":0,"legacy":true}')
+      const mod = await import("../../container/volume-migration.mjs")
+      const result = mod.archiveExecApprovalsLegacy(dir, 1_700_000_000_001)
+      expect(fs.existsSync(srcFile)).toBe(false)
+      expect(
+        fs.existsSync(
+          path.join(dir, ".claws", "archive", "exec-approvals", "1700000000001", "exec-approvals.json"),
+        ),
+      ).toBe(true)
+      expect(result.archived).toEqual(["exec-approvals.json"])
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("MUTATION: process-manager archives exec-approvals and re-emits cron before gateway", () => {
+    const src = readFileSync(
+      path.join(process.cwd(), "container/process-manager.mjs"),
+      "utf8",
+    )
+    const execAt = src.indexOf("archiveExecApprovalsLegacy")
+    const cronAt = src.indexOf("reemitCanonicalCronStore")
+    const spawnAt = src.indexOf("spawnGateway()")
+    expect(execAt).toBeGreaterThan(0)
+    expect(cronAt).toBeGreaterThan(execAt)
+    expect(spawnAt).toBeGreaterThan(cronAt)
+    const dockerfile = readFileSync(
+      path.join(process.cwd(), "docker/Dockerfile"),
+      "utf8",
+    )
+    expect(dockerfile).toContain("COPY container/cron-store.mjs /usr/local/bin/cron-store.mjs")
+  })
 })

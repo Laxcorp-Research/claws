@@ -1,5 +1,5 @@
 /**
- * Overlay-side R1–R15 locks for the 9.4 port.
+ * Overlay-side R1–R16 locks for the 9.4 port.
  * Clone-tag symbol greps live in scripts/runtime-contracts-clone-tag.mjs (CI).
  * MUTATION: reviving agents.list / default:true / 100ms before_agent_run timeout fails.
  */
@@ -35,7 +35,7 @@ const AgentsEmitSchema = z
   })
   .strict()
 
-describe("RUNTIME_CONTRACTS R1–R15 overlay locks (9.4)", () => {
+describe("RUNTIME_CONTRACTS R1–R16 overlay locks (9.4)", () => {
   it("R1: build workflow does not move :candidate or :latest", () => {
     const yml = src(".github/workflows/build-openclaw-image.yml")
     expect(yml).toContain("STOP_MOVING_CANDIDATE_ASSERT")
@@ -152,5 +152,21 @@ describe("RUNTIME_CONTRACTS R1–R15 overlay locks (9.4)", () => {
     expect(pm).toContain("gateway")
     expect(pm).toContain("runRuntimeVolumeMigration")
     expect(pm).toMatch(/doctor/)
+  })
+
+  it("R16: 9.4 cron canonical store is jobs.json; emit including empty; re-emit after restore", () => {
+    const contracts = src("docs/RUNTIME_CONTRACTS.md")
+    expect(contracts).toContain("resolveDefaultCronStorePath")
+    expect(contracts).toContain("R16")
+    expect(contracts).not.toMatch(/R16[\s\S]{0,200}sqlite canonical/)
+    const deployer = src("src/lib/openclaw/deployer.ts")
+    expect(deployer).toContain("export function buildWorkspaceFileMap")
+    expect(deployer).not.toContain("cronContent !== '[]'")
+    const cronStore = src("container/cron-store.mjs")
+    expect(cronStore).toContain("upsertCronJobsById")
+    expect(cronStore).toContain('cron/jobs.json')
+    const pm = src("container/process-manager.mjs")
+    expect(pm).toContain("reemitCanonicalCronStore")
+    expect(pm).toContain("archiveExecApprovalsLegacy")
   })
 })

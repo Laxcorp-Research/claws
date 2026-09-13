@@ -8,6 +8,7 @@ import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { maybeResumeInterruptedMission } from "@/lib/healing/mission-resume"
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
+import { sendOwnerAlert } from "@/lib/alerts/owner-alert"
 
 // P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot - when a claw
 // wakes past a due heartbeat hint, the container overlay should fire one
@@ -89,6 +90,19 @@ export async function hibernateWorkspace(
         log.error("Failed to record hibernation refusal", {
           workspaceId,
           error: String(markErr),
+        })
+      }
+      try {
+        await sendOwnerAlert({
+          alertKey: "hibernation-refuse-unsafe",
+          title: "Hibernation refused: state not safely synced",
+          detail: `workspaceId=${workspaceId} reason=${reason}. Container kept RUNNING/WARM.`,
+          workspaceId,
+        })
+      } catch (alertErr) {
+        log.error("owner-alert hibernation-refuse-unsafe failed", {
+          workspaceId,
+          error: String(alertErr),
         })
       }
       return { hibernated: false, refused: true, reason }

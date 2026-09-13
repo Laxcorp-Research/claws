@@ -3,7 +3,7 @@
  * Clone-tag contract CI vs OpenClaw v2026.9.4 (unsuffixed upstream_tag).
  *
  * Greps the cloned upstream tree for the symbols in docs/RUNTIME_CONTRACTS.md
- * R1–R15 and fails closed if a required 9.4 contract disappeared.
+ * R1–R16 and fails closed if a required 9.4 contract disappeared.
  *
  * Usage: node scripts/runtime-contracts-clone-tag.mjs /tmp/openclaw v2026.9.4
  */
@@ -151,6 +151,14 @@ check(() => {
   if (!body.includes("openclaw-agent.sqlite") && !body.includes(".sqlite")) {
     throw new Error("R8: sqlite session path helper missing")
   }
+})
+
+check(() => {
+  mustContain(
+    "src/cron/store.ts",
+    ["resolveDefaultCronStorePath", "jobs.json", "loadCronStore", "saveCronStore"],
+    "R16 cron JSON store",
+  )
 })
 
 if (failures.length > 0) {

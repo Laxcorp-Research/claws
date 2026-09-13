@@ -1264,11 +1264,15 @@ export function buildRailwayEnvVars(
   return vars;
 }
 
-function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
+/**
+ * R16: always emit cron/jobs.json (including `[]`) so unpack overwrites the
+ * canonical 9.4 store every deploy. Skipping empty left stale jobs on disk.
+ */
+export function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
   const files: Record<string, string> = {};
 
   const cronContent = generated['cron/jobs.json'];
-  if (cronContent && cronContent !== '[]') {
+  if (typeof cronContent === 'string') {
     files['cron/jobs.json'] = cronContent;
   }
 

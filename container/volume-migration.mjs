@@ -131,6 +131,40 @@ export function archiveWorkspaceSetupLegacy(dataDir, nowMs = Date.now()) {
   return { archived }
 }
 
+export function listExecApprovalsLegacyFiles(dataDir) {
+  const files = []
+  if (!dataDir) return files
+  for (const name of ["exec-approvals.json", "exec-approvals.sock"]) {
+    const filePath = path.join(dataDir, name)
+    try {
+      const st = fs.lstatSync(filePath)
+      if (st.isFile() || st.isSocket() || st.isSymbolicLink()) files.push(filePath)
+    } catch {
+      /* missing */
+    }
+  }
+  return files
+}
+
+export function archiveExecApprovalsLegacy(dataDir, nowMs = Date.now()) {
+  const files = listExecApprovalsLegacyFiles(dataDir)
+  if (files.length === 0) return { archived: [] }
+  const destRoot = path.join(dataDir, ".claws", "archive", "exec-approvals", String(nowMs))
+  fs.mkdirSync(destRoot, { recursive: true })
+  const archived = []
+  for (const src of files) {
+    const rel = path.relative(dataDir, src).replaceAll("\\", "/")
+    const dest = path.join(destRoot, path.basename(src))
+    try {
+      fs.renameSync(src, dest)
+    } catch {
+      fs.rmSync(src, { force: true })
+    }
+    archived.push(rel)
+  }
+  return { archived }
+}
+
 export function detectLegacyRuntimeVolume(dataDir) {
   const reasons = []
   if (!dataDir) return { legacy: false, reasons }

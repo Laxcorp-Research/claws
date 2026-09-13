@@ -15,6 +15,11 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+const mockSendOwnerAlert = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/alerts/owner-alert", () => ({
+  sendOwnerAlert: (...args: unknown[]) => mockSendOwnerAlert(...args),
+}))
+
 import { hibernateWorkspace } from "@/lib/hibernation/manager"
 import {
   HIBERNATION_REFUSED_ACTION,
@@ -62,6 +67,7 @@ describe("hibernateWorkspace - P3 refuse path", () => {
       refused: true,
       reason: "sync-failed:timeout",
     })
+    mockSendOwnerAlert.mockResolvedValue({ sent: false, channel: "skipped" })
 
     const result = await hibernateWorkspace("ws-1")
 
@@ -85,6 +91,12 @@ describe("hibernateWorkspace - P3 refuse path", () => {
     expect(prismaMock.workspace.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ hibernationRefusedAt: expect.any(Date) }),
+      }),
+    )
+    expect(mockSendOwnerAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alertKey: "hibernation-refuse-unsafe",
+        workspaceId: "ws-1",
       }),
     )
   })

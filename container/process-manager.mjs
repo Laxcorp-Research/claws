@@ -26,7 +26,8 @@ import {
   CATCHUP_OVERLAY_MARKER,
   runHeartbeatCatchupOnBoot,
 } from './heartbeat-catchup.mjs';
-import { runRuntimeVolumeMigration } from './volume-migration.mjs';
+import { archiveExecApprovalsLegacy, runRuntimeVolumeMigration } from './volume-migration.mjs';
+import { reemitCanonicalCronStore } from './cron-store.mjs';
 
 const CREDIT_MODE = process.env.CLAWS_CREDIT_MODE === 'true';
 const GATEWAY_PORT = process.env.PORT || '18789';
@@ -398,6 +399,35 @@ async function main() {
       }`,
     );
     process.exit(1);
+  }
+
+  try {
+    const archivedExec = archiveExecApprovalsLegacy(OPENCLAW_DATA_DIR);
+    if (archivedExec.archived.length > 0) {
+      console.log(
+        `[process-manager] archived leftover exec-approvals: ${JSON.stringify(archivedExec.archived)}`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[process-manager] exec-approvals archive failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  try {
+    const cronEmit = reemitCanonicalCronStore({
+      dataDir: OPENCLAW_DATA_DIR,
+      env: process.env,
+    });
+    console.log(`[process-manager] canonical cron store: ${JSON.stringify(cronEmit)}`);
+  } catch (err) {
+    console.error(
+      `[process-manager] canonical cron re-emit failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
 
   if (CREDIT_MODE) {
