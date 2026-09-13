@@ -43,6 +43,7 @@ import {
   getRailwayTargetProvenance,
   BOOT_SCRIPT_B64,
 } from './railway-client';
+import { mayDeployCandidateImage } from './candidate-soak';
 import { log } from '@/lib/logger';
 import { DEFAULT_SYNC_TIMEOUT_MS, trySyncNow } from './sync-now';
 import { withTransientDeployRetry } from '@/lib/healing/guards';
@@ -256,22 +257,43 @@ function withRailwayDeploymentId(
 /**
  * Resolves the container image to use for a deploy at deploy time.
  *
- * Priority:
- *   1. Current `isStable` OpenClawVersion row (canonical - set by the
- *      promote-openclaw-image.yml workflow after manual QA). The row's
- *      `dockerImage` is an immutable `:<version>` reference per the
- *      register-route validator.
- *   2. `OPENCLAW_DOCKER_IMAGE` env var (Vercel-set; used as dev/bootstrap
- *      fallback before the first promote has happened).
- *   3. Hard-coded default at the railway-client level - last-resort safety
- *      net so a deploy never tries to pull an empty image string.
+ * Default (unflagged / KEEP / production):
+ *   1. Current `isStable` OpenClawVersion row (canonical pin).
+ *   2. `OPENCLAW_DOCKER_IMAGE` env var.
+ *   3. Hard-coded org default.
  *
- * Returning the string here (instead of mutating module state in
- * railway-client.ts) lets the caller also persist it on
- * `Deployment.containerImage`, which is what makes that column finally
- * reflect what's actually deployed.
+ * Candidate soak (PR-2): flagged staging clones only. Then we read the
+ * `isLatest` row (isCandidate register) instead of `isStable`. KEEP canary
+ * and production CLAWS_ENV never take this branch.
  */
-export async function resolveDeployImage(): Promise<string> {
+export type ResolveDeployImageOpts = {
+  workspaceId?: string;
+  candidateSoak?: boolean | null;
+};
+
+export async function resolveDeployImage(
+  opts: ResolveDeployImageOpts = {},
+): Promise<string> {
+  if (mayDeployCandidateImage(opts)) {
+    const candidate = await prisma.openClawVersion.findFirst({
+      where: { isLatest: true },
+      orderBy: { releasedAt: 'desc' },
+      select: { dockerImage: true, version: true, isStable: true },
+    });
+    if (candidate?.dockerImage) {
+      log.info('resolveDeployImage: using isLatest candidate for flagged staging soak', {
+        workspaceId: opts.workspaceId,
+        version: candidate.version,
+        dockerImage: candidate.dockerImage,
+        isStable: candidate.isStable,
+      });
+      return candidate.dockerImage;
+    }
+    log.warn('resolveDeployImage: candidate soak flagged but no isLatest row; falling back to isStable', {
+      workspaceId: opts.workspaceId,
+    });
+  }
+
   const stable = await prisma.openClawVersion.findFirst({
     where: { isStable: true },
     orderBy: { releasedAt: 'desc' },
@@ -337,7 +359,10 @@ export async function deployToCloud(
   // was never overwritten - every Deployment row carried that string
   // regardless of the real image used, which broke the admin
   // versions deployment-count query and the force-update WHERE clause.
-  const image = await resolveDeployImage();
+  const image = await resolveDeployImage({
+    workspaceId,
+    candidateSoak: workspace.candidateRuntimeSoak,
+  });
   const railwayTarget = getRailwayTargetProvenance();
 
   const deployment = await prisma.deployment.create({
@@ -1129,6 +1154,8 @@ export function buildRailwayEnvVars(
     TZ: 'UTC',
     NODE_ENV: 'production',
     PORT: '18789',
+    // 9.4: doctor must not rewrite generator-owned openclaw.json.
+    OPENCLAW_CONFIG_READONLY: '1',
   };
 
   if (Object.keys(seedFiles).length > 0) {
@@ -1237,11 +1264,15 @@ export function buildRailwayEnvVars(
   return vars;
 }
 
-function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
+/**
+ * R16: always emit cron/jobs.json (including `[]`) so unpack overwrites the
+ * canonical 9.4 store every deploy. Skipping empty left stale jobs on disk.
+ */
+export function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
   const files: Record<string, string> = {};
 
   const cronContent = generated['cron/jobs.json'];
-  if (cronContent && cronContent !== '[]') {
+  if (typeof cronContent === 'string') {
     files['cron/jobs.json'] = cronContent;
   }
 

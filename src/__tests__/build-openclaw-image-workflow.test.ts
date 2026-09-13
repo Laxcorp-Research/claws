@@ -23,4 +23,10 @@ describe("build-openclaw-image.yml - stop moving :candidate", () => {
       /\$\{\{ env\.REGISTRY \}\}\/\$\{\{ env\.IMAGE_NAME \}\}:candidate\s*$/m,
     )
   })
+
+  it("RUNTIME-AUTOUPDATE: detect cron is daily 06:00 UTC, not weekly Monday", () => {
+    const yml = readFileSync(WORKFLOW_PATH, "utf8")
+    expect(yml).toContain("cron: '0 6 * * *'")
+    expect(yml).not.toMatch(/cron:\s*'0 6 \* \* 1'/)
+  })
 })

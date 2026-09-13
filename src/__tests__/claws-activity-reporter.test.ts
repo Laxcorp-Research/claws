@@ -50,7 +50,7 @@ interface PluginTestSurface {
   HANDLER_TIMEOUT_MS: number;
   ACTION_PREVIEW_MAX: number;
   DETAIL_MAX: number;
-  handleBeforeAgentRun: (event: unknown, ctx: unknown) => void;
+  handleBeforeAgentRun: (event: unknown, ctx: unknown) => unknown;
   handleAgentEnd: (event: unknown, ctx: unknown) => void;
   handleMessageReceived: (event: unknown, ctx: unknown) => void;
   handleMessageSent: (event: unknown, ctx: unknown) => void;
@@ -87,22 +87,20 @@ function expectSyncReturn(
   handler: (event: unknown, ctx: unknown) => unknown,
   event: unknown,
   ctx: unknown,
+  expected: unknown = undefined,
 ) {
   const ret = handler(event, ctx);
-  // A returned Promise (or thenable) means the handler is doing async
-  // work inside the hook call path - exactly the failure mode the
-  // upstream hook runner would await and that we forbid by design.
   expect(
-    ret === undefined,
-    `${handlerName} must return undefined (synchronously). Got: ${typeof ret} ${ret instanceof Promise ? "(a Promise - handler is doing async work inside the hook call path; refactor to enqueue then return)" : ""}`,
-  ).toBe(true);
-  // Belt-and-suspenders: not a thenable.
+    ret instanceof Promise,
+    `${handlerName} must not return a Promise (async work inside the hook call path).`,
+  ).toBe(false);
   expect(
     typeof ret === "object" &&
       ret !== null &&
       typeof (ret as { then?: unknown }).then === "function",
-    `${handlerName} returned a thenable; it must return undefined`,
+    `${handlerName} returned a thenable`,
   ).toBe(false);
+  expect(ret).toEqual(expected);
 }
 
 describe("claws-activity-reporter - event mapping", () => {
@@ -129,12 +127,13 @@ describe("claws-activity-reporter - event mapping", () => {
       expect(rec.metadata.promptPreview as string).toMatch(/…$/);
     });
 
-    it("returns synchronously (no Promise)", () => {
+    it("returns synchronously with exact { outcome: 'pass' } (9.4 fail-closed gate)", () => {
       expectSyncReturn(
         "handleBeforeAgentRun",
         plugin.handleBeforeAgentRun,
         { prompt: "x", messages: [] },
         { agentId: "a" },
+        { outcome: "pass" },
       );
     });
   });
@@ -786,5 +785,32 @@ describe("claws-activity-reporter - overlay boot emission-version (PR-2 -8)", ()
     expect(rec.metadata.clawsOverlaySha).toBe("abc123overlaysha");
     // Mutation: dropping clawsOverlaySha from the boot payload fails.
     expect(rec.metadata).toHaveProperty("clawsOverlaySha");
+  });
+});
+
+describe("claws-activity-reporter - 9.4 before_agent_run gate", () => {
+  it("registers before_agent_run without timeoutMs (100ms footgun)", async () => {
+    vi.resetModules();
+    delete process.env.CLAWS_ACTIVITY_ENDPOINT;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = (await import("../../container/claws-activity-reporter/index.mjs")) as any;
+    const calls: Array<{ name: string; opts?: unknown }> = [];
+    mod.default.register({
+      on(name: string, _handler: unknown, opts?: unknown) {
+        calls.push({ name, opts });
+      },
+      registerHttpRoute() {},
+    });
+    const before = calls.find((c) => c.name === "before_agent_run");
+    expect(before).toBeDefined();
+    expect(before!.opts).toBeUndefined();
+    const agentEnd = calls.find((c) => c.name === "agent_end");
+    expect(agentEnd?.opts).toEqual({ timeoutMs: 100 });
+  });
+
+  it("pass object is exactly one key (isHookDecision)", () => {
+    const ret = plugin.handleBeforeAgentRun({ prompt: "x", messages: [] }, { agentId: "a" });
+    expect(ret).toEqual({ outcome: "pass" });
+    expect(Object.keys(ret as object)).toEqual(["outcome"]);
   });
 });

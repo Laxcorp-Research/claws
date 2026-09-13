@@ -14,6 +14,9 @@
 
 import fs from "node:fs"
 import path from "node:path"
+import { createRequire } from "node:module"
+
+const require = createRequire(import.meta.url)
 
 /** Align with platform src/lib/trial/thinking-signature-heal.ts */
 export const THINKING_SIGNATURE_HEAL_DEDUP_MS = 24 * 60 * 60 * 1000
@@ -289,15 +292,21 @@ export async function healThinkingSignatureOnce(args) {
 
 /**
  * Resolve agents/<id>/sessions/<uuid>.jsonl from sessionKey / agentId.
+ * Legacy 5.22 volumes only - 9.4 canonical store is sqlite.
  */
-export function resolveSessionJsonlPath(dataDir, sessionKey, agentId) {
-  if (!dataDir) return null
+export function resolveAgentIdFromSession(sessionKey, agentId) {
   let agent = typeof agentId === "string" && agentId.length > 0 ? agentId : null
-  let key = typeof sessionKey === "string" ? sessionKey : null
+  const key = typeof sessionKey === "string" ? sessionKey : null
   if (!agent && key) {
     const parts = key.split(":")
     if (parts[0] === "agent" && parts[1]) agent = parts[1]
   }
+  return agent
+}
+
+export function resolveSessionJsonlPath(dataDir, sessionKey, agentId) {
+  if (!dataDir) return null
+  const agent = resolveAgentIdFromSession(sessionKey, agentId)
   if (!agent) return null
   const sessionsDir = path.join(dataDir, "agents", agent, "sessions")
   const indexPath = path.join(sessionsDir, "sessions.json")
@@ -305,8 +314,8 @@ export function resolveSessionJsonlPath(dataDir, sessionKey, agentId) {
   try {
     if (fs.existsSync(indexPath)) {
       const index = JSON.parse(fs.readFileSync(indexPath, "utf8"))
-      if (key && typeof index[key] === "string") {
-        uuid = index[key].replace(/\.jsonl$/i, "")
+      if (sessionKey && typeof index[sessionKey] === "string") {
+        uuid = index[sessionKey].replace(/\.jsonl$/i, "")
       } else if (typeof index[`agent:${agent}:main`] === "string") {
         uuid = index[`agent:${agent}:main`].replace(/\.jsonl$/i, "")
       }
@@ -319,12 +328,159 @@ export function resolveSessionJsonlPath(dataDir, sessionKey, agentId) {
   return fs.existsSync(filePath) ? filePath : null
 }
 
+/** 9.4 canonical session db: agents/<id>/agent/openclaw-agent.sqlite */
+export function resolveSessionSqlitePath(dataDir, sessionKey, agentId) {
+  if (!dataDir) return null
+  const agent = resolveAgentIdFromSession(sessionKey, agentId)
+  if (!agent) return null
+  const filePath = path.join(dataDir, "agents", agent, "agent", "openclaw-agent.sqlite")
+  return fs.existsSync(filePath) ? filePath : null
+}
+
+function quoteIdent(name) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return null
+  return `"${name}"`
+}
+
 /**
- * Strip thinking blocks from the live session file (BYOK / post-failure path).
+ * Walk JSON (and jsonl strings) stripping thinking / thinkingSignature parts.
+ * Returns { value, blocksStripped }.
  */
-export function stripThinkingFromSessionFile(filePath) {
+export function stripThinkingDeep(value) {
+  let blocksStripped = 0
+  const walk = (node) => {
+    if (typeof node === "string") {
+      const trimmed = node.trim()
+      if (trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.includes("\n")) {
+        if (trimmed.includes("\n") && trimmed.split("\n").some((l) => l.trim().startsWith("{"))) {
+          const jsonl = stripThinkingFromSessionJsonl(node)
+          blocksStripped += jsonl.blocksStripped
+          return jsonl.text
+        }
+        try {
+          const parsed = JSON.parse(node)
+          const next = walk(parsed)
+          if (blocksStripped > 0) return JSON.stringify(next)
+        } catch {
+          return node
+        }
+      }
+      return node
+    }
+    if (Array.isArray(node)) {
+      const kept = []
+      for (const part of node) {
+        if (isThinkingPart(part)) {
+          blocksStripped += 1
+          continue
+        }
+        kept.push(walk(part))
+      }
+      return kept
+    }
+    if (node && typeof node === "object") {
+      const out = Array.isArray(node) ? [] : { ...node }
+      for (const [k, v] of Object.entries(node)) {
+        out[k] = walk(v)
+      }
+      return out
+    }
+    return node
+  }
+  return { value: walk(value), blocksStripped }
+}
+
+export function tryOpenNodeSqliteAdapter(filePath) {
+  try {
+    const { DatabaseSync } = require("node:sqlite")
+    const db = new DatabaseSync(filePath)
+    return {
+      all(sql, params = []) {
+        const stmt = db.prepare(sql)
+        return params.length ? stmt.all(...params) : stmt.all()
+      },
+      run(sql, params = []) {
+        const stmt = db.prepare(sql)
+        return params.length ? stmt.run(...params) : stmt.run()
+      },
+      close() {
+        db.close()
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Generic TEXT-column walker. Schema is not vendored - any TEXT/CLOB/JSON
+ * cell that parses as JSON (or jsonl) has thinking parts stripped in place.
+ *
+ * @param {string} filePath
+ * @param {{ all: Function, run: Function, close?: Function }} [dbAdapter]
+ */
+export function stripThinkingFromSqliteFile(filePath, dbAdapter) {
   if (!filePath || !fs.existsSync(filePath)) {
     return { ok: false, blocksStripped: 0 }
+  }
+  const adapter = dbAdapter ?? tryOpenNodeSqliteAdapter(filePath)
+  if (!adapter) {
+    return { ok: false, blocksStripped: 0, reason: "sqlite-adapter-required" }
+  }
+  const tables = adapter.all(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`,
+  )
+  let blocksStripped = 0
+  for (const row of tables) {
+    const table = typeof row?.name === "string" ? row.name : null
+    const ident = table && quoteIdent(table)
+    if (!ident) continue
+    let cols
+    try {
+      cols = adapter.all(`PRAGMA table_info(${ident})`)
+    } catch {
+      continue
+    }
+    const textCols = (cols ?? []).filter((c) => {
+      const t = String(c.type || "TEXT").toUpperCase()
+      return t.includes("TEXT") || t.includes("CLOB") || t.includes("JSON") || t === ""
+    })
+    for (const col of textCols) {
+      const colIdent = quoteIdent(col.name)
+      if (!colIdent) continue
+      let cells
+      try {
+        cells = adapter.all(`SELECT rowid AS rowid, ${colIdent} AS payload FROM ${ident}`)
+      } catch {
+        continue
+      }
+      for (const cell of cells ?? []) {
+        if (typeof cell.payload !== "string" || cell.payload.length === 0) continue
+        const stripped = stripThinkingDeep(cell.payload)
+        if (stripped.blocksStripped === 0) continue
+        const next =
+          typeof stripped.value === "string" ? stripped.value : JSON.stringify(stripped.value)
+        adapter.run(`UPDATE ${ident} SET ${colIdent} = ? WHERE rowid = ?`, [
+          next,
+          cell.rowid,
+        ])
+        blocksStripped += stripped.blocksStripped
+      }
+    }
+  }
+  if (typeof adapter.close === "function") adapter.close()
+  return { ok: true, blocksStripped }
+}
+
+/**
+ * Strip thinking blocks from the live session file (jsonl legacy or sqlite).
+ */
+export function stripThinkingFromSessionFile(filePath, opts = {}) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { ok: false, blocksStripped: 0 }
+  }
+  if (filePath.endsWith(".sqlite")) {
+    return stripThinkingFromSqliteFile(filePath, opts.dbAdapter)
   }
   const raw = fs.readFileSync(filePath, "utf8")
   const { text, blocksStripped } = stripThinkingFromSessionJsonl(raw)
@@ -365,7 +521,7 @@ export function sanitizeUserFacingLlmError(text) {
  * Boot-time strip so a redeploy that restored poisoned jsonl still yields a
  * usable session (strip, not rotate).
  */
-export function stripThinkingFromAllSessionFiles(dataDir) {
+export function stripThinkingFromAllSessionFiles(dataDir, opts = {}) {
   const agentsDir = path.join(dataDir, "agents")
   if (!dataDir || !fs.existsSync(agentsDir)) {
     return { files: 0, blocksStripped: 0 }
@@ -374,10 +530,19 @@ export function stripThinkingFromAllSessionFiles(dataDir) {
   let blocksStripped = 0
   for (const agent of fs.readdirSync(agentsDir)) {
     const sess = path.join(agentsDir, agent, "sessions")
-    if (!fs.existsSync(sess) || !fs.statSync(sess).isDirectory()) continue
-    for (const name of fs.readdirSync(sess)) {
-      if (!name.endsWith(".jsonl")) continue
-      const result = stripThinkingFromSessionFile(path.join(sess, name))
+    if (fs.existsSync(sess) && fs.statSync(sess).isDirectory()) {
+      for (const name of fs.readdirSync(sess)) {
+        if (!name.endsWith(".jsonl")) continue
+        const result = stripThinkingFromSessionFile(path.join(sess, name), opts)
+        if (result.blocksStripped > 0) {
+          files += 1
+          blocksStripped += result.blocksStripped
+        }
+      }
+    }
+    const sqlitePath = path.join(agentsDir, agent, "agent", "openclaw-agent.sqlite")
+    if (fs.existsSync(sqlitePath)) {
+      const result = stripThinkingFromSessionFile(sqlitePath, opts)
       if (result.blocksStripped > 0) {
         files += 1
         blocksStripped += result.blocksStripped

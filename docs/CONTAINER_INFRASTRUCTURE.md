@@ -184,10 +184,10 @@ The immutable-tag policy is hard-enforced in `build-openclaw-image.yml:242-250`:
 running `force_version=<X>` against an already-existing `:<X>` tag fails the
 job with an error pointing the operator at `force_version=<X>-1`.
 
-### Automatic (weekly) builds
+### Automatic (daily) builds
 
-`build-openclaw-image.yml` runs every Monday at 06:00 UTC via cron
-(`schedule: cron: '0 6 * * 1'`):
+`build-openclaw-image.yml` runs daily at 06:00 UTC via cron
+(`schedule: cron: '0 6 * * *'`):
 
 1. Detect the newest upstream STABLE release via the GitHub Releases API on
    `openclaw/openclaw` (filtered to `prerelease==false`).
@@ -196,7 +196,7 @@ job with an error pointing the operator at `force_version=<X>-1`.
    to the current hash of `docker/` + `container/`. If the label matches,
    skip; if it differs or is absent, rebuild even though upstream version
    is unchanged. This is what lets a `container/`-only change ship in the
-   Monday auto-build instead of silently sitting unbuilt.
+   daily auto-build instead of silently sitting unbuilt.
 3. Clone upstream at `v<upstream-version>`, build `:base-<upstream-version>`.
 4. Build the extended image, push `:<output-version>` + `:candidate`.
 5. POST to the register endpoint with `isCandidate=true` so a new
@@ -211,7 +211,7 @@ human must run the promote workflow to advance production.
 
 ### Manual (force) builds
 
-To force a rebuild between Mondays (typically: an overlay change that
+To force a rebuild between daily ticks (typically: an overlay change that
 needs to ship before next cron):
 
 ```bash
