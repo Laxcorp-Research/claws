@@ -28,6 +28,7 @@ import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { log } from "@/lib/logger";
 import { notifyCandidateRegistered } from "@/lib/openclaw/runtime-autoupdate";
+import { deriveRuntimeContract } from "@/lib/openclaw/runtime-contract";
 
 // Stable releases: 2026.5.20 (the common case).
 // Stable corrections (upstream convention from openclaw/openclaw RELEASING.md):
@@ -138,6 +139,10 @@ export async function POST(req: NextRequest) {
       ? body.releaseNotesUrl.trim()
       : null;
 
+  // Version-keyed emission contract - a property of the OpenClawVersion row.
+  // VERSION_RE already passed, so derivation cannot throw here.
+  const runtimeContract = deriveRuntimeContract(version);
+
   // ─── Apply transition transactionally ─────────────────────────────────
   // Both branches use the same pattern: upsert by version, then atomically
   // clear the relevant flag from all other rows. Wrapped in $transaction so
@@ -158,6 +163,7 @@ export async function POST(req: NextRequest) {
             isLatest: false,
             stableAt: new Date(),
             releasedAt,
+            runtimeContract,
           },
           update: {
             dockerImage,
@@ -166,6 +172,7 @@ export async function POST(req: NextRequest) {
             releaseNotes,
             isStable: true,
             stableAt: new Date(),
+            runtimeContract,
             // releasedAt is set on create; do not move it on idempotent re-register
           },
         });
@@ -187,6 +194,7 @@ export async function POST(req: NextRequest) {
             isStable: false,
             isLatest: true,
             releasedAt,
+            runtimeContract,
           },
           update: {
             dockerImage,
@@ -194,6 +202,7 @@ export async function POST(req: NextRequest) {
             buildSourceTag,
             releaseNotes,
             isLatest: true,
+            runtimeContract,
           },
         });
         const cleared = await tx.openClawVersion.updateMany({
@@ -210,6 +219,7 @@ export async function POST(req: NextRequest) {
       dockerImage: result.row.dockerImage,
       imageDigest: result.row.imageDigest,
       buildSourceTag: result.row.buildSourceTag,
+      runtimeContract: result.row.runtimeContract,
       clearedPriorFlagCount: result.clearedCount,
     });
 
@@ -236,6 +246,7 @@ export async function POST(req: NextRequest) {
       isLatest: result.row.isLatest,
       stableAt: result.row.stableAt,
       releasedAt: result.row.releasedAt,
+      runtimeContract: result.row.runtimeContract,
       transition: result.transition,
       clearedPriorFlagCount: result.clearedCount,
     });

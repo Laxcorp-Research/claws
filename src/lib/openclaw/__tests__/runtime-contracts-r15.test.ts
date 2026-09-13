@@ -1,7 +1,9 @@
 /**
  * Overlay-side R1–R16 locks for the 9.4 port.
  * Clone-tag symbol greps live in scripts/runtime-contracts-clone-tag.mjs (CI).
- * MUTATION: reviving agents.list / default:true / 100ms before_agent_run timeout fails.
+ * MUTATION: unconditional agents.list (dropping the 9.4 branch), unconditional
+ * agents.entries (dropping the 5.22 branch), and the 100ms before_agent_run
+ * timeout all fail. Version-keyed emission is R17.
  */
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
@@ -47,12 +49,22 @@ describe("RUNTIME_CONTRACTS R1–R16 overlay locks (9.4)", () => {
     )
   })
 
-  it("R4: generator emits agents.entries + ownership explicit + systemAgent; no list/default:true", () => {
+  it("R4+R17: agents emission is version-keyed - 9.4 branch emits entries/ownership/systemAgent, 5.22 branch emits list/default:true, neither unconditionally", () => {
     const gen = src("src/lib/openclaw/generator.ts")
-    expect(gen).toContain('ownership: \'explicit\'')
-    expect(gen).toContain("systemAgent: { agentId: orchestratorAgentId }")
-    expect(gen).toContain("entries: agentsEntries")
-    expect(gen).not.toMatch(/\blist:\s*agentsList\b/)
+    // One regex locks the keying of the agents-config assembly: deleting the
+    // else (unconditional 9.4 - the KEEP wake Invalid-config P0) or deleting
+    // the if (unconditional 5.22) both fail this match. Output-shape locks
+    // live in runtime-contract-emission.test.ts (Zod strict, both contracts).
+    expect(gen).toMatch(
+      /if \(runtimeContract === '9\.4'\) \{[\s\S]{0,400}?ownership: 'explicit',[\s\S]{0,200}?entries: agentsEntries,[\s\S]{0,200}?\} else \{[\s\S]{0,200}?list: agentsList,/,
+    )
+    // 9.4 routing fallback (defaults.systemAgent) is assigned, not emitted on 5.22.
+    expect(gen).toContain(
+      "agentsDefaults.systemAgent = { agentId: orchestratorAgentId }",
+    )
+    // 5.22 routing fallback: orchestrator list entry carries default: true.
+    expect(gen).toMatch(/\{ id: agentId, default: true, \.\.\.entry \}/)
+    // The post-hoc roster mutation pattern stays dead on the keyed roster.
     expect(gen).not.toMatch(/entry\.default\s*=\s*true/)
     const sample = {
       ownership: "explicit" as const,

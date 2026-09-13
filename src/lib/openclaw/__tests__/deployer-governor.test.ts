@@ -116,7 +116,11 @@ beforeEach(() => {
   ;(prismaMock.deployment.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 })
   ;(prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ version: 0 })
   ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+    // Realistic row: `version` is NOT NULL in schema and resolveDeployTarget's
+    // contractFromRow reads version + runtimeContract (version-keyed emission).
     dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:test",
+    version: "2026.9.4-5",
+    runtimeContract: "9.4",
     releasedAt: new Date(),
   })
   ;(prismaMock.$transaction as ReturnType<typeof vi.fn>).mockImplementation(

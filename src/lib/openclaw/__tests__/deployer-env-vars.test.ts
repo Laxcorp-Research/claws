@@ -31,6 +31,7 @@ const minimalGenerated: GeneratedWorkspace = {
   'cron/jobs.json': '[]',
   workspaces: {},
   gatewayToken: 'tok-abc-123',
+  runtimeContract: '9.4',
 };
 
 // PR-8a: buildRailwayEnvVars now takes (generated, workspace, user). The

@@ -32,13 +32,13 @@ describe("POST /api/internal/state/finalize - persist + idempotency + del", () =
     process.env.METERING_MASTER_SECRET = SECRET
     mockExtractDeliverables.mockClear()
     mockExtractDeliverables.mockRejectedValue(new Error("extract boom"))
-    ;(prismaMock.containerState.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
-      count: 1,
-    })
+    // persistRuntimeStateSnapshot is now a single raw UPDATE (generation
+    // shift rides the same statement) - see state-snapshot.ts.
+    ;(prismaMock.$executeRaw as ReturnType<typeof vi.fn>).mockResolvedValue(1)
     ;(prismaMock.containerState.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null)
   })
 
-  it("happy path persists via ONE updateMany (atomic) when sha256 matches", async () => {
+  it("happy path persists via ONE atomic UPDATE when sha256 matches", async () => {
     const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
     const gz = Buffer.from("gzip-payload-bytes")
     const digest = sha256Hex(gz)
@@ -60,13 +60,15 @@ describe("POST /api/internal/state/finalize - persist + idempotency + del", () =
     expect(json.count).toBe(1)
     expect(json.noop).toBe(false)
     expect(json.sha256).toBe(digest)
-    expect(prismaMock.containerState.updateMany).toHaveBeenCalledTimes(1)
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1)
+    // Read-modify-write of snapshot columns stays banned.
     expect(prismaMock.containerState.update).not.toHaveBeenCalled()
+    expect(prismaMock.containerState.updateMany).not.toHaveBeenCalled()
     expect(deleteBlob).toHaveBeenCalledTimes(1)
     expect(mockExtractDeliverables).toHaveBeenCalledTimes(1)
   })
 
-  it("flipped sha256 → runtimeStateUpdatedAt must NOT advance (no updateMany)", async () => {
+  it("flipped sha256 → runtimeStateUpdatedAt must NOT advance (no persist UPDATE)", async () => {
     const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
     const gz = Buffer.from("real-bytes")
     const wrong = sha256Hex(Buffer.from("other-bytes"))
@@ -86,12 +88,12 @@ describe("POST /api/internal/state/finalize - persist + idempotency + del", () =
     expect(res.status).toBe(400)
     const json = await res.json()
     expect(json.error).toBe("SHA256_MISMATCH")
-    // Mutation: remove the hash check → updateMany would fire.
-    expect(prismaMock.containerState.updateMany).not.toHaveBeenCalled()
+    // Mutation: remove the hash check → the persist UPDATE would fire.
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled()
     expect(deleteBlob).not.toHaveBeenCalled()
   })
 
-  it("idempotent finalize: same (workspaceId, sha256) → 200 noop, no second updateMany", async () => {
+  it("idempotent finalize: same (workspaceId, sha256) → 200 noop, no second persist UPDATE", async () => {
     const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
     const gz = Buffer.from("same-snapshot")
     const digest = sha256Hex(gz)
@@ -114,8 +116,9 @@ describe("POST /api/internal/state/finalize - persist + idempotency + del", () =
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.noop).toBe(true)
-    // Mutation: remove the noop/existingSha check → updateMany would be called.
-    expect(prismaMock.containerState.updateMany).not.toHaveBeenCalled()
+    // Mutation: remove the noop/existingSha check → a second persist UPDATE
+    // would fire AND needlessly shift the previous generation.
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled()
     expect(deleteBlob).toHaveBeenCalledTimes(1)
   })
 
@@ -142,7 +145,7 @@ describe("POST /api/internal/state/finalize - persist + idempotency + del", () =
     const json = await res.json()
     expect(json.success).toBe(true)
     expect(json.count).toBe(1)
-    expect(prismaMock.containerState.updateMany).toHaveBeenCalledTimes(1)
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1)
     expect(deleteBlob).toHaveBeenCalledTimes(1)
   })
 })

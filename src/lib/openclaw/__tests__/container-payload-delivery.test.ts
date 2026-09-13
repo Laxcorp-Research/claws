@@ -65,6 +65,7 @@ function minimalGenerated(): GeneratedWorkspace {
     ".env": "OPENCLAW_GATEWAY_TOKEN=gw-test\nANTHROPIC_API_KEY=sk-ant-test\n",
     "cron/jobs.json": JSON.stringify([{ id: "job-1", name: "Daily", schedule: { kind: "cron", expr: "0 8 * * *" } }]),
     gatewayToken: "gw-test",
+    runtimeContract: "9.4",
     workspaces: {
       "workspace-commander": {
         "SOUL.md": "# SOUL\n\nLead the team.\n",
@@ -115,6 +116,7 @@ function generatedFromTemplate(template: SeedTemplate): GeneratedWorkspace {
     "cron/jobs.json": "[]",
     gatewayToken: "gw-youtube",
     workspaces,
+    runtimeContract: "9.4",
   }
 }
 

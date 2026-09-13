@@ -89,16 +89,20 @@ describe("candidate soak gate (RUNTIME-9.4 PR-2)", () => {
     ).toEqual({ allowed: true })
   })
 
-  it("MUTATION: deployer must consult mayDeployCandidateImage before isLatest", () => {
+  it("MUTATION: deployer must check runtimeImagePin, then mayDeployCandidateImage, before isLatest", () => {
     const deployer = readFileSync(
       join(process.cwd(), "src/lib/openclaw/deployer.ts"),
       "utf8",
     )
     expect(deployer).toContain("mayDeployCandidateImage")
-    const resolveFn = deployer.slice(deployer.indexOf("export async function resolveDeployImage"))
-    const isLatestIdx = resolveFn.indexOf("isLatest: true")
+    const resolveFn = deployer.slice(deployer.indexOf("export async function resolveDeployTarget"))
+    const pinIdx = resolveFn.indexOf("opts.runtimeImagePin")
     const gateIdx = resolveFn.indexOf("mayDeployCandidateImage")
-    expect(gateIdx).toBeGreaterThanOrEqual(0)
+    const isLatestIdx = resolveFn.indexOf("isLatest: true")
+    // Pin is the highest-priority branch: an explicitly pinned claw must never
+    // enter the isLatest (soak) or isStable resolution at all.
+    expect(pinIdx).toBeGreaterThanOrEqual(0)
+    expect(gateIdx).toBeGreaterThan(pinIdx)
     expect(isLatestIdx).toBeGreaterThan(gateIdx)
   })
 

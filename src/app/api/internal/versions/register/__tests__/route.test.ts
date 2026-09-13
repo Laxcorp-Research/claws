@@ -489,4 +489,70 @@ describe("POST /api/internal/versions/register", () => {
       );
     });
   });
+
+  // ─── Version-keyed emission contract (RUNTIME-9.4) ────────────────────
+
+  describe("runtimeContract stamping", () => {
+    it("candidate 2026.9.4-6 register stamps runtimeContract '9.4' on create AND update", async () => {
+      wireTransactionPassthrough();
+      (prismaMock.openClawVersion.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "ver-94",
+        version: "2026.9.4-6",
+        dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-6",
+        imageDigest: null,
+        buildSourceTag: "v2026.9.4",
+        isStable: false,
+        isLatest: true,
+        stableAt: null,
+        releasedAt: new Date(),
+        runtimeContract: "9.4",
+      });
+      (prismaMock.openClawVersion.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+
+      const res = await callRoute(
+        buildCandidateBody({
+          version: "2026.9.4-6",
+          dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-6",
+          buildSourceTag: "v2026.9.4",
+        }),
+        PIPELINE_SECRET,
+      );
+      expect(res.status).toBe(200);
+      const upsertArgs = (prismaMock.openClawVersion.upsert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      // Both branches: a re-register of an existing row must also correct the
+      // column (rows created before the column existed default to '5.22').
+      expect(upsertArgs.create.runtimeContract).toBe("9.4");
+      expect(upsertArgs.update.runtimeContract).toBe("9.4");
+    });
+
+    it("stable 2026.5.22-19 register stamps runtimeContract '5.22' (KEEP lane keeps 5.22 emission)", async () => {
+      wireTransactionPassthrough();
+      (prismaMock.openClawVersion.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "ver-522",
+        version: "2026.5.22-19",
+        dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-19",
+        imageDigest: null,
+        buildSourceTag: "v2026.5.22",
+        isStable: true,
+        isLatest: false,
+        stableAt: new Date(),
+        releasedAt: new Date(),
+        runtimeContract: "5.22",
+      });
+      (prismaMock.openClawVersion.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+
+      const res = await callRoute(
+        buildStableBody({
+          version: "2026.5.22-19",
+          dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-19",
+          buildSourceTag: "v2026.5.22",
+        }),
+        PIPELINE_SECRET,
+      );
+      expect(res.status).toBe(200);
+      const upsertArgs = (prismaMock.openClawVersion.upsert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(upsertArgs.create.runtimeContract).toBe("5.22");
+      expect(upsertArgs.update.runtimeContract).toBe("5.22");
+    });
+  });
 });

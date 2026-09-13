@@ -71,7 +71,7 @@ vi.mock("@/lib/composio", () => ({
   getComposioUserId: (id: string) => `composio:${id}`,
 }));
 
-import { deployToCloud, resolveDeployImage } from "@/lib/openclaw/deployer";
+import { deployToCloud, resolveDeployImage, resolveDeployTarget } from "@/lib/openclaw/deployer";
 
 function generatedStub() {
   return {
@@ -281,6 +281,99 @@ describe("resolveDeployImage candidate soak (RUNTIME-9.4 PR-2)", () => {
   })
 })
 
+const PIN_DOCKER_IMAGE = "ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-5"
+const PIN_ROW = {
+  id: "ver-pin",
+  version: "2026.9.4-5",
+  dockerImage: PIN_DOCKER_IMAGE,
+  runtimeContract: "9.4",
+}
+
+describe("resolveDeployTarget per-workspace pin (9.4 soak containment)", () => {
+  let prevClaws: string | undefined
+
+  beforeEach(() => {
+    prevClaws = process.env.CLAWS_ENV
+    process.env.CLAWS_ENV = "staging"
+  })
+
+  afterEach(() => {
+    if (prevClaws === undefined) delete process.env.CLAWS_ENV
+    else process.env.CLAWS_ENV = prevClaws
+  })
+
+  it("pin beats candidate soak AND isStable (pinned founder claw never chases isLatest again)", async () => {
+    ;(prismaMock.openClawVersion.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(PIN_ROW)
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where?: { isLatest?: boolean; isStable?: boolean } }) => {
+        if (args.where?.isLatest === true) return CANDIDATE_ROW
+        if (args.where?.isStable === true) return STABLE_ROW
+        return null
+      },
+    )
+
+    const target = await resolveDeployTarget({
+      workspaceId: "ws-founder",
+      candidateSoak: true,
+      runtimeImagePin: "2026.9.4-5",
+    })
+    expect(target.dockerImage).toBe(PIN_DOCKER_IMAGE)
+    expect(target.version).toBe("2026.9.4-5")
+    expect(target.runtimeContract).toBe("9.4")
+    // Neither the isLatest nor the isStable branch may run for a pinned claw.
+    expect(prismaMock.openClawVersion.findFirst).not.toHaveBeenCalled()
+    const findUniqueArgs = (prismaMock.openClawVersion.findUnique as ReturnType<typeof vi.fn>).mock
+      .calls[0][0]
+    expect(findUniqueArgs.where).toEqual({ version: "2026.9.4-5" })
+  })
+
+  it("pin naming an unregistered version THROWS - never a silent stable fallback (founder volume is 9.4-shaped; 5.22-18 would not read it)", async () => {
+    ;(prismaMock.openClawVersion.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(STABLE_ROW)
+
+    await expect(
+      resolveDeployTarget({
+        workspaceId: "ws-founder",
+        candidateSoak: false,
+        runtimeImagePin: "2026.9.9-9",
+      }),
+    ).rejects.toThrow(/refusing stable\/candidate fallback/)
+    expect(prismaMock.openClawVersion.findFirst).not.toHaveBeenCalled()
+  })
+
+  it("null pin keeps normal resolution and returns the row's contract (5.22 stable -> 5.22 emission)", async () => {
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...STABLE_ROW,
+      version: "2026.5.22-18",
+      dockerImage: "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18",
+      runtimeContract: "5.22",
+    })
+
+    const target = await resolveDeployTarget({
+      workspaceId: "ws-keep-like",
+      candidateSoak: false,
+      runtimeImagePin: null,
+    })
+    expect(target.dockerImage).toBe("ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18")
+    expect(target.runtimeContract).toBe("5.22")
+    expect(prismaMock.openClawVersion.findUnique).not.toHaveBeenCalled()
+  })
+
+  it("row missing a valid runtimeContract column derives it from the version string (raw-insert belt and braces)", async () => {
+    ;(prismaMock.openClawVersion.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "ver-raw",
+      version: "2026.9.4-5",
+      dockerImage: PIN_DOCKER_IMAGE,
+      runtimeContract: "bogus",
+    })
+    const target = await resolveDeployTarget({
+      workspaceId: "ws-founder",
+      runtimeImagePin: "2026.9.4-5",
+    })
+    expect(target.runtimeContract).toBe("9.4")
+  })
+})
+
 describe("deployToCloud writes Deployment.containerImage and threads image to Railway", () => {
   beforeEach(() => {
     mockCreateService.mockReset();
@@ -330,6 +423,13 @@ describe("deployToCloud writes Deployment.containerImage and threads image to Ra
     // Deployment row carries the resolved image (not the schema default).
     const depCreateArgs = (prismaMock.deployment.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(depCreateArgs.data.containerImage).toBe(STABLE_DOCKER_IMAGE);
+
+    // Snapshot generations: the deploy stamps the resolved contract on
+    // ContainerState so the persist path can detect contract migrations.
+    // STABLE_ROW is 2026.5.20 → contract 5.22 (derived; fixture has no column).
+    const csUpsertArgs = (prismaMock.containerState.upsert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(csUpsertArgs.update.deployedRuntimeContract).toBe("5.22");
+    expect(csUpsertArgs.create.deployedRuntimeContract).toBe("5.22");
 
     // Railway createService received it too - DB vs Railway can't drift.
     expect(mockCreateService).toHaveBeenCalledTimes(1);

@@ -35,6 +35,7 @@ function generatedWithSeeds(): GeneratedWorkspace {
     ".env": "OPENCLAW_GATEWAY_TOKEN=gw-seed\n",
     "cron/jobs.json": "[]",
     gatewayToken: "gw-seed",
+    runtimeContract: "9.4",
     workspaces: {
       "workspace-twitter-commander": {
         "SOUL.md": "# SOUL stub\n",

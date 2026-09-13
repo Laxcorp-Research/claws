@@ -268,7 +268,7 @@ describe('generateWorkspace', () => {
   });
 
   it('returns a GeneratedWorkspace with all required keys', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     expect(mockReprobeWorkspaceToolConnections).toHaveBeenCalledWith('ws-test-1');
     expect(result).toHaveProperty('openclaw.json');
@@ -288,7 +288,7 @@ describe('generateWorkspace', () => {
         ],
       }),
     );
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const dirs = Object.keys(result.workspaces);
     expect(dirs.length).toBeGreaterThanOrEqual(3);
     expect(result.seedFiles?.['shared/VOICE.md']).toContain('content-writer');
@@ -314,14 +314,14 @@ describe('generateWorkspace', () => {
         },
       }),
     )
-    const result = await generateWorkspace('ws-test-1')
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' })
     expect(result).toHaveProperty('openclaw.json')
     const config = JSON.parse(result['openclaw.json'])
     expect(roster(config)).toHaveLength(3)
   })
 
   it('generates valid JSON for openclaw.json', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.gateway).toBeDefined();
@@ -344,7 +344,7 @@ describe('generateWorkspace', () => {
   });
 
   it('Lifecycle P6: openclaw.json tools.deny includes dir_list (mutation: drop merge → fail)', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']) as { tools?: { deny?: string[] } };
     expect(config.tools?.deny).toContain('dir_list');
   });
@@ -355,7 +355,7 @@ describe('generateWorkspace', () => {
     // the HUMAN to run "openclaw channels add" - which the model parrots.
     // Denied tools never reach the model's tool list. Mutation: drop the
     // mergeMessageDenyIntoTools call → this fails.
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']) as { tools?: { deny?: string[] } };
     expect(config.tools?.deny).toContain('message');
     expect(config.tools?.deny).toContain('dir_list');
@@ -369,7 +369,7 @@ describe('generateWorkspace', () => {
         }),
       }),
     );
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']) as { tools?: { deny?: string[] } };
     expect(config.tools?.deny).toContain('message');
     expect(config.tools?.deny).toContain('exec');
@@ -377,7 +377,7 @@ describe('generateWorkspace', () => {
   });
 
   it('D6-b: every agent TOOLS.md teaches webchat delivery; zero-channel prose never mentions channel CLI', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const workspaces = Object.values(result.workspaces);
     expect(workspaces.length).toBeGreaterThan(0);
     for (const files of workspaces) {
@@ -400,7 +400,7 @@ describe('generateWorkspace', () => {
         }),
       }),
     );
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const workspaces = Object.values(result.workspaces);
     for (const files of workspaces) {
       const toolsMd = files['TOOLS.md'];
@@ -418,7 +418,7 @@ describe('generateWorkspace', () => {
       buildMockWorkspace({ channelConfigEncrypted: routeWrittenPlaintext }),
     );
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(() => runtimeChannelsSchema2026052206.parse(config.channels)).not.toThrow();
@@ -457,7 +457,7 @@ describe('generateWorkspace', () => {
       }),
     );
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.channels.telegram).toEqual({
@@ -468,7 +468,7 @@ describe('generateWorkspace', () => {
   });
 
   it('maps model enums to provider/model format', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     const orchestrator = roster(config).find(
@@ -496,7 +496,7 @@ describe('generateWorkspace', () => {
     agents[2].thinkingDefault = null;         // null → omitted (runtime default)
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     const byName = (name: string) =>
       roster(config).find((a: Record<string, unknown>) => a.name === name);
@@ -507,7 +507,7 @@ describe('generateWorkspace', () => {
   });
 
   it('creates flat workspace directories per agent', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     const workspaceKeys = Object.keys(result.workspaces);
     expect(workspaceKeys).toHaveLength(3);
@@ -526,7 +526,7 @@ describe('generateWorkspace', () => {
   });
 
   it('includes decrypted API keys in .env', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
     expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=mock-gateway-token-abc123');
@@ -562,7 +562,7 @@ describe('generateWorkspace', () => {
       { slug: 'tavily-search', compatibleTools: ['tavily'] },
     ]);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     expect(result['.env']).toContain('TWITTER_API_KEY=AAAA-fire-bearer');
     expect(result['.env']).toContain('TAVILY_API_KEY=tvly-connected');
 
@@ -596,7 +596,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     expect(result['.env']).not.toContain('ALPACA_API_KEY_ID=');
   });
 
@@ -615,7 +615,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     expect(result['.env']).not.toContain('TWITTER_API_KEY=');
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
     const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
@@ -652,7 +652,7 @@ describe('generateWorkspace', () => {
       ws.user.apiKeys = [];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
       expect(result['.env']).toContain('OPENROUTER_API_KEY=decrypted-enc-ws-openrouter');
     });
@@ -664,7 +664,7 @@ describe('generateWorkspace', () => {
       ws.user.apiKeys = [{ provider: 'OPENROUTER', encryptedKey: 'enc-user-or' }];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
       expect(result['.env']).toContain('OPENROUTER_API_KEY=decrypted-enc-ws-or');
       expect(result['.env']).not.toContain('decrypted-enc-user-or');
@@ -680,7 +680,7 @@ describe('generateWorkspace', () => {
       ws.user.apiKeys = [];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
       expect(result['.env']).toContain('OPENAI_API_KEY=decrypted-enc-ws-openai');
       expect(result['.env']).toContain('GEMINI_API_KEY=decrypted-enc-ws-google');
@@ -698,7 +698,7 @@ describe('generateWorkspace', () => {
       });
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
       expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
       expect(result['.env']).not.toContain('decrypted-enc-ws-anthropic');
@@ -706,7 +706,7 @@ describe('generateWorkspace', () => {
   });
 
   it('generates a gateway token', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     expect(result.gatewayToken).toBe('mock-gateway-token-abc123');
   });
@@ -716,7 +716,7 @@ describe('generateWorkspace', () => {
       buildMockWorkspace({ gatewayToken: 'enc-existing-gateway-token' }),
     );
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     expect(result.gatewayToken).toBe('decrypted-enc-existing-gateway-token');
     expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=decrypted-enc-existing-gateway-token');
@@ -724,14 +724,14 @@ describe('generateWorkspace', () => {
   });
 
   it('mints a gateway token only when the workspace has none', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     expect(result.gatewayToken).toBe('mock-gateway-token-abc123');
     expect(generateSecureToken).toHaveBeenCalledTimes(1);
   });
 
   it('first deploy claims the token atomically (conditional write on gatewayToken=null)', async () => {
-    await generateWorkspace('ws-test-1');
+    await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     // D6 2026-08-22: two concurrent first deploys each minted a different
     // token via a bare read-then-mint; DB and container ended up with
@@ -748,7 +748,7 @@ describe('generateWorkspace', () => {
       .mockResolvedValueOnce(buildMockWorkspace()) // workspace graph: token null
       .mockResolvedValueOnce({ gatewayToken: 'enc-winner-token' } as never); // claim re-read
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     expect(result.gatewayToken).toBe('decrypted-enc-winner-token');
     expect(result['.env']).toContain('OPENCLAW_GATEWAY_TOKEN=decrypted-enc-winner-token');
@@ -759,13 +759,13 @@ describe('generateWorkspace', () => {
       buildMockWorkspace({ gatewayToken: 'enc-existing-gateway-token' }),
     );
 
-    await generateWorkspace('ws-test-1');
+    await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     expect(prismaMock.workspace.updateMany).not.toHaveBeenCalled();
   });
 
   it('includes skill files for agents with assigned skills', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     const orchKey = Object.keys(result.workspaces).find(k =>
       k.includes('test-commander')
@@ -777,7 +777,7 @@ describe('generateWorkspace', () => {
   });
 
   it('emits metadata.openclaw.http contract in SKILL.md frontmatter', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
     const md = result.workspaces[orchKey!].skills['tavily-search']['SKILL.md'];
     expect(md).toContain('auth: tavily-body-key');
@@ -790,7 +790,7 @@ describe('generateWorkspace', () => {
       new Error('Not found')
     );
 
-    await expect(generateWorkspace('nonexistent')).rejects.toThrow();
+    await expect(generateWorkspace('nonexistent', { runtimeContract: '9.4' })).rejects.toThrow();
   });
 
   // WIRE-FULL: fenced Workflow section from ORCH→WORKER edges + law knobs.
@@ -802,7 +802,7 @@ describe('generateWorkspace', () => {
     }
 
     it('emits fenced ## Workflow with unconditional delegation + law section (snapshot)', async () => {
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const agentsMd = orchestratorAgentsMd(result);
 
       expect(agentsMd).toContain('<!-- claws:workflow:begin -->');
@@ -822,14 +822,14 @@ describe('generateWorkspace', () => {
         { targetAgent: { id: 'agent-worker-1', name: 'Data Analyst' }, condition: 'ON_APPROVAL', contextNote: null },
       ];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(base);
-      const a = await generateWorkspace('ws-test-1');
+      const a = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const mdA = orchestratorAgentsMd(a);
 
       orch.outgoingConnections = [
         { targetAgent: { id: 'agent-worker-1', name: 'Data Analyst' }, condition: 'ON_REJECTION', contextNote: null },
       ];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(base);
-      const b = await generateWorkspace('ws-test-1');
+      const b = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const mdB = orchestratorAgentsMd(b);
 
       const fence = (md: string) =>
@@ -842,7 +842,7 @@ describe('generateWorkspace', () => {
       const worker = (base.agents as Array<Record<string, unknown>>).find((a) => a.role === 'WORKER')!;
       worker.isPaused = true;
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(base);
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const md = orchestratorAgentsMd(result);
       expect(md).toContain('_(no worker connections)_');
       expect(md).toContain('Quality Reviewer reviews every worker output');
@@ -864,7 +864,7 @@ describe('generateWorkspace', () => {
   // a heartbeat run left no memory trail).
   describe('L2: heartbeat protocol memory mandate', () => {
     it('mandates writing memory/[today].md + MEMORY.md as the final heartbeat step', async () => {
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
       const md = result.workspaces[orchKey!]['AGENTS.md'];
 
@@ -886,7 +886,7 @@ describe('generateWorkspace', () => {
 
   describe('BOOT.md memory path (EISDIR)', () => {
     it('ORCHESTRATOR BOOT.md uses dated memory file - never Check memory/ directory', async () => {
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
       const boot = result.workspaces[orchKey!]['BOOT.md'];
       expect(boot).not.toContain('Check memory/ directory');
@@ -899,7 +899,7 @@ describe('generateWorkspace', () => {
         ...buildMockWorkspace({ userMdInterviewCompletedAt: null }),
         clawTemplate: { name: 'Twitter/X Growth Machine', slug: 'twitter-growth-machine' },
       });
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
       const boot = result.workspaces[orchKey!]['BOOT.md'];
       expect(boot).toContain('## First-boot interview');
@@ -914,7 +914,7 @@ describe('generateWorkspace', () => {
         ...buildMockWorkspace({ userMdInterviewCompletedAt: new Date('2026-08-27T00:00:00.000Z') }),
         clawTemplate: { name: 'Twitter/X Growth Machine', slug: 'twitter-growth-machine' },
       });
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
       const boot = result.workspaces[orchKey!]['BOOT.md'];
       expect(boot).not.toContain('## First-boot interview');
@@ -935,7 +935,7 @@ describe('generateWorkspace', () => {
   });
 
   it('includes tool connection credentials in skills entries (keyed by toolSlug)', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.skills).toBeDefined();
@@ -955,7 +955,7 @@ describe('generateWorkspace', () => {
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
     (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     expect(config.skills?.entries?.tavily).toBeUndefined();
     // MUTATION: if generator re-emits tavily without a connection, this fails.
@@ -985,7 +985,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     const customSlug = 'custom-internal-crm';
     const envVar = 'CUSTOM_CUSTOM_INTERNAL_CRM_KEY';
@@ -1031,7 +1031,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.skills.entries.binance).toBeDefined();
@@ -1056,7 +1056,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     // skills.entries omitted entirely when nothing qualifies (generator
@@ -1082,7 +1082,7 @@ describe('generateWorkspace', () => {
       ];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       expect(config.skills).toBeUndefined();
     } finally {
@@ -1106,7 +1106,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     expect(config.skills).toBeUndefined();
   });
@@ -1126,7 +1126,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const orchKey = Object.keys(result.workspaces).find((k) =>
       k.includes('test-commander'),
     );
@@ -1152,7 +1152,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const orchKey = Object.keys(result.workspaces).find((k) =>
       k.includes('test-commander'),
     );
@@ -1161,7 +1161,7 @@ describe('generateWorkspace', () => {
   });
 
   it('TOOLS.md directs tool failures to Claws Manage Tools without internal runtime instructions', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const orchKey = Object.keys(result.workspaces).find((k) =>
       k.includes('test-commander'),
     );
@@ -1197,7 +1197,7 @@ describe('generateWorkspace', () => {
     ];
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const orchKey = Object.keys(result.workspaces).find((k) =>
       k.includes('test-commander'),
     );
@@ -1221,7 +1221,7 @@ describe('generateWorkspace', () => {
   });
 
   it('MUTATION: custom soulMd returned raw (no overlay) fails', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const workerKey = Object.keys(result.workspaces).find((k) => k.includes('data-analyst'));
     const soul = result.workspaces[workerKey!]['SOUL.md'];
     expect(soul).toContain('# Data Analyst');
@@ -1236,7 +1236,7 @@ describe('generateWorkspace', () => {
   });
 
   it('critic workspace files pin claims table and PASS/REJECT', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const criticKey = Object.keys(result.workspaces).find((k) => k.includes('quality-reviewer'));
     const soul = result.workspaces[criticKey!]['SOUL.md'];
     const agents = result.workspaces[criticKey!]['AGENTS.md'];
@@ -1247,7 +1247,7 @@ describe('generateWorkspace', () => {
   });
 
   it('sets orchestrator as systemAgent with subagents config (no default:true)', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     const orchestrator = roster(config).find(
@@ -1264,7 +1264,7 @@ describe('generateWorkspace', () => {
   it('B-hardening: no subagents.model anywhere; orchestrator requireAgentId; worker models intact', async () => {
     // Mutation: re-add orchestrator subagents.model → JSON.stringify match fails.
     // Mutation: drop requireAgentId → expect(true) fails.
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     const list = roster(config) as Array<{
       id: string;
@@ -1293,7 +1293,7 @@ describe('generateWorkspace', () => {
   });
 
   it('B-hardening: orchestrator TOOLS.md belt-line requires agentId and forbids model param', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const orchKey = Object.keys(result.workspaces).find((k) => k.includes('test-commander'));
     const workerKey = Object.keys(result.workspaces).find((k) => k.includes('data-analyst'));
     const toolsMd = result.workspaces[orchKey!]['TOOLS.md'];
@@ -1311,7 +1311,7 @@ describe('generateWorkspace', () => {
     orch.heartbeatTime = '08:00';
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     expect(result['.env']).toMatch(/^TZ=UTC$/m);
     expect(result['.env']).not.toContain('TZ=America/New_York');
 
@@ -1327,7 +1327,7 @@ describe('generateWorkspace', () => {
     ws.toolConnections = []; // no tavily/brave/exa/serp
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     // Dropping the workspaceHasSearchBackend gate (always omit enabled:false) fails.
     expect(config.tools?.web?.search?.enabled).toBe(false);
@@ -1343,7 +1343,7 @@ describe('generateWorkspace', () => {
   it('denies web_search when tavily-search is attached (MUTATION: drop mergeSkillShadowDenyIntoTools → fail)', async () => {
     // Default fixture: CONNECTED tavily + orchestrator has tavily-search.
     // Fire #3 used kimi web_search instead of the attached skill.
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     expect(config.tools?.deny).toContain('web_search');
     expect(config.tools?.web?.search?.enabled).toBe(false);
@@ -1369,7 +1369,7 @@ describe('generateWorkspace', () => {
     }
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     expect(config.tools?.deny ?? []).not.toContain('web_search');
     expect(config.tools?.web?.search?.enabled).not.toBe(false);
@@ -1383,7 +1383,7 @@ describe('generateWorkspace', () => {
     // index is an exact-string map (channel:'*' matches nothing). 9.4 forbids
     // default:true with ownership=explicit; routing is systemAgent.agentId.
     // See docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 / §8 risk 2.
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config).not.toHaveProperty('bindings');
@@ -1398,7 +1398,7 @@ describe('generateWorkspace', () => {
     ws.agents[1].isPaused = true;
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
     const worker = roster(config).find((a: Record<string, unknown>) => a.name === 'Data Analyst');
     const orchestrator = roster(config).find((a: Record<string, unknown>) => a.name === 'Test Commander');
@@ -1410,7 +1410,7 @@ describe('generateWorkspace', () => {
   });
 
   it('only orchestrator has meaningful HEARTBEAT.md', async () => {
-    const result = await generateWorkspace('ws-test-1');
+    const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
     const orchKey = Object.keys(result.workspaces).find(k =>
       k.includes('test-commander')
@@ -1460,7 +1460,7 @@ describe('generateWorkspace', () => {
           { slug: 'gmail-outreach', compatibleTools: ['gmail'] },
         ]);
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
 
         expect(config.skills).toBeDefined();
@@ -1504,7 +1504,7 @@ describe('generateWorkspace', () => {
           { slug: 'github-repo-reader', compatibleTools: ['github'] },
         ]);
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
 
         expect(Object.keys(config.skills.entries)).toEqual(
@@ -1541,7 +1541,7 @@ describe('generateWorkspace', () => {
           { slug: 'google-calendar', compatibleTools: ['google_calendar'] },
         ]);
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
 
         expect(config.skills.entries['google-calendar'].config.composio.toolkit).toBe('googlecalendar');
@@ -1565,7 +1565,7 @@ describe('generateWorkspace', () => {
         (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
         (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
         expect(config.skills).toBeUndefined();
       });
@@ -1588,7 +1588,7 @@ describe('generateWorkspace', () => {
         (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
         (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
         expect(config.skills).toBeUndefined();
       });
@@ -1615,7 +1615,7 @@ describe('generateWorkspace', () => {
         (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
         (prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
         expect(config.skills).toBeUndefined();
       });
@@ -1636,7 +1636,7 @@ describe('generateWorkspace', () => {
           new Error('prisma.skill.findMany should not be called when no emission-eligible tools are connected'),
         );
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
         expect(config.skills).toBeUndefined();
       });
@@ -1670,7 +1670,7 @@ describe('generateWorkspace', () => {
           { slug: 'gmail-outreach', compatibleTools: ['gmail'] },
         ]);
 
-        const result = await generateWorkspace('ws-test-1');
+        const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
         const config = JSON.parse(result['openclaw.json']);
 
         // API_KEY: keyed by tool slug, env is the decrypted payload.
@@ -1699,7 +1699,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         withOrchestratorHeartbeat('hourly', null)
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const cronJobs = JSON.parse(result['cron/jobs.json']);
 
@@ -1712,7 +1712,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         withOrchestratorHeartbeat('every_6h', null)
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       expect(config.agents.defaults.heartbeat).toBeUndefined();
@@ -1723,7 +1723,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         withOrchestratorHeartbeat('daily', '08:00')
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const cronJobs = JSON.parse(result['cron/jobs.json']);
 
@@ -1752,7 +1752,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         withOrchestratorHeartbeat('weekday', '09:30')
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       expect(cronJobs[0].schedule.expr).toBe('30 9 * * 1-5');
     });
@@ -1761,7 +1761,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         withOrchestratorHeartbeat('off', null)
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       expect(config.agents.defaults.heartbeat).toBeUndefined();
@@ -1772,7 +1772,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         withOrchestratorHeartbeat(null, null)
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       expect(config.agents.defaults.heartbeat).toBeUndefined();
@@ -1792,7 +1792,7 @@ describe('generateWorkspace', () => {
   task: daily_analytics`;
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const cronJobs = JSON.parse(result['cron/jobs.json']) as Array<{
         id?: string
@@ -1832,7 +1832,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildMockWorkspace()
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const entry = config.plugins?.entries?.['claws-activity-reporter'];
       expect(entry).toBeDefined();
@@ -1849,7 +1849,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildMockWorkspace()
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       expect(config.plugins?.load?.paths).toEqual([
         '/opt/claws-activity-reporter',
@@ -1861,7 +1861,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildMockWorkspace()
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       expect(config.plugins?.entries?.['claws-http']).toEqual({ enabled: true });
     });
@@ -1880,7 +1880,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildMockWorkspace()
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const entry = config.plugins?.entries?.['admin-http-rpc'];
       expect(entry).toBeDefined();
@@ -1891,7 +1891,7 @@ describe('generateWorkspace', () => {
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildMockWorkspace()
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
       const reporter = config.plugins?.entries?.['claws-activity-reporter'];
       expect(reporter).toBeDefined();
@@ -1918,7 +1918,7 @@ describe('generateWorkspace', () => {
           { name: 'Daily Report', schedule: '0 9 * * *', timezone: 'UTC', isolated: false, urgent: false, prompt: 'Send the daily report.', fullContext: true },
         ])
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       // 1 heartbeat (hourly by default mock) is an INTERVAL, so cron/jobs.json
       // only has the scheduled-task cron. If the mock orchestrator's hourly
@@ -1940,7 +1940,7 @@ describe('generateWorkspace', () => {
           { name: 'Background Analysis', schedule: '0 */6 * * *', timezone: 'UTC', isolated: true, urgent: false, prompt: 'Run background analysis.', fullContext: false },
         ])
       );
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       const taskJob = cronJobs.find((j: Record<string, unknown>) => j.name === 'Background Analysis');
       expect(taskJob.sessionTarget).toBe('isolated');
@@ -1956,7 +1956,7 @@ describe('generateWorkspace', () => {
       ws.agents[1].isPaused = true;
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const cronJobs = JSON.parse(result['cron/jobs.json']);
       expect(cronJobs.find((j: Record<string, unknown>) => j.name === 'Worker Followup')).toBeUndefined();
     });
@@ -1964,9 +1964,9 @@ describe('generateWorkspace', () => {
     it('scheduledTasks ids are deterministic across calls', async () => {
       const tasks = [{ name: 'My Task', schedule: '0 0 * * *', timezone: 'UTC', isolated: false, urgent: false, prompt: 'do it', fullContext: true }];
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(withScheduledTasks(tasks));
-      const a = await generateWorkspace('ws-test-1');
+      const a = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(withScheduledTasks(tasks));
-      const b = await generateWorkspace('ws-test-1');
+      const b = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const aJobs = JSON.parse(a['cron/jobs.json']);
       const bJobs = JSON.parse(b['cron/jobs.json']);
       expect(aJobs.find((j: Record<string, unknown>) => j.name === 'My Task').id).toBe(
@@ -2003,7 +2003,7 @@ describe('generateWorkspace', () => {
         creditWorkspace({ override: 'PLATFORM_CREDIT', userSource: 'NONE' }),
       );
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']) as {
         models?: { providers?: { anthropic?: { baseUrl?: string } } };
       };
@@ -2020,7 +2020,7 @@ describe('generateWorkspace', () => {
         creditWorkspace({ override: 'PLATFORM_CREDIT', userSource: 'USER_OWN_KEY' }),
       );
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']) as {
         models?: { providers?: { anthropic?: { baseUrl?: string } } };
       };
@@ -2035,7 +2035,7 @@ describe('generateWorkspace', () => {
         creditWorkspace({ override: null, userSource: 'USER_OWN_KEY' }),
       );
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']) as {
         models?: { providers?: { anthropic?: { baseUrl?: string } } };
       };
@@ -2050,7 +2050,7 @@ describe('generateWorkspace', () => {
         creditWorkspace({ override: null, userSource: 'NONE' }),
       );
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']) as {
         models?: { providers?: { anthropic?: { baseUrl?: string } } };
       };
@@ -2074,7 +2074,7 @@ describe('generateWorkspace', () => {
       };
       (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
 
-      const result = await generateWorkspace('ws-test-1');
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']) as {
         agents: { list: Array<{ model?: string }> };
         models?: { providers?: { openrouter?: { baseUrl?: string; api?: string } } };

@@ -228,7 +228,7 @@ describe('(a) curated-only workspaces get NO mcp block', () => {
   it('emits no mcp block and never touches the Tool Router for a fully-curated workspace', async () => {
     primeMocks({ toolConnections: [CURATED_OAUTH_CONN], skillRows: CURATED_SKILL_ROWS });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.mcp).toBeUndefined();
@@ -244,7 +244,7 @@ describe('(a) curated-only workspaces get NO mcp block', () => {
       skillRows: CURATED_SKILL_ROWS,
     });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     // The guard is the uncurated-detection conditional, not dead code.
@@ -259,7 +259,7 @@ describe('(b) uncurated OAuth workspace + flag ON emits the exact block shape', 
   it('emits mcp.servers.composio with url/transport/x-api-key', async () => {
     primeMocks({ toolConnections: [UNCURATED_OAUTH_CONN] });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.mcp).toEqual({
@@ -287,7 +287,7 @@ describe('(b) uncurated OAuth workspace + flag ON emits the exact block shape', 
     };
     primeMocks({ toolConnections: [catalogUncurated, UNCURATED_OAUTH_CONN] });
 
-    await generateWorkspace('ws-mcp-1');
+    await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
 
     expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
       // Catalog slug maps through composioToolkitId; non-catalog slug
@@ -308,7 +308,7 @@ describe('(c) kill-switch: flag OFF + uncurated present → NO block', () => {
     process.env.CLAWS_MCP_LONGTAIL_ENABLED = 'false';
     primeMocks({ toolConnections: [UNCURATED_OAUTH_CONN] });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.mcp).toBeUndefined();
@@ -322,7 +322,7 @@ describe('(d) per-agent token-tax scoping', () => {
   it('workers + critic carry composio__* in tools.deny; Orchestrator does not', async () => {
     primeMocks({ toolConnections: [UNCURATED_OAUTH_CONN] });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     const orch = roster(config).find((a: Record<string, unknown>) => a.name === 'Commander');
@@ -338,7 +338,7 @@ describe('(d) per-agent token-tax scoping', () => {
   it('emits no composio deny when the workspace is not MCP-enabled', async () => {
     primeMocks({ toolConnections: [CURATED_OAUTH_CONN], skillRows: CURATED_SKILL_ROWS });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     for (const agent of roster(config)) {
@@ -352,7 +352,7 @@ describe('(e) TOOLS.md anti-fabrication section iff MCP-enabled', () => {
   it('appends the long-tail section to EVERY agent TOOLS.md when MCP-enabled', async () => {
     primeMocks({ toolConnections: [UNCURATED_OAUTH_CONN] });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
 
     const keys = Object.keys(result.workspaces);
     expect(keys).toHaveLength(3);
@@ -371,7 +371,7 @@ describe('(e) TOOLS.md anti-fabrication section iff MCP-enabled', () => {
   it('omits the section for curated-only workspaces', async () => {
     primeMocks({ toolConnections: [CURATED_OAUTH_CONN], skillRows: CURATED_SKILL_ROWS });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
 
     for (const key of Object.keys(result.workspaces)) {
       expect(result.workspaces[key]['TOOLS.md']).not.toContain('Long-Tail Tools');
@@ -382,7 +382,7 @@ describe('(e) TOOLS.md anti-fabrication section iff MCP-enabled', () => {
     process.env.CLAWS_MCP_LONGTAIL_ENABLED = 'false';
     primeMocks({ toolConnections: [UNCURATED_OAUTH_CONN] });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
 
     for (const key of Object.keys(result.workspaces)) {
       expect(result.workspaces[key]['TOOLS.md']).not.toContain('Long-Tail Tools');
@@ -402,7 +402,7 @@ describe('(f) session lifecycle through the generator', () => {
       },
     });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(mockSessionCreate).not.toHaveBeenCalled();
@@ -428,7 +428,7 @@ describe('(f) session lifecycle through the generator', () => {
       },
     });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(mockSessionCreate).toHaveBeenCalledOnce();
@@ -450,7 +450,7 @@ describe('(f) session lifecycle through the generator', () => {
       },
     });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {
@@ -470,7 +470,7 @@ describe('(f) session lifecycle through the generator', () => {
     primeMocks({ toolConnections: [UNCURATED_OAUTH_CONN], storedSessionId: 'trs_dead' });
     mockSessionRetrieve.mockRejectedValue(new Error('404 not found'));
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(mockSessionCreate).toHaveBeenCalledOnce();
@@ -487,7 +487,7 @@ describe('(f) session lifecycle through the generator', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     try {
-      const result = await generateWorkspace('ws-mcp-1');
+      const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
 
       expect(config.mcp).toBeUndefined();
@@ -514,7 +514,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     try {
-      await generateWorkspace('ws-mcp-1');
+      await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
 
       const warnText = warnSpy.mock.calls.flat().join('\n');
       expect(warnText).toContain('zzz-local-key-tool');
@@ -544,7 +544,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
     });
     mockConnectedAccountsInitiate.mockResolvedValue({ id: 'ca_backfilled_local', status: 'ACTIVE' });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(prismaMock.toolConnection.update).toHaveBeenCalledWith({
@@ -575,7 +575,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     try {
-      const result = await generateWorkspace('ws-mcp-1');
+      const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
       const config = JSON.parse(result['openclaw.json']);
 
       expect(config.mcp).toBeUndefined();
@@ -589,7 +589,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
   it('API_KEY-only uncurated workspace gets NO mcp block (nothing Router-executable)', async () => {
     primeMocks({ toolConnections: [UNCURATED_API_KEY_CONN] });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(config.mcp).toBeUndefined();
@@ -608,7 +608,7 @@ describe('(g) API_KEY uncurated rows: warned + excluded from the toolkit list', 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     try {
-      await generateWorkspace('ws-mcp-1');
+      await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
 
       const warnText = warnSpy.mock.calls.flat().join('\n');
       expect(warnText).toContain('zzz-missing-account');
@@ -639,7 +639,7 @@ describe('(h) no_auth accountless rows: enabled without connected account', () =
   it('includes no_auth toolkit in enable and omits it from connectedAccounts', async () => {
     primeMocks({ toolConnections: [NO_AUTH_CONN] });
 
-    const result = await generateWorkspace('ws-mcp-1');
+    const result = await generateWorkspace('ws-mcp-1', { runtimeContract: '9.4' });
     const config = JSON.parse(result['openclaw.json']);
 
     expect(mockSessionCreate).toHaveBeenCalledWith('claws_user-1', {

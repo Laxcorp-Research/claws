@@ -138,7 +138,7 @@ async function generateFromSeed(template: SeedTemplate) {
     buildWorkspaceFromSeed(template),
   )
   ;(prismaMock.skill.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
-  return generateWorkspace("ws-roundtrip")
+  return generateWorkspace("ws-roundtrip", { runtimeContract: '9.4' })
 }
 
 function countEmittedSkillFiles(result: Awaited<ReturnType<typeof generateWorkspace>>): number {

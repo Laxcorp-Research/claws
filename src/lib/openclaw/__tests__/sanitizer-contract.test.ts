@@ -160,7 +160,7 @@ function buildWorkspaceWith(skills: Array<{ slug: string; compatibleTools: strin
 async function emitSkillMd(skillSlug: string, compatibleTools: string[]): Promise<string> {
   const ws = buildWorkspaceWith([{ slug: skillSlug, compatibleTools }])
   ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws)
-  const result = await generateWorkspace("ws-1")
+  const result = await generateWorkspace("ws-1", { runtimeContract: '9.4' })
   const orchKey = Object.keys(result.workspaces).find((k) => k.includes("orch"))!
   return result.workspaces[orchKey].skills[skillSlug]["SKILL.md"]
 }

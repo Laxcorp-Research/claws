@@ -52,7 +52,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   const customIdentities = deriveCustomApiIdentities(customConnections)
   const soakRow = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { candidateRuntimeSoak: true },
+    select: { candidateRuntimeSoak: true, runtimeImagePin: true },
   })
 
   return apiSuccess({
@@ -69,6 +69,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     pinnedDockerImage: await resolveDeployImage({
       workspaceId,
       candidateSoak: soakRow?.candidateRuntimeSoak === true,
+      runtimeImagePin: soakRow?.runtimeImagePin ?? null,
     }),
   })
 }

@@ -318,6 +318,16 @@ model Workspace {
   // (fingerprint-excluded).
   candidateRuntimeSoak        Boolean        @default(false)
 
+  // Explicit per-workspace runtime pin: an OpenClawVersion.version string
+  // (e.g. "2026.9.4-5"). Highest-priority image resolution - above candidate
+  // soak and above isStable. A pinned workspace never chases isLatest and
+  // never falls back to stable; deploy THROWS if the pinned version has no
+  // row. Set for the founder claw after its 5.22 snapshot was overwritten by
+  // a 9.4 persist (its history is 9.4-only now - a silent 5.22-18 fallback
+  // on wake would boot into an image that cannot read that history).
+  // NULL = normal resolution.
+  runtimeImagePin             String?
+
   // PR-B: opt out of critical-alert pushes (Telegram, fallback email) for
   // container-unhealthy / cron-job-failed / heartbeat-missed / state-sync-stale.
   // Default false → alerts ON by default. See src/lib/alerts/critical-alert-push.ts.
@@ -1283,6 +1293,16 @@ model OpenClawVersion {
   isLatest  Boolean  @default(false)
   isSecurityPatch Boolean @default(false)
 
+  // Version-keyed emission contract ("5.22" | "9.4") - the config shape THIS
+  // image's gateway validates. KEEP wake P0 2026-09-13: the generator emitted
+  // 9.4 shape unconditionally and every 5.22-18 wake boot-looped on
+  // "Invalid config ... agents.defaults: Invalid input". The generator now
+  // keys emission off this row property (src/lib/openclaw/runtime-contract.ts).
+  // Stamped by the register route from the version string; backfilled by
+  // migration for pre-existing rows. DB default covers raw inserts of
+  // 5.22-line rows only.
+  runtimeContract String @default("5.22")
+
   // dockerImage MUST point at an immutable :<version> reference (e.g.
   // ghcr.io/laxcorp-research/openclaw-runtime:2026.5.20), never a moving
   // pointer like :latest or :candidate. The deployer reads this field for
@@ -1445,6 +1465,34 @@ model ContainerState {
   runtimeStateSnapshot      Bytes?
   runtimeStateUpdatedAt     DateTime?
   runtimeStateSizeBytes     Int?
+
+  // ─── Snapshot generations (rollback material) ─────────────────────────
+  // Founder-claw incident 2026-09-13: runtimeStateSnapshot was a single
+  // column, so the first 9.4 persist overwrote the last 5.22-shaped snapshot
+  // and the rollback material was gone. Every persist now shifts
+  // current -> prev inside the SAME atomic UPDATE (persistRuntimeStateSnapshot).
+  // Never reintroduce a single-generation overwrite.
+  runtimeStatePrevSnapshot  Bytes?
+  runtimeStatePrevUpdatedAt DateTime?
+  runtimeStatePrevSizeBytes Int?
+
+  // Contract of the bytes currently in runtimeStateSnapshot ("5.22" | "9.4");
+  // stamped at persist time from deployedRuntimeContract.
+  runtimeStateContract      String?
+
+  // Contract of the image this workspace is currently deployed on; stamped by
+  // deployToCloud from the resolved OpenClawVersion row. The first persist
+  // after a contract change pins the last old-contract snapshot below.
+  deployedRuntimeContract   String?
+
+  // Pre-migration generation: last snapshot taken on the OLD contract, pinned
+  // for 7 days after the claw first persists on the new runtime. Rollback =
+  // repin the old version + restore these bytes (session history recorded
+  // after the migration is lost - the promote card states this plainly).
+  preMigrationSnapshot      Bytes?
+  preMigrationContract      String?
+  preMigrationTakenAt       DateTime?
+  preMigrationPinnedUntil   DateTime?
 
   // PR-2 (syncThenDestroy): teardown-time snapshot freshness marker. When a
   // Stop/hibernate routes through syncThenDestroy and the pre-destroy
