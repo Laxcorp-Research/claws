@@ -4,7 +4,11 @@ import { join } from "node:path"
 import {
   ORPHAN_CANDIDATE_VERSIONS,
   classifyRuntimeBump,
+  compareRuntimeVersions,
+  isNewerRuntimeVersion,
   mayAutoPromoteOverlayN,
+  parseRuntimeVersion,
+  STALE_PING_COOLDOWN_MS,
   upstreamDateTuple,
 } from "@/lib/openclaw/runtime-bump"
 
@@ -57,5 +61,31 @@ describe("classifyRuntimeBump", () => {
       expect(sql).toContain(`'${version}'`)
     }
     expect(sql).not.toContain("'2026.9.4'")
+  })
+})
+
+describe("runtime version comparator (stale-candidate scope)", () => {
+  it("parses YYYY.M.D and YYYY.M.D-N; rejects garbage", () => {
+    expect(parseRuntimeVersion("2026.9.4-5")).toEqual({ tuple: [2026, 9, 4], overlay: 5 })
+    expect(parseRuntimeVersion("2026.5.22")).toEqual({ tuple: [2026, 5, 22], overlay: 0 })
+    expect(parseRuntimeVersion("latest")).toBeNull()
+  })
+
+  it("orders by upstream tuple first, then overlay -N", () => {
+    expect(compareRuntimeVersions("2026.9.4-5", "2026.5.22-18")).toBeGreaterThan(0)
+    expect(compareRuntimeVersions("2026.9.4", "2026.9.4-5")).toBeLessThan(0)
+    expect(compareRuntimeVersions("2026.9.4-5", "2026.9.4-5")).toBe(0)
+    expect(compareRuntimeVersions("2026.9.4-6", "2026.9.4-5")).toBeGreaterThan(0)
+  })
+
+  it("MUTATION: ancestors are never newer - unparseable never beats stable", () => {
+    expect(isNewerRuntimeVersion("2026.5.22-18", "2026.9.4-5")).toBe(false)
+    expect(isNewerRuntimeVersion("2026.9.4", "2026.9.4-5")).toBe(false)
+    expect(isNewerRuntimeVersion("2026.9.4-6", "2026.9.4-5")).toBe(true)
+    expect(isNewerRuntimeVersion("garbage", "2026.9.4-5")).toBe(false)
+  })
+
+  it("stale ping cooldown is 14 days (24h restored → fail)", () => {
+    expect(STALE_PING_COOLDOWN_MS).toBe(14 * 24 * 60 * 60 * 1000)
   })
 })
