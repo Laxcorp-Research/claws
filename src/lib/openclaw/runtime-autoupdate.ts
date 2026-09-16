@@ -5,6 +5,7 @@ import { resolvePublicAppUrl } from "@/lib/alerts/app-url"
 import { neverPromotableReason } from "@/lib/openclaw/version-hygiene"
 import {
   classifyRuntimeBump,
+  isNewerRuntimeVersion,
   mayAutoPromoteOverlayN,
   STALE_CANDIDATE_MS,
   STALE_PING_COOLDOWN_MS,
@@ -168,7 +169,14 @@ export function shouldStalePing(
 export async function pingStaleCandidates(now = new Date()): Promise<{
   pinged: string[]
   skipped: string[]
+  /** Rows older/equal to current stable - never candidates, never alert. */
+  ancestors: string[]
 }> {
+  const stable = await prisma.openClawVersion.findFirst({
+    where: { isStable: true },
+    orderBy: { releasedAt: "desc" },
+    select: { version: true },
+  })
   const rows = await prisma.openClawVersion.findMany({
     where: { isStable: false, supersededAt: null, soakGreenAt: null },
     select: {
@@ -183,7 +191,15 @@ export async function pingStaleCandidates(now = new Date()): Promise<{
   })
   const pinged: string[] = []
   const skipped: string[] = []
+  const ancestors: string[] = []
   for (const row of rows) {
+    // STALE-CANDIDATE SCOPE: an ancestor of stable is not a candidate.
+    // MUTATION: alerting here (restoring ancestor-row pings) fails the
+    // "never alerts for a row older than stable" test.
+    if (stable && !isNewerRuntimeVersion(row.version, stable.version)) {
+      ancestors.push(row.version)
+      continue
+    }
     if (!isStaleUnsoaked(row, now)) {
       skipped.push(row.version)
       continue
@@ -208,5 +224,5 @@ export async function pingStaleCandidates(now = new Date()): Promise<{
     })
     pinged.push(row.version)
   }
-  return { pinged, skipped }
+  return { pinged, skipped, ancestors }
 }

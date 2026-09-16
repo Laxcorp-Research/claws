@@ -65,7 +65,10 @@ describe("runtime autoupdate lane", () => {
     expect(shouldStalePing({ lastStalePingAt: null }, NOW)).toBe(true)
   })
 
-  it("pingStaleCandidates alerts and stamps lastStalePingAt (never silence)", async () => {
+  it("pingStaleCandidates alerts and stamps lastStalePingAt for a NEWER-than-stable stale row", async () => {
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      version: "2026.5.22-18",
+    })
     ;(prismaMock.openClawVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
         id: "ver-stale",
@@ -81,6 +84,7 @@ describe("runtime autoupdate lane", () => {
 
     const result = await pingStaleCandidates(NOW)
     expect(result.pinged).toEqual(["2026.8.1"])
+    expect(result.ancestors).toEqual([])
     expect(mockSendOwnerAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         alertKey: "runtime-candidate-stale",
@@ -93,6 +97,47 @@ describe("runtime autoupdate lane", () => {
         data: { lastStalePingAt: NOW },
       }),
     )
+  })
+
+  it("MUTATION: ancestor rows (older/equal than stable) NEVER alert - restoring ancestor pings fails here", async () => {
+    ;(prismaMock.openClawVersion.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      version: "2026.9.4-5",
+    })
+    ;(prismaMock.openClawVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      // Old date-tuple ancestor (the post-promote 5.22 leftovers class).
+      {
+        id: "ver-ancestor-tuple",
+        version: "2026.5.22-17",
+        releasedAt: new Date(NOW.getTime() - STALE_CANDIDATE_MS - 1000),
+        lastStalePingAt: null,
+        isStable: false,
+        supersededAt: null,
+        soakGreenAt: null,
+      },
+      // Same tuple, lower overlay -N (the raw 2026.9.4 base row class).
+      {
+        id: "ver-ancestor-overlay",
+        version: "2026.9.4",
+        releasedAt: new Date(NOW.getTime() - STALE_CANDIDATE_MS - 1000),
+        lastStalePingAt: null,
+        isStable: false,
+        supersededAt: null,
+        soakGreenAt: null,
+      },
+    ])
+
+    const result = await pingStaleCandidates(NOW)
+    expect(result.ancestors).toEqual(["2026.5.22-17", "2026.9.4"])
+    expect(result.pinged).toEqual([])
+    expect(mockSendOwnerAlert).not.toHaveBeenCalled()
+    expect(prismaMock.openClawVersion.update).not.toHaveBeenCalled()
+  })
+
+  it("stale ping dedup is 14 days per row", () => {
+    const thirteenDays = new Date(NOW.getTime() - 13 * 24 * 60 * 60 * 1000)
+    const fifteenDays = new Date(NOW.getTime() - 15 * 24 * 60 * 60 * 1000)
+    expect(shouldStalePing({ lastStalePingAt: thirteenDays }, NOW)).toBe(false)
+    expect(shouldStalePing({ lastStalePingAt: fifteenDays }, NOW)).toBe(true)
   })
 
   it("markSoakGreen on date-tuple 9.4 does not pin isStable (founder ACK)", async () => {

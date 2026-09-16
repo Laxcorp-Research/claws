@@ -26,10 +26,18 @@ import type { HealConditionId } from "@/lib/healing/conditions"
 export const maxDuration = 300
 
 // Sleep side stays INLINE (budget-guarded). Each hibernate awaits syncThenRemoveDeployment
-// with a 10s sync budget; skipSync flips near the function ceiling so a sync
+// with a bounded sync budget; skipSync flips near the function ceiling so a sync
 // cannot be killed mid-write. Wakes (deployToCloud) are the long pole and run
 // via after() per-workspace so the tick HTTP response returns in seconds.
-const HIBERNATE_SYNC_TIMEOUT_MS = 10_000
+//
+// CANARY SYNC TIMEOUT (2026-09-16): 10s was tuned for the old 55s function
+// ceiling and pre-9.4 bundles. The prod canary's first post-migration sync
+// (~29MB gzip: sqlite store + generation shift) needed >10s end-to-end
+// (container gzip -> blob PUT -> finalize UPDATE) and got refused 4 ticks
+// in a row (08:45-08:48Z) before landing. The ceiling is 300s now; 30s per
+// workspace still leaves SYNC_BUDGET_CUTOFF_MS headroom for a full batch.
+// MUTATION: shrinking this below 30s fails the sync-budget lock test.
+const HIBERNATE_SYNC_TIMEOUT_MS = 30_000
 const SYNC_DELETE_MARGIN_MS = 8_000
 const SYNC_BUDGET_CUTOFF_MS =
   maxDuration * 1000 - HIBERNATE_SYNC_TIMEOUT_MS - SYNC_DELETE_MARGIN_MS

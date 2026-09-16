@@ -9,6 +9,14 @@ import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { maybeResumeInterruptedMission } from "@/lib/healing/mission-resume"
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
 import { sendOwnerAlert } from "@/lib/alerts/owner-alert"
+import {
+  decideRefusalEscalation,
+  HIBERNATION_REFUSED_EVENT_KIND,
+  REFUSAL_ALERT_PUSHED_EVENT_KIND,
+  REFUSAL_ALERT_RESOLVED_EVENT_KIND,
+  REFUSAL_LOOKBACK_MS,
+  refusalBackoffMs,
+} from "@/lib/hibernation/refusal-escalation"
 
 // P2.3 / -10 overlay (NOT built here): catch-up-beat-on-boot - when a claw
 // wakes past a due heartbeat hint, the container overlay should fire one
@@ -58,6 +66,33 @@ export async function hibernateWorkspace(
     return { hibernated: false, refused: true, reason: "no-container" }
   }
 
+  // OWNER-PLANE NOISE FIX: refusal episode state (since last success, bounded).
+  const episodeSince = new Date(Date.now() - REFUSAL_LOOKBACK_MS)
+  const priorRefusalsThisEpisode = await prisma.activityLog.count({
+    where: {
+      workspaceId,
+      timestamp: { gte: episodeSince },
+      metadata: { contains: `"eventKind":"${HIBERNATION_REFUSED_EVENT_KIND}"` },
+    },
+  })
+
+  // Backoff: while inside the window after a refusal, skip the attempt
+  // entirely (silent - no ledger, no page, container not hammered).
+  const lastRefusalAt = workspace.hibernationRefusedAt
+  const backoffMs = refusalBackoffMs(priorRefusalsThisEpisode)
+  if (
+    priorRefusalsThisEpisode > 0 &&
+    lastRefusalAt &&
+    Date.now() - lastRefusalAt.getTime() < backoffMs
+  ) {
+    log.info("Hibernation refusal backoff: skipping attempt", {
+      workspaceId,
+      priorRefusalsThisEpisode,
+      backoffMs,
+    })
+    return { hibernated: false, refused: true, reason: "refusal-backoff" }
+  }
+
   try {
     // Lifecycle P3: refuse-unsafe - sync fail / stale / skipSync keeps RUNNING/WARM.
     const teardown = await syncThenRemoveDeployment(workspaceId, {
@@ -68,17 +103,37 @@ export async function hibernateWorkspace(
     if (!teardown.destroyed) {
       const reason = teardown.reason
       log.warn("Hibernation refused: state not safely synced", { workspaceId, reason })
+
+      // Escalation: silent SYSTEM retries, ONE ERROR+page at exhaust,
+      // 12h dedup keyed on the ledgered alert row. MUTATION: alerting when
+      // escalation.sendAlert is false fails the manager escalation tests.
+      const lastAlertRow = await prisma.activityLog.findFirst({
+        where: {
+          workspaceId,
+          metadata: { contains: `"eventKind":"${REFUSAL_ALERT_PUSHED_EVENT_KIND}"` },
+        },
+        orderBy: { timestamp: "desc" },
+        select: { timestamp: true },
+      })
+      const escalation = decideRefusalEscalation({
+        priorRefusalsThisEpisode,
+        lastAlertAtMs: lastAlertRow?.timestamp.getTime() ?? null,
+        nowMs: Date.now(),
+      })
+
       try {
         await prisma.activityLog.create({
           data: {
             workspaceId,
             action: HIBERNATION_REFUSED_ACTION,
-            detail: `Auto-hibernate refused (${reason}). Container kept RUNNING/WARM.`,
-            actionType: "ERROR",
+            detail: `Auto-hibernate refused (${reason}). Container kept RUNNING/WARM. Attempt ${escalation.attempt}${escalation.sendAlert ? "; owner paged" : "; silent retry"}.`,
+            actionType: escalation.ledgerActionType,
             timestamp: new Date(),
             metadata: JSON.stringify({
-              eventKind: "hibernation_refused",
+              eventKind: HIBERNATION_REFUSED_EVENT_KIND,
               reason,
+              attempt: escalation.attempt,
+              alerted: escalation.sendAlert,
             }),
           },
         })
@@ -92,18 +147,37 @@ export async function hibernateWorkspace(
           error: String(markErr),
         })
       }
-      try {
-        await sendOwnerAlert({
-          alertKey: "hibernation-refuse-unsafe",
-          title: "Hibernation refused: state not safely synced",
-          detail: `workspaceId=${workspaceId} reason=${reason}. Container kept RUNNING/WARM.`,
-          workspaceId,
-        })
-      } catch (alertErr) {
-        log.error("owner-alert hibernation-refuse-unsafe failed", {
-          workspaceId,
-          error: String(alertErr),
-        })
+
+      if (escalation.sendAlert) {
+        try {
+          const alert = await sendOwnerAlert({
+            alertKey: "hibernation-refuse-unsafe",
+            title: "Hibernation refused: state not safely synced",
+            detail: `workspaceId=${workspaceId} reason=${reason}. ${escalation.attempt} attempts exhausted; retries continue with backoff. Container kept RUNNING/WARM.`,
+            workspaceId,
+          })
+          await prisma.activityLog.create({
+            data: {
+              workspaceId,
+              action: "Owner paged: hibernation refusals exhausted retries",
+              detail: `attempt=${escalation.attempt} reason=${reason}`,
+              actionType: "SYSTEM",
+              timestamp: new Date(),
+              metadata: JSON.stringify({
+                eventKind: REFUSAL_ALERT_PUSHED_EVENT_KIND,
+                reason,
+                attempt: escalation.attempt,
+                delivered: alert.sent,
+                channel: alert.channel,
+              }),
+            },
+          })
+        } catch (alertErr) {
+          log.error("owner-alert hibernation-refuse-unsafe failed", {
+            workspaceId,
+            error: String(alertErr),
+          })
+        }
       }
       return { hibernated: false, refused: true, reason }
     }
@@ -188,6 +262,52 @@ export async function hibernateWorkspace(
         }),
       },
     })
+
+    // Resolve-message: if this episode paged the owner, tell them it healed
+    // (once - a later resolve row closes the episode).
+    try {
+      const lastPushed = await prisma.activityLog.findFirst({
+        where: {
+          workspaceId,
+          metadata: { contains: `"eventKind":"${REFUSAL_ALERT_PUSHED_EVENT_KIND}"` },
+        },
+        orderBy: { timestamp: "desc" },
+        select: { timestamp: true },
+      })
+      if (lastPushed) {
+        const resolvedSince = await prisma.activityLog.findFirst({
+          where: {
+            workspaceId,
+            timestamp: { gte: lastPushed.timestamp },
+            metadata: { contains: `"eventKind":"${REFUSAL_ALERT_RESOLVED_EVENT_KIND}"` },
+          },
+          select: { id: true },
+        })
+        if (!resolvedSince) {
+          await sendOwnerAlert({
+            alertKey: "hibernation-refuse-unsafe",
+            title: "Hibernation refusals: back to normal",
+            detail: `workspaceId=${workspaceId} synced and hibernated.`,
+            workspaceId,
+          })
+          await prisma.activityLog.create({
+            data: {
+              workspaceId,
+              action: "Hibernation refusals resolved",
+              detail: "Synced and hibernated after a paged refusal episode.",
+              actionType: "SYSTEM",
+              timestamp: new Date(),
+              metadata: JSON.stringify({ eventKind: REFUSAL_ALERT_RESOLVED_EVENT_KIND }),
+            },
+          })
+        }
+      }
+    } catch (resolveErr) {
+      log.error("hibernation refusal resolve-message failed", {
+        workspaceId,
+        error: String(resolveErr),
+      })
+    }
 
     log.info("Workspace hibernated", {
       workspaceId,

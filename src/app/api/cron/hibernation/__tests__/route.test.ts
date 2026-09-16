@@ -107,14 +107,14 @@ afterEach(() => {
 })
 
 describe("hibernation cron - budget guard (sleep inline)", () => {
-  it("forwards the 10s sync timeout and flips skipSync once the 300s cutoff is crossed", async () => {
+  it("forwards the 30s sync timeout and flips skipSync once the 300s cutoff is crossed", async () => {
     ;(prismaMock.containerState.findMany as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([candidate("a"), candidate("b"), candidate("c")])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
 
-    // Cutoff = 300_000 - 10_000 - 8_000 = 282_000ms
+    // Cutoff = 300_000 - 30_000 - 8_000 = 262_000ms
     let fakeNow = 1_000_000
     nowSpy = vi.spyOn(Date, "now").mockImplementation(() => fakeNow)
     mockHibernate.mockImplementation(async () => {
@@ -127,15 +127,15 @@ describe("hibernation cron - budget guard (sleep inline)", () => {
 
     expect(mockHibernate).toHaveBeenCalledTimes(3)
     expect(mockHibernate).toHaveBeenNthCalledWith(1, "a", {
-      syncTimeoutMs: 10_000,
+      syncTimeoutMs: 30_000,
       skipSync: false,
     })
     expect(mockHibernate).toHaveBeenNthCalledWith(2, "b", {
-      syncTimeoutMs: 10_000,
+      syncTimeoutMs: 30_000,
       skipSync: false,
     })
     expect(mockHibernate).toHaveBeenNthCalledWith(3, "c", {
-      syncTimeoutMs: 10_000,
+      syncTimeoutMs: 30_000,
       skipSync: true,
     })
 
@@ -162,11 +162,11 @@ describe("hibernation cron - budget guard (sleep inline)", () => {
     const json = await res.json()
 
     expect(mockHibernate).toHaveBeenNthCalledWith(1, "a", {
-      syncTimeoutMs: 10_000,
+      syncTimeoutMs: 30_000,
       skipSync: false,
     })
     expect(mockHibernate).toHaveBeenNthCalledWith(2, "b", {
-      syncTimeoutMs: 10_000,
+      syncTimeoutMs: 30_000,
       skipSync: false,
     })
     expect(json.data.syncSkippedForBudget).toBe(0)
@@ -353,6 +353,16 @@ describe("hibernation cron - wake after() fan-out", () => {
     const src = readFileSync(ROUTE_SRC, "utf8")
     expect(src).toMatch(/export const maxDuration = 300/)
     expect(src).not.toMatch(/export const maxDuration = 55/)
+  })
+
+  it("MUTATION: hibernate sync budget is 30s (restore the stale 10s → fail)", () => {
+    // CANARY SYNC TIMEOUT (2026-09-16): 10s was tuned for the old 55s
+    // ceiling; post-9.4-migration bundles (~29MB gzip) need gzip + blob PUT
+    // + finalize inside the budget. Shrinking below 30s revives the
+    // refused-hibernate class (4 refusals in 4 ticks on the prod canary).
+    const src = readFileSync(ROUTE_SRC, "utf8")
+    expect(src).toMatch(/const HIBERNATE_SYNC_TIMEOUT_MS = 30_000/)
+    expect(src).not.toMatch(/const HIBERNATE_SYNC_TIMEOUT_MS = 10_000/)
   })
 })
 
