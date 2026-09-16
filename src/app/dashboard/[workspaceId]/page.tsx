@@ -492,6 +492,14 @@ export default function DashboardPage() {
     router.replace(`/dashboard/${workspaceId}`)
   }, [searchParams, router, workspaceId])
 
+  // DIGEST HONESTY deep links: ?tab=activity&aq=<query> seeds the Activity
+  // search box so each digest error class links to its filtered rows.
+  useEffect(() => {
+    const aq = searchParams.get("aq")
+    if (!aq) return
+    setMissionFilters((prev) => (prev.q === aq ? prev : { ...prev, q: aq }))
+  }, [searchParams])
+
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return

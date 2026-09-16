@@ -12,10 +12,13 @@ import { getApiKeySource } from "@/lib/credits/api-key-source"
 import {
   computeDigestStats,
   DAILY_DIGEST_EVENT_KIND,
+  DAILY_DIGEST_FORMAT_VERSION,
   formatDailyDigestEmailHtml,
   formatDailyDigestMessage,
   utcDigestDayStart,
 } from "@/lib/digest/daily-health-digest"
+import { listOpenUserOnlyNudges } from "@/lib/alerts/customer-nudge"
+import { resolvePublicAppUrl } from "@/lib/alerts/app-url"
 import {
   loadDigestActivityCostWindow,
   resolveDigestCostCents,
@@ -122,7 +125,15 @@ export async function GET(req: NextRequest) {
 
       const rows = await prisma.activityLog.findMany({
         where: { workspaceId: ws.id, timestamp: { gte: since, lte: now } },
-        select: { actionType: true, action: true, metadata: true },
+        // v2: detail + timestamp feed the plain-language error classes
+        // (first/last time labels + text-signature classification).
+        select: {
+          actionType: true,
+          action: true,
+          metadata: true,
+          detail: true,
+          timestamp: true,
+        },
         orderBy: { timestamp: "asc" },
       })
 
@@ -157,10 +168,17 @@ export async function GET(req: NextRequest) {
         strandOpen: ws.containerState?.lastSyncIncompleteAt != null,
       })
 
+      // "Needs you" dedup: open user-only nudges render with their ONE
+      // action + "reminded <date>" instead of counting as fresh errors.
+      const openNudges = await listOpenUserOnlyNudges(ws.id)
+
       const text = formatDailyDigestMessage({
         workspaceName: ws.name || "Unnamed Claw",
         asOfUtc: now.toISOString(),
         stats,
+        openNudges,
+        appUrl: resolvePublicAppUrl() || null,
+        workspaceId: ws.id,
       })
 
       let channel: "telegram" | "email" = "email"
@@ -208,10 +226,22 @@ export async function GET(req: NextRequest) {
           timestamp: now,
           metadata: JSON.stringify({
             eventKind: DAILY_DIGEST_EVENT_KIND,
+            digestVersion: DAILY_DIGEST_FORMAT_VERSION,
             channel,
             delivered,
             resendId,
-            stats,
+            stats: {
+              ...stats,
+              // Keep the ledger row compact: class aggregates without labels.
+              errorClasses: stats.errorClasses.map((c) => ({
+                classId: c.classId,
+                section: c.section,
+                count: c.count,
+                firstAtUtc: c.firstAtUtc,
+                lastAtUtc: c.lastAtUtc,
+              })),
+            },
+            openNudgeConditions: openNudges.map((n) => n.condition),
             costSource: costResolved.source,
           }),
         },

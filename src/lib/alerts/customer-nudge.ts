@@ -71,6 +71,36 @@ export function buildCustomerNudgeResolveText(condition: HealConditionId): strin
   return `${condition}: back to normal`
 }
 
+/**
+ * DIGEST HONESTY: an open nudge (delivered, unresolved) renders in the
+ * digest's "Needs you" section with its ONE action and a "reminded <date>"
+ * dedup label instead of re-nudging the user.
+ */
+export type OpenUserNudge = {
+  condition: HealConditionId
+  /** The ONE action copy shown to the user. */
+  action: string
+  /** Last delivered nudge time (the "reminded Sep 9" label). */
+  remindedAt: Date
+}
+
+export async function listOpenUserOnlyNudges(
+  workspaceId: string,
+): Promise<OpenUserNudge[]> {
+  const out: OpenUserNudge[] = []
+  for (const condition of userOnlyNudgeConditionIds()) {
+    const remindedAt = await findOpenNudgeAt(workspaceId, condition)
+    if (remindedAt) {
+      out.push({
+        condition,
+        action: NUDGE_COPY[condition]?.action ?? condition,
+        remindedAt,
+      })
+    }
+  }
+  return out
+}
+
 export type CustomerNudgeDecision =
   | { action: "skip"; reason: "not-user-only" | "already-open" }
   | { action: "send" }

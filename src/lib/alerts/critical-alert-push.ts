@@ -43,6 +43,11 @@ export const ALERT_KEYS = [
   // RESEND ERROR HONESTY: raised by the sendEmail wrapper when a critical
   // email (trial stop, etc.) is still failed after its retry.
   "email-delivery-failed",
+  // DIGEST HONESTY: session-plumbing transients (agents_wait /
+  // sessions_yield) storming past the ingest threshold. Individual
+  // occurrences are reclassified to SYSTEM recovered rows - only the storm
+  // pages, and only the owner (12h dedup), never a digest "error".
+  "tool-transient-storm",
 ] as const
 
 export type AlertKey = (typeof ALERT_KEYS)[number]
@@ -78,6 +83,10 @@ const ALERT_COPY: Record<AlertKey, AlertCopy> = {
   "railway-create-budget": { emoji: "\uD83D\uDEA8", title: "Railway create budget at 80%" },
   "provisioning-queued": { emoji: "\u23F3", title: "Claw queued to provision" },
   "email-delivery-failed": { emoji: "\uD83D\uDCE7", title: "Email delivery failed" },
+  "tool-transient-storm": {
+    emoji: "\u26A0\uFE0F",
+    title: "Agent coordination calls failing repeatedly",
+  },
 }
 
 export function buildAlertMessage(alertKey: AlertKey, detail?: string | null): string {

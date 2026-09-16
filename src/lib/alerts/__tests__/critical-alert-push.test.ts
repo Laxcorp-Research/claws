@@ -90,6 +90,9 @@ describe("buildAlertMessage - class matrix", () => {
       // RESEND HONESTY: raised by the sendEmail wrapper on sustained
       // critical email failure.
       "email-delivery-failed",
+      // DIGEST HONESTY: session-plumbing transient storm (agents_wait /
+      // sessions_yield) past the ingest threshold - owner page, 12h dedup.
+      "tool-transient-storm",
     ])
     const messages = ALERT_KEYS.map((key) => buildAlertMessage(key))
     expect(new Set(messages).size).toBe(ALERT_KEYS.length)
@@ -309,7 +312,7 @@ describe("sendCriticalAlert - integration", () => {
 
   it("MUTATION: every alertKey is a valid AlertKey the sender accepts", () => {
     const keys: AlertKey[] = [...ALERT_KEYS]
-    expect(keys).toHaveLength(7)
+    expect(keys).toHaveLength(8)
   })
 
   it("MUTATION: owner-class railway-create-budget must not email the workspace owner", async () => {
