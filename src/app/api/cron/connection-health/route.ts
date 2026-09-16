@@ -4,7 +4,8 @@ import { getComposio } from "@/lib/composio"
 import { log } from "@/lib/logger"
 import { decrypt } from "@/lib/encryption"
 import { IMPLEMENTED_SLUGS, hasValidator, validateToolKey, type ValidationResult } from "@/lib/tools/validators"
-import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
+import { resolveCustomerNudge, sendCustomerNudge } from "@/lib/alerts/customer-nudge"
+import type { HealConditionId } from "@/lib/healing/conditions"
 import { nudgeStaleWebChatPendingApprovals } from "@/lib/artifacts/pending-approvals"
 
 // before: 55 - after: 300 (belt with staging cron scheduler routes)
@@ -124,6 +125,31 @@ function parseEncryptedCredentials(encryptedCredentials: string): Record<string,
   return parsed as Record<string, string>
 }
 
+/**
+ * STALE-NUDGE FIX (promote pre-flight): a successful re-probe must resolve
+ * open nudges of the classes this sweep raises. Before this, a nudge sent
+ * when a connection died stayed "open" forever after the connection healed
+ * (the healthy branch only wrote check metadata). resolveCustomerNudge
+ * no-ops ("no-open-nudge") when nothing is open, so this is idempotent.
+ * Fire-and-forget: a resolve failure never fails the sweep.
+ */
+async function resolveConnectionNudges(
+  workspaceId: string,
+  conditions: HealConditionId[],
+): Promise<void> {
+  for (const condition of conditions) {
+    try {
+      await resolveCustomerNudge({ workspaceId, condition })
+    } catch (err) {
+      log.error("connection-health: nudge resolve failed", {
+        workspaceId,
+        condition,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+}
+
 function mapNativeValidationResult(result: ValidationResult): NativeApiKeyHealthDecision {
   if (result.valid && !result.warning) {
     return { kind: "healthy", result: "HEALTHY" }
@@ -231,6 +257,11 @@ export async function GET(req: NextRequest) {
               lastConnectionCheckResult: decision.result,
             },
           })
+          // Successful re-probe resolves the classes this path raises.
+          await resolveConnectionNudges(connection.workspaceId, [
+            "tool-connection-error",
+            "oauth-expired",
+          ])
           continue
         }
 
@@ -356,6 +387,8 @@ export async function GET(req: NextRequest) {
             lastError: null,
           },
         })
+        // Successful re-probe resolves the class this path raises.
+        await resolveConnectionNudges(connection.workspaceId, ["tool-connection-error"])
       } else if (decision.kind === "dead") {
         summary.nativeApiKeys.markedDead++
         await prisma.toolConnection.update({
