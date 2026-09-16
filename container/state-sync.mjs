@@ -48,25 +48,116 @@ const UPLOAD_TIMEOUT_MS = 30_000
 const BLOB_PUT_TIMEOUT_MS = 120_000
 
 // Must stay in lockstep with src/lib/openclaw/state-sync-limits.ts
-export const ABSOLUTE_MAX_COMPRESSED_BYTES = 50 * 1024 * 1024
-export const NEAR_CAP_WARN_BYTES = Math.floor(ABSOLUTE_MAX_COMPRESSED_BYTES * 0.8) // 40MB
-export const NEAR_CAP_REARM_BYTES = Math.floor(ABSOLUTE_MAX_COMPRESSED_BYTES * 0.7) // 35MB
+export const SOFT_TARGET_COMPRESSED_BYTES = 50 * 1024 * 1024
+export const ABSOLUTE_MAX_COMPRESSED_BYTES = 80 * 1024 * 1024
+export const NEAR_CAP_WARN_BYTES = Math.floor(ABSOLUTE_MAX_COMPRESSED_BYTES * 0.8)
+export const NEAR_CAP_REARM_BYTES = Math.floor(ABSOLUTE_MAX_COMPRESSED_BYTES * 0.7)
 
 const UUID_RE =
   /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
 
 // Config files are re-delivered via env vars at every boot (deriveContainerEnv),
-// so they are NOT runtime state - exclude them from the snapshot. Everything
-// else under the data dir (agents/<id>/sessions/*.jsonl, MEMORY.md, logs,
-// caches) IS runtime state.
+// so they are NOT runtime state. Logs/caches/media/exec-approvals are
+// non-session bulk: exclude from the snapshot (9.4 history lives in sqlite).
 const CONFIG_FILES = new Set(["openclaw.json", ".env", "cron"])
+const BULK_TOP_LEVEL = new Set([
+  "logs",
+  "log",
+  "cache",
+  "caches",
+  "tmp",
+  "temp",
+  "media",
+  "downloads",
+  "browser",
+  "chromium",
+  "node_modules",
+  "exec-approvals.json",
+  "exec-approvals.sock",
+])
+const BULK_SEGMENTS = new Set(["logs", "log", "cache", "caches"])
 
 export function isRuntimeFile(relativePath) {
-  const topLevel = relativePath.split("/")[0]
+  const parts = relativePath.split("/")
+  const topLevel = parts[0]
   if (CONFIG_FILES.has(topLevel)) return false
+  if (BULK_TOP_LEVEL.has(topLevel)) return false
+  if (topLevel.startsWith("exec-approvals")) return false
   if (topLevel.startsWith(".") && topLevel !== ".openclaw") return false
-  if (topLevel === "node_modules") return false
+  if (parts.some((p) => BULK_SEGMENTS.has(p))) return false
+  if (parts.some((p) => p.endsWith(".log"))) return false
   return true
+}
+
+const ESSENTIAL_MD = /^(MEMORY|USER|SOUL|AGENTS|IDENTITY|HEARTBEAT|BOOT|TOOLS)\.md$/
+
+export function isEssentialSyncFile(relativePath) {
+  if (relativePath.endsWith("openclaw-agent.sqlite")) return true
+  if (relativePath.startsWith("shared/")) return true
+  const base = relativePath.split("/").pop() || ""
+  return ESSENTIAL_MD.test(base)
+}
+
+function gzipBundle(bundle, gzipSync) {
+  return gzipSync(Buffer.from(JSON.stringify(bundle)))
+}
+
+function pickFiles(files, pred) {
+  /** @type {Record<string, string>} */
+  const next = {}
+  const dropped = []
+  for (const [key, value] of Object.entries(files)) {
+    if (pred(key)) next[key] = value
+    else dropped.push(key)
+  }
+  return { files: next, dropped }
+}
+
+/**
+ * Size-aware policy: over soft target, drop non-essential; over hard cap,
+ * keep sqlite + MEMORY/workspace md + shared. Always returns a bundle to
+ * upload (never silent refuse). Caller still PUTs even if still over hard.
+ */
+export function applySizeAwareBundle(bundle, opts = {}) {
+  const gzipSync = opts.gzipSync ?? zlib.gzipSync
+  const soft = opts.softBytes ?? SOFT_TARGET_COMPRESSED_BYTES
+  const hard = opts.hardBytes ?? ABSOLUTE_MAX_COMPRESSED_BYTES
+  let files = { ...bundle.files }
+  const dropped = []
+  let warning = null
+  const asBundle = (nextFiles) => ({ files: nextFiles, totalSize: bundle.totalSize ?? 0 })
+  const measure = (nextFiles) => gzipBundle(asBundle(nextFiles), gzipSync).length
+
+  if (measure(files) > soft) {
+    const trimmed = pickFiles(
+      files,
+      (key) => isEssentialSyncFile(key) || key.endsWith(".sqlite"),
+    )
+    if (Object.keys(trimmed.files).length > 0 && trimmed.dropped.length > 0) {
+      files = trimmed.files
+      dropped.push(...trimmed.dropped)
+      warning = "trimmed-nonessential"
+    }
+  }
+
+  if (measure(files) > hard) {
+    const essential = pickFiles(files, (key) => isEssentialSyncFile(key))
+    if (Object.keys(essential.files).length > 0 && essential.dropped.length > 0) {
+      files = essential.files
+      dropped.push(...essential.dropped)
+      warning = "trimmed-essential-only"
+    }
+  }
+
+  const outBundle = asBundle(files)
+  const compressed = gzipBundle(outBundle, gzipSync)
+  return {
+    bundle: outBundle,
+    compressed,
+    dropped,
+    warning,
+    stillOverHard: compressed.length > hard,
+  }
 }
 
 /**
@@ -116,19 +207,41 @@ export const ORPHAN_RETAIN_MAX_BYTES = 5 * 1024 * 1024
  * When indexed + retain orphans (default): include not-in-index uuid.jsonl
  * (caller still size-guards via ORPHAN_RETAIN_MAX_BYTES). Always drop reset leftovers.
  */
+function isJsonlSessionArtifact(fileName) {
+  return (
+    fileName.endsWith(".jsonl") ||
+    fileName.includes("trajectory") ||
+    fileName.includes(".jsonl.")
+  )
+}
+
+export function agentSqlitePresent(dataDir, agentId) {
+  try {
+    return fs.existsSync(path.join(dataDir, "agents", agentId, "agent", "openclaw-agent.sqlite"))
+  } catch {
+    return false
+  }
+}
+
 export function shouldIncludeSessionArtifact(fileName, liveIds, opts = {}) {
   const retainOrphans = opts.retainOrphans ?? retainOrphanSessionsEnabled()
+  // 9.4 doctor converts sessions.json → sqlite. Leftover jsonl plus sqlite
+  // blew the 50MB blob-token cap on the Twitter soak (54MB, HTTP 400).
+  // Canonical store is sqlite; do not ship jsonl/sessions.json beside it.
+  if (opts.sqlitePresent === true) {
+    if (fileName === "sessions.json") return false
+    if (isJsonlSessionArtifact(fileName)) return false
+    if (fileName.endsWith(".sqlite")) return true
+    return true
+  }
   if (fileName === "sessions.json") return true
+  if (fileName.endsWith(".sqlite")) return true
   // Indexed agents: always drop reset leftovers.
   if (liveIds !== null && fileName.includes(".jsonl.reset.")) return false
   // No index → ship everything (fail-open).
   if (liveIds === null) return true
 
-  const isJsonlOrTrajectory =
-    fileName.endsWith(".jsonl") ||
-    fileName.includes("trajectory") ||
-    fileName.includes(".jsonl.")
-  if (!isJsonlOrTrajectory) return true
+  if (!isJsonlSessionArtifact(fileName)) return true
 
   const m = fileName.match(UUID_RE)
   if (!m) return true // unrecognized name - keep rather than drop live data
@@ -155,6 +268,11 @@ export function isMainSessionKey(sessionKey) {
  * @returns {{ rebuilt: boolean, agentId?: string, mainUuid?: string, count?: number, reason: string }}
  */
 export function rebuildSessionsIndexFromDisk(sessionsDir, agentId) {
+  const sqlitePath = path.join(sessionsDir, "..", "agent", "openclaw-agent.sqlite")
+  if (fs.existsSync(sqlitePath)) {
+    return { rebuilt: false, reason: "sqlite-store-present", agentId }
+  }
+
   const indexPath = path.join(sessionsDir, "sessions.json")
   let existingKeys = 0
   if (fs.existsSync(indexPath)) {
@@ -292,7 +410,8 @@ export function bundleRuntimeState(dataDir = OPENCLAW_DATA_DIR) {
         if (sess) {
           const sessionsDir = path.join(dataDir, sess.sessionsPrefix)
           const liveIds = liveIdsFor(sessionsDir, sess.agentId)
-          if (!shouldIncludeSessionArtifact(sess.fileName, liveIds)) continue
+          const sqlitePresent = agentSqlitePresent(dataDir, sess.agentId)
+          if (!shouldIncludeSessionArtifact(sess.fileName, liveIds, { sqlitePresent })) continue
           // Size-guard retained orphans (in-index files keep prior unlimited path).
           if (
             liveIds !== null &&
@@ -594,16 +713,41 @@ async function doStateSync({ bundleFn = bundleRuntimeState, fetchImpl } = {}) {
   }
 
   const bundle = bundleFn()
-  const fileCount = Object.keys(bundle.files).length
-  if (fileCount === 0) {
+  const fileCount0 = Object.keys(bundle.files).length
+  if (fileCount0 === 0) {
     return { status: "empty", fileCount: 0, sizeKb: 0 }
   }
 
-  const jsonStr = JSON.stringify(bundle)
-  const compressed = zlib.gzipSync(Buffer.from(jsonStr))
+  const sized = applySizeAwareBundle(bundle, { gzipSync: zlib.gzipSync })
+  const jsonStr = JSON.stringify(sized.bundle)
+  const compressed = sized.compressed
+  const fileCount = Object.keys(sized.bundle.files).length
   const sizeKb = Math.round(compressed.length / 1024)
   const uncompressedSize = Buffer.byteLength(jsonStr)
   const sha256 = sha256Hex(compressed)
+
+  if (sized.warning) {
+    await postActivityEvent(
+      {
+        type: "TASK_START",
+        timestamp: new Date().toISOString(),
+        agentId: null,
+        runId: null,
+        sessionKey: null,
+        channelId: null,
+        action: `WARNING: runtime state trimmed (${sized.warning})`,
+        detail: `dropped=${sized.dropped.length} compressedBytes=${compressed.length} stillOverHard=${sized.stillOverHard}`,
+        metadata: {
+          eventKind: "runtime_state_trimmed",
+          warning: sized.warning,
+          droppedCount: sized.dropped.length,
+          compressedBytes: compressed.length,
+          stillOverHard: sized.stillOverHard,
+        },
+      },
+      { fetchImpl: doFetch },
+    )
+  }
 
   // Near-cap WARNING (pre-PUT) - does not block the upload attempt.
   await maybeEmitNearCapWarning(compressed.length, sizeKb, doFetch)

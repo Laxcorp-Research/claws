@@ -61,4 +61,32 @@ describe("POST /api/internal/state/blob-token", () => {
     expect(json.pathname).toMatch(/^runtime-state\/ws-1\//)
     expect(generateMock).toHaveBeenCalledTimes(1)
   })
+
+  it("accepts a 54MB compressed snapshot (9.4 history under raised cap)", async () => {
+    const { POST } = await import("@/app/api/internal/state/blob-token/route")
+    const res = await POST(
+      req({
+        workspaceId: "ws-1",
+        sha256: "ab".repeat(32),
+        compressedSize: 54 * 1024 * 1024,
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect(generateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ maximumSizeInBytes: 80 * 1024 * 1024 }),
+    )
+  })
+
+  it("rejects compressedSize above the 80MB hard cap", async () => {
+    const { POST } = await import("@/app/api/internal/state/blob-token/route")
+    const res = await POST(
+      req({
+        workspaceId: "ws-1",
+        sha256: "cd".repeat(32),
+        compressedSize: 81 * 1024 * 1024,
+      }),
+    )
+    expect(res.status).toBe(400)
+    expect(generateMock).not.toHaveBeenCalled()
+  })
 })

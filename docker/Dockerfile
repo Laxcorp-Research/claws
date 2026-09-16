@@ -23,6 +23,9 @@ COPY container/thinking-signature-heal.mjs /usr/local/bin/thinking-signature-hea
 COPY container/state-sync.mjs /usr/local/bin/state-sync.mjs
 COPY container/state-sync.mjs /opt/state-sync.mjs
 COPY container/thinking-signature-heal.mjs /opt/thinking-signature-heal.mjs
+COPY container/heal-registry.mjs /usr/local/bin/heal-registry.mjs
+COPY container/volume-migration.mjs /usr/local/bin/volume-migration.mjs
+COPY container/cron-store.mjs /usr/local/bin/cron-store.mjs
 
 # PR-2: Claws Activity Reporter (OpenClaw plugin overlay). Loaded by the
 # OpenClaw gateway via openclaw.json plugins.load.paths, set by the Claws

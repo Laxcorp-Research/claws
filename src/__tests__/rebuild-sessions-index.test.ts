@@ -47,6 +47,25 @@ describe("rebuildSessionsIndexFromDisk", () => {
     expect(mod.isMainSessionKey("agent:orch:main")).toBe(true)
   })
 
+  it("does not write sessions.json when sqlite store is present (9.4 boot refuse)", () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-rebuild-sqlite-"))
+    const agentRoot = path.join(dir, "agents", "orch")
+    const sess = path.join(agentRoot, "sessions")
+    fs.mkdirSync(sess, { recursive: true })
+    fs.mkdirSync(path.join(agentRoot, "agent"), { recursive: true })
+    fs.writeFileSync(path.join(agentRoot, "agent", "openclaw-agent.sqlite"), "sql")
+    fs.writeFileSync(
+      path.join(sess, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"),
+      "{}\n",
+    )
+
+    const result = mod.rebuildSessionsIndexFromDisk(sess, "orch")
+    expect(result).toEqual(
+      expect.objectContaining({ rebuilt: false, reason: "sqlite-store-present" }),
+    )
+    expect(fs.existsSync(path.join(sess, "sessions.json"))).toBe(false)
+  })
+
   it("idempotent no-op when index already present", () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-rebuild-noop-"))
     const sess = path.join(dir, "sessions")

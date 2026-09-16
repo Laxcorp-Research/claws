@@ -28,9 +28,11 @@
 //      That's an O(1) synchronous push. The actual HTTP POST happens later,
 //      from a setInterval flusher that runs outside the hook call path.
 //
-//   2. Every hook registration carries opts {timeoutMs: 100}.
-//      Defense-in-depth - even if a future regression introduces an `await`
-//      inside a handler, the OpenClaw runner kills it at 100ms and continues.
+//   2. Void hooks other than before_agent_run carry {timeoutMs: 100}.
+//      before_agent_run is a 9.4 fail-closed modifying gate: we return
+//      exactly { outcome: "pass" } and MUST NOT set timeoutMs (the 100ms
+//      footgun throws and blocks the turn). Other hooks stay 100ms.
+//      gateway_stop uses 5s so the final flush can drain.
 //
 //   3. UsageReporter buffer is copied verbatim from credit-proxy.mjs.
 //      Same 500-record cap, same 10s flush interval, same 50/batch, same
@@ -55,6 +57,7 @@ import {
   hasHealInWindow,
   markHealAttempt,
   resolveSessionJsonlPath,
+  resolveSessionSqlitePath,
   stripThinkingFromSessionFile,
   stripThinkingFromAllSessionFiles,
   isRawLlmErrorText,
@@ -361,6 +364,9 @@ function handleBeforeAgentRun(event, ctx) {
   }
   record.detail = clip(fullPrompt);
   reporter.add(record);
+  // 9.4 runModifyingHook fail-closed: void is pass, but an explicit
+  // `{ outcome: "pass" }` (exactly one key) is the non-blocking contract.
+  return { outcome: "pass" };
 }
 
 // ─── PR-9/A: webchat reply-row emission (contract C1–C5) ──────────────────
@@ -542,11 +548,9 @@ async function maybeHealPoisonedSession({ sessionKey, agentId, fullError }) {
   try {
     if (!THINKING_SIGNATURE_POISON_RE.test(fullError || "")) return;
     if (hasHealInWindow({ dataDir: OPENCLAW_DATA_DIR, sessionKey })) return;
-    const filePath = resolveSessionJsonlPath(
-      OPENCLAW_DATA_DIR,
-      sessionKey,
-      agentId,
-    );
+    const filePath =
+      resolveSessionSqlitePath(OPENCLAW_DATA_DIR, sessionKey, agentId) ??
+      resolveSessionJsonlPath(OPENCLAW_DATA_DIR, sessionKey, agentId);
     if (!filePath) return;
     const result = stripThinkingFromSessionFile(filePath);
     if (result.blocksStripped === 0) return;
@@ -813,11 +817,9 @@ const pluginEntry = {
   // Bound at module load time. `register(api)` is the upstream contract
   // (`api: OpenClawPluginApi` per `src/plugins/types.ts:2870-2874`).
   register(api) {
-    // Every void-hook handler MUST be synchronous. See the design invariant
-    // at the top of this file. The 100ms registration timeout is
-    // defense-in-depth - if any handler ever does an `await`, the upstream
-    // hook runner kills it instead of stalling the agent turn.
-    api.on("before_agent_run", handleBeforeAgentRun, { timeoutMs: HANDLER_TIMEOUT_MS });
+    // before_agent_run is a fail-closed modifying gate on 9.4. Do NOT pass
+    // timeoutMs: a 100ms timeout throws and blocks the agent turn.
+    api.on("before_agent_run", handleBeforeAgentRun);
     api.on("agent_end", handleAgentEnd, { timeoutMs: HANDLER_TIMEOUT_MS });
     api.on("message_received", handleMessageReceived, { timeoutMs: HANDLER_TIMEOUT_MS });
     api.on("message_sent", handleMessageSent, { timeoutMs: HANDLER_TIMEOUT_MS });
@@ -901,4 +903,5 @@ export const __test__ = {
   handleSyncNow,
   handleWorkspaceFilesWrite,
   emitOverlayBootEvent,
+  pluginEntry,
 };

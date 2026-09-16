@@ -54,6 +54,12 @@ import { nudgeDeliverableSyncNow } from "@/lib/artifacts/nudge-sync-now";
 import { applyInboundApprovalCommand } from "@/lib/artifacts/approval-command";
 import { twitterNudgeFromActivity } from "@/lib/tools/twitter-api-honesty";
 import { stripHostMachineryPaths } from "@/lib/security/sanitize";
+import {
+  decideIngestErrorReclass,
+  decideTransientStormAlert,
+  TOOL_TRANSIENT_RECOVERED_EVENT_KIND,
+  TRANSIENT_STORM_WINDOW_MS,
+} from "@/lib/digest/error-classes";
 
 // ─── Event-type allowlist ─────────────────────────────────────────────────
 //
@@ -335,6 +341,44 @@ export async function ledgerThinkingSignaturePoison(
 }
 
 /**
+ * DIGEST HONESTY: session-plumbing transient storm gate. Individual
+ * agents_wait / sessions_yield failures are reclassified to SYSTEM
+ * "recovered" rows at write time (the agent loop's own retry is the
+ * bounded retry - transcripts show it retrying within the turn). When the
+ * rolling window accumulates TRANSIENT_STORM_THRESHOLD of them, page the
+ * owner ONCE (sendCriticalAlert dedups 12h) - never a user-facing error.
+ */
+export async function checkTransientStormAndAlert(
+  workspaceId: string,
+  transientClass: string,
+): Promise<void> {
+  if (transientClass !== "session-plumbing") return;
+  const since = new Date(Date.now() - TRANSIENT_STORM_WINDOW_MS);
+  const recentTransientCount = await prisma.activityLog.count({
+    where: {
+      workspaceId,
+      actionType: "SYSTEM",
+      timestamp: { gte: since },
+      AND: [
+        { metadata: { contains: `"eventKind":"${TOOL_TRANSIENT_RECOVERED_EVENT_KIND}"` } },
+        { metadata: { contains: `"transientClass":"session-plumbing"` } },
+      ],
+    },
+  });
+  if (!decideTransientStormAlert({ recentTransientCount })) return;
+  sendCriticalAlert({
+    workspaceId,
+    alertKey: "tool-transient-storm",
+    detail: `${recentTransientCount} agents_wait/sessions_yield transients in ${Math.round(TRANSIENT_STORM_WINDOW_MS / 60000)}m`,
+  }).catch((err) => {
+    log.error("activity: sendCriticalAlert (tool-transient-storm) failed", {
+      workspaceId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
+
+/**
  * PR-B: critical-alert push for a cron job failing repeatedly (same job
  * name, 2+ MESSAGE_SENT failures within CRON_JOB_FAILED_WINDOW_MS -
  * includes the row just written by this request). Fire-and-forget: a push
@@ -528,6 +572,17 @@ export async function POST(
     const resolvedAgentId = resolvedAgentIds[i];
     const agent = resolvedAgentId ? agentInfoBySlug.get(resolvedAgentId) : undefined;
     const apiCost = resolveApiCostFromMetadata(ev.metadata, workspaceId);
+    // DIGEST HONESTY: known-transient ERROR events (routine catch-up skips,
+    // agents_wait / sessions_yield hiccups the agent already retried past)
+    // are stored as SYSTEM "recovered" rows. The container wire still sends
+    // ERROR (5.22 and 9.4 images unchanged; SYSTEM stays un-forgeable) -
+    // this trusted route is the single reclassification point.
+    const reclass = decideIngestErrorReclass({
+      type: ev.type,
+      action: ev.action,
+      detail: ev.detail,
+      metadata: ev.metadata,
+    });
     try {
       await prisma.activityLog.create({
         data: {
@@ -540,10 +595,20 @@ export async function POST(
           agentSlug: agent?.agentSlug ?? resolvedAgentId ?? null,
           action: stripHostMachineryPaths(ev.action),
           detail: ev.detail ? stripHostMachineryPaths(ev.detail) : ev.detail,
-          actionType: ev.type,
+          actionType: reclass ? reclass.storeActionType : ev.type,
           channelId: ev.channelId,
           metadata: JSON.stringify({
             ...ev.metadata,
+            ...(reclass
+              ? {
+                  eventKind:
+                    reclass.transientClass === "session-plumbing"
+                      ? TOOL_TRANSIENT_RECOVERED_EVENT_KIND
+                      : (ev.metadata.eventKind ?? TOOL_TRANSIENT_RECOVERED_EVENT_KIND),
+                  transientClass: reclass.transientClass,
+                  reclassifiedFrom: "ERROR",
+                }
+              : {}),
             runId: ev.runId,
             sessionKey: ev.sessionKey,
             channelId: ev.channelId,
@@ -553,6 +618,16 @@ export async function POST(
           apiCost,
         },
       });
+      if (reclass) {
+        try {
+          await checkTransientStormAndAlert(workspaceId, reclass.transientClass);
+        } catch (stormErr) {
+          log.error("activity: transient storm check failed", {
+            workspaceId,
+            error: stormErr instanceof Error ? stormErr.message : String(stormErr),
+          });
+        }
+      }
       if (typeof apiCost === "number" && apiCost > 0) {
         try {
           await applyWorkspaceApiCost({ workspaceId, delta: apiCost });
@@ -731,4 +806,5 @@ export const __internal = {
   agentIdFromSessionKey,
   ledgerThinkingSignaturePoison,
   checkCronJobFailedAndAlert,
+  checkTransientStormAndAlert,
 };

@@ -8,6 +8,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 vi.mock("@/lib/alerts/customer-nudge", () => ({
   sendCustomerNudge: vi.fn().mockResolvedValue({ sent: true, channel: "telegram" }),
+  resolveCustomerNudge: vi.fn().mockResolvedValue({ sent: false, reason: "no-open-nudge" }),
 }))
 vi.mock("@/lib/artifacts/pending-approvals", () => ({
   nudgeStaleWebChatPendingApprovals: vi.fn().mockResolvedValue({
@@ -46,6 +47,7 @@ vi.mock("@/lib/tools/validators", () => {
 })
 
 import { GET, __internal } from "@/app/api/cron/connection-health/route"
+import { resolveCustomerNudge, sendCustomerNudge } from "@/lib/alerts/customer-nudge"
 
 const CRON_SECRET = "test-cron-secret"
 
@@ -96,6 +98,8 @@ beforeEach(() => {
   mockValidateToolKey.mockReset()
   mockDecrypt.mockClear()
   mockDecrypt.mockImplementation((value: string) => value)
+  vi.mocked(sendCustomerNudge).mockClear()
+  vi.mocked(resolveCustomerNudge).mockClear()
   ;(prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
 })
 
@@ -226,6 +230,44 @@ describe("GET /api/cron/connection-health", () => {
     expect(update.data.lastConnectionCheckResult).toBe("HEALTHY")
     expect(update.data.lastError).toBeNull()
     expect(update.data.status).toBeUndefined()
+  })
+
+  it("STALE-NUDGE FIX: healthy Composio re-probe resolves open tool-connection-error + oauth-expired nudges", async () => {
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([connectedRow()])
+    mockConnectedAccountsGet.mockResolvedValue({ status: "ACTIVE" })
+
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+
+    const conditions = vi.mocked(resolveCustomerNudge).mock.calls.map((c) => c[0])
+    expect(conditions).toContainEqual({ workspaceId: "ws-1", condition: "tool-connection-error" })
+    expect(conditions).toContainEqual({ workspaceId: "ws-1", condition: "oauth-expired" })
+    expect(sendCustomerNudge).not.toHaveBeenCalled()
+  })
+
+  it("STALE-NUDGE FIX: healthy native re-probe resolves open tool-connection-error nudges", async () => {
+    composioEnabled = false
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([nativeRow()])
+    mockValidateToolKey.mockResolvedValue({ valid: true })
+
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+
+    expect(resolveCustomerNudge).toHaveBeenCalledWith({
+      workspaceId: "ws-native-1",
+      condition: "tool-connection-error",
+    })
+  })
+
+  it("STALE-NUDGE FIX: dead and unreachable outcomes never resolve (nudge stays open while broken)", async () => {
+    ;(prismaMock.toolConnection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([connectedRow()])
+    mockConnectedAccountsGet.mockResolvedValue({ status: "EXPIRED" })
+
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+    expect(resolveCustomerNudge).not.toHaveBeenCalled()
+
+    vi.mocked(resolveCustomerNudge).mockClear()
+    mockConnectedAccountsGet.mockRejectedValue(new Error("Composio 429"))
+    await GET(makeReq({ auth: `Bearer ${CRON_SECRET}` }))
+    expect(resolveCustomerNudge).not.toHaveBeenCalled()
   })
 
   it("native API-key explicit invalid result flips status to EXPIRED and writes R1 check metadata", async () => {

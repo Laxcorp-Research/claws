@@ -7,7 +7,7 @@
 // Key findings incorporated:
 //   1. Each agent gets its OWN flat workspace dir (not nested under a parent)
 //   2. AGENTS.md = per-agent operating instructions (NOT multi-agent definitions)
-//   3. Multi-agent defined via agents.list[] in openclaw.json
+//   3. Multi-agent defined via agents.entries (keyed ids) in openclaw.json
 //   4. Orchestrator→Worker communication via sessions_spawn (NOT sessions_send)
 //   5. No reportsTo - hierarchy is depth-based via spawn depth
 //   6. No CONNECTED_TOOLS.md - tool info goes in TOOLS.md + skill SKILL.md
@@ -49,6 +49,7 @@ import {
 } from '@/lib/openclaw/skill-shadow-deny';
 import { QUANT_TEMPLATE_SLUG, quantContainerEnvLines } from '@/lib/quant/risk-limits';
 import { reprobeWorkspaceToolConnections } from '@/lib/tools/reprobe-on-deploy';
+import type { RuntimeContract } from '@/lib/openclaw/runtime-contract';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
@@ -173,6 +174,13 @@ export interface GeneratedWorkspace {
    * (shared/VOICE.md once; workspace-{id}/memory/MEMORY.md per agent).
    */
   seedFiles?: Record<string, string>;
+
+  /**
+   * The emission contract these files were generated for ("5.22" | "9.4").
+   * Downstream consumers (buildRailwayEnvVars) key contract-specific env vars
+   * off this instead of re-deriving. See runtime-contract.ts.
+   */
+  runtimeContract: RuntimeContract;
 }
 
 export interface AgentWorkspaceFiles {
@@ -222,16 +230,25 @@ function resolveModel(dbModel: string): string {
 // Agent ID Utils
 // ---------------------------------------------------------------------------
 
+/** 9.4 AgentsSchema.entries key: /^[a-z0-9_][a-z0-9_-]{0,63}$/i */
+const OPENCLAW_AGENT_ID_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/i;
+
 /**
  * Converts agent name to a valid OpenClaw agent ID.
- * OpenClaw normalizes agent IDs to lowercase alphanumeric + hyphens.
+ * Must already equal 9.4 `normalizeAgentId` (lowercase alphanumeric + hyphens,
+ * ≤64) so a leftover `agents.list` migration would not skip us - we emit
+ * keyed `agents.entries` directly.
  */
 export function toAgentId(name: string): string {
-  return name
+  const id = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .substring(0, 64);
+  if (!OPENCLAW_AGENT_ID_RE.test(id)) {
+    throw new Error(`toAgentId produced an id that fails the 9.4 entries-key contract: ${JSON.stringify(id)} (from ${JSON.stringify(name)})`);
+  }
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +276,19 @@ export async function claimGatewayToken(workspaceId: string): Promise<string> {
   return row.gatewayToken ? decrypt(row.gatewayToken) : fresh;
 }
 
-export async function generateWorkspace(workspaceId: string): Promise<GeneratedWorkspace> {
+export async function generateWorkspace(
+  workspaceId: string,
+  opts: {
+    /**
+     * Emission contract of the image this generation will boot on - REQUIRED
+     * so no caller can silently assume the tip shape (KEEP wake P0: 9.4 shape
+     * on a 5.22-18 image is "Invalid config" and a boot loop). The deployer
+     * passes resolveDeployTarget().runtimeContract.
+     */
+    runtimeContract: RuntimeContract;
+  },
+): Promise<GeneratedWorkspace> {
+  const { runtimeContract } = opts;
   // Re-probe API_KEY connections so TOOLS.md status is last-probe, not a
   // stale DEGRADED story from a prior window / recharge.
   try {
@@ -389,9 +418,8 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
   // `orchestrator.agentSlug` directly - both resolve to the same value
   // for current rows (slug stored at create-time by route.ts via the
   // same slugifier) but `toAgentId(name)` is the same source-of-truth
-  // the rest of this generator uses (see agentsList build below at
-  // generator.ts:252), so any future drift between the stored slug and
-  // the slug emitted into openclaw.json's agents.list is impossible.
+  // the rest of this generator uses (see agents.entries build below), so any future drift between the stored slug and
+  // the slug emitted into openclaw.json's agents.entries keys is impossible.
   const orchestratorAgentSlug = toAgentId(orchestrator.name);
   const heartbeat = resolveHeartbeatSchedule(
     orchestrator.heartbeatFrequency,
@@ -469,8 +497,9 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     heartbeat,
     skillsEntries,
     mcpEmission,
+    runtimeContract,
   );
-  const envFile = generateEnvFile(workspaceWithChannels, gatewayToken);
+  const envFile = generateEnvFile(workspaceWithChannels, gatewayToken, runtimeContract);
   const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug, activeWorkers);
   const stableImage = await prisma.openClawVersion.findFirst({
     where: { isStable: true },
@@ -504,6 +533,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
     gatewayToken,
     workflowFenceCorrected: workspaceFiles.workflowFenceCorrected,
     seedFiles,
+    runtimeContract,
   };
 }
 
@@ -513,7 +543,7 @@ export async function generateWorkspace(workspaceId: string): Promise<GeneratedW
 // THIS FILE IS STRICTLY VALIDATED by OpenClaw's Zod schema.
 // Rules:
 //   - .strict() objects: unknown keys cause validation failure
-//   - agents.list[].id is the ONLY required field per agent
+//   - agents.entries keys are the agent ids (no inner `id`, no `default: true`)
 //   - Empty {} is valid (but useless)
 // ---------------------------------------------------------------------------
 
@@ -535,6 +565,7 @@ function generateOpenClawConfig(
   heartbeat: HeartbeatScheduleResult | null,
   skillsEntries: Record<string, unknown>,
   mcpEmission: McpEmission | null,
+  runtimeContract: RuntimeContract,
 ) {
   const activeWorkers = workers.filter((worker) => !worker.isPaused);
   const runtimeAgents = [orchestrator, ...activeWorkers, critic];
@@ -550,13 +581,19 @@ function generateOpenClawConfig(
   ).map((identity) => identity.slug);
   const attachedSkillSlugs = collectAttachedSkillSlugs(workspace);
 
-  // Build agents.list - one entry per agent in the Claw
-  const agentsList = runtimeAgents.map(agent => {
+  // Build the agent roster. Same entry payload for both contracts; only the
+  // container shape differs:
+  //   9.4  → agents.entries (keyed map, strict; no inner `id`, no `default`).
+  //   5.22 → agents.list (array; inner `id` required; orchestrator carries
+  //          `default: true` as THE routing mechanism).
+  const orchestratorAgentId = toAgentId(orchestrator.name);
+  const agentsEntries: Record<string, JsonObject> = {};
+  const agentsList: JsonObject[] = [];
+  for (const agent of runtimeAgents) {
     const agentId = toAgentId(agent.name);
     const isOrchestrator = agent.role === 'ORCHESTRATOR';
 
     const entry: JsonObject = {
-      id: agentId,
       name: agent.name,
       // Each agent gets its own workspace directory
       // OpenClaw resolves these relative to OPENCLAW_STATE_DIR
@@ -564,7 +601,7 @@ function generateOpenClawConfig(
       model: resolveModel(agent.model),
     };
 
-    // Per-agent thinking effort → agents.list[].thinkingDefault (runtime-native
+    // Per-agent thinking effort → per-entry thinkingDefault (runtime-native
     // key, levels off|minimal|low|medium|high). null/invalid → omit so the
     // runtime default applies. Models without reasoning ignore it at run time.
     if (isThinkingLevel(agent.thinkingDefault)) {
@@ -572,12 +609,11 @@ function generateOpenClawConfig(
     }
 
     if (isOrchestrator) {
-      // `default: true` is THE routing mechanism: OpenClaw's route resolution
-      // falls back to the default agent for any inbound traffic without an
-      // exact-channel binding, so all channel/webchat messages land on the
-      // Orchestrator. (A channel:'*' binding does NOT do this - see the
-      // comment at the config assembly below and #117.)
-      entry.default = true;
+      // Routing: 9.4 `ownership: "explicit"` forbids `default: true` -
+      // dashboard / unmatched-channel fallback is
+      // `agents.defaults.systemAgent.agentId` (see config assembly). On 5.22
+      // the SAME fallback is `default: true` on this list entry (set at
+      // assembly below). A channel:'*' binding is a no-op on both (#117).
       // Allow orchestrator to spawn workers and critic as subagents.
       // Do NOT set subagents.model - that latent default overrides the target
       // worker's list model when sessions_spawn omits agentId (self-target →
@@ -618,8 +654,20 @@ function generateOpenClawConfig(
       attachedSkillSlugs,
     );
 
-    return entry;
-  });
+    if (runtimeContract === '5.22') {
+      // 5.22 array roster: inner `id` is the ONLY required field; the
+      // orchestrator's `default: true` is THE routing mechanism (route
+      // resolution falls back to the default agent for any inbound traffic
+      // without an exact-channel binding).
+      agentsList.push(
+        isOrchestrator
+          ? { id: agentId, default: true, ...entry }
+          : { id: agentId, ...entry },
+      );
+    } else {
+      agentsEntries[agentId] = entry;
+    }
+  }
 
   // Heartbeat config - only the orchestrator runs heartbeats.
   // All modes emit cron/jobs.json (shared croner path). agents.defaults.heartbeat
@@ -638,37 +686,77 @@ function generateOpenClawConfig(
     allowedOrigins.push(`https://${workspace.containerHost}`);
   }
 
+  // 9.4 rejects Gateway-authenticated routes (chat websocket, `/`) when
+  // Railway's edge (observed 100.64.0.3) sends forwarding headers and the
+  // proxy is not in trustedProxies: 403 proxy_attribution_required.
+  // Attribution only - auth stays token. CIDR-aware per 9.4 zod-schema.
+  // 5.22 has NO such key: its strict gateway schema rejects unknown keys, so
+  // it is emitted for the 9.4 contract only.
+  const trustedProxies = [
+    '100.64.0.0/10',
+    '10.0.0.0/8',
+    '172.16.0.0/12',
+  ]
+
+  const gatewayConfig: JsonObject = {
+    mode: 'local',
+    bind: 'lan',  // Required for Docker (0.0.0.0)
+    port: 18789,
+    controlUi: {
+      allowedOrigins,
+    },
+  };
+  if (runtimeContract === '9.4') {
+    gatewayConfig.trustedProxies = trustedProxies;
+  }
+
+  const agentsDefaults: JsonObject = {
+    model: resolveModel(orchestrator.model),
+    heartbeat: heartbeatInterval,
+    subagents: {
+      // Increase max children for larger Claws (default is 5)
+      maxChildrenPerAgent: Math.max(5, activeWorkers.length + 1),
+      maxSpawnDepth: 2,
+    },
+  };
+
+  // Version-keyed agents shape (KEEP wake P0 2026-09-13: the 5.22 gateway
+  // hard-rejects the 9.4 keys - "agents.defaults: Invalid input" - and the
+  // wake boot-loops; the 9.4 gateway equally has no agents.list):
+  //   9.4  → ownership: 'explicit' + defaults.systemAgent (routing fallback)
+  //          + entries (keyed roster).
+  //   5.22 → defaults WITHOUT systemAgent + list (array roster, orchestrator
+  //          `default: true` is the routing fallback).
+  let agentsConfig: JsonObject;
+  if (runtimeContract === '9.4') {
+    // 9.4 routing: explicit ownership cannot combine with default:true.
+    // systemAgent.agentId is the unmatched-channel / dashboard fallback.
+    agentsDefaults.systemAgent = { agentId: orchestratorAgentId };
+    agentsConfig = {
+      ownership: 'explicit',
+      defaults: agentsDefaults,
+      entries: agentsEntries,
+    };
+  } else {
+    agentsConfig = {
+      defaults: agentsDefaults,
+      list: agentsList,
+    };
+  }
+
   // Build the final config - ONLY use fields that exist in OpenClaw's Zod schema
   const config: JsonObject = {
-    gateway: {
-      mode: 'local',
-      bind: 'lan',  // Required for Docker (0.0.0.0)
-      port: 18789,
-      controlUi: {
-        allowedOrigins,
-      },
-    },
-    agents: {
-      defaults: {
-        model: resolveModel(orchestrator.model),
-        heartbeat: heartbeatInterval,
-        subagents: {
-          // Increase max children for larger Claws (default is 5)
-          maxChildrenPerAgent: Math.max(5, activeWorkers.length + 1),
-          maxSpawnDepth: 2,
-        },
-      },
-      list: agentsList,
-    },
+    gateway: gatewayConfig,
+    agents: agentsConfig,
     // NO `bindings` key - deliberately (#117). We previously emitted
     // `bindings: [{ agentId: <orchestrator>, match: { channel: '*' } }]`
     // believing it routed all channel traffic to the Orchestrator. It was a
     // no-op: OpenClaw's binding index is an exact-string map keyed by channel
-    // name (upstream src/routing/resolve-route.ts @ v2026.5.22), so
+    // name (upstream src/routing/resolve-route.ts @ v2026.5.22 / 9.4), so
     // channel:'*' only matches a channel literally named "*". Routing to the
-    // Orchestrator actually works because it carries `default: true` in
-    // agents.list (route resolution falls back to the default agent). See
-    // docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 and §8 risk 2.
+    // Orchestrator is `default: true` on the 5.22 list entry and
+    // `agents.defaults.systemAgent.agentId` under `ownership: "explicit"` on
+    // 9.4. See docs/OPENCLAW_GATEWAY_PROTOCOL.md §4 / §8 risk 2.
   };
 
   // Add channels if any are configured
@@ -1326,6 +1414,7 @@ function emitMarketplaceSkillEntries(
 function generateEnvFile(
   workspace: WorkspaceWithRelations,
   gatewayToken: string,
+  runtimeContract: RuntimeContract,
 ): string {
   const lines: string[] = [
     '# Generated by Claws - do not edit manually',
@@ -1401,6 +1490,12 @@ function generateEnvFile(
   // Timezone - container process TZ is always UTC (matches buildRailwayEnvVars).
   // Workspace timezone remains for cron schedule.tz + USER.md context only.
   lines.push('TZ=UTC');
+  if (runtimeContract === '9.4') {
+    // 9.4 only: doctor must not rewrite generator-owned openclaw.json. The
+    // 5.22 runtime has no such knob; keep its .env identical to the proven
+    // 5.22 emission (KEEP canary).
+    lines.push('OPENCLAW_CONFIG_READONLY=1');
+  }
 
   if (workspace.clawTemplate?.slug === QUANT_TEMPLATE_SLUG) {
     lines.push('')
@@ -2300,7 +2395,7 @@ Always pass \`agentId\` on \`sessions_spawn\`; never pass a model param (models 
 function generatePausedWorkerToolsSection(agents: AgentWithRelations[]): string {
   const pausedWorkers = agents.filter((agent) => agent.role === 'WORKER' && agent.isPaused);
   if (pausedWorkers.length === 0) return '';
-  // Runtime 2026.5.22-6 has no agents.list disable flag. This instruction-level
+  // Runtime 9.4 has no agents.entries disable flag. This instruction-level
   // guard is therefore honest fallback enforcement for delegation. Scheduled
   // worker cron emission is guarded separately if that path is ever introduced.
   return `

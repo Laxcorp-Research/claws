@@ -10,6 +10,7 @@ type AdminAction =
   | "version.promote"
   | "version.edit"
   | "version.force-update"
+  | "workspace.candidate-soak"
   | "payout.release"
   | "payout.process"
 
@@ -18,7 +19,7 @@ interface AuditLogEntry {
   adminId: string
   adminEmail: string
   targetId: string
-  targetType: "template" | "skill" | "report" | "version" | "payout"
+  targetType: "template" | "skill" | "report" | "version" | "payout" | "workspace"
   details?: Record<string, unknown>
   ip?: string
 }

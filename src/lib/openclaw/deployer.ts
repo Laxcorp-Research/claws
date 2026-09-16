@@ -43,6 +43,12 @@ import {
   getRailwayTargetProvenance,
   BOOT_SCRIPT_B64,
 } from './railway-client';
+import { mayDeployCandidateImage } from './candidate-soak';
+import {
+  deriveRuntimeContract,
+  isRuntimeContract,
+  type RuntimeContract,
+} from './runtime-contract';
 import { log } from '@/lib/logger';
 import { DEFAULT_SYNC_TIMEOUT_MS, trySyncNow } from './sync-now';
 import { withTransientDeployRetry } from '@/lib/healing/guards';
@@ -254,47 +260,146 @@ function withRailwayDeploymentId(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolves the container image to use for a deploy at deploy time.
+ * Resolves the container image AND its emission contract for a deploy.
  *
  * Priority:
- *   1. Current `isStable` OpenClawVersion row (canonical - set by the
- *      promote-openclaw-image.yml workflow after manual QA). The row's
- *      `dockerImage` is an immutable `:<version>` reference per the
- *      register-route validator.
- *   2. `OPENCLAW_DOCKER_IMAGE` env var (Vercel-set; used as dev/bootstrap
- *      fallback before the first promote has happened).
- *   3. Hard-coded default at the railway-client level - last-resort safety
- *      net so a deploy never tries to pull an empty image string.
+ *   0. `Workspace.runtimeImagePin` - explicit per-workspace version pin.
+ *      Never falls through: a pin naming an unregistered version THROWS.
+ *      (Founder claw: its volume is 9.4-shaped; a silent 5.22-18 stable
+ *      fallback on wake would boot history into an image that cannot read
+ *      it. Loud failure over silent data loss.)
+ *   1. Candidate soak (PR-2): flagged staging clones only - the `isLatest`
+ *      row (isCandidate register). KEEP canary and production CLAWS_ENV
+ *      never take this branch.
+ *   2. Current `isStable` OpenClawVersion row (canonical pin).
+ *   3. `OPENCLAW_DOCKER_IMAGE` env var (dev/bootstrap; contract derived from
+ *      the image tag, defaulting to "9.4" when unparseable).
+ *   4. Hard-coded org default.
  *
- * Returning the string here (instead of mutating module state in
- * railway-client.ts) lets the caller also persist it on
- * `Deployment.containerImage`, which is what makes that column finally
- * reflect what's actually deployed.
+ * The returned `runtimeContract` keys the generator's config shape - see
+ * src/lib/openclaw/runtime-contract.ts (KEEP wake Invalid-config P0).
  */
-export async function resolveDeployImage(): Promise<string> {
+export type ResolveDeployImageOpts = {
+  workspaceId?: string;
+  candidateSoak?: boolean | null;
+  runtimeImagePin?: string | null;
+};
+
+export type ResolvedDeployTarget = {
+  dockerImage: string;
+  /** OpenClawVersion.version when resolved from a row; null on env/hardcoded fallback. */
+  version: string | null;
+  runtimeContract: RuntimeContract;
+};
+
+function contractFromRow(row: { version: string; runtimeContract: string }): RuntimeContract {
+  // The column is the source of truth ("property of the OpenClawVersion
+  // row"); derive only if a raw insert bypassed the register route and left
+  // an invalid value.
+  return isRuntimeContract(row.runtimeContract)
+    ? row.runtimeContract
+    : deriveRuntimeContract(row.version);
+}
+
+/** Best-effort contract from an image string's tag; "9.4" when unparseable. */
+function contractFromImageTag(image: string): RuntimeContract {
+  const tag = image.split(':').pop() ?? '';
+  try {
+    return deriveRuntimeContract(tag);
+  } catch {
+    return '9.4';
+  }
+}
+
+export async function resolveDeployTarget(
+  opts: ResolveDeployImageOpts = {},
+): Promise<ResolvedDeployTarget> {
+  if (opts.runtimeImagePin) {
+    const pinned = await prisma.openClawVersion.findUnique({
+      where: { version: opts.runtimeImagePin },
+      select: { dockerImage: true, version: true, runtimeContract: true },
+    });
+    if (!pinned?.dockerImage) {
+      throw new Error(
+        `runtimeImagePin "${opts.runtimeImagePin}" has no OpenClawVersion row - refusing stable/candidate fallback for workspace ${opts.workspaceId ?? 'unknown'}`,
+      );
+    }
+    log.info('resolveDeployTarget: using explicit per-workspace pin', {
+      workspaceId: opts.workspaceId,
+      version: pinned.version,
+      dockerImage: pinned.dockerImage,
+      runtimeContract: pinned.runtimeContract,
+    });
+    return {
+      dockerImage: pinned.dockerImage,
+      version: pinned.version,
+      runtimeContract: contractFromRow(pinned),
+    };
+  }
+
+  if (mayDeployCandidateImage(opts)) {
+    const candidate = await prisma.openClawVersion.findFirst({
+      where: { isLatest: true },
+      orderBy: { releasedAt: 'desc' },
+      select: { dockerImage: true, version: true, isStable: true, runtimeContract: true },
+    });
+    if (candidate?.dockerImage) {
+      log.info('resolveDeployTarget: using isLatest candidate for flagged staging soak', {
+        workspaceId: opts.workspaceId,
+        version: candidate.version,
+        dockerImage: candidate.dockerImage,
+        isStable: candidate.isStable,
+        runtimeContract: candidate.runtimeContract,
+      });
+      return {
+        dockerImage: candidate.dockerImage,
+        version: candidate.version,
+        runtimeContract: contractFromRow(candidate),
+      };
+    }
+    log.warn('resolveDeployTarget: candidate soak flagged but no isLatest row; falling back to isStable', {
+      workspaceId: opts.workspaceId,
+    });
+  }
+
   const stable = await prisma.openClawVersion.findFirst({
     where: { isStable: true },
     orderBy: { releasedAt: 'desc' },
-    select: { dockerImage: true, version: true },
+    select: { dockerImage: true, version: true, runtimeContract: true },
   });
 
   if (stable?.dockerImage) {
-    return stable.dockerImage;
+    return {
+      dockerImage: stable.dockerImage,
+      version: stable.version,
+      runtimeContract: contractFromRow(stable),
+    };
   }
 
   const envFallback = process.env.OPENCLAW_DOCKER_IMAGE?.trim();
   if (envFallback) {
-    log.warn('resolveDeployImage: no isStable OpenClawVersion row; using OPENCLAW_DOCKER_IMAGE env fallback', {
+    log.warn('resolveDeployTarget: no isStable OpenClawVersion row; using OPENCLAW_DOCKER_IMAGE env fallback', {
       envFallback,
     });
-    return envFallback;
+    return {
+      dockerImage: envFallback,
+      version: null,
+      runtimeContract: contractFromImageTag(envFallback),
+    };
   }
 
   const HARDCODED_FALLBACK = 'ghcr.io/laxcorp-research/openclaw-runtime:latest';
-  log.warn('resolveDeployImage: no isStable row and OPENCLAW_DOCKER_IMAGE unset; using hardcoded default', {
+  log.warn('resolveDeployTarget: no isStable row and OPENCLAW_DOCKER_IMAGE unset; using hardcoded default', {
     fallback: HARDCODED_FALLBACK,
   });
-  return HARDCODED_FALLBACK;
+  return { dockerImage: HARDCODED_FALLBACK, version: null, runtimeContract: '9.4' };
+}
+
+/** Image-string view of resolveDeployTarget (admin/tools display callers). */
+export async function resolveDeployImage(
+  opts: ResolveDeployImageOpts = {},
+): Promise<string> {
+  return (await resolveDeployTarget(opts)).dockerImage;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +442,12 @@ export async function deployToCloud(
   // was never overwritten - every Deployment row carried that string
   // regardless of the real image used, which broke the admin
   // versions deployment-count query and the force-update WHERE clause.
-  const image = await resolveDeployImage();
+  const target = await resolveDeployTarget({
+    workspaceId,
+    candidateSoak: workspace.candidateRuntimeSoak,
+    runtimeImagePin: workspace.runtimeImagePin,
+  });
+  const image = target.dockerImage;
   const railwayTarget = getRailwayTargetProvenance();
 
   const deployment = await prisma.deployment.create({
@@ -363,7 +473,11 @@ export async function deployToCloud(
 
   try {
     await updateDeploymentStatus(deployment.id, workspaceId, 'GENERATING');
-    const generated = await generateWorkspace(workspaceId);
+    // Version-keyed emission: the generator MUST produce the config shape the
+    // resolved image's gateway validates (KEEP wake Invalid-config P0).
+    const generated = await generateWorkspace(workspaceId, {
+      runtimeContract: target.runtimeContract,
+    });
     if (generated.workflowFenceCorrected) {
       // Ledger only when a stale/tampered fence was actually replaced.
       await prisma.activityLog.create({
@@ -435,9 +549,14 @@ export async function deployToCloud(
         // marker moot - clear it so a stale flag never lingers across deploys.
         lastSyncIncompleteAt: null,
         lastSyncIncompleteReason: null,
+        // Snapshot generations: the persist path compares this against
+        // runtimeStateContract to pin a pre-migration generation on the
+        // first persist after a contract change.
+        deployedRuntimeContract: target.runtimeContract,
       },
       create: {
         workspaceId,
+        deployedRuntimeContract: target.runtimeContract,
         containerPhase: channelsActive ? 'WARM' : 'RUNNING',
         lastActiveAt: new Date(),
         hasActiveChannels: channelsActive,
@@ -1131,6 +1250,13 @@ export function buildRailwayEnvVars(
     PORT: '18789',
   };
 
+  if (generated.runtimeContract === '9.4') {
+    // 9.4 only: doctor must not rewrite generator-owned openclaw.json.
+    // The 5.22 runtime has no such knob; keep its env byte-identical to the
+    // proven 5.22 emission (KEEP canary).
+    vars.OPENCLAW_CONFIG_READONLY = '1';
+  }
+
   if (Object.keys(seedFiles).length > 0) {
     vars.CLAWS_SEED_FILES_GZ_B64 = gzipBase64(JSON.stringify(seedFiles));
   }
@@ -1237,11 +1363,15 @@ export function buildRailwayEnvVars(
   return vars;
 }
 
-function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
+/**
+ * R16: always emit cron/jobs.json (including `[]`) so unpack overwrites the
+ * canonical 9.4 store every deploy. Skipping empty left stale jobs on disk.
+ */
+export function buildWorkspaceFileMap(generated: GeneratedWorkspace): Record<string, string> {
   const files: Record<string, string> = {};
 
   const cronContent = generated['cron/jobs.json'];
-  if (cronContent && cronContent !== '[]') {
+  if (typeof cronContent === 'string') {
     files['cron/jobs.json'] = cronContent;
   }
 

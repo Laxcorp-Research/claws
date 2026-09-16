@@ -40,7 +40,7 @@ on:
         type: string
         default: 'https://staging.app.buildclaws.ai/api/internal/versions/register'
   schedule:
-    - cron: '0 6 * * 1'  # Every Monday at 6am UTC
+    - cron: '0 6 * * *'  # Daily 6am UTC (RUNTIME-AUTOUPDATE detect)
 
 permissions:
   contents: read

@@ -46,6 +46,10 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/cron/runtime-autoupdate",
+      "schedule": "0 6 * * *"
+    },
+    {
       "path": "/api/cron/refresh-model-catalog",
       "schedule": "0 4 * * *"
     }

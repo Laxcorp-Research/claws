@@ -1,15 +1,17 @@
-// Vendored from OpenClaw runtime's src/agents/skills/env-overrides.ts.
+// Vendored from OpenClaw runtime's src/skills/runtime/env-overrides.ts @ v2026.9.4.
 // Only `sanitizeSkillEnvOverrides` + `isAlwaysBlockedSkillEnvKey` are needed
 // for the contract test; the outer apply/revert + logger/config machinery
-// (applySkillConfigEnvOverrides, createEnvReverter, createSubsystemLogger,
-// resolveSkillConfig, resolveSkillKey) is out of scope - we only test the
-// allow/block decision given an overrides record + an allowlist.
+// is out of scope - we only test the allow/block decision given an overrides
+// record + an allowlist.
 //
 // See README.md in this directory for source provenance and re-sync.
 // Do not modify except to re-sync from upstream.
 
 import { sanitizeEnvVars, validateEnvVarValue } from "./sanitize-env-vars"
-import { isDangerousHostEnvVarName } from "./host-env-security"
+import {
+  isDangerousHostEnvOverrideVarName,
+  isDangerousHostEnvVarName,
+} from "./host-env-security"
 
 export type SanitizedSkillEnvOverrides = {
   allowed: Record<string, string>
@@ -27,28 +29,34 @@ function matchesAnyPattern(value: string, patterns: readonly RegExp[]): boolean 
 
 export function isAlwaysBlockedSkillEnvKey(key: string): boolean {
   return (
-    isDangerousHostEnvVarName(key) || matchesAnyPattern(key, SKILL_ALWAYS_BLOCKED_ENV_PATTERNS)
+    isDangerousHostEnvVarName(key) ||
+    isDangerousHostEnvOverrideVarName(key) ||
+    matchesAnyPattern(key, SKILL_ALWAYS_BLOCKED_ENV_PATTERNS)
   )
 }
 
 /**
  * Verbatim port of env-overrides.ts's `sanitizeSkillEnvOverrides` function.
- * Decision logic (matches runtime):
+ * Decision logic (matches runtime @ v2026.9.4):
  *   1. Run tier-1 sanitizer on the overrides map. The tier-1 sanitizer
  *      blocks env var names matching credential-looking patterns
- *      (/_?(API_KEY|TOKEN|PASSWORD|PRIVATE_KEY|SECRET)$/i etc).
+ *      (/_?(API_KEY|TOKEN|PASSWORD|PRIVATE_KEY|SECRET)$/i, /_ADMIN_KEY$/i).
  *   2. For keys the tier-1 sanitizer ALLOWED: if the key is in the
- *      always-blocked list (host dangerous names, OPENSSL_CONF), block it.
- *      Otherwise keep it allowed.
+ *      always-blocked list (host dangerous names + override names,
+ *      OPENSSL_CONF), block it. Otherwise keep it allowed.
  *   3. For keys the tier-1 sanitizer BLOCKED: if the key is NOT in the
  *      skill's allowedSensitiveKeys set (= primaryEnv + requires.env),
  *      stay blocked. If it IS in the allowlist, re-admit the key unless
- *      the VALUE has null bytes (then re-block it).
+ *      the VALUE has null bytes (then re-block it) OR the key is
+ *      always-blocked.
  *
  * This is the half of the runtime sanitizer we want to test our generator
  * output against: given our emitted skills.entries[slug].env map AND the
  * emitted SKILL.md frontmatter's primaryEnv+requires.env, does every
  * intended credential pass through? Does no unintended one pass through?
+ *
+ * Vendor omits live plugin secret inventory (`listKnownSecretEnvVarNames`);
+ * the pattern list is the 9.4 source of truth for generator emit.
  */
 export function sanitizeSkillEnvOverrides(params: {
   overrides: Record<string, string>

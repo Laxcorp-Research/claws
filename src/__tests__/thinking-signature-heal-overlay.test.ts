@@ -240,4 +240,52 @@ describe("thinking-signature heal overlay (-11)", () => {
     expect(stripped.files).toBe(1)
     expect(stripped.blocksStripped).toBe(1)
   })
+
+  it("sqlite TEXT walker strips thinking parts (injected adapter; jsonl path kept)", () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "claws-heal-sqlite-"))
+    const sqlitePath = path.join(dir, "agents", "orch", "agent", "openclaw-agent.sqlite")
+    fs.mkdirSync(path.dirname(sqlitePath), { recursive: true })
+    fs.writeFileSync(sqlitePath, "placeholder")
+    expect(heal.resolveSessionSqlitePath(dir, "agent:orch:main", "orch")).toBe(sqlitePath)
+
+    const poisoned = JSON.stringify({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "x", thinkingSignature: "sig" },
+        { type: "text", text: "ok" },
+      ],
+    })
+    let stored = poisoned
+    const adapter = {
+      all(sql: string) {
+        if (sql.includes("sqlite_master")) return [{ name: "transcripts" }]
+        if (sql.includes("PRAGMA table_info")) {
+          return [{ name: "payload", type: "TEXT" }]
+        }
+        if (sql.includes("SELECT rowid")) {
+          return [{ rowid: 1, payload: stored }]
+        }
+        return []
+      },
+      run(_sql: string, params: unknown[]) {
+        stored = String(params[0])
+      },
+    }
+    const result = heal.stripThinkingFromSqliteFile(sqlitePath, adapter)
+    expect(result.ok).toBe(true)
+    expect(result.blocksStripped).toBe(1)
+    expect(stored).not.toContain("thinkingSignature")
+    expect(stored).toContain('"text":"ok"')
+
+    const jsonlPath = path.join(dir, "agents", "orch", "sessions", "legacy.jsonl")
+    fs.mkdirSync(path.dirname(jsonlPath), { recursive: true })
+    fs.writeFileSync(
+      jsonlPath,
+      `${JSON.stringify({
+        message: { content: [{ type: "thinking", thinking: "y" }, { type: "text", text: "z" }] },
+      })}\n`,
+    )
+    const jsonl = heal.stripThinkingFromSessionFile(jsonlPath)
+    expect(jsonl.blocksStripped).toBe(1)
+  })
 })
