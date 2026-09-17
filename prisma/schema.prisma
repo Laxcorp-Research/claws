@@ -202,6 +202,13 @@ model Workspace {
 
   status      WorkspaceStatus @default(DRAFT)
 
+  /// Which cloud runs this claw's container. RAILWAY is the incumbent
+  /// (service per claw); FLY is the Machines adapter (app + machine per
+  /// claw, HWD = native machine stop/start). Stamped at first provision
+  /// (NEW_WORKSPACE_PROVIDER flag) or by migrate-on-wake
+  /// (MIGRATE_ON_WAKE_TO). Governor + service pool are RAILWAY-only.
+  provider    CloudProvider   @default(RAILWAY)
+
   containerId     String?
   containerName   String?
   containerHost   String?
@@ -382,6 +389,12 @@ enum WorkspaceStatus {
   STOPPED
   /// Honest wait: Railway serviceCreate is over daily cap. Not ERROR.
   PROVISIONING_QUEUED
+}
+
+/// Fly adapter: container cloud per workspace. See docs/FLY_MACHINES_ADAPTER.md.
+enum CloudProvider {
+  RAILWAY
+  FLY
 }
 
 // DeploymentType removed - cloud-only platform

@@ -123,7 +123,12 @@ describe("wakeWorkspace - late-wake semantics (P2.3)", () => {
       join(process.cwd(), "src/lib/hibernation/manager.ts"),
       "utf8",
     )
-    expect(src).toContain("forbidCreate: true")
+    // Fly cutover: a normal wake still NEVER creates. The ONLY exception is
+    // an armed migrate-on-wake (migration.migrated), whose detach lives in
+    // src/lib/fly/migrate-on-wake.ts. A bare `forbidCreate: false` (or a
+    // dropped option) restores create-on-wake and must fail here.
+    expect(src).toContain("forbidCreate: !migration.migrated")
+    expect(src).not.toContain("forbidCreate: false")
     expect(src).toContain("preserveHibernationOnFailure: true")
     expect(src).toContain("WAKEABLE_WORKSPACE_STATUSES")
     expect(src).not.toMatch(/await deployToCloud\(workspaceId\)\s*$/m)

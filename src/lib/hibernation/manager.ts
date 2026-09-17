@@ -415,8 +415,22 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
       }),
     ])
 
+    // Fly cutover: existing RAILWAY claws migrate on NATURAL WAKE when the
+    // MIGRATE_ON_WAKE_TO=FLY flag is armed. The detach + pool recycle live
+    // in src/lib/fly/migrate-on-wake.ts (the HWD contract forbids this file
+    // from detaching container ids). Failure below keeps HIBERNATED
+    // (preserveHibernationOnFailure) and retries Fly on the next wake.
+    const { maybeMigrateToFlyOnWake } = await import("@/lib/fly/migrate-on-wake")
+    const migration = await maybeMigrateToFlyOnWake({
+      id: workspaceId,
+      provider: workspace.provider,
+      containerId: workspace.containerId,
+    })
+
     await deployToCloud(workspaceId, {
-      forbidCreate: true,
+      // Migration wake MUST create (fresh Fly app+machine); a normal wake
+      // keeps the no-create guard.
+      forbidCreate: !migration.migrated,
       preserveHibernationOnFailure: true,
     })
 

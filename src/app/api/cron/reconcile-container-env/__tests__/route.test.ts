@@ -148,10 +148,17 @@ describe("reconcile-container-env cron - PR-8a/C/A skeleton", () => {
     }
   })
 
-  it("scope query targets RUNNING + containerId not null, oldest-first, capped at 10", async () => {
+  it("scope query targets RUNNING + containerId not null + RAILWAY-only, oldest-first, capped at 10", async () => {
     await GET(req("Bearer test-cron-secret"))
     const args = (prismaMock.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(args.where).toEqual({ status: "RUNNING", containerId: { not: null } })
+    // provider RAILWAY is a contract: this cron compares Railway rendered
+    // variables - a FLY workspace in scope would read the wrong API (heals
+    // would fire on machines whose env is re-POSTed every deploy anyway).
+    expect(args.where).toEqual({
+      status: "RUNNING",
+      containerId: { not: null },
+      provider: "RAILWAY",
+    })
     expect(args.orderBy).toEqual({ lastEnvReconcileAt: { sort: "asc", nulls: "first" } })
     expect(args.take).toBe(10)
     // user.apiKeys included so deriveContainerEnv (PR-8a/C/B) can derive expected.
