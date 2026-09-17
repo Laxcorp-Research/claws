@@ -238,7 +238,7 @@ async function main() {
   console.log(`Flagged:                 ${results.length}`)
   console.log(`  Tier 1 (auto-unpublish): ${results.filter((r) => r.tier1Count > 0).length} skills, ${tier1Total} findings`)
   console.log(`  Tier 2 (review needed):  ${results.filter((r) => r.tier2Count > 0).length} skills, ${tier2Total} findings`)
-  console.log(`  Tier 3 (informational):  ${results.filter((r) => r.tier3Count > 0 && r.tier1Count === 0 && r.tier2Count === 0).length} skills (only tier 3)`)
+  console.log(`  Tier 3 (informational):  ${results.filter((r) => r.tier3Count > 0 && r.tier1Count === 0 && r.tier2Count === 0).length} skills (only tier 3), ${tier3Total} findings`)
   console.log("")
 
   // Tier 1 details

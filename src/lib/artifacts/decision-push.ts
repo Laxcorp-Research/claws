@@ -165,7 +165,7 @@ async function deliverDecisionTurn(args: {
     return
   }
 
-  let deviceKey = args.chatDeviceKeyEncrypted
+  const deviceKey = args.chatDeviceKeyEncrypted
     ? decryptDeviceIdentity(args.chatDeviceKeyEncrypted)
     : generateDeviceIdentity()
   if (!args.chatDeviceKeyEncrypted) {

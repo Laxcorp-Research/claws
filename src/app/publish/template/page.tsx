@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Check, ChevronRight, AlertTriangle, Info, Send, Loader2, Circle, XCircle, CheckCircle } from "lucide-react"
+import { Check, AlertTriangle, Info, Send, Loader2, Circle, XCircle, CheckCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
@@ -63,7 +63,9 @@ function PublishContent() {
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishSuccess, setPublishSuccess] = useState(false)
   const [scanFailed, setScanFailed] = useState(false)
-  const [scanFindings, setScanFindings] = useState<Array<{ severity: string; agentName: string; file: string; line: number; description: string; matchedText: string }>>([])
+  // Value intentionally unread today (scan copy is driven by scanFailed);
+  // setters keep the findings buffered for the upcoming findings panel.
+  const [_scanFindings, setScanFindings] = useState<Array<{ severity: string; agentName: string; file: string; line: number; description: string; matchedText: string }>>([])
 
   const [scanStep, setScanStep] = useState(0)
   const [scanComplete, setScanComplete] = useState(false)

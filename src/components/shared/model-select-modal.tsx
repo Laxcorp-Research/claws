@@ -11,7 +11,6 @@ import { providerLabel } from "@/lib/models/provider-labels"
 import { providerFromModelRef } from "@/lib/supported-providers"
 import {
   POWERED_BY_CLAWS_CREDITS,
-  providerUnlockReason,
   resolveProviderAuth,
 } from "@/lib/models/provider-auth"
 import {

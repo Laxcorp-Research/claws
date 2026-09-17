@@ -102,7 +102,7 @@ export async function flushHeldChatSends(workspaceId: string): Promise<{ flushed
   })
   if (!workspace || workspace.status !== "RUNNING") return summary
 
-  let deviceKey = workspace.chatDeviceKeyEncrypted
+  const deviceKey = workspace.chatDeviceKeyEncrypted
     ? decryptDeviceIdentity(workspace.chatDeviceKeyEncrypted)
     : generateDeviceIdentity()
   if (!workspace.chatDeviceKeyEncrypted) {

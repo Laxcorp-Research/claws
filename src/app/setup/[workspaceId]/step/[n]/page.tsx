@@ -461,8 +461,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [applyChangesOpen, setApplyChangesOpen] = useState(false)
   const [pendingOAuthSlug, setPendingOAuthSlug] = useState<string | null>(null)
   const [oauthErrors, setOauthErrors] = useState<Record<string, string | undefined>>({})
-  /** Bump to re-run Step-2 tool load after requirement-set mutations. */
-  const [toolsReloadToken, setToolsReloadToken] = useState(0)
+  /** Reserved bump to re-run Step-2 tool load; no mutation path calls the
+   * setter today, so only the (constant) value participates in the effect
+   * deps at :566. Restore the setter when a requirement-set mutation needs it. */
+  const [toolsReloadToken] = useState(0)
   const redeployFlow = useWorkspaceRedeploy({
     workspaceId,
     onCompleted: () => {

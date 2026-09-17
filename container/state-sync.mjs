@@ -628,7 +628,7 @@ async function uploadViaBlob({
   let tokenBody
   try {
     tokenBody = await tokenRes.json()
-  } catch (err) {
+  } catch {
     return { status: "error", fileCount, sizeKb, error: "blob-token invalid JSON", path: "blob-token" }
   }
 

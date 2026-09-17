@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
-import { createMockRequest, parseResponse } from "@/test/helpers/mock-request"
+import { createMockRequest } from "@/test/helpers/mock-request"
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 

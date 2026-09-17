@@ -86,7 +86,7 @@ export function Modal({
   // cascading update. Same pattern as src/components/ui/tooltip.tsx:28
   // (tooltip.tsx carries an identical pre-existing rule violation;
   // out-of-scope for this PR per minimum-scope rule).
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {

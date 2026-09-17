@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { isOwnListing, ownListingMessage } from "@/lib/marketplace/own-listing"
 
@@ -22,8 +24,6 @@ describe("ownListingMessage", () => {
   })
 
   it("MUTATION: UI strings changed → fail", () => {
-    const { readFileSync } = require("node:fs") as typeof import("node:fs")
-    const { join } = require("node:path") as typeof import("node:path")
     const src = readFileSync(join(process.cwd(), "src/lib/marketplace/own-listing.ts"), "utf8")
     expect(src).toContain('"This is your template"')
     expect(src).toContain('"This is your skill"')

@@ -136,9 +136,14 @@ jobs:
       - name: TypeScript type check
         run: npx tsc --noEmit
 
+      # Real gate since the brace-expansion override fix (lint crashed for
+      # months with `expand is not a function`; continue-on-error hid it).
+      # Errors BLOCK. Warnings are the tracked burn-down: react-hooks v6
+      # staged-adoption rules + no-img-element + exhaustive-deps (see
+      # eslint.config.mjs). Restore --max-warnings 0 when the burn-down
+      # hits zero.
       - name: ESLint
-        run: npx eslint . --max-warnings 0
-        continue-on-error: true
+        run: npx eslint .
 
       - name: Build
         run: npm run build

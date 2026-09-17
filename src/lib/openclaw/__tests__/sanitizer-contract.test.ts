@@ -297,8 +297,6 @@ describe("PR #3a sanitizer contract - emitted frontmatter passes runtime sanitiz
 
   it("seed frontmatter is stripped (no double --- block in output)", async () => {
     const skillMd = await emitSkillMd("tavily-search", ["tavily"])
-    // Count leading `---` blocks. Should be exactly one.
-    const frontmatterBlocks = skillMd.match(/^---\r?\n/gm) ?? []
     // Frontmatter uses 2 `---` markers per block (open + close). One block = 2 markers.
     const openerCount = skillMd.split("\n").filter((line) => line === "---").length
     expect(openerCount).toBe(2) // exactly 1 frontmatter block (2 markers)
