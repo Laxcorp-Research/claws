@@ -357,6 +357,59 @@ as an escape hatch only — e.g. to force a specific workspace's next
 
 ---
 
+## Service Pool (beta-scale serviceCreate banking)
+
+Railway's only hard **daily** write cap is `serviceCreate` (25/day per
+account — the governor's ledger). Empty services cost $0 (no active
+deployment, no volume) and the per-project inventory ceiling is 100 services
+on Pro (support-raisable; the refill respects `SERVICE_POOL_PROJECT_CEILING`).
+The pool turns that into deploy capacity:
+
+```
+refill cron (*/5m)          deployToCloud create-branch        terminal stop/delete
+ serviceCreate (empty)  -->  checkout READY -> ASSIGNED   -->   recycle -> RECYCLING -> READY
+ up to budget - headroom     rename to claw-<wsId>,             deploymentRemove + env wipe
+ -> ServicePool READY        updateAndRedeployService           + volume destroy + rename pool-*
+                             (same mutations as fresh create)   DOMAIN KEPT
+```
+
+Key files:
+
+| File | Purpose |
+|------|---------|
+| `src/lib/railway/service-pool.ts` | Checkout (CAS claim), recycle (privacy receipts), refill plan + tick, low-watermark owner alert |
+| `src/app/api/cron/service-pool/route.ts` | 5-minute tick: sweep RECYCLING retries, reclaim stranded ASSIGNED, bank creates |
+| `prisma` `ServicePool` / `ServicePoolMeta` | Inventory rows (serviceId unique, no Workspace FK) + alert bookkeeping singleton |
+
+Contracts:
+
+- **Pool checkout first**: `deployToCloud`'s create branch claims a READY
+  entry before ever consulting the governor; `serviceCreate` (governed,
+  queueable) happens only when the pool is empty. The governor therefore
+  queues only when **pool empty AND cap spent**.
+- **Boots identically (Rule-36)**: a pooled checkout deploys through the same
+  `updateAndRedeployService` mutations (image, startCommand, healthcheck,
+  env replace, domain reuse, deployV2) as a fresh `createService` — locked by
+  `deployer-pool.test.ts` (byte-identical envVars + image).
+- **Recycle privacy invariant**: RECYCLING → READY only after deployment
+  removed + env replaced with `CLAWS_POOLED` marker + volumes destroyed AND
+  re-listed as zero + renamed `pool-*`. Any failure keeps the row RECYCLING
+  (never claimable) for the sweeper. Locked by `service-pool.test.ts`.
+- **Domain kept**: the `*.up.railway.app` hostname stays on the service
+  across recycles (domain-cap safe; no `serviceDomainCreate` on checkout).
+- **Hibernate/wake unchanged**: HWD keeps `containerId` and never touches
+  the pool; wake redeploys onto the same (possibly pool-origin) service.
+- **Kill switch**: `SERVICE_POOL_ENABLED=false` restores legacy
+  `serviceCreate`/`serviceDelete` behavior everywhere.
+
+Knobs (all optional, see `docs/VERCEL_ENV_MANIFEST.json`):
+`SERVICE_POOL_TARGET` (60), `SERVICE_POOL_REFILL_HEADROOM` (3),
+`SERVICE_POOL_LOW_WATERMARK` (20, owner alert with 12h cadence after the
+expected-empty ramp), `SERVICE_POOL_PROJECT_CEILING` (100),
+`SERVICE_POOL_REFILL_BATCH` (5).
+
+---
+
 ## Quick Reference
 
 ### Common operations

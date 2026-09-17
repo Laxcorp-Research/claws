@@ -34,7 +34,6 @@ import { buildWorkspaceConfigFingerprint, type WorkspaceConfigFingerprint } from
 import {
   isRailwayConfigured,
   createService,
-  deleteService,
   redeployService,
   updateAndRedeployService,
   findServiceByName,
@@ -80,6 +79,11 @@ import {
   recordSuccessfulCreate,
 } from '@/lib/railway/governor';
 import { isRailwayCreateQuotaError } from '@/lib/railway/governor-budget';
+import {
+  checkoutPooledService,
+  releasePoolEntryForSweep,
+  teardownServiceViaPool,
+} from '@/lib/railway/service-pool';
 import { sendOwnerAlert } from '@/lib/alerts/owner-alert';
 import {
   isRailwayDomainCapError,
@@ -149,6 +153,72 @@ async function createServiceGoverned(
     }
     throw err;
   }
+}
+
+/**
+ * Fresh-provision path: POOL CHECKOUT FIRST, serviceCreate only when the
+ * pool is empty. A pooled checkout deploys through the exact same
+ * updateAndRedeployService mutations (image, startCommand, healthcheck,
+ * env replace, domain reuse, deployV2) as the wake/reuse path - a claw
+ * deployed from a pooled service boots identically to one deployed onto a
+ * fresh createService (Rule-36).
+ *
+ * The governor is therefore consulted ONLY when the pool is empty: queueing
+ * happens when pool empty AND create budget spent, never merely because the
+ * budget is spent.
+ */
+async function provisionFreshService(
+  workspaceId: string,
+  config: { name: string; envVars: Record<string, string>; image?: string },
+): Promise<{
+  serviceId: string;
+  domain: string;
+  previousDeploymentId: string | null;
+}> {
+  const pooled = await checkoutPooledService(workspaceId, config.name);
+  if (pooled) {
+    try {
+      // A banked service normally has no deployment; a reclaimed stranded one
+      // may. Capture it so waitForDeploymentSuccess never confuses a stale
+      // SUCCESS for the new deploy.
+      const beforeStatus = await getServiceStatus(pooled.serviceId);
+      const previousDeploymentId =
+        beforeStatus.status === 'REMOVED' || beforeStatus.status === 'NO_DEPLOYMENT'
+          ? null
+          : beforeStatus.deploymentId;
+      const result = await withTransientDeployRetry(() =>
+        updateAndRedeployService(pooled.serviceId, config.envVars, config.image, pooled.domain),
+      );
+      if (!result.domain && pooled.domain) {
+        result.domain = pooled.domain;
+      }
+      log.info('Deployed onto pooled Railway service', {
+        workspaceId,
+        serviceId: pooled.serviceId,
+        domain: result.domain,
+      });
+      return { ...result, previousDeploymentId };
+    } catch (err) {
+      // Dead pooled service (deleted out-of-band / stale ACL): release the
+      // entry for the sweeper and fall through to a governed create. Any
+      // other failure propagates - it would fail a fresh create too.
+      if (!isOrphanRailwayServiceError(err)) throw err;
+      await releasePoolEntryForSweep(
+        pooled.entryId,
+        err instanceof Error ? err.message : String(err),
+      );
+      log.warn('Pooled service unusable at deploy; released for sweep, creating fresh', {
+        workspaceId,
+        serviceId: pooled.serviceId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const created = await withTransientDeployRetry(() =>
+    createServiceGoverned(workspaceId, config),
+  );
+  return { ...created, previousDeploymentId: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -638,9 +708,13 @@ export async function deployToCloud(
             data: { containerId: null, containerName: null, containerHost: null },
           });
           try {
-            result = await withTransientDeployRetry(() =>
-              createServiceGoverned(workspaceId, { name: serviceName, envVars, image }),
-            );
+            const fresh = await provisionFreshService(workspaceId, {
+              name: serviceName,
+              envVars,
+              image,
+            });
+            previousDeploymentId = fresh.previousDeploymentId;
+            result = { serviceId: fresh.serviceId, domain: fresh.domain };
           } catch (freshErr) {
             // Guard: auth outage on NEW provision fails loud - do not loop.
             if (isRailwayAuthOutageError(freshErr)) {
@@ -656,9 +730,13 @@ export async function deployToCloud(
       }
     } else {
       try {
-        result = await withTransientDeployRetry(() =>
-          createServiceGoverned(workspaceId, { name: serviceName, envVars, image }),
-        );
+        const fresh = await provisionFreshService(workspaceId, {
+          name: serviceName,
+          envVars,
+          image,
+        });
+        previousDeploymentId = fresh.previousDeploymentId;
+        result = { serviceId: fresh.serviceId, domain: fresh.domain };
       } catch (err: unknown) {
         // Fresh provision NotAuthorized → fail loud (no orphan clear/retry loop).
         if (isRailwayAuthOutageError(err) && !String(err).includes('already exists')) {
@@ -793,13 +871,16 @@ export async function deployToCloud(
 // ---------------------------------------------------------------------------
 
 /**
- * FAST, NON-THROWING teardown: deletes the Railway service (best-effort,
- * swallows errors) and converges the Workspace + ContainerState rows to a
- * STOPPED state. It does NOT flush the container's runtime state first - the
- * only pre-destroy persistence on this path is the container's own best-effort
- * SIGTERM sync (process-manager.mjs), which Railway may cut short with SIGKILL.
+ * FAST, NON-THROWING teardown: RECYCLES the Railway service into the pool
+ * (env wiped, volumes destroyed, domain kept - see
+ * src/lib/railway/service-pool.ts) and converges the Workspace +
+ * ContainerState rows to a STOPPED state. With SERVICE_POOL_ENABLED=false it
+ * falls back to the legacy serviceDelete. It does NOT flush the container's
+ * runtime state first - the only pre-destroy persistence on this path is the
+ * container's own best-effort SIGTERM sync (process-manager.mjs), which
+ * Railway may cut short with SIGKILL.
  *
- * serviceDelete is correct HERE only for terminal teardown (not hibernate):
+ * Terminal teardown callers (recycle is correct here, NOT hibernate):
  *   - user Stop (`syncThenDestroy`)
  *   - trial / credit termination
  *   - Dodo enforcement
@@ -819,27 +900,22 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
-  // When Railway delete fails for a reason other than "already gone", the
-  // service may still be alive - keep containerHost so hibernate/wake can
-  // reuse the domain (DOMAIN_REUSE / service-survives).
+  // "survived" (legacy delete failed with the service possibly alive) is the
+  // only outcome that keeps containerHost so hibernate/wake can reuse the
+  // domain (DOMAIN_REUSE / service-survives). Every pool outcome detaches:
+  // recycled/deferred means the pool state machine owns the service now.
   let serviceGone = !(isRailwayConfigured() && workspace.containerId);
   if (isRailwayConfigured() && workspace.containerId) {
-    try {
-      await deleteService(workspace.containerId);
-      serviceGone = true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/not found|404|does not exist/i.test(msg)) {
-        serviceGone = true;
-        log.warn('Failed to delete Railway service - may already be removed', { workspaceId });
-      } else {
-        serviceGone = false;
-        log.warn('Failed to delete Railway service - service may survive; keeping containerHost', {
-          workspaceId,
-          error: msg,
-        });
-      }
-    }
+    const outcome = await teardownServiceViaPool({
+      serviceId: workspace.containerId,
+      workspaceId,
+    });
+    serviceGone = outcome !== 'survived';
+    log.info('destroyContainer teardown outcome', {
+      workspaceId,
+      serviceId: workspace.containerId,
+      outcome,
+    });
   }
 
   // Atomically update Workspace row AND ContainerState row. Previous bug:
