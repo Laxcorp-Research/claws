@@ -167,7 +167,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const workspaces = await prisma.workspace.findMany({
-      where: { status: "RUNNING", containerId: { not: null } },
+      // RAILWAY-only: this cron compares Railway's rendered variables against
+      // the derived env. FLY machines get their full env re-POSTed on every
+      // deploy/wake (config replace) - drift class differs; Fly reconcile is
+      // a follow-up (see docs/FLY_MACHINES_ADAPTER.md).
+      where: { status: "RUNNING", containerId: { not: null }, provider: "RAILWAY" },
       orderBy: { lastEnvReconcileAt: { sort: "asc", nulls: "first" } },
       take: RECONCILE_MAX_PER_RUN,
       select: {
