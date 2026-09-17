@@ -24,14 +24,14 @@ function mockRes(): any {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function mockReq(opts: {
   method: string
   token?: string
   header?: "authorization" | "x-gateway-token"
   meteringSecret?: string
   body?: unknown
-}): any {
+}): { method: string; headers: Record<string, string>; body: unknown } {
   const headers: Record<string, string> = {}
   if (opts.token !== undefined) {
     if (opts.header === "x-gateway-token") headers["x-gateway-token"] = opts.token

@@ -1983,7 +1983,7 @@ function applyOrchestratorWorkflowFence(
 }
 
 function generateOrchestratorAgentsMd(
-  orchestrator: AgentWithRelations,
+  _orchestrator: AgentWithRelations,
   workers: AgentWithRelations[],
   critic: AgentWithRelations,
   workspace: WorkspaceWithRelations,

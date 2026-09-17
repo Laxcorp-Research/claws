@@ -206,12 +206,6 @@ interface StableVersionInfo {
   releaseNotes: string | null
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  ORCHESTRATOR: "#5BA1F5",
-  WORKER: "#8BFCAE",
-  CRITIC: "#A78BFA",
-}
-
 const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 }
 
 const MAX_LOG_ENTRIES = 200

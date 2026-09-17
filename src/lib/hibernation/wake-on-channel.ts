@@ -329,7 +329,7 @@ async function runWakeDeliver(args: {
     return
   }
 
-  let deviceKey = afterWake.chatDeviceKeyEncrypted
+  const deviceKey = afterWake.chatDeviceKeyEncrypted
     ? decryptDeviceIdentity(afterWake.chatDeviceKeyEncrypted)
     : generateDeviceIdentity()
   if (!afterWake.chatDeviceKeyEncrypted) {

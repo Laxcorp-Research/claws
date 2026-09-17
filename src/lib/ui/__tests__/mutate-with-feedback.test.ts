@@ -40,7 +40,7 @@ describe("mutateWithFeedback", () => {
 
   it("does not apply success message when op throws (state-update honesty)", async () => {
     const show = vi.fn()
-    let applied = false
+    const applied = false
     await expect(
       mutateWithFeedback(
         async () => {

@@ -119,7 +119,7 @@ export async function maybeResumeInterruptedMission(workspaceId: string): Promis
       where: { id: workspaceId },
       select: { chatDeviceKeyEncrypted: true },
     })
-    let deviceKey = ws?.chatDeviceKeyEncrypted
+    const deviceKey = ws?.chatDeviceKeyEncrypted
       ? decryptDeviceIdentity(ws.chatDeviceKeyEncrypted)
       : generateDeviceIdentity()
     if (ws && !ws.chatDeviceKeyEncrypted) {

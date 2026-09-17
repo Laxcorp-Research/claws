@@ -16,7 +16,7 @@ process.env.NEXTAUTH_URL = 'http://localhost:3000';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
 
 vi.mock('@axiomhq/nextjs', () => ({
-  createAxiomRouteHandler: () => (handler: Function) => handler,
+  createAxiomRouteHandler: () => <T,>(handler: T) => handler,
   createProxyRouteHandler: () => async () => new Response('ok'),
   nextJsFormatters: [],
 }));

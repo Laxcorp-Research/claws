@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Check, ChevronRight, AlertTriangle, Send, FileText, Shield, Terminal, Key, XCircle } from "lucide-react"
+import { Check, AlertTriangle, Send, FileText, Shield, Terminal, Key, XCircle } from "lucide-react"
 import { PageShell } from "@/components/shared/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

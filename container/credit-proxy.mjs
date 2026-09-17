@@ -502,18 +502,6 @@ async function handleStreamingResponse(req, res, anthropicRes, model, estimatedC
   });
 }
 
-async function handleBufferedResponse(req, res, anthropicRes, model, estimatedCost) {
-  const responseBody = await anthropicRes.text();
-  await handleBufferedResponseFromText(
-    req,
-    res,
-    anthropicRes,
-    model,
-    estimatedCost,
-    responseBody,
-  );
-}
-
 async function handleBufferedResponseFromText(
   req,
   res,
