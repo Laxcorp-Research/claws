@@ -136,6 +136,18 @@ export function AccountSettings({ user }: AccountSettingsProps) {
         </div>
       </div>
 
+      <div className="border border-[var(--bd)] rounded-[12px] p-[14px] mb-[14px]">
+        <h3 className="text-[13px] font-semibold mb-[4px]">Your data</h3>
+        <p className="text-[11px] text-[var(--tx2)] mb-[10px]">
+          Download a JSON snapshot of your account: profile, workspaces and
+          agents, tool connections (never credentials), purchases, and recent
+          activity.
+        </p>
+        <Button variant="outline" onClick={() => { window.location.href = "/api/settings/export" }}>
+          Export account data
+        </Button>
+      </div>
+
       <div className="border border-[var(--err)] rounded-[12px] p-[14px]">
         <h3 className="text-[13px] font-semibold text-[var(--err)] mb-[4px]">Danger zone</h3>
         <p className="text-[11px] text-[var(--tx2)] mb-[10px]">
