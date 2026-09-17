@@ -184,8 +184,12 @@ export async function recordSuccessfulCreate(workspaceId: string, serviceId: str
   await maybeAlertBudget80(workspaceId, snapshot.rollingCount, snapshot.cap)
 }
 
-export async function enqueueFromQuotaRejection(workspaceId: string): Promise<QueuedProvision> {
-  const now = new Date()
+/**
+ * Mark the account-wide Railway quota hold after a serviceCreate rejection.
+ * Shared by the user-deploy path (enqueueFromQuotaRejection) and the service
+ * pool refill (which never enqueues a workspace). Returns the hold deadline.
+ */
+export async function recordQuotaHold(now: Date = new Date()): Promise<Date> {
   const cap = parseCreateDailyCap()
   const margin = parseSafetyMargin()
   const usable = usableCreateBudget(cap, margin)
@@ -197,6 +201,13 @@ export async function enqueueFromQuotaRejection(workspaceId: string): Promise<Qu
     create: { id: GOVERNOR_STATE_ID, quotaHoldUntil: holdUntil },
     update: { quotaHoldUntil: holdUntil },
   })
+
+  return holdUntil
+}
+
+export async function enqueueFromQuotaRejection(workspaceId: string): Promise<QueuedProvision> {
+  const now = new Date()
+  const holdUntil = await recordQuotaHold(now)
 
   log.warn("governor: Railway create quota - marking hold + enqueue", {
     workspaceId,

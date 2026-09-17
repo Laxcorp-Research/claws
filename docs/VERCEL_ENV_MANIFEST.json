@@ -138,6 +138,48 @@
       "whereCreated": "Vercel Production + Preview optional; code default 2 if unset"
     },
     {
+      "name": "SERVICE_POOL_ENABLED",
+      "purpose": "Kill switch for the Railway service pool (checkout + recycle + refill). Default ON; set false to restore serviceCreate/serviceDelete legacy behavior",
+      "required": false,
+      "surfaces": ["src/lib/railway/service-pool.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default enabled if unset"
+    },
+    {
+      "name": "SERVICE_POOL_TARGET",
+      "purpose": "READY pooled services the refill cron banks toward (default 60). Must leave room under the project service ceiling for live claws",
+      "required": false,
+      "surfaces": ["src/lib/railway/service-pool.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default 60 if unset"
+    },
+    {
+      "name": "SERVICE_POOL_REFILL_HEADROOM",
+      "purpose": "serviceCreate budget the refill cron leaves for live user deploys on top of the governor safety margin (default 3)",
+      "required": false,
+      "surfaces": ["src/lib/railway/service-pool.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default 3 if unset"
+    },
+    {
+      "name": "SERVICE_POOL_LOW_WATERMARK",
+      "purpose": "READY count below which the owner alert fires after the initial ramp (default 20, 12h cadence)",
+      "required": false,
+      "surfaces": ["src/lib/railway/service-pool.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default 20 if unset"
+    },
+    {
+      "name": "SERVICE_POOL_PROJECT_CEILING",
+      "purpose": "Hard Railway per-project service inventory cap the refill respects (default 100 - the Pro plan limit; raise only after Railway support grants more)",
+      "required": false,
+      "surfaces": ["src/lib/railway/service-pool.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default 100 if unset"
+    },
+    {
+      "name": "SERVICE_POOL_REFILL_BATCH",
+      "purpose": "Max empty services banked per 5-minute refill tick (default 5)",
+      "required": false,
+      "surfaces": ["src/lib/railway/service-pool.ts"],
+      "whereCreated": "Vercel Production + Preview optional; code default 5 if unset"
+    },
+    {
       "name": "MARKETPLACE_PUBLISH_ENABLED",
       "purpose": "Server gate for creator publish wizards + POST publish APIs",
       "required": false,
