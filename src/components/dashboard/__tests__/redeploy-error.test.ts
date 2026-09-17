@@ -44,7 +44,10 @@ describe("getRedeployApiErrorMessage", () => {
     )
     const idx = src.indexOf("handleRedeployFromStopped")
     expect(idx).toBeGreaterThanOrEqual(0)
-    const window = src.slice(idx, idx + 900)
+    // 1700-char window: the legal §8 ack gate (FINANCIAL_TERMS_ACK_REQUIRED
+    // early-return) legitimately sits between the fetch and the error
+    // handling; the lock's assertions are unchanged.
+    const window = src.slice(idx, idx + 1700)
     expect(window).toContain("getRedeployApiErrorMessage")
     expect(window).toContain("/api/deploy/${workspaceId}/cloud")
     // Must not hardcode opaque errorMessage that swallows API detail.

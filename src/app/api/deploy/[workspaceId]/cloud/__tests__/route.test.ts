@@ -495,3 +495,78 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(src).not.toMatch(failOnCap);
   });
 });
+
+// Legal §8 gate: first deploy of a financial template requires the stored
+// acknowledgement. MUTATION: removing the gate (financial deploy-bypass) or
+// the ConsentRecord write fails these.
+describe('financial template §8 acknowledgement gate', () => {
+  function mockFinancialWorkspace(slug: string | null) {
+    (prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      clawTemplate: slug ? { slug } : null,
+    });
+  }
+
+  function callRouteWithBody(workspaceId: string, body?: unknown) {
+    const req = createMockRequest(`http://localhost:3000/api/deploy/${workspaceId}/cloud`, {
+      method: 'POST',
+      ...(body !== undefined ? { body } : {}),
+    });
+    return POST(req, { params: Promise.resolve({ workspaceId }) });
+  }
+
+  beforeEach(() => {
+    mockGetSessionUser.mockResolvedValue({ id: 'user-fin' });
+    mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-fin', status: 'SETUP_INCOMPLETE' } });
+    mockEligibleUser({ id: 'user-fin' });
+    (prismaMock.consentRecord.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prismaMock.consentRecord.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('quant-trader first deploy without ack → 428 FINANCIAL_TERMS_ACK_REQUIRED, trial clock NOT started', async () => {
+    mockFinancialWorkspace('quant-trader');
+
+    const res = await callRouteWithBody('ws-fin');
+    expect(res.status).toBe(428);
+    const json = await res.json();
+    expect(json.error.code).toBe('FINANCIAL_TERMS_ACK_REQUIRED');
+    expect(json.error.message).toContain("I've read the AI & autonomy terms (§8)");
+    // Gate sits BEFORE the trial-start side effect.
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(mockDeployToCloud).not.toHaveBeenCalled();
+  });
+
+  it('retry with financialAckAccepted stores the ConsentRecord (version+timestamp) and deploys', async () => {
+    mockFinancialWorkspace('quant-trader');
+
+    const res = await callRouteWithBody('ws-fin', { financialAckAccepted: true });
+    expect(res.status).toBe(201);
+    expect(prismaMock.consentRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user-fin',
+        kind: 'FINANCIAL_AUTONOMY_S8',
+        workspaceId: 'ws-fin',
+        source: 'deploy-gate',
+        version: expect.stringMatching(/^\d{4}-\d{2}$/),
+        metadata: JSON.stringify({ templateSlug: 'quant-trader' }),
+      }),
+    });
+    expect(mockDeployToCloud).toHaveBeenCalled();
+  });
+
+  it('subsequent deploys with a stored ack skip the gate (no re-prompt, no duplicate row)', async () => {
+    mockFinancialWorkspace('quant-trader');
+    (prismaMock.consentRecord.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'cr-1' });
+
+    const res = await callRouteWithBody('ws-fin');
+    expect(res.status).toBe(201);
+    expect(prismaMock.consentRecord.create).not.toHaveBeenCalled();
+  });
+
+  it('non-financial templates never see the gate', async () => {
+    mockFinancialWorkspace('twitter-growth-machine');
+
+    const res = await callRouteWithBody('ws-fin');
+    expect(res.status).toBe(201);
+    expect(prismaMock.consentRecord.findFirst).not.toHaveBeenCalled();
+  });
+});

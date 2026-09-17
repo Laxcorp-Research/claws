@@ -25,6 +25,7 @@ import {
   AUTONOMOUS_CAPABLE_TOOL_DEFS,
   AUTONOMOUS_CONSENT_INTRO,
 } from "@/lib/openclaw/delivery-rail"
+import { AUTONOMOUS_S8_RISK_LINE, TERMS_SECTION_8_URL } from "@/lib/legal/consent"
 import {
   REGULATED_QUALITY_THRESHOLD_FLOOR,
   isRegulatedTemplateSlug,
@@ -244,6 +245,17 @@ function WorkflowKnobsPanel() {
             </li>
           ))}
         </ul>
+        <p className="mt-2 text-[11px] text-[var(--tx3)]">
+          {AUTONOMOUS_S8_RISK_LINE}{" "}
+          <a
+            href={TERMS_SECTION_8_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 text-[var(--ac-text)] hover:text-[var(--tx)]"
+          >
+            Read §8
+          </a>
+        </p>
       </ConfirmDialog>
 
       <div className="rounded-[6px] bg-[var(--bg2)] px-2 py-1.5 text-[10px] text-[var(--tx2)] leading-snug">

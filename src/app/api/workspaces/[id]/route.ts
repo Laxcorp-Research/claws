@@ -6,6 +6,7 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { parseRecommendedAlwaysOn } from "@/lib/templates/recommended-always-on"
 import { destroyContainer } from "@/lib/openclaw/deployer"
 import { maybeResolveSpendLimitAfterLimitChange } from "@/lib/healing/spend-limit"
+import { recordConsent } from "@/lib/legal/consent-server"
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -113,7 +114,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     updates.slug = (updates.name as string).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
   }
 
+  // Legal: every Ask-before-acting -> Autonomous flip is consent under the
+  // AI & autonomy terms (§8) and gets a ConsentRecord (version + timestamp).
+  // Server-side on the knob write so a bypassed client dialog still leaves
+  // evidence. MUTATION: remove this write → autonomy-consent test fails.
+  let autonomyFlipped = false
+  if (updates.deliveryMode === "AUTO_PROCEED") {
+    const before = await prisma.workspace.findUnique({
+      where: { id },
+      select: { deliveryMode: true },
+    })
+    autonomyFlipped = before?.deliveryMode !== "AUTO_PROCEED"
+  }
+
   const workspace = await prisma.workspace.update({ where: { id }, data: updates })
+
+  if (autonomyFlipped) {
+    await recordConsent({
+      userId: user.id,
+      kind: "AUTONOMOUS_MODE_S8",
+      workspaceId: id,
+      source: "knob-write",
+    })
+  }
   if (updates.apiSpendLimit !== undefined) {
     await maybeResolveSpendLimitAfterLimitChange(id)
   }

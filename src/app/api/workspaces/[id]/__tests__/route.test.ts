@@ -101,6 +101,61 @@ describe("PATCH /api/workspaces/[id]", () => {
     expect(call.data).not.toHaveProperty("candidateRuntimeSoak")
     expect(call.data).toHaveProperty("alwaysOn", false)
   })
+
+  // Legal §8: every Ask-before-acting -> Autonomous flip is stored as a
+  // ConsentRecord, server-side (a bypassed client dialog still leaves
+  // evidence). MUTATION: removing the knob-write consent fails these.
+  describe("autonomous-mode consent (AUTONOMOUS_MODE_S8)", () => {
+    it("APPROVAL_REQUIRED -> AUTO_PROCEED flip writes the consent row", async () => {
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        deliveryMode: "APPROVAL_REQUIRED",
+      })
+      ;(prismaMock.consentRecord.create as ReturnType<typeof vi.fn>).mockResolvedValue({})
+
+      const req = createMockRequest("http://localhost:3000/api/workspaces/ws-1", {
+        method: "PATCH",
+        body: { deliveryMode: "AUTO_PROCEED" },
+      })
+      const res = await PATCH(req, { params: Promise.resolve({ id: "ws-1" }) })
+      const { status } = await parseResponse(res)
+
+      expect(status).toBe(200)
+      expect(prismaMock.consentRecord.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "user-test-123",
+          kind: "AUTONOMOUS_MODE_S8",
+          workspaceId: "ws-1",
+          source: "knob-write",
+          version: expect.stringMatching(/^\d{4}-\d{2}$/),
+        }),
+      })
+    })
+
+    it("already-AUTO_PROCEED write is not a flip - no duplicate consent row", async () => {
+      ;(prismaMock.workspace.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        deliveryMode: "AUTO_PROCEED",
+      })
+
+      const req = createMockRequest("http://localhost:3000/api/workspaces/ws-1", {
+        method: "PATCH",
+        body: { deliveryMode: "AUTO_PROCEED" },
+      })
+      await PATCH(req, { params: Promise.resolve({ id: "ws-1" }) })
+
+      expect(prismaMock.consentRecord.create).not.toHaveBeenCalled()
+    })
+
+    it("switching back to APPROVAL_REQUIRED writes nothing (consent is for autonomy only)", async () => {
+      const req = createMockRequest("http://localhost:3000/api/workspaces/ws-1", {
+        method: "PATCH",
+        body: { deliveryMode: "APPROVAL_REQUIRED" },
+      })
+      await PATCH(req, { params: Promise.resolve({ id: "ws-1" }) })
+
+      expect(prismaMock.workspace.findUnique).not.toHaveBeenCalled()
+      expect(prismaMock.consentRecord.create).not.toHaveBeenCalled()
+    })
+  })
 })
 
 describe("DELETE /api/workspaces/[id]", () => {

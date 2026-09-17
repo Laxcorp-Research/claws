@@ -8,6 +8,11 @@ import { prisma } from "@/lib/db"
 import { sendEmail } from "./email/send-email"
 import { grantStarterCredits } from "@/lib/credits/grant"
 import { requestReconcileForUser } from "@/lib/openclaw/request-reconcile"
+import {
+  readTosConsentCookieVersion,
+  recordConsent,
+  recordTosConsentIfMissing,
+} from "@/lib/legal/consent-server"
 
 function CustomPrismaAdapter(p: typeof prisma): Adapter {
   const base = PrismaAdapter(p) as Adapter;
@@ -131,6 +136,19 @@ export const authOptions: NextAuthOptions = {
   events: {
     async createUser({ user }) {
       if (user.id) {
+        // Signup consent evidence (version + timestamp). The signIn callback
+        // below already BLOCKED user creation without the consent cookie; a
+        // null version here means the magic link was opened in a different
+        // browser than the one that consented at send time - fall back to
+        // the current TOS_VERSION and note the cookie absence.
+        const consentVersion = await readTosConsentCookieVersion()
+        await recordConsent({
+          userId: user.id,
+          kind: "TOS_PRIVACY",
+          version: consentVersion,
+          source: "signup",
+          metadata: { cookiePresent: consentVersion !== null },
+        })
         await prisma.user.update({
           where: { id: user.id },
           data: { emailVerifiedForCredits: true },
@@ -150,6 +168,47 @@ export const authOptions: NextAuthOptions = {
     },
   },
   callbacks: {
+    /**
+     * Signup consent gate: NEW users (no User row for the email) may not be
+     * created without the signup consent cookie the signin page sets when
+     * the "I agree to the Terms and Privacy Policy" box is ticked. Existing
+     * users always sign in (grandfathered - reported in the legal audit);
+     * when they DO arrive with the cookie, the consent is lazily recorded
+     * once per version so version bumps re-collect evidence.
+     *
+     * Fail-closed: a provider that yields no email (e.g. GitHub private
+     * email without scope) cannot be proven existing -> treated as signup.
+     */
+    async signIn({ user, account, email }) {
+      const userEmail = user?.email ?? null
+      const existing = userEmail
+        ? await prisma.user.findUnique({ where: { email: userEmail }, select: { id: true } })
+        : null
+      const cookieVersion = await readTosConsentCookieVersion()
+
+      if (!existing) {
+        // Magic-link CLICK stage (link may be opened in a different browser
+        // that has no cookie): the SEND stage below already gated this
+        // address, so the click passes. Everything else - OAuth first
+        // sign-in and the magic-link SEND (email.verificationRequest) -
+        // blocks without the checkbox cookie.
+        const isEmailClickStage =
+          account?.provider === "email" && email?.verificationRequest !== true
+        if (!cookieVersion && !isEmailClickStage) {
+          return "/auth/signin?error=ConsentRequired"
+        }
+        return true
+      }
+
+      if (cookieVersion) {
+        await recordTosConsentIfMissing({
+          userId: existing.id,
+          version: cookieVersion,
+          source: "signin-lazy",
+        })
+      }
+      return true
+    },
     async redirect({ url, baseUrl }) {
       if (url.startsWith(baseUrl)) return url
       if (url.startsWith("/")) return `${baseUrl}${url}`

@@ -1615,3 +1615,35 @@ model ServicePoolMeta {
   lowAlertSentAt DateTime?
   updatedAt      DateTime  @updatedAt
 }
+
+// ─── LEGAL CONSENT AUDIT TRAIL ──────────────────────────────
+
+/// See src/lib/legal/consent.ts for the capture points and version rules.
+enum ConsentKind {
+  /// Signup checkbox: "I agree to the Terms and Privacy Policy"
+  TOS_PRIVACY
+  /// First deploy of a financial template: "I've read the AI & autonomy terms (§8)"
+  FINANCIAL_AUTONOMY_S8
+  /// Ask-before-acting -> Autonomous knob flip (risk line links §8)
+  AUTONOMOUS_MODE_S8
+}
+
+/// Append-only legal evidence. Deliberately NO relations: consent proof must
+/// survive workspace AND user deletion (same audit-row rule as
+/// RailwayCreateLedger). Multiple rows per (user, kind) are expected - one
+/// per version consented / per autonomy flip.
+model ConsentRecord {
+  id          String      @id @default(cuid())
+  userId      String
+  kind        ConsentKind
+  /// Legal-doc version consented to (ToS effective date, e.g. "2026-08").
+  version     String
+  workspaceId String?
+  /// Capture point: signup | signin-lazy | deploy-gate | knob-write
+  source      String
+  metadata    String?
+  acceptedAt  DateTime    @default(now())
+
+  @@index([userId, kind])
+  @@index([workspaceId, kind])
+}
