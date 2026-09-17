@@ -105,6 +105,11 @@ beforeEach(() => {
   prevFlag = process.env.SYNC_BEFORE_DESTROY
   process.env.METERING_MASTER_SECRET = SECRET
   delete process.env.SYNC_BEFORE_DESTROY // default ON
+  // This suite locks the SYNC GATE, not the teardown mechanism. Pin legacy
+  // serviceDelete so the deleteService assertions below stay meaningful; the
+  // pool recycle teardown is locked in destroy-container.test.ts +
+  // service-pool.test.ts.
+  process.env.SERVICE_POOL_ENABLED = "false"
 })
 
 afterEach(() => {
@@ -113,6 +118,7 @@ afterEach(() => {
   else process.env.METERING_MASTER_SECRET = prevSecret
   if (prevFlag === undefined) delete process.env.SYNC_BEFORE_DESTROY
   else process.env.SYNC_BEFORE_DESTROY = prevFlag
+  delete process.env.SERVICE_POOL_ENABLED
 })
 
 // Asserts the real destroyContainer ran (Workspace converged to STOPPED).

@@ -34,6 +34,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/service-pool",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/connection-health",
       "schedule": "0 * * * *"
     },

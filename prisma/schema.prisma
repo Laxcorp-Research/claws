@@ -1551,3 +1551,54 @@ model RailwayGovernorState {
   quotaHoldUntil DateTime?
   updatedAt      DateTime  @updatedAt
 }
+
+// ─── RAILWAY SERVICE POOL ───────────────────────────────────
+// Pre-created empty Railway services banked against the 25/day serviceCreate
+// cap. deployToCloud checks a READY entry out BEFORE ever calling
+// serviceCreate; terminal teardown (Stop / delete / enforcement) recycles the
+// service back instead of serviceDelete. State machine:
+//   READY -> ASSIGNED (checkout) -> RECYCLING (teardown) -> READY (receipted)
+// PRIVACY INVARIANT: RECYCLING -> READY only after env wipe + volume destroy
+// (verified zero remain) + rename are ALL receipted - see
+// src/lib/railway/service-pool.ts. A row that fails any step stays RECYCLING
+// (never handed to another tenant) until the sweeper completes the wipe.
+
+enum ServicePoolState {
+  READY
+  ASSIGNED
+  RECYCLING
+}
+
+model ServicePool {
+  id          String           @id @default(cuid())
+  /// Railway service id - one row per banked service, ever.
+  serviceId   String           @unique
+  /// Railway-issued *.up.railway.app hostname. Kept across recycles (domain
+  /// reuse - no serviceDomainCreate on checkout). Null when the mint failed
+  /// at bank time; ensureServiceDomain heals it at checkout.
+  domain      String?
+  state       ServicePoolState @default(READY)
+  /// Workspace the service is checked out to (ASSIGNED) or was last used by
+  /// (RECYCLING provenance). Cleared on READY. Deliberately NOT a relation:
+  /// pool rows must survive workspace delete (same rule as RailwayCreateLedger).
+  workspaceId String?
+  lastError   String?
+  assignedAt  DateTime?
+  recycledAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([state])
+  @@index([workspaceId])
+}
+
+/// Singleton (id = "default"): pool low-watermark alert bookkeeping.
+/// highWatermark mutes the expected-empty ramp (low alert fires only after
+/// the pool has EVER reached the floor); lowAlertSentAt is the 12h re-alert
+/// cadence stamp.
+model ServicePoolMeta {
+  id             String    @id
+  highWatermark  Int       @default(0)
+  lowAlertSentAt DateTime?
+  updatedAt      DateTime  @updatedAt
+}

@@ -598,12 +598,12 @@ export async function updateAndRedeployService(
 }
 
 /**
- * Railway serviceDelete. Allowed callers only (HWD):
- *   - user Stop (`syncThenDestroy` via /api/deploy/[id]/stop)
- *   - trial termination (`enforce-trial-expiry` → syncThenDestroy / destroyContainer)
- *   - credit termination (`onCreditsExhausted` → syncThenDestroy)
- *   - Dodo enforcement (subscription.failed webhook → destroyContainer)
- *   - workspace deletion (DELETE /api/workspaces/[id] → destroyContainer)
+ * Railway serviceDelete. Since the service pool landed, terminal teardown
+ * RECYCLES services back into the pool instead of deleting them (a delete
+ * burns banked serviceCreate budget). Allowed callers only:
+ *   - service-pool fallback: pool disabled (SERVICE_POOL_ENABLED=false) or a
+ *     recycle that cannot proceed - see src/lib/railway/service-pool.ts
+ *   - ops/admin cleanup scripts
  * Hibernate MUST use removeLatestDeployment, never this.
  */
 export async function deleteService(serviceId: string): Promise<void> {
@@ -616,6 +616,134 @@ export async function deleteService(serviceId: string): Promise<void> {
   );
 
   log.info('Railway service deleted', { serviceId });
+}
+
+// ---------------------------------------------------------------------------
+// Service pool primitives (see src/lib/railway/service-pool.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rename a service (pool checkout takes the `claw-<wsId>` name so
+ * adopt-by-name keeps working; recycle takes a `pool-*` name so a READY
+ * banked service can never be adopted outside the pool state machine).
+ */
+export async function renameService(serviceId: string, name: string): Promise<void> {
+  assertRailwayTargetAllowed();
+  await railwayGql(
+    `mutation($id: String!, $input: ServiceUpdateInput!) {
+      serviceUpdate(id: $id, input: $input)
+    }`,
+    { id: serviceId, input: { name: name.substring(0, 32) } },
+  );
+  log.info('Railway service renamed', { serviceId, name });
+}
+
+/**
+ * Bank an EMPTY service for the pool: serviceCreate + domain mint only.
+ * Deliberately NO serviceInstanceUpdate and NO serviceInstanceDeployV2 -
+ * an empty service with no deployment costs $0; checkout's
+ * updateAndRedeployService sets image/startCommand/healthcheck/env exactly
+ * like a fresh createService would (boots identically - Rule-36).
+ *
+ * Domain mint failure is tolerated (domain: null): ensureServiceDomain heals
+ * at checkout via the same query-first path.
+ */
+export async function createEmptyPooledService(
+  name: string,
+): Promise<{ serviceId: string; domain: string | null }> {
+  assertRailwayTargetAllowed();
+
+  const createData = await railwayGql<{ serviceCreate: { id: string } }>(
+    `mutation($input: ServiceCreateInput!) {
+      serviceCreate(input: $input) { id }
+    }`,
+    {
+      input: {
+        projectId: RAILWAY_PROJECT_ID,
+        name: name.substring(0, 32),
+      },
+    },
+  );
+  const serviceId = createData.serviceCreate.id;
+
+  let domain: string | null = null;
+  try {
+    domain = await ensureServiceDomain(serviceId);
+  } catch (err) {
+    log.warn('Pool bank: domain mint failed; banking domainless (heals at checkout)', {
+      serviceId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  log.info('Railway empty service banked for pool', { serviceId, domain, name });
+  return { serviceId, domain };
+}
+
+/**
+ * Volume ids attached to a service (any environment). Recycle privacy gate:
+ * every one of these MUST be destroyed before a pooled service flips READY.
+ * Throws on query failure - the caller must treat "cannot verify" as unsafe.
+ */
+export async function listServiceVolumeIds(serviceId: string): Promise<string[]> {
+  const data = await railwayGql<{
+    project: {
+      volumes: {
+        edges: Array<{
+          node: {
+            id: string;
+            volumeInstances: { edges: Array<{ node: { serviceId: string | null } }> };
+          };
+        }>;
+      };
+    };
+  }>(
+    `query($id: String!) {
+      project(id: $id) {
+        volumes {
+          edges {
+            node {
+              id
+              volumeInstances { edges { node { serviceId } } }
+            }
+          }
+        }
+      }
+    }`,
+    { id: RAILWAY_PROJECT_ID },
+  );
+
+  const edges = data.project.volumes?.edges ?? [];
+  return edges
+    .filter((e) =>
+      (e.node.volumeInstances?.edges ?? []).some((vi) => vi.node.serviceId === serviceId),
+    )
+    .map((e) => e.node.id);
+}
+
+/** Permanently destroy a volume and all its data (recycle privacy gate). */
+export async function deleteVolume(volumeId: string): Promise<void> {
+  assertRailwayTargetAllowed();
+  await railwayGql(
+    `mutation($id: String!) {
+      volumeDelete(id: $id)
+    }`,
+    { id: volumeId },
+  );
+  log.info('Railway volume destroyed', { volumeId });
+}
+
+/** Light project service count (single query - refill ceiling guard). */
+export async function countProjectServices(): Promise<number> {
+  const data = await railwayGql<{
+    project: { services: { edges: Array<{ node: { id: string } }> } };
+  }>(
+    `query($id: String!) {
+      project(id: $id) { services { edges { node { id } } } }
+    }`,
+    { id: RAILWAY_PROJECT_ID },
+  );
+  return data.project.services.edges.length;
 }
 
 /**
