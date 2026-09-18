@@ -807,3 +807,67 @@ describe('POST /api/dodo-payments/webhook', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ToS section-12 retention clock: expiry stamps canceledAt +
+// stateRetainedUntil (7-day grace + 30-day resumable = +37d); reactivation
+// clears both. Bookkeeping only - nothing deletes data (legal audit).
+// MUTATION: removing the stamp or the clear fails these.
+describe("ToS retention clock (canceledAt / stateRetainedUntil)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-ret",
+      hasActiveSubscription: false,
+      subscriptionId: null,
+    });
+    (prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+    (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    mockUserLookup("user-ret");
+  });
+
+  it("subscription.expired stamps canceledAt + stateRetainedUntil = +37 days on unstamped workspaces", async () => {
+    const res = await POST(createWebhookRequest({
+      type: "subscription.expired",
+      data: {
+        subscription_id: "sub_exp_1",
+        metadata: { type: "claw_platform", userId: "user-ret" },
+      },
+    }));
+    expect(res.status).toBe(200);
+
+    const call = (prismaMock.workspace.updateMany as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => (c[0] as { data?: { canceledAt?: unknown } }).data?.canceledAt,
+    );
+    expect(call).toBeTruthy();
+    const args = call![0] as {
+      where: { userId: string; canceledAt: null };
+      data: { canceledAt: Date; stateRetainedUntil: Date };
+    };
+    expect(args.where).toEqual({ userId: "user-ret", canceledAt: null });
+    const windowMs = args.data.stateRetainedUntil.getTime() - args.data.canceledAt.getTime();
+    expect(windowMs).toBe(37 * 24 * 60 * 60 * 1000);
+  });
+
+  it("subscription.active clears the retention clock (resume inside the window)", async () => {
+    (prismaMock.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "user-ret",
+      hasActiveSubscription: true,
+      subscriptionId: "sub_new",
+    });
+
+    const res = await POST(createWebhookRequest({
+      type: "subscription.active",
+      data: {
+        subscription_id: "sub_new",
+        customer: { customer_id: "cus_1", email: "ret@example.com" },
+        metadata: { type: "claw_platform", userId: "user-ret" },
+      },
+    }));
+    expect(res.status).toBe(200);
+
+    expect(prismaMock.workspace.updateMany).toHaveBeenCalledWith({
+      where: { userId: "user-ret", canceledAt: { not: null } },
+      data: { canceledAt: null, stateRetainedUntil: null },
+    });
+  });
+});

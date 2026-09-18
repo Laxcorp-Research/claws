@@ -389,6 +389,14 @@ async function handleSubscriptionActive(
     })
 
     log.info("User subscription updated", { userId: updated.id, hasActiveSubscription: updated.hasActiveSubscription, subscriptionId: updated.subscriptionId })
+
+    // ToS §12: resubscribing inside the retention window resumes the account
+    // - clear the retention clock stamped at expiry.
+    await prisma.workspace.updateMany({
+      where: { userId: user.id, canceledAt: { not: null } },
+      data: { canceledAt: null, stateRetainedUntil: null },
+    })
+
     log.paymentEvent({ event: "subscription_activated", userId: user.id, status: "success" })
     await ledgerSubscriptionLifecycle({
       userId: user.id,
@@ -525,6 +533,22 @@ async function handleSubscriptionExpired(
         subscriptionEndsAt: null,
         subscriptionStatus: "expired",
       },
+    })
+    // ToS §12 retention clock (bookkeeping - nothing deletes data yet):
+    // cancellation took effect NOW; the ToS grants a 7-day resubscribe grace
+    // BEFORE the retention timeline starts, then 30 days resumable.
+    // stateRetainedUntil = now + 7 + 30 days marks the end of the resumable
+    // window. Deletion at day 90 is NOT implemented (deliberately - see the
+    // legal audit; founder decision pending), so these stamps are the truth
+    // source for a future enforcement job and for dashboard surfacing.
+    // MUTATION: remove the stamp → retention-clock test fails.
+    const canceledAt = new Date()
+    const stateRetainedUntil = new Date(
+      canceledAt.getTime() + (7 + 30) * 24 * 60 * 60 * 1000,
+    )
+    await prisma.workspace.updateMany({
+      where: { userId: user.id, canceledAt: null },
+      data: { canceledAt, stateRetainedUntil },
     })
     await ledgerSubscriptionLifecycle({
       userId: user.id,
