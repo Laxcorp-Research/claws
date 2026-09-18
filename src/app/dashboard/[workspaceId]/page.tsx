@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { DRIFT_BANNER_HEADLINE, formatChangedAreas } from "@/components/shared/drift-banner"
 import { OctagonX, Pause, Square, Unplug, TrendingUp, Clock, RefreshCw, Gift, Moon, ArrowUpCircle } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { FinancialAckDialog } from "@/components/legal/financial-ack-dialog"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
@@ -206,12 +207,6 @@ interface StableVersionInfo {
   releaseNotes: string | null
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  ORCHESTRATOR: "#5BA1F5",
-  WORKER: "#8BFCAE",
-  CRITIC: "#A78BFA",
-}
-
 const ROLE_ORDER: Record<string, number> = { ORCHESTRATOR: 0, WORKER: 1, CRITIC: 2 }
 
 const MAX_LOG_ENTRIES = 200
@@ -353,6 +348,9 @@ export default function DashboardPage() {
   const [subscribing, setSubscribing] = useState(false)
   const [redeployConfirmOpen, setRedeployConfirmOpen] = useState(false)
   const [redeployFromStoppedConfirmOpen, setRedeployFromStoppedConfirmOpen] = useState(false)
+  // Legal §8 gate (financial templates): server returns
+  // FINANCIAL_TERMS_ACK_REQUIRED when the workspace has no stored ack.
+  const [financialAckOpen, setFinancialAckOpen] = useState(false)
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
@@ -661,11 +659,26 @@ export default function DashboardPage() {
     }
   }, [workspace?.status, workspaceId, fetchStats, fetchChannelStatus, showSnackbar])
 
-  const handleRedeployFromStopped = async () => {
+  const handleRedeployFromStopped = async (opts?: { financialAckAccepted?: boolean }) => {
     setRedeployFromStoppedConfirmOpen(false)
     try {
-      const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
+      const res = await fetch(`/api/deploy/${workspaceId}/cloud`, {
+        method: "POST",
+        ...(opts?.financialAckAccepted === true
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ financialAckAccepted: true }),
+            }
+          : {}),
+      })
       const json: unknown = await res.json().catch(() => null)
+      const errorCode = json && typeof json === "object" && "error" in json
+        ? (json as { error?: { code?: string } }).error?.code
+        : undefined
+      if (errorCode === "FINANCIAL_TERMS_ACK_REQUIRED") {
+        setFinancialAckOpen(true)
+        return
+      }
       const queued = json && typeof json === "object" && "data" in json
         ? (json as { data?: { queued?: boolean; message?: string } }).data
         : undefined
@@ -1776,6 +1789,15 @@ export default function DashboardPage() {
         confirmLabel="Stop"
         cancelLabel="Keep running"
         loading={stopping}
+      />
+
+      <FinancialAckDialog
+        open={financialAckOpen}
+        onClose={() => setFinancialAckOpen(false)}
+        onConfirm={() => {
+          setFinancialAckOpen(false)
+          handleRedeployFromStopped({ financialAckAccepted: true })
+        }}
       />
 
       <RedeployProgressModal

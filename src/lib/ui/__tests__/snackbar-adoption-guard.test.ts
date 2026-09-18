@@ -104,9 +104,12 @@ describe("PR-4 Snackbar adoption guard", () => {
       for (const handler of site.handlers) {
         const idx = src.indexOf(handler)
         expect(idx, `${site.file} missing ${handler}`).toBeGreaterThanOrEqual(0)
-        // Window centered on the marker so message strings after the helper still pass.
+        // Window centered on the marker so message strings after the helper
+        // still pass. 1600 forward (was 800): the legal §8 ack gate grew
+        // handleRedeployFromStopped's preamble; the per-handler presence
+        // assertion is unchanged.
         const start = Math.max(0, idx - 400)
-        const window = src.slice(start, idx + 800)
+        const window = src.slice(start, idx + 1600)
         expect(
           window,
           `${site.file} · ${handler} bypasses mutateWithFeedback`,

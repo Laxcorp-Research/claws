@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto"
 import { execSync } from "node:child_process"
-import { writeFileSync, mkdirSync, readFileSync } from "node:fs"
+import { writeFileSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 
 const SANDBOX_REPORT_VERSION = 1

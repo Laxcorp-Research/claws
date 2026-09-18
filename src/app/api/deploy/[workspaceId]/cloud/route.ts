@@ -17,10 +17,16 @@ import {
   enqueueProvisioning,
   isProvisioningQueuedError,
 } from "@/lib/railway/governor"
+import {
+  FINANCIAL_ACK_LABEL,
+  FINANCIAL_ACK_REQUIRED_CODE,
+  isFinancialTemplateSlug,
+} from "@/lib/legal/consent"
+import { hasConsent, recordConsent } from "@/lib/legal/consent-server"
 
 export const maxDuration = 300
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const sessionUser = await getSessionUser()
   if (!sessionUser) return ERRORS.UNAUTHORIZED()
   const { workspaceId } = await params
@@ -59,6 +65,48 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ wo
       topology.primaryMessage ?? "Fix your team connections before deploying.",
       400,
     )
+  }
+
+  // Legal: FIRST deploy of a financial template requires the §8
+  // acknowledgement ("I've read the AI & autonomy terms (§8)"), stored as a
+  // ConsentRecord. Sits BEFORE the trial-start side effect so an unacked
+  // attempt never burns the trial clock. The client retries with
+  // { financialAckAccepted: true } after showing the dialog.
+  // MUTATION: remove this gate → financial deploy-bypass test fails.
+  const wsTemplate = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { clawTemplate: { select: { slug: true } } },
+  })
+  const templateSlug = wsTemplate?.clawTemplate?.slug ?? null
+  if (isFinancialTemplateSlug(templateSlug)) {
+    const acked = await hasConsent({
+      userId: sessionUser.id,
+      kind: "FINANCIAL_AUTONOMY_S8",
+      workspaceId,
+    })
+    if (!acked) {
+      let ackAccepted = false
+      try {
+        const body = (await req.json()) as { financialAckAccepted?: unknown }
+        ackAccepted = body?.financialAckAccepted === true
+      } catch {
+        // No/invalid body - legacy callers deploy without one.
+      }
+      if (!ackAccepted) {
+        return apiError(
+          FINANCIAL_ACK_REQUIRED_CODE,
+          `This template can act on financial accounts. Confirm "${FINANCIAL_ACK_LABEL}" to deploy.`,
+          428,
+        )
+      }
+      await recordConsent({
+        userId: sessionUser.id,
+        kind: "FINANCIAL_AUTONOMY_S8",
+        workspaceId,
+        source: "deploy-gate",
+        metadata: { templateSlug },
+      })
+    }
   }
 
   const user = await prisma.user.findUniqueOrThrow({

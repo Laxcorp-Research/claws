@@ -884,7 +884,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           }
         }
 
-        let updatedNodes = s.nodes.map(n => {
+        const updatedNodes = s.nodes.map(n => {
           const realId = idMap.get(n.id)
           if (realId) {
             return { ...n, id: realId, data: { ...(n.data as AgentNodeData), agentId: realId } }
@@ -892,7 +892,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
           return n
         }) as Node<AgentNodeData>[]
 
-        let updatedEdges = s.edges.map(e => ({
+        const updatedEdges = s.edges.map(e => ({
           ...e,
           source: idMap.get(e.source) || e.source,
           target: idMap.get(e.target) || e.target,

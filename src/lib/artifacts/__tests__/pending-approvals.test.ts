@@ -25,7 +25,6 @@ import {
   countPendingApprovalsByWorkspace,
   hydratePendingApprovals,
   nudgeStaleWebChatPendingApprovals,
-  PENDING_APPROVAL_NUDGE_AFTER_MS,
   respondedRequestIds,
 } from "@/lib/artifacts/pending-approvals"
 
@@ -226,7 +225,6 @@ describe("nudgeStaleWebChatPendingApprovals", () => {
   })
 
   it("emails web-chat-only stale approvals and skips channel-connected claws", async () => {
-    const staleAt = new Date(Date.now() - PENDING_APPROVAL_NUDGE_AFTER_MS - 1000)
     ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockImplementation(
       async (args: { where?: { workspaceId?: string } }) => {
         if (args.where?.workspaceId === "ws-web") return []

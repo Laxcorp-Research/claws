@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, it, expect, afterEach, vi } from "vitest"
+import { describe, it, expect, afterEach } from "vitest"
 import { render, screen, cleanup } from "@testing-library/react"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 

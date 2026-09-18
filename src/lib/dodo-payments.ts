@@ -219,6 +219,10 @@ export function checkDeployEligibility(user: DeployEligibilityUser): DeployEligi
 export async function getPortalUrl(dodoCustomerId: string): Promise<string | null> {
   if (MOCK_MODE || !dodoCustomerId) return null
   const dodo = getDodoClient()
-  const portal = await (dodo.customers as unknown as Record<string, Function>).createCustomerPortalSession(dodoCustomerId)
-  return (portal as Record<string, string>).link ?? null
+  const portal = await (
+    dodo.customers as unknown as {
+      createCustomerPortalSession: (customerId: string) => Promise<{ link?: string }>
+    }
+  ).createCustomerPortalSession(dodoCustomerId)
+  return portal.link ?? null
 }

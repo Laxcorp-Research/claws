@@ -225,7 +225,7 @@ async function provisionFreshService(
 // Deployment Status
 // ---------------------------------------------------------------------------
 
-type DeploymentStatus =
+export type DeploymentStatus =
   | 'PENDING'
   | 'GENERATING'
   | 'PROVISIONING'
@@ -236,7 +236,7 @@ type DeploymentStatus =
   | 'COMPLETED'
   | 'FAILED';
 
-type DeploymentCompletionData = {
+export type DeploymentCompletionData = {
   configHash: string;
   configSnapshot: string;
   configSnapshotGzip: Uint8Array<ArrayBuffer>;
@@ -260,7 +260,7 @@ function buildEnvManifest(envFile: string): Record<string, string> {
   return manifest;
 }
 
-async function updateDeploymentStatus(
+export async function updateDeploymentStatus(
   deploymentId: string,
   workspaceId: string,
   status: DeploymentStatus,
@@ -279,7 +279,7 @@ async function updateDeploymentStatus(
   publishDeployEvent(workspaceId, deploymentId, status, error).catch(() => {});
 }
 
-function buildDeploymentCompletionData(
+export function buildDeploymentCompletionData(
   fingerprint: WorkspaceConfigFingerprint,
   generated: GeneratedWorkspace,
 ): DeploymentCompletionData {
@@ -316,7 +316,7 @@ function buildDeploymentCompletionData(
   };
 }
 
-function withRailwayDeploymentId(
+export function withRailwayDeploymentId(
   completionData: DeploymentCompletionData,
   railwayDeploymentId: string | null,
 ): DeploymentCompletionData {
@@ -473,7 +473,110 @@ export async function resolveDeployImage(
 }
 
 // ---------------------------------------------------------------------------
-// Deploy to Cloud (Railway)
+// Shared deploy scaffolding (Railway deployToCloud + Fly deployToFly)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pre-populate ContainerState BEFORE any provider call. The container's
+ * first state sync (~30s after boot, per PR2) uses updateMany on this
+ * row - if the row doesn't exist yet, the sync is silently dropped
+ * (count=0 no-op). Creating the row first makes the write idempotent
+ * and closes the race.
+ *
+ * Error paths use updateMany with containerPhase='STOPPED', which will
+ * correctly find this row and flip it on failure. No semantic drift.
+ *
+ * Known staleness windows (accepted, documented so future readers
+ * don't re-derive from git archaeology):
+ *   - hasChannels(workspace) reflects the workspace at deploy-start
+ *     time, not deploy-completion. If the user toggles channels
+ *     mid-deploy (~30-60s window), the ContainerState row's
+ *     hasActiveChannels may lag by one deploy cycle. Concurrent
+ *     channel reconfiguration during an active deploy is rare enough
+ *     to accept rather than add a second write after deploy success.
+ *   - lastActiveAt is set at deploy-start (was previously post-success).
+ *     The hibernation threshold is 10 min idle, well above the ~60s
+ *     window, so no practical impact on hibernation decisions.
+ */
+export async function upsertContainerStateForDeploy(args: {
+  workspaceId: string;
+  generated: Pick<GeneratedWorkspace, 'openclaw.json' | 'cron/jobs.json'>;
+  channelsActive: boolean;
+  runtimeContract: RuntimeContract;
+}): Promise<void> {
+  const { workspaceId, generated, channelsActive } = args;
+  // Lifecycle P2: persist interval ms + rolling wake hint (cron OR now+interval).
+  const heartbeatIntervalMs = extractHeartbeatIntervalMsFromOpenclawJson(
+    generated['openclaw.json'],
+  );
+  const cronExprs =
+    generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null;
+  const nextHeartbeatAt = computeNextHeartbeatAt({
+    now: new Date(),
+    heartbeatCronExpressions: cronExprs,
+    heartbeatIntervalMs,
+  });
+  await prisma.containerState.upsert({
+    where: { workspaceId },
+    update: {
+      containerPhase: channelsActive ? 'WARM' : 'RUNNING',
+      lastActiveAt: new Date(),
+      hibernatedAt: null,
+      wakeRequestedAt: null,
+      hasActiveChannels: channelsActive,
+      // Clear connect stamp when channels leave; first-connect stamp is
+      // set below via updateMany (preserves age across redeploy).
+      ...(channelsActive ? {} : { channelsConnectedAt: null }),
+      nextHeartbeatAt,
+      heartbeatInterval: heartbeatIntervalMs,
+      heartbeatCronExpressions: cronExprs,
+      // PR-2: a fresh container makes any prior teardown's incomplete-sync
+      // marker moot - clear it so a stale flag never lingers across deploys.
+      lastSyncIncompleteAt: null,
+      lastSyncIncompleteReason: null,
+      // Snapshot generations: the persist path compares this against
+      // runtimeStateContract to pin a pre-migration generation on the
+      // first persist after a contract change.
+      deployedRuntimeContract: args.runtimeContract,
+    },
+    create: {
+      workspaceId,
+      deployedRuntimeContract: args.runtimeContract,
+      containerPhase: channelsActive ? 'WARM' : 'RUNNING',
+      lastActiveAt: new Date(),
+      hasActiveChannels: channelsActive,
+      channelsConnectedAt: channelsActive ? new Date() : null,
+      nextHeartbeatAt,
+      heartbeatInterval: heartbeatIntervalMs,
+      heartbeatCronExpressions: cronExprs,
+    },
+  });
+  // P1.1: stamp channelsConnectedAt only when still null (redeploy must
+  // not reset the 24h warmIdle clock).
+  if (channelsActive) {
+    await prisma.containerState.updateMany({
+      where: { workspaceId, channelsConnectedAt: null },
+      data: { channelsConnectedAt: new Date() },
+    });
+  }
+}
+
+/** Exported for the Fly deployer (same channel semantics as Railway). */
+export function workspaceHasChannels(workspace: { channelConfigEncrypted?: string | null }): boolean {
+  return hasChannels(workspace);
+}
+
+/** Exported for the Fly deployer (shared /readyz + /healthz polling). */
+export async function waitForHttpEndpoint(url: string, timeoutMs: number): Promise<void> {
+  return waitForEndpoint(url, timeoutMs);
+}
+
+export async function nextDeploymentVersion(workspaceId: string): Promise<number> {
+  return getNextDeploymentVersion(workspaceId);
+}
+
+// ---------------------------------------------------------------------------
+// Deploy to Cloud (provider front door + Railway implementation)
 // ---------------------------------------------------------------------------
 
 export type DeployToCloudOptions = {
@@ -500,6 +603,18 @@ export async function deployToCloud(
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
+
+  // Provider front door: FLY workspaces (stamped, or new-workspace flag)
+  // deploy via the Fly Machines adapter behind the same contract. Dynamic
+  // import keeps the module graph acyclic (fly-deployer imports this
+  // module's exported scaffolding). Everything below this line is the
+  // battle-tested RAILWAY path, untouched.
+  const { resolveEffectiveProvider } = await import('@/lib/fly/provider');
+  const effectiveProvider = await resolveEffectiveProvider(workspace);
+  if (effectiveProvider === 'FLY') {
+    const { deployToFly } = await import('@/lib/fly/fly-deployer');
+    return deployToFly(workspaceId, opts);
+  }
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: workspace.userId },
@@ -568,82 +683,13 @@ export async function deployToCloud(
       return simulateDeploy(workspaceId, deployment.id, workspace, completionData);
     }
 
-    // Pre-populate ContainerState BEFORE any Railway call. The container's
-    // first state sync (~30s after boot, per PR2) uses updateMany on this
-    // row - if the row doesn't exist yet, the sync is silently dropped
-    // (count=0 no-op). Creating the row first makes the write idempotent
-    // and closes the race.
-    //
-    // Error path at the bottom of this try/catch uses updateMany with
-    // containerPhase='STOPPED', which will now correctly find this row
-    // and flip it on failure. No semantic drift.
-    //
-    // Known staleness windows (accepted, documented so future readers
-    // don't re-derive from git archaeology):
-    //   - hasChannels(workspace) reflects the workspace at deploy-start
-    //     time, not deploy-completion. If the user toggles channels
-    //     mid-deploy (~30-60s window for deployToCloud), the ContainerState
-    //     row's hasActiveChannels may lag by one deploy cycle. Concurrent
-    //     channel reconfiguration during an active deploy is rare enough
-    //     to accept rather than add a second write after waitForDeploymentSuccess.
-    //   - lastActiveAt is set at deploy-start (was previously post-success).
-    //     The hibernation threshold is 10 min idle, well above the ~60s
-    //     window, so no practical impact on hibernation decisions.
     const channelsActive = hasChannels(workspace);
-    // Lifecycle P2: persist interval ms + rolling wake hint (cron OR now+interval).
-    const heartbeatIntervalMs = extractHeartbeatIntervalMsFromOpenclawJson(
-      generated['openclaw.json'],
-    );
-    const cronExprs =
-      generated['cron/jobs.json'] !== '[]' ? generated['cron/jobs.json'] : null;
-    const nextHeartbeatAt = computeNextHeartbeatAt({
-      now: new Date(),
-      heartbeatCronExpressions: cronExprs,
-      heartbeatIntervalMs,
+    await upsertContainerStateForDeploy({
+      workspaceId,
+      generated,
+      channelsActive,
+      runtimeContract: target.runtimeContract,
     });
-    await prisma.containerState.upsert({
-      where: { workspaceId },
-      update: {
-        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
-        lastActiveAt: new Date(),
-        hibernatedAt: null,
-        wakeRequestedAt: null,
-        hasActiveChannels: channelsActive,
-        // Clear connect stamp when channels leave; first-connect stamp is
-        // set below via updateMany (preserves age across redeploy).
-        ...(channelsActive ? {} : { channelsConnectedAt: null }),
-        nextHeartbeatAt,
-        heartbeatInterval: heartbeatIntervalMs,
-        heartbeatCronExpressions: cronExprs,
-        // PR-2: a fresh container makes any prior teardown's incomplete-sync
-        // marker moot - clear it so a stale flag never lingers across deploys.
-        lastSyncIncompleteAt: null,
-        lastSyncIncompleteReason: null,
-        // Snapshot generations: the persist path compares this against
-        // runtimeStateContract to pin a pre-migration generation on the
-        // first persist after a contract change.
-        deployedRuntimeContract: target.runtimeContract,
-      },
-      create: {
-        workspaceId,
-        deployedRuntimeContract: target.runtimeContract,
-        containerPhase: channelsActive ? 'WARM' : 'RUNNING',
-        lastActiveAt: new Date(),
-        hasActiveChannels: channelsActive,
-        channelsConnectedAt: channelsActive ? new Date() : null,
-        nextHeartbeatAt,
-        heartbeatInterval: heartbeatIntervalMs,
-        heartbeatCronExpressions: cronExprs,
-      },
-    });
-    // P1.1: stamp channelsConnectedAt only when still null (redeploy must
-    // not reset the 24h warmIdle clock).
-    if (channelsActive) {
-      await prisma.containerState.updateMany({
-        where: { workspaceId, channelsConnectedAt: null },
-        data: { channelsConnectedAt: new Date() },
-      });
-    }
 
     await updateDeploymentStatus(deployment.id, workspaceId, 'PROVISIONING');
     const serviceName = `${CONTAINER_PREFIX}-${workspaceId}`.substring(0, 32);
@@ -900,22 +946,36 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
-  // "survived" (legacy delete failed with the service possibly alive) is the
+  // "survived" (delete failed with the container possibly alive) is the
   // only outcome that keeps containerHost so hibernate/wake can reuse the
   // domain (DOMAIN_REUSE / service-survives). Every pool outcome detaches:
   // recycled/deferred means the pool state machine owns the service now.
-  let serviceGone = !(isRailwayConfigured() && workspace.containerId);
-  if (isRailwayConfigured() && workspace.containerId) {
-    const outcome = await teardownServiceViaPool({
-      serviceId: workspace.containerId,
-      workspaceId,
-    });
+  let serviceGone: boolean;
+  if (workspace.provider === 'FLY') {
+    // Fly terminal teardown: destroy machine + app (no pool - machine
+    // creates are uncapped). Never throws.
+    const { destroyFlyWorkspace } = await import('@/lib/fly/fly-deployer');
+    const outcome = await destroyFlyWorkspace(workspace);
     serviceGone = outcome !== 'survived';
-    log.info('destroyContainer teardown outcome', {
+    log.info('destroyContainer teardown outcome (FLY)', {
       workspaceId,
-      serviceId: workspace.containerId,
+      machineId: workspace.containerId,
       outcome,
     });
+  } else {
+    serviceGone = !(isRailwayConfigured() && workspace.containerId);
+    if (isRailwayConfigured() && workspace.containerId) {
+      const outcome = await teardownServiceViaPool({
+        serviceId: workspace.containerId,
+        workspaceId,
+      });
+      serviceGone = outcome !== 'survived';
+      log.info('destroyContainer teardown outcome', {
+        workspaceId,
+        serviceId: workspace.containerId,
+        outcome,
+      });
+    }
   }
 
   // Atomically update Workspace row AND ContainerState row. Previous bug:
@@ -952,14 +1012,24 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
 }
 
 /**
- * HWD hibernate teardown: remove the latest Railway deployment, keep the
- * Service (same id, same domain). Does NOT null containerId/containerHost and
- * does NOT write STOPPED - hibernateWorkspace then sets HIBERNATED.
+ * HWD hibernate teardown: stop compute, keep identity (same container id,
+ * same domain). Does NOT null containerId/containerHost and does NOT write
+ * STOPPED - hibernateWorkspace then sets HIBERNATED.
+ *   RAILWAY: deploymentRemove(latest) - service + domain persist.
+ *   FLY: native machine stop - machine + app + domain + rootfs persist.
  */
 export async function removeDeploymentKeepService(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
+
+  if (workspace.provider === 'FLY') {
+    if (workspace.containerId) {
+      const { stopFlyMachineKeepApp } = await import('@/lib/fly/fly-deployer');
+      await stopFlyMachineKeepApp(workspace);
+    }
+    return;
+  }
 
   if (isRailwayConfigured() && workspace.containerId) {
     await removeLatestDeployment(workspace.containerId);
@@ -1131,6 +1201,20 @@ export async function restartContainer(workspaceId: string): Promise<void> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
+
+  if (workspace.provider === 'FLY' && workspace.containerId) {
+    const { restartFlyWorkspace } = await import('@/lib/fly/fly-deployer');
+    await restartFlyWorkspace(workspace);
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        status: 'RUNNING',
+        healthStatus: 'HEALTHY',
+        lastHealthCheck: new Date(),
+      },
+    });
+    return;
+  }
 
   if (isRailwayConfigured() && workspace.containerId) {
     await redeployService(workspace.containerId);

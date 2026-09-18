@@ -21,6 +21,7 @@ import { DriftBanner, formatChangedAreas } from "@/components/shared/drift-banne
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { FinancialAckDialog } from "@/components/legal/financial-ack-dialog"
 import { TextLink } from "@/components/ui/text-link"
 import { Input } from "@/components/ui/input"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
@@ -461,8 +462,10 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const [applyChangesOpen, setApplyChangesOpen] = useState(false)
   const [pendingOAuthSlug, setPendingOAuthSlug] = useState<string | null>(null)
   const [oauthErrors, setOauthErrors] = useState<Record<string, string | undefined>>({})
-  /** Bump to re-run Step-2 tool load after requirement-set mutations. */
-  const [toolsReloadToken, setToolsReloadToken] = useState(0)
+  /** Reserved bump to re-run Step-2 tool load; no mutation path calls the
+   * setter today, so only the (constant) value participates in the effect
+   * deps at :566. Restore the setter when a requirement-set mutation needs it. */
+  const [toolsReloadToken] = useState(0)
   const redeployFlow = useWorkspaceRedeploy({
     workspaceId,
     onCompleted: () => {
@@ -1922,6 +1925,9 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isDeploying, setIsDeploying] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null)
+  // Legal §8 gate: financial templates require the acknowledgement before
+  // their FIRST deploy (server returns FINANCIAL_TERMS_ACK_REQUIRED).
+  const [financialAckOpen, setFinancialAckOpen] = useState(false)
   const [deploymentError, setDeploymentError] = useState<string | null>(null)
   const [eligibility, setEligibility] = useState<DeployEligibility | null>(null)
   const [subscribing, setSubscribing] = useState(false)
@@ -2077,13 +2083,22 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
     return () => { cancelled = true }
   }, [searchParams, checkBillingAndUpdateEligibility])
 
-  const handleDeploy = useCallback(async () => {
+  const handleDeploy = useCallback(async (opts?: { financialAckAccepted?: boolean }) => {
+    const financialAckAccepted = opts?.financialAckAccepted === true
     setIsDeploying(true)
     setDeploymentStatus("PENDING")
     setDeploymentError(null)
 
     try {
-      const res = await fetch(`/api/deploy/${workspaceId}/cloud`, { method: "POST" })
+      const res = await fetch(`/api/deploy/${workspaceId}/cloud`, {
+        method: "POST",
+        ...(financialAckAccepted
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ financialAckAccepted: true }),
+            }
+          : {}),
+      })
       const json = await res.json()
 
       if (json.data?.queued || res.status === 202) {
@@ -2098,6 +2113,13 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       }
 
       if (!json.success) {
+        if (json.error?.code === "FINANCIAL_TERMS_ACK_REQUIRED") {
+          // §8 acknowledgement dialog; confirming retries with the ack flag.
+          setFinancialAckOpen(true)
+          setDeploymentStatus(null)
+          setIsDeploying(false)
+          return
+        }
         if (json.error?.code === "SUBSCRIPTION_REQUIRED") {
           setEligibility({ canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false })
         }
@@ -2228,11 +2250,11 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
             Subscribe to Deploy - $79/mo
           </Button>
         ) : creditUser ? (
-          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !toolPrereqsReady}>
+          <Button variant="primary" size="default" onClick={() => handleDeploy()} disabled={isDeploying || !toolPrereqsReady}>
             Deploy Claw
           </Button>
         ) : (
-          <Button variant="primary" size="default" onClick={handleDeploy} disabled={isDeploying || !eligibility || !toolPrereqsReady}>
+          <Button variant="primary" size="default" onClick={() => handleDeploy()} disabled={isDeploying || !eligibility || !toolPrereqsReady}>
             {eligibility?.isFirstDeploy ? "Deploy - 3-day trial" : "Deploy"}
           </Button>
         )
@@ -2328,6 +2350,14 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         error={redeployFlow.error}
         onClose={redeployFlow.closeModal}
         onRetry={redeployFlow.retry}
+      />
+      <FinancialAckDialog
+        open={financialAckOpen}
+        onClose={() => setFinancialAckOpen(false)}
+        onConfirm={() => {
+          setFinancialAckOpen(false)
+          handleDeploy({ financialAckAccepted: true })
+        }}
       />
     </>
   )

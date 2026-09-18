@@ -180,6 +180,62 @@
       "whereCreated": "Vercel Production + Preview optional; code default 5 if unset"
     },
     {
+      "name": "FLY_API_TOKEN",
+      "purpose": "Bearer token for the Fly Machines REST API + GraphQL (org-scoped deploy token). Unset = Fly adapter off",
+      "required": false,
+      "surfaces": ["src/lib/fly/machines-client.ts"],
+      "whereCreated": "fly tokens create org; Vercel Production + Preview when the Fly adapter arms"
+    },
+    {
+      "name": "FLY_ORG_SLUG",
+      "purpose": "Fly organization slug that owns per-claw apps",
+      "required": false,
+      "surfaces": ["src/lib/fly/machines-client.ts"],
+      "whereCreated": "Fly dashboard; Vercel Production + Preview with FLY_API_TOKEN"
+    },
+    {
+      "name": "FLY_REGION",
+      "purpose": "Region for new Fly machines (default iad)",
+      "required": false,
+      "surfaces": ["src/lib/fly/machines-client.ts"],
+      "whereCreated": "Vercel optional; code default iad"
+    },
+    {
+      "name": "FLY_IMAGE_MIRROR_PREFIX",
+      "purpose": "registry.fly.io/<runtime app> prefix the resolved GHCR image tag maps onto (Machines API cannot pull private GHCR). Required for the Fly adapter",
+      "required": false,
+      "surfaces": ["src/lib/fly/machines-client.ts"],
+      "whereCreated": "Image pipeline pushes each version there; Vercel Production + Preview with FLY_API_TOKEN"
+    },
+    {
+      "name": "FLY_MACHINE_MEMORY_MB",
+      "purpose": "Fly machine memory in MB, multiple of 256 (default 1024)",
+      "required": false,
+      "surfaces": ["src/lib/fly/machines-client.ts"],
+      "whereCreated": "Vercel optional; code default 1024"
+    },
+    {
+      "name": "FLY_APP_PREFIX",
+      "purpose": "Fly app name prefix per claw (default claw). Staging MUST set a distinct prefix (e.g. claw-stg) - Fly app names are org-global, unlike Railway per-project services",
+      "required": false,
+      "surfaces": ["src/lib/fly/machines-client.ts"],
+      "whereCreated": "Vercel Preview (claw-stg) + Production (claw)"
+    },
+    {
+      "name": "NEW_WORKSPACE_PROVIDER",
+      "purpose": "Cutover flag: FLY routes never-provisioned workspaces to the Fly adapter at first deploy. Unset/RAILWAY = incumbent. Flip back to roll back new deploys",
+      "required": false,
+      "surfaces": ["src/lib/fly/provider.ts"],
+      "whereCreated": "Vercel; arm only after the Fly 24h soak is green (founder ACK)"
+    },
+    {
+      "name": "MIGRATE_ON_WAKE_TO",
+      "purpose": "Cutover flag: FLY migrates existing RAILWAY claws to Fly on natural wake (Railway service recycled into the pool; snapshot restore is provider-neutral). Per-claw rollback = provider column flip back",
+      "required": false,
+      "surfaces": ["src/lib/fly/provider.ts"],
+      "whereCreated": "Vercel; arm after new-workspace phase is stable (founder ACK)"
+    },
+    {
       "name": "MARKETPLACE_PUBLISH_ENABLED",
       "purpose": "Server gate for creator publish wizards + POST publish APIs",
       "required": false,
