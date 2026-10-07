@@ -3,9 +3,9 @@
  *
  * Copy uses "stopped/stop", never "paused" (#339).
  *
- * FLAG (restore gap): resubscribe does NOT auto-redeploy. Runtime files
- * restore on next deploy/wake only if a pre-destroy snapshot was synced.
- * Email therefore says "subscribe to redeploy", not "data auto-restored".
+ * Resubscribe enqueues a redeploy (subscription.active). Runtime memory
+ * restores only when a pre-destroy snapshot was synced. Copy says
+ * "subscribe to redeploy", not "data auto-restored".
  */
 
 import { sendEmail, type SendEmailResult } from "@/lib/email/send-email"
@@ -60,15 +60,15 @@ export async function sendTrialExpiryNotifyEmail(args: {
     kind: "trial_expiry_notify",
     workspaceIds: args.workspaceIds,
     to: args.to,
-    subject: "Your 3-day trial has ended",
+    subject: "Your trial ended. One click to resume",
     html: emailShell(`
                 <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">Hey ${greeting},</div>
                 <div style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.6;">
-                  Your 3-day trial has ended - subscribe to keep ${claws} running.
+                  Your trial ended. One click to resume ${claws}.
                   We'll stop them in 24 hours otherwise.
                 </div>
                 <a href="${BILLING_HREF}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
-                  Subscribe
+                  Resume
                 </a>
     `),
   })
@@ -104,6 +104,61 @@ export async function sendTrialExpiryStoppedEmail(args: {
                 </div>
                 <a href="${BILLING_HREF}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
                   Subscribe to redeploy
+                </a>
+    `),
+  })
+}
+
+export async function sendTrialWinbackEmail(args: {
+  to: string
+  name: string | null
+  clawNames: string[]
+  workspaceIds?: string[]
+}): Promise<SendEmailResult> {
+  const greeting = escapeHtml(args.name || "there")
+  const claws = clawListHtml(args.clawNames)
+  return sendEmail({
+    kind: "trial_winback_day7",
+    workspaceIds: args.workspaceIds,
+    to: args.to,
+    subject: "Your Claw is one click away",
+    html: emailShell(`
+                <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">Hey ${greeting},</div>
+                <div style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.6;">
+                  It's been a week since the trial for ${claws} ended.
+                  Subscribe and we redeploy it. Configuration is kept.
+                  Runtime memory comes back when a recent backup exists.
+                </div>
+                <a href="${BILLING_HREF}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
+                  Resume in one click
+                </a>
+    `),
+  })
+}
+
+export async function sendOnHoldCapEmail(args: {
+  to: string
+  name: string | null
+  clawNames: string[]
+  workspaceIds?: string[]
+}): Promise<SendEmailResult> {
+  const greeting = escapeHtml(args.name || "there")
+  const claws = clawListHtml(args.clawNames)
+  return sendEmail({
+    kind: "on_hold_cap_stop",
+    critical: true,
+    workspaceIds: args.workspaceIds,
+    escalateWorkspaceId: args.workspaceIds?.[0],
+    to: args.to,
+    subject: "We stopped your Claw after 14 days on hold",
+    html: emailShell(`
+                <div style="font-size:15px;color:#0A0A0B;margin-bottom:16px;">Hey ${greeting},</div>
+                <div style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.6;">
+                  ${claws} stayed on hold for 14 days, so we stopped it.
+                  Update your card and the subscription comes back, and we redeploy.
+                </div>
+                <a href="${BILLING_HREF}" style="display:inline-block;padding:10px 32px;background-color:#0A0A0B;color:#FFFFFF;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;">
+                  Update card and resume
                 </a>
     `),
   })

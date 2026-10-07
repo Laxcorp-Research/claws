@@ -161,6 +161,7 @@ export async function handleTelegramWakeOnChannel(
           trialEndsAt: true,
           hasActiveSubscription: true,
           subscriptionStatus: true,
+          subscriptionOnHoldAt: true,
         },
       },
     },

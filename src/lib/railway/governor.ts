@@ -252,6 +252,7 @@ export async function drainProvisioningQueueHead(schedule: (fn: () => void | Pro
               trialEndsAt: true,
               hasActiveSubscription: true,
               subscriptionStatus: true,
+              subscriptionOnHoldAt: true,
             },
           },
         },

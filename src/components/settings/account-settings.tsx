@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -65,17 +64,15 @@ export function AccountSettings({ user }: AccountSettingsProps) {
   const handleDelete = async () => {
     setDeleting(true)
     try {
-      // Batch F: signOut ONLY on res.ok - failure keeps session + error snackbar.
       await mutateWithFeedback(
         async () => {
           const res = await fetch("/api/user/profile", { method: "DELETE" })
-          if (!res.ok) throw new Error("Could not delete account")
-          await signOut({ redirect: false })
-          window.location.href = "/store"
+          if (!res.ok) throw new Error("Could not schedule deletion")
+          setDeleteOpen(false)
         },
         {
-          message: "Account deleted",
-          errorMessage: "Could not delete account",
+          message: "Deletion scheduled. You have 14 days to cancel.",
+          errorMessage: "Could not schedule deletion",
         },
         showSnackbar,
       )
@@ -151,7 +148,7 @@ export function AccountSettings({ user }: AccountSettingsProps) {
       <div className="border border-[var(--err)] rounded-[12px] p-[14px]">
         <h3 className="text-[13px] font-semibold text-[var(--err)] mb-[4px]">Danger zone</h3>
         <p className="text-[11px] text-[var(--tx2)] mb-[10px]">
-          Permanently delete your account and all data. This action cannot be undone.
+          Request deletion. You have 14 days to cancel. After that, Claws stop and the account is removed. Workspace data already past the 90-day retention window is deleted by the daily job.
         </p>
         <Button
           variant="outline"
@@ -167,9 +164,9 @@ export function AccountSettings({ user }: AccountSettingsProps) {
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDelete}
         title="Delete your account?"
-        description="This will permanently delete your account, all workspaces, and all data. Running Claws will be stopped. This cannot be undone."
-        warningText="This action is irreversible. All your Claws will stop running immediately."
-        confirmLabel="Delete my account"
+        description="This schedules deletion. For 14 days you can cancel from this page. After that, running Claws stop and the account is removed."
+        warningText="After 14 days this cannot be undone."
+        confirmLabel="Schedule deletion"
         variant="danger"
         loading={deleting}
       />

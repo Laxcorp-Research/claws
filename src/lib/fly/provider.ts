@@ -1,15 +1,10 @@
 /**
  * Provider-per-workspace resolution (RAILWAY | FLY).
  *
- * - `Workspace.provider` is the stamped truth once set to FLY.
- * - `NEW_WORKSPACE_PROVIDER=FLY` (cutover flag): NEVER-provisioned
- *   workspaces (zero COMPLETED/SUPERSEDED deployments, no containerId) are
- *   stamped FLY at their FIRST deploy. Existing claws are untouched - they
- *   migrate on natural wake via MIGRATE_ON_WAKE_TO (see hibernation
- *   manager), never mid-flight.
- * - Rollback for new deploys = unset the env var (already-stamped FLY
- *   workspaces keep running on Fly; per-claw rollback = flip the column
- *   back to RAILWAY and redeploy - the service pool provisions instantly).
+ * Phase 0 cancelled the Fly track. `newWorkspaceProviderFlag` always
+ * returns RAILWAY and `migrateOnWakeTarget` always returns null, so the
+ * cutover env vars are ignored. A row already stamped FLY still resolves
+ * to the Fly deployer; production has none.
  */
 
 import { prisma } from "@/lib/db"
@@ -19,15 +14,17 @@ import { isFlyConfigured } from "@/lib/fly/machines-client"
 export type WorkspaceCloudProvider = "RAILWAY" | "FLY"
 
 export function newWorkspaceProviderFlag(
-  raw = process.env.NEW_WORKSPACE_PROVIDER,
+  _raw = process.env.NEW_WORKSPACE_PROVIDER,
 ): WorkspaceCloudProvider {
-  return raw?.trim().toUpperCase() === "FLY" ? "FLY" : "RAILWAY"
+  // Phase 0: Fly track cancelled. NEW_WORKSPACE_PROVIDER=FLY is ignored.
+  return "RAILWAY"
 }
 
 export function migrateOnWakeTarget(
-  raw = process.env.MIGRATE_ON_WAKE_TO,
+  _raw = process.env.MIGRATE_ON_WAKE_TO,
 ): WorkspaceCloudProvider | null {
-  return raw?.trim().toUpperCase() === "FLY" ? "FLY" : null
+  // Phase 0: no wake-time migration onto Fly.
+  return null
 }
 
 /**

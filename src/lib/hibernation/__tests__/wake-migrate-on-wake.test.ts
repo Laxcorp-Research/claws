@@ -116,26 +116,17 @@ describe("wakeWorkspace + MIGRATE_ON_WAKE_TO", () => {
     )
   })
 
-  it("flag=FLY: recycles the Railway service to the pool, stamps FLY + detaches, wakes with create allowed", async () => {
+  it("flag=FLY is ignored (Fly track cancelled): wake stays on Railway", async () => {
     process.env.MIGRATE_ON_WAKE_TO = "FLY"
 
     await wakeWorkspace("ws-1")
 
-    expect(mockRecycleServiceIntoPool).toHaveBeenCalledWith({
-      serviceId: "svc-old",
-      workspaceId: "ws-1",
-    })
-    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
-      where: { id: "ws-1" },
-      data: {
-        provider: "FLY",
-        containerId: null,
-        containerName: null,
-        containerHost: null,
-      },
-    })
+    expect(mockRecycleServiceIntoPool).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ provider: "FLY" }) }),
+    )
     expect(mockDeployToCloud).toHaveBeenCalledWith("ws-1", {
-      forbidCreate: false,
+      forbidCreate: true,
       preserveHibernationOnFailure: true,
     })
   })

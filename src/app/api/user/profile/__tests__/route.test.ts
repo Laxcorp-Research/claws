@@ -1,7 +1,5 @@
-// Account deletion: containers MUST be torn down BEFORE the user row
-// cascades away. The prior bare user.delete orphaned LIVE Railway services
-// (Workspace rows gone -> no cron could ever reach them; user keys aboard,
-// billing forever). MUTATION: remove the teardown loop -> orphan test fails.
+// Account deletion is a 14-day grace. Immediate user.delete is gone:
+// the retention cron tears containers down, then deletes the user.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 
@@ -9,11 +7,6 @@ vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 
 const mockGetSessionUser = vi.fn()
 vi.mock("@/lib/api/auth", () => ({ getSessionUser: () => mockGetSessionUser() }))
-
-const mockDestroyContainer = vi.fn()
-vi.mock("@/lib/openclaw/deployer", () => ({
-  destroyContainer: (...args: unknown[]) => mockDestroyContainer(...args),
-}))
 
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -23,12 +16,12 @@ import { DELETE } from "@/app/api/user/profile/route"
 
 type MockFn = ReturnType<typeof vi.fn>
 
-describe("DELETE /api/user/profile (account deletion)", () => {
+describe("DELETE /api/user/profile (14-day grace)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetSessionUser.mockResolvedValue({ id: "user-del" })
-    mockDestroyContainer.mockResolvedValue(undefined)
-    ;(prismaMock.user.delete as MockFn).mockResolvedValue({ id: "user-del" })
+    ;(prismaMock.user.findUnique as MockFn).mockResolvedValue({ deletionRequestedAt: null })
+    ;(prismaMock.user.update as MockFn).mockResolvedValue({ id: "user-del" })
   })
 
   it("returns 401 when not authenticated", async () => {
@@ -36,47 +29,32 @@ describe("DELETE /api/user/profile (account deletion)", () => {
     const res = await DELETE()
     expect(res.status).toBe(401)
     expect(prismaMock.user.delete).not.toHaveBeenCalled()
+    expect(prismaMock.user.update).not.toHaveBeenCalled()
   })
 
-  it("tears down every containered workspace BEFORE deleting the user (no orphaned services)", async () => {
-    ;(prismaMock.workspace.findMany as MockFn).mockResolvedValue([
-      { id: "ws-a" },
-      { id: "ws-b" },
-    ])
-
+  it("schedules deletion and does not delete the user or tear down containers", async () => {
     const res = await DELETE()
     expect(res.status).toBe(200)
-
-    expect(prismaMock.workspace.findMany).toHaveBeenCalledWith({
-      where: { userId: "user-del", containerId: { not: null } },
-      select: { id: true },
-    })
-    expect(mockDestroyContainer).toHaveBeenCalledWith("ws-a")
-    expect(mockDestroyContainer).toHaveBeenCalledWith("ws-b")
-    // Teardown strictly precedes the cascading user delete.
-    expect(Math.max(...mockDestroyContainer.mock.invocationCallOrder)).toBeLessThan(
-      (prismaMock.user.delete as MockFn).mock.invocationCallOrder[0],
+    const body = await res.json()
+    expect(body.data.scheduled).toBe(true)
+    expect(body.data.purgeAt).toBeTruthy()
+    expect(prismaMock.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "user-del" },
+        data: expect.objectContaining({ deletionRequestedAt: expect.any(Date) }),
+      }),
     )
+    expect(prismaMock.user.delete).not.toHaveBeenCalled()
   })
 
-  it("a failing teardown is logged and does NOT strand the deletion (pool sweeper owns stragglers)", async () => {
-    ;(prismaMock.workspace.findMany as MockFn).mockResolvedValue([
-      { id: "ws-a" },
-      { id: "ws-b" },
-    ])
-    mockDestroyContainer.mockRejectedValueOnce(new Error("Railway 503"))
-
+  it("a second DELETE is idempotent and does not move the clock", async () => {
+    const requested = new Date("2026-10-01T00:00:00.000Z")
+    ;(prismaMock.user.findUnique as MockFn).mockResolvedValue({ deletionRequestedAt: requested })
     const res = await DELETE()
     expect(res.status).toBe(200)
-    expect(mockDestroyContainer).toHaveBeenCalledTimes(2)
-    expect(prismaMock.user.delete).toHaveBeenCalledWith({ where: { id: "user-del" } })
-  })
-
-  it("no containered workspaces -> straight delete", async () => {
-    ;(prismaMock.workspace.findMany as MockFn).mockResolvedValue([])
-    const res = await DELETE()
-    expect(res.status).toBe(200)
-    expect(mockDestroyContainer).not.toHaveBeenCalled()
-    expect(prismaMock.user.delete).toHaveBeenCalled()
+    const body = await res.json()
+    expect(body.data.purgeAt).toBe("2026-10-15T00:00:00.000Z")
+    expect(prismaMock.user.update).not.toHaveBeenCalled()
+    expect(prismaMock.user.delete).not.toHaveBeenCalled()
   })
 })

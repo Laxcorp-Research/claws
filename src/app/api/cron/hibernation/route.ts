@@ -183,6 +183,7 @@ export async function GET(req: NextRequest) {
             trialEndsAt: true,
             hasActiveSubscription: true,
             subscriptionStatus: true,
+            subscriptionOnHoldAt: true,
           },
         },
       },

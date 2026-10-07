@@ -336,6 +336,7 @@ export async function wakeWorkspace(workspaceId: string): Promise<void> {
           trialEndsAt: true,
           hasActiveSubscription: true,
           subscriptionStatus: true,
+          subscriptionOnHoldAt: true,
         },
       },
     },

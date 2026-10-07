@@ -27,6 +27,7 @@ export async function POST(
           trialEndsAt: true,
           hasActiveSubscription: true,
           subscriptionStatus: true,
+          subscriptionOnHoldAt: true,
         },
       },
     },

@@ -19,6 +19,8 @@ node_modules/
 .env.production
 .env.staging
 .env*.local
+.audit-tmp*
+.audit-tmp-*/
 
 # Database
 prisma/*.db

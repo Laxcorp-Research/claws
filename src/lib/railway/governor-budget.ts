@@ -145,7 +145,7 @@ export function queuedUserMessage(etaAt: Date, now: Date = new Date()): string {
   return `High demand - your claw is queued to provision, ~${formatQueueEta(etaAt, now)}. We'll notify you.`
 }
 
-export type QueueReason = "budget" | "railway_quota"
+export type QueueReason = "budget" | "railway_quota" | "resubscribe"
 
 export type CreateBudgetSnapshot = {
   cap: number

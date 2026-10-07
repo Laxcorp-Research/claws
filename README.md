@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Claws
 
-## Getting Started
+Open multi-agent platform. Bring any model. Run it on your infrastructure.
 
-First, run the development server:
+Claws is a control plane for teams of AI agents: a visual builder, a marketplace of templates and skills, and a runtime that talks to Telegram, WhatsApp, and other channels. The hosted product at [buildclaws.ai](https://buildclaws.ai) adds billing, a shared credit pool, and managed containers. The code in this repository is what you run yourself.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## What is in this repo
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js control plane (builder, settings, marketplace, crons)
+- Prisma schema and template/skill seed data
+- The container contract the runtime image is expected to honor
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## What stays hosted-only
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+These modules assume Laxcorp's accounts and are not part of a self-host bring-up. Gate them with `CLAWS_PROFILE=self-host` when that profile lands (Phase A is sized, not built):
 
-## Learn More
+- Dodo Payments checkout, webhooks, and creator payouts
+- The shared credit pool, metering master secret, and credit-proxy
+- Railway project governor and the retired service-pool refill
+- Fly Machines (track cancelled; flags are ignored)
+- Vercel cron fan-out and the GitHub Actions image-promote pipeline
+- Composio broker, Resend, Sentry, Axiom, Upstash as configured for the hosted app
 
-To learn more about Next.js, take a look at the following resources:
+Self-host Phase A (not in this tree yet): a local Docker provider behind `deployer.ts` (socket, stop/start, volumes, ports and a reverse proxy), Telegram long-polling and WhatsApp QR without a public URL, snapshots on disk, SMTP, a first-run owner account, and a registry-mode marketplace (index JSON, publish by pull request).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+AGPL-3.0-only. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-## Deploy on Vercel
+`prisma/seed-data/` (templates and skills) is Apache-2.0. See `prisma/seed-data/LICENSE`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Security
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [SECURITY.md](SECURITY.md). Do not open a public issue for a live credential.
