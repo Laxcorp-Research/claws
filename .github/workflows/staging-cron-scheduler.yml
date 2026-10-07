@@ -30,7 +30,7 @@ on:
   schedule:
     # vercel: /api/admin/payouts/release → 0 0 * * *
     - cron: "0 0 * * *"
-    # vercel: reconcile-credit-balances, reconcile-container-env, provisioning-queue, service-pool → */5
+    # vercel: reconcile-credit-balances, reconcile-container-env, provisioning-queue → */5
     # vercel: hibernation → * * * * * (Actions */5, accepted delta)
     # vercel: health-monitor → */2 (Actions */5, accepted delta)
     - cron: "*/5 * * * *"
@@ -85,10 +85,10 @@ jobs:
               PATHS='["/api/admin/payouts/release"]'
               ;;
             "*/5 * * * *")
-              PATHS='["/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/provisioning-queue","/api/cron/service-pool"]'
+              PATHS='["/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/provisioning-queue"]'
               ;;
             "0 2 * * *")
-              PATHS='["/api/cron/aggregate-credit-usage"]'
+              PATHS='["/api/cron/aggregate-credit-usage","/api/cron/account-retention"]'
               ;;
             "0 * * * *")
               PATHS='["/api/cron/credit-pool-monitor","/api/cron/connection-health","/api/cron/enforce-trial-expiry"]'
@@ -100,7 +100,7 @@ jobs:
               # workflow_dispatch — exercise every vercel.json cron path once
               # (daily-digest + runtime-autoupdate included for path parity;
               # schedule fires from staging-daily-digest.yml only)
-              PATHS='["/api/admin/payouts/release","/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/aggregate-credit-usage","/api/cron/credit-pool-monitor","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/provisioning-queue","/api/cron/service-pool","/api/cron/connection-health","/api/cron/enforce-trial-expiry","/api/cron/daily-digest","/api/cron/runtime-autoupdate","/api/cron/refresh-model-catalog"]'
+              PATHS='["/api/admin/payouts/release","/api/cron/reconcile-credit-balances","/api/cron/reconcile-container-env","/api/cron/aggregate-credit-usage","/api/cron/account-retention","/api/cron/credit-pool-monitor","/api/cron/hibernation","/api/cron/health-monitor","/api/cron/provisioning-queue","/api/cron/connection-health","/api/cron/enforce-trial-expiry","/api/cron/daily-digest","/api/cron/runtime-autoupdate","/api/cron/refresh-model-catalog"]'
               ;;
             *)
               echo "::error::Unexpected schedule expression: $SCHEDULE"

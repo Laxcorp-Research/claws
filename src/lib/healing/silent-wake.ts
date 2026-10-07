@@ -131,6 +131,7 @@ export async function executeSilentWakeHeal(args: {
           trialEndsAt: true,
           hasActiveSubscription: true,
           subscriptionStatus: true,
+          subscriptionOnHoldAt: true,
         },
       },
     },

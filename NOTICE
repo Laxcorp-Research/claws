@@ -1,0 +1,8 @@
+Claws
+Copyright (C) 2026 Laxcorp Research
+
+This repository is licensed under the GNU Affero General Public License v3.0 only.
+See LICENSE.
+
+Exception: files under prisma/seed-data/ (template and skill seed data) are
+licensed under the Apache License, Version 2.0. See prisma/seed-data/LICENSE.

@@ -1,5 +1,5 @@
 {
-  "$documentation": "Per-GHSA rationale in docs/LAUNCH_BLOCKERS.md. Gate fails on high/critical not in allowlist. 2026-09-09: GHSA-p293-qw3h-jr36 / GHSA-2xp9-vwfh-vxw4 / GHSA-rgj7-g3m4-5g8c are next 16.2.11 advisories (fix in 16.3.3); GHSA-2x7j-588g-ccc2 is nodemailer via next-auth. Dedicated next bump stays a separate PR. Vercel hosts Linux, not the Windows RCE surface.",
+  "$documentation": "Per-GHSA rationale in docs/LAUNCH_BLOCKERS.md. Gate fails on high/critical not in allowlist. 2026-10-07: overrides cleared fast-uri 3.1.8, nodemailer 10, brace-expansion, sharp 0.35.5, grpc-js, source-map-js, undici. next stays 16.2.11. GHSA-vcvr-r3jv-pc5j (next/og ImageResponse RCE, fix 16.3.6) is allowlisted because this repo has no next/og usage and 16.3.6 failed e2e/conversations-snapshot.spec.ts. GHSA-vfj7-8cjw-p6xm (braces) has no patched release (latest 3.0.3). GHSA-2x7j-588g-ccc2 stays because the override forces nodemailer 10.x.",
   "low": false,
   "moderate": false,
   "high": true,
@@ -10,6 +10,8 @@
     "GHSA-p293-qw3h-jr36",
     "GHSA-2xp9-vwfh-vxw4",
     "GHSA-rgj7-g3m4-5g8c",
-    "GHSA-2x7j-588g-ccc2"
+    "GHSA-2x7j-588g-ccc2",
+    "GHSA-vfj7-8cjw-p6xm",
+    "GHSA-vcvr-r3jv-pc5j"
   ]
 }

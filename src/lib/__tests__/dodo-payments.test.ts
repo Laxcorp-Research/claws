@@ -98,6 +98,20 @@ describe('checkDeployEligibility', () => {
     expect(result.reason).not.toBe("subscribed");
   });
 
+  it("on_hold past 14 days denies deploy (cap)", () => {
+    const result = checkDeployEligibility({
+      trialUsed: true,
+      trialStartedAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000),
+      trialEndsAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      hasActiveSubscription: true,
+      subscriptionStatus: "on_hold",
+      subscriptionOnHoldAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+    });
+    expect(result.canDeploy).toBe(false);
+    expect(result.reason).toBe("on_hold_cap");
+    expect(result.needsSubscription).toBe(true);
+  });
+
   it('MUTATION: on_hold must be checked before hasActiveSubscription', () => {
     const src = readFileSync(join(process.cwd(), "src/lib/dodo-payments.ts"), "utf8");
     const hold = src.indexOf('isSubscriptionOnHold(user)');
@@ -123,6 +137,7 @@ describe('checkDeployEligibility', () => {
     for (const rel of files) {
       const src = readFileSync(join(process.cwd(), rel), 'utf8');
       expect(src, rel).toContain('subscriptionStatus: true');
+      expect(src, rel).toContain('subscriptionOnHoldAt: true');
     }
   });
 });

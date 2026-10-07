@@ -39,8 +39,18 @@ model User {
   // runs notify now and stop at notify+24h.
   trialExpiryNotifiedAt DateTime?
   // Dodo subscription lifecycle: "active" | "on_hold" | "cancelled" |
-  // "failed" | "expired". on_hold = dunning; trial-expiry stop MUST skip.
+  // "failed" | "expired". on_hold = dunning; the 24h trial stop skips it.
+  // The 14-day cap (subscriptionOnHoldAt) is terminal.
   subscriptionStatus String?
+  // First subscription.on_hold. Not overwritten by repeat webhooks.
+  // Cleared on subscription.active. Null + on_hold: cron backfills from
+  // the earliest "Nudge: subscription-on-hold" activity row.
+  subscriptionOnHoldAt DateTime?
+  // Day-7 win-back email. Null until Resend accepts the send.
+  trialWinbackSentAt DateTime?
+  // Account-deletion grace. Purge cron hard-deletes 14 days later.
+  // Null = no request. Cleared by cancel.
+  deletionRequestedAt DateTime?
 
   creditAccount            CreditAccount?
   apiKeySource             ApiKeySource    @default(NONE)

@@ -1,4 +1,5 @@
 import DodoPayments from "dodopayments"
+import { onHoldCapDue } from "@/lib/trial/lifecycle-followups"
 
 let client: DodoPayments | null = null
 
@@ -162,6 +163,7 @@ export const SUBSCRIPTION_ELIGIBILITY_SELECT = {
   trialEndsAt: true,
   hasActiveSubscription: true,
   subscriptionStatus: true,
+  subscriptionOnHoldAt: true,
 } as const
 
 export type DeployEligibilityUser = {
@@ -170,6 +172,8 @@ export type DeployEligibilityUser = {
   trialEndsAt: Date | null
   hasActiveSubscription: boolean
   subscriptionStatus?: string | null
+  /** Set on the first on_hold webhook. Cap denies deploy after 14 days. */
+  subscriptionOnHoldAt?: Date | null
 }
 
 export type DeployEligibility = {
@@ -200,6 +204,14 @@ export function checkDeployEligibility(user: DeployEligibilityUser): DeployEligi
 
   // MUTATION: falling through to hasActiveSubscription → reason "subscribed" on on_hold.
   if (isSubscriptionOnHold(user)) {
+    if (onHoldCapDue(user.subscriptionOnHoldAt ?? null, now)) {
+      return {
+        canDeploy: false,
+        reason: "on_hold_cap",
+        needsSubscription: true,
+        isFirstDeploy: false,
+      }
+    }
     return {
       canDeploy: true,
       reason: "subscription_on_hold",
