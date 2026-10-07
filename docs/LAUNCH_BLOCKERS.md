@@ -39,6 +39,12 @@ Removed by the 2026-06-11 re-audit (in-range `protobufjs 7.5.5 → 7.6.3` bump c
 
 Removed by the fix/security-audit-hono-nodemailer bump (kept for the audit trail): GHSA-88fw-hqm2-52qc (`hono`, override `^4.12.25`), GHSA-p6gq-j5cr-w38f (`nodemailer`, direct + override `^9.0.1`).
 
+2026-10-07 re-triage (Security Audit red on #563, lockfile otherwise unchanged): `next` pinned `16.2.11 → 16.3.6` for critical GHSA-vcvr-r3jv-pc5j (`next/og` ImageResponse RCE). Overrides moved to patched floors: `fast-uri` 3.1.8, `nodemailer` ^10.0.15, `brace-expansion` 1.1.21 / 2.1.7 / 5.0.12, `sharp` 0.35.5, `@grpc/grpc-js` 1.14.5, `source-map-js` 1.2.2, `undici@6` 6.29.0. `nodemailer` is still not imported in `src` (mail goes via Resend).
+
+| GHSA | Package | What it is | 2026-10-07 status |
+|---|---|---|---|
+| GHSA-vfj7-8cjw-p6xm | `braces` | Stack exhaustion on a deeply nested pattern | high; no patched release (latest 3.0.3). Allowlisted: the app does not compile attacker-supplied brace patterns. Revisit if a 3.0.4+ ships. |
+
 ### Infrastructure / CI
 - [#73](https://github.com/Laxcorp-Research/claws/issues/73) CI E2E test Neon branch unreachable — NOT launch-blocking, listed for visibility
 
