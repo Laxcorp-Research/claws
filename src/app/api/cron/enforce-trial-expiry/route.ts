@@ -4,13 +4,22 @@ import { log } from "@/lib/logger"
 import { syncThenDestroy, destroyContainer } from "@/lib/openclaw/deployer"
 import {
   decideTrialExpiryActions,
+  isTrialStopEnforceableStatus,
   shouldSkipTrialStop,
   TRIAL_EXPIRY_GRACE_MS,
+  trialStopEnforceMode,
   type TrialExpiryUser,
 } from "@/lib/trial/decide-trial-expiry"
 import {
+  onHoldCapDue,
+  TRIAL_WINBACK_AFTER_MS,
+  trialWinbackDue,
+} from "@/lib/trial/lifecycle-followups"
+import {
+  sendOnHoldCapEmail,
   sendTrialExpiryNotifyEmail,
   sendTrialExpiryStoppedEmail,
+  sendTrialWinbackEmail,
 } from "@/lib/trial/trial-expiry-emails"
 
 export const maxDuration = 55
@@ -286,16 +295,152 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const onHoldStopped = await enforceOnHoldCap(now)
+  const winbacks = await sendDueWinbacks(now)
+  errors += onHoldStopped.errors + winbacks.errors
+
   log.info("Trial-expiry cron complete", {
     candidatesScanned: users.length,
     notified,
     stopped,
     skipped,
     errors,
+    onHoldStopped: onHoldStopped.stopped,
+    winbacks: winbacks.sent,
   })
 
   return Response.json({
     success: true,
-    data: { candidatesScanned: users.length, notified, stopped, skipped, errors },
+    data: {
+      candidatesScanned: users.length,
+      notified,
+      stopped,
+      skipped,
+      errors,
+      onHoldStopped: onHoldStopped.stopped,
+      winbacks: winbacks.sent,
+    },
   })
+}
+
+async function enforceOnHoldCap(now: Date): Promise<{ stopped: number; errors: number }> {
+  let stopped = 0
+  let errors = 0
+  const users = await prisma.user.findMany({
+    where: { subscriptionStatus: "on_hold" },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      subscriptionOnHoldAt: true,
+      workspaces: { select: { id: true, name: true, status: true } },
+    },
+  })
+
+  for (const user of users) {
+    let since = user.subscriptionOnHoldAt
+    if (!since) {
+      const first = await prisma.activityLog.findFirst({
+        where: {
+          action: "Nudge: subscription-on-hold",
+          workspace: { userId: user.id },
+        },
+        orderBy: { timestamp: "asc" },
+        select: { timestamp: true },
+      })
+      since = first?.timestamp ?? now
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { subscriptionOnHoldAt: since },
+      })
+    }
+    if (!onHoldCapDue(since, now)) continue
+
+    const stoppedNames: string[] = []
+    const stoppedIds: string[] = []
+    for (const workspace of user.workspaces) {
+      if (!isTrialStopEnforceableStatus(workspace.status)) continue
+      try {
+        const mode = trialStopEnforceMode(workspace.status)
+        if (mode === "status_flip") {
+          await destroyContainer(workspace.id)
+          await prisma.workspace.update({
+            where: { id: workspace.id },
+            data: { status: "STOPPED" },
+          })
+        } else {
+          await syncThenDestroy(workspace.id)
+        }
+        stoppedNames.push(workspace.name)
+        stoppedIds.push(workspace.id)
+        stopped++
+      } catch (err) {
+        errors++
+        log.error("on_hold cap stop failed", {
+          userId: user.id,
+          workspaceId: workspace.id,
+          error: String(err),
+        })
+      }
+    }
+    if (stoppedNames.length === 0) continue
+    const email = await sendOnHoldCapEmail({
+      to: user.email,
+      name: user.name,
+      clawNames: stoppedNames,
+      workspaceIds: stoppedIds,
+    })
+    if (!email.ok) errors++
+  }
+  return { stopped, errors }
+}
+
+async function sendDueWinbacks(now: Date): Promise<{ sent: number; errors: number }> {
+  let sent = 0
+  let errors = 0
+  const cutoff = new Date(now.getTime() - TRIAL_WINBACK_AFTER_MS)
+  const users = await prisma.user.findMany({
+    where: {
+      trialUsed: true,
+      trialWinbackSentAt: null,
+      hasActiveSubscription: false,
+      trialEndsAt: { lt: cutoff },
+      OR: [{ subscriptionStatus: null }, { subscriptionStatus: { not: "on_hold" } }],
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      trialEndsAt: true,
+      trialUsed: true,
+      trialWinbackSentAt: true,
+      hasActiveSubscription: true,
+      subscriptionStatus: true,
+      workspaces: { select: { id: true, name: true } },
+    },
+  })
+  for (const user of users) {
+    if (!trialWinbackDue({ ...user, now })) continue
+    try {
+      const result = await sendTrialWinbackEmail({
+        to: user.email,
+        name: user.name,
+        clawNames: user.workspaces.map((w) => w.name),
+        workspaceIds: user.workspaces.map((w) => w.id),
+      })
+      if (!result.ok) {
+        errors++
+        continue
+      }
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { trialWinbackSentAt: now },
+      })
+      sent++
+    } catch (err) {
+      errors++
+      log.error("trial win-back failed", { userId: user.id, error: String(err) })
+    }
+  }
+  return { sent, errors }
 }

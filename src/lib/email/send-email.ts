@@ -36,6 +36,8 @@ export type EmailKind =
   | "magic_link"
   | "trial_expiry_notify"
   | "trial_expiry_stop"
+  | "trial_winback_day7"
+  | "on_hold_cap_stop"
   | "credits_exhausted_stop"
   | "payout_paid"
   | "critical_alert_fallback"

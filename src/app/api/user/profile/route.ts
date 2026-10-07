@@ -2,8 +2,8 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
-import { destroyContainer } from "@/lib/openclaw/deployer"
 import { log } from "@/lib/logger"
+import { accountDeletionPurgeAt } from "@/lib/trial/lifecycle-followups"
 
 export async function PATCH(req: NextRequest) {
   const user = await getSessionUser()
@@ -21,6 +21,9 @@ export async function PATCH(req: NextRequest) {
     updateData.email = email
   }
   if (onboardingCompleted !== undefined) updateData.onboardingCompleted = onboardingCompleted === true
+  if ((body as { cancelAccountDeletion?: boolean }).cancelAccountDeletion === true) {
+    updateData.deletionRequestedAt = null
+  }
 
   if (Object.keys(updateData).length === 0) return ERRORS.VALIDATION("No fields to update")
 
@@ -37,28 +40,30 @@ export async function DELETE() {
   const user = await getSessionUser()
   if (!user) return ERRORS.UNAUTHORIZED()
 
-  // ToS-truth fix: the bare user.delete cascaded Workspace rows away while
-  // their LIVE containers kept running - orphaned Railway services with the
-  // user's keys aboard, unreachable by every cron (they all join through
-  // Workspace). Tear each container down FIRST (recycles into the service
-  // pool; best-effort per workspace - a Railway hiccup must not strand the
-  // deletion, the pool sweeper owns stragglers).
-  // MUTATION: remove this loop → account-deletion orphan test fails.
-  const workspaces = await prisma.workspace.findMany({
-    where: { userId: user.id, containerId: { not: null } },
-    select: { id: true },
+  // 14-day grace. The daily account-retention cron tears containers down
+  // and then deletes the user. Immediate user.delete orphaned live Railway
+  // services; that teardown now lives on the cron, after the grace.
+  const existing = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { deletionRequestedAt: true },
   })
-  for (const ws of workspaces) {
-    try {
-      await destroyContainer(ws.id)
-    } catch (err) {
-      log.error("account deletion: container teardown failed (continuing)", {
-        workspaceId: ws.id,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
+  if (existing?.deletionRequestedAt) {
+    return apiSuccess({
+      scheduled: true,
+      deletionRequestedAt: existing.deletionRequestedAt,
+      purgeAt: accountDeletionPurgeAt(existing.deletionRequestedAt),
+    })
   }
 
-  await prisma.user.delete({ where: { id: user.id } })
-  return apiSuccess({ deleted: true })
+  const deletionRequestedAt = new Date()
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { deletionRequestedAt },
+  })
+  log.info("account deletion scheduled", { userId: user.id })
+  return apiSuccess({
+    scheduled: true,
+    deletionRequestedAt,
+    purgeAt: accountDeletionPurgeAt(deletionRequestedAt),
+  })
 }

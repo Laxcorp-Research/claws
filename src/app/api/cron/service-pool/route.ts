@@ -17,6 +17,11 @@ export async function GET(req: NextRequest) {
     return new Response("Unauthorized", { status: 401 })
   }
 
+  // Phase 0: warm-pool refill is retired. Opt in only with SERVICE_POOL_REFILL=true.
+  if (process.env.SERVICE_POOL_REFILL !== "true") {
+    return Response.json({ success: true, data: { enabled: false, retired: true, created: 0 } })
+  }
+
   const result = await refillServicePoolTick()
 
   log.info("service-pool cron tick", { ...result })

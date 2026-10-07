@@ -183,6 +183,9 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
+    # Fork PRs must not receive TEST_DATABASE_URL / Neon credentials.
+    # quality + unit-tests stay (lane gate). push to this repo still runs E2E.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     needs: [unit-tests]
     concurrency:

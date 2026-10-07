@@ -12,6 +12,7 @@ import {
   decideRefundWorkspaceAction,
 } from "@/lib/marketplace/refund-policy"
 import { destroyContainer } from "@/lib/openclaw/deployer"
+import { enqueueProvisioning } from "@/lib/railway/governor"
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
 import type { HealConditionId } from "@/lib/healing/conditions"
 
@@ -383,10 +384,29 @@ async function handleSubscriptionActive(
         // Reset GRACE-24 notify marker so a later cancel→re-expire cycle
         // can notify again (grace always anchors on notification time).
         trialExpiryNotifiedAt: null,
+        trialWinbackSentAt: null,
+        subscriptionOnHoldAt: null,
         ...(customerId ? { dodoCustomerId: customerId } : {}),
       },
       select: { id: true, hasActiveSubscription: true, subscriptionId: true },
     })
+
+    const stopped =
+      (await prisma.workspace.findMany({
+        where: { userId: user.id, status: "STOPPED" },
+        select: { id: true },
+      })) ?? []
+    for (const ws of stopped) {
+      try {
+        await enqueueProvisioning(ws.id, "resubscribe")
+      } catch (err) {
+        log.error("subscription.active: redeploy enqueue failed", {
+          userId: user.id,
+          workspaceId: ws.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
 
     log.info("User subscription updated", { userId: updated.id, hasActiveSubscription: updated.hasActiveSubscription, subscriptionId: updated.subscriptionId })
 
@@ -459,12 +479,19 @@ async function handleSubscriptionOnHold(
   const subscriptionId = data?.subscription_id as string | undefined
   if (metadata.type === "claw_platform") {
     const user = await resolveUser(metadata.userId, metadata.email ?? customerEmail, "onSubscriptionOnHold")
+    const prior = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { subscriptionOnHoldAt: true },
+    })
     await prisma.user.update({
       where: { id: user.id },
       data: {
         hasActiveSubscription: true,
         subscriptionStatus: "on_hold",
         ...(subscriptionId ? { subscriptionId } : {}),
+        // First dunning event starts the 14-day cap. Later on_hold
+        // webhooks must not reset it.
+        ...(prior?.subscriptionOnHoldAt ? {} : { subscriptionOnHoldAt: new Date() }),
       },
     })
     log.info("Subscription on_hold (dunning) - trial-expiry stop will skip", {

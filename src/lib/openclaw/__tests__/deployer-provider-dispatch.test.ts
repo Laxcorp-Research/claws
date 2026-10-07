@@ -158,19 +158,10 @@ describe("deployToCloud provider front door", () => {
     expect(prismaMock.deployment.create).not.toHaveBeenCalled()
   })
 
-  it("NEW_WORKSPACE_PROVIDER=FLY stamps a NEVER-provisioned workspace and delegates", async () => {
-    process.env.NEW_WORKSPACE_PROVIDER = "FLY"
-    ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockResolvedValue(workspaceStub())
-    ;(prismaMock.deployment.count as MockFn).mockResolvedValue(0) // never provisioned
-
-    await deployToCloud("ws-1")
-
-    expect(prismaMock.workspace.update).toHaveBeenCalledWith({
-      where: { id: "ws-1" },
-      data: { provider: "FLY" },
-    })
-    expect(mockDeployToFly).toHaveBeenCalled()
-    expect(mockCreateService).not.toHaveBeenCalled()
+  it("NEW_WORKSPACE_PROVIDER=FLY is ignored (Fly track cancelled)", async () => {
+    const { newWorkspaceProviderFlag } = await import("@/lib/fly/provider")
+    expect(newWorkspaceProviderFlag("FLY")).toBe("RAILWAY")
+    expect(mockDeployToFly).not.toHaveBeenCalled()
   })
 
   it("NEW_WORKSPACE_PROVIDER=FLY leaves EXISTING claws on Railway (migrate on natural wake only)", async () => {
