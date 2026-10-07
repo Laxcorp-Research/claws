@@ -615,6 +615,10 @@ export async function deployToCloud(
     const { deployToFly } = await import('@/lib/fly/fly-deployer');
     return deployToFly(workspaceId, opts);
   }
+  if (effectiveProvider === 'DOCKER') {
+    const { deployToDocker } = await import('@/lib/openclaw/docker-provider');
+    return deployToDocker(workspaceId, opts);
+  }
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: workspace.userId },
@@ -951,7 +955,15 @@ export async function destroyContainer(workspaceId: string): Promise<void> {
   // domain (DOMAIN_REUSE / service-survives). Every pool outcome detaches:
   // recycled/deferred means the pool state machine owns the service now.
   let serviceGone: boolean;
-  if (workspace.provider === 'FLY') {
+  if (workspace.provider === 'DOCKER') {
+    const { destroyDockerWorkspace } = await import('@/lib/openclaw/docker-provider');
+    await destroyDockerWorkspace(workspace);
+    serviceGone = true;
+    log.info('destroyContainer teardown outcome (DOCKER)', {
+      workspaceId,
+      containerId: workspace.containerId,
+    });
+  } else if (workspace.provider === 'FLY') {
     // Fly terminal teardown: destroy machine + app (no pool - machine
     // creates are uncapped). Never throws.
     const { destroyFlyWorkspace } = await import('@/lib/fly/fly-deployer');
@@ -1027,6 +1039,14 @@ export async function removeDeploymentKeepService(workspaceId: string): Promise<
     if (workspace.containerId) {
       const { stopFlyMachineKeepApp } = await import('@/lib/fly/fly-deployer');
       await stopFlyMachineKeepApp(workspace);
+    }
+    return;
+  }
+
+  if (workspace.provider === 'DOCKER') {
+    if (workspace.containerId) {
+      const { stopDockerContainer } = await import('@/lib/openclaw/docker-provider');
+      await stopDockerContainer(workspace.containerId);
     }
     return;
   }
@@ -1202,6 +1222,20 @@ export async function restartContainer(workspaceId: string): Promise<void> {
     where: { id: workspaceId },
   });
 
+  if (workspace.provider === 'DOCKER' && workspace.containerId) {
+    const { startDockerContainer } = await import('@/lib/openclaw/docker-provider');
+    await startDockerContainer(workspace.containerId);
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        status: 'RUNNING',
+        healthStatus: 'HEALTHY',
+        lastHealthCheck: new Date(),
+      },
+    });
+    return;
+  }
+
   if (workspace.provider === 'FLY' && workspace.containerId) {
     const { restartFlyWorkspace } = await import('@/lib/fly/fly-deployer');
     await restartFlyWorkspace(workspace);
@@ -1285,8 +1319,9 @@ export async function getGatewayConnectionInfo(
     }
   });
 
+  const { gatewayWebSocketUrl } = await import('@/lib/openclaw/docker-engine');
   return {
-    wsUrl: `wss://${workspace.containerHost}`,
+    wsUrl: gatewayWebSocketUrl(workspace.containerHost, workspace.provider),
     token,
   };
 }

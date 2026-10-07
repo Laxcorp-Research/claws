@@ -1,0 +1,60 @@
+name: claws
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: claws
+      POSTGRES_PASSWORD: claws
+      POSTGRES_DB: claws
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claws -d claws"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - claws-pg:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.selfhost
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://claws:${POSTGRES_PASSWORD:-claws}@postgres:5432/claws
+      NEXTAUTH_SECRET: self-host-proof-secret
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      ENCRYPTION_MASTER_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      ENCRYPTION_KEY_VERSION: v1
+      CLAWS_PROFILE: self-host
+      CLAWS_DOCKER_IMAGE: claws-fixture-gateway:proof
+      CLAWS_DOCKER_NETWORK: claws
+      CLAWS_DOCKER_PUBLISH: host
+      DOCKER_HOST_SOCKET: /var/run/docker.sock
+      METERING_MASTER_SECRET: self-host-metering
+      CLAWS_SNAPSHOT_DIR: /var/lib/claws/snapshots
+      CONTROL_PLANE_INTERNAL_URL: http://app:3000
+      GITHUB_CLIENT_ID: unused
+      GITHUB_CLIENT_SECRET: unused
+      GOOGLE_CLIENT_ID: unused
+      GOOGLE_CLIENT_SECRET: unused
+      UPSTASH_REDIS_REST_URL: http://127.0.0.1:9
+      UPSTASH_REDIS_REST_TOKEN: unused
+      CRON_SECRET: unused
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - claws-snapshots:/var/lib/claws/snapshots
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  default:
+    name: claws
+
+volumes:
+  claws-pg:
+  claws-snapshots:

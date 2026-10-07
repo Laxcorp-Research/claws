@@ -6,6 +6,7 @@
 
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/logger"
+import { assertHostedModule } from "@/lib/profile"
 import { sendOwnerAlert } from "@/lib/alerts/owner-alert"
 import { ledgerHealAttempt } from "@/lib/healing/ledger"
 import { checkDeployEligibility } from "@/lib/dodo-payments"
@@ -68,6 +69,7 @@ async function loadQuotaHoldUntil(): Promise<Date | null> {
 }
 
 export async function evaluateCreateBudget(now: Date = new Date()): Promise<CreateBudgetSnapshot> {
+  assertHostedModule("railway-governor")
   const cap = parseCreateDailyCap()
   const margin = parseSafetyMargin()
   const usable = usableCreateBudget(cap, margin)

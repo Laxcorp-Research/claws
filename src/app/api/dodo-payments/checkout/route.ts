@@ -11,8 +11,17 @@ import { createMarketplaceSale } from "@/lib/marketplace/payouts"
 import { isPubliclyListable } from "@/lib/marketplace/public-visibility"
 import { isMarketplaceCommunityPurchaseEnabled } from "@/lib/marketplace/feature-flags"
 import { isOwnListing, ownListingMessage, OWN_LISTING_CODE } from "@/lib/marketplace/own-listing"
+import { assertHostedModule, HostedOnlyUnavailableError } from "@/lib/profile"
 
 export async function POST(req: NextRequest) {
+  try {
+    assertHostedModule("dodo-payments")
+  } catch (err) {
+    if (err instanceof HostedOnlyUnavailableError) {
+      return new Response("Not found", { status: 404 })
+    }
+    throw err
+  }
   const sessionUser = await getSessionUser()
   if (!sessionUser) return ERRORS.UNAUTHORIZED()
 

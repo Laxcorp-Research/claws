@@ -12,7 +12,7 @@ Claws is a control plane for teams of AI agents: a visual builder, a marketplace
 
 ## What stays hosted-only
 
-These modules assume Laxcorp's accounts and are not part of a self-host bring-up. Gate them with `CLAWS_PROFILE=self-host` when that profile lands (Phase A is sized, not built):
+These modules assume Laxcorp's accounts and are not part of a self-host bring-up. `CLAWS_PROFILE=self-host` returns 404 for them. See [SELF_HOSTING.md](SELF_HOSTING.md).
 
 - Dodo Payments checkout, webhooks, and creator payouts
 - The shared credit pool, metering master secret, and credit-proxy
@@ -21,7 +21,7 @@ These modules assume Laxcorp's accounts and are not part of a self-host bring-up
 - Vercel cron fan-out and the GitHub Actions image-promote pipeline
 - Composio broker, Resend, Sentry, Axiom, Upstash as configured for the hosted app
 
-Self-host Phase A (not in this tree yet): a local Docker provider behind `deployer.ts` (socket, stop/start, volumes, ports and a reverse proxy), Telegram long-polling and WhatsApp QR without a public URL, snapshots on disk, SMTP, a first-run owner account, and a registry-mode marketplace (index JSON, publish by pull request).
+Self-host v1 is in this tree: a local Docker provider behind `deployer.ts` (socket, stop/start, named volumes, a published port or a reverse proxy), Telegram `getUpdates` polling, snapshots on disk, a first-run owner password, and the `CLAWS_PROFILE=self-host` gate. Bring-up is [SELF_HOSTING.md](SELF_HOSTING.md).
 
 ## License
 

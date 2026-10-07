@@ -6,13 +6,19 @@ export type SyncNowOutcome = { synced: true } | { synced: false; reason: string 
  * POST /internal/sync-now on the container (claws-activity-reporter).
  * Never throws. Used by destroy/hibernate and by the stale-sync heal.
  */
+/** Hosted containers are TLS. Self-host Docker publishes plain HTTP. */
+export function syncNowRequestUrl(containerHost: string): string {
+  const scheme = process.env.CLAWS_PROFILE === "self-host" ? "http" : "https"
+  return `${scheme}://${containerHost}/internal/sync-now`
+}
+
 export async function trySyncNow(containerHost: string, timeoutMs: number): Promise<SyncNowOutcome> {
   const secret = process.env.METERING_MASTER_SECRET
   if (!secret) {
     return { synced: false, reason: "unconfigured" }
   }
 
-  const url = `https://${containerHost}/internal/sync-now`
+  const url = syncNowRequestUrl(containerHost)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let res: Response

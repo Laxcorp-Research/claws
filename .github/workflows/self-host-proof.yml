@@ -1,0 +1,53 @@
+name: self-host-proof
+
+on:
+  push:
+    branches: [feat/self-host-v1]
+  workflow_dispatch:
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Prisma client
+        run: npx prisma generate
+
+      - name: Self-host unit tests
+        run: |
+          npx vitest run \
+            src/lib/openclaw/__tests__/docker-provider.test.ts \
+            src/lib/openclaw/__tests__/docker-reachability.test.ts \
+            src/lib/openclaw/__tests__/deployer-provider-dispatch.test.ts \
+            src/lib/channels/__tests__/telegram-poll.test.ts \
+            src/lib/openclaw/__tests__/snapshot-disk.test.ts \
+            src/lib/openclaw/__tests__/state-snapshot-generations.test.ts \
+            src/app/api/setup/owner/__tests__/route.test.ts \
+            src/lib/auth/__tests__/owner-credentials.test.ts \
+            src/lib/__tests__/self-host-gate.test.ts \
+            src/lib/__tests__/self-host-fixture-keys.test.ts \
+            "src/app/api/workspaces/[id]/chat/__tests__/route.test.ts" \
+            "src/app/api/dashboard/[workspaceId]/nap/__tests__/route.test.ts"
+
+      - name: Fixture gateway image
+        run: docker build -t claws-fixture-gateway:proof -f docker/fixture-gateway/Dockerfile docker/fixture-gateway
+
+      - name: Compose up
+        run: docker compose up -d --build
+
+      - name: Proof
+        run: node scripts/self-host-proof.mjs
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color app

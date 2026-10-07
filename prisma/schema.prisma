@@ -405,6 +405,7 @@ enum WorkspaceStatus {
 enum CloudProvider {
   RAILWAY
   FLY
+  DOCKER
 }
 
 // DeploymentType removed - cloud-only platform

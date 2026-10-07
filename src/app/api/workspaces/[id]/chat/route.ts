@@ -40,6 +40,7 @@ import { ledgerChatSendRejected } from "@/lib/openclaw/chat-send-reject"
 import { flushHeldChatSends, isHoldableChatStatus, ledgerChatSendHeld } from "@/lib/openclaw/chat-send-hold"
 import { wakeWorkspace } from "@/lib/hibernation/manager"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
+import { isSelfHost } from "@/lib/profile"
 import crypto from "node:crypto"
 
 // HTTP returns 202 + runId before the gateway turn. Waiting here for
@@ -200,11 +201,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return apiError("GATEWAY_UNREACHABLE", "This workspace has no orchestrator agent.", 502)
   }
   const sessionKey = `agent:${orchestrator.agentSlug}:main`
-
-  // Server-generated idempotencyKey - it becomes the gateway runId AND the
-  // container-side MESSAGE_RECEIVED metadata.messageId (the correlation
-  // chain the dashboard uses to reconcile optimistic messages).
   const idempotencyKey = crypto.randomUUID()
+
+  if (isSelfHost()) {
+    const result = await deps.send({
+      wsUrl: connection.wsUrl,
+      token: connection.token,
+      deviceKey,
+      sessionKey,
+      message,
+      idempotencyKey,
+      awaitReplyMs: 8_000,
+      socketFactory: deps.socketFactory,
+    })
+    if (!result.ok) {
+      return apiError("GATEWAY_UNREACHABLE", result.detail ?? "Chat send failed.", 502)
+    }
+    return apiSuccess({ runId: result.runId, replyText: result.replyText ?? null })
+  }
 
   const attempt = () =>
     deps.send({

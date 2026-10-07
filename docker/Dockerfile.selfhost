@@ -1,0 +1,19 @@
+FROM node:22-bookworm
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+
+COPY . .
+RUN npx prisma generate
+
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV DATABASE_URL=postgresql://claws:claws@127.0.0.1:5432/claws
+ENV NEXTAUTH_SECRET=self-host-build
+ENV NEXTAUTH_URL=http://localhost:3000
+ENV ENCRYPTION_MASTER_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+RUN npx next build
+
+EXPOSE 3000
+CMD ["sh", "scripts/self-host-start.sh"]

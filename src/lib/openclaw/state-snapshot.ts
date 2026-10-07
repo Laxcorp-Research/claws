@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from "crypto"
 import { prisma } from "@/lib/db"
 import { Prisma } from "@/generated/prisma/client"
+import { isSelfHost } from "@/lib/profile"
+import { writeRuntimeSnapshotToDisk } from "@/lib/openclaw/snapshot-disk"
 
 /**
  * Pre-migration pin trigger: the workspace is deployed on a different
@@ -54,6 +56,9 @@ export async function persistRuntimeStateSnapshot(args: {
       "runtimeStateContract"  = COALESCE("deployedRuntimeContract", "runtimeStateContract")
     WHERE "workspaceId" = ${args.workspaceId}
   `
+  if (isSelfHost()) {
+    await writeRuntimeSnapshotToDisk(args.workspaceId, args.stateBuffer)
+  }
   return { count }
 }
 
