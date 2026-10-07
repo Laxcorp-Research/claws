@@ -7,7 +7,7 @@ export const maxDuration = 60
 
 /**
  * Self-host snapshot ingest. The runtime POSTs gzip bytes here instead of
- * Vercel Blob. Hosted callers get 404 — Blob finalize stays the hosted path.
+ * Vercel Blob. Hosted callers get 404. Blob finalize stays the hosted path.
  */
 export async function POST(req: NextRequest): Promise<Response> {
   if (!isSelfHost()) {
