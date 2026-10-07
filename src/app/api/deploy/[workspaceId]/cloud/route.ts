@@ -23,6 +23,7 @@ import {
   isFinancialTemplateSlug,
 } from "@/lib/legal/consent"
 import { hasConsent, recordConsent } from "@/lib/legal/consent-server"
+import { isSelfHost } from "@/lib/profile"
 
 export const maxDuration = 300
 
@@ -122,43 +123,45 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     },
   })
 
-  const eligibility = checkDeployEligibility(user)
+  if (!isSelfHost()) {
+    const eligibility = checkDeployEligibility(user)
 
-  if (eligibility.isFirstDeploy) {
-    const now = new Date()
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        trialUsed: true,
-        trialStartedAt: now,
-        trialEndsAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
-      },
-    })
-  }
-
-  if (!eligibility.canDeploy) {
-    return apiError(
-      "SUBSCRIPTION_REQUIRED",
-      "Your 3-day trial has ended. Subscribe to the Claw Platform ($79/mo) to keep your Claws running.",
-      402,
-    )
-  }
-
-  // Existing-service reuse (HWD wake / redeploy with containerId) bypasses
-  // the create governor - those paths never serviceCreate.
-  if (!workspace?.containerId) {
-    const budget = await evaluateCreateBudget()
-    if (!budget.allowed) {
-      const queued = await enqueueProvisioning(workspaceId, "budget")
-      return apiSuccess(
-        {
-          queued: true,
-          position: queued.position,
-          etaAt: queued.etaAt.toISOString(),
-          message: queued.message,
+    if (eligibility.isFirstDeploy) {
+      const now = new Date()
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          trialUsed: true,
+          trialStartedAt: now,
+          trialEndsAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
         },
-        202,
+      })
+    }
+
+    if (!eligibility.canDeploy) {
+      return apiError(
+        "SUBSCRIPTION_REQUIRED",
+        "Your 3-day trial has ended. Subscribe to the Claw Platform ($79/mo) to keep your Claws running.",
+        402,
       )
+    }
+
+    // Existing-service reuse (HWD wake / redeploy with containerId) bypasses
+    // the create governor - those paths never serviceCreate.
+    if (!workspace?.containerId) {
+      const budget = await evaluateCreateBudget()
+      if (!budget.allowed) {
+        const queued = await enqueueProvisioning(workspaceId, "budget")
+        return apiSuccess(
+          {
+            queued: true,
+            position: queued.position,
+            etaAt: queued.etaAt.toISOString(),
+            message: queued.message,
+          },
+          202,
+        )
+      }
     }
   }
 

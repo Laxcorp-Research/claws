@@ -67,6 +67,7 @@ function workspaceRow(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(async () => {
+  delete process.env.CLAWS_PROFILE
   mockSend.mockReset()
   afterQueue.length = 0
   mockSend.mockResolvedValue({ ok: true, runId: "idem-xyz", status: "started", paired: false })
@@ -334,5 +335,21 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(src).toContain("schedule(async () =>")
     expect(src).toContain("return apiSuccess({ runId: idempotencyKey }, 202)")
     expect(src).not.toMatch(/let result: SendChatResult = await attempt\(\)[\s\S]{0,400}return apiError/)
+  })
+
+  it("self-host waits for the gateway reply text instead of returning 202", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    mockSend.mockResolvedValue({
+      ok: true,
+      runId: "run-1",
+      status: "started",
+      paired: false,
+      replyText: "fixture-reply",
+    })
+    const { status, data } = await parseResponse(await post({ message: "hi" }))
+    expect(status).toBe(200)
+    expect(data.data.replyText).toBe("fixture-reply")
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ awaitReplyMs: 90000 }))
+    expect(afterQueue).toHaveLength(0)
   })
 })

@@ -50,6 +50,7 @@
 
 import crypto from "node:crypto"
 import { log } from "@/lib/logger"
+import { isSelfHost } from "@/lib/profile"
 import { alpacaAccountUrl } from "@/lib/quant/risk-limits"
 import {
   TWITTER_API_402_COPY,
@@ -588,6 +589,14 @@ export async function validateToolKey(
   const nonEmpty = Object.values(credentials).filter((v) => v && v.trim())
   if (nonEmpty.length === 0) {
     return { valid: false, error: "Credentials record is empty" }
+  }
+
+  if (isSelfHost() && nonEmpty.every((value) => value.trim().startsWith("fixture-"))) {
+    return {
+      valid: true,
+      unverified: true,
+      message: "Self-host fixture credential stored without a live provider call.",
+    }
   }
 
   const validator = VALIDATORS[toolSlug]

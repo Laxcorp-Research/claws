@@ -4,6 +4,7 @@ import { getToken } from "next-auth/jwt";
 import { apiRateLimit, authRateLimit } from "./lib/rate-limit";
 import { getAdminEmails, isAdminEmail } from "./lib/admin-emails";
 import { isAllowedDuringOnboarding } from "./lib/auth/post-auth-path";
+import { denyHostedOnly, isSelfHost } from "./lib/profile";
 
 const allowedOrigins = [
   "https://app.buildclaws.ai",
@@ -111,8 +112,21 @@ function rateLimitResponse(
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  /** CI E2E uses fake Upstash URLs; avoid calling Ratelimit (can hang or slow on runners). */
-  const skipRateLimitForE2e = process.env.E2E_TEST_MODE === "true";
+  const hostedOnly = denyHostedOnly(pathname);
+  if (hostedOnly) {
+    return new NextResponse(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: "HOSTED_ONLY",
+          message: `${hostedOnly.moduleName} is not available when CLAWS_PROFILE=self-host`,
+        },
+      }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  /** CI E2E uses fake Upstash URLs; self-host does not use Upstash. */
+  const skipRateLimitForE2e = process.env.E2E_TEST_MODE === "true" || isSelfHost();
 
   // --- CORS for API routes (except auth and webhooks) ---
   if (pathname.startsWith("/api/") && !isExcludedFromCors(pathname)) {

@@ -38,6 +38,17 @@ vi.mock("@/lib/openclaw/railway-client", async () => {
   }
 })
 
+const mockDeployToDocker = vi.fn()
+const mockStopDockerContainer = vi.fn()
+const mockStartDockerContainer = vi.fn()
+const mockDestroyDockerWorkspace = vi.fn()
+vi.mock("@/lib/openclaw/docker-provider", () => ({
+  deployToDocker: (...args: unknown[]) => mockDeployToDocker(...args),
+  stopDockerContainer: (...args: unknown[]) => mockStopDockerContainer(...args),
+  startDockerContainer: (...args: unknown[]) => mockStartDockerContainer(...args),
+  destroyDockerWorkspace: (...args: unknown[]) => mockDestroyDockerWorkspace(...args),
+}))
+
 const mockDeployToFly = vi.fn()
 const mockStopFlyMachineKeepApp = vi.fn()
 const mockDestroyFlyWorkspace = vi.fn()
@@ -130,6 +141,14 @@ beforeEach(() => {
   mockStopFlyMachineKeepApp.mockResolvedValue(undefined)
   mockDestroyFlyWorkspace.mockResolvedValue("destroyed")
   mockRestartFlyWorkspace.mockResolvedValue(undefined)
+  mockDeployToDocker.mockResolvedValue({
+    deploymentId: "dep-docker",
+    containerId: "ctr-1",
+    gatewayToken: "gw",
+  })
+  mockStopDockerContainer.mockResolvedValue(undefined)
+  mockStartDockerContainer.mockResolvedValue(undefined)
+  mockDestroyDockerWorkspace.mockResolvedValue(undefined)
   ;(prismaMock.workspace.update as MockFn).mockResolvedValue({})
   ;(prismaMock.containerState.updateMany as MockFn).mockResolvedValue({ count: 1 })
   ;(prismaMock.$transaction as MockFn).mockImplementation(
@@ -139,6 +158,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.NEW_WORKSPACE_PROVIDER
+  delete process.env.CLAWS_PROFILE
 })
 
 describe("deployToCloud provider front door", () => {
@@ -208,6 +228,24 @@ describe("deployToCloud provider front door", () => {
     expect(mockDeployToFly).not.toHaveBeenCalled()
     expect(mockUpdateAndRedeployService).toHaveBeenCalled()
   })
+
+  it("CLAWS_PROFILE=self-host stamps DOCKER and does not call Railway", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockResolvedValue(
+      workspaceStub({ provider: "RAILWAY" }),
+    )
+    ;(prismaMock.workspace.update as MockFn).mockResolvedValue({})
+
+    const result = await deployToCloud("ws-1")
+
+    expect(result.containerId).toBe("ctr-1")
+    expect(mockDeployToDocker).toHaveBeenCalledWith("ws-1", {})
+    expect(mockDeployToFly).not.toHaveBeenCalled()
+    expect(mockCreateService).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { provider: "DOCKER" } }),
+    )
+  })
 })
 
 describe("hibernate stop dispatch (removeDeploymentKeepService)", () => {
@@ -232,6 +270,19 @@ describe("hibernate stop dispatch (removeDeploymentKeepService)", () => {
     await removeDeploymentKeepService("ws-1")
 
     expect(mockRemoveLatestDeployment).toHaveBeenCalledWith("svc-1")
+    expect(mockStopFlyMachineKeepApp).not.toHaveBeenCalled()
+    expect(mockStopDockerContainer).not.toHaveBeenCalled()
+  })
+
+  it("DOCKER: stop keeps the container id; Railway deploymentRemove is not called", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockResolvedValue(
+      workspaceStub({ provider: "DOCKER", containerId: "ctr-1" }),
+    )
+
+    await removeDeploymentKeepService("ws-1")
+
+    expect(mockStopDockerContainer).toHaveBeenCalledWith("ctr-1")
+    expect(mockRemoveLatestDeployment).not.toHaveBeenCalled()
     expect(mockStopFlyMachineKeepApp).not.toHaveBeenCalled()
   })
 })
@@ -276,6 +327,24 @@ describe("terminal teardown dispatch (destroyContainer)", () => {
       }),
     )
   })
+
+  it("DOCKER: removes the container and named volume, then clears the binding", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockResolvedValue(
+      workspaceStub({ provider: "DOCKER", containerId: "ctr-1" }),
+    )
+
+    await destroyContainer("ws-1")
+
+    expect(mockDestroyDockerWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ containerId: "ctr-1" }),
+    )
+    expect(mockDeleteService).not.toHaveBeenCalled()
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "STOPPED", containerId: null }),
+      }),
+    )
+  })
 })
 
 describe("restart dispatch", () => {
@@ -290,5 +359,16 @@ describe("restart dispatch", () => {
     expect(prismaMock.workspace.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "RUNNING" }) }),
     )
+  })
+
+  it("DOCKER: start is wake; Railway redeploy is not called", async () => {
+    ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockResolvedValue(
+      workspaceStub({ provider: "DOCKER", containerId: "ctr-1" }),
+    )
+
+    await restartContainer("ws-1")
+
+    expect(mockStartDockerContainer).toHaveBeenCalledWith("ctr-1")
+    expect(mockRestartFlyWorkspace).not.toHaveBeenCalled()
   })
 })

@@ -4,6 +4,7 @@ import type { Adapter } from "next-auth/adapters"
 import GitHubProvider from "next-auth/providers/github"
 import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
+import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "@/lib/db"
 import { sendEmail } from "./email/send-email"
 import { grantStarterCredits } from "@/lib/credits/grant"
@@ -13,6 +14,8 @@ import {
   recordConsent,
   recordTosConsentIfMissing,
 } from "@/lib/legal/consent-server"
+import { authorizeOwnerCredentials } from "@/lib/auth/owner-password"
+import { isSelfHost } from "@/lib/profile"
 
 function CustomPrismaAdapter(p: typeof prisma): Adapter {
   const base = PrismaAdapter(p) as Adapter;
@@ -72,13 +75,8 @@ function CustomPrismaAdapter(p: typeof prisma): Adapter {
   };
 }
 
-export const authOptions: NextAuthOptions = {
-  adapter: CustomPrismaAdapter(prisma),
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,
-  },
-  providers: [
+function buildAuthProviders(): NextAuthOptions["providers"] {
+  const providers: NextAuthOptions["providers"] = [
     GitHubProvider({
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
@@ -132,7 +130,30 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
-  ],
+  ]
+  if (isSelfHost()) {
+    providers.push(
+      CredentialsProvider({
+        name: "Owner password",
+        credentials: {
+          email: { label: "Email", type: "email" },
+          password: { label: "Password", type: "password" },
+        },
+        authorize: (credentials) =>
+          authorizeOwnerCredentials(credentials as Record<string, unknown> | undefined),
+      }),
+    )
+  }
+  return providers
+}
+
+export const authOptions: NextAuthOptions = {
+  adapter: CustomPrismaAdapter(prisma),
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
+  },
+  providers: buildAuthProviders(),
   events: {
     async createUser({ user }) {
       if (user.id) {
@@ -180,6 +201,9 @@ export const authOptions: NextAuthOptions = {
      * email without scope) cannot be proven existing -> treated as signup.
      */
     async signIn({ user, account, email }) {
+      if (account?.provider === "credentials") {
+        return Boolean(user?.id)
+      }
       const userEmail = user?.email ?? null
       const existing = userEmail
         ? await prisma.user.findUnique({ where: { email: userEmail }, select: { id: true } })

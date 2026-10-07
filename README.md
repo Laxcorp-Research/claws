@@ -1,27 +1,35 @@
 # Claws
 
-Open multi-agent platform. Bring any model. Run it on your infrastructure.
+Claws is an open-source multi-agent platform on OpenClaw — teams of agents with a manager, specialists, and a reviewer, any model via your own key, actions gated by your approval, running on your own machine.
 
-Claws is a control plane for teams of AI agents: a visual builder, a marketplace of templates and skills, and a runtime that talks to Telegram, WhatsApp, and other channels. The hosted product at [buildclaws.ai](https://buildclaws.ai) adds billing, a shared credit pool, and managed containers. The code in this repository is what you run yourself.
+## Quickstart
 
-## What is in this repo
+Requirements: Docker Engine with Compose.
 
-- Next.js control plane (builder, settings, marketplace, crons)
-- Prisma schema and template/skill seed data
-- The container contract the runtime image is expected to honor
+```bash
+bash scripts/self-host-install.sh
+```
 
-## What stays hosted-only
+That builds the fixture gateway and starts the control plane at http://localhost:3000. The fixture answers chat with the fixed text `fixture-reply`. It does not call a model vendor.
 
-These modules assume Laxcorp's accounts and are not part of a self-host bring-up. Gate them with `CLAWS_PROFILE=self-host` when that profile lands (Phase A is sized, not built):
+```bash
+bash scripts/self-host-install.sh
+node scripts/self-host-proof.mjs
+```
 
-- Dodo Payments checkout, webhooks, and creator payouts
-- The shared credit pool, metering master secret, and credit-proxy
-- Railway project governor and the retired service-pool refill
-- Fly Machines (track cancelled; flags are ignored)
-- Vercel cron fan-out and the GitHub Actions image-promote pipeline
-- Composio broker, Resend, Sentry, Axiom, Upstash as configured for the hosted app
+Change `NEXTAUTH_SECRET`, `ENCRYPTION_MASTER_KEY` (64 hex characters), `POSTGRES_PASSWORD` / `DATABASE_URL`, and `METERING_MASTER_SECRET` in `docker-compose.yml` before you expose the host. The rest of the bring-up is in [SELF_HOSTING.md](SELF_HOSTING.md).
 
-Self-host Phase A (not in this tree yet): a local Docker provider behind `deployer.ts` (socket, stop/start, volumes, ports and a reverse proxy), Telegram long-polling and WhatsApp QR without a public URL, snapshots on disk, SMTP, a first-run owner account, and a registry-mode marketplace (index JSON, publish by pull request).
+## What's included
+
+- 20 templates
+- Telegram and webchat
+- Files and approvals
+
+## v1.1
+
+- WhatsApp QR
+- Template registry
+- SMTP
 
 ## License
 
@@ -31,4 +39,4 @@ AGPL-3.0-only. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ## Security
 
-See [SECURITY.md](SECURITY.md). Do not open a public issue for a live credential.
+Report a vulnerability to [founder address]. Do not open a public issue for a live credential. See [SECURITY.md](SECURITY.md).

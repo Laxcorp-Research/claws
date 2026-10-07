@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto"
 import { log } from "@/lib/logger"
+import { isSelfHost } from "@/lib/profile"
 
 const TELEGRAM_API = "https://api.telegram.org"
 
@@ -22,6 +23,16 @@ export function telegramWakeWebhookUrl(workspaceId: string): string | null {
   const base = publicAppBaseUrl()
   if (!base) return null
   return `${base}/api/webhooks/telegram/${workspaceId}`
+}
+
+/**
+ * Self-host has no public URL requirement: Telegram updates arrive via
+ * getUpdates. Hosted keeps setWebhook when a public app URL exists.
+ */
+export function telegramDeliveryMode(): "poll" | "webhook" {
+  if (isSelfHost()) return "poll"
+  if (!publicAppBaseUrl()) return "poll"
+  return "webhook"
 }
 
 async function telegramCall(
@@ -108,6 +119,12 @@ export async function telegramSetWakeWebhook(args: {
   botToken: string
   workspaceId: string
 }): Promise<boolean> {
+  if (telegramDeliveryMode() === "poll") {
+    log.info("telegram setWebhook skipped: getUpdates polling owns this profile", {
+      workspaceId: args.workspaceId,
+    })
+    return false
+  }
   const url = telegramWakeWebhookUrl(args.workspaceId)
   if (!url) {
     log.warn("telegram setWebhook skipped: no public app URL", {

@@ -87,7 +87,7 @@ fi
 
 export const BOOT_SCRIPT_B64 = Buffer.from(BOOT_SCRIPT).toString('base64');
 
-const START_COMMAND =
+export const START_COMMAND =
   '/bin/sh -c "echo $CLAWS_BOOT_B64 | base64 -d > /tmp/boot.sh && exec sh /tmp/boot.sh"';
 
 /** Rider-2: Railway serverless auto-wakes on HTTP to the kept domain and would skip canWakeHibernatedWorkspace. */
