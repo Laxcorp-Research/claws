@@ -30,7 +30,7 @@ describe("telegram getUpdates polling", () => {
   })
 
   it("deletes the webhook, then returns text messages and the next offset", async () => {
-    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
       const href = String(url)
       if (href.endsWith("/deleteWebhook")) return jsonResponse({ ok: true, result: true })
       if (href.endsWith("/getUpdates")) {
@@ -55,7 +55,7 @@ describe("telegram getUpdates polling", () => {
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain("/deleteWebhook")
     const getUpdates = fetchImpl.mock.calls[1]
     expect(String(getUpdates?.[0])).toContain("/getUpdates")
-    const body = JSON.parse(String((getUpdates?.[1] as RequestInit).body))
+    const body = JSON.parse(String(getUpdates?.[1]?.body))
     expect(body.offset).toBe(0)
     expect(body.allowed_updates).toEqual(["message"])
     expect(batch.messages).toEqual([
@@ -67,13 +67,11 @@ describe("telegram getUpdates polling", () => {
   it("long-poll advances the offset only after the handler resolves", async () => {
     const seenOffsets: number[] = []
     let calls = 0
-    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url)
       if (href.endsWith("/deleteWebhook")) return jsonResponse({ ok: true, result: true })
       calls += 1
-      const body = JSON.parse(
-        String((fetchImpl.mock.calls.at(-1)?.[1] as RequestInit | undefined)?.body ?? "{}"),
-      ) as { offset?: number }
+      const body = JSON.parse(String(init?.body ?? "{}")) as { offset?: number }
       if (typeof body.offset === "number") seenOffsets.push(body.offset)
       if (calls === 1) {
         return jsonResponse({
