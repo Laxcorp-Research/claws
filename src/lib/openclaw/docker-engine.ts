@@ -15,6 +15,11 @@ export interface DockerCreateSpec {
   network: string
   /** host: publish DOCKER_GATEWAY_PORT on an ephemeral host port. proxy: no publish. */
   publish: "host" | "proxy"
+  /**
+   * Set only for a real OpenClaw runtime image. The fixture gateway keeps
+   * its image CMD so the proof still answers with fixture-reply.
+   */
+  command?: string[]
 }
 
 export interface DockerInspect {

@@ -70,6 +70,24 @@ function containerEnv(args: {
   return env
 }
 
+async function runtimeLaunchForImage(
+  image: string,
+  generated: Awaited<ReturnType<typeof generateWorkspace>>,
+  token: string,
+): Promise<{ command?: string[]; env: string[] }> {
+  const { isFixtureGatewayImage, dockerRuntimeCommand, runtimeLaunchEnv, workspaceFilesForBoot } =
+    await import("@/lib/openclaw/docker-runtime-launch")
+  if (isFixtureGatewayImage(image)) return { env: [] }
+  return {
+    command: dockerRuntimeCommand(),
+    env: runtimeLaunchEnv({
+      generated,
+      files: workspaceFilesForBoot(generated),
+      gatewayToken: token,
+    }),
+  }
+}
+
 function hostFor(name: string, publish: "host" | "proxy"): string {
   if (publish === "proxy") {
     const proxy = process.env.CLAWS_DOCKER_PROXY_HOST?.trim()
@@ -173,6 +191,7 @@ export async function deployToDocker(
   const containerHost = hostFor(name, publish)
   const generated = await generateWorkspace(workspaceId, { runtimeContract: "9.4" })
   const token = gatewayTokenFor(workspace, generated.gatewayToken)
+  const launch = await runtimeLaunchForImage(image, generated, token)
 
   const latest = await prisma.deployment.findFirst({
     where: { workspaceId },
@@ -200,7 +219,8 @@ export async function deployToDocker(
   const spec: DockerCreateSpec = {
     name,
     image,
-    env: containerEnv({ workspaceId, token }),
+    env: [...containerEnv({ workspaceId, token }), ...launch.env],
+    command: launch.command,
     volumeName,
     network: dockerNetworkName(),
     publish,

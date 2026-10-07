@@ -211,7 +211,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       sessionKey,
       message,
       idempotencyKey,
-      awaitReplyMs: 8_000,
+      // Long enough for a real model turn. The fixture gateway still returns as soon as it emits chat final.
+      awaitReplyMs: 90_000,
       socketFactory: deps.socketFactory,
     })
     if (!result.ok) {

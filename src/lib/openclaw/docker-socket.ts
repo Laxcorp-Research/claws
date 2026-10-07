@@ -41,6 +41,7 @@ export function dockerControlFromSocket(
         name: spec.name,
         Image: spec.image,
         Env: spec.env,
+        ...(spec.command ? { Cmd: spec.command } : {}),
         ExposedPorts: { [portKey]: {} },
         HostConfig: {
           Binds: [`${spec.volumeName}:${DOCKER_STATE_MOUNT}`],

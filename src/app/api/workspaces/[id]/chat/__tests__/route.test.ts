@@ -349,7 +349,7 @@ describe("POST /api/workspaces/[id]/chat", () => {
     const { status, data } = await parseResponse(await post({ message: "hi" }))
     expect(status).toBe(200)
     expect(data.data.replyText).toBe("fixture-reply")
-    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ awaitReplyMs: 8000 }))
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ awaitReplyMs: 90000 }))
     expect(afterQueue).toHaveLength(0)
   })
 })

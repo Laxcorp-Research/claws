@@ -29,7 +29,7 @@ services:
       ENCRYPTION_MASTER_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       ENCRYPTION_KEY_VERSION: v1
       CLAWS_PROFILE: self-host
-      CLAWS_DOCKER_IMAGE: claws-fixture-gateway:proof
+      CLAWS_DOCKER_IMAGE: ${CLAWS_DOCKER_IMAGE:-claws-fixture-gateway:proof}
       CLAWS_DOCKER_NETWORK: claws
       CLAWS_DOCKER_PUBLISH: host
       DOCKER_HOST_SOCKET: /var/run/docker.sock

@@ -21,11 +21,15 @@ vi.mock("@/lib/deploy/supersede-deployments", () => ({
 vi.mock("@/lib/openclaw/generator", () => ({
   generateWorkspace: vi.fn().mockResolvedValue({
     gatewayToken: "generated-token",
+    runtimeContract: "9.4",
     "openclaw.json": "{}",
-    ".env": "",
+    ".env": "ANTHROPIC_API_KEY=sk-ant-founder-local\n",
+    workspaces: {},
+    "cron/jobs.json": "{}",
   }),
 }))
 
+import { generateWorkspace } from "@/lib/openclaw/generator"
 import {
   __setDockerControlForTests,
   deployToDocker,
@@ -119,6 +123,9 @@ describe("docker provider", () => {
     expect(spec.publish).toBe("host")
     expect(spec.network).toBe("claws")
     expect(spec.image).toBe("claws-fixture-gateway:proof")
+    expect(spec.command).toBeUndefined()
+    expect(spec.env.some((line) => line.startsWith("CLAWS_BOOT_B64="))).toBe(false)
+    expect(spec.env).not.toContain("ANTHROPIC_API_KEY=sk-ant-founder-local")
     expect(spec.env).toContain("GATEWAY_TOKEN=generated-token")
     expect(prismaMock.workspace.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -137,6 +144,38 @@ describe("docker provider", () => {
       }),
     )
     expect(DOCKER_STATE_MOUNT).toBe("/home/node/.openclaw")
+  })
+
+  it("a real runtime image boots with the unpack command and the pasted Anthropic key", async () => {
+    process.env.CLAWS_DOCKER_IMAGE = "ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-5"
+    ;(generateWorkspace as MockFn).mockResolvedValueOnce({
+      gatewayToken: "generated-token",
+      runtimeContract: "9.4",
+      "openclaw.json": "{\"agents\":[]}",
+      ".env": "ANTHROPIC_API_KEY=sk-ant-founder-local\nOPENCLAW_GATEWAY_TOKEN=generated-token\n",
+      workspaces: { "workspace-a": { "SOUL.md": "soul" } },
+      "cron/jobs.json": "{}",
+      seedFiles: { "shared/VOICE.md": "voice" },
+    })
+    const { engine, calls } = fakeEngine()
+    __setDockerControlForTests(engine)
+
+    await deployToDocker("ws-1")
+
+    const spec = calls.find((c) => c.op === "createContainer")?.arg as DockerCreateSpec
+    expect(spec.command).toEqual([
+      "/bin/sh",
+      "-c",
+      "echo $CLAWS_BOOT_B64 | base64 -d > /tmp/boot.sh && exec sh /tmp/boot.sh",
+    ])
+    expect(spec.env.some((line) => line.startsWith("CLAWS_BOOT_B64="))).toBe(true)
+    expect(spec.env.some((line) => line.startsWith("CLAWS_CONFIG_GZ_B64="))).toBe(true)
+    expect(spec.env.some((line) => line.startsWith("CLAWS_ENV_GZ_B64="))).toBe(true)
+    expect(spec.env.some((line) => line.startsWith("CLAWS_FILES_GZ_B64="))).toBe(true)
+    expect(spec.env.some((line) => line.startsWith("CLAWS_SEED_FILES_GZ_B64="))).toBe(true)
+    expect(spec.env).toContain("ANTHROPIC_API_KEY=sk-ant-founder-local")
+    expect(spec.env).toContain("OPENCLAW_GATEWAY_TOKEN=generated-token")
+    expect(spec.env).toContain("OPENCLAW_CONFIG_READONLY=1")
   })
 
   it("proxy mode does not publish a host port and dials CLAWS_DOCKER_PROXY_HOST", async () => {
