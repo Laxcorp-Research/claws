@@ -248,7 +248,9 @@ jobs:
         run: npx prisma generate
 
       - name: Reset schema, apply migrations, and seed
-        run: npx prisma migrate reset --force
+        run: |
+          npx prisma migrate reset --force
+          npx prisma db seed
 
       - name: Redis answers ping
         run: |
