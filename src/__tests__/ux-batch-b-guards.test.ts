@@ -32,7 +32,7 @@ describe("Batch B recurrence guards", () => {
   })
 
   it("signin uses resolvePostAuthPath (not hardcode /my-claws only)", () => {
-    const src = read("src/app/auth/signin/page.tsx")
+    const src = read("src/app/auth/signin/sign-in-form.tsx")
     expect(src).toContain("resolvePostAuthPath")
     expect(src).not.toMatch(/router\.replace\("\/my-claws"\)/)
   })
