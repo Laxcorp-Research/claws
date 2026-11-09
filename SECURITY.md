@@ -2,9 +2,9 @@
 
 ## Reporting
 
-Email security@buildclaws.ai with a description, the version or commit, and the impact. Give us a reasonable window before any public write-up.
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/Laxcorp-Research/claws/security/advisories/new). Include a description, the version or commit, and the impact. Give us a reasonable window before any public write-up.
 
-support@buildclaws.ai has no MX record as of 2026-10-07. Do not use it for vulnerability reports until mail is configured.
+Do not open a public issue for a live credential.
 
 ## Secrets
 

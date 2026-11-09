@@ -11,6 +11,8 @@ on:
 jobs:
   staging-only:
     name: PRs to main must come from staging
+    # Hosted promote rule. Public claws accepts contributor pull requests to main.
+    if: github.event.repository.private == true
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless head.ref is staging

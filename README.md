@@ -39,4 +39,4 @@ AGPL-3.0-only. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ## Security
 
-Report a vulnerability to [founder address]. Do not open a public issue for a live credential. See [SECURITY.md](SECURITY.md).
+Report a vulnerability through [GitHub private vulnerability reporting](https://github.com/Laxcorp-Research/claws/security/advisories/new). Do not open a public issue for a live credential. See [SECURITY.md](SECURITY.md).

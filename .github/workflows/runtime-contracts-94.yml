@@ -38,6 +38,8 @@ jobs:
 
   exec-smoke:
     name: Rule-36 exec smoke inside 9.4 overlay image
+    # Login uses a repository secret. Fork pull requests must not receive it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
