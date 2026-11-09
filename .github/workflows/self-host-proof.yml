@@ -39,11 +39,15 @@ jobs:
             "src/app/api/workspaces/[id]/chat/__tests__/route.test.ts" \
             "src/app/api/dashboard/[workspaceId]/nap/__tests__/route.test.ts"
 
-      - name: Fixture gateway image
-        run: docker build -t claws-fixture-gateway:proof -f docker/fixture-gateway/Dockerfile docker/fixture-gateway
+      - name: Build contributor images
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile fixture build
+        env:
+          CLAWS_DOCKER_IMAGE: claws-fixture-gateway:proof
 
       - name: Compose up
-        run: docker compose up -d --build
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+        env:
+          CLAWS_DOCKER_IMAGE: claws-fixture-gateway:proof
 
       - name: Proof
         run: node scripts/self-host-proof.mjs

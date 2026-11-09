@@ -5,7 +5,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: claws
-      POSTGRES_PASSWORD: claws
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-claws}
       POSTGRES_DB: claws
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U claws -d claws"]
@@ -15,25 +15,28 @@ services:
     volumes:
       - claws-pg:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7
+    volumes:
+      - claws-redis:/data
+
   app:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.selfhost
+    image: ghcr.io/laxcorp-research/claws:latest
     ports:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://claws:${POSTGRES_PASSWORD:-claws}@postgres:5432/claws
-      NEXTAUTH_SECRET: self-host-proof-secret
+      NEXTAUTH_SECRET: ${CLAWS_NEXTAUTH_SECRET:-self-host-proof-secret}
       NEXTAUTH_URL: http://localhost:3000
       NEXT_PUBLIC_APP_URL: http://localhost:3000
-      ENCRYPTION_MASTER_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      ENCRYPTION_MASTER_KEY: ${CLAWS_ENCRYPTION_MASTER_KEY:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
       ENCRYPTION_KEY_VERSION: v1
       CLAWS_PROFILE: self-host
-      CLAWS_DOCKER_IMAGE: ${CLAWS_DOCKER_IMAGE:-claws-fixture-gateway:proof}
+      CLAWS_DOCKER_IMAGE: ${CLAWS_DOCKER_IMAGE:-ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18}
       CLAWS_DOCKER_NETWORK: claws
       CLAWS_DOCKER_PUBLISH: host
       DOCKER_HOST_SOCKET: /var/run/docker.sock
-      METERING_MASTER_SECRET: self-host-metering
+      METERING_MASTER_SECRET: ${CLAWS_METERING_MASTER_SECRET:-self-host-metering}
       CLAWS_SNAPSHOT_DIR: /var/lib/claws/snapshots
       CONTROL_PLANE_INTERNAL_URL: http://app:3000
       GITHUB_CLIENT_ID: unused
@@ -50,6 +53,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
 
 networks:
   default:
@@ -57,4 +66,5 @@ networks:
 
 volumes:
   claws-pg:
+  claws-redis:
   claws-snapshots:

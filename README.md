@@ -9,17 +9,12 @@ Claws is an open-source multi-agent platform on OpenClaw — teams of agents wit
 Requirements: Docker Engine with Compose.
 
 ```bash
-bash scripts/self-host-install.sh
+git clone https://github.com/Laxcorp-Research/claws && cd claws
+cp .env.example .env
+docker compose up -d
 ```
 
-That builds the fixture gateway and starts the control plane at http://localhost:3000. The fixture answers chat with the fixed text `fixture-reply`. It does not call a model vendor.
-
-```bash
-bash scripts/self-host-install.sh
-node scripts/self-host-proof.mjs
-```
-
-Change `NEXTAUTH_SECRET`, `ENCRYPTION_MASTER_KEY` (64 hex characters), `POSTGRES_PASSWORD` / `DATABASE_URL`, and `METERING_MASTER_SECRET` in `docker-compose.yml` before you expose the host. The rest of the bring-up is in [SELF_HOSTING.md](SELF_HOSTING.md).
+The control plane is pulled, not built. It listens on http://localhost:3000 once the app container is healthy. Change `CLAWS_NEXTAUTH_SECRET`, `CLAWS_ENCRYPTION_MASTER_KEY` (64 hex characters), `POSTGRES_PASSWORD`, and `CLAWS_METERING_MASTER_SECRET` in `.env` before you expose the host. The rest of the bring-up is in [SELF_HOSTING.md](SELF_HOSTING.md).
 
 ## What's included
 

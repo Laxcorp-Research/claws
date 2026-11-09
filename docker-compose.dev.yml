@@ -1,0 +1,18 @@
+# Contributors only. The default compose file pulls published images and has
+# no build. This file puts the source build and the fixture gateway back.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile fixture build fixture-gateway
+services:
+  app:
+    image: ghcr.io/laxcorp-research/claws:dev
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.selfhost
+
+  fixture-gateway:
+    profiles: ["fixture"]
+    image: claws-fixture-gateway:proof
+    build:
+      context: ./docker/fixture-gateway
+    entrypoint: ["sleep", "infinity"]
