@@ -14,7 +14,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The control plane is pulled, not built. It listens on http://localhost:3000 once the app container is healthy. Change `CLAWS_NEXTAUTH_SECRET`, `CLAWS_ENCRYPTION_MASTER_KEY` (64 hex characters), `POSTGRES_PASSWORD`, and `CLAWS_METERING_MASTER_SECRET` in `.env` before you expose the host. The rest of the bring-up is in [SELF_HOSTING.md](SELF_HOSTING.md).
+The control plane is pulled, not built. Open http://localhost:3000 and create your owner account. Change `CLAWS_NEXTAUTH_SECRET`, `CLAWS_ENCRYPTION_MASTER_KEY` (64 hex characters), `POSTGRES_PASSWORD`, and `CLAWS_METERING_MASTER_SECRET` in `.env` before you expose the host. The rest of the bring-up is in [SELF_HOSTING.md](SELF_HOSTING.md).
 
 ## What's included
 

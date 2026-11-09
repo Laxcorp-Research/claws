@@ -19,8 +19,12 @@ describe("self-host pull-only quickstart", () => {
     expect(compose).toContain("image: ghcr.io/laxcorp-research/claws:latest")
     expect(compose).toContain("image: postgres:16")
     expect(compose).toContain("image: redis:7")
+    expect(compose).toContain("runtime-prepull:")
+    expect(compose).toContain("image: docker:cli")
+    expect(compose).toContain("service_completed_successfully")
+    expect(compose).toContain("RUNTIME_IMAGE_TAG")
     expect(compose).toContain(
-      "ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18",
+      "ghcr.io/laxcorp-research/openclaw-runtime:${RUNTIME_IMAGE_TAG:-2026.5.22-18}",
     )
   })
 
@@ -37,8 +41,15 @@ describe("self-host pull-only quickstart", () => {
     expect(readme).toContain("git clone https://github.com/Laxcorp-Research/claws")
     expect(readme).toContain("cp .env.example .env")
     expect(readme).toContain("docker compose up -d")
+    expect(readme).toContain("create your owner account")
     expect(readme).not.toContain("self-host-install.sh")
     expect(readme).not.toContain("npm")
+    expect(readme).not.toContain("CLAWS_OWNER_PASSWORD")
+    const hosting = read("SELF_HOSTING.md")
+    expect(hosting).toContain("create your owner account")
+    expect(hosting).not.toContain("POST /api/setup/owner")
+    expect(hosting).not.toContain("CLAWS_OWNER_PASSWORD")
+    expect(hosting).not.toContain("curl ")
   })
 
   it("publishes a multi-arch image on main and tags without repository secrets", () => {

@@ -26,8 +26,8 @@ export async function POST(req: NextRequest) {
   if (!email.includes("@") || email.length > 200) {
     return ERRORS.VALIDATION("A valid email is required")
   }
-  if (password.length < 8 || password.length > 200) {
-    return ERRORS.VALIDATION("Password must be 8–200 characters")
+  if (password.length < 12 || password.length > 200) {
+    return ERRORS.VALIDATION("Password must be 12–200 characters")
   }
 
   const created = await prisma.$transaction(async (tx) => {

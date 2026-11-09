@@ -33,6 +33,7 @@ describe("SignInPage signup consent gate", () => {
     vi.clearAllMocks()
     mockSignIn.mockResolvedValue({ ok: true, error: null })
     document.cookie = `${TOS_CONSENT_COOKIE}=; path=/; max-age=0`
+    delete process.env.CLAWS_PROFILE
   })
 
   afterEach(() => {
@@ -80,6 +81,7 @@ describe("SignInPage magic link honesty", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSignIn.mockResolvedValue({ ok: true, error: null })
+    delete process.env.CLAWS_PROFILE
   })
 
   afterEach(() => {
@@ -125,6 +127,7 @@ describe("SignInPage sent-state layout and escape hatches", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSignIn.mockResolvedValue({ ok: true, error: null })
+    delete process.env.CLAWS_PROFILE
   })
 
   afterEach(() => {
@@ -180,5 +183,46 @@ describe("SignInPage sent-state layout and escape hatches", () => {
     ).toBeTruthy()
     // Still in the sent state - the banner remains visible alongside the error.
     expect(screen.getByText(/We sent a magic link/)).toBeTruthy()
+  })
+})
+
+describe("self-host sign-in with email unconfigured", () => {
+  const saved: Record<string, string | undefined> = {}
+  const keys = [
+    "CLAWS_PROFILE",
+    "GITHUB_CLIENT_ID",
+    "GITHUB_CLIENT_SECRET",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "RESEND_API_KEY",
+  ]
+
+  beforeEach(() => {
+    for (const key of keys) saved[key] = process.env[key]
+    process.env.CLAWS_PROFILE = "self-host"
+    process.env.GITHUB_CLIENT_ID = ""
+    process.env.GITHUB_CLIENT_SECRET = "unused"
+    process.env.GOOGLE_CLIENT_ID = ""
+    process.env.GOOGLE_CLIENT_SECRET = ""
+    process.env.RESEND_API_KEY = ""
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("SMTP_")) delete process.env[key]
+    }
+  })
+
+  afterEach(() => {
+    cleanup()
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key]
+      else process.env[key] = saved[key]
+    }
+  })
+
+  it("signin page HTML contains a password field and no magic-link button", () => {
+    const { container } = render(<SignInPage />)
+    expect(container.querySelector('input[type="password"]')).toBeTruthy()
+    expect(container.innerHTML).not.toContain("Send magic link")
+    expect(screen.queryByRole("button", { name: "Continue with GitHub" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Continue with Google" })).toBeNull()
   })
 })

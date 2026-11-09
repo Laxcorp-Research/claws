@@ -9,6 +9,7 @@ import {
   hashOwnerPassword,
   verifyOwnerPassword,
 } from "@/lib/auth/owner-password"
+import { credentialRejectionStatus } from "@/lib/auth/credential-lockout"
 
 type MockFn = ReturnType<typeof vi.fn>
 
@@ -58,6 +59,12 @@ describe("first-run owner", () => {
     )
   })
 
+  it("rejects a password shorter than 12 characters", async () => {
+    const res = await post({ email: "owner@local.test", password: "short-pass" })
+    expect(res.status).toBe(400)
+    expect(prismaMock.user.create).not.toHaveBeenCalled()
+  })
+
   it("a second call does not create another owner", async () => {
     ;(prismaMock.user.count as MockFn).mockResolvedValue(1)
     const res = await post({ email: "other@local.test", password: "correct-horse" })
@@ -70,6 +77,20 @@ describe("first-run owner", () => {
     const res = await post({ email: "owner@local.test", password: "correct-horse" })
     expect(res.status).toBe(404)
     expect(prismaMock.user.count).not.toHaveBeenCalled()
+  })
+
+  it("wrong password returns 401", async () => {
+    const stored = await hashOwnerPassword("correct-horse")
+    ;(prismaMock.user.findUnique as MockFn).mockResolvedValue({
+      id: "user-1",
+      email: "owner@local.test",
+      name: "Owner",
+      hashedPassword: stored,
+    })
+    expect(
+      await authorizeOwnerCredentials({ email: "owner@local.test", password: "wrong-password" }),
+    ).toBeNull()
+    expect(credentialRejectionStatus("ok")).toBe(401)
   })
 
   it("credentials login accepts the owner password and rejects a wrong one", async () => {

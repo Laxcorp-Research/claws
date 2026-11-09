@@ -25,6 +25,7 @@ import {
   type MissionLogEntry,
 } from "@/components/dashboard/mission-log-utils"
 import { ChatPanel, type ChatRow } from "@/components/dashboard/chat-panel"
+import { RuntimeImageBanner, useRuntimeImageMissing } from "@/components/dashboard/runtime-image-banner"
 import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 import { ConversationsSection } from "@/components/dashboard/conversations-section"
@@ -356,6 +357,7 @@ function DashboardPageContent() {
   const [redeployBanner, setRedeployBanner] = useState<{ variant: "error" | "info"; message: string } | null>(null)
   const [configDrift, setConfigDrift] = useState<ConfigDriftInfo | null>(null)
   const [channelStatus, setChannelStatus] = useState<ChannelStatusSummary | null>(null)
+  const runtimeImageMissing = useRuntimeImageMissing()
 
   const agentColorMapRef = useRef<Record<string, string>>({})
 
@@ -637,6 +639,7 @@ function DashboardPageContent() {
   }
 
   const handleResumeAll = useCallback(async () => {
+    if (runtimeImageMissing) return
     // STOPPED workspaces have no container - /restart would 400. Route them
     // through the confirm dialog below, which hits /cloud (full redeploy, ~2m).
     if (workspace?.status === "STOPPED") {
@@ -657,7 +660,7 @@ function DashboardPageContent() {
     } catch {
       /* error snackbar already shown */
     }
-  }, [workspace?.status, workspaceId, fetchStats, fetchChannelStatus, showSnackbar])
+  }, [runtimeImageMissing, workspace?.status, workspaceId, fetchStats, fetchChannelStatus, showSnackbar])
 
   const handleRedeployFromStopped = async (opts?: { financialAckAccepted?: boolean }) => {
     setRedeployFromStoppedConfirmOpen(false)
@@ -820,7 +823,7 @@ function DashboardPageContent() {
         actions: (
           <div className="flex gap-1.5">
             <Button variant="danger" size="xs" onClick={handleResumeAll}>Force restart</Button>
-            <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Redeploy</Button>
+            <Button variant="outline" size="xs" onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}>Redeploy</Button>
           </div>
         ),
       })
@@ -852,7 +855,7 @@ function DashboardPageContent() {
           </>
         ),
         actions: isConfigDrift ? (
-          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Redeploy</Button>
+          <Button variant="outline" size="xs" onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}>Redeploy</Button>
         ) : undefined,
       })
     }
@@ -872,7 +875,7 @@ function DashboardPageContent() {
           </>
         ),
         actions: (
-          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+          <Button variant="outline" size="xs" onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}>
             Redeploy
           </Button>
         ),
@@ -1086,7 +1089,7 @@ function DashboardPageContent() {
           </>
         ),
         actions: (
-          <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+          <Button variant="outline" size="xs" onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}>
             Redeploy
           </Button>
         ),
@@ -1109,7 +1112,7 @@ function DashboardPageContent() {
             </>
           ),
           actions: !showConfigDrift ? (
-            <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>
+            <Button variant="outline" size="xs" onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}>
               Redeploy
             </Button>
           ) : undefined,
@@ -1463,7 +1466,7 @@ function DashboardPageContent() {
           variant="outline"
           size="sm"
           loading={redeploying}
-          onClick={() => setRedeployConfirmOpen(true)}
+          onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}
         >
           <RefreshCw className="w-3.5 h-3.5" />
           {redeploying ? "Redeploying…" : "Redeploy"}
@@ -1486,12 +1489,13 @@ function DashboardPageContent() {
     <div className="max-w-5xl mx-auto px-5 py-6">
       <TextLink href="/my-claws" direction="back" className="mb-3 inline-block">My Claws</TextLink>
 
+      <RuntimeImageBanner missing={runtimeImageMissing} />
       {redeployBanner && (
         <AlertBanner
           variant={redeployBanner.variant}
           actions={
             redeployBanner.variant === "error" ? (
-              <Button variant="outline" size="xs" onClick={() => setRedeployConfirmOpen(true)}>Retry</Button>
+              <Button variant="outline" size="xs" onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}>Retry</Button>
             ) : undefined
           }
         >

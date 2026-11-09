@@ -15,7 +15,7 @@ import {
   recordTosConsentIfMissing,
 } from "@/lib/legal/consent-server"
 import { authorizeOwnerCredentials } from "@/lib/auth/owner-password"
-import { isSelfHost } from "@/lib/profile"
+import { signInMethods } from "@/lib/auth/signin-methods"
 
 function CustomPrismaAdapter(p: typeof prisma): Adapter {
   const base = PrismaAdapter(p) as Adapter;
@@ -76,16 +76,26 @@ function CustomPrismaAdapter(p: typeof prisma): Adapter {
 }
 
 function buildAuthProviders(): NextAuthOptions["providers"] {
-  const providers: NextAuthOptions["providers"] = [
-    GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    }),
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-    EmailProvider({
+  const methods = signInMethods(process.env)
+  const providers: NextAuthOptions["providers"] = []
+  if (methods.github) {
+    providers.push(
+      GitHubProvider({
+        clientId: process.env.GITHUB_CLIENT_ID!,
+        clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      }),
+    )
+  }
+  if (methods.google) {
+    providers.push(
+      GoogleProvider({
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      }),
+    )
+  }
+  if (methods.magicLink) {
+    providers.push(EmailProvider({
       server: { host: "unused", port: 0, auth: { user: "", pass: "" } },
       from: "Claws <noreply@buildclaws.ai>",
       sendVerificationRequest: async ({ identifier: email, url }) => {
@@ -129,9 +139,9 @@ function buildAuthProviders(): NextAuthOptions["providers"] {
           throw new Error("Failed to send verification email");
         }
       },
-    }),
-  ]
-  if (isSelfHost()) {
+    }))
+  }
+  if (methods.password) {
     providers.push(
       CredentialsProvider({
         name: "Owner password",

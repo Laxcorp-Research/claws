@@ -16,6 +16,7 @@ import { DeployProgress } from "@/components/setup/deploy-progress"
 import { ChannelList } from "@/components/setup/channel-list"
 import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { RuntimeImageBanner, useRuntimeImageMissing } from "@/components/dashboard/runtime-image-banner"
 import { queuedUserMessage } from "@/lib/railway/governor-budget"
 import { DriftBanner, formatChangedAreas } from "@/components/shared/drift-banner"
 import { Badge } from "@/components/ui/badge"
@@ -1922,6 +1923,7 @@ async function loadDeployToolPrerequisites(workspaceId: string): Promise<Require
 export function Step3({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const runtimeImageMissing = useRuntimeImageMissing()
   const [isLoading, setIsLoading] = useState(true)
   const [isDeploying, setIsDeploying] = useState(false)
   const [deploymentStatus, setDeploymentStatus] = useState<string | null>(null)
@@ -2084,6 +2086,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   }, [searchParams, checkBillingAndUpdateEligibility])
 
   const handleDeploy = useCallback(async (opts?: { financialAckAccepted?: boolean }) => {
+    if (runtimeImageMissing) return
     const financialAckAccepted = opts?.financialAckAccepted === true
     setIsDeploying(true)
     setDeploymentStatus("PENDING")
@@ -2153,7 +2156,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       setDeploymentStatus("FAILED")
       setIsDeploying(false)
     }
-  }, [workspaceId, hasConfiguredChannels])
+  }, [runtimeImageMissing, workspaceId, hasConfiguredChannels])
 
   const handleSubscribe = useCallback(async () => {
     setSubscribing(true)
@@ -2244,17 +2247,19 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         </AlertBanner>
       )}
 
+      <RuntimeImageBanner missing={runtimeImageMissing} />
+
       {!deploymentStatus && !waitingForActivation && (
         needsSub ? (
           <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
             Subscribe to Deploy - $79/mo
           </Button>
         ) : creditUser ? (
-          <Button variant="primary" size="default" onClick={() => handleDeploy()} disabled={isDeploying || !toolPrereqsReady}>
+          <Button variant="primary" size="default" onClick={() => handleDeploy()} disabled={isDeploying || !toolPrereqsReady || runtimeImageMissing}>
             Deploy Claw
           </Button>
         ) : (
-          <Button variant="primary" size="default" onClick={() => handleDeploy()} disabled={isDeploying || !eligibility || !toolPrereqsReady}>
+          <Button variant="primary" size="default" onClick={() => handleDeploy()} disabled={isDeploying || !eligibility || !toolPrereqsReady || runtimeImageMissing}>
             {eligibility?.isFirstDeploy ? "Deploy - 3-day trial" : "Deploy"}
           </Button>
         )

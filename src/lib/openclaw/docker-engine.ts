@@ -52,14 +52,22 @@ export function dockerPublishMode(
   return raw === "proxy" ? "proxy" : "host"
 }
 
+const RUNTIME_IMAGE_REPO = "ghcr.io/laxcorp-research/openclaw-runtime"
+
+/**
+ * CLAWS_DOCKER_IMAGE is the contributor override (fixture gateway).
+ * The shipped tag is RUNTIME_IMAGE_TAG, the same variable Compose pulls.
+ */
 export function resolveDockerImage(env: NodeJS.ProcessEnv = process.env): string {
-  const image = env.CLAWS_DOCKER_IMAGE?.trim() || env.OPENCLAW_DOCKER_IMAGE?.trim()
-  if (!image) {
+  const override = env.CLAWS_DOCKER_IMAGE?.trim() || env.OPENCLAW_DOCKER_IMAGE?.trim()
+  if (override) return override
+  const tag = env.RUNTIME_IMAGE_TAG?.trim()
+  if (!tag) {
     throw new Error(
-      "CLAWS_DOCKER_IMAGE is not set. Self-host deploys need a runtime image (see SELF_HOSTING.md).",
+      "RUNTIME_IMAGE_TAG is not set. Self-host deploys need a runtime image (see SELF_HOSTING.md).",
     )
   }
-  return image
+  return `${RUNTIME_IMAGE_REPO}:${tag}`
 }
 
 /** Docker gateways speak plain ws. Hosted Railway/Fly hosts stay wss. */

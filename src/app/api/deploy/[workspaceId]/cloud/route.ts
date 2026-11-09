@@ -24,6 +24,8 @@ import {
 } from "@/lib/legal/consent"
 import { hasConsent, recordConsent } from "@/lib/legal/consent-server"
 import { isSelfHost } from "@/lib/profile"
+import { readRuntimeImage } from "@/lib/openclaw/runtime-image"
+import { RUNTIME_IMAGE_MISSING_BANNER } from "@/lib/openclaw/runtime-image-message"
 
 export const maxDuration = 300
 
@@ -35,6 +37,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   const { error, workspace } = await verifyWorkspaceOwnership(workspaceId, sessionUser.id)
   if (error === "NOT_FOUND") return ERRORS.NOT_FOUND("Workspace")
   if (error === "FORBIDDEN") return ERRORS.FORBIDDEN()
+
+  if (isSelfHost()) {
+    const runtimeImage = await readRuntimeImage()
+    if (runtimeImage && !runtimeImage.present) {
+      return apiError(
+        "RUNTIME_IMAGE_MISSING",
+        RUNTIME_IMAGE_MISSING_BANNER,
+        409,
+      )
+    }
+  }
 
   if (workspace?.status === "RUNNING" && workspace.containerId) return apiError("ALREADY_RUNNING", "Workspace is already deployed and running", 400)
 
