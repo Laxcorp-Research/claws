@@ -64,7 +64,6 @@ The script creates the owner, installs Twitter/X, stores a fixture model key and
 This path calls Anthropic. It does not use the fixture image or a `fixture-` key. Docker Desktop must be running with Linux containers. From PowerShell at the repo root:
 
 ```powershell
-docker login ghcr.io
 $env:CLAWS_DOCKER_IMAGE = "ghcr.io/laxcorp-research/openclaw-runtime:latest"
 docker pull $env:CLAWS_DOCKER_IMAGE
 docker compose up -d --build
@@ -74,7 +73,7 @@ $env:TWITTER_API_KEY = "<twitter-api key, this shell only>"
 docker compose exec -T -e ANTHROPIC_API_KEY -e TWITTER_API_KEY -e CLAWS_OWNER_PASSWORD app node scripts/self-host-real-anthropic.mjs
 ```
 
-`docker login ghcr.io` is only required when the pull is denied. Do not write the keys into `docker-compose.yml` or a file that gets committed. The script refuses a `fixture-` key and refuses `CLAWS_DOCKER_IMAGE` when it contains `fixture-gateway`. A successful run prints a `chat` receipt whose `replyText` is the model sentence, not `fixture-reply`.
+The runtime image on ghcr.io is public, so `docker pull` does not need a registry login. Do not write the keys into `docker-compose.yml` or a file that gets committed. The script refuses a `fixture-` key and refuses `CLAWS_DOCKER_IMAGE` when it contains `fixture-gateway`. A successful run prints a `chat` receipt whose `replyText` is the model sentence, not `fixture-reply`.
 
 Unset `CLAWS_DOCKER_IMAGE` before the fixture proof. Compose then falls back to `claws-fixture-gateway:proof`.
 
