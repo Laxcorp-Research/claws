@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react"
+import { Suspense, useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { AlertBanner } from "@/components/ui/alert-banner"
@@ -319,7 +319,7 @@ function relativeTime(isoStr: string | undefined): string {
   return `${hours} hour${hours !== 1 ? "s" : ""} ago`
 }
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -1810,5 +1810,13 @@ export default function DashboardPage() {
         onRetry={redeployFlow.retry}
       />
     </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardPageContent />
+    </Suspense>
   )
 }

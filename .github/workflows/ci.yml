@@ -7,9 +7,9 @@ on:
     branches: [main, staging]
   workflow_dispatch:
 
-# Staging branch protection requires: "Lint, Type Check & Build" AND "E2E Tests".
-# Do not merge to staging while E2E is cancelled or pending. e2e-tests concurrency
-# has cancel-in-progress: false so a newer PR cannot kill this gate.
+# Public main requires: "Lint, Type Check & Build", "Unit & Integration Tests",
+# "E2E Tests", and "Security Audit". E2E uses service containers and no secrets.
+# e2e-tests concurrency has cancel-in-progress: false so a newer PR cannot kill this gate.
 
 env:
   NODE_VERSION: '20'
@@ -183,14 +183,56 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
-    # Fork PRs must not receive TEST_DATABASE_URL / Neon credentials.
-    # quality + unit-tests stay (lane gate). push to this repo still runs E2E.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    # Local Postgres + Redis service containers. No repository secrets, so a
+    # pull request from a fork runs the same job as a same-repo pull request.
+    # ubuntu-24.04: ubuntu-latest is 26.04 and Playwright has no Chromium build for it.
+    runs-on: ubuntu-24.04
     needs: [unit-tests]
     concurrency:
       group: ci-e2e-${{ github.repository }}
       cancel-in-progress: false
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: claws
+          POSTGRES_PASSWORD: claws
+          POSTGRES_DB: claws
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claws -d claws"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis-http:
+        image: hiett/serverless-redis-http:latest
+        env:
+          SRH_MODE: env
+          SRH_TOKEN: ci-redis-token
+          SRH_CONNECTION_STRING: redis://redis:6379
+        ports:
+          - 8079:80
+    env:
+      DATABASE_URL: postgresql://claws:claws@localhost:5432/claws
+      DIRECT_URL: postgresql://claws:claws@localhost:5432/claws
+      UPSTASH_REDIS_REST_URL: http://127.0.0.1:8079
+      UPSTASH_REDIS_REST_TOKEN: ci-redis-token
+      E2E_TEST_MODE: "true"
+      ADMIN_EMAILS: "e2e-admin@buildclaws.ai"
+      ENCRYPTION_MASTER_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ENCRYPTION_KEY_VERSION: "v1"
+      NEXTAUTH_SECRET: "ci-test-secret-ci-test-secret-ci-test-secret"
+      NEXTAUTH_URL: "http://localhost:3000"
     steps:
       - uses: actions/checkout@v5
 
@@ -205,93 +247,21 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      # GH #73 fix: this step MUST run BEFORE "Apply database schema". The E2E
-      # Neon branch (free tier) auto-pauses after inactivity; the schema push
-      # was hitting a cold/suspended endpoint and throwing P1001 before anything
-      # could wake it. Bounded retry loop (10 × 6s = 60s budget; Neon cold-start
-      # is 5–15s typical) waits the endpoint up, then FAILS LOUD (exit 1) if the
-      # budget is exhausted — a genuinely-unreachable DB should be a hard error,
-      # not the old single-shot best-effort exit(0) that masked the problem.
-      - name: Wake up Neon database
-        run: |
-          node -e "
-            const { Client } = require('pg');
-            const url = process.env.DATABASE_URL;
-            const MAX_ATTEMPTS = 10;
-            const DELAY_MS = 6000;
-
-            async function attempt(n) {
-              const client = new Client({ connectionString: url, connectionTimeoutMillis: 10000 });
-              try {
-                await client.connect();
-                await client.query('SELECT 1');
-                await client.end();
-                console.log(\`✓ Neon endpoint awake after \${n} attempt(s)\`);
-                return true;
-              } catch (err) {
-                try { await client.end(); } catch {}
-                console.log(\`Attempt \${n}/\${MAX_ATTEMPTS}: \${err.code || err.message}\`);
-                return false;
-              }
-            }
-
-            (async () => {
-              for (let i = 1; i <= MAX_ATTEMPTS; i++) {
-                if (await attempt(i)) process.exit(0);
-                if (i < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, DELAY_MS));
-              }
-              console.error(\`✗ Neon endpoint unreachable after \${MAX_ATTEMPTS} attempts (\${(MAX_ATTEMPTS * DELAY_MS) / 1000}s budget exhausted)\`);
-              process.exit(1);
-            })();
-          "
-        env:
-          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-
-      - name: Verify E2E reset target (fail-closed)
-        run: |
-          HOST=$(printf '%s' "$TEST_DIRECT_URL" | sed -E 's#^[^@]+@([^/?]+).*#\1#')
-          printf '%s' "$HOST" | grep -q 'ep-broad-smoke-andow2sv' || { echo "FATAL: not the E2E branch"; exit 1; }
-          printf '%s' "$HOST" | grep -q 'pooler' && { echo "FATAL: pooled endpoint; reset needs direct"; exit 1; }
-          printf '%s' "$HOST" | grep -Eq 'ep-polished-night|ep-delicate-water' && { echo "FATAL: staging/prod target — refusing reset"; exit 1; }
-          echo "✓ E2E reset target verified (E2E branch, direct, non-staging/prod)"
-        env:
-          TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
-
-      - name: Reset E2E schema from baseline and apply committed migrations
-        # Replaces `prisma db push --accept-data-loss` (closes GH #50 for E2E). reset = drop+recreate
-        # schema, clear history, replay ALL committed migrations from zero via the same engine prod uses
-        # (build:deploy → migrate deploy). DIRECT endpoint: migrate needs DDL + advisory locks the
-        # pooler won't serve.
+      - name: Reset schema, apply migrations, and seed
         run: npx prisma migrate reset --force
-        env:
-          DATABASE_URL: ${{ secrets.TEST_DIRECT_URL }}
-          DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+
+      - name: Redis answers ping
+        run: |
+          node -e "const {Redis}=require('@upstash/redis'); const r=new Redis({url:process.env.UPSTASH_REDIS_REST_URL, token:process.env.UPSTASH_REDIS_REST_TOKEN}); r.ping().then((v)=>{console.log('redis', v); if(v!=='PONG') process.exit(1)}).catch((e)=>{console.error(e); process.exit(1)})"
 
       - name: Install Playwright Chromium
         timeout-minutes: 5
         env:
           DEBIAN_FRONTEND: noninteractive
-        run: |
-          # ubuntu-latest unattended-upgrades holds the apt lock; --with-deps
-          # then hangs indefinitely (HWD E2E installed in 41s; this PR's first
-          # two attempts sat on this step 25+ min with no further output).
-          sudo systemctl stop unattended-upgrades.service || true
-          sudo killall --quiet apt-get apt unattended-upgr || true
-          npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
         run: npx playwright test --retries=2
-        env:
-          E2E_TEST_MODE: "true"
-          ADMIN_EMAILS: "e2e-admin@buildclaws.ai"
-          ENCRYPTION_MASTER_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-          ENCRYPTION_KEY_VERSION: "v1"
-          NEXTAUTH_SECRET: "ci-test-secret-ci-test-secret-ci-test-secret"
-          NEXTAUTH_URL: "http://localhost:3000"
-          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.TEST_DATABASE_URL }}
-          UPSTASH_REDIS_REST_URL: "https://fake-redis.upstash.io"
-          UPSTASH_REDIS_REST_TOKEN: "fake-token-for-ci"
 
   security:
     name: Security Audit

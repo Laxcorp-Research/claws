@@ -38,17 +38,11 @@ jobs:
 
   exec-smoke:
     name: Rule-36 exec smoke inside 9.4 overlay image
-    # Login uses a repository secret. Fork pull requests must not receive it.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # The runtime package on ghcr.io is public, so this pull needs no registry
+    # secret and runs on fork pull requests the same way it runs on main.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ vars.GHCR_READ_USER }}
-          password: ${{ secrets.GHCR_READ_PAT }}
       - name: Pull 9.4 base and bake overlay
         run: |
           set -euo pipefail
