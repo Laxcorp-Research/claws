@@ -413,6 +413,7 @@ export default function TemplateDetailPage() {
                 className="mt-2.5"
                 onClick={handlePurchase}
                 loading={purchasing}
+                data-testid="self-host-install"
               >
                 Install
               </Button>

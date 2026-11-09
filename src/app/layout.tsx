@@ -19,7 +19,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const session = await getServerSession(authOptions)
   return (
     <html lang="en">
-      <WebVitals />
+      {!isSelfHost() && <WebVitals />}
       <body>
         <Providers session={session} selfHost={isSelfHost()}>{children}</Providers>
         <LegalFooter />
