@@ -12,24 +12,30 @@
 
 ## Install
 
-Requirements: Docker Engine with Compose, and a runtime image.
+Requirements: Docker Engine with Compose. Nothing is built on your machine.
 
 ```bash
-bash scripts/self-host-install.sh
+git clone https://github.com/Laxcorp-Research/claws && cd claws
+cp .env.example .env
+docker compose up -d
 ```
 
-That builds the fixture gateway used by the proof (`claws-fixture-gateway:proof`) and runs `docker compose up -d --build`. The app listens on http://localhost:3000.
+That pulls `ghcr.io/laxcorp-research/claws:latest`, `ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18`, `postgres:16`, and `redis:7`, then starts them. The app listens on http://localhost:3000 when its healthcheck passes (`GET /api/health`).
 
-Before you expose the host, change these values in `docker-compose.yml`:
+Before you expose the host, change these values in `.env`:
 
-- `NEXTAUTH_SECRET`
-- `ENCRYPTION_MASTER_KEY` (64 hex characters)
-- `POSTGRES_PASSWORD` and the matching `DATABASE_URL`
-- `METERING_MASTER_SECRET`
+- `CLAWS_NEXTAUTH_SECRET`
+- `CLAWS_ENCRYPTION_MASTER_KEY` (64 hex characters)
+- `POSTGRES_PASSWORD`
+- `CLAWS_METERING_MASTER_SECRET`
 
-Point `CLAWS_DOCKER_IMAGE` at the OpenClaw runtime image you want to boot. The fixture image only speaks the gateway WebSocket protocol and answers chat with the fixed text `fixture-reply`. It does not call a model vendor. A real runtime image uses the model key you paste in settings.
+`CLAWS_DOCKER_IMAGE` is the OpenClaw runtime the control plane boots. The shipped value is the stable tag `2026.5.22-18`. Paste your model key in settings. A key that starts with `fixture-` is stored without calling the vendor.
 
 `CLAWS_DOCKER_NETWORK` must be the Compose network name (`claws` in the shipped file) so the control plane can reach a container by its Docker DNS name.
+
+## Behind a corporate proxy
+
+The quickstart only pulls images, so the registry certificate that matters is the one Docker uses, not a toolchain inside an image build. In Docker Desktop, set the HTTP proxy and install your corporate CA under Settings → Resources → Proxies and Settings → Docker Engine (or the Desktop certificate store), then run `docker compose pull` again.
 
 To put a reverse proxy in front of gateways instead of publishing ports:
 
@@ -50,32 +56,30 @@ The proxy must route that host to `<container-name>:18789` on the `claws` networ
 
 ## Proof
 
-On a machine with Docker:
+Contributors build locally. The default compose file has no `build` key.
 
 ```bash
-bash scripts/self-host-install.sh
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile fixture build
+CLAWS_DOCKER_IMAGE=claws-fixture-gateway:proof docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 node scripts/self-host-proof.mjs
 ```
 
-The script creates the owner, installs Twitter/X, stores a fixture model key and a fixture Twitter credential, deploys, checks the chat reply, naps, wakes, and confirms `POST /api/dodo-payments/checkout` is 404.
+The script creates the owner, installs Twitter/X, stores a fixture model key and a fixture Twitter credential, deploys, checks the chat reply, naps, wakes, and confirms `POST /api/dodo-payments/checkout` is 404. The fixture image answers chat with the fixed text `fixture-reply`.
 
 ## Real Anthropic key (Docker Desktop on Windows)
 
-This path calls Anthropic. It does not use the fixture image or a `fixture-` key. Docker Desktop must be running with Linux containers. From PowerShell at the repo root:
+This path calls Anthropic. Docker Desktop must be running with Linux containers. From PowerShell at the repo root, after the quickstart is up:
 
 ```powershell
-$env:CLAWS_DOCKER_IMAGE = "ghcr.io/laxcorp-research/openclaw-runtime:latest"
-docker pull $env:CLAWS_DOCKER_IMAGE
-docker compose up -d --build
 $env:CLAWS_OWNER_PASSWORD = "<8-200 characters, this shell only>"
 $env:ANTHROPIC_API_KEY = "<your Anthropic key, this shell only>"
 $env:TWITTER_API_KEY = "<twitter-api key, this shell only>"
 docker compose exec -T -e ANTHROPIC_API_KEY -e TWITTER_API_KEY -e CLAWS_OWNER_PASSWORD app node scripts/self-host-real-anthropic.mjs
 ```
 
-The runtime image on ghcr.io is public, so `docker pull` does not need a registry login. Do not write the keys into `docker-compose.yml` or a file that gets committed. The script refuses a `fixture-` key and refuses `CLAWS_DOCKER_IMAGE` when it contains `fixture-gateway`. A successful run prints a `chat` receipt whose `replyText` is the model sentence, not `fixture-reply`.
+`ghcr.io/laxcorp-research/claws` and `ghcr.io/laxcorp-research/openclaw-runtime` are public, so `docker compose pull` does not need a registry login. Do not write the keys into `docker-compose.yml`, `.env`, or any file that gets committed. The script refuses a `fixture-` key and refuses `CLAWS_DOCKER_IMAGE` when it contains `fixture-gateway`. A successful run prints a `chat` receipt whose `replyText` is the model sentence, not `fixture-reply`.
 
-Unset `CLAWS_DOCKER_IMAGE` before the fixture proof. Compose then falls back to `claws-fixture-gateway:proof`.
+To run that proof against the fixture instead, build `docker-compose.dev.yml` and set `CLAWS_DOCKER_IMAGE=claws-fixture-gateway:proof`.
 
 Telegram polling is covered by unit tests. Start a poller in a self-host process with `runTelegramLongPoll` from `src/lib/channels/telegram-poll.ts` when you have a bot token. Do not set a webhook.
 
