@@ -37,7 +37,7 @@
     "@axiomhq/logging": "^0.2.0",
     "@axiomhq/nextjs": "^0.2.0",
     "@axiomhq/react": "^0.2.0",
-    "@composio/core": "^0.6.8",
+    "@composio/core": "^0.28.0",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.6.0",
     "@radix-ui/react-dropdown-menu": "^2.1.22",
