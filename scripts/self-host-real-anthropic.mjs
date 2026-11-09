@@ -73,8 +73,8 @@ function assertRealInputs() {
       "twitter-growth-machine requires TWITTER_API_KEY. A fixture- prefix is rejected.",
     )
   }
-  if (!password || password.length < 8 || password.length > 200) {
-    fail("inputs", "Set CLAWS_OWNER_PASSWORD to 8-200 characters.")
+  if (!password || password.length < 12 || password.length > 200) {
+    fail("inputs", "Set CLAWS_OWNER_PASSWORD to 12-200 characters.")
   }
   if (!image || image.includes("fixture-gateway")) {
     fail(

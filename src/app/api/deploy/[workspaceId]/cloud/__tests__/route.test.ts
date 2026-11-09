@@ -49,6 +49,13 @@ vi.mock('@/lib/railway/governor', async () => {
   };
 });
 
+const mockReadRuntimeImage = vi.hoisted(() =>
+  vi.fn(async (): Promise<{ tag: string; image: string; present: boolean } | null> => null),
+);
+vi.mock('@/lib/openclaw/runtime-image', () => ({
+  readRuntimeImage: () => mockReadRuntimeImage(),
+}));
+
 import { POST } from '@/app/api/deploy/[workspaceId]/cloud/route';
 import { ProvisioningQueuedError } from '@/lib/railway/governor';
 
@@ -97,6 +104,8 @@ function mockEligibleUser(overrides: Partial<EligibilityUser> = {}) {
 describe('POST /api/deploy/[workspaceId]/cloud', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.CLAWS_PROFILE;
+    mockReadRuntimeImage.mockResolvedValue(null);
     mockEvaluateToolPrereqs.mockResolvedValue({
       satisfied: true,
       missingSlugs: [],
@@ -132,6 +141,26 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     mockGetSessionUser.mockResolvedValue(null);
     const res = await callRoute('ws-1');
     expect(res.status).toBe(401);
+  });
+
+  it('returns 409 RUNTIME_IMAGE_MISSING when the self-host runtime image is absent', async () => {
+    process.env.CLAWS_PROFILE = 'self-host';
+    mockReadRuntimeImage.mockResolvedValue({
+      tag: '2026.5.22-18',
+      image: 'ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18',
+      present: false,
+    });
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: { id: 'ws-1', status: 'SETUP_INCOMPLETE' },
+    });
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error.code).toBe('RUNTIME_IMAGE_MISSING');
+    expect(mockDeployToCloud).not.toHaveBeenCalled();
+    delete process.env.CLAWS_PROFILE;
   });
 
   it('returns 404 when workspace not found', async () => {

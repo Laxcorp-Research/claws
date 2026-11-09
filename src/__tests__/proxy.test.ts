@@ -28,6 +28,7 @@ function createReq(path: string, options: { method?: string; origin?: string; he
 describe('Proxy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.CLAWS_PROFILE;
     (getToken as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (apiRateLimit.limit as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true, remaining: 99, reset: Date.now() + 60000 });
     (authRateLimit.limit as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true, remaining: 9, reset: Date.now() + 60000 });

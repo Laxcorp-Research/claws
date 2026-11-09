@@ -20,6 +20,18 @@ services:
     volumes:
       - claws-redis:/data
 
+  runtime-prepull:
+    image: docker:cli
+    restart: "no"
+    environment:
+      RUNTIME_IMAGE_TAG: ${RUNTIME_IMAGE_TAG:-2026.5.22-18}
+    command:
+      - docker
+      - pull
+      - ghcr.io/laxcorp-research/openclaw-runtime:${RUNTIME_IMAGE_TAG:-2026.5.22-18}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
   app:
     image: ghcr.io/laxcorp-research/claws:latest
     ports:
@@ -32,17 +44,14 @@ services:
       ENCRYPTION_MASTER_KEY: ${CLAWS_ENCRYPTION_MASTER_KEY:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
       ENCRYPTION_KEY_VERSION: v1
       CLAWS_PROFILE: self-host
-      CLAWS_DOCKER_IMAGE: ${CLAWS_DOCKER_IMAGE:-ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18}
+      RUNTIME_IMAGE_TAG: ${RUNTIME_IMAGE_TAG:-2026.5.22-18}
+      CLAWS_DOCKER_IMAGE: ${CLAWS_DOCKER_IMAGE:-}
       CLAWS_DOCKER_NETWORK: claws
       CLAWS_DOCKER_PUBLISH: host
       DOCKER_HOST_SOCKET: /var/run/docker.sock
       METERING_MASTER_SECRET: ${CLAWS_METERING_MASTER_SECRET:-self-host-metering}
       CLAWS_SNAPSHOT_DIR: /var/lib/claws/snapshots
       CONTROL_PLANE_INTERNAL_URL: http://app:3000
-      GITHUB_CLIENT_ID: unused
-      GITHUB_CLIENT_SECRET: unused
-      GOOGLE_CLIENT_ID: unused
-      GOOGLE_CLIENT_SECRET: unused
       UPSTASH_REDIS_REST_URL: http://127.0.0.1:9
       UPSTASH_REDIS_REST_TOKEN: unused
       CRON_SECRET: unused
@@ -53,6 +62,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      runtime-prepull:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s

@@ -5,6 +5,8 @@ import { apiRateLimit, authRateLimit } from "./lib/rate-limit";
 import { getAdminEmails, isAdminEmail } from "./lib/admin-emails";
 import { isAllowedDuringOnboarding } from "./lib/auth/post-auth-path";
 import { denyHostedOnly, isSelfHost } from "./lib/profile";
+import { ownerGateAllows } from "./lib/auth/owner-gate-path";
+import { consumeCredentialAttempt } from "./lib/auth/credential-lockout";
 
 const allowedOrigins = [
   "https://app.buildclaws.ai",
@@ -28,6 +30,7 @@ const protectedPaths = [
 ];
 
 function isProtectedPath(pathname: string): boolean {
+  if (pathname === "/setup/owner" || pathname.startsWith("/setup/owner/")) return false
   return protectedPaths.some((p) => pathname.startsWith(p));
 }
 
@@ -125,6 +128,29 @@ export async function proxy(request: NextRequest) {
       { status: 404, headers: { "Content-Type": "application/json" } },
     );
   }
+
+  if (isSelfHost() && !ownerGateAllows(pathname)) {
+    const { selfHostNeedsOwner } = await import("@/lib/auth/owner-gate");
+    if (await selfHostNeedsOwner()) {
+      return NextResponse.redirect(new URL("/setup/owner", request.url));
+    }
+  }
+
+  if (
+    process.env.E2E_TEST_MODE !== "true" &&
+    request.method === "POST" &&
+    pathname.startsWith("/api/auth/callback/credentials")
+  ) {
+    const gate = await consumeCredentialAttempt(getClientIp(request));
+    if (gate === "locked") {
+      return rateLimitResponse(
+        "Too many sign-in attempts. Please try again later.",
+        0,
+        Date.now() + 15 * 60 * 1000,
+      );
+    }
+  }
+
   /** CI E2E uses fake Upstash URLs; self-host does not use Upstash. */
   const skipRateLimitForE2e = process.env.E2E_TEST_MODE === "true" || isSelfHost();
 
@@ -262,14 +288,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/api/:path*",
-    "/my-claws/:path*",
-    "/setup/:path*",
-    "/builder/:path*",
-    "/dashboard/:path*",
-    "/settings/:path*",
-    "/onboarding/:path*",
-    "/publish/:path*",
-    "/admin/:path*",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };

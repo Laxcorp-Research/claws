@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { prismaMock } from '@/test/helpers/mock-prisma'
 
+const dockerInspect = vi.hoisted(() => vi.fn())
+vi.mock('dockerode', () => ({
+  default: class Docker {
+    getImage() {
+      return { inspect: dockerInspect }
+    }
+  },
+}))
+
 vi.mock('@/lib/db', () => ({ prisma: prismaMock }))
 
 import { GET } from '@/app/api/health/route'
@@ -9,6 +18,8 @@ describe('GET /api/health', () => {
   const originalSha = process.env.VERCEL_GIT_COMMIT_SHA
 
   beforeEach(() => {
+    delete process.env.CLAWS_PROFILE
+    delete process.env.RUNTIME_IMAGE_TAG
     ;(prismaMock.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ '?column?': 1 }])
   })
 
@@ -43,5 +54,15 @@ describe('GET /api/health', () => {
     expect(json.status).toBe('healthy')
     expect(json).toHaveProperty('commit')
     expect(json.commit).toBe('abcdef0')
+  })
+
+  it('reports runtimeImage.present false when the self-host image is missing', async () => {
+    process.env.CLAWS_PROFILE = 'self-host'
+    process.env.RUNTIME_IMAGE_TAG = '2026.5.22-18'
+    dockerInspect.mockRejectedValue(new Error('No such image'))
+    const res = await GET()
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.runtimeImage).toEqual({ tag: '2026.5.22-18', present: false })
   })
 })
