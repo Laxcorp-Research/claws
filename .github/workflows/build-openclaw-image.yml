@@ -358,7 +358,7 @@ jobs:
 
       - name: Build upstream base image
         if: steps.check.outputs.skip != 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./openclaw-src
           push: true
@@ -382,7 +382,7 @@ jobs:
       - name: Build extended image with credit proxy
         if: steps.check.outputs.skip != 'true'
         id: build_extended
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./docker/Dockerfile
