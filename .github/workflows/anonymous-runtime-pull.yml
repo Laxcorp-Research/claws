@@ -1,0 +1,30 @@
+# One-shot proof that a clean runner can pull the public runtime image
+# and bring the compose stack up without docker login. Not a required check.
+name: Anonymous runtime pull
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pull ghcr.io/laxcorp-research/openclaw-runtime:latest with no login
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/.docker"
+          docker logout ghcr.io || true
+          docker pull ghcr.io/laxcorp-research/openclaw-runtime:latest
+          docker image inspect ghcr.io/laxcorp-research/openclaw-runtime:latest >/dev/null
+
+      - name: docker compose up
+        env:
+          CLAWS_DOCKER_IMAGE: ghcr.io/laxcorp-research/openclaw-runtime:latest
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/.docker"
+          docker compose up -d --build
+          docker compose ps
