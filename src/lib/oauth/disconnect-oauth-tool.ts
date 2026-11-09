@@ -19,7 +19,10 @@
  *   - Throws a plain Error with the server-provided message on failure so
  *     callers can surface `err.message` verbatim in a toast or dialog.
  */
+import { clientIsSelfHost } from "@/lib/profile-client"
+
 export async function disconnectOauthTool(workspaceId: string, toolSlug: string): Promise<void> {
+  if (clientIsSelfHost()) return
   const res = await fetch(`/api/tools/${workspaceId}/oauth/disconnect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

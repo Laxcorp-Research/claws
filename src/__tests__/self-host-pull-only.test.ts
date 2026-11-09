@@ -17,6 +17,7 @@ describe("self-host pull-only quickstart", () => {
     const compose = read("docker-compose.yml")
     expect(compose).not.toContain("build:")
     expect(compose).toContain("image: ghcr.io/laxcorp-research/claws:latest")
+    expect(compose).toContain("pull_policy: always")
     expect(compose).toContain("image: postgres:16")
     expect(compose).toContain("image: redis:7")
     expect(compose).toContain("runtime-prepull:")

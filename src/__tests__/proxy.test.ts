@@ -302,6 +302,25 @@ describe('Admin authorization at the edge (#133)', () => {
   });
 });
 
+describe('self-host /pricing', () => {
+  afterEach(() => {
+    delete process.env.CLAWS_PROFILE;
+  });
+
+  it('redirects /pricing to /store', async () => {
+    process.env.CLAWS_PROFILE = 'self-host';
+    const res = await proxy(createReq('/pricing'));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('Location')).toBe('http://localhost:3000/store');
+  });
+
+  it('hosted /pricing is not redirected', async () => {
+    delete process.env.CLAWS_PROFILE;
+    const res = await proxy(createReq('/pricing'));
+    expect(res.headers.get('Location')).toBeNull();
+  });
+});
+
 describe('Proxy-safety guard (#133)', () => {
   const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
 

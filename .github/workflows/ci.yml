@@ -248,7 +248,9 @@ jobs:
         run: npx prisma generate
 
       - name: Reset schema, apply migrations, and seed
-        run: npx prisma migrate reset --force
+        run: |
+          npx prisma migrate reset --force
+          npx prisma db seed
 
       - name: Redis answers ping
         run: |
@@ -262,6 +264,9 @@ jobs:
 
       - name: Run Playwright tests
         run: npx playwright test --retries=2
+
+      - name: Self-host store install walk
+        run: npx playwright test --config=playwright.self-host.config.ts --retries=2
 
   security:
     name: Security Audit

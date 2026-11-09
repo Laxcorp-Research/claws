@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useSelfHost } from "@/lib/profile-client"
 
 export type CreditProvider =
   | "ANTHROPIC"
@@ -45,11 +46,16 @@ interface CreditUsage {
 const EMPTY: CreditUsage = { records: [], daily: [] }
 
 export function useCreditUsage() {
+  const selfHost = useSelfHost()
   const [data, setData] = useState<CreditUsage>(EMPTY)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!selfHost)
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async () => {
+    if (selfHost) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -68,11 +74,12 @@ export function useCreditUsage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selfHost])
 
   useEffect(() => {
+    if (selfHost) return
     refetch()
-  }, [refetch])
+  }, [refetch, selfHost])
 
   return { ...data, loading, error, refetch }
 }

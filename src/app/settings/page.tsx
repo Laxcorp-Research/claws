@@ -11,6 +11,7 @@ import { SecuritySettings } from "@/components/settings/security-settings"
 import { cn } from "@/lib/utils"
 import { CreatorDashboard } from "@/components/settings/creator-dashboard"
 import { UsageDashboard } from "@/components/settings/usage-dashboard"
+import { useSelfHost } from "@/lib/profile-client"
 
 const TABS = [
   { id: "account", label: "Account" },
@@ -28,8 +29,10 @@ function SettingsContent() {
   const router = useRouter()
   const { data: session } = useSession()
 
+  const selfHost = useSelfHost()
+  const tabs = selfHost ? TABS.filter((t) => t.id !== "billing") : TABS
   const tabParam = searchParams.get("tab")
-  const validTab = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : null
+  const validTab = tabs.some((t) => t.id === tabParam) ? (tabParam as TabId) : null
   const [activeTab, setActiveTab] = useState<TabId>(validTab ?? "api-keys")
 
   useEffect(() => {
@@ -44,7 +47,7 @@ function SettingsContent() {
   }, [router])
 
   const handleTabKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const tabIds = TABS.map((t) => t.id)
+    const tabIds = tabs.map((t) => t.id)
     const currentIndex = tabIds.indexOf(activeTab)
     let nextIndex = currentIndex
 
@@ -64,12 +67,12 @@ function SettingsContent() {
       return
     }
 
-    handleTabChange(tabIds[nextIndex])
+    handleTabChange(tabIds[nextIndex] as TabId)
     setTimeout(() => {
       const tabEl = document.querySelector(`[role="tab"][aria-selected="true"]`) as HTMLElement
       tabEl?.focus()
     }, 0)
-  }, [activeTab, handleTabChange])
+  }, [activeTab, handleTabChange, tabs])
 
   const user = session?.user ? {
     id: session.user.id ?? "",
@@ -84,7 +87,7 @@ function SettingsContent() {
         <h1 className="sr-only">Settings</h1>
 
         <div className="flex border-b border-[var(--bd)] mb-[16px]" role="tablist" aria-label="Settings">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active = tab.id === activeTab
             return (
               <button
@@ -116,7 +119,7 @@ function SettingsContent() {
           )}
           {activeTab === "api-keys" && <ApiKeyManager />}
           {activeTab === "usage" && <UsageDashboard />}
-          {activeTab === "billing" && <BillingDashboard />}
+          {activeTab === "billing" && !selfHost && <BillingDashboard />}
           {activeTab === "security" && <SecuritySettings />}
           {activeTab === "creator" && <CreatorDashboard />}
         </div>

@@ -13,6 +13,7 @@ import { CustomSelect } from "@/components/ui/custom-select"
 import { TextLink } from "@/components/ui/text-link"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
+import { useSelfHost } from "@/lib/profile-client"
 
 interface SkillData {
   id: string
@@ -61,6 +62,7 @@ interface PageData {
 
 export default function SkillDetailPage() {
   const params = useParams<{ slug: string }>()
+  const selfHost = useSelfHost()
   const slug = params.slug
   const snackbar = useSnackbarOptional()
   const showSnackbar = useCallback(
@@ -151,6 +153,7 @@ export default function SkillDetailPage() {
   })()
 
   const handlePurchase = async () => {
+    if (selfHost) return
     if (!data) return
     setIsPurchasing(true)
     setInstallError(null)
@@ -337,7 +340,7 @@ export default function SkillDetailPage() {
           </div>
 
           <div className="text-right shrink-0 ml-4">
-            <PriceDisplay price={skill.price} isFree={skill.isFree} showPlatformFee={false} />
+            {!selfHost && <PriceDisplay price={skill.price} isFree={skill.isFree} showPlatformFee={false} />}
             {(() => {
               const isPaid = !skill.isFree && skill.price != null && skill.price > 0
               if (isOwner && isPaid) {
@@ -345,7 +348,7 @@ export default function SkillDetailPage() {
                   <p className="text-[11px] text-[var(--tx2)] mt-3">This is your skill</p>
                 )
               }
-              const needsPurchase = isPaid && !(installStatus?.hasPurchased)
+              const needsPurchase = !selfHost && isPaid && !(installStatus?.hasPurchased)
               if (installStatus?.installed) {
                 return (
                   <Button disabled className="mt-3 px-6 py-2 text-[13px]">

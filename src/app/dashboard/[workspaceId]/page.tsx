@@ -36,6 +36,7 @@ import { useWorkspaceRedeploy } from "@/components/dashboard/use-workspace-redep
 import { formatCurrency, formatCurrencyRounded, getModelDisplayName } from "@/lib/utils/format"
 import { timeAgo } from "@/lib/utils"
 import { formatQueueEta, queuedUserMessage } from "@/lib/railway/governor-budget"
+import { useSelfHost } from "@/lib/profile-client"
 import { Tabs } from "@/components/ui/tabs"
 import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { TextLink } from "@/components/ui/text-link"
@@ -325,6 +326,7 @@ function DashboardPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: session } = useSession()
+  const selfHost = useSelfHost()
 
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null)
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -372,6 +374,7 @@ function DashboardPageContent() {
   )
 
   const handleSubscribe = useCallback(async () => {
+    if (selfHost) return
     setSubscribing(true)
     try {
       const res = await fetch("/api/dodo-payments/checkout", {
@@ -387,7 +390,7 @@ function DashboardPageContent() {
       }
     } catch { /* network error - button re-enables */ }
     setSubscribing(false)
-  }, [workspaceId])
+  }, [workspaceId, selfHost])
 
   const fetchStats = useCallback(async (opts: { cursor?: string | null; append?: boolean } = {}) => {
     if (opts.append) setMissionLoadingMore(true)
@@ -467,7 +470,7 @@ function DashboardPageContent() {
     fetchDeploymentStatus()
     fetchChannelStatus()
     fetchStableVersion()
-    fetch("/api/user/billing")
+    if (!selfHost) fetch("/api/user/billing")
       .then((r) => r.json())
       .then((json) => {
         if (json.success) {
@@ -484,7 +487,7 @@ function DashboardPageContent() {
       fetchChannelStatus()
     }, STATS_POLL_MS)
     return () => clearInterval(interval)
-  }, [fetchStats, fetchDeploymentStatus, fetchChannelStatus, fetchStableVersion])
+  }, [fetchStats, fetchDeploymentStatus, fetchChannelStatus, fetchStableVersion, selfHost])
 
   useEffect(() => {
     if (searchParams.get("redeployed") !== "changes-applied") return
@@ -506,6 +509,7 @@ function DashboardPageContent() {
       if (e.data?.type === "dodo-checkout-complete") {
         fetchStats()
         fetchChannelStatus()
+        if (selfHost) return
         fetch("/api/user/billing").then((r) => r.json()).then((json) => {
           if (json.success) setTrialInfo({ trialUsed: json.data.trialUsed, trialEndsAt: json.data.trialEndsAt, hasActiveSubscription: json.data.hasActiveSubscription })
         }).catch(() => {})
@@ -513,7 +517,7 @@ function DashboardPageContent() {
     }
     window.addEventListener("message", onMessage)
     return () => window.removeEventListener("message", onMessage)
-  }, [fetchStats, fetchChannelStatus])
+  }, [fetchStats, fetchChannelStatus, selfHost])
 
   // PR-9/pre: connection + listener lifecycle lives in useActivityStream -
   // the old inline effect's reconnect path created a bare EventSource with
@@ -1123,6 +1127,7 @@ function DashboardPageContent() {
     // Trial banners apply to credit users too - starter credits ≠ platform trial.
     // MUTATION: restoring `!creditUser &&` hides truth for PLATFORM_CREDIT.
     if (trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
+      if (!selfHost) {
       const trialEnd = trialInfo.trialEndsAt ? new Date(trialInfo.trialEndsAt) : null
       const now = new Date()
       const trialActive = trialEnd && trialEnd > now
@@ -1165,6 +1170,7 @@ function DashboardPageContent() {
             </Button>
           ),
         })
+      }
       }
     }
 
@@ -1286,7 +1292,7 @@ function DashboardPageContent() {
         actions: (
           <div className="flex gap-1.5">
             <Button variant="primary" size="xs" onClick={() => router.push("/settings?tab=api-keys")}>Add API key</Button>
-            <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Subscribe</Button>
+            {!selfHost && <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Subscribe</Button>}
           </div>
         ),
       })
@@ -1294,7 +1300,7 @@ function DashboardPageContent() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncNearCap, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncNearCap, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion, selfHost])
 
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => {

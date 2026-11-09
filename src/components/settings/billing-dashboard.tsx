@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useSelfHost } from "@/lib/profile-client"
 import { StatCard } from "@/components/ui/stat-card"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { Button } from "@/components/ui/button"
@@ -51,6 +52,7 @@ function mapStatus(status: string): "running" | "paused" | "error" | "draft" | "
 export const BILLING_SUBSCRIBE_RETURN = "/settings?tab=billing&subscribed=1"
 
 export function BillingDashboard() {
+  const selfHost = useSelfHost()
   const router = useRouter()
   const searchParams = useSearchParams()
   const subscribedReturn = searchParams.get("subscribed") === "1"
@@ -64,13 +66,14 @@ export function BillingDashboard() {
   const [portalMessage, setPortalMessage] = useState<string | null>(null)
 
   const loadBilling = useCallback(async () => {
+    if (selfHost) return
     const [billingJson, wsJson] = await Promise.all([
       fetch("/api/user/billing").then((r) => r.json()),
       fetch("/api/workspaces").then((r) => r.json()),
     ])
     if (billingJson.success) setData(billingJson.data)
     if (wsJson.success) setWorkspaces(wsJson.data ?? [])
-  }, [])
+  }, [selfHost])
 
   useEffect(() => {
     loadBilling().finally(() => setLoading(false))
@@ -83,6 +86,7 @@ export function BillingDashboard() {
   }, [subscribedReturn, loadBilling])
 
   const handleSubscribe = async () => {
+    if (selfHost) return
     // MUTATION: marketing pricing navigation restored here → subscribe-checkout test fails.
     setSubscribing(true)
     setSubscribeMessage(null)
@@ -119,6 +123,7 @@ export function BillingDashboard() {
   }
 
   const openPortal = async () => {
+    if (selfHost) return
     // PR-7: open the tab synchronously (inside the click gesture) so the
     // post-fetch navigation isn't blocked as a popup. If the portal isn't
     // available (Dodo mock mode / no dodoCustomerId), close the blank tab
@@ -142,6 +147,8 @@ export function BillingDashboard() {
       setPortalLoading(false)
     }
   }
+
+  if (selfHost) return null
 
   if (loading) {
     return (
