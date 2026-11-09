@@ -1126,7 +1126,8 @@ function DashboardPageContent() {
 
     // Trial banners apply to credit users too - starter credits ≠ platform trial.
     // MUTATION: restoring `!creditUser &&` hides truth for PLATFORM_CREDIT.
-    if (!selfHost && trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
+    if (trialInfo && trialInfo.trialUsed && !trialInfo.hasActiveSubscription) {
+      if (!selfHost) {
       const trialEnd = trialInfo.trialEndsAt ? new Date(trialInfo.trialEndsAt) : null
       const now = new Date()
       const trialActive = trialEnd && trialEnd > now
@@ -1169,6 +1170,7 @@ function DashboardPageContent() {
             </Button>
           ),
         })
+      }
       }
     }
 

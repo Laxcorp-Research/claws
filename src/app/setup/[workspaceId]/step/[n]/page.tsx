@@ -1120,7 +1120,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     }
     const toolSlug = byokModal.apiKeyForm.toolSlug
     if (selfHost) {
-      return { success: false, error: "Composio is not available in self-host." }
+      return { success: false, error: "This connection method is not available in self-host." }
     }
 
     try {
