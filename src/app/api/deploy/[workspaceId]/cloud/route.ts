@@ -23,6 +23,7 @@ import {
   isFinancialTemplateSlug,
 } from "@/lib/legal/consent"
 import { hasConsent, recordConsent } from "@/lib/legal/consent-server"
+import { isEntitled } from "@/lib/entitlement"
 import { isSelfHost } from "@/lib/profile"
 import { readRuntimeImage } from "@/lib/openclaw/runtime-image"
 import { RUNTIME_IMAGE_MISSING_BANNER } from "@/lib/openclaw/runtime-image-message"
@@ -136,45 +137,45 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     },
   })
 
-  if (!isSelfHost()) {
-    const eligibility = checkDeployEligibility(user)
+  const eligibility = checkDeployEligibility(user)
 
-    if (eligibility.isFirstDeploy) {
-      const now = new Date()
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          trialUsed: true,
-          trialStartedAt: now,
-          trialEndsAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
+  if (eligibility.isFirstDeploy) {
+    const now = new Date()
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        trialUsed: true,
+        trialStartedAt: now,
+        trialEndsAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
+      },
+    })
+  }
+
+  if (!eligibility.canDeploy) {
+    return apiError(
+      "SUBSCRIPTION_REQUIRED",
+      "Your 3-day trial has ended. Subscribe to the Claw Platform ($79/mo) to keep your Claws running.",
+      402,
+    )
+  }
+
+  // Existing-service reuse (HWD wake / redeploy with containerId) bypasses
+  // the create governor - those paths never serviceCreate.
+  // isEntitled("deploy_limit", false) is true only in self-host, so this
+  // block does not call evaluateCreateBudget there.
+  if (!workspace?.containerId && !isEntitled("deploy_limit", false)) {
+    const budget = await evaluateCreateBudget()
+    if (!isEntitled("deploy_limit", budget.allowed)) {
+      const queued = await enqueueProvisioning(workspaceId, "budget")
+      return apiSuccess(
+        {
+          queued: true,
+          position: queued.position,
+          etaAt: queued.etaAt.toISOString(),
+          message: queued.message,
         },
-      })
-    }
-
-    if (!eligibility.canDeploy) {
-      return apiError(
-        "SUBSCRIPTION_REQUIRED",
-        "Your 3-day trial has ended. Subscribe to the Claw Platform ($79/mo) to keep your Claws running.",
-        402,
+        202,
       )
-    }
-
-    // Existing-service reuse (HWD wake / redeploy with containerId) bypasses
-    // the create governor - those paths never serviceCreate.
-    if (!workspace?.containerId) {
-      const budget = await evaluateCreateBudget()
-      if (!budget.allowed) {
-        const queued = await enqueueProvisioning(workspaceId, "budget")
-        return apiSuccess(
-          {
-            queued: true,
-            position: queued.position,
-            etaAt: queued.etaAt.toISOString(),
-            message: queued.message,
-          },
-          202,
-        )
-      }
     }
   }
 

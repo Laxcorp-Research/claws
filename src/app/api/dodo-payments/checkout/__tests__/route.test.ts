@@ -136,7 +136,7 @@ describe('POST /api/dodo-payments/checkout', () => {
   });
 
   describe('claw_purchase', () => {
-    it('returns checkout URL in live mode', async () => {
+    it('hosted install still returns a checkout URL', async () => {
       mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
       (prismaMock.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_USER);
       (prismaMock.clawTemplate.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TEMPLATE);

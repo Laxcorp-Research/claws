@@ -14,6 +14,8 @@
  * No Prisma imports at runtime. No side effects.
  */
 
+import { isEntitled } from "@/lib/entitlement"
+
 export const TRIAL_EXPIRY_GRACE_MS = 24 * 60 * 60 * 1000
 
 /** Already terminal / never-runtime - skip stop enforcement. */
@@ -84,9 +86,12 @@ export function isSubscriptionOnHold(
 export function shouldSkipTrialStop(
   user: Pick<TrialExpiryUser, "hasActiveSubscription" | "subscriptionStatus">,
 ): boolean {
-  if (user.hasActiveSubscription) return true
-  if (isSubscriptionOnHold(user)) return true
-  return false
+  const hostedSkip = user.hasActiveSubscription || isSubscriptionOnHold(user)
+  return (
+    isEntitled("trial_expired", hostedSkip) ||
+    isEntitled("on_hold", hostedSkip) ||
+    isEntitled("scheduler", hostedSkip)
+  )
 }
 
 export function isTrialStopEnforceableStatus(status: string): boolean {
@@ -128,10 +133,8 @@ export function decideTrialExpiryActions(
 
   for (const user of users) {
     if (!isTrialExpired(user, now)) continue
-    if (user.hasActiveSubscription) continue
-    // Dunning users stay out of both phases even if hasActiveSubscription
-    // was incorrectly cleared (subscription.failed race).
-    if (isSubscriptionOnHold(user)) continue
+    // Subscribed and on_hold stay out of both phases. Self-host skips via isEntitled.
+    if (shouldSkipTrialStop(user)) continue
 
     if (user.trialExpiryNotifiedAt === null) {
       const running = user.workspaces.filter((w) => w.status === "RUNNING")

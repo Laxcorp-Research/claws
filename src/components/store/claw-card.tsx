@@ -1,8 +1,11 @@
+"use client"
+
 import Link from "next/link"
 import { AgentPill } from "@/components/ui/agent-pill"
 import { TrustBadge } from "@/components/marketplace/trust-badge"
 import type { TrustTier } from "@/types/marketplace"
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
+import { useSelfHost } from "@/lib/profile-client"
 
 const MAX_VISIBLE_PILLS = 4
 
@@ -45,6 +48,7 @@ export function ClawCard({
   avgRating,
   creatorName,
 }: ClawCardProps) {
+  const selfHost = useSelfHost()
   const workers = claw.agents.filter((a) => a.role !== "ORCHESTRATOR")
   const visibleAgents = workers.slice(0, MAX_VISIBLE_PILLS)
   const remainingCount = workers.length - MAX_VISIBLE_PILLS
@@ -103,14 +107,14 @@ export function ClawCard({
           </div>
 
           <div data-store-card="rail" className="flex flex-col items-end justify-center gap-[6px] shrink-0">
-            {free ? (
+            {!selfHost && (free ? (
               <span className="text-[13px] font-semibold text-[var(--ok)] leading-none">Free</span>
             ) : (
               <span className="text-[13px] font-semibold text-[var(--tx)] leading-none whitespace-nowrap">
                 ${claw.price}
                 <span className="text-[11px] font-normal text-[var(--tx3)] ml-1"> one-time</span>
               </span>
-            )}
+            ))}
             <span className="text-[11px] font-medium text-[var(--tx2)] leading-none group-hover:text-[var(--tx)]">
               View
             </span>

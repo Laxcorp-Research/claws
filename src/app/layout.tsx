@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { Providers } from "@/components/providers"
 import { LegalFooter } from "@/components/shared/legal-footer"
 import { authOptions } from "@/lib/auth"
+import { isSelfHost } from "@/lib/profile"
 import { WebVitals } from "@/lib/axiom/client"
 import "./globals.css"
 
@@ -20,7 +21,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <WebVitals />
       <body>
-        <Providers session={session}>{children}</Providers>
+        <Providers session={session} selfHost={isSelfHost()}>{children}</Providers>
         <LegalFooter />
       </body>
     </html>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useSelfHost } from "@/lib/profile-client"
 
 interface CreditBalance {
   hasCredits: boolean
@@ -23,11 +24,16 @@ const EMPTY: CreditBalance = {
 }
 
 export function useCreditBalance(pollIntervalMs?: number) {
+  const selfHost = useSelfHost()
   const [data, setData] = useState<CreditBalance>(EMPTY)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!selfHost)
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(async () => {
+    if (selfHost) {
+      setLoading(false)
+      return
+    }
     try {
       const res = await fetch("/api/credits/balance")
       const json = await res.json()
@@ -46,16 +52,17 @@ export function useCreditBalance(pollIntervalMs?: number) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selfHost])
 
   useEffect(() => {
+    if (selfHost) return
     refetch()
 
     if (pollIntervalMs && pollIntervalMs > 0) {
       const interval = setInterval(refetch, pollIntervalMs)
       return () => clearInterval(interval)
     }
-  }, [refetch, pollIntervalMs])
+  }, [refetch, pollIntervalMs, selfHost])
 
   return { ...data, loading, error, refetch }
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef } from "react"
+import { useSelfHost } from "@/lib/profile-client"
 
 /**
  * Shared client-side OAuth connection flow (PR #4 Commit 7).
@@ -157,6 +158,7 @@ export function useOAuthConnection({
 }: UseOAuthConnectionOptions): {
   connect: (toolSlug: string) => void
 } {
+  const selfHost = useSelfHost()
   // Track the active cleanup so repeat calls cancel the previous flow
   // and unmounting cancels any in-flight polling.
   const cleanupRef = useRef<Cleanup | null>(null)
@@ -184,6 +186,7 @@ export function useOAuthConnection({
 
   const connect = useCallback(
     (toolSlug: string) => {
+      if (selfHost) return
       void (async () => {
         if (initiatingSlugRef.current === toolSlug) return
         initiatingSlugRef.current = toolSlug
@@ -348,7 +351,7 @@ export function useOAuthConnection({
         }, timeoutMs)
       })()
     },
-    [workspaceId, pollIntervalMs, timeoutMs],
+    [workspaceId, pollIntervalMs, timeoutMs, selfHost],
   )
 
   return { connect }

@@ -18,6 +18,7 @@ import { ChannelRow } from "@/components/setup/channel-row"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { RuntimeImageBanner, useRuntimeImageMissing } from "@/components/dashboard/runtime-image-banner"
 import { queuedUserMessage } from "@/lib/railway/governor-budget"
+import { useSelfHost } from "@/lib/profile-client"
 import { DriftBanner, formatChangedAreas } from "@/components/shared/drift-banner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -212,6 +213,7 @@ const PROVIDER_PLACEHOLDER: Record<string, string> = {
 }
 
 function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
+  const selfHost = useSelfHost()
   const router = useRouter()
   const [agents, setAgents] = useState<AgentRow[]>([])
   const [keyStatus, setKeyStatus] = useState<ProviderStatus[]>([])
@@ -234,7 +236,9 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       try {
         const [agentsRes, creditRes] = await Promise.all([
           fetch(`/api/agents/${workspaceId}`),
-          fetch("/api/credits/balance"),
+          selfHost
+            ? Promise.resolve(new Response(JSON.stringify({ success: false }), { status: 200 }))
+            : fetch("/api/credits/balance"),
           fetchKeyStatus(),
         ])
         const agentsData = await agentsRes.json()
@@ -262,7 +266,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
       }
     }
     load()
-  }, [workspaceId, fetchKeyStatus])
+  }, [workspaceId, fetchKeyStatus, selfHost])
 
   const handleModelChange = useCallback((agentId: string, model: string, thinkingDefault: string | null) => {
     setAgents((prev) => prev.map((a) => (a.id === agentId ? { ...a, model, thinkingDefault } : a)))
@@ -422,6 +426,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
 // merge logic added below is unit-testable.
 
 function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isManageMode?: boolean }) {
+  const selfHost = useSelfHost()
   const router = useRouter()
   const snackbar = useSnackbarOptional()
   const showSnackbar = useCallback(
@@ -1049,7 +1054,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   // re-authorizing through Composio IS the confirmation surface").
   const handleOauthReconnect = useCallback((tool: ToolState) => {
     if (tool.connectionType !== "OAUTH_COMPOSIO") return
-    if (!composioOAuthAvailable) {
+    if (selfHost || !composioOAuthAvailable) {
       setTools((prev) =>
         prev.map((t) =>
           t.slug === tool.slug
@@ -1069,7 +1074,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       ),
     )
     oauth.connect(tool.slug)
-  }, [oauth, composioOAuthAvailable])
+  }, [oauth, composioOAuthAvailable, selfHost])
 
   const handleCredentialsSave = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
     if (!apiKeyModal.tool) return { success: false, error: "No tool selected" }
@@ -1114,6 +1119,9 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       return { success: false, error: "API key is required" }
     }
     const toolSlug = byokModal.apiKeyForm.toolSlug
+    if (selfHost) {
+      return { success: false, error: "Composio is not available in self-host." }
+    }
 
     try {
       const res = await fetch(`/api/tools/${workspaceId}/byok/submit`, {
@@ -1147,7 +1155,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
     } catch {
       return { success: false, error: "Network error" }
     }
-  }, [byokModal.apiKeyForm, workspaceId, refreshTools])
+  }, [byokModal.apiKeyForm, workspaceId, refreshTools, selfHost])
 
   // PR #4 Commit 7: initial "Connect with OAuth" flow delegates to the
   // shared useOAuthConnection hook (defined at the top of the component).
@@ -1157,7 +1165,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
   const handleOAuthConnect = useCallback(
     (tool: Pick<ToolState, "slug" | "connectionType">) => {
       if (tool.connectionType !== "OAUTH_COMPOSIO") return
-      if (!composioOAuthAvailable) {
+      if (selfHost || !composioOAuthAvailable) {
         setTools((prev) =>
           prev.map((t) =>
             t.slug === tool.slug
@@ -1194,7 +1202,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
       )
       oauth.connect(tool.slug)
     },
-    [oauth, composioOAuthAvailable],
+    [oauth, composioOAuthAvailable, selfHost],
   )
 
   const handleSwapSelect = useCallback(
@@ -1451,7 +1459,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               // tests enforce presence for every OAUTH_COMPOSIO entry.
               authMode={getToolBySlug(tool.slug)?.authMode}
               pinnedDockerImage={pinnedDockerImage}
-              composioOAuthAvailable={composioOAuthAvailable}
+              composioOAuthAvailable={selfHost ? false : composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
               connectedAt={tool.connectedAt}
@@ -1511,7 +1519,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
                 connectionType={tool.connectionType}
                 authMode={getToolBySlug(tool.slug)?.authMode}
                 pinnedDockerImage={pinnedDockerImage}
-              composioOAuthAvailable={composioOAuthAvailable}
+              composioOAuthAvailable={selfHost ? false : composioOAuthAvailable}
                 errorMessage={tool.errorMessage}
                 warningMessage={tool.warningMessage}
                 connectedAt={tool.connectedAt}
@@ -1590,7 +1598,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
               connectionType={tool.connectionType}
               authMode={getToolBySlug(tool.slug)?.authMode}
               pinnedDockerImage={pinnedDockerImage}
-              composioOAuthAvailable={composioOAuthAvailable}
+              composioOAuthAvailable={selfHost ? false : composioOAuthAvailable}
               errorMessage={tool.errorMessage}
               warningMessage={tool.warningMessage}
               connectedAt={tool.connectedAt}
@@ -1686,7 +1694,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         onSwapSelect={(tool) => void handleSwapSelect(tool)}
         connectedSlugs={connectedSlugs}
         onConnect={handleBrowseConnect}
-        composioOAuthAvailable={composioOAuthAvailable}
+        composioOAuthAvailable={selfHost ? false : composioOAuthAvailable}
         onOAuthConnect={() => {}}
         workspaceId={workspaceId}
       />
@@ -1695,7 +1703,7 @@ function Step2({ workspaceId, isManageMode = false }: { workspaceId: string; isM
         onClose={() => setBrowseModal(false)}
         connectedSlugs={connectedSlugs}
         onConnect={handleBrowseConnect}
-        composioOAuthAvailable={composioOAuthAvailable}
+        composioOAuthAvailable={selfHost ? false : composioOAuthAvailable}
         onOAuthConnect={(def) =>
           handleOAuthConnect({
             slug: def.slug,
@@ -1921,6 +1929,7 @@ async function loadDeployToolPrerequisites(workspaceId: string): Promise<Require
 }
 
 export function Step3({ workspaceId }: { workspaceId: string }) {
+  const selfHost = useSelfHost()
   const router = useRouter()
   const searchParams = useSearchParams()
   const runtimeImageMissing = useRuntimeImageMissing()
@@ -1951,6 +1960,10 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   })
 
   const checkBillingAndUpdateEligibility = useCallback(async (): Promise<boolean> => {
+    if (selfHost) {
+      setEligibility({ canDeploy: true, reason: "self_host", needsSubscription: false, isFirstDeploy: false })
+      return true
+    }
     try {
       const res = await fetch("/api/user/billing")
       const json = await res.json()
@@ -1972,7 +1985,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       setEligibility({ canDeploy: false, reason: "subscription_required", needsSubscription: true, isFirstDeploy: false })
       return false
     } catch { return false }
-  }, [])
+  }, [selfHost])
 
   useEffect(() => {
     async function init() {
@@ -2159,6 +2172,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   }, [runtimeImageMissing, workspaceId, hasConfiguredChannels])
 
   const handleSubscribe = useCallback(async () => {
+    if (selfHost) return
     setSubscribing(true)
     try {
       const res = await fetch("/api/dodo-payments/checkout", {
@@ -2176,7 +2190,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       console.error("Failed to start subscription checkout:", err)
     }
     setSubscribing(false)
-  }, [workspaceId])
+  }, [workspaceId, selfHost])
 
   const canProceed = deploymentStatus === "COMPLETED" || deploymentStatus === "QUEUED"
   const needsSub = eligibility?.needsSubscription === true

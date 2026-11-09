@@ -263,6 +263,9 @@ jobs:
       - name: Run Playwright tests
         run: npx playwright test --retries=2
 
+      - name: Self-host store install walk
+        run: npx playwright test --config=playwright.self-host.config.ts --retries=2
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest

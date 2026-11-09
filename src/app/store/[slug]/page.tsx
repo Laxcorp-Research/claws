@@ -20,6 +20,7 @@ import { getComplianceNotice } from "@/lib/compliance-notices"
 import { storeToolHonestyNote } from "@/lib/tools/twitter-api-honesty"
 import { formatEstimatedMonthlyTotal } from "@/lib/marketplace/estimated-monthly-total"
 import { isMarketplaceCommunityPurchaseEnabled } from "@/lib/marketplace/feature-flags"
+import { useSelfHost } from "@/lib/profile-client"
 import type { TemplateReviewData, TrustTier } from "@/types/marketplace"
 
 interface TemplateAgent {
@@ -126,6 +127,7 @@ export default function TemplateDetailPage() {
   const params = useParams<{ slug: string }>()
   const router = useRouter()
   const { data: session } = useSession()
+  const selfHost = useSelfHost()
   const slug = params.slug
 
   const [data, setData] = useState<PageData | null>(null)
@@ -207,6 +209,25 @@ export default function TemplateDetailPage() {
       return
     }
     if (!data) return
+
+    if (selfHost) {
+      setPurchasing(true)
+      setPurchaseError(null)
+      try {
+        const res = await fetch(`/api/templates/${slug}/install`, { method: "POST" })
+        const json = await res.json()
+        if (!res.ok || !json.success) {
+          setPurchaseError(json.error?.message || "Install failed")
+          return
+        }
+        if (json.data?.redirectUrl) router.push(json.data.redirectUrl)
+      } catch {
+        setPurchaseError("Something went wrong. Please try again.")
+      } finally {
+        setPurchasing(false)
+      }
+      return
+    }
 
     const t = data.template
     const isCommunityPaid = !!t.creatorId && !t.isFree
@@ -378,15 +399,24 @@ export default function TemplateDetailPage() {
           </div>
 
           <div className="flex flex-col items-end flex-shrink-0 ml-6">
-            {hasPurchased && !template.isFree ? (
+            {!selfHost && (hasPurchased && !template.isFree ? (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0D6B32] bg-[#EDFFF3] border border-[#B8FFCF] py-[2px] px-[8px] rounded-[4px]">
                 <Check size={10} aria-hidden="true" />
                 Purchased
               </span>
             ) : (
               <PriceDisplay price={template.price} isFree={template.isFree} />
-            )}
-            {isOwner && !template.isFree ? (
+            ))}
+            {selfHost ? (
+              <Button
+                size="lg"
+                className="mt-2.5"
+                onClick={handlePurchase}
+                loading={purchasing}
+              >
+                Install
+              </Button>
+            ) : isOwner && !template.isFree ? (
               <p className="text-[11px] text-[var(--tx2)] mt-2.5">This is your template</p>
             ) : (
               (() => {
@@ -468,8 +498,8 @@ export default function TemplateDetailPage() {
           </div>
         )}
 
-        {/* Estimated costs */}
-        <div className="bg-[var(--bg3)] rounded-[12px] p-[14px] mb-3.5">
+        {/* Estimated costs. Self-host has no platform price. */}
+        {!selfHost && <div className="bg-[var(--bg3)] rounded-[12px] p-[14px] mb-3.5">
           <h2 className="text-[13px] font-semibold text-[var(--tx)] mb-2">Estimated Monthly Cost</h2>
           <div className="text-[12px] text-[var(--tx2)] space-y-1">
             <div className="flex justify-between">
@@ -485,7 +515,7 @@ export default function TemplateDetailPage() {
             <span>Estimated total</span>
             <span>~${formatEstimatedMonthlyTotal(template.estimatedMonthlyCost)}/mo</span>
           </div>
-        </div>
+        </div>}
 
         {/* Creator */}
         <div className="mb-3.5">
@@ -577,7 +607,7 @@ export default function TemplateDetailPage() {
                   <div className="text-[12px] font-semibold text-[var(--tx)]">{t.name}</div>
                   <TruncateWithTooltip className="text-[10px] text-[var(--tx2)] mt-[2px]" as="div">{t.tagline}</TruncateWithTooltip>
                   <div className="text-[10px] text-[var(--tx3)] mt-1">
-                    ${t.price} · {t.installCount} installs
+                    {selfHost ? `${t.installCount} installs` : `$${t.price} · ${t.installCount} installs`}
                   </div>
                 </Link>
               ))}

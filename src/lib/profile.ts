@@ -43,6 +43,7 @@ export function assertHostedModule(moduleName: HostedOnlyModule): void {
 const HOSTED_ONLY_PREFIXES: Array<{ prefix: string; moduleName: HostedOnlyModule }> = [
   { prefix: "/api/dodo-payments", moduleName: "dodo-payments" },
   { prefix: "/api/user/billing", moduleName: "credit-pool" },
+  { prefix: "/api/credits", moduleName: "credit-pool" },
   { prefix: "/api/internal/metering", moduleName: "metering" },
   { prefix: "/api/cron/service-pool", moduleName: "service-pool" },
   { prefix: "/api/cron", moduleName: "vercel-cron" },

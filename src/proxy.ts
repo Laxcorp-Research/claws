@@ -129,6 +129,10 @@ export async function proxy(request: NextRequest) {
     );
   }
 
+  if (isSelfHost() && (pathname === "/pricing" || pathname.startsWith("/pricing/"))) {
+    return NextResponse.redirect(new URL("/store", request.url))
+  }
+
   if (isSelfHost() && !ownerGateAllows(pathname)) {
     const { selfHostNeedsOwner } = await import("@/lib/auth/owner-gate");
     if (await selfHostNeedsOwner()) {

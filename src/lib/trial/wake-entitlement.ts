@@ -3,6 +3,7 @@
  * Expired+ungrated / unsubscribed claws must not resurrect via any wake path.
  */
 
+import { isEntitled } from "@/lib/entitlement"
 import { checkDeployEligibility, type DeployEligibilityUser } from "@/lib/dodo-payments"
 
 export type WakeEntitlementUser = DeployEligibilityUser
@@ -24,7 +25,7 @@ export function canWakeHibernatedWorkspace(
 ): WakeEntitlementResult {
   const e = checkDeployEligibility(user)
   return {
-    allowed: e.canDeploy,
+    allowed: isEntitled("hibernation_wake", e.canDeploy),
     reason: e.reason,
     needsSubscription: e.needsSubscription,
     warning: e.warning,

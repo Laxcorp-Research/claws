@@ -1,4 +1,5 @@
 import DodoPayments from "dodopayments"
+import { isEntitled } from "@/lib/entitlement"
 import { onHoldCapDue } from "@/lib/trial/lifecycle-followups"
 
 let client: DodoPayments | null = null
@@ -192,6 +193,14 @@ export function isSubscriptionOnHold(
 }
 
 export function checkDeployEligibility(user: DeployEligibilityUser): DeployEligibility {
+  if (
+    isEntitled("subscription_required", false) &&
+    isEntitled("trial_expired", false) &&
+    isEntitled("on_hold", false)
+  ) {
+    return { canDeploy: true, reason: "self_host", needsSubscription: false, isFirstDeploy: false }
+  }
+
   const now = new Date()
 
   if (!user.trialUsed) {

@@ -143,6 +143,33 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(res.status).toBe(401);
   });
 
+  it('self-host expired trial deploys without a trial stamp or the create governor', async () => {
+    process.env.CLAWS_PROFILE = 'self-host';
+    mockReadRuntimeImage.mockResolvedValue({
+      tag: '2026.5.22-18',
+      image: 'ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22-18',
+      present: true,
+    });
+    mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
+    mockVerifyOwnership.mockResolvedValue({
+      error: null,
+      workspace: { id: 'ws-1', status: 'DRAFT', containerId: null },
+    });
+    mockEligibleUser({
+      trialUsed: true,
+      trialStartedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      trialEndsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      hasActiveSubscription: false,
+    });
+
+    const res = await callRoute('ws-1');
+    expect(res.status).toBe(201);
+    expect(mockDeployToCloud).toHaveBeenCalledWith('ws-1');
+    expect(mockEvaluateCreateBudget).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    delete process.env.CLAWS_PROFILE;
+  });
+
   it('returns 409 RUNTIME_IMAGE_MISSING when the self-host runtime image is absent', async () => {
     process.env.CLAWS_PROFILE = 'self-host';
     mockReadRuntimeImage.mockResolvedValue({
