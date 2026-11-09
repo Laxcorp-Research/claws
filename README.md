@@ -1,5 +1,7 @@
 # Claws
 
+[![CI](https://github.com/Laxcorp-Research/claws/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Laxcorp-Research/claws/actions/workflows/ci.yml)
+
 Claws is an open-source multi-agent platform on OpenClaw — teams of agents with a manager, specialists, and a reviewer, any model via your own key, actions gated by your approval, running on your own machine.
 
 ## Quickstart

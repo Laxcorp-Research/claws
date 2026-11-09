@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react"
+import { Suspense, useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { WizardProgressBar } from "@/components/setup/wizard-progress-bar"
 import { ModelSelectionTable } from "@/components/setup/model-selection-table"
@@ -3061,7 +3061,7 @@ function StepPlaceholder({ step, workspaceId }: { step: number; workspaceId: str
   )
 }
 
-export default function SetupStepPage() {
+function SetupStepPageContent() {
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -3162,5 +3162,13 @@ export default function SetupStepPage() {
           : <StepPlaceholder step={stepNum} workspaceId={workspaceId} />}
       </div>
     </>
+  )
+}
+
+export default function SetupStepPage() {
+  return (
+    <Suspense fallback={null}>
+      <SetupStepPageContent />
+    </Suspense>
   )
 }

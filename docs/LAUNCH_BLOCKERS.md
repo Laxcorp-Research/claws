@@ -39,12 +39,14 @@ Removed by the 2026-06-11 re-audit (in-range `protobufjs 7.5.5 → 7.6.3` bump c
 
 Removed by the fix/security-audit-hono-nodemailer bump (kept for the audit trail): GHSA-88fw-hqm2-52qc (`hono`, override `^4.12.25`), GHSA-p6gq-j5cr-w38f (`nodemailer`, direct + override `^9.0.1`).
 
-2026-10-07 re-triage (Security Audit red on #563, lockfile otherwise unchanged): overrides moved to patched floors: `fast-uri` 3.1.8, `nodemailer` ^10.0.15, `brace-expansion` 1.1.21 / 2.1.7 / 5.0.12, `sharp` 0.35.5, `@grpc/grpc-js` 1.14.5, `source-map-js` 1.2.2, `undici` 6.29.0 / 7.30.0. `nodemailer` is still not imported in `src` (mail goes via Resend). `next` stays `16.2.11`. GHSA-vcvr-r3jv-pc5j (`next/og` ImageResponse RCE, patched in 16.3.6) is allowlisted: this repo does not import `next/og`, and pinning 16.3.6 failed `e2e/conversations-snapshot.spec.ts` (Conversations tab never rendered). That framework bump stays its own PR.
+2026-10-07 re-triage (Security Audit red on #563, lockfile otherwise unchanged): overrides moved to patched floors: `fast-uri` 3.1.8, `nodemailer` ^10.0.15, `brace-expansion` 1.1.21 / 2.1.7 / 5.0.12, `sharp` 0.35.5, `@grpc/grpc-js` 1.14.5, `source-map-js` 1.2.2, `undici` 6.29.0 / 7.30.0. `nodemailer` is still not imported in `src` (mail goes via Resend).
+
+2026-11-09: `next` is `16.4.1`. GHSA-vcvr-r3jv-pc5j is cleared by that release (the 16.3.6 pin had left the Conversations tab unrendered; the dashboard page now suspends `useSearchParams`). `zod` is `^4.6.6` (the nested `@vercel/cli-config` copy is overridden to `4.6.6`), `@sentry/nextjs` is `^10.75.2`, and the undici overrides are `6.29.1` / `7.30.1` / `8.12.2`.
 
 | GHSA | Package | What it is | 2026-10-07 status |
 |---|---|---|---|
 | GHSA-vfj7-8cjw-p6xm | `braces` | Stack exhaustion on a deeply nested pattern | high; no patched release (latest 3.0.3). Allowlisted: the app does not compile attacker-supplied brace patterns. Revisit if a 3.0.4+ ships. |
-| GHSA-vcvr-r3jv-pc5j | `next` | RCE in `next/og` ImageResponse, patched in 16.3.6 | critical. Allowlisted: no `next/og` import in this repo, and 16.3.6 failed the hibernated-conversations e2e. Dedicated Next bump. |
+| GHSA-vcvr-r3jv-pc5j | `next` | RCE in `next/og` ImageResponse, patched in 16.3.6 | critical. Cleared by `next` 16.4.1. Removed from the allowlist. |
 
 ### Infrastructure / CI
 - [#73](https://github.com/Laxcorp-Research/claws/issues/73) CI E2E test Neon branch unreachable — NOT launch-blocking, listed for visibility
