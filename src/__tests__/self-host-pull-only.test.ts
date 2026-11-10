@@ -26,7 +26,7 @@ describe("self-host pull-only quickstart", () => {
     expect(compose).toContain("service_completed_successfully")
     expect(compose).toContain("RUNTIME_IMAGE_TAG")
     expect(compose).toContain(
-      "ghcr.io/laxcorp-research/openclaw-runtime:${RUNTIME_IMAGE_TAG:-2026.5.22-18}",
+      "ghcr.io/laxcorp-research/openclaw-runtime:${RUNTIME_IMAGE_TAG:-2026.9.4-5}",
     )
   })
 

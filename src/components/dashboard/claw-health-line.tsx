@@ -31,7 +31,12 @@ export function ClawHealthLine(props: {
         {formatClawHealthHistory(props.recoveredThisWeek)}
       </p>
       {props.nudge ? (
-        <AlertBanner variant={props.nudge.variant} icon={props.nudge.icon} actions={props.nudge.cta}>
+        <AlertBanner
+          id={props.nudge.id === "container-error" ? "claw-error" : undefined}
+          variant={props.nudge.variant}
+          icon={props.nudge.icon}
+          actions={props.nudge.cta}
+        >
           {props.nudge.message}
         </AlertBanner>
       ) : null}

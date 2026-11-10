@@ -90,6 +90,7 @@ interface ChatMessageProps {
   // to send". Absent/empty → the legacy "Failed to send" (network errors, direct
   // callers).
   failureMessage?: string | null
+  failureHref?: string | null
   // PR-9/C: present on a transient failure (502 unreachable, 429, network) - a
   // Retry that re-POSTs the SAME text (the user never retypes). D6 webchat-
   // silent polish: ALSO rendered on the "No response" timeout state (the send
@@ -102,7 +103,7 @@ interface ChatMessageProps {
   onWake?: () => void
 }
 
-export function ChatMessage({ sender, senderName, timestamp, detail, action, status, turnPhase, noResponse, failureMessage, onRetry, onWake }: ChatMessageProps) {
+export function ChatMessage({ sender, senderName, timestamp, detail, action, status, turnPhase, noResponse, failureMessage, failureHref, onRetry, onWake }: ChatMessageProps) {
   const isUser = sender === "user"
   const isPlatform = sender === "platform"
   const rawBody = (detail && detail.length > 0 ? detail : action) || ""
@@ -157,7 +158,13 @@ export function ChatMessage({ sender, senderName, timestamp, detail, action, sta
           exclusive (a reason has one cta), but each is guarded independently. */}
       {status === "failed" && (
         <span className="inline-flex items-center gap-2 text-[10px]">
-          <span className="text-[var(--err)]">{failureMessage || "Failed to send"}</span>
+          {failureHref ? (
+            <a href={failureHref} className="text-[var(--err)] underline">
+              {failureMessage || "Failed to send"}
+            </a>
+          ) : (
+            <span className="text-[var(--err)]">{failureMessage || "Failed to send"}</span>
+          )}
           {onWake && (
             <button
               type="button"

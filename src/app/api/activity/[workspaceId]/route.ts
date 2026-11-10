@@ -20,6 +20,8 @@ import {
 } from "@/lib/openclaw/near-cap-alert"
 import type { ActivityType, Prisma } from "@/generated/prisma/client"
 import { HEAL_ATTEMPT_EVENT_KIND } from "@/lib/healing/ledger"
+import { readSelfHostDashboardStatus } from "@/lib/openclaw/docker-live-status"
+import { log } from "@/lib/logger"
 
 const MAX_ACTIVITY_LIMIT = 50
 const ACTIVITY_TYPES = new Set<string>([
@@ -477,11 +479,30 @@ export async function GET(
   const dayOfMonth = now.getUTCDate()
   const projectedCost = dayOfMonth > 0 ? (totalApiCost / dayOfMonth) * daysInMonth : 0
 
+  let liveStatus = workspace!.status
+  let deployErrorMessage: string | null = null
+  try {
+    const live = await readSelfHostDashboardStatus({
+      id: workspace!.id,
+      status: workspace!.status,
+      provider: workspace!.provider,
+      containerId: workspace!.containerId,
+    })
+    liveStatus = live.status as typeof liveStatus
+    deployErrorMessage = live.errorMessage
+  } catch (err) {
+    log.warn("dashboard: docker inspect failed", {
+      workspaceId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   return apiSuccess({
     workspace: {
       id: workspace!.id,
       name: workspace!.name,
-      status: workspace!.status,
+      status: liveStatus,
+      deployErrorMessage,
       healthStatus: workspace!.healthStatus,
       // PR-4: the dashboard banner derivation reads these to distinguish
       // config drift (alive-but-misconfigured) from a dead container.

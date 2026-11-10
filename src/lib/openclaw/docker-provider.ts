@@ -24,11 +24,83 @@ import {
 } from "@/lib/openclaw/docker-engine"
 import type { DeployToCloudOptions } from "@/lib/openclaw/deployer"
 import { certsBind, prefixCaBundle, readHostCertsSource } from "@/lib/openclaw/corporate-ca"
+import { lastLogLines } from "@/lib/openclaw/gateway-failure"
+import { loadSelfHostRuntimeContract } from "@/lib/openclaw/self-host-runtime-version"
 
 export interface DockerDeployResult {
   deploymentId: string
   containerId: string
   gatewayToken: string
+  /** True only after the gateway's /healthz answered. */
+  gatewayListening?: boolean
+}
+
+const GATEWAY_LISTEN_TIMEOUT_MS = 60_000
+
+class GatewayNotListening extends Error {
+  readonly logs: string
+  constructor(logs: string) {
+    super(lastLogLines(logs) || "Gateway did not start listening")
+    this.name = "GatewayNotListening"
+    this.logs = logs
+  }
+}
+
+let healthProbe: (url: string) => Promise<boolean> = async (url) => {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2000) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/** Tests stub the /healthz probe. Production uses fetch, the same check hosted uses. */
+export function __setGatewayHealthProbeForTests(next: ((url: string) => Promise<boolean>) | null): void {
+  healthProbe = next ?? (async (url) => {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) })
+      return res.ok
+    } catch {
+      return false
+    }
+  })
+}
+
+export function gatewayHealthUrl(containerHost: string): string {
+  const withScheme = containerHost.startsWith("http://") || containerHost.startsWith("https://")
+    ? containerHost
+    : `http://${containerHost}`
+  return `${withScheme.replace(/\/$/, "")}/healthz`
+}
+
+function dialHost(name: string, publish: "host" | "proxy", publishedPort: number | null): string {
+  if (publish === "host" && process.env.CLAWS_DOCKER_DIAL === "published-port" && publishedPort) {
+    return `127.0.0.1:${publishedPort}`
+  }
+  return hostFor(name, publish)
+}
+
+async function waitForGatewayListening(args: {
+  docker: DockerControl
+  containerId: string
+  name: string
+  publish: "host" | "proxy"
+}): Promise<{ containerHost: string; publishedPort: number | null }> {
+  const deadline = Date.now() + GATEWAY_LISTEN_TIMEOUT_MS
+  let host = hostFor(args.name, args.publish)
+  while (Date.now() < deadline) {
+    const inspected = await args.docker.inspect(args.containerId)
+    if (!inspected.running) {
+      throw new GatewayNotListening(await args.docker.logs(args.containerId))
+    }
+    host = dialHost(args.name, args.publish, inspected.publishedPort)
+    if (await healthProbe(gatewayHealthUrl(host))) {
+      return { containerHost: host, publishedPort: inspected.publishedPort }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  throw new GatewayNotListening(await args.docker.logs(args.containerId))
 }
 
 let injected: DockerControl | null = null
@@ -151,20 +223,27 @@ export async function deployToDocker(
   const name = workspace.containerName || dockerContainerName(workspaceId)
   const volumeName = dockerVolumeName(workspaceId)
   const publish = dockerPublishMode()
+  // Proxy mode without a dial host must fail before any container is created.
+  hostFor(name, publish)
 
   if (workspace.containerId) {
     await docker.start(workspace.containerId)
-    const inspected = await docker.inspect(workspace.containerId)
+    const ready = await waitForGatewayListening({
+      docker,
+      containerId: workspace.containerId,
+      name,
+      publish,
+    })
     const token = workspace.gatewayToken
       ? decrypt(workspace.gatewayToken)
       : randomBytes(24).toString("hex")
-    const containerHost = workspace.containerHost || hostFor(name, publish)
+    const containerHost = ready.containerHost
     await markRunning({
       workspaceId,
       containerId: workspace.containerId,
       containerName: name,
       containerHost,
-      hostPort: inspected.publishedPort,
+      hostPort: ready.publishedPort,
       token,
       volumeName,
     })
@@ -181,6 +260,7 @@ export async function deployToDocker(
       deploymentId: deployment?.id ?? workspace.containerId,
       containerId: workspace.containerId,
       gatewayToken: token,
+      gatewayListening: true,
     }
   }
 
@@ -189,8 +269,8 @@ export async function deployToDocker(
   }
 
   const image = resolveDockerImage()
-  const containerHost = hostFor(name, publish)
-  const generated = await generateWorkspace(workspaceId, { runtimeContract: "9.4" })
+  const runtimeContract = await loadSelfHostRuntimeContract(prisma)
+  const generated = await generateWorkspace(workspaceId, { runtimeContract })
   const token = gatewayTokenFor(workspace, generated.gatewayToken)
   const launch = await runtimeLaunchForImage(image, generated, token)
 
@@ -230,7 +310,36 @@ export async function deployToDocker(
   }
   const containerId = await docker.createContainer(spec)
   await docker.start(containerId)
-  const inspected = await docker.inspect(containerId)
+  let ready: { containerHost: string; publishedPort: number | null }
+  try {
+    ready = await waitForGatewayListening({ docker, containerId, name, publish })
+  } catch (err) {
+    const logs = err instanceof GatewayNotListening ? err.logs : ""
+    const errorMessage = lastLogLines(logs)
+    await prisma.deployment.update({
+      where: { id: deployment.id },
+      data: {
+        status: "FAILED",
+        errorMessage,
+        completedAt: new Date(),
+        containerId,
+        containerHost: hostFor(name, publish),
+      },
+    })
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        status: "ERROR",
+        provider: "DOCKER",
+        containerId,
+        containerName: name,
+        containerHost: hostFor(name, publish),
+        healthStatus: "UNHEALTHY",
+        lastHealthCheck: new Date(),
+      },
+    })
+    throw err
+  }
 
   await prisma.deployment.update({
     where: { id: deployment.id },
@@ -238,15 +347,15 @@ export async function deployToDocker(
       status: "COMPLETED",
       completedAt: new Date(),
       containerId,
-      containerHost,
+      containerHost: ready.containerHost,
     },
   })
   await markRunning({
     workspaceId,
     containerId,
     containerName: name,
-    containerHost,
-    hostPort: inspected.publishedPort,
+    containerHost: ready.containerHost,
+    hostPort: ready.publishedPort,
     token,
     volumeName,
   })
@@ -256,10 +365,10 @@ export async function deployToDocker(
     containerId,
     volumeName,
     publish,
-    containerHost,
+    containerHost: ready.containerHost,
   })
 
-  return { deploymentId: deployment.id, containerId, gatewayToken: token }
+  return { deploymentId: deployment.id, containerId, gatewayToken: token, gatewayListening: true }
 }
 
 /** Hibernation: stop compute. Container name, id, and named volume stay. */

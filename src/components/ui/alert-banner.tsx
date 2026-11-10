@@ -7,6 +7,7 @@ interface AlertBannerProps {
   icon?: ReactNode;
   children: ReactNode;
   actions?: ReactNode;
+  id?: string;
 }
 
 const variantClasses = {
@@ -27,11 +28,12 @@ const defaultIcons: Record<string, ReactNode> = {
   info: <Info className="w-4 h-4" />,
 };
 
-export function AlertBanner({ variant, icon, children, actions }: AlertBannerProps) {
+export function AlertBanner({ variant, icon, children, actions, id }: AlertBannerProps) {
   const resolvedIcon = icon ?? defaultIcons[variant];
 
   return (
     <div
+      id={id}
       className={cn("rounded-lg py-3 px-3.5 mb-3.5 flex items-start gap-[10px] border", variantClasses[variant])}
       role={variant === "error" ? "alert" : "status"}
       aria-live={variant === "error" ? "assertive" : "polite"}

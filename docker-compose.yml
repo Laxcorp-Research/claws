@@ -24,11 +24,11 @@ services:
     image: docker:cli
     restart: "no"
     environment:
-      RUNTIME_IMAGE_TAG: ${RUNTIME_IMAGE_TAG:-2026.5.22-18}
+      RUNTIME_IMAGE_TAG: ${RUNTIME_IMAGE_TAG:-2026.9.4-5}
     command:
       - docker
       - pull
-      - ghcr.io/laxcorp-research/openclaw-runtime:${RUNTIME_IMAGE_TAG:-2026.5.22-18}
+      - ghcr.io/laxcorp-research/openclaw-runtime:${RUNTIME_IMAGE_TAG:-2026.9.4-5}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
@@ -45,7 +45,7 @@ services:
       ENCRYPTION_MASTER_KEY: ${CLAWS_ENCRYPTION_MASTER_KEY:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
       ENCRYPTION_KEY_VERSION: v1
       CLAWS_PROFILE: self-host
-      RUNTIME_IMAGE_TAG: ${RUNTIME_IMAGE_TAG:-2026.5.22-18}
+      RUNTIME_IMAGE_TAG: ${RUNTIME_IMAGE_TAG:-2026.9.4-5}
       CLAWS_DOCKER_IMAGE: ${CLAWS_DOCKER_IMAGE:-}
       CLAWS_DOCKER_NETWORK: claws
       CLAWS_DOCKER_PUBLISH: host

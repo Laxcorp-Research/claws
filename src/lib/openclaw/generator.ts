@@ -49,7 +49,7 @@ import {
 } from '@/lib/openclaw/skill-shadow-deny';
 import { QUANT_TEMPLATE_SLUG, quantContainerEnvLines } from '@/lib/quant/risk-limits';
 import { reprobeWorkspaceToolConnections } from '@/lib/tools/reprobe-on-deploy';
-import type { RuntimeContract } from '@/lib/openclaw/runtime-contract';
+import { isRuntimeContract, type RuntimeContract } from '@/lib/openclaw/runtime-contract';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
@@ -285,10 +285,15 @@ export async function generateWorkspace(
      * on a 5.22-18 image is "Invalid config" and a boot loop). The deployer
      * passes resolveDeployTarget().runtimeContract.
      */
-    runtimeContract: RuntimeContract;
+    runtimeContract: RuntimeContract | null;
   },
 ): Promise<GeneratedWorkspace> {
   const { runtimeContract } = opts;
+  // A missing contract must not fall through into the 5.22 or 9.4 branch.
+  // #26: self-host hardcoded "9.4" and booted that shape on a 5.22 image.
+  if (!isRuntimeContract(runtimeContract)) {
+    throw new Error('RUNTIME_CONTRACT_UNKNOWN');
+  }
   // Re-probe API_KEY connections so TOOLS.md status is last-probe, not a
   // stale DEGRADED story from a prior window / recharge.
   try {

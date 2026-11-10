@@ -20,7 +20,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-That pulls `ghcr.io/laxcorp-research/claws:latest`, `ghcr.io/laxcorp-research/openclaw-runtime` at `RUNTIME_IMAGE_TAG` (shipped as `2026.5.22-18`), `postgres:16`, and `redis:7`, then starts them. The runtime pull is a one-shot Compose service, so the image is on the machine before the app accepts a deploy. The app listens on http://localhost:3000 when its healthcheck passes (`GET /api/health`).
+That pulls `ghcr.io/laxcorp-research/claws:latest`, `ghcr.io/laxcorp-research/openclaw-runtime` at `RUNTIME_IMAGE_TAG` (shipped as `2026.9.4-5`), `postgres:16`, and `redis:7`, then starts them. The runtime pull is a one-shot Compose service, so the image is on the machine before the app accepts a deploy. The app listens on http://localhost:3000 when its healthcheck passes (`GET /api/health`).
 
 Open http://localhost:3000 and create your owner account.
 
@@ -31,7 +31,7 @@ Before you expose the host, change these values in `.env`:
 - `POSTGRES_PASSWORD`
 - `CLAWS_METERING_MASTER_SECRET`
 
-`RUNTIME_IMAGE_TAG` is the OpenClaw runtime the control plane boots. The shipped value is `2026.5.22-18`. Compose and the app both read that variable. Paste your model key in settings. A key that starts with `fixture-` is stored without calling the vendor.
+`RUNTIME_IMAGE_TAG` is the OpenClaw runtime the control plane boots. The shipped value is `2026.9.4-5`. Compose and the app both read that variable. Paste your model key in settings. A key that starts with `fixture-` is stored without calling the vendor.
 
 `CLAWS_DOCKER_NETWORK` must be the Compose network name (`claws` in the shipped file) so the control plane can reach a container by its Docker DNS name.
 

@@ -1,0 +1,63 @@
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+import { expect, test } from "@playwright/test"
+
+const execFileAsync = promisify(execFile)
+
+test("self-host deploy waits until the gateway is listening and chat returns fixture-reply", async ({ page }) => {
+  await page.goto("/api/auth/test-session?redirect=/store")
+  await page.waitForURL("**/store**")
+
+  const templateRes = await page.request.get("/api/marketplace/templates/twitter-growth-machine")
+  const templateBody = await templateRes.json()
+  const templateId = templateBody?.data?.template?.id as string | undefined
+  expect(templateRes.status(), JSON.stringify(templateBody)).toBe(200)
+  expect(templateId).toBeTruthy()
+
+  const wsRes = await page.request.post("/api/workspaces", {
+    data: { name: "Twitter X", templateId },
+  })
+  const wsBody = await wsRes.json()
+  const workspaceId = wsBody?.data?.id as string | undefined
+  expect(wsRes.status(), JSON.stringify(wsBody)).toBeLessThan(300)
+  expect(workspaceId).toBeTruthy()
+
+  const toolRes = await page.request.post(`/api/tools/${workspaceId}`, {
+    data: {
+      toolSlug: "twitter-api",
+      displayName: "Twitter API",
+      connectionType: "API_KEY",
+      credentials: { TWITTER_API_KEY: "fixture-twitter" },
+    },
+  })
+  expect(toolRes.status(), await toolRes.text()).toBeLessThan(300)
+
+  const keyRes = await page.request.post("/api/api-keys", {
+    data: { provider: "ANTHROPIC", apiKey: "fixture-model-key", label: "proof" },
+  })
+  expect(keyRes.status(), await keyRes.text()).toBeLessThan(300)
+
+  const deployRes = await page.request.post(`/api/deploy/${workspaceId}/cloud`, {
+    data: {},
+    timeout: 150_000,
+  })
+  const deployBody = await deployRes.json()
+  expect(deployRes.status(), JSON.stringify(deployBody)).toBe(201)
+  expect(deployBody?.data?.deployment?.status).toBe("COMPLETED")
+  expect(deployBody?.data?.deployment?.gatewayListening).toBe(true)
+  const containerId = deployBody.data.deployment.containerId as string
+
+  const { stdout } = await execFileAsync("docker", ["port", containerId, "18789/tcp"])
+  const published = stdout.trim().split("\n")[0]?.split(":").pop()
+  expect(published).toMatch(/^\d+$/)
+  const health = await page.request.get(`http://127.0.0.1:${published}/healthz`)
+  expect(health.status()).toBe(200)
+
+  const chatRes = await page.request.post(`/api/workspaces/${workspaceId}/chat`, {
+    data: { message: "hello" },
+    timeout: 30_000,
+  })
+  const chatBody = await chatRes.json()
+  expect(chatRes.status(), JSON.stringify(chatBody)).toBe(200)
+  expect(chatBody?.data?.replyText).toBe("fixture-reply")
+})

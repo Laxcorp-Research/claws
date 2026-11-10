@@ -262,6 +262,12 @@ const config94 = z
   .strict();
 
 describe('version-keyed emission (same workspace, both contracts)', () => {
+  it('null contract throws RUNTIME_CONTRACT_UNKNOWN and does not pick a branch', async () => {
+    await expect(
+      generateWorkspace('ws-contract-1', { runtimeContract: null }),
+    ).rejects.toThrow('RUNTIME_CONTRACT_UNKNOWN');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(

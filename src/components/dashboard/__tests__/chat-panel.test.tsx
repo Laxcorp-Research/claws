@@ -1325,6 +1325,11 @@ describe("9/C reason mappers - one copy, two surfaces", () => {
   it("only asleep carries a wake CTA; transient reasons carry retry; quiet states none", () => {
     expect(chatUnavailableCopy("asleep").cta).toBe("wake")
     expect(chatUnavailableCopy("unreachable").cta).toBe("retry")
+    expect(chatUnavailableCopy("unreachable", { status: "ERROR" })).toEqual({
+      message: "Can't reach your Claw.",
+      errorHref: "#claw-error",
+    })
+    expect(chatUnavailableCopy("unreachable", { status: "FAILED" }).errorHref).toBe("#claw-error")
     expect(chatUnavailableCopy("transitioning").cta).toBe("retry")
     expect(chatUnavailableCopy("rate_limited").cta).toBe("retry")
     expect(chatUnavailableCopy("waking").cta).toBeUndefined()

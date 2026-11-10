@@ -28,6 +28,8 @@ export interface DockerInspect {
   running: boolean
   /** Published host port when publish=host. Null when unpublished or stopped-without-binding. */
   publishedPort: number | null
+  /** Process exit code once the container has stopped. Null while it is running. */
+  exitCode?: number | null
 }
 
 export interface DockerControl {
@@ -37,6 +39,8 @@ export interface DockerControl {
   stop(id: string): Promise<void>
   remove(id: string): Promise<void>
   inspect(id: string): Promise<DockerInspect>
+  /** Tail of stdout+stderr. Used when the gateway dies before /healthz answers. */
+  logs(id: string): Promise<string>
   removeVolume(name: string): Promise<void>
 }
 

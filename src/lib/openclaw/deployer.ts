@@ -599,6 +599,8 @@ export async function deployToCloud(
   deploymentId: string;
   containerId: string;
   gatewayToken: string;
+  /** Self-host docker: true only after /healthz answered. */
+  gatewayListening?: boolean;
 }> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
