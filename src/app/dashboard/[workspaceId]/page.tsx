@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { BriefingHeader, clawGreeting } from "@/components/dashboard/briefing-header"
 import { NeedsYouSection } from "@/components/dashboard/needs-you-section"
 import { ClawHealthLine } from "@/components/dashboard/claw-health-line"
+import { gatewayFailureHeadline } from "@/lib/openclaw/gateway-failure"
 import { CommandStrip } from "@/components/dashboard/command-strip"
 import { LiveOpsSection } from "@/components/dashboard/live-ops-section"
 import { MissionLog } from "@/components/dashboard/mission-log"
@@ -81,6 +82,8 @@ interface WorkspaceInfo {
   lastHealthCheck?: string | null
   // PR-4: health monitor's last probe classification - drives the 3-state banner.
   lastHealthReason?: string | null
+  /** Self-host: last deployment log excerpt when the container has exited. */
+  deployErrorMessage?: string | null
   mcpSessionHealthStatus?: "HEALTHY" | "DEAD" | "UNREACHABLE" | null
   mcpSessionCheckedAt?: string | null
   mcpSessionLastError?: string | null
@@ -814,6 +817,7 @@ function DashboardPageContent() {
     if (isError) {
       // status=ERROR or healthStatus=UNHEALTHY → genuinely unreachable
       // (5xx/timeout/network repeated past the debounce threshold).
+      const gatewayLine = gatewayFailureHeadline(workspace?.deployErrorMessage)
       list.push({
         key: "container-error",
         priority: 0,
@@ -821,6 +825,7 @@ function DashboardPageContent() {
         content: (
           <>
             <p className="font-medium">Agent container is not responding</p>
+            {gatewayLine ? <p className="mt-0.5 opacity-80">{gatewayLine}</p> : null}
             <p className="mt-0.5 opacity-80">Last healthy: {relativeTime(workspace?.lastHealthCheck ?? undefined)}. Try redeploying to restore the container.</p>
           </>
         ),

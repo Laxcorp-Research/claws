@@ -73,8 +73,24 @@ export function dockerControlFromSocket(
       const info = await docker.getContainer(id).inspect()
       return {
         running: info.State.Running === true,
+        exitCode: info.State.Running === true ? null : info.State.ExitCode,
         publishedPort: publishedPort(info),
       }
+    },
+
+    async logs(id: string): Promise<string> {
+      const output = await docker.getContainer(id).logs({
+        stdout: true,
+        stderr: true,
+        tail: 50,
+        follow: false,
+      })
+      if (Buffer.isBuffer(output)) return output.toString("utf8")
+      const chunks: Buffer[] = []
+      for await (const chunk of output as AsyncIterable<Buffer | string>) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      }
+      return Buffer.concat(chunks).toString("utf8")
     },
 
     async removeVolume(name: string): Promise<void> {

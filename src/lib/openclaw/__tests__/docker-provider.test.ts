@@ -32,6 +32,7 @@ vi.mock("@/lib/openclaw/generator", () => ({
 import { generateWorkspace } from "@/lib/openclaw/generator"
 import {
   __setDockerControlForTests,
+  __setGatewayHealthProbeForTests,
   deployToDocker,
   destroyDockerWorkspace,
   stopDockerContainer,
@@ -62,7 +63,11 @@ function fakeEngine() {
     }),
     inspect: vi.fn(async (id: string) => {
       calls.push({ op: "inspect", arg: id })
-      return { running: true, publishedPort: 32768 }
+      return { running: true, exitCode: null, publishedPort: 32768 }
+    }),
+    logs: vi.fn(async (id: string) => {
+      calls.push({ op: "logs", arg: id })
+      return ""
     }),
     removeVolume: vi.fn(async (name: string) => {
       calls.push({ op: "removeVolume", arg: name })
@@ -84,9 +89,13 @@ function workspace(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   process.env.CLAWS_DOCKER_IMAGE = "claws-fixture-gateway:proof"
+  process.env.RUNTIME_IMAGE_TAG = "2026.9.4-5"
   delete process.env.CLAWS_DOCKER_PUBLISH
   delete process.env.CLAWS_DOCKER_PROXY_HOST
+  delete process.env.CLAWS_DOCKER_DIAL
   process.env.CLAWS_DOCKER_NETWORK = "claws"
+  __setGatewayHealthProbeForTests(async () => true)
+  ;(prismaMock.openClawVersion.findUnique as MockFn).mockResolvedValue({ runtimeContract: "9.4" })
   ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockResolvedValue(workspace())
   ;(prismaMock.workspace.update as MockFn).mockResolvedValue({})
   ;(prismaMock.containerState.upsert as MockFn).mockResolvedValue({})
@@ -97,9 +106,12 @@ beforeEach(() => {
 
 afterEach(() => {
   __setDockerControlForTests(null)
+  __setGatewayHealthProbeForTests(null)
   delete process.env.CLAWS_DOCKER_IMAGE
+  delete process.env.RUNTIME_IMAGE_TAG
   delete process.env.CLAWS_DOCKER_PUBLISH
   delete process.env.CLAWS_DOCKER_PROXY_HOST
+  delete process.env.CLAWS_DOCKER_DIAL
 })
 
 describe("docker provider", () => {
@@ -242,6 +254,53 @@ describe("docker provider", () => {
 
     await expect(deployToDocker("ws-1", { forbidCreate: true })).rejects.toThrow(/no container/)
     expect(engine.createContainer).not.toHaveBeenCalled()
+  })
+
+  it("a container that exits with code 1 marks the deployment FAILED with the log excerpt and never COMPLETED", async () => {
+    const { engine } = fakeEngine()
+    const deadLog = [
+      "Starting via process-manager",
+      "Gateway failed to start: Invalid config at /home/node/.openclaw/openclaw.json.",
+      "agents.defaults: Invalid input",
+      "agents: Invalid input",
+    ].join("\n")
+    ;(engine.inspect as MockFn).mockImplementation(async () => ({
+      running: false,
+      exitCode: 1,
+      publishedPort: null,
+    }))
+    ;(engine.logs as MockFn).mockResolvedValue(deadLog)
+    __setDockerControlForTests(engine)
+
+    await expect(deployToDocker("ws-1")).rejects.toThrow(/Gateway failed to start/)
+
+    const updates = (prismaMock.deployment.update as MockFn).mock.calls.map((call) => call[0])
+    expect(updates.some((update) => update.data.status === "COMPLETED")).toBe(false)
+    expect(updates).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("Gateway failed to start: Invalid config"),
+        }),
+      }),
+    ])
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "ERROR" }),
+      }),
+    )
+  })
+
+  it("passes a null runtime contract through and does not start a container", async () => {
+    ;(prismaMock.openClawVersion.findUnique as MockFn).mockResolvedValue(null)
+    ;(generateWorkspace as MockFn).mockRejectedValueOnce(new Error("RUNTIME_CONTRACT_UNKNOWN"))
+    const { engine } = fakeEngine()
+    __setDockerControlForTests(engine)
+
+    await expect(deployToDocker("ws-1")).rejects.toThrow("RUNTIME_CONTRACT_UNKNOWN")
+    expect(generateWorkspace).toHaveBeenCalledWith("ws-1", { runtimeContract: null })
+    expect(engine.createContainer).not.toHaveBeenCalled()
+    expect(engine.start).not.toHaveBeenCalled()
   })
 
   it("terminal destroy removes the container and the named volume", async () => {

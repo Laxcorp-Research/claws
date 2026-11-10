@@ -36,6 +36,11 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ persisted: true }))
     return
   }
+  if (req.method === "GET" && (req.url === "/healthz" || req.url === "/readyz")) {
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ ok: true }))
+    return
+  }
   res.writeHead(404)
   res.end()
 })

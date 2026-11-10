@@ -64,6 +64,8 @@ export type ChatUnavailableReason =
 export interface ChatUnavailableCopy {
   message: string
   cta?: "wake" | "retry"
+  /** Set when the Claw is FAILED/ERROR so the bubble links to the dashboard error. */
+  errorHref?: string
 }
 
 const REASON_COPY: Record<ChatUnavailableReason, ChatUnavailableCopy> = {
@@ -79,7 +81,16 @@ const REASON_COPY: Record<ChatUnavailableReason, ChatUnavailableCopy> = {
   unknown: { message: "Failed to send", cta: "retry" },
 }
 
-export function chatUnavailableCopy(reason: ChatUnavailableReason): ChatUnavailableCopy {
+export function chatUnavailableCopy(
+  reason: ChatUnavailableReason,
+  context?: { status?: string },
+): ChatUnavailableCopy {
+  if (
+    reason === "unreachable" &&
+    (context?.status === "ERROR" || context?.status === "FAILED")
+  ) {
+    return { message: "Can't reach your Claw.", errorHref: "#claw-error" }
+  }
   return REASON_COPY[reason]
 }
 
@@ -1096,7 +1107,9 @@ export function ChatPanel({
               typeof m.runId === "string" &&
               turnStatuses.get(m.runId) === "no_response"
             const failure =
-              m.status === "failed" ? chatUnavailableCopy(errorCodeToReason(m.failureCode)) : null
+              m.status === "failed"
+                ? chatUnavailableCopy(errorCodeToReason(m.failureCode), { status })
+                : null
             return (
               <div key={m.key} className="contents">
                 {day !== previousDay && (
@@ -1114,6 +1127,7 @@ export function ChatPanel({
                   turnPhase={m.sender === "user" && m.runId ? turnPhases.get(m.runId) ?? null : null}
                   noResponse={noResponse}
                   failureMessage={failure?.message ?? null}
+                  failureHref={failure?.errorHref ?? null}
                   onRetry={
                     failure?.cta === "retry"
                       ? () => retry(m.key)

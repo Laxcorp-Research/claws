@@ -7,7 +7,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI ? "github" : "html",
-  timeout: 60_000,
+  timeout: 180_000,
   use: {
     baseURL: "http://localhost:3001",
     trace: "on-first-retry",
@@ -20,13 +20,19 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npx next dev --port 3001",
+    command: "npx tsx prisma/seed.ts && npx next dev --port 3001",
     url: "http://localhost:3001",
     reuseExistingServer: false,
-    timeout: 180_000,
+    timeout: 240_000,
     env: {
       ...process.env,
       CLAWS_PROFILE: "self-host",
+      E2E_TEST_MODE: "true",
+      RUNTIME_IMAGE_TAG: "2026.9.4-5",
+      CLAWS_DOCKER_IMAGE: "claws-fixture-gateway:proof",
+      CLAWS_DOCKER_DIAL: "published-port",
+      CLAWS_DOCKER_NETWORK: "claws",
+      CLAWS_DOCKER_PUBLISH: "host",
     },
   },
 })

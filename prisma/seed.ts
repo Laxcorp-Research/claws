@@ -10,6 +10,7 @@ import { ALL_TEMPLATES } from "./seed-data"
 import { ALL_SKILLS } from "./seed-data/skills-index"
 import { MARKETPLACE_SKILLS_CATALOG, generateSkillMd } from "./seed-data/marketplace-skills"
 import { buildWorkspaceSnapshotFromSeedTemplate } from "../src/lib/marketplace/workspace-snapshot"
+import { seedSelfHostOpenClawVersion } from "../src/lib/openclaw/self-host-runtime-version"
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" })
 const prisma = new PrismaClient({ adapter })
@@ -210,6 +211,11 @@ async function main() {
     update: {},
   })
   console.log("  ✅ OpenClawVersion: 2.5.0 (stable)")
+
+  if (process.env.CLAWS_PROFILE === "self-host") {
+    const stamped = await seedSelfHostOpenClawVersion(prisma)
+    console.log(`  ✅ OpenClawVersion: ${stamped.version} (${stamped.runtimeContract})`)
+  }
 
   console.log(`\n🎉 Seeded ${ALL_TEMPLATES.length} templates + ${ALL_SKILLS.length} skills + ${MARKETPLACE_SKILLS_CATALOG.length} marketplace skills + 1 OpenClaw version`)
 }

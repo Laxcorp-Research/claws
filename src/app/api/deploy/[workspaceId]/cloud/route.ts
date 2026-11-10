@@ -199,6 +199,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         id: result.deploymentId,
         containerId: result.containerId,
         status: "COMPLETED",
+        ...(result.gatewayListening ? { gatewayListening: true } : {}),
       },
     }, 201)
   } catch (err: unknown) {
