@@ -11,6 +11,11 @@ test("self-host store Install lands on setup step 1 with zero 4xx", async ({ pag
   await page.goto("/api/auth/test-session?redirect=/store/twitter-growth-machine")
   await page.waitForURL("**/store/twitter-growth-machine")
 
+  const search = await page.request.get("/api/marketplace/templates?search=twitter")
+  const searchText = await search.text()
+  expect(search.status(), searchText).toBe(200)
+  expect(searchText.toLowerCase()).toContain("twitter-growth-machine")
+
   const install = page.getByTestId("self-host-install")
   try {
     await install.click({ timeout: 20_000 })

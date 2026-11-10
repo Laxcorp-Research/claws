@@ -250,13 +250,18 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(signInUrl);
     }
 
-    // Batch B: first sign-in → /onboarding until User.onboardingCompleted
-    // (JWT also sets true when user already has workspaces). Settings allowed
-    // so "Add API key" CTA works during onboarding.
-    if (
+    // Self-host skips the hosted first-run. Install lands on /setup/.../step/1.
+    if (isSelfHost()) {
+      if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
+        return NextResponse.redirect(new URL("/store", request.url));
+      }
+    } else if (
       token.onboardingCompleted !== true &&
       !isAllowedDuringOnboarding(pathname)
     ) {
+      // Batch B: first sign-in → /onboarding until User.onboardingCompleted
+      // (JWT also sets true when user already has workspaces). Settings allowed
+      // so "Add API key" CTA works during onboarding.
       return NextResponse.redirect(new URL("/onboarding", request.url));
     }
 

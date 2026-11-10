@@ -219,7 +219,7 @@ export function CredentialsModal({
           </p>
         )}
         {status === "error" && (
-          <div className="rounded-lg border border-[var(--err)] bg-[var(--errbg)] p-2.5">
+          <div data-testid="api-key-error" className="rounded-lg border border-[var(--err)] bg-[var(--errbg)] p-2.5">
             <p className="text-[11px] font-semibold text-[#991b1b] mb-0.5">Validation failed</p>
             <p className="text-[11px] text-[#991b1b]">{errorMsg}</p>
           </div>

@@ -8,6 +8,7 @@ import { TruncatedText } from "@/components/ui/truncate-with-tooltip"
 import { useModelCatalog, type ModelCatalogOption } from "@/hooks/use-model-catalog"
 import { resolveCatalogDisplayName } from "@/lib/models/humanize"
 import { providerLabel } from "@/lib/models/provider-labels"
+import { useSelfHost } from "@/lib/profile-client"
 import { providerFromModelRef } from "@/lib/supported-providers"
 import {
   POWERED_BY_CLAWS_CREDITS,
@@ -39,6 +40,7 @@ export interface ModelSelectModalProps {
   onSave: (model: string, thinkingDefault: string | null) => void
   agentName?: string
   creditMode?: boolean
+  selfHost?: boolean
   configuredProviders?: string[]
   /** When provided, locked tabs render an "Add API key" action. */
   onAddKey?: (provider: string) => void
@@ -73,9 +75,17 @@ export function ModelSelectModal({
   onSave,
   agentName,
   creditMode = false,
+  selfHost: selfHostProp = false,
   configuredProviders = [],
   onAddKey,
 }: ModelSelectModalProps) {
+  const contextSelfHost = useSelfHost()
+  const selfHost = selfHostProp || contextSelfHost
+  const authOpts = {
+    creditMode: selfHost ? false : creditMode,
+    configuredProviders,
+    selfHost,
+  }
   const { options: catalog, loading } = useModelCatalog()
 
   const initialTab = tabOf(providerFromModelRef(value) ?? "ANTHROPIC")
@@ -113,7 +123,7 @@ export function ModelSelectModal({
     return map
   }, [catalog])
 
-  const activeAuth = resolveProviderAuth(activeTab, { creditMode, configuredProviders })
+  const activeAuth = resolveProviderAuth(activeTab, authOpts)
 
   const visibleRows = useMemo(() => {
     const list = byProvider.get(activeTab) ?? []
@@ -137,7 +147,7 @@ export function ModelSelectModal({
   const pendingLabel = pendingOption?.label ?? resolveCatalogDisplayName(pendingModel, null)
   const pendingProvider = providerFromModelRef(pendingModel)
   const pendingAuth = pendingProvider
-    ? resolveProviderAuth(pendingProvider, { creditMode, configuredProviders })
+    ? resolveProviderAuth(pendingProvider, authOpts)
     : null
   const canSave = Boolean(pendingModel) && (pendingAuth?.selectable ?? false)
 
@@ -191,7 +201,7 @@ export function ModelSelectModal({
       {/* Provider tabs (DS Tabs spec: 12px, 2px active underline) */}
       <div className="flex border-b border-[var(--bd)] -mx-5 px-5" role="tablist" aria-label="Model provider">
         {PROVIDER_TABS.map((tab) => {
-          const auth = resolveProviderAuth(tab, { creditMode, configuredProviders })
+          const auth = resolveProviderAuth(tab, authOpts)
           const active = tab === activeTab
           return (
             <button

@@ -9,6 +9,7 @@ import { Compass, User, Key, CreditCard, Lock, Store, Upload, Wrench, Shield, Lo
 import { TruncateWithTooltip } from "@/components/ui/truncate-with-tooltip"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { useOnboardingNavVisible } from "@/hooks/use-onboarding-state"
+import { useSelfHost } from "@/lib/profile-client"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,6 +46,7 @@ const loadingNavItems: NavItem[] = [
 
 export function TopBar() {
   const { data: session, status } = useSession()
+  const selfHost = useSelfHost()
   const pathname = usePathname()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -70,9 +72,9 @@ export function TopBar() {
   const baseNavItems = sessionReady
     ? authNavItems
     : status === "unauthenticated"
-      ? publicNavItems
+      ? (selfHost ? publicNavItems.filter((item) => item.href !== "/pricing") : publicNavItems)
       : loadingNavItems
-  const withGettingStarted: NavItem[] = sessionReady && showGettingStartedNav
+  const withGettingStarted: NavItem[] = sessionReady && showGettingStartedNav && !selfHost
     ? [
         ...baseNavItems,
         { label: "Getting started", href: "/onboarding", aiAccent: true },
@@ -163,10 +165,10 @@ export function TopBar() {
 
             <div className="py-1">
               {/* Menu entry ALWAYS visible - independent of tracker completeness. */}
-              <MenuLink href="/onboarding" icon={Compass} label="Getting started" />
+              {!selfHost && <MenuLink href="/onboarding" icon={Compass} label="Getting started" />}
               <MenuLink href="/settings?tab=account" icon={User} label="Account" />
               <MenuLink href="/settings?tab=api-keys" icon={Key} label="API Keys" />
-              <MenuLink href="/settings?tab=billing" icon={CreditCard} label="Billing" />
+              {!selfHost && <MenuLink href="/settings?tab=billing" icon={CreditCard} label="Billing" />}
               <MenuLink href="/settings?tab=security" icon={Lock} label="Security" />
             </div>
 

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { runDecryptCanary } from "@/lib/encryption-health"
+import { probeAnthropicOutbound } from "@/lib/health/anthropic-outbound"
 import { readRuntimeImage } from "@/lib/openclaw/runtime-image"
+import { isSelfHost } from "@/lib/profile"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -33,12 +35,17 @@ export async function GET() {
     ? { tag: runtime.tag, present: runtime.present }
     : undefined
 
+  const outbound = isSelfHost()
+    ? { anthropic: await probeAnthropicOutbound() }
+    : undefined
+
   const allOk = Object.values(checks).every((v) => v === "ok")
 
   return NextResponse.json(
     {
       status: allOk ? "healthy" : "degraded",
       checks,
+      ...(outbound ? { outbound } : {}),
       ...(runtimeImage ? { runtimeImage } : {}),
       version: process.env.npm_package_version || "1.0.0",
       commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "unknown").slice(0, 7),

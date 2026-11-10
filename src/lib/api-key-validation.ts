@@ -1,4 +1,7 @@
 import { isSelfHost } from "@/lib/profile"
+import { reachabilityMessage } from "@/lib/net/reachability"
+
+export const ANTHROPIC_REJECTED_KEY = "Anthropic rejected this key"
 
 async function validateAnthropicKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
   try {
@@ -8,12 +11,14 @@ async function validateAnthropicKey(apiKey: string): Promise<{ valid: boolean; e
       body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
     })
     if (res.ok) return { valid: true }
-    if (res.status === 401) return { valid: false, error: "Invalid API key" }
+    if (res.status === 401) return { valid: false, error: ANTHROPIC_REJECTED_KEY }
     if (res.status === 403) return { valid: false, error: "API key lacks permission" }
     const data = await res.json().catch(() => null)
     if (res.status === 400 && data?.error?.type === "invalid_request_error") return { valid: true }
     return { valid: false, error: `Unexpected response: ${res.status}` }
-  } catch { return { valid: false, error: "Could not reach Anthropic API" } }
+  } catch (err) {
+    return { valid: false, error: reachabilityMessage(err, "Could not reach Anthropic API") }
+  }
 }
 
 async function validateOpenAIKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
@@ -22,7 +27,9 @@ async function validateOpenAIKey(apiKey: string): Promise<{ valid: boolean; erro
     if (res.ok) return { valid: true }
     if (res.status === 401) return { valid: false, error: "Invalid API key" }
     return { valid: false, error: `Unexpected response: ${res.status}` }
-  } catch { return { valid: false, error: "Could not reach OpenAI API" } }
+  } catch (err) {
+    return { valid: false, error: reachabilityMessage(err, "Could not reach OpenAI API") }
+  }
 }
 
 async function validateGoogleKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
@@ -30,7 +37,9 @@ async function validateGoogleKey(apiKey: string): Promise<{ valid: boolean; erro
     const res = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`)
     if (res.ok) return { valid: true }
     return { valid: false, error: "Invalid API key" }
-  } catch { return { valid: false, error: "Could not reach Google AI API" } }
+  } catch (err) {
+    return { valid: false, error: reachabilityMessage(err, "Could not reach Google AI API") }
+  }
 }
 
 /**
@@ -46,8 +55,8 @@ async function validateOpenRouterKey(apiKey: string): Promise<{ valid: boolean; 
     if (res.status === 401) return { valid: false, error: "Invalid API key" }
     if (res.status === 403) return { valid: false, error: "API key lacks permission" }
     return { valid: false, error: `Unexpected response: ${res.status}` }
-  } catch {
-    return { valid: false, error: "Could not reach OpenRouter API" }
+  } catch (err) {
+    return { valid: false, error: reachabilityMessage(err, "Could not reach OpenRouter API") }
   }
 }
 

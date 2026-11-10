@@ -1001,7 +1001,7 @@ function DashboardPageContent() {
             <p className="mt-0.5 opacity-80">All agents have been paused to prevent further charges. Resume by increasing your limit or waiting until next month.</p>
           </>
         ),
-        actions: <Button variant="primary" size="xs" onClick={() => router.push("/settings?tab=billing")}>Increase limit</Button>,
+        actions: !selfHost ? <Button variant="primary" size="xs" onClick={() => router.push("/settings?tab=billing")}>Increase limit</Button> : undefined,
       })
     }
 
@@ -1023,7 +1023,7 @@ function DashboardPageContent() {
         ),
         actions: (
           <div className="flex gap-1.5">
-            <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Increase limit</Button>
+            {!selfHost && <Button variant="outline" size="xs" onClick={() => router.push("/settings?tab=billing")}>Increase limit</Button>}
             <Button
               variant="outline"
               size="xs"
@@ -1277,7 +1277,7 @@ function DashboardPageContent() {
       })
     }
 
-    if (creditMode && credit.status === "EXHAUSTED") {
+    if (!selfHost && creditMode && credit.status === "EXHAUSTED") {
       list.push({
         key: "credits-exhausted",
         priority: 1,
@@ -1715,7 +1715,7 @@ function DashboardPageContent() {
                   <h2 className="text-[14px] font-semibold text-[var(--tx)]">Costs</h2>
                   <p className="text-[11px] text-[var(--tx3)]">
                     {costWindowIsEstimate
-                      ? "Estimated from model pricing × call counts; exact billing depends on your provider."
+                      ? "Estimated from model pricing × call counts; the exact charge depends on your provider."
                       : "Summed from reported provider costs on activity rows."}
                   </p>
                 </div>

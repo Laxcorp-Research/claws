@@ -59,8 +59,9 @@ export function providerUnlockReason(provider: string): string {
 
 export function resolveProviderAuth(
   provider: string,
-  opts: { creditMode: boolean; configuredProviders: readonly string[] },
+  opts: { creditMode: boolean; configuredProviders: readonly string[]; selfHost?: boolean },
 ): ProviderAuth {
+  const creditMode = opts.selfHost ? false : opts.creditMode
   const hasKey = opts.configuredProviders.includes(provider)
   if (hasKey) {
     return {
@@ -71,7 +72,7 @@ export function resolveProviderAuth(
       cardLabel: "",
     }
   }
-  if (provider === "ANTHROPIC" && opts.creditMode) {
+  if (provider === "ANTHROPIC" && creditMode) {
     return {
       selectable: true,
       kind: "credits",
@@ -80,7 +81,7 @@ export function resolveProviderAuth(
       cardLabel: POWERED_BY_CLAWS_CREDITS,
     }
   }
-  if (provider === "ANTHROPIC") {
+  if (provider === "ANTHROPIC" && !opts.selfHost) {
     return {
       selectable: false,
       kind: "none",
@@ -100,7 +101,7 @@ export function resolveProviderAuth(
 
 export function isModelSelectable(
   modelId: string,
-  opts: { creditMode: boolean; configuredProviders: readonly string[] },
+  opts: { creditMode: boolean; configuredProviders: readonly string[]; selfHost?: boolean },
 ): boolean {
   const provider = providerFromModelRef(modelId)
   if (!provider) return false
@@ -113,7 +114,7 @@ export function isModelSelectable(
  */
 export function modelDeployWarning(
   modelId: string,
-  opts: { creditMode: boolean; configuredProviders: readonly string[] },
+  opts: { creditMode: boolean; configuredProviders: readonly string[]; selfHost?: boolean },
 ): string | null {
   const provider = providerFromModelRef(modelId)
   if (!provider) return null

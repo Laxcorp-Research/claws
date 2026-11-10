@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation"
+import { isSelfHost } from "@/lib/profile"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { loadOnboardingGate } from "@/lib/auth/onboarding-gate"
@@ -6,6 +7,7 @@ import { loadGettingStartedTracker } from "@/lib/onboarding/load-tracker"
 import { OnboardingClient } from "@/components/onboarding/onboarding-client"
 
 export default async function OnboardingPage() {
+  if (isSelfHost()) redirect("/store")
   const session = await getServerSession(authOptions)
   const gate = await loadOnboardingGate(session?.user?.id)
 

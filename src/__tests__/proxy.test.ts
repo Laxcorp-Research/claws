@@ -7,6 +7,10 @@ vi.mock('next-auth/jwt', () => ({
   getToken: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock('@/lib/db', () => ({
+  prisma: { user: { count: vi.fn().mockResolvedValue(1) } },
+}));
+
 vi.mock('@/lib/rate-limit', () => ({
   apiRateLimit: { limit: vi.fn().mockResolvedValue({ success: true, remaining: 99, reset: Date.now() + 60000 }) },
   authRateLimit: { limit: vi.fn().mockResolvedValue({ success: true, remaining: 9, reset: Date.now() + 60000 }) },
@@ -318,6 +322,22 @@ describe('self-host /pricing', () => {
     delete process.env.CLAWS_PROFILE;
     const res = await proxy(createReq('/pricing'));
     expect(res.headers.get('Location')).toBeNull();
+  });
+
+  it('self-host install target /setup is not bounced to /onboarding', async () => {
+    process.env.CLAWS_PROFILE = 'self-host';
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: false });
+    const res = await proxy(createReq('/setup/ws-1/step/1'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Location')).toBeNull();
+  });
+
+  it('self-host /onboarding redirects to /store', async () => {
+    process.env.CLAWS_PROFILE = 'self-host';
+    (getToken as ReturnType<typeof vi.fn>).mockResolvedValue({ sub: 'user-1', onboardingCompleted: false });
+    const res = await proxy(createReq('/onboarding'));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('Location')).toBe('http://localhost:3000/store');
   });
 });
 

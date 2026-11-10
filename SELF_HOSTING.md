@@ -37,7 +37,33 @@ Before you expose the host, change these values in `.env`:
 
 ## Behind a corporate proxy
 
-The quickstart only pulls images, so the registry certificate that matters is the one Docker uses, not a toolchain inside an image build. In Docker Desktop, set the HTTP proxy and install your corporate CA under Settings → Resources → Proxies and Settings → Docker Engine (or the Desktop certificate store), then run `docker compose pull` again.
+Image pull uses Docker's own certificate store. Model calls use the app container. If setup says the network intercepts HTTPS, or `/api/health` reports `outbound.anthropic: "tls_intercepted"`, export the interception root and put the PEM in `./certs`. Compose mounts that directory read-only, and the entrypoint builds `/certs/bundle.pem` for Node.
+
+Windows:
+
+1. Press Win+R, run `certmgr.msc`, and open Trusted Root Certification Authorities, then Certificates.
+2. Find the proxy or antivirus root, the issuer named on the browser certificate warning.
+3. Right-click it, choose All Tasks, then Export, and select Base-64 encoded X.509 (.CER).
+4. Save the file into the repo `certs` folder and rename it so the name ends in `.pem`.
+5. Run `docker compose restart`. The app and each new Claw container load `./certs/*.pem`.
+
+macOS:
+
+1. Open Keychain Access and select System or login, then Certificates.
+2. Find the proxy or antivirus root certificate.
+3. Select it and choose File, then Export Items.
+4. If the export is `.cer`, rename it so the name ends in `.pem` and move it into `certs`.
+5. Run `docker compose restart`.
+
+Linux:
+
+1. The interception root is usually a file under `/etc/ssl/certs` or `/usr/local/share/ca-certificates`.
+2. Copy that file into the repo `certs` folder.
+3. The file must be PEM text and start with `-----BEGIN CERTIFICATE-----`.
+4. Name it with a `.pem` suffix.
+5. Run `docker compose restart`.
+
+`GET /api/health` includes `outbound.anthropic` as `ok`, `tls_intercepted`, or `unreachable` so this shows up before you paste a key.
 
 To put a reverse proxy in front of gateways instead of publishing ports:
 

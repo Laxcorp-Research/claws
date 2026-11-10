@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { CreditBalanceCard } from "@/components/credits/credit-balance-card"
 import { useCreditBalance } from "@/hooks/use-credit-balance"
+import { useSelfHost } from "@/lib/profile-client"
 import { useSnackbarOptional } from "@/components/shared/snackbar"
 import { mutateWithFeedback } from "@/lib/ui/mutate-with-feedback"
 import { PROVIDER_BYOK_BETA_LABEL, isByokBetaProvider } from "@/lib/ui/beta-labels"
@@ -57,7 +58,8 @@ export function ApiKeyManager() {
   const [switching, setSwitching] = useState(false)
 
   const credit = useCreditBalance()
-  const onCredits = credit.hasCredits && (credit.status === "ACTIVE" || credit.status === "EXHAUSTED")
+  const selfHost = useSelfHost()
+  const onCredits = !selfHost && credit.hasCredits && (credit.status === "ACTIVE" || credit.status === "EXHAUSTED")
   const hasValidAnthropicKey = keys.some((k) => k.provider === "ANTHROPIC" && k.isValid)
 
   const fetchKeys = useCallback(async () => {
@@ -349,7 +351,9 @@ export function ApiKeyManager() {
         onClose={() => setSwitchConfirmOpen(false)}
         onConfirm={handleSwitchSource}
         title="Switch to your own API key"
-        description="Your agents will restart to use your key instead of Claws credits. This takes about 30 seconds. Remaining credits will not be used."
+        description={selfHost
+          ? "Your agents will restart to use this key. This takes about 30 seconds."
+          : "Your agents will restart to use your key instead of Claws credits. This takes about 30 seconds. Remaining credits will not be used."}
         confirmLabel="Switch to my key"
         variant="warning"
         loading={switching}

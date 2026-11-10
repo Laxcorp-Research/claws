@@ -212,7 +212,7 @@ const PROVIDER_PLACEHOLDER: Record<string, string> = {
   OPENROUTER: "sk-or-v1-...",
 }
 
-function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
+export function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; isFromBuilder?: boolean }) {
   const selfHost = useSelfHost()
   const router = useRouter()
   const [agents, setAgents] = useState<AgentRow[]>([])
@@ -303,9 +303,10 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
   }, [workspaceId, fetchKeyStatus])
 
   const configuredProviders = useMemo(() => validConfiguredProviders(keyStatus), [keyStatus])
+  const hostedCredits = creditMode && !selfHost
 
   const allAgentsHaveAuth = agents.every((a) =>
-    isModelSelectable(a.model, { creditMode, configuredProviders }),
+    isModelSelectable(a.model, { creditMode: hostedCredits, configuredProviders, selfHost }),
   )
 
   if (isLoading) {
@@ -321,18 +322,20 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
   return (
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">Choose AI models for your agents</h2>
-      <p className="text-xs text-[var(--tx2)] mb-3.5">
-        {creditMode
-          ? "Your agents are powered by Claws Starter Credits. Choose which models each agent should use below."
-          : "Your agents need API keys to think. We support Anthropic, OpenAI, Google, and OpenRouter. Configure keys for each provider your agents use. OpenRouter is BYOK-only."}
+      <p className="text-xs text-[var(--tx2)] mb-3.5" data-testid="setup-model-banner">
+        {selfHost
+          ? "Bring your own model key. Anthropic, OpenAI, Google or OpenRouter."
+          : hostedCredits
+            ? "Your agents are powered by Claws Starter Credits. Choose which models each agent should use below."
+            : "Your agents need API keys to think. We support Anthropic, OpenAI, Google, and OpenRouter. Configure keys for each provider your agents use. OpenRouter is BYOK-only."}
       </p>
 
-      {creditMode && <StarterCreditBanner balanceCents={creditBalanceCents} />}
+      {hostedCredits && <StarterCreditBanner balanceCents={creditBalanceCents} />}
 
       <ProviderAuthCards
         agents={agents}
         keyStatus={keyStatus}
-        creditMode={creditMode}
+        creditMode={hostedCredits}
         configuredProviders={configuredProviders}
         onEnterKey={(provider, providerName) => setOverrideModal({ provider, providerName })}
         onChangeKey={(provider, providerName) => setOverrideModal({ provider, providerName })}
@@ -354,7 +357,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         <ModelSelectionTable
           agents={agents}
           onModelChange={handleModelChange}
-          creditMode={creditMode}
+          creditMode={hostedCredits}
           configuredProviders={configuredProviders}
           onAddKey={(provider) =>
             setOverrideModal({ provider, providerName: PROVIDER_CARD_NAMES[provider] || provider })
@@ -362,7 +365,7 @@ function Step1({ workspaceId, isFromBuilder = false }: { workspaceId: string; is
         />
       )}
 
-      {creditMode && (
+      {hostedCredits && (
         <p className="text-[11px] text-[var(--tx3)] mb-3.5">
           Starter credits work with Claude models. To use GPT or Gemini, add your own API key in Settings.
         </p>
@@ -2219,18 +2222,23 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   return (
     <>
       <h2 className="text-[15px] font-semibold mb-0.5">Deploy your Claw</h2>
-      <p className="text-[11px] text-[var(--tx2)] mb-1">Your Claw will be deployed to a managed cloud container.</p>
-      {creditUser && (
+      <p className="text-[11px] text-[var(--tx2)] mb-1">
+        {selfHost
+          ? "Your Claw will run in a container on this machine."
+          : "Your Claw will be deployed to a managed cloud container."}
+      </p>
+      {!selfHost && creditUser && (
         <p className="text-[10px] text-[var(--ac-text)] font-medium mb-1">
           Powered by Claws Starter Credits - no payment needed.
         </p>
       )}
-      {(eligibility?.isFirstDeploy || eligibility?.reason === "trial_active") && (
+      {!selfHost && (eligibility?.isFirstDeploy || eligibility?.reason === "trial_active") && (
         <p className="text-[10px] text-[var(--ac-text)] font-medium mb-3.5">
           Includes your 3-day platform trial - $79/mo after, cancel anytime
         </p>
       )}
-      {!creditUser &&
+      {!selfHost &&
+        !creditUser &&
         !eligibility?.isFirstDeploy &&
         eligibility?.reason !== "trial_active" && (
           <p className="text-[10px] text-[var(--tx3)] mb-3.5">$79/mo platform fee per running Claw</p>
@@ -2247,14 +2255,14 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      {needsSub && !deploymentStatus && !waitingForActivation && (
+      {!selfHost && needsSub && !deploymentStatus && !waitingForActivation && (
         <AlertBanner variant="warning">
           <p className="font-medium">Your 3-day trial has ended</p>
           <p className="mt-0.5 opacity-80">Subscribe to the Claw Platform ($79/mo) to deploy and run your Claws.</p>
         </AlertBanner>
       )}
 
-      {waitingForActivation && !deploymentStatus && (
+      {!selfHost && waitingForActivation && !deploymentStatus && (
         <AlertBanner variant="info" icon={<Loader2 className="w-4 h-4 animate-spin" />}>
           <p className="font-medium">Payment received - activating your subscription</p>
           <p className="mt-0.5 opacity-80">This usually takes a few seconds. If it doesn&apos;t update, try refreshing the page.</p>
@@ -2264,7 +2272,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
       <RuntimeImageBanner missing={runtimeImageMissing} />
 
       {!deploymentStatus && !waitingForActivation && (
-        needsSub ? (
+        !selfHost && needsSub ? (
           <Button variant="primary" size="default" onClick={handleSubscribe} loading={subscribing}>
             Subscribe to Deploy - $79/mo
           </Button>
@@ -2274,7 +2282,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
           </Button>
         ) : (
           <Button variant="primary" size="default" onClick={() => handleDeploy()} disabled={isDeploying || !eligibility || !toolPrereqsReady || runtimeImageMissing}>
-            {eligibility?.isFirstDeploy ? "Deploy - 3-day trial" : "Deploy"}
+            {!selfHost && eligibility?.isFirstDeploy ? "Deploy - 3-day trial" : "Deploy"}
           </Button>
         )
       )}
