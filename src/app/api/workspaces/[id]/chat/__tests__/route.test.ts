@@ -11,7 +11,7 @@
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest"
 import { prismaMock } from "@/test/helpers/mock-prisma"
 import { createMockRequest, parseResponse } from "@/test/helpers/mock-request"
 
@@ -65,6 +65,10 @@ function workspaceRow(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
+
+afterEach(() => {
+  delete process.env.CLAWS_PROFILE
+})
 
 beforeEach(async () => {
   delete process.env.CLAWS_PROFILE
@@ -351,5 +355,26 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(data.data.replyText).toBe("fixture-reply")
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ awaitReplyMs: 90000 }))
     expect(afterQueue).toHaveLength(0)
+  })
+
+  it("self-host chat 502 records the gateway rejection on the workspace", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    mockSend.mockResolvedValue({
+      ok: false,
+      reason: "unreachable",
+      detail: '{"error":{"message":"Proxy client attribution is required. Configure gateway.trustedProxies narrowly.","type":"proxy_attribution_required"}}',
+    })
+    ;(prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "dep-1" })
+    const { status, data } = await parseResponse(await post({ message: "hello" }))
+    expect(status).toBe(502)
+    expect(data.error.code).toBe("GATEWAY_UNREACHABLE")
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          healthStatus: "UNHEALTHY",
+          lastHealthReason: expect.stringContaining("Proxy client attribution is required"),
+        }),
+      }),
+    )
   })
 })

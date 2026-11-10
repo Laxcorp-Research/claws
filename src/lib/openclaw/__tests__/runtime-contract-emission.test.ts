@@ -324,6 +324,18 @@ describe('version-keyed emission (same workspace, both contracts)', () => {
     expect(result.runtimeContract).toBe('9.4');
   });
 
+  it('self-host direct client omits trustedProxies so the compose bridge is not a proxy hop', async () => {
+    const result = await generateWorkspace('ws-contract-1', {
+      runtimeContract: '9.4',
+      directClient: true,
+    });
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.gateway).not.toHaveProperty('trustedProxies');
+    expect(JSON.stringify(config.gateway)).not.toContain('172.16.0.0/12');
+    expect(config.agents.entries).toBeDefined();
+    expect(config.agents).not.toHaveProperty('list');
+  });
+
   it('OPENCLAW_CONFIG_READONLY=1 lands in .env for 9.4 only (5.22 runtime has no such knob)', async () => {
     const on94 = await generateWorkspace('ws-contract-1', { runtimeContract: '9.4' });
     expect(on94['.env']).toMatch(/^OPENCLAW_CONFIG_READONLY=1$/m);

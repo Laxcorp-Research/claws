@@ -41,6 +41,7 @@ import { flushHeldChatSends, isHoldableChatStatus, ledgerChatSendHeld } from "@/
 import { wakeWorkspace } from "@/lib/hibernation/manager"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { isSelfHost } from "@/lib/profile"
+import { noteSelfHostGatewayRejection } from "@/lib/openclaw/docker-live-status"
 import crypto from "node:crypto"
 
 // HTTP returns 202 + runId before the gateway turn. Waiting here for
@@ -216,6 +217,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       socketFactory: deps.socketFactory,
     })
     if (!result.ok) {
+      try {
+        await noteSelfHostGatewayRejection(id, result.detail ?? "Chat send failed.")
+      } catch (err) {
+        log.warn("chat: could not record the gateway rejection", {
+          workspaceId: id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
       return apiError("GATEWAY_UNREACHABLE", result.detail ?? "Chat send failed.", 502)
     }
     return apiSuccess({ runId: result.runId, replyText: result.replyText ?? null })

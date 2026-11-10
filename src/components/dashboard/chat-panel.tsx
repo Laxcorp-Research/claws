@@ -83,11 +83,13 @@ const REASON_COPY: Record<ChatUnavailableReason, ChatUnavailableCopy> = {
 
 export function chatUnavailableCopy(
   reason: ChatUnavailableReason,
-  context?: { status?: string },
+  context?: { status?: string; healthStatus?: string },
 ): ChatUnavailableCopy {
   if (
     reason === "unreachable" &&
-    (context?.status === "ERROR" || context?.status === "FAILED")
+    (context?.status === "ERROR" ||
+      context?.status === "FAILED" ||
+      context?.healthStatus === "UNHEALTHY")
   ) {
     return { message: "Can't reach your Claw.", errorHref: "#claw-error" }
   }
@@ -691,6 +693,7 @@ function formatDay(ms: number): string {
 interface ChatPanelProps {
   workspaceId: string
   status: string
+  healthStatus?: string
   rows: ChatRow[]
   orchestratorName: string
   // PR-9/C: wakes a HIBERNATED Claw - wired from the dashboard page to its
@@ -711,6 +714,7 @@ interface ChatHistoryResponse {
 export function ChatPanel({
   workspaceId,
   status,
+  healthStatus,
   rows,
   orchestratorName,
   onWake,
@@ -1108,7 +1112,7 @@ export function ChatPanel({
               turnStatuses.get(m.runId) === "no_response"
             const failure =
               m.status === "failed"
-                ? chatUnavailableCopy(errorCodeToReason(m.failureCode), { status })
+                ? chatUnavailableCopy(errorCodeToReason(m.failureCode), { status, healthStatus })
                 : null
             return (
               <div key={m.key} className="contents">

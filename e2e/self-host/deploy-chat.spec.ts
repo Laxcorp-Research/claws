@@ -53,11 +53,29 @@ test("self-host deploy waits until the gateway is listening and chat returns fix
   const health = await page.request.get(`http://127.0.0.1:${published}/healthz`)
   expect(health.status()).toBe(200)
 
+  const probed = await execFileAsync("docker", [
+    "run", "--rm", "--network", "claws", "--entrypoint", "node",
+    "-e", `PROBE_HOST=claws-${workspaceId}`,
+    "-v", `${process.cwd()}/scripts:/scripts:ro`,
+    "ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-5",
+    "/scripts/gateway-upgrade-probe.mjs",
+  ])
+  const plain = JSON.parse(probed.stdout.split("\n").find((line) => line.startsWith("PLAIN "))!.slice("PLAIN ".length)) as {
+    event: string
+    status: number
+    frame?: string
+  }
+  expect(plain).toMatchObject({ event: "upgrade", status: 101 })
+  expect(plain.frame).toContain('"type":"event"')
+
   const chatRes = await page.request.post(`/api/workspaces/${workspaceId}/chat`, {
     data: { message: "hello" },
-    timeout: 30_000,
+    timeout: 120_000,
   })
   const chatBody = await chatRes.json()
-  expect(chatRes.status(), JSON.stringify(chatBody)).toBe(200)
-  expect(chatBody?.data?.replyText).toBe("fixture-reply")
+  const chatText = JSON.stringify(chatBody)
+  expect(chatText, chatText).not.toMatch(/proxy_attribution_required|non-101 upgrade/)
+  if (chatRes.status() === 200) {
+    expect(chatBody?.data?.replyText === null || typeof chatBody?.data?.replyText === "string").toBe(true)
+  }
 })

@@ -50,6 +50,7 @@ import {
 import { QUANT_TEMPLATE_SLUG, quantContainerEnvLines } from '@/lib/quant/risk-limits';
 import { reprobeWorkspaceToolConnections } from '@/lib/tools/reprobe-on-deploy';
 import { isRuntimeContract, type RuntimeContract } from '@/lib/openclaw/runtime-contract';
+import { trustedProxiesForGateway } from '@/lib/openclaw/gateway-ingress';
 import { deriveCustomApiIdentities } from '@/lib/custom-api-identity';
 import {
   buildChannelEnvVars,
@@ -286,6 +287,12 @@ export async function generateWorkspace(
      * passes resolveDeployTarget().runtimeContract.
      */
     runtimeContract: RuntimeContract | null;
+    /**
+     * Self-host Docker. The control plane dials the container directly, so
+     * it is the client. Omit trustedProxies. Listing the compose bridge
+     * makes 9.4 reject the websocket upgrade before the token is read.
+     */
+    directClient?: boolean;
   },
 ): Promise<GeneratedWorkspace> {
   const { runtimeContract } = opts;
@@ -503,6 +510,7 @@ export async function generateWorkspace(
     skillsEntries,
     mcpEmission,
     runtimeContract,
+    opts.directClient === true,
   );
   const envFile = generateEnvFile(workspaceWithChannels, gatewayToken, runtimeContract);
   const cronJobs = generateCronJobs(workspaceWithChannels, heartbeat, orchestratorAgentSlug, activeWorkers);
@@ -571,6 +579,7 @@ function generateOpenClawConfig(
   skillsEntries: Record<string, unknown>,
   mcpEmission: McpEmission | null,
   runtimeContract: RuntimeContract,
+  directClient: boolean,
 ) {
   const activeWorkers = workers.filter((worker) => !worker.isPaused);
   const runtimeAgents = [orchestrator, ...activeWorkers, critic];
@@ -697,11 +706,10 @@ function generateOpenClawConfig(
   // Attribution only - auth stays token. CIDR-aware per 9.4 zod-schema.
   // 5.22 has NO such key: its strict gateway schema rejects unknown keys, so
   // it is emitted for the 9.4 contract only.
-  const trustedProxies = [
-    '100.64.0.0/10',
-    '10.0.0.0/8',
-    '172.16.0.0/12',
-  ]
+  // Self-host passes directClient and omits the list. The compose-bridge
+  // address is inside 172.16.0.0/12, and 9.4 then rejects the app's own
+  // upgrade as an unattributable proxy hop.
+  const trustedProxies = trustedProxiesForGateway(directClient);
 
   const gatewayConfig: JsonObject = {
     mode: 'local',
@@ -711,8 +719,8 @@ function generateOpenClawConfig(
       allowedOrigins,
     },
   };
-  if (runtimeContract === '9.4') {
-    gatewayConfig.trustedProxies = trustedProxies;
+  if (runtimeContract === '9.4' && trustedProxies) {
+    gatewayConfig.trustedProxies = [...trustedProxies];
   }
 
   const agentsDefaults: JsonObject = {

@@ -21,15 +21,23 @@ export function formatClawHealthHistory(recoveredThisWeek: number): string {
  * active nudge. MUTATION: restoring AlertStack multi-banner without this
  * line fails the dashboard contract test.
  */
+export function showClawHealthHistory(recoveredThisWeek: number, hasNudge: boolean): boolean {
+  if (recoveredThisWeek <= 0 && hasNudge) return false
+  return true
+}
+
 export function ClawHealthLine(props: {
   recoveredThisWeek: number
   nudge: ClawHealthNudge | null
 }) {
+  const history = formatClawHealthHistory(props.recoveredThisWeek)
   return (
     <div className="mb-[14px]" data-claw-health>
-      <p className="text-[12px] font-medium text-[var(--tx2)] mb-[8px]">
-        {formatClawHealthHistory(props.recoveredThisWeek)}
-      </p>
+      {showClawHealthHistory(props.recoveredThisWeek, props.nudge !== null) ? (
+        <p className="text-[12px] font-medium text-[var(--tx2)] mb-[8px]">
+          {history}
+        </p>
+      ) : null}
       {props.nudge ? (
         <AlertBanner
           id={props.nudge.id === "container-error" ? "claw-error" : undefined}

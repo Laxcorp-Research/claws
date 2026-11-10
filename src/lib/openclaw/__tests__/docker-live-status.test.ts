@@ -4,6 +4,7 @@ import { prismaMock } from "@/test/helpers/mock-prisma"
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }))
 
 import {
+  __setDashboardUpgradeProbeForTests,
   __setDockerInspectForTests,
   readSelfHostDashboardStatus,
 } from "@/lib/openclaw/docker-live-status"
@@ -15,6 +16,7 @@ beforeEach(() => {
 
 afterEach(() => {
   __setDockerInspectForTests(null)
+  __setDashboardUpgradeProbeForTests(null)
   delete process.env.CLAWS_PROFILE
 })
 
@@ -40,6 +42,38 @@ describe("self-host dashboard status", () => {
     expect(prismaMock.workspace.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "ERROR" }),
+      }),
+    )
+  })
+
+  it("mock docker inspect running but the upgrade is rejected → UNHEALTHY with the gateway line, not Running-healthy", async () => {
+    __setDockerInspectForTests({
+      inspect: vi.fn().mockResolvedValue({ running: true, exitCode: null, publishedPort: 32768 }),
+    })
+    __setDashboardUpgradeProbeForTests(async () => ({
+      ok: false,
+      status: 403,
+      body: '{"error":{"message":"Proxy client attribution is required. Configure gateway.trustedProxies narrowly.","type":"proxy_attribution_required"}}',
+    }))
+    ;(prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "dep-1" })
+    ;(prismaMock.deployment.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
+    ;(prismaMock.workspace.update as ReturnType<typeof vi.fn>).mockResolvedValue({})
+
+    const live = await readSelfHostDashboardStatus({
+      id: "ws-1",
+      status: "RUNNING",
+      provider: "DOCKER",
+      containerId: "ctr-up",
+      containerHost: "claws-ws-1:18789",
+      healthStatus: "HEALTHY",
+    })
+
+    expect(live.status).toBe("RUNNING")
+    expect(live.healthStatus).toBe("UNHEALTHY")
+    expect(live.errorMessage).toContain("Proxy client attribution is required")
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ healthStatus: "UNHEALTHY", status: "RUNNING" }),
       }),
     )
   })
