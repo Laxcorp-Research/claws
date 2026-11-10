@@ -265,11 +265,18 @@ jobs:
       - name: Run Playwright tests
         run: npx playwright test --retries=2
 
-      - name: Build the self-host fixture gateway
-        run: docker build -t claws-fixture-gateway:proof docker/fixture-gateway
+      - name: Pull the self-host runtime and the probe image
+        run: |
+          docker pull ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-5
+          docker pull node:20-bookworm
 
       - name: Ensure the self-host docker network
         run: docker network inspect claws >/dev/null 2>&1 || docker network create claws
+
+      - name: Self-host upgrade against the real 9.4-5 image
+        env:
+          CLAWS_GATEWAY_UPGRADE_IT: "1"
+        run: npx vitest run src/lib/openclaw/__tests__/gateway-upgrade.integration.test.ts
 
       - name: Self-host store install walk
         run: npx playwright test --config=playwright.self-host.config.ts --retries=2

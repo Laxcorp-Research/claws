@@ -330,6 +330,28 @@ export async function GET(
     lastActiveMap.set(row.agentSlug, new Date(row.latest).toISOString())
   }
 
+  let liveStatus = workspace!.status
+  let liveHealth = workspace!.healthStatus
+  let deployErrorMessage: string | null = null
+  try {
+    const live = await readSelfHostDashboardStatus({
+      id: workspace!.id,
+      status: workspace!.status,
+      provider: workspace!.provider,
+      containerId: workspace!.containerId,
+      containerHost: workspace!.containerHost,
+      healthStatus: workspace!.healthStatus,
+    })
+    liveStatus = live.status as typeof liveStatus
+    liveHealth = (live.healthStatus ?? workspace!.healthStatus) as typeof liveHealth
+    deployErrorMessage = live.errorMessage
+  } catch (err) {
+    log.warn("dashboard: docker inspect failed", {
+      workspaceId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   // PR-3: status derivation depends on the workspace's REAL healthStatus
   // (written by /api/cron/health-monitor every 2 min) - not the prior
   // tautology that derived "healthy" purely from workspace.status===RUNNING.
@@ -345,10 +367,10 @@ export async function GET(
   const deployedPausedWorkerNames = parseDeployedPauseApplied(latestCompletedDeployment?.configSnapshotGzip)
   const agentStatuses = agents.map((a) => {
     let status: "healthy" | "paused" | "error" | "offline" | "degraded"
-    if (a.isPaused || workspace!.status === "PAUSED") status = "paused"
-    else if (workspace!.status !== "RUNNING") status = "offline"
-    else if (workspace!.healthStatus === "UNHEALTHY") status = "error"
-    else if (workspace!.healthStatus === "DEGRADED") status = "degraded"
+    if (a.isPaused || liveStatus === "PAUSED") status = "paused"
+    else if (liveStatus !== "RUNNING") status = "offline"
+    else if (liveHealth === "UNHEALTHY") status = "error"
+    else if (liveHealth === "DEGRADED") status = "degraded"
     else status = "healthy"
 
     const lastActive = lastActiveMap.get(a.agentSlug)
@@ -479,31 +501,13 @@ export async function GET(
   const dayOfMonth = now.getUTCDate()
   const projectedCost = dayOfMonth > 0 ? (totalApiCost / dayOfMonth) * daysInMonth : 0
 
-  let liveStatus = workspace!.status
-  let deployErrorMessage: string | null = null
-  try {
-    const live = await readSelfHostDashboardStatus({
-      id: workspace!.id,
-      status: workspace!.status,
-      provider: workspace!.provider,
-      containerId: workspace!.containerId,
-    })
-    liveStatus = live.status as typeof liveStatus
-    deployErrorMessage = live.errorMessage
-  } catch (err) {
-    log.warn("dashboard: docker inspect failed", {
-      workspaceId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-
   return apiSuccess({
     workspace: {
       id: workspace!.id,
       name: workspace!.name,
       status: liveStatus,
       deployErrorMessage,
-      healthStatus: workspace!.healthStatus,
+      healthStatus: liveHealth,
       // PR-4: the dashboard banner derivation reads these to distinguish
       // config drift (alive-but-misconfigured) from a dead container.
       lastHealthCheck: workspace!.lastHealthCheck ? workspace!.lastHealthCheck.toISOString() : null,

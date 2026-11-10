@@ -42,6 +42,7 @@ import {
   signDeviceAuthV3,
   type ChatDeviceIdentity,
 } from "@/lib/openclaw/device-identity"
+import { gatewayUpgradeHeaders } from "@/lib/openclaw/gateway-ingress"
 
 const PROTOCOL_VERSION = 4
 const CONNECT_TIMEOUT_MS = 5_000
@@ -75,8 +76,28 @@ export function gatewayControlUiOrigin(wsUrl: string): string {
 }
 
 function createGatewayOriginSocket(url: string): ChatSocket {
-  const socket = new WebSocket(url, {
-    headers: { Origin: gatewayControlUiOrigin(url) },
+  // The app is the client. Forwarded hop headers would make 9.4 classify
+  // this upgrade as an unattributable proxy and refuse it with 403.
+  const headers = gatewayUpgradeHeaders(url)
+  const socket = new WebSocket(url, { headers })
+  let failedDetail: string | null = null
+  let onError: ((ev: never) => void) | null = null
+  const fail = (detail: string) => {
+    if (failedDetail !== null) return
+    failedDetail = detail
+    onError?.({ detail } as never)
+  }
+  // A listener suppresses ws's own error, so the body has to be delivered here.
+  socket.on("unexpected-response", (_req, res) => {
+    const chunks: Buffer[] = []
+    res.on("data", (chunk) => chunks.push(Buffer.from(chunk)))
+    res.on("end", () => {
+      const body = Buffer.concat(chunks).toString("utf8").slice(0, 500)
+      fail(body || `HTTP ${res.statusCode}`)
+    })
+  })
+  socket.on("error", () => {
+    fail("socket error (non-101 upgrade or network failure)")
   })
   return {
     send(data) {
@@ -103,7 +124,8 @@ function createGatewayOriginSocket(url: string): ChatSocket {
         })
         return
       }
-      socket.on("error", () => fn({} as never))
+      onError = fn
+      if (failedDetail !== null) fn({ detail: failedDetail } as never)
     },
   }
 }
@@ -382,10 +404,13 @@ async function connectAttempt(params: SendChatMessageParams, factory: ChatSocket
       settle({ kind: "failure", reason: "unreachable", detail: `socket closed pre-auth (code ${ev?.code ?? "?"})` })
     }) as (ev: never) => void)
 
-    socket.addEventListener("error", (() => {
+    socket.addEventListener("error", ((ev: { detail?: string }) => {
       // Native WebSocket fires `error` WITHOUT a subsequent `close` for
       // non-101 upgrades (destroyed-container signature, captured ~440ms).
-      settle({ kind: "failure", reason: "unreachable", detail: "socket error (non-101 upgrade or network failure)" })
+      const detail = ev?.detail?.trim()
+        ? ev.detail
+        : "socket error (non-101 upgrade or network failure)"
+      settle({ kind: "failure", reason: "unreachable", detail })
     }) as (ev: never) => void)
   })
 }

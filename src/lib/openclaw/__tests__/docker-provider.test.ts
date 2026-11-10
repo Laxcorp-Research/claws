@@ -33,6 +33,7 @@ import { generateWorkspace } from "@/lib/openclaw/generator"
 import {
   __setDockerControlForTests,
   __setGatewayHealthProbeForTests,
+  __setGatewayUpgradeProbeForTests,
   deployToDocker,
   destroyDockerWorkspace,
   stopDockerContainer,
@@ -95,6 +96,7 @@ beforeEach(() => {
   delete process.env.CLAWS_DOCKER_DIAL
   process.env.CLAWS_DOCKER_NETWORK = "claws"
   __setGatewayHealthProbeForTests(async () => true)
+  __setGatewayUpgradeProbeForTests(async () => ({ ok: true, status: 101, body: "" }))
   ;(prismaMock.openClawVersion.findUnique as MockFn).mockResolvedValue({ runtimeContract: "9.4" })
   ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockResolvedValue(workspace())
   ;(prismaMock.workspace.update as MockFn).mockResolvedValue({})
@@ -107,6 +109,7 @@ beforeEach(() => {
 afterEach(() => {
   __setDockerControlForTests(null)
   __setGatewayHealthProbeForTests(null)
+  __setGatewayUpgradeProbeForTests(null)
   delete process.env.CLAWS_DOCKER_IMAGE
   delete process.env.RUNTIME_IMAGE_TAG
   delete process.env.CLAWS_DOCKER_PUBLISH
@@ -291,6 +294,34 @@ describe("docker provider", () => {
     )
   })
 
+  it("a gateway that answers /healthz but rejects the websocket upgrade is FAILED, never COMPLETED", async () => {
+    const { engine } = fakeEngine()
+    __setDockerControlForTests(engine)
+    __setGatewayUpgradeProbeForTests(async () => ({
+      ok: false,
+      status: 403,
+      body: '{"error":{"message":"Proxy client attribution is required. Configure gateway.trustedProxies narrowly and make the proxy overwrite or safely rebuild forwarded client headers.","type":"proxy_attribution_required"}}',
+    }))
+
+    await expect(deployToDocker("ws-1")).rejects.toThrow(/Proxy client attribution is required/)
+
+    const updates = (prismaMock.deployment.update as MockFn).mock.calls.map((call) => call[0])
+    expect(updates.some((update) => update.data.status === "COMPLETED")).toBe(false)
+    expect(updates).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("Proxy client attribution is required"),
+        }),
+      }),
+    ])
+    expect(prismaMock.workspace.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "ERROR", healthStatus: "UNHEALTHY" }),
+      }),
+    )
+  })
+
   it("passes a null runtime contract through and does not start a container", async () => {
     ;(prismaMock.openClawVersion.findUnique as MockFn).mockResolvedValue(null)
     ;(generateWorkspace as MockFn).mockRejectedValueOnce(new Error("RUNTIME_CONTRACT_UNKNOWN"))
@@ -298,7 +329,10 @@ describe("docker provider", () => {
     __setDockerControlForTests(engine)
 
     await expect(deployToDocker("ws-1")).rejects.toThrow("RUNTIME_CONTRACT_UNKNOWN")
-    expect(generateWorkspace).toHaveBeenCalledWith("ws-1", { runtimeContract: null })
+    expect(generateWorkspace).toHaveBeenCalledWith("ws-1", {
+      runtimeContract: null,
+      directClient: true,
+    })
     expect(engine.createContainer).not.toHaveBeenCalled()
     expect(engine.start).not.toHaveBeenCalled()
   })

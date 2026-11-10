@@ -18,10 +18,12 @@ import {
   dockerNetworkName,
   dockerPublishMode,
   dockerVolumeName,
+  gatewayWebSocketUrl,
   resolveDockerImage,
   type DockerControl,
   type DockerCreateSpec,
 } from "@/lib/openclaw/docker-engine"
+import { probeGatewayUpgrade, type UpgradeProbeResult } from "@/lib/openclaw/gateway-ingress"
 import type { DeployToCloudOptions } from "@/lib/openclaw/deployer"
 import { certsBind, prefixCaBundle, readHostCertsSource } from "@/lib/openclaw/corporate-ca"
 import { lastLogLines } from "@/lib/openclaw/gateway-failure"
@@ -31,7 +33,7 @@ export interface DockerDeployResult {
   deploymentId: string
   containerId: string
   gatewayToken: string
-  /** True only after the gateway's /healthz answered. */
+  /** True only after /healthz and a websocket upgrade both succeeded. */
   gatewayListening?: boolean
 }
 
@@ -67,6 +69,14 @@ export function __setGatewayHealthProbeForTests(next: ((url: string) => Promise<
   })
 }
 
+let upgradeProbe: (wsUrl: string) => Promise<UpgradeProbeResult> = probeGatewayUpgrade
+
+export function __setGatewayUpgradeProbeForTests(
+  next: ((wsUrl: string) => Promise<UpgradeProbeResult>) | null,
+): void {
+  upgradeProbe = next ?? probeGatewayUpgrade
+}
+
 export function gatewayHealthUrl(containerHost: string): string {
   const withScheme = containerHost.startsWith("http://") || containerHost.startsWith("https://")
     ? containerHost
@@ -96,7 +106,16 @@ async function waitForGatewayListening(args: {
     }
     host = dialHost(args.name, args.publish, inspected.publishedPort)
     if (await healthProbe(gatewayHealthUrl(host))) {
-      return { containerHost: host, publishedPort: inspected.publishedPort }
+      const upgrade = await upgradeProbe(gatewayWebSocketUrl(host, "DOCKER"))
+      if (upgrade.ok) {
+        return { containerHost: host, publishedPort: inspected.publishedPort }
+      }
+      // A speaking gateway that refuses the upgrade will not become healthy
+      // by waiting. /healthz alone is not listening.
+      if (upgrade.status >= 400) {
+        const logs = await args.docker.logs(args.containerId)
+        throw new GatewayNotListening(`${upgrade.body}\n${logs}`)
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
@@ -270,7 +289,7 @@ export async function deployToDocker(
 
   const image = resolveDockerImage()
   const runtimeContract = await loadSelfHostRuntimeContract(prisma)
-  const generated = await generateWorkspace(workspaceId, { runtimeContract })
+  const generated = await generateWorkspace(workspaceId, { runtimeContract, directClient: true })
   const token = gatewayTokenFor(workspace, generated.gatewayToken)
   const launch = await runtimeLaunchForImage(image, generated, token)
 

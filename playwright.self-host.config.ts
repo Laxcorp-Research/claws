@@ -20,7 +20,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npx tsx prisma/seed.ts && npx next dev --port 3001",
+    command: "bash scripts/self-host-e2e-server.sh",
     url: "http://localhost:3001",
     reuseExistingServer: false,
     timeout: 240_000,
@@ -29,8 +29,6 @@ export default defineConfig({
       CLAWS_PROFILE: "self-host",
       E2E_TEST_MODE: "true",
       RUNTIME_IMAGE_TAG: "2026.9.4-5",
-      CLAWS_DOCKER_IMAGE: "claws-fixture-gateway:proof",
-      CLAWS_DOCKER_DIAL: "published-port",
       CLAWS_DOCKER_NETWORK: "claws",
       CLAWS_DOCKER_PUBLISH: "host",
     },

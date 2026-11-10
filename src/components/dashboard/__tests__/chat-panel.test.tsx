@@ -1330,6 +1330,7 @@ describe("9/C reason mappers - one copy, two surfaces", () => {
       errorHref: "#claw-error",
     })
     expect(chatUnavailableCopy("unreachable", { status: "FAILED" }).errorHref).toBe("#claw-error")
+    expect(chatUnavailableCopy("unreachable", { status: "RUNNING", healthStatus: "UNHEALTHY" }).errorHref).toBe("#claw-error")
     expect(chatUnavailableCopy("transitioning").cta).toBe("retry")
     expect(chatUnavailableCopy("rate_limited").cta).toBe("retry")
     expect(chatUnavailableCopy("waking").cta).toBeUndefined()

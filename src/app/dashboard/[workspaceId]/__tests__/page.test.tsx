@@ -497,7 +497,7 @@ describe("DashboardPage MCP session banner", () => {
     render(<DashboardPage />)
 
     expect(await screen.findByText("Agent container is not responding")).toBeDefined()
-    expect(screen.getByText(/Claw health/)).toBeDefined()
+    expect(screen.queryByText("Claw health: all clear")).toBeNull()
     expect(screen.queryByRole("button", { name: /more alert/ })).toBeNull()
     expect(screen.queryByText("A runtime update is available - redeploy to apply")).toBeNull()
     expect(screen.queryByText("Activity feed appears silent - agents may be running but not reporting.")).toBeNull()

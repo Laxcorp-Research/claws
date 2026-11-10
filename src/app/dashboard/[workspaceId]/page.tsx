@@ -832,6 +832,7 @@ function DashboardPageContent() {
         actions: (
           <div className="flex gap-1.5">
             <Button variant="danger" size="xs" onClick={handleResumeAll}>Force restart</Button>
+            <Button variant="outline" size="xs" onClick={() => { void fetchStats() }}>Retry</Button>
             <Button variant="outline" size="xs" onClick={() => { if (!runtimeImageMissing) setRedeployConfirmOpen(true) }}>Redeploy</Button>
           </div>
         ),
@@ -1305,7 +1306,7 @@ function DashboardPageContent() {
 
     list.sort((a, b) => a.priority - b.priority)
     return list
-  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncNearCap, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion, selfHost])
+  }, [isError, isPaused, isStopped, spendLimitReached, spendWarning, spendPercent, spend, expiredTools, workspace, workspaceId, router, trialInfo, subscribing, handleSubscribe, creditMode, credit.status, handleWakeNow, showMcpSessionDead, showActivitySilence, showStateSyncNearCap, showStateSyncStale, handleResumeAll, showConfigDrift, configDrift, deploymentImage, stableVersion, selfHost, fetchStats])
 
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => {
@@ -1683,6 +1684,7 @@ function DashboardPageContent() {
             <ChatPanel
               workspaceId={workspaceId}
               status={workspace!.status}
+              healthStatus={workspace!.healthStatus}
               rows={chatRows}
               orchestratorName={orchestratorName}
               onWake={handleWakeNow}
