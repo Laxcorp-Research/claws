@@ -28,23 +28,8 @@ const server = http.createServer((clientReq, clientRes) => {
       headers,
     },
     (upstreamRes) => {
-      const type = String(upstreamRes.headers["content-type"] || "")
-      if (!type.includes("text/html")) {
-        clientRes.writeHead(upstreamRes.statusCode ?? 502, rewriteLocation(upstreamRes.headers))
-        upstreamRes.pipe(clientRes)
-        return
-      }
-      const chunks = []
-      upstreamRes.on("data", (chunk) => chunks.push(chunk))
-      upstreamRes.on("end", () => {
-        const body = Buffer.concat(chunks)
-          .toString("utf8")
-          .replaceAll("://0.0.0.0:3001", "://localhost:3001")
-        const headers = rewriteLocation({ ...upstreamRes.headers })
-        delete headers["content-length"]
-        clientRes.writeHead(upstreamRes.statusCode ?? 502, headers)
-        clientRes.end(body)
-      })
+      clientRes.writeHead(upstreamRes.statusCode ?? 502, rewriteLocation(upstreamRes.headers))
+      upstreamRes.pipe(clientRes)
     },
   )
   upstream.on("error", () => {
