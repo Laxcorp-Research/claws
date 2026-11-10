@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "html",
   timeout: 180_000,
   use: {
-    baseURL: "http://127.0.0.1:3001",
+    baseURL: "http://localhost:3001",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -21,9 +21,9 @@ export default defineConfig({
   ],
   webServer: {
     command: "bash scripts/self-host-e2e-server.sh",
-    url: "http://127.0.0.1:3001",
+    url: "http://localhost:3001",
     reuseExistingServer: false,
-    timeout: 600_000,
+    timeout: 240_000,
     env: {
       ...process.env,
       CLAWS_PROFILE: "self-host",
