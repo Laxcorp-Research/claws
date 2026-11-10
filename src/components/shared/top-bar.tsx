@@ -69,11 +69,10 @@ export function TopBar() {
   // Only paint public/Sign-in on EXPLICIT unauthenticated. loading + any
   // unknown status stay neutral - never fall through to Pricing/Sign-in while
   // session is still resolving (admin hard-load gap after #389).
-  const publicItems = selfHost ? publicNavItems.filter((item) => item.href !== "/pricing") : publicNavItems
   const baseNavItems = sessionReady
     ? authNavItems
     : status === "unauthenticated"
-      ? publicItems
+      ? (selfHost ? publicNavItems.filter((item) => item.href !== "/pricing") : publicNavItems)
       : loadingNavItems
   const withGettingStarted: NavItem[] = sessionReady && showGettingStartedNav && !selfHost
     ? [
