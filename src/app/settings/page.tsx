@@ -30,7 +30,7 @@ function SettingsContent() {
   const { data: session } = useSession()
 
   const selfHost = useSelfHost()
-  const tabs = selfHost ? TABS.filter((t) => t.id !== "billing") : TABS
+  const tabs = selfHost ? TABS.filter((t) => t.id !== "billing" && t.id !== "usage") : TABS
   const tabParam = searchParams.get("tab")
   const validTab = tabs.some((t) => t.id === tabParam) ? (tabParam as TabId) : null
   const [activeTab, setActiveTab] = useState<TabId>(validTab ?? "api-keys")
@@ -118,7 +118,7 @@ function SettingsContent() {
             <div className="text-center py-10 text-[var(--tx2)] text-[12px]">Loading account...</div>
           )}
           {activeTab === "api-keys" && <ApiKeyManager />}
-          {activeTab === "usage" && <UsageDashboard />}
+          {activeTab === "usage" && !selfHost && <UsageDashboard />}
           {activeTab === "billing" && !selfHost && <BillingDashboard />}
           {activeTab === "security" && <SecuritySettings />}
           {activeTab === "creator" && <CreatorDashboard />}

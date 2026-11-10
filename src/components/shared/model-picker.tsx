@@ -6,6 +6,7 @@ import { ModelSelectModal } from "@/components/shared/model-select-modal"
 import { useModelCatalog } from "@/hooks/use-model-catalog"
 import { resolveCatalogDisplayName } from "@/lib/models/humanize"
 import { modelDeployWarning } from "@/lib/models/provider-auth"
+import { useSelfHost } from "@/lib/profile-client"
 
 interface ModelPickerProps {
   value: string
@@ -39,11 +40,16 @@ export function ModelPicker({
   onAddKey,
 }: ModelPickerProps) {
   const { options: catalog } = useModelCatalog()
+  const selfHost = useSelfHost()
   const [open, setOpen] = useState(false)
 
   const selected = catalog.find((o) => o.value === value)
   const triggerLabel = selected?.label ?? resolveCatalogDisplayName(value, null)
-  const warning = modelDeployWarning(value, { creditMode, configuredProviders })
+  const warning = modelDeployWarning(value, {
+    creditMode: selfHost ? false : creditMode,
+    configuredProviders,
+    selfHost,
+  })
 
   return (
     <div className="space-y-1">
@@ -78,7 +84,8 @@ export function ModelPicker({
         thinkingDefault={thinkingDefault}
         onSave={onChange}
         agentName={agentName}
-        creditMode={creditMode}
+        creditMode={selfHost ? false : creditMode}
+        selfHost={selfHost}
         configuredProviders={configuredProviders}
         onAddKey={onAddKey}
       />

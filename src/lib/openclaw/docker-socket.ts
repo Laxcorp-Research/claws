@@ -44,7 +44,10 @@ export function dockerControlFromSocket(
         ...(spec.command ? { Cmd: spec.command } : {}),
         ExposedPorts: { [portKey]: {} },
         HostConfig: {
-          Binds: [`${spec.volumeName}:${DOCKER_STATE_MOUNT}`],
+          Binds: [
+            `${spec.volumeName}:${DOCKER_STATE_MOUNT}`,
+            ...(spec.extraBinds ?? []),
+          ],
           NetworkMode: spec.network,
           ...(spec.publish === "host"
             ? { PortBindings: { [portKey]: [{ HostPort: "0" }] } }

@@ -25,7 +25,7 @@ describe("trial copy truth (credit × trial-state)", () => {
       "Includes your 3-day platform trial - $79/mo after, cancel anytime",
     )
     // Credits line is gated on creditUser; trial line is NOT.
-    expect(setup).toMatch(/\{creditUser && \([\s\S]*?Starter Credits/)
+    expect(setup).toMatch(/\{(?:!selfHost && )?creditUser && \([\s\S]*?Starter Credits/)
     expect(setup).toMatch(
       /\(eligibility\?\.isFirstDeploy \|\| eligibility\?\.reason === "trial_active"\) && \([\s\S]*?Includes your 3-day platform trial/,
     )

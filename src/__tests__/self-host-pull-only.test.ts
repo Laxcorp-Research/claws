@@ -18,6 +18,7 @@ describe("self-host pull-only quickstart", () => {
     expect(compose).not.toContain("build:")
     expect(compose).toContain("image: ghcr.io/laxcorp-research/claws:latest")
     expect(compose).toContain("pull_policy: always")
+    expect(compose).toContain("./certs:/usr/local/share/ca-certificates/extra:ro")
     expect(compose).toContain("image: postgres:16")
     expect(compose).toContain("image: redis:7")
     expect(compose).toContain("runtime-prepull:")
@@ -51,6 +52,14 @@ describe("self-host pull-only quickstart", () => {
     expect(hosting).not.toContain("POST /api/setup/owner")
     expect(hosting).not.toContain("CLAWS_OWNER_PASSWORD")
     expect(hosting).not.toContain("curl ")
+    expect(hosting).toContain("## Behind a corporate proxy")
+    expect(hosting).toContain("outbound.anthropic")
+    expect(hosting).toContain("certmgr.msc")
+    expect(hosting).toContain("Keychain Access")
+    expect(hosting).toContain("/etc/ssl/certs")
+    const start = read("scripts/self-host-start.sh")
+    expect(start).toContain("NODE_EXTRA_CA_CERTS")
+    expect(start).toContain("/certs/bundle.pem")
   })
 
   it("publishes a multi-arch image on main and tags without repository secrets", () => {

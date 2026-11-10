@@ -23,6 +23,7 @@ import {
   type DockerCreateSpec,
 } from "@/lib/openclaw/docker-engine"
 import type { DeployToCloudOptions } from "@/lib/openclaw/deployer"
+import { certsBind, prefixCaBundle, readHostCertsSource } from "@/lib/openclaw/corporate-ca"
 
 export interface DockerDeployResult {
   deploymentId: string
@@ -216,11 +217,13 @@ export async function deployToDocker(
   await supersedePriorDeployments(workspaceId, deployment.id)
 
   await docker.ensureVolume(volumeName)
+  const certHost = readHostCertsSource()
   const spec: DockerCreateSpec = {
     name,
     image,
     env: [...containerEnv({ workspaceId, token }), ...launch.env],
-    command: launch.command,
+    command: certHost ? prefixCaBundle(launch.command) : launch.command,
+    extraBinds: certHost ? [certsBind(certHost)] : undefined,
     volumeName,
     network: dockerNetworkName(),
     publish,

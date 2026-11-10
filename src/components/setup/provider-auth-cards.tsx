@@ -9,6 +9,7 @@ import {
   resolveProviderAuth,
 } from "@/lib/models/provider-auth"
 import { SUPPORTED_PROVIDERS } from "@/lib/supported-providers"
+import { useSelfHost } from "@/lib/profile-client"
 import { PROVIDER_BYOK_BETA_LABEL, isByokBetaProvider } from "@/lib/ui/beta-labels"
 
 export type ProviderKeyStatus = {
@@ -54,6 +55,7 @@ export function ProviderAuthCards({
   onChangeKey,
   onUseGlobal,
 }: ProviderAuthCardsProps) {
+  const selfHost = useSelfHost()
   return (
     <div className="border border-[var(--bd)] rounded-xl mb-3.5 overflow-hidden">
       {SUPPORTED_PROVIDERS.map((provider) => {
@@ -63,7 +65,11 @@ export function ProviderAuthCards({
           const m = a.model || ""
           return m.startsWith(`${provider.toLowerCase()}/`)
         })
-        const auth = resolveProviderAuth(provider, { creditMode, configuredProviders })
+        const auth = resolveProviderAuth(provider, {
+          creditMode: selfHost ? false : creditMode,
+          configuredProviders,
+          selfHost,
+        })
         const keyLooksValid = Boolean(
           status?.hasKey &&
             (status.effectiveSource === "override" ? status.overrideKeyValid : status.globalKeyValid),

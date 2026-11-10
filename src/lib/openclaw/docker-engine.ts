@@ -20,6 +20,8 @@ export interface DockerCreateSpec {
    * its image CMD so the proof still answers with fixture-reply.
    */
   command?: string[]
+  /** Extra host binds, for example the corporate CA directory. */
+  extraBinds?: string[]
 }
 
 export interface DockerInspect {

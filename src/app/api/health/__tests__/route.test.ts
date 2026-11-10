@@ -12,6 +12,11 @@ vi.mock('dockerode', () => ({
 
 vi.mock('@/lib/db', () => ({ prisma: prismaMock }))
 
+const probeAnthropicOutbound = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/health/anthropic-outbound', () => ({
+  probeAnthropicOutbound,
+}))
+
 import { GET } from '@/app/api/health/route'
 
 describe('GET /api/health', () => {
@@ -20,6 +25,7 @@ describe('GET /api/health', () => {
   beforeEach(() => {
     delete process.env.CLAWS_PROFILE
     delete process.env.RUNTIME_IMAGE_TAG
+    probeAnthropicOutbound.mockResolvedValue('ok')
     ;(prismaMock.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ '?column?': 1 }])
   })
 
@@ -64,5 +70,16 @@ describe('GET /api/health', () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.runtimeImage).toEqual({ tag: '2026.5.22-18', present: false })
+    expect(json.outbound).toEqual({ anthropic: 'ok' })
+  })
+
+  it('reports tls_intercepted without failing the healthcheck', async () => {
+    process.env.CLAWS_PROFILE = 'self-host'
+    probeAnthropicOutbound.mockResolvedValue('tls_intercepted')
+    const res = await GET()
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.status).toBe('healthy')
+    expect(json.outbound).toEqual({ anthropic: 'tls_intercepted' })
   })
 })

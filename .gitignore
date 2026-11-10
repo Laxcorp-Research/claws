@@ -32,6 +32,8 @@ prisma/*.db-journal
 # Keys and secrets
 *.pem
 *.key
+/certs/*
+!/certs/.gitkeep
 
 # IDE
 .vscode/

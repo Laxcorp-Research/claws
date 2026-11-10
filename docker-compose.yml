@@ -60,6 +60,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - claws-snapshots:/var/lib/claws/snapshots
+      - ./certs:/usr/local/share/ca-certificates/extra:ro
     depends_on:
       postgres:
         condition: service_healthy
