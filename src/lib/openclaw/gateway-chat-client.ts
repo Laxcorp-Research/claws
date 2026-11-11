@@ -474,11 +474,11 @@ async function connectAttempt(params: SendChatMessageParams, factory: ChatSocket
 /** Admin HTTP RPC device.pair.approve - same Bearer + AbortController pattern as the health monitor. */
 async function approvePairing(params: SendChatMessageParams, requestId: string): Promise<boolean> {
   const fetchImpl = params.fetchImpl ?? fetch
-  const httpsUrl = params.wsUrl.replace(/^wss:/, "https:")
+  const httpUrl = params.wsUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:")
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
   try {
-    const res = await fetchImpl(`${httpsUrl}/api/v1/admin/rpc`, {
+    const res = await fetchImpl(`${httpUrl}/api/v1/admin/rpc`, {
       method: "POST",
       signal: controller.signal,
       headers: {

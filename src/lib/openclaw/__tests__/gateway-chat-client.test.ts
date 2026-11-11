@@ -275,6 +275,22 @@ describe("gateway-chat-client", () => {
     expect(extractTokenUsage({ message: { usage: { input: 0, output: 0 } } })).toBeNull()
   })
 
+  it("approves self-host pairing over http when the gateway url is ws", async () => {
+    const gw = mockGateway()
+    const urls: string[] = []
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      urls.push(String(url))
+      return gw.fetchImpl(url, init)
+    }) as unknown as typeof fetch
+    const result = await sendChatMessage({
+      ...baseParams(gw),
+      wsUrl: "ws://claws-ws:18789",
+      fetchImpl,
+    })
+    expect(result.ok).toBe(true)
+    expect(urls[0]).toBe("http://claws-ws:18789/api/v1/admin/rpc")
+  })
+
   it("lazy pairing path: NOT_PAIRED → approve(requestId from details) → reconnect once → ack", async () => {
     const gw = mockGateway({ requestId: "req-abc" })
     const result = await sendChatMessage(baseParams(gw))
