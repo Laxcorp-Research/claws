@@ -103,7 +103,7 @@ export async function healRunningStaleSync(args: {
     return { cleared: false, alert: false, synced: false }
   }
 
-  const outcome = await trySyncNow(args.containerHost, DEFAULT_SYNC_TIMEOUT_MS)
+  const outcome = await trySyncNow(args.containerHost, DEFAULT_SYNC_TIMEOUT_MS, undefined, args.workspaceId)
   if (outcome.synced) {
     await ledgerHealAttempt({
       workspaceId: args.workspaceId,

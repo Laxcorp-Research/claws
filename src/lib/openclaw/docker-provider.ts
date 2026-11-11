@@ -12,6 +12,13 @@ import { decrypt, encrypt } from "@/lib/encryption"
 import { log } from "@/lib/logger"
 import { supersedePriorDeployments } from "@/lib/deploy/supersede-deployments"
 import { generateWorkspace } from "@/lib/openclaw/generator"
+import { isSelfHost } from "@/lib/profile"
+import {
+  SYNC_ENDPOINT_ENV,
+  SYNC_SECRET_ENV,
+  syncMeteringEndpoint,
+} from "@/lib/openclaw/sync-channel"
+import { ensureWorkspaceSyncSecret } from "@/lib/openclaw/sync-secret"
 import {
   DOCKER_GATEWAY_PORT,
   dockerContainerName,
@@ -147,14 +154,17 @@ function gatewayTokenFor(workspace: { gatewayToken: string | null }, generated: 
 function containerEnv(args: {
   workspaceId: string
   token: string
+  syncSecret?: string
 }): string[] {
   const env = [
     `GATEWAY_TOKEN=${args.token}`,
     `CLAWS_WORKSPACE_ID=${args.workspaceId}`,
     `PORT=${DOCKER_GATEWAY_PORT}`,
   ]
-  const metering = process.env.METERING_MASTER_SECRET?.trim()
-  if (metering) env.push(`METERING_MASTER_SECRET=${metering}`)
+  if (args.syncSecret) {
+    env.push(`${SYNC_SECRET_ENV}=${args.syncSecret}`)
+    env.push(`${SYNC_ENDPOINT_ENV}=${syncMeteringEndpoint()}`)
+  }
   const controlPlane =
     process.env.CONTROL_PLANE_INTERNAL_URL?.trim() ||
     process.env.NEXTAUTH_URL?.trim()
@@ -291,6 +301,7 @@ export async function deployToDocker(
   const runtimeContract = await loadSelfHostRuntimeContract(prisma)
   const generated = await generateWorkspace(workspaceId, { runtimeContract, directClient: true })
   const token = gatewayTokenFor(workspace, generated.gatewayToken)
+  const syncSecret = isSelfHost() ? await ensureWorkspaceSyncSecret(workspaceId) : undefined
   const launch = await runtimeLaunchForImage(image, generated, token)
 
   const latest = await prisma.deployment.findFirst({
@@ -320,7 +331,7 @@ export async function deployToDocker(
   const spec: DockerCreateSpec = {
     name,
     image,
-    env: [...containerEnv({ workspaceId, token }), ...launch.env],
+    env: [...containerEnv({ workspaceId, token, syncSecret }), ...launch.env],
     command: certHost ? prefixCaBundle(launch.command) : launch.command,
     extraBinds: certHost ? [certsBind(certHost)] : undefined,
     volumeName,
@@ -388,6 +399,45 @@ export async function deployToDocker(
   })
 
   return { deploymentId: deployment.id, containerId, gatewayToken: token, gatewayListening: true }
+}
+
+/**
+ * A container created before the sync env existed still has no
+ * CLAWS_METERING_SECRET. Recreate it on the same named volume so the next
+ * sync-now can authenticate. Wake of an already-correct container only start()s.
+ */
+export async function ensureDockerSyncEnv(workspaceId: string): Promise<void> {
+  if (!isSelfHost()) return
+  const row = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { containerId: true, provider: true },
+  })
+  if (!row?.containerId || row.provider !== "DOCKER") return
+  const docker = await engine()
+  if (!docker.env) return
+  const secret = await ensureWorkspaceSyncSecret(workspaceId)
+  const endpoint = syncMeteringEndpoint()
+  let lines: string[] = []
+  try {
+    lines = await docker.env(row.containerId)
+  } catch {
+    return
+  }
+  const ready =
+    lines.includes(`${SYNC_SECRET_ENV}=${secret}`) &&
+    lines.includes(`${SYNC_ENDPOINT_ENV}=${endpoint}`)
+  if (ready) return
+  try {
+    await docker.stop(row.containerId)
+  } catch {
+    // Already stopped. Remove still has to free the name.
+  }
+  await docker.remove(row.containerId)
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { containerId: null },
+  })
+  await deployToDocker(workspaceId)
 }
 
 /** Hibernation: stop compute. Container name, id, and named volume stay. */

@@ -91,7 +91,7 @@ describe("writeWorkspaceSharedFile", () => {
         metadata: expect.stringContaining(WORKSPACE_FILE_WRITTEN_EVENT_KIND),
       }),
     })
-    expect(mockTrySyncNow).toHaveBeenCalledWith(HOST, 18_000)
+    expect(mockTrySyncNow).toHaveBeenCalledWith(HOST, 18_000, undefined, "ws-1")
   })
 
   it("does not PUT or ledger when the path is outside shared/**", async () => {

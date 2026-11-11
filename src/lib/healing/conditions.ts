@@ -48,6 +48,7 @@ export const PHASE_A_CONDITION_IDS = [
   "silent-wake",
   "digest-missed",
   "provider_auth_missing",
+  "sync-failed-http-401",
 ] as const
 
 export type HealConditionId = (typeof PHASE_A_CONDITION_IDS)[number]

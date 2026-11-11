@@ -4,7 +4,7 @@ import { apiSuccess, apiError, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
 import { hibernateWorkspace } from "@/lib/hibernation/manager"
 
-export const maxDuration = 60
+export const maxDuration = 180
 
 /**
  * User-triggered nap. Same hibernate path as the hosted cron

@@ -13,7 +13,7 @@ export async function nudgeDeliverableSyncNow(workspaceId: string): Promise<void
     select: { containerHost: true },
   })
   if (!ws?.containerHost) return
-  const outcome = await trySyncNow(ws.containerHost, DEFAULT_SYNC_TIMEOUT_MS)
+  const outcome = await trySyncNow(ws.containerHost, DEFAULT_SYNC_TIMEOUT_MS, undefined, workspaceId)
   if (!outcome.synced) {
     log.warn("deliverable extract: sync-now nudge did not persist", {
       workspaceId,

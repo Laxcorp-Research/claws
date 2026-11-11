@@ -48,9 +48,9 @@ const HOSTED_ONLY_PREFIXES: Array<{ prefix: string; moduleName: HostedOnlyModule
   { prefix: "/api/cron/service-pool", moduleName: "service-pool" },
   { prefix: "/api/cron", moduleName: "vercel-cron" },
   { prefix: "/api/internal/versions/register", moduleName: "ghcr-promote" },
-  { prefix: "/api/internal/state/finalize", moduleName: "credit-proxy" },
+  // Inline upload stays closed. blob-token, blob-put, and finalize are the
+  // self-host snapshot path the published runtime already speaks.
   { prefix: "/api/internal/state/upload", moduleName: "credit-proxy" },
-  { prefix: "/api/internal/state/blob-token", moduleName: "credit-proxy" },
   { prefix: "/api/axiom", moduleName: "axiom" },
 ]
 

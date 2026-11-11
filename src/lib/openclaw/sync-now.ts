@@ -12,8 +12,18 @@ export function syncNowRequestUrl(containerHost: string): string {
   return `${scheme}://${containerHost}/internal/sync-now`
 }
 
-export async function trySyncNow(containerHost: string, timeoutMs: number): Promise<SyncNowOutcome> {
-  const secret = process.env.METERING_MASTER_SECRET
+export async function trySyncNow(
+  containerHost: string,
+  timeoutMs: number,
+  secretOverride?: string,
+  workspaceId?: string,
+): Promise<SyncNowOutcome> {
+  let secret = secretOverride?.trim()
+  if (!secret && workspaceId && process.env.CLAWS_PROFILE === "self-host") {
+    const { ensureWorkspaceSyncSecret } = await import("@/lib/openclaw/sync-secret")
+    secret = await ensureWorkspaceSyncSecret(workspaceId)
+  }
+  secret = secret || process.env.METERING_MASTER_SECRET
   if (!secret) {
     return { synced: false, reason: "unconfigured" }
   }

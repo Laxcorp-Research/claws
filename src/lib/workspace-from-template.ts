@@ -4,6 +4,7 @@ import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboa
 import { cloneToolsForWorkspaceSeed } from "@/lib/tools/workspace-tool-requirements"
 import { cloneSeedFilesForWorkspace } from "@/lib/workspace-seed-files"
 import { log } from "@/lib/logger"
+import { encryptedSyncSecret } from "@/lib/openclaw/sync-secret"
 
 interface SnapshotSkill {
   slug?: string
@@ -115,6 +116,7 @@ export async function createWorkspaceFromTemplate(
         description: template.description,
         status: "SETUP_INCOMPLETE",
         clawTemplateId: template.id,
+        syncSecretEncrypted: encryptedSyncSecret(),
         toolRequirements: toolRequirements as unknown as Prisma.InputJsonValue,
         seedFiles:
           seedFiles.length > 0 ? (seedFiles as unknown as Prisma.InputJsonValue) : undefined,

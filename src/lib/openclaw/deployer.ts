@@ -1127,7 +1127,14 @@ async function confirmedSyncThenTeardown(
     return { destroyed: true };
   }
 
-  const outcome = await trySyncNow(workspace.containerHost, syncTimeoutMs);
+  let syncSecret: string | undefined;
+  if (process.env.CLAWS_PROFILE === 'self-host') {
+    const { ensureDockerSyncEnv } = await import('@/lib/openclaw/docker-provider');
+    const { ensureWorkspaceSyncSecret } = await import('@/lib/openclaw/sync-secret');
+    syncSecret = await ensureWorkspaceSyncSecret(workspaceId);
+    await ensureDockerSyncEnv(workspaceId);
+  }
+  const outcome = await trySyncNow(workspace.containerHost, syncTimeoutMs, syncSecret);
 
   if (outcome.synced) {
     await prisma.containerState.updateMany({

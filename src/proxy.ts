@@ -115,6 +115,14 @@ function rateLimitResponse(
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // The published runtime PUTs to `${apiUrl}/?pathname=...`. Next would 308
+  // that trailing slash and a redirected PUT can drop the gzip body.
+  if (pathname === "/api/internal/state/blob-put/") {
+    const url = new URL(request.url)
+    url.pathname = "/api/internal/state/blob-put"
+    return NextResponse.rewrite(url)
+  }
   const hostedOnly = denyHostedOnly(pathname);
   if (hostedOnly) {
     return new NextResponse(

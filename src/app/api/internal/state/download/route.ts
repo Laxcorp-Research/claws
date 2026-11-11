@@ -1,15 +1,14 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
+import { assertSyncCredential } from "@/lib/openclaw/state-sync-auth"
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("X-Metering-Secret")
-  if (secret !== process.env.METERING_MASTER_SECRET) {
-    return new Response("Unauthorized", { status: 401 })
-  }
-
   const workspaceId = req.nextUrl.searchParams.get("workspaceId")
   if (!workspaceId) {
     return Response.json({ success: false, error: "Missing workspaceId" }, { status: 400 })
+  }
+  if (!(await assertSyncCredential(req, workspaceId))) {
+    return new Response("Unauthorized", { status: 401 })
   }
 
   const state = await prisma.containerState.findUnique({

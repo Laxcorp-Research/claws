@@ -31,6 +31,10 @@ describe("CLAWS_PROFILE=self-host hosted-only gate", () => {
     expect(denyHostedOnly("/api/setup/owner")).toBeNull()
     expect(denyHostedOnly("/api/workspaces")).toBeNull()
     expect(denyHostedOnly("/api/internal/state/disk")).toBeNull()
+    expect(denyHostedOnly("/api/internal/state/blob-token")).toBeNull()
+    expect(denyHostedOnly("/api/internal/state/blob-put")).toBeNull()
+    expect(denyHostedOnly("/api/internal/state/finalize")).toBeNull()
+    expect(denyHostedOnly("/api/internal/state/upload")?.moduleName).toBe("credit-proxy")
   })
 
   it("mutation: calling the dodo checkout module and the railway governor under self-host fails", async () => {

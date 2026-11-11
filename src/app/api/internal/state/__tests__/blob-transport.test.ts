@@ -148,4 +148,26 @@ describe("POST /api/internal/state/finalize - persist + idempotency + del", () =
     expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1)
     expect(deleteBlob).toHaveBeenCalledTimes(1)
   })
+
+  it("self-host staged bytes persist a snapshot row without a Vercel host", async () => {
+    const bytes = Buffer.from("self-host-snapshot")
+    const { stageSelfHostBlob } = await import("@/lib/openclaw/self-host-blob")
+    const blobUrl = stageSelfHostBlob("runtime-state/ws-1.gz", bytes)
+    const { createFinalizeHandler } = await import("@/app/api/internal/state/finalize/route")
+    const fetchBlobBytes = vi.fn()
+    const POST = createFinalizeHandler({ fetchBlobBytes, deleteBlob: vi.fn() })
+    const res = await POST(
+      req("http://app:3000/api/internal/state/finalize", {
+        workspaceId: "ws-1",
+        blobUrl,
+        sha256: sha256Hex(bytes),
+        uncompressedSize: bytes.length,
+      }),
+    )
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.count).toBe(1)
+    expect(prismaMock.$executeRaw).toHaveBeenCalled()
+    expect(fetchBlobBytes).not.toHaveBeenCalled()
+  })
 })

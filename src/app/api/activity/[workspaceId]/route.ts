@@ -20,6 +20,7 @@ import {
 } from "@/lib/openclaw/near-cap-alert"
 import type { ActivityType, Prisma } from "@/generated/prisma/client"
 import { HEAL_ATTEMPT_EVENT_KIND } from "@/lib/healing/ledger"
+import { HIBERNATION_REFUSED_ACTION } from "@/lib/hibernation/stale-destroy"
 import { readSelfHostDashboardStatus } from "@/lib/openclaw/docker-live-status"
 import { log } from "@/lib/logger"
 
@@ -502,6 +503,23 @@ export async function GET(
   const dayOfMonth = now.getUTCDate()
   const projectedCost = dayOfMonth > 0 ? (totalApiCost / dayOfMonth) * daysInMonth : 0
 
+  let hibernationRefusedReason: string | null = null
+  if (workspace!.hibernationRefusedAt) {
+    const refusal = await prisma.activityLog.findFirst({
+      where: { workspaceId, action: HIBERNATION_REFUSED_ACTION },
+      orderBy: { timestamp: "desc" },
+      select: { metadata: true },
+    })
+    if (typeof refusal?.metadata === "string") {
+      try {
+        const parsed = JSON.parse(refusal.metadata) as { reason?: unknown }
+        if (typeof parsed.reason === "string") hibernationRefusedReason = parsed.reason
+      } catch {
+        hibernationRefusedReason = null
+      }
+    }
+  }
+
   return apiSuccess({
     workspace: {
       id: workspace!.id,
@@ -520,6 +538,7 @@ export async function GET(
       stateSyncStaleDetectedAt: workspace!.stateSyncStaleDetectedAt ? workspace!.stateSyncStaleDetectedAt.toISOString() : null,
       heartbeatMissedAt: workspace!.heartbeatMissedAt ? workspace!.heartbeatMissedAt.toISOString() : null,
       hibernationRefusedAt: workspace!.hibernationRefusedAt ? workspace!.hibernationRefusedAt.toISOString() : null,
+      hibernationRefusedReason,
       stateSyncNearCapActive,
       currentMonthApiCost: workspace!.currentMonthApiCost,
       apiSpendLimit: workspace!.apiSpendLimit,

@@ -225,6 +225,10 @@ model Workspace {
   containerPort   Int?
   hostPort        Int?
   gatewayToken    String?
+  /// AES-256-GCM secret the runtime checks as CLAWS_METERING_SECRET.
+  /// Minted for hosted and self-host. Self-host state sync uses this value.
+  /// Hosted credit metering keeps the platform METERING_MASTER_SECRET.
+  syncSecretEncrypted String?
   // PR-9/A-vercel: AES-256-GCM-encrypted JSON blob
   // {deviceId, publicKeyRawB64u, privateKeyPem} - the Ed25519 device
   // identity the chat send endpoint presents to the workspace's gateway
