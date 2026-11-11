@@ -2,15 +2,16 @@
 # CI only. Next runs on the claws network so app to runtime dials the
 # container name. Chromium dials the localhost proxy, not the published port.
 set -eu
-docker rm -f claws-self-host-e2e >/dev/null 2>&1 || true
+docker rm -f app >/dev/null 2>&1 || true
 cleanup() {
-  docker rm -f claws-self-host-e2e >/dev/null 2>&1 || true
+  docker rm -f app >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
-docker run -d --name claws-self-host-e2e \
+docker run -d --name app \
   --network claws \
   --add-host=host.docker.internal:host-gateway \
-  -p 127.0.0.1:3002:3001 \
+  -p 127.0.0.1:3002:3000 \
+  -e CONTROL_PLANE_INTERNAL_URL=http://app:3000 \
   -v "$PWD":/work \
   -w /work \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -29,6 +30,6 @@ docker run -d --name claws-self-host-e2e \
   -e NEXTAUTH_URL \
   -e ADMIN_EMAILS \
   node:20-bookworm \
-  bash -lc "npx tsx prisma/seed.ts && exec npx next dev --port 3001 --hostname 0.0.0.0"
-docker logs -f claws-self-host-e2e &
+  bash -lc "npx tsx prisma/seed.ts && exec npx next dev --port 3000 --hostname 0.0.0.0"
+docker logs -f app &
 node scripts/self-host-e2e-proxy.mjs

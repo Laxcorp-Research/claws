@@ -1,6 +1,7 @@
 import http from "node:http"
 import https from "node:https"
 import crypto from "node:crypto"
+import { gatewayOriginForProfile, gatewayProfileFromEnv, type GatewayProfile } from "@/lib/openclaw/gateway-origin"
 
 /**
  * Hosted Railway's edge (100.64.0.0/10) forwards client headers, and 9.4
@@ -38,9 +39,10 @@ export function trustedProxiesForGateway(directClient: boolean): readonly string
 export function gatewayUpgradeHeaders(
   wsUrl: string,
   extra?: Record<string, string>,
+  profile: GatewayProfile = gatewayProfileFromEnv(),
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    Origin: `https://${new URL(wsUrl).host}`,
+    Origin: gatewayOriginForProfile(profile, new URL(wsUrl).host),
     Connection: "Upgrade",
     Upgrade: "websocket",
     "Sec-WebSocket-Version": "13",

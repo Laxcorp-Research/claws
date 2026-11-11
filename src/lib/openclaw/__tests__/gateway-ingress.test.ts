@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { gatewayFailureHeadline } from "@/lib/openclaw/gateway-failure"
 import { gatewayUpgradeHeaders, trustedProxiesForGateway } from "@/lib/openclaw/gateway-ingress"
+import { SELF_HOST_APP_ORIGIN } from "@/lib/openclaw/gateway-origin"
 import { showClawHealthHistory } from "@/components/dashboard/claw-health-line"
 
 describe("self-host gateway ingress", () => {
@@ -10,7 +11,7 @@ describe("self-host gateway ingress", () => {
       "X-Forwarded-Host": "evil.example",
       Forwarded: "for=203.0.113.5",
       "X-Real-Ip": "203.0.113.5",
-    })
+    }, "hosted")
     expect(headers.Origin).toBe("https://claws-ws:18789")
     expect(headers.Upgrade).toBe("websocket")
     expect(headers["Sec-WebSocket-Version"]).toBe("13")
@@ -37,6 +38,19 @@ describe("self-host gateway ingress", () => {
       'gateway: observed unattributable proxy-shaped traffic from 172.20.0.2; Gateway-authenticated routes reject it.'
     expect(gatewayFailureHeadline(log)).toContain("proxy-shaped traffic")
     expect(gatewayFailureHeadline("all good")).toBeNull()
+  })
+
+  it("self-host upgrade Origin is the shared compose origin", () => {
+    const headers = gatewayUpgradeHeaders("ws://claws-ws:18789/", undefined, "self-host")
+    expect(headers.Origin).toBe(SELF_HOST_APP_ORIGIN)
+    expect(headers.Origin).toBe("http://app:3000")
+  })
+
+  it("returns the origin-not-allowed sentence for the dashboard banner", () => {
+    const detail =
+      "connect rejected: INVALID_REQUEST origin not allowed (open the Control UI from the gateway host or allow it in gateway.controlUi.allowedOrigins)"
+    expect(gatewayFailureHeadline(detail)).toBe(detail)
+    expect(gatewayFailureHeadline(detail)).toContain("origin not allowed")
   })
 })
 

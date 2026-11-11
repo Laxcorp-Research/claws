@@ -12,14 +12,18 @@
 //                              too; here the client never invents keys)
 //   M4 pairing-every-send    → V5 zero-pairing-calls assertion fails
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, it, expect, vi } from "vitest"
 import {
   CHAT_SEND_CLIENT_INFO,
+  extractTokenUsage,
   gatewayControlUiOrigin,
   sendChatMessage,
   type ChatSocket,
   type ChatSocketFactory,
 } from "@/lib/openclaw/gateway-chat-client"
+import { SELF_HOST_APP_ORIGIN } from "@/lib/openclaw/gateway-origin"
 import { generateDeviceIdentity } from "@/lib/openclaw/device-identity"
 
 // ─── Mock gateway ──────────────────────────────────────────────────────────
@@ -39,6 +43,8 @@ interface MockGatewayOptions {
   sends?: Array<Record<string, unknown>>
   /** When set, emit chat state=final after chat.send ack (awaitReplyMs path). */
   replyText?: string
+  /** Token counts attached to that final assistant message. */
+  usage?: { input: number; output: number }
 }
 
 class MockSocket implements ChatSocket {
@@ -111,6 +117,15 @@ class MockSocket implements ChatSocket {
       })
       return
     }
+    if (frame.method === "chat.history") {
+      this.emit("message", {
+        data: JSON.stringify({
+          type: "res", id: frame.id, ok: true,
+          payload: { messages: [] },
+        }),
+      })
+      return
+    }
     if (frame.method === "chat.send") {
       this.opts.sends?.push(frame.params)
       const runId = String(frame.params.idempotencyKey)
@@ -133,6 +148,7 @@ class MockSocket implements ChatSocket {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: this.opts.replyText }],
+                  ...(this.opts.usage ? { usage: this.opts.usage } : {}),
                 },
               },
             }),
@@ -155,6 +171,7 @@ function mockGateway(opts: Partial<MockGatewayOptions> = {}) {
     ackStatus: opts.ackStatus,
     sends: opts.sends ?? [],
     replyText: opts.replyText,
+    usage: opts.usage,
   }
   const sockets: MockSocket[] = []
   const factory: ChatSocketFactory = () => {
@@ -224,9 +241,38 @@ describe("gateway-chat-client", () => {
   })
 
   it("sets Control UI Origin to the gateway host (webchat-ui is origin-gated)", () => {
-    expect(gatewayControlUiOrigin("wss://claw-example.up.railway.app")).toBe(
+    expect(gatewayControlUiOrigin("wss://claw-example.up.railway.app", "hosted")).toBe(
       "https://claw-example.up.railway.app",
     )
+  })
+
+  it("self-host Control UI Origin is the shared compose origin, not the gateway host", () => {
+    expect(gatewayControlUiOrigin("ws://claws-ws:18789", "self-host")).toBe(SELF_HOST_APP_ORIGIN)
+    expect(gatewayControlUiOrigin("wss://claw-example.up.railway.app", "self-host")).toBe(SELF_HOST_APP_ORIGIN)
+  })
+
+  it("chat client source has no hardcoded origin besides the shared export", () => {
+    const files = [
+      "src/lib/openclaw/gateway-chat-client.ts",
+      "src/lib/openclaw/gateway-ingress.ts",
+    ]
+    for (const rel of files) {
+      const src = readFileSync(join(process.cwd(), rel), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "")
+      expect(src, rel).not.toMatch(/["'`]https?:\/\//)
+      expect(src, rel).toContain("gatewayOriginForProfile")
+    }
+  })
+
+  it("reads token usage from a chat final message or a history transcript", () => {
+    expect(extractTokenUsage({
+      message: { role: "assistant", usage: { input: 12, output: 4 } },
+    })).toEqual({ input: 12, output: 4 })
+    expect(extractTokenUsage({
+      messages: [{ role: "assistant", usage: { input_tokens: 3, output_tokens: 1 } }],
+    })).toEqual({ input: 3, output: 1 })
+    expect(extractTokenUsage({ message: { usage: { input: 0, output: 0 } } })).toBeNull()
   })
 
   it("lazy pairing path: NOT_PAIRED → approve(requestId from details) → reconnect once → ack", async () => {
@@ -318,10 +364,28 @@ describe("gateway-chat-client", () => {
       status: "started",
       paired: false,
       replyText: "hello from agent on telegram",
+      usage: null,
     })
     expect(gw.state.sends![0]).toMatchObject({
       sessionKey: "telegram:1227037949",
       deliver: false,
+    })
+  })
+
+  it("awaitReplyMs returns token usage when the final message carries it", async () => {
+    const gw = mockGateway({
+      paired: new Set([identity.deviceId]),
+      replyText: "fixture-reply",
+      usage: { input: 12, output: 4 },
+    })
+    const result = await sendChatMessage({
+      ...baseParams(gw),
+      awaitReplyMs: 5_000,
+    })
+    expect(result).toMatchObject({
+      ok: true,
+      replyText: "fixture-reply",
+      usage: { input: 12, output: 4 },
     })
   })
 

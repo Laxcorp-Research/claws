@@ -227,7 +227,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
       return apiError("GATEWAY_UNREACHABLE", result.detail ?? "Chat send failed.", 502)
     }
-    return apiSuccess({ runId: result.runId, replyText: result.replyText ?? null })
+    return apiSuccess({
+      runId: result.runId,
+      replyText: result.replyText ?? null,
+      usage: result.usage ?? null,
+    })
   }
 
   const attempt = () =>
