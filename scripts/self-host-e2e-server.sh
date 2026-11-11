@@ -18,6 +18,7 @@ docker run -d --name claws-self-host-e2e \
   -e CLAWS_FIXTURE_MODEL_BASE_URL=http://app:3001/api/internal/fixture-model \
   -e CONTROL_PLANE_INTERNAL_URL=http://app:3001 \
   -e METERING_MASTER_SECRET=self-host-metering \
+  -e CLAWS_SNAPSHOT_DIR=/tmp/claws-snapshots \
   -v "$PWD":/work \
   -w /work \
   -v /var/run/docker.sock:/var/run/docker.sock \
