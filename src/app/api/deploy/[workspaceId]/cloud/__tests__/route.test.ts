@@ -28,7 +28,7 @@ vi.mock('@/lib/openclaw/deploy-topology-prerequisites', () => ({
 
 const mockEvaluateProviderAuth = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/deploy/provider-auth-prerequisites', () => ({
-  PROVIDER_AUTH_MISSING: 'PROVIDER_AUTH_MISSING',
+  MODEL_KEY_MISSING: 'MODEL_KEY_MISSING',
   evaluateWorkspaceDeployProviderAuth: (...args: unknown[]) => mockEvaluateProviderAuth(...args),
 }));
 
@@ -430,20 +430,20 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
     expect(src).toContain('TOPOLOGY_INVALID');
   });
 
-  it('keyless deploy → 400 PROVIDER_AUTH_MISSING naming the missing key', async () => {
+  it('keyless deploy → 422 MODEL_KEY_MISSING naming the provider, before a container', async () => {
     mockGetSessionUser.mockResolvedValue({ id: 'user-1' });
     mockVerifyOwnership.mockResolvedValue({ error: null, workspace: { id: 'ws-1', status: 'DRAFT' } });
     mockEvaluateProviderAuth.mockResolvedValue({
       ok: false,
-      code: 'PROVIDER_AUTH_MISSING',
+      code: 'MODEL_KEY_MISSING',
       message: 'Add an Anthropic API key before deploy',
       missingProviders: ['ANTHROPIC'],
     });
 
     const res = await callRoute('ws-1');
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const json = await res.json();
-    expect(json.error.code).toBe('PROVIDER_AUTH_MISSING');
+    expect(json.error.code).toBe('MODEL_KEY_MISSING');
     expect(json.error.message).toContain('Anthropic');
     expect(mockDeployToCloud).not.toHaveBeenCalled();
     expect(prismaMock.user.findUniqueOrThrow).not.toHaveBeenCalled();
@@ -455,7 +455,8 @@ describe('POST /api/deploy/[workspaceId]/cloud', () => {
       'utf8',
     );
     expect(src).toContain('evaluateWorkspaceDeployProviderAuth');
-    expect(src).toContain('PROVIDER_AUTH_MISSING');
+    expect(src).toContain('MODEL_KEY_MISSING');
+    expect(src).toContain('422');
     const gateIdx = src.indexOf('await evaluateWorkspaceDeployProviderAuth');
     const eligibilityIdx = src.indexOf('checkDeployEligibility(user)');
     const deployIdx = src.indexOf('await deployToCloud');

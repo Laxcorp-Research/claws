@@ -249,6 +249,21 @@ interface GatewayFrame {
   error?: { code?: string; message?: string; details?: Record<string, unknown> }
 }
 
+function chatTurnError(payload: Record<string, unknown>): string | null {
+  const message = payload.message
+  const nested = message && typeof message === "object"
+    ? (message as { errorMessage?: unknown }).errorMessage
+    : undefined
+  const errorObj = payload.error
+  const fromError = errorObj && typeof errorObj === "object"
+    ? (errorObj as { message?: unknown }).message
+    : undefined
+  for (const candidate of [payload.errorMessage, nested, fromError]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim()
+  }
+  return null
+}
+
 // Lazy default: never resolved at module import (CI runs Node 20 with no
 // native client WebSocket; tests always inject). Fail loud, not silent.
 function resolveDefaultFactory(): ChatSocketFactory {
@@ -316,11 +331,11 @@ class GatewaySession {
   waitForChatFinal(
     runId: string,
     timeoutMs: number,
-  ): Promise<{ text: string | null; usage: ChatTokenUsage | null }> {
+  ): Promise<{ text: string | null; usage: ChatTokenUsage | null; error: string | null }> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
-        resolve({ text: null, usage: null })
+        resolve({ text: null, usage: null, error: null })
       }, timeoutMs)
       const waiter = (frame: GatewayFrame) => {
         if (frame.type !== "event" || frame.event !== "chat") return
@@ -330,16 +345,34 @@ class GatewaySession {
         if (state === "final") {
           clearTimeout(timer)
           this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
+          const message = payload.message
+          const stopReason = message && typeof message === "object"
+            ? String((message as { stopReason?: unknown }).stopReason ?? "")
+            : ""
+          const error = chatTurnError(payload)
+          if (stopReason === "error" || error) {
+            resolve({
+              text: null,
+              usage: null,
+              error: error ?? "The model turn failed before it could reply.",
+            })
+            return
+          }
           resolve({
             text: extractAssistantTextFromChatPayload(payload),
             usage: extractTokenUsage(payload),
+            error: null,
           })
           return
         }
         if (state === "error" || state === "aborted") {
           clearTimeout(timer)
           this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
-          resolve({ text: null, usage: null })
+          resolve({
+            text: null,
+            usage: null,
+            error: chatTurnError(payload) ?? "The model turn failed before it could reply.",
+          })
         }
       }
       this.eventWaiters.push(waiter)
@@ -564,6 +597,9 @@ export async function sendChatMessage(params: SendChatMessageParams): Promise<Se
         const final = runId === predictedRunId
           ? await replyWait
           : await session.waitForChatFinal(runId, awaitReplyMs)
+        if (final.error) {
+          return { ok: false, reason: "unreachable", detail: final.error }
+        }
         replyText = final.text
         usage = final.usage
         if (!usage) {

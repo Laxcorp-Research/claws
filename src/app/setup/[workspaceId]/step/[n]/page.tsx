@@ -1943,6 +1943,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
   // their FIRST deploy (server returns FINANCIAL_TERMS_ACK_REQUIRED).
   const [financialAckOpen, setFinancialAckOpen] = useState(false)
   const [deploymentError, setDeploymentError] = useState<string | null>(null)
+  const [modelKeyMissing, setModelKeyMissing] = useState<string | null>(null)
   const [eligibility, setEligibility] = useState<DeployEligibility | null>(null)
   const [subscribing, setSubscribing] = useState(false)
   const [waitingForActivation, setWaitingForActivation] = useState(false)
@@ -2107,6 +2108,7 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
     setIsDeploying(true)
     setDeploymentStatus("PENDING")
     setDeploymentError(null)
+    setModelKeyMissing(null)
 
     try {
       const res = await fetch(`/api/deploy/${workspaceId}/cloud`, {
@@ -2135,6 +2137,12 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
         if (json.error?.code === "FINANCIAL_TERMS_ACK_REQUIRED") {
           // §8 acknowledgement dialog; confirming retries with the ack flag.
           setFinancialAckOpen(true)
+          setDeploymentStatus(null)
+          setIsDeploying(false)
+          return
+        }
+        if (json.error?.code === "MODEL_KEY_MISSING") {
+          setModelKeyMissing(typeof json.error?.message === "string" ? json.error.message : "Add the model key before deploy")
           setDeploymentStatus(null)
           setIsDeploying(false)
           return
@@ -2311,6 +2319,15 @@ export function Step3({ workspaceId }: { workspaceId: string }) {
             failureDetail={deploymentStatus === "FAILED" ? getFailureMessage(null, deploymentError) : undefined}
           />
         </div>
+      )}
+
+      {modelKeyMissing && (
+        <AlertBanner variant="error">
+          <p className="font-medium">{modelKeyMissing}</p>
+          <p className="mt-0.5">
+            <TextLink href={`/setup/${workspaceId}/step/1`} direction="back">Add the model key</TextLink>
+          </p>
+        </AlertBanner>
       )}
 
       {deploymentStatus === "FAILED" && (

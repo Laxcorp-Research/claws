@@ -9,6 +9,12 @@ export function gatewayFailureHeadline(text: string | null | undefined): string 
     const trimmed = line.trim()
     if (trimmed.toLowerCase().includes("origin not allowed")) return trimmed
     if (
+      trimmed.toLowerCase().includes("missing-provider-auth") ||
+      trimmed.toLowerCase().includes("no api key found for provider")
+    ) {
+      return trimmed
+    }
+    if (
       trimmed.includes("proxy-shaped traffic") ||
       trimmed.includes("Gateway-authenticated routes reject")
     ) {

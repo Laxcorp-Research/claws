@@ -409,6 +409,24 @@ describe('version-keyed emission (same workspace, both contracts)', () => {
     expect(overriddenConfig.gateway.controlUi.allowedOrigins).toEqual([SELF_HOST_APP_ORIGIN]);
   });
 
+  it('a wizard WorkspaceApiKey fixture- key is the one the runtime sees', async () => {
+    vi.mocked(decrypt).mockImplementation((val: string) =>
+      val === 'fixture-cipher' ? 'fixture-model-key' : `decrypted-${val}`,
+    );
+    const workspace = buildMockWorkspace();
+    workspace.apiKeyOverrides = [{ provider: 'ANTHROPIC', encryptedKey: 'fixture-cipher' }];
+    workspace.user.apiKeys = [];
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspace);
+    const result = await generateWorkspace('ws-contract-1', {
+      runtimeContract: '9.4',
+      directClient: true,
+    });
+    expect(result['.env']).toContain('ANTHROPIC_API_KEY=fixture-model-key');
+    expect(result['.env']).toContain(`ANTHROPIC_BASE_URL=${FIXTURE_MODEL_BASE_URL}`);
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.models.providers.anthropic.baseUrl).toBe(FIXTURE_MODEL_BASE_URL);
+  });
+
   it('OPENCLAW_CONFIG_READONLY=1 lands in .env for 9.4 only (5.22 runtime has no such knob)', async () => {
     const on94 = await generateWorkspace('ws-contract-1', { runtimeContract: '9.4' });
     expect(on94['.env']).toMatch(/^OPENCLAW_CONFIG_READONLY=1$/m);

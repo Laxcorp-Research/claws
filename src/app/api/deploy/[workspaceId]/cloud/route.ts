@@ -10,7 +10,7 @@ import { missingRequiredToolsBannerTitle } from "@/lib/tools/required-tools"
 import { evaluateWorkspaceDeployTopologyPrerequisites } from "@/lib/openclaw/deploy-topology-prerequisites"
 import {
   evaluateWorkspaceDeployProviderAuth,
-  PROVIDER_AUTH_MISSING,
+  MODEL_KEY_MISSING,
 } from "@/lib/deploy/provider-auth-prerequisites"
 import {
   evaluateCreateBudget,
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   // deploy-bypass test fails.
   const providerAuth = await evaluateWorkspaceDeployProviderAuth(workspaceId)
   if (!providerAuth.ok) {
-    return apiError(PROVIDER_AUTH_MISSING, providerAuth.message, 400)
+    return apiError(MODEL_KEY_MISSING, providerAuth.message, 422)
   }
 
   // Finding F server parity (#282): same requiredToolsSatisfied gate as Setup

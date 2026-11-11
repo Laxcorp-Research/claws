@@ -13,11 +13,11 @@ import {
 import { providerFromModelRef, SUPPORTED_PROVIDERS } from "@/lib/supported-providers"
 import { providerLabel } from "@/lib/models/provider-labels"
 
-export const PROVIDER_AUTH_MISSING = "PROVIDER_AUTH_MISSING"
+export const MODEL_KEY_MISSING = "MODEL_KEY_MISSING"
 
 export type ProviderAuthPrerequisite =
   | { ok: true }
-  | { ok: false; code: typeof PROVIDER_AUTH_MISSING; message: string; missingProviders: string[] }
+  | { ok: false; code: typeof MODEL_KEY_MISSING; message: string; missingProviders: string[] }
 
 function creditModeActive(source: string, creditStatus: string | null): boolean {
   return source === "PLATFORM_CREDIT" && creditStatus === "ACTIVE"
@@ -50,7 +50,7 @@ export function evaluateProviderAuthForModels(args: {
     })
     return {
       ok: false,
-      code: PROVIDER_AUTH_MISSING,
+      code: MODEL_KEY_MISSING,
       message: warning ?? `Add a ${providerLabel(provider)} API key before deploy`,
       missingProviders,
     }
@@ -58,7 +58,7 @@ export function evaluateProviderAuthForModels(args: {
   const names = missingProviders.map((p) => providerLabel(p))
   return {
     ok: false,
-    code: PROVIDER_AUTH_MISSING,
+    code: MODEL_KEY_MISSING,
     message: `Add API keys for ${names.join(", ")} before deploy`,
     missingProviders,
   }
@@ -82,7 +82,7 @@ export async function evaluateWorkspaceDeployProviderAuth(
     },
   })
   if (!workspace) {
-    return { ok: false, code: PROVIDER_AUTH_MISSING, message: "Workspace not found", missingProviders: [] }
+    return { ok: false, code: MODEL_KEY_MISSING, message: "Workspace not found", missingProviders: [] }
   }
 
   const source = getApiKeySource(workspace, workspace.user)

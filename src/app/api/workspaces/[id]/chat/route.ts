@@ -42,6 +42,7 @@ import { wakeWorkspace } from "@/lib/hibernation/manager"
 import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { isSelfHost } from "@/lib/profile"
 import { noteSelfHostGatewayRejection } from "@/lib/openclaw/docker-live-status"
+import { noteMissingProviderAuth } from "@/lib/openclaw/provider-auth-turn"
 import crypto from "node:crypto"
 
 // HTTP returns 202 + runId before the gateway turn. Waiting here for
@@ -219,6 +220,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!result.ok) {
       try {
         await noteSelfHostGatewayRejection(id, result.detail ?? "Chat send failed.")
+        await noteMissingProviderAuth(id, result.detail ?? "")
       } catch (err) {
         log.warn("chat: could not record the gateway rejection", {
           workspaceId: id,

@@ -14,6 +14,7 @@ export const OWNER_ALERT_KEYS = [
   "runtime-candidate-ready",
   "runtime-candidate-stale",
   "hibernation-refuse-unsafe",
+  "provider-auth-missing",
   "service-pool-low",
 ] as const
 

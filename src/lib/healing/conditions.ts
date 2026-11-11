@@ -47,6 +47,7 @@ export const PHASE_A_CONDITION_IDS = [
   "railway-domain-cap",
   "silent-wake",
   "digest-missed",
+  "provider_auth_missing",
 ] as const
 
 export type HealConditionId = (typeof PHASE_A_CONDITION_IDS)[number]

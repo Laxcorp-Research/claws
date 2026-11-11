@@ -686,13 +686,19 @@ describe('generateWorkspace', () => {
       expect(result['.env']).toContain('GEMINI_API_KEY=decrypted-enc-ws-google');
     });
 
-    it('ANTHROPIC seam: a workspace ANTHROPIC override is NOT emitted (user-key path unchanged)', async () => {
-      // Anthropic is deliberately out of scope here: its key rides TWO
-      // surfaces (generator .env AND deriveContainerEnv → Railway env +
-      // reconciliation-cron fingerprints + the credit proxy). Moving only
-      // the .env half would let the two surfaces disagree about which key
-      // wins. This test locks the seam so widening it is a conscious,
-      // both-surfaces change.
+    it('WorkspaceApiKey only, UserApiKey empty, bakes ANTHROPIC_API_KEY', async () => {
+      const ws = buildMockWorkspace({
+        apiKeyOverrides: [{ provider: 'ANTHROPIC', encryptedKey: 'enc-ws-anthropic' }],
+      });
+      ws.user.apiKeys = [];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4', directClient: true });
+
+      expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-enc-ws-anthropic');
+    });
+
+    it('workspace Anthropic key wins when the account key is also present', async () => {
       const ws = buildMockWorkspace({
         apiKeyOverrides: [{ provider: 'ANTHROPIC', encryptedKey: 'enc-ws-anthropic' }],
       });
@@ -700,8 +706,35 @@ describe('generateWorkspace', () => {
 
       const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
 
-      expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-encrypted-anthropic-key');
-      expect(result['.env']).not.toContain('decrypted-enc-ws-anthropic');
+      expect(result['.env']).toContain('ANTHROPIC_API_KEY=decrypted-enc-ws-anthropic');
+      expect(result['.env']).not.toContain('decrypted-encrypted-anthropic-key');
+    });
+
+    it('neither key omits ANTHROPIC_API_KEY', async () => {
+      const ws = buildMockWorkspace();
+      ws.user.apiKeys = [];
+      (prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(ws);
+
+      const result = await generateWorkspace('ws-test-1', { runtimeContract: '9.4' });
+
+      expect(result['.env']).not.toContain('ANTHROPIC_API_KEY=');
+    });
+
+    it('generateEnvFile and skills.entries both call resolveProviderKeys and do not read the tables', async () => {
+      const { readFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const src = readFileSync(join(process.cwd(), 'src/lib/openclaw/generator.ts'), 'utf8');
+      expect(src).not.toContain('function decryptedAnthropicKey');
+      const envStart = src.indexOf('async function generateEnvFile');
+      const envFn = src.slice(envStart, src.indexOf('function generateCronJobs'));
+      expect(envFn).toContain('resolveProviderKeys');
+      expect(envFn).not.toContain('user.apiKeys');
+      expect(envFn).not.toContain('apiKeyOverrides');
+      const skillsStart = src.indexOf('async function generateSkillsEntriesConfig');
+      const skillsFn = src.slice(skillsStart, src.indexOf('function emitMarketplaceSkillEntries'));
+      expect(skillsFn).toContain('resolveProviderKeys');
+      expect(skillsFn).not.toContain('user.apiKeys');
+      expect(skillsFn).not.toContain('apiKeyOverrides');
     });
   });
 
