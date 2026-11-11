@@ -100,6 +100,26 @@ describe("hibernateWorkspace - P3 refuse path + escalation", () => {
     expect(mockSendOwnerAlert).not.toHaveBeenCalled()
   })
 
+  it("sync-failed:http-401 is ledgered as a heal condition and the reason is kept", async () => {
+    mockSyncThenDestroy.mockResolvedValue({
+      destroyed: false,
+      refused: true,
+      reason: "sync-failed:http-401",
+    })
+
+    const result = await hibernateWorkspace("ws-1")
+
+    expect(result).toEqual({
+      hibernated: false,
+      refused: true,
+      reason: "sync-failed:http-401",
+    })
+    const heal = (prismaMock.activityLog.create as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0].data as { action?: string; detail?: string })
+      .find((d) => d.action === "Heal sync-failed-http-401: failed")
+    expect(heal?.detail).toBe("sync-failed:http-401")
+  })
+
   it("third sync-fail (exhaust): ERROR row + ONE owner page + alert-pushed ledger", async () => {
     mockSyncThenDestroy.mockResolvedValue({
       destroyed: false,

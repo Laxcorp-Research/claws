@@ -16,6 +16,8 @@ docker run -d --name claws-self-host-e2e \
   --add-host=host.docker.internal:host-gateway \
   -p 127.0.0.1:3002:3001 \
   -e CLAWS_FIXTURE_MODEL_BASE_URL=http://app:3001/api/internal/fixture-model \
+  -e CONTROL_PLANE_INTERNAL_URL=http://app:3001 \
+  -e METERING_MASTER_SECRET=self-host-metering \
   -v "$PWD":/work \
   -w /work \
   -v /var/run/docker.sock:/var/run/docker.sock \

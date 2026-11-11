@@ -63,4 +63,21 @@ test("self-host deploy waits until the gateway is listening and chat returns fix
   expect(chatBody?.data?.replyText).toBe("fixture-reply")
   expect(chatBody?.data?.usage?.input).toBeGreaterThan(0)
   expect(chatBody?.data?.usage?.output).toBeGreaterThan(0)
+
+  const napRes = await page.request.post(`/api/dashboard/${workspaceId}/nap`, { timeout: 180_000 })
+  const napBody = await napRes.json()
+  expect(napRes.status(), JSON.stringify(napBody)).toBe(200)
+  expect(napBody?.data?.status).toBe("HIBERNATED")
+  const { stdout: running } = await execFileAsync("docker", ["inspect", "-f", "{{.State.Running}}", containerId])
+  expect(running.trim()).toBe("false")
+
+  const wakeRes = await page.request.post(`/api/workspaces/${workspaceId}/chat`, {
+    data: { message: "hello again" },
+    timeout: 180_000,
+  })
+  const wakeBody = await wakeRes.json()
+  expect(wakeRes.status(), JSON.stringify(wakeBody)).toBe(200)
+  expect(wakeBody?.data?.replyText).toBe("fixture-reply")
+  const { stdout: logs } = await execFileAsync("docker", ["logs", containerId])
+  expect(logs).toContain("Runtime state restored")
 })

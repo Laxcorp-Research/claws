@@ -108,7 +108,7 @@ export async function writeWorkspaceSharedFile(args: {
       select: { id: true, version: true, contentHash: true },
     })
     if (latest && latest.contentHash === contentHash) {
-      void trySyncNow(host, DEFAULT_SYNC_TIMEOUT_MS)
+      void trySyncNow(host, DEFAULT_SYNC_TIMEOUT_MS, undefined, args.workspaceId)
       return { ok: true, fileVersionId: latest.id, version: latest.version, unchanged: true, bytes }
     }
 
@@ -144,7 +144,7 @@ export async function writeWorkspaceSharedFile(args: {
       },
     })
 
-    void trySyncNow(host, DEFAULT_SYNC_TIMEOUT_MS)
+    void trySyncNow(host, DEFAULT_SYNC_TIMEOUT_MS, undefined, args.workspaceId)
     return { ok: true, fileVersionId: created.id, version: nextVersion, unchanged: false, bytes }
   } catch (err) {
     log.error("live-write: disk write succeeded but FileVersion ledger failed", {

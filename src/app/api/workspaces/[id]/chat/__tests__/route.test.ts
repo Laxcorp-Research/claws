@@ -346,6 +346,26 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(src).not.toMatch(/let result: SendChatResult = await attempt\(\)[\s\S]{0,400}return apiError/)
   })
 
+  it("self-host hibernated chat wakes the container and returns the reply", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(workspaceRow({ status: "HIBERNATED" }))
+      .mockResolvedValue(workspaceRow({ status: "RUNNING" }))
+    mockSend.mockResolvedValue({
+      ok: true,
+      runId: "run-wake",
+      status: "started",
+      paired: false,
+      replyText: "fixture-reply",
+      usage: { input: 3, output: 2 },
+    })
+    const { wakeWorkspace } = await import("@/lib/hibernation/manager")
+    const { status, data } = await parseResponse(await post({ message: "hello again" }))
+    expect(wakeWorkspace).toHaveBeenCalledWith("ws-1")
+    expect(status).toBe(200)
+    expect(data.data.replyText).toBe("fixture-reply")
+  })
+
   it("self-host waits for the gateway reply text instead of returning 202", async () => {
     process.env.CLAWS_PROFILE = "self-host"
     mockSend.mockResolvedValue({

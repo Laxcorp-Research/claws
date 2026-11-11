@@ -9,6 +9,7 @@ import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { maybeResumeInterruptedMission } from "@/lib/healing/mission-resume"
 import { sendCustomerNudge } from "@/lib/alerts/customer-nudge"
 import { sendOwnerAlert } from "@/lib/alerts/owner-alert"
+import { ledgerHealAttempt } from "@/lib/healing/ledger"
 import {
   decideRefusalEscalation,
   HIBERNATION_REFUSED_EVENT_KIND,
@@ -141,6 +142,14 @@ export async function hibernateWorkspace(
           where: { id: workspaceId },
           data: { hibernationRefusedAt: new Date() },
         })
+        if (reason === "sync-failed:http-401") {
+          await ledgerHealAttempt({
+            workspaceId,
+            condition: "sync-failed-http-401",
+            outcome: "failed",
+            detail: reason,
+          })
+        }
       } catch (markErr) {
         log.error("Failed to record hibernation refusal", {
           workspaceId,

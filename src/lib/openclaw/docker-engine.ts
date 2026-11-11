@@ -39,6 +39,8 @@ export interface DockerControl {
   stop(id: string): Promise<void>
   remove(id: string): Promise<void>
   inspect(id: string): Promise<DockerInspect>
+  /** Container env lines (`KEY=value`). Optional so older fakes still typecheck. */
+  env?(id: string): Promise<string[]>
   /** Tail of stdout+stderr. Used when the gateway dies before /healthz answers. */
   logs(id: string): Promise<string>
   removeVolume(name: string): Promise<void>

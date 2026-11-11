@@ -7,6 +7,7 @@ import { completeOnboardingAfterFirstWorkspace } from "@/lib/auth/complete-onboa
 import { cloneSeedFilesForWorkspace } from "@/lib/workspace-seed-files"
 import type { Prisma } from "@/generated/prisma/client"
 import { countPendingApprovalsByWorkspace } from "@/lib/artifacts/pending-approvals"
+import { encryptedSyncSecret } from "@/lib/openclaw/sync-secret"
 
 const workspaceDetailInclude = {
   agents: { orderBy: { createdAt: "asc" as const } },
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
           slug,
           status: "SETUP_INCOMPLETE",
           clawTemplateId: templateId,
+          syncSecretEncrypted: encryptedSyncSecret(),
           seedFiles:
             seedFiles.length > 0 ? (seedFiles as unknown as Prisma.InputJsonValue) : undefined,
           maxRevisionRounds:
@@ -165,7 +167,7 @@ export async function POST(req: NextRequest) {
 
   const workspace = await prisma.$transaction(async (tx) => {
     const ws = await tx.workspace.create({
-      data: { userId: user.id, name, slug, status: "DRAFT" },
+      data: { userId: user.id, name, slug, status: "DRAFT", syncSecretEncrypted: encryptedSyncSecret() },
     })
     await tx.agent.create({
       data: {

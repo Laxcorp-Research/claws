@@ -93,6 +93,7 @@ interface WorkspaceInfo {
   heartbeatMissedAt?: string | null
   /** Lifecycle P3: auto-hibernate refused (unsynced/stale) - DATA class. */
   hibernationRefusedAt?: string | null
+  hibernationRefusedReason?: string | null
   /** PR-3: true while newest near-cap WARNING is unresolved (no post-warn sync below re-arm). */
   stateSyncNearCapActive?: boolean
   apiKeySource?: ApiKeySource
@@ -970,6 +971,9 @@ function DashboardPageContent() {
         content: (
           <>
             <p className="font-medium">Hibernation refused - runtime state was not safely synced.</p>
+            {workspace.hibernationRefusedReason ? (
+              <p className="mt-0.5 opacity-80">{workspace.hibernationRefusedReason}</p>
+            ) : null}
             <p className="mt-0.5 opacity-80">
               The claw stayed running to protect history. Retry after activity resumes, or Stop
               manually if you accept possible data loss.

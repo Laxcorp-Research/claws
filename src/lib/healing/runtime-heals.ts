@@ -101,9 +101,9 @@ async function idleMsFor(workspaceId: string, now: Date): Promise<number> {
   return Math.max(0, now.getTime() - last.getTime())
 }
 
-async function syncIfPossible(containerHost: string | null): Promise<boolean> {
+async function syncIfPossible(containerHost: string | null, workspaceId: string): Promise<boolean> {
   if (!containerHost) return false
-  const result = await trySyncNow(containerHost, DEFAULT_SYNC_TIMEOUT_MS)
+  const result = await trySyncNow(containerHost, DEFAULT_SYNC_TIMEOUT_MS, undefined, workspaceId)
   return result.synced
 }
 
@@ -137,7 +137,7 @@ export async function executeAutoRedeploy(args: {
     : hasInFlightRuns
       ? 0
       : await idleMsFor(args.workspaceId, now)
-  const synced = await syncIfPossible(args.containerHost)
+  const synced = await syncIfPossible(args.containerHost, args.workspaceId)
   const decision = evaluateAutoRedeployGuards({
     syncSucceeded: synced,
     idleMs: idle,
@@ -202,7 +202,7 @@ export async function executeCrashRestart(args: {
     lastAttemptAt: attempts.lastAt,
     now,
   })
-  await syncIfPossible(args.containerHost)
+  await syncIfPossible(args.containerHost, args.workspaceId)
 
   if (!decision.allowed) {
     const outcome = decision.escalateOwner ? "exhausted" : "blocked"
@@ -256,7 +256,7 @@ export async function executeHeartbeatRearmRestart(args: {
   })
   const { hasInFlightRuns } = await loadInFlightWork(args.workspaceId, now)
   const idle = hasInFlightRuns ? 0 : await idleMsFor(args.workspaceId, now)
-  const synced = await syncIfPossible(args.containerHost)
+  const synced = await syncIfPossible(args.containerHost, args.workspaceId)
   const decision = evaluateAutoRedeployGuards({
     syncSucceeded: synced,
     idleMs: idle,

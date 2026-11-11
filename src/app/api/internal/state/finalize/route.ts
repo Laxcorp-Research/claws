@@ -8,7 +8,8 @@ import {
   timingSafeEqualHex,
 } from "@/lib/openclaw/state-snapshot"
 import { ABSOLUTE_MAX_COMPRESSED_BYTES } from "@/lib/openclaw/state-sync-limits"
-import { assertMeteringSecret } from "@/lib/openclaw/state-sync-auth"
+import { assertSyncCredential } from "@/lib/openclaw/state-sync-auth"
+import { readStagedSelfHostBlob } from "@/lib/openclaw/self-host-blob"
 import { extractDeliverablesFromGzip } from "@/lib/artifacts/extract-deliverables"
 
 export const maxDuration = 60
@@ -73,10 +74,6 @@ export function createFinalizeHandler(
   const deleteBlob = deps.deleteBlob ?? defaultDeleteBlob
 
   return async function POST(req: NextRequest): Promise<Response> {
-    if (!assertMeteringSecret(req)) {
-      return new Response("Unauthorized", { status: 401 })
-    }
-
     let body: {
       workspaceId?: unknown
       blobUrl?: unknown
@@ -97,10 +94,19 @@ export function createFinalizeHandler(
         ? body.uncompressedSize
         : 0
 
+    if (!(await assertSyncCredential(req, workspaceId || null))) {
+      return new Response("Unauthorized", { status: 401 })
+    }
+
     if (!workspaceId || !blobUrl || !/^[a-f0-9]{64}$/.test(sha256)) {
       return Response.json({ success: false, error: "Missing or invalid fields" }, { status: 400 })
     }
 
+    const staged = readStagedSelfHostBlob(blobUrl)
+    let stateBuffer: Buffer
+    if (staged) {
+      stateBuffer = staged
+    } else {
     let parsed: URL
     try {
       parsed = new URL(blobUrl)
@@ -115,7 +121,6 @@ export function createFinalizeHandler(
       return Response.json({ success: false, error: "blobUrl host not allowed" }, { status: 400 })
     }
 
-    let stateBuffer: Buffer
     try {
       stateBuffer = await fetchBytes(blobUrl)
     } catch (err) {
@@ -124,6 +129,7 @@ export function createFinalizeHandler(
         error: err instanceof Error ? err.message : String(err),
       })
       return Response.json({ success: false, error: "Blob fetch failed" }, { status: 502 })
+    }
     }
 
     if (stateBuffer.length > ABSOLUTE_MAX_COMPRESSED_BYTES) {

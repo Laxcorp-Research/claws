@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { assertMeteringSecret } from "@/lib/openclaw/state-sync-auth"
+import { assertSyncCredential } from "@/lib/openclaw/state-sync-auth"
 import { persistRuntimeStateSnapshot } from "@/lib/openclaw/state-snapshot"
 import { isSelfHost } from "@/lib/profile"
 
@@ -13,9 +13,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!isSelfHost()) {
     return new Response("Not found", { status: 404 })
   }
-  if (!assertMeteringSecret(req)) {
-    return new Response("Unauthorized", { status: 401 })
-  }
 
   let body: { workspaceId?: unknown; bytesBase64?: unknown; uncompressedSize?: unknown }
   try {
@@ -25,6 +22,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
   if (typeof body.workspaceId !== "string" || typeof body.bytesBase64 !== "string") {
     return new Response("workspaceId and bytesBase64 are required", { status: 400 })
+  }
+  if (!(await assertSyncCredential(req, body.workspaceId))) {
+    return new Response("Unauthorized", { status: 401 })
   }
   const bytes = Buffer.from(body.bytesBase64, "base64")
   const uncompressedSize =

@@ -69,6 +69,11 @@ export function dockerControlFromSocket(
       await docker.getContainer(id).remove({ force: true })
     },
 
+    async env(id: string): Promise<string[]> {
+      const info = await docker.getContainer(id).inspect()
+      return info.Config.Env ?? []
+    },
+
     async inspect(id: string): Promise<DockerInspect> {
       const info = await docker.getContainer(id).inspect()
       return {

@@ -121,6 +121,14 @@ export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
     0,
     "owner-alert",
   ),
+  "sync-failed-http-401": policy(
+    "sync-failed-http-401",
+    "platform",
+    "owner",
+    "ledgerHealAttempt",
+    0,
+    "owner-alert",
+  ),
 }
 
 export function getHealPolicy(id: HealConditionId): HealPolicy {

@@ -2,10 +2,10 @@ import { NextRequest } from "next/server"
 import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client"
 import { log } from "@/lib/logger"
 import { ABSOLUTE_MAX_COMPRESSED_BYTES } from "@/lib/openclaw/state-sync-limits"
-import {
-  assertMeteringSecret,
-  parseStoreIdFromReadWriteToken,
-} from "@/lib/openclaw/state-sync-auth"
+import { assertSyncCredential, parseStoreIdFromReadWriteToken } from "@/lib/openclaw/state-sync-auth"
+import { isSelfHost } from "@/lib/profile"
+import { syncAppOrigin } from "@/lib/openclaw/sync-channel"
+import { ensureWorkspaceSyncSecret } from "@/lib/openclaw/sync-secret"
 
 export const maxDuration = 30
 
@@ -18,16 +18,6 @@ const DEFAULT_BLOB_API_URL = "https://vercel.com/api/blob"
  * Auth: X-Metering-Secret (same as /state/upload).
  */
 export async function POST(req: NextRequest) {
-  if (!assertMeteringSecret(req)) {
-    return new Response("Unauthorized", { status: 401 })
-  }
-
-  const rwToken = process.env.BLOB_READ_WRITE_TOKEN
-  if (!rwToken) {
-    log.error("BLOB_READ_WRITE_TOKEN unset - cannot issue state blob token")
-    return Response.json({ success: false, error: "Blob not configured" }, { status: 503 })
-  }
-
   let body: { workspaceId?: unknown; sha256?: unknown; compressedSize?: unknown }
   try {
     body = await req.json()
@@ -45,11 +35,35 @@ export async function POST(req: NextRequest) {
   if (!workspaceId || !/^[a-z0-9_-]+$/i.test(workspaceId)) {
     return Response.json({ success: false, error: "Invalid workspaceId" }, { status: 400 })
   }
+  if (!(await assertSyncCredential(req, workspaceId))) {
+    return new Response("Unauthorized", { status: 401 })
+  }
   if (!/^[a-f0-9]{64}$/.test(sha256)) {
     return Response.json({ success: false, error: "Invalid sha256" }, { status: 400 })
   }
   if (compressedSize === null || compressedSize <= 0 || compressedSize > ABSOLUTE_MAX_COMPRESSED_BYTES) {
     return Response.json({ success: false, error: "Invalid compressedSize" }, { status: 400 })
+  }
+
+  // The published runtime only knows the Blob PUT protocol. Self-host has no
+  // Vercel store, so the token points that PUT at this app.
+  if (isSelfHost()) {
+    const secret = await ensureWorkspaceSyncSecret(workspaceId)
+    const pathname = `runtime-state/${workspaceId}.gz`
+    return Response.json({
+      success: true,
+      pathname,
+      clientToken: secret,
+      storeId: "self-host",
+      apiUrl: `${syncAppOrigin()}/api/internal/state/blob-put`,
+      maximumSizeInBytes: ABSOLUTE_MAX_COMPRESSED_BYTES,
+    })
+  }
+
+  const rwToken = process.env.BLOB_READ_WRITE_TOKEN
+  if (!rwToken) {
+    log.error("BLOB_READ_WRITE_TOKEN unset - cannot issue state blob token")
+    return Response.json({ success: false, error: "Blob not configured" }, { status: 503 })
   }
 
   const pathname = `runtime-state/${workspaceId}/${Date.now()}-${sha256.slice(0, 16)}.gz`

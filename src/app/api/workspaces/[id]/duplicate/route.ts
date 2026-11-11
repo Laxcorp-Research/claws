@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
+import { encryptedSyncSecret } from "@/lib/openclaw/sync-secret"
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -23,7 +24,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const ws = await prisma.$transaction(async (tx) => {
     const created = await tx.workspace.create({
-      data: { userId: user.id, name: `${source.name} (Copy)`, slug: newSlug, status: "DRAFT", clawTemplateId: source.clawTemplateId },
+      data: { userId: user.id, name: `${source.name} (Copy)`, slug: newSlug, status: "DRAFT", clawTemplateId: source.clawTemplateId, syncSecretEncrypted: encryptedSyncSecret() },
     })
 
     const agentIdMap: Record<string, string> = {}

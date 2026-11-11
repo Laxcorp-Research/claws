@@ -115,6 +115,8 @@ afterEach(() => {
   delete process.env.CLAWS_DOCKER_PUBLISH
   delete process.env.CLAWS_DOCKER_PROXY_HOST
   delete process.env.CLAWS_DOCKER_DIAL
+  delete process.env.CLAWS_PROFILE
+  delete process.env.CONTROL_PLANE_INTERNAL_URL
 })
 
 describe("docker provider", () => {
@@ -191,6 +193,52 @@ describe("docker provider", () => {
     expect(spec.env).toContain("ANTHROPIC_API_KEY=sk-ant-founder-local")
     expect(spec.env).toContain("OPENCLAW_GATEWAY_TOKEN=generated-token")
     expect(spec.env).toContain("OPENCLAW_CONFIG_READONLY=1")
+  })
+
+  it("self-host injects CLAWS_METERING_SECRET and the in-network metering URL", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    process.env.CONTROL_PLANE_INTERNAL_URL = "http://app:3000"
+    process.env.CLAWS_DOCKER_IMAGE = "ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-5"
+    ;(prismaMock.workspace.findUnique as MockFn).mockResolvedValue({
+      syncSecretEncrypted: "enc:workspace-sync-secret",
+    })
+    const { engine, calls } = fakeEngine()
+    __setDockerControlForTests(engine)
+
+    await deployToDocker("ws-1")
+
+    const spec = calls.find((c) => c.op === "createContainer")?.arg as DockerCreateSpec
+    expect(spec.env).toContain("CLAWS_METERING_SECRET=workspace-sync-secret")
+    expect(spec.env).toContain("CLAWS_METERING_ENDPOINT=http://app:3000/api/internal/metering")
+    expect(spec.env.some((line) => line.startsWith("METERING_MASTER_SECRET="))).toBe(false)
+  })
+
+  it("self-host recreates a container that is missing CLAWS_METERING_SECRET and keeps the volume", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    process.env.CONTROL_PLANE_INTERNAL_URL = "http://app:3000"
+    process.env.CLAWS_DOCKER_IMAGE = "claws-fixture-gateway:proof"
+    let containerId: string | null = "old-ctr"
+    ;(prismaMock.workspace.findUnique as MockFn).mockImplementation(async (args: { select?: { syncSecretEncrypted?: boolean } }) => {
+      if (args?.select?.syncSecretEncrypted) return { syncSecretEncrypted: "enc:workspace-sync-secret" }
+      return { containerId, provider: "DOCKER" }
+    })
+    ;(prismaMock.workspace.findUniqueOrThrow as MockFn).mockImplementation(async () => workspace({ containerId }))
+    ;(prismaMock.workspace.update as MockFn).mockImplementation(async (args: { data?: { containerId?: string | null } }) => {
+      if (args?.data && "containerId" in args.data) containerId = args.data.containerId ?? null
+      return {}
+    })
+    const { engine, calls } = fakeEngine()
+    engine.env = vi.fn(async () => ["GATEWAY_TOKEN=old"])
+    __setDockerControlForTests(engine)
+
+    const { ensureDockerSyncEnv } = await import("@/lib/openclaw/docker-provider")
+    await ensureDockerSyncEnv("ws-1")
+
+    expect(calls.map((c) => c.op)).toContain("remove")
+    expect(calls.map((c) => c.op)).toContain("ensureVolume")
+    const spec = calls.find((c) => c.op === "createContainer")?.arg as DockerCreateSpec
+    expect(spec.volumeName).toBe("claws-ws-1")
+    expect(spec.env).toContain("CLAWS_METERING_SECRET=workspace-sync-secret")
   })
 
   it("proxy mode does not publish a host port and dials CLAWS_DOCKER_PROXY_HOST", async () => {

@@ -25,7 +25,7 @@ describe("nudgeDeliverableSyncNow", () => {
       containerHost: "claw-ws.up.railway.app",
     })
     await nudgeDeliverableSyncNow("ws-1")
-    expect(mockTrySyncNow).toHaveBeenCalledWith("claw-ws.up.railway.app", 18_000)
+    expect(mockTrySyncNow).toHaveBeenCalledWith("claw-ws.up.railway.app", 18_000, undefined, "ws-1")
   })
 
   it("skips when there is no container host", async () => {

@@ -11,6 +11,16 @@ vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+const findWorkspace = vi.fn()
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    workspace: {
+      findUnique: (...args: unknown[]) => findWorkspace(...args),
+      update: vi.fn(),
+    },
+  },
+}))
+
 const SECRET = "test-master-secret"
 
 function req(body: Record<string, unknown>, secret = SECRET): NextRequest {
@@ -23,10 +33,42 @@ function req(body: Record<string, unknown>, secret = SECRET): NextRequest {
 
 describe("POST /api/internal/state/blob-token", () => {
   beforeEach(() => {
+    delete process.env.CLAWS_PROFILE
     process.env.METERING_MASTER_SECRET = SECRET
     process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_storeTEST_secrettokenvalue"
     generateMock.mockClear()
     generateMock.mockResolvedValue("generated-client-token")
+    findWorkspace.mockReset()
+    findWorkspace.mockResolvedValue(null)
+  })
+
+  it("self-host returns 200 for the workspace secret and 401 with none, without Vercel Blob", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    process.env.CONTROL_PLANE_INTERNAL_URL = "http://app:3000"
+    delete process.env.BLOB_READ_WRITE_TOKEN
+    const { encrypt } = await import("@/lib/encryption")
+    findWorkspace.mockResolvedValue({ syncSecretEncrypted: encrypt("workspace-sync-secret") })
+    const { POST } = await import("@/app/api/internal/state/blob-token/route")
+    const denied = await POST(
+      req(
+        { workspaceId: "ws-1", sha256: "ab".repeat(32), compressedSize: 128 },
+        "nope",
+      ),
+    )
+    expect(denied.status).toBe(401)
+    expect(generateMock).not.toHaveBeenCalled()
+    const ok = await POST(
+      req(
+        { workspaceId: "ws-1", sha256: "ab".repeat(32), compressedSize: 128 },
+        "workspace-sync-secret",
+      ),
+    )
+    expect(ok.status).toBe(200)
+    const json = await ok.json()
+    expect(json.clientToken).toBe("workspace-sync-secret")
+    expect(json.apiUrl).toBe("http://app:3000/api/internal/state/blob-put")
+    expect(json.pathname).toBe("runtime-state/ws-1.gz")
+    expect(generateMock).not.toHaveBeenCalled()
   })
 
   it("auth failure → 401 and generateClientToken is never called (no Blob write possible)", async () => {

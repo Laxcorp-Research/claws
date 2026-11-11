@@ -48,7 +48,7 @@ import crypto from "node:crypto"
 // HTTP returns 202 + runId before the gateway turn. Waiting here for
 // chat.send (or the reply) is the founder 19:34Z false-fail: the turn
 // ran, the reply landed, the client timed the wait into "failed".
-export const maxDuration = 30
+export const maxDuration = 120
 
 // Mirror of the reporter's DETAIL_MAX: a longer message would be truncated
 // in the activity feed anyway, and the gateway has its own payload caps.
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return ERRORS.VALIDATION(`message exceeds ${MESSAGE_MAX_CHARS} characters`)
   }
 
-  const workspace = await prisma.workspace.findUniqueOrThrow({
+  let workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id },
     select: {
       status: true,
@@ -111,10 +111,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   })
 
-  // ─── Status gate (V2, amendment 1 error codes) ─────────────────────────
-  // Boot/sleep: hold the send with a runId and honest held state. STOPPED
-  // still 409. DRAFT/PAUSED stay transitioning.
-  if (isHoldableChatStatus(workspace.status)) {
+  // Self-host nap is docker stop. A chat message starts the same container
+  // and waits for the reply. Hosted stays on the 202 hold.
+  if (isSelfHost() && workspace.status === "HIBERNATED") {
+    await wakeWorkspace(id)
+    const deadline = Date.now() + 90_000
+    while (Date.now() < deadline) {
+      workspace = await prisma.workspace.findUniqueOrThrow({
+        where: { id },
+        select: {
+          status: true,
+          containerHost: true,
+          gatewayToken: true,
+          chatDeviceKeyEncrypted: true,
+        },
+      })
+      if (workspace.status === "RUNNING" && workspace.containerHost && workspace.gatewayToken) break
+      if (workspace.status === "STOPPED" || workspace.status === "ERROR") {
+        return apiError("WORKSPACE_STOPPED", "Wake did not bring the Claw back.", 409)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+    if (workspace.status !== "RUNNING") {
+      return apiError("GATEWAY_UNREACHABLE", "Wake did not finish in time.", 502)
+    }
+  } else if (isHoldableChatStatus(workspace.status)) {
     if (workspace.status === "HIBERNATED") {
       const owner = await prisma.workspace.findUnique({
         where: { id },
