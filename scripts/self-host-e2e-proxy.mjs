@@ -28,8 +28,14 @@ const server = http.createServer((clientReq, clientRes) => {
       headers,
     },
     (upstreamRes) => {
-      clientRes.writeHead(upstreamRes.statusCode ?? 502, rewriteLocation(upstreamRes.headers))
-      upstreamRes.pipe(clientRes)
+      try {
+        clientRes.writeHead(upstreamRes.statusCode ?? 502, rewriteLocation(upstreamRes.headers))
+        upstreamRes.pipe(clientRes)
+      } catch {
+        if (!clientRes.headersSent) clientRes.writeHead(502)
+        clientRes.end()
+        upstreamRes.destroy()
+      }
     },
   )
   upstream.on("error", () => {
