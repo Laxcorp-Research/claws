@@ -23,11 +23,13 @@ export function resolveProviderKeyMap(args: {
   overrides: ReadonlyArray<{ provider: string; encryptedKey: string | null }>
   userKeys: ReadonlyArray<{ provider: string; encryptedKey: string | null }>
 }): ProviderKeyMap {
+  const overrides = args.overrides ?? []
+  const userKeys = args.userKeys ?? []
   const map: ProviderKeyMap = {}
   for (const provider of SUPPORTED_PROVIDERS) {
     const row =
-      args.overrides.find((key) => key.provider === provider && key.encryptedKey) ??
-      args.userKeys.find((key) => key.provider === provider && key.encryptedKey)
+      overrides.find((key) => key.provider === provider && key.encryptedKey) ??
+      userKeys.find((key) => key.provider === provider && key.encryptedKey)
     if (!row?.encryptedKey) continue
     map[provider] = decrypt(row.encryptedKey)
   }
@@ -43,8 +45,8 @@ export async function resolveProviderKeys(workspaceId: string): Promise<Provider
     },
   })
   return resolveProviderKeyMap({
-    overrides: workspace.apiKeyOverrides,
-    userKeys: workspace.user.apiKeys,
+    overrides: workspace.apiKeyOverrides ?? [],
+    userKeys: workspace.user?.apiKeys ?? [],
   })
 }
 
