@@ -43,7 +43,7 @@
     "@radix-ui/react-dropdown-menu": "^2.1.22",
     "@radix-ui/react-tooltip": "^1.2.16",
     "@sentry/nextjs": "^10.75.2",
-    "@stripe/stripe-js": "^8.9.0",
+    "@stripe/stripe-js": "^10.2.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "@vercel/blob": "^2.6.1",
