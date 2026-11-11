@@ -15,6 +15,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { z } from 'zod';
 import { prismaMock } from '@/test/helpers/mock-prisma';
+import { decrypt } from '@/lib/encryption';
+import { DOCKER_GATEWAY_PORT } from '@/lib/openclaw/docker-engine';
+import { FIXTURE_MODEL_BASE_URL, SELF_HOST_APP_ORIGIN } from '@/lib/openclaw/gateway-origin';
 
 vi.mock('@/lib/db', () => ({
   prisma: prismaMock,
@@ -334,6 +337,76 @@ describe('version-keyed emission (same workspace, both contracts)', () => {
     expect(JSON.stringify(config.gateway)).not.toContain('172.16.0.0/12');
     expect(config.agents.entries).toBeDefined();
     expect(config.agents).not.toHaveProperty('list');
+  });
+
+  it('self-host allowed origins contain the shared compose origin and no hosted-shaped gateway fields', async () => {
+    const result = await generateWorkspace('ws-contract-1', {
+      runtimeContract: '9.4',
+      directClient: true,
+    });
+    const config = JSON.parse(result['openclaw.json']);
+    const selfHostGateway = z
+      .object({
+        mode: z.literal('local'),
+        bind: z.literal('lan'),
+        port: z.literal(DOCKER_GATEWAY_PORT),
+        controlUi: z
+          .object({
+            allowedOrigins: z.array(z.string()).refine((origins) => origins.includes(SELF_HOST_APP_ORIGIN)),
+          })
+          .strict(),
+      })
+      .strict();
+    const parsed = selfHostGateway.safeParse(config.gateway);
+    expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.issues)).toBe(true);
+    expect(config.gateway.controlUi.allowedOrigins).toEqual([SELF_HOST_APP_ORIGIN]);
+    expect(config.gateway.port).toBe(DOCKER_GATEWAY_PORT);
+    expect(config.gateway).not.toHaveProperty('trustedProxies');
+    expect(config.gateway).not.toHaveProperty('auth');
+    const gatewayBlob = JSON.stringify(config.gateway);
+    expect(gatewayBlob).not.toContain('https://');
+    const blob = JSON.stringify(config);
+    for (const hosted of [
+      'up.railway.app',
+      'railway.app',
+      '100.64.0.0/10',
+      '10.0.0.0/8',
+      '172.16.0.0/12',
+    ]) {
+      expect(blob, hosted).not.toContain(hosted);
+    }
+    expect(result['.env']).not.toContain('ANTHROPIC_BASE_URL=');
+  });
+
+  it('a fixture- key on self-host points the runtime at the in-app fixture model', async () => {
+    vi.mocked(decrypt).mockImplementation((val: string) =>
+      val === 'fixture-cipher' ? 'fixture-model-key' : `decrypted-${val}`,
+    );
+    const workspace = buildMockWorkspace();
+    workspace.user.apiKeys = [{ provider: 'ANTHROPIC', encryptedKey: 'fixture-cipher' }];
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspace);
+    const result = await generateWorkspace('ws-contract-1', {
+      runtimeContract: '9.4',
+      directClient: true,
+    });
+    const config = JSON.parse(result['openclaw.json']);
+    expect(config.models.providers.anthropic.baseUrl).toBe(FIXTURE_MODEL_BASE_URL);
+    expect(config.models.providers.anthropic.baseUrl.startsWith('https://')).toBe(false);
+    expect(result['.env']).toContain(`ANTHROPIC_BASE_URL=${FIXTURE_MODEL_BASE_URL}`);
+    expect(JSON.stringify(config)).not.toContain('up.railway.app');
+
+    process.env.CLAWS_FIXTURE_MODEL_BASE_URL = 'http://app:3001/api/internal/fixture-model';
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspace);
+    const overridden = await generateWorkspace('ws-contract-1', {
+      runtimeContract: '9.4',
+      directClient: true,
+    });
+    delete process.env.CLAWS_FIXTURE_MODEL_BASE_URL;
+    const overriddenConfig = JSON.parse(overridden['openclaw.json']);
+    expect(overriddenConfig.models.providers.anthropic.baseUrl).toBe(
+      'http://app:3001/api/internal/fixture-model',
+    );
+    expect(overriddenConfig.gateway.controlUi.allowedOrigins).toEqual([SELF_HOST_APP_ORIGIN]);
   });
 
   it('OPENCLAW_CONFIG_READONLY=1 lands in .env for 9.4 only (5.22 runtime has no such knob)', async () => {

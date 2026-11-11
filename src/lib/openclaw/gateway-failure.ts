@@ -7,6 +7,7 @@ export function gatewayFailureHeadline(text: string | null | undefined): string 
   if (attribution) return attribution[0]
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim()
+    if (trimmed.toLowerCase().includes("origin not allowed")) return trimmed
     if (
       trimmed.includes("proxy-shaped traffic") ||
       trimmed.includes("Gateway-authenticated routes reject")

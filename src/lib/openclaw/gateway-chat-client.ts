@@ -21,9 +21,9 @@
 //     container starts unpaired. NOT_PAIRED carries details.requestId
 //     directly - no device.pair.list scan needed.
 //   - WebSocket factory is INJECTABLE. The default uses `ws` so Origin can
-//     be https://<gateway-host> (already in controlUi.allowedOrigins).
-//     webchat-ui / mode=webchat is origin-gated; native WebSocket cannot
-//     set Origin. Tests always inject a mock.
+//     be the shared gatewayOriginForProfile value (hosted gateway host,
+//     self-host compose app origin). webchat-ui / mode=webchat is
+//     origin-gated; native WebSocket cannot set Origin. Tests inject a mock.
 //
 // TIMEOUTS AS THE HONESTY LINE (A6): every captured failure signature is
 // FAST - edge-404/non-101 against a destroyed container in ~440-670ms,
@@ -43,6 +43,11 @@ import {
   type ChatDeviceIdentity,
 } from "@/lib/openclaw/device-identity"
 import { gatewayUpgradeHeaders } from "@/lib/openclaw/gateway-ingress"
+import {
+  gatewayOriginForProfile,
+  gatewayProfileFromEnv,
+  type GatewayProfile,
+} from "@/lib/openclaw/gateway-origin"
 
 const PROTOCOL_VERSION = 4
 const CONNECT_TIMEOUT_MS = 5_000
@@ -71,8 +76,11 @@ export interface ChatSocket {
 export type ChatSocketFactory = (url: string) => ChatSocket
 
 /** Origin OpenClaw already allowlists (generator + container host). */
-export function gatewayControlUiOrigin(wsUrl: string): string {
-  return `https://${new URL(wsUrl).host}`
+export function gatewayControlUiOrigin(
+  wsUrl: string,
+  profile: GatewayProfile = gatewayProfileFromEnv(),
+): string {
+  return gatewayOriginForProfile(profile, new URL(wsUrl).host)
 }
 
 function createGatewayOriginSocket(url: string): ChatSocket {
@@ -134,8 +142,20 @@ export type SendChatFailureReason =
   | "unreachable" // edge-404 / non-101 / timeout / auth mismatch / no ack
   | "transitioning" // close 1013 - container up, gateway still starting
 
+export interface ChatTokenUsage {
+  input: number
+  output: number
+}
+
 export type SendChatResult =
-  | { ok: true; runId: string; status: string; paired: boolean; replyText?: string | null }
+  | {
+      ok: true
+      runId: string
+      status: string
+      paired: boolean
+      replyText?: string | null
+      usage?: ChatTokenUsage | null
+    }
   | { ok: false; reason: SendChatFailureReason; detail: string }
 
 export interface SendChatMessageParams {
@@ -188,6 +208,36 @@ export function extractAssistantTextFromChatPayload(
   }
   const joined = parts.join("")
   return joined.length > 0 ? joined : null
+}
+
+function usageNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+/** Token counts from a chat-final payload or a chat.history message. */
+export function extractTokenUsage(value: unknown): ChatTokenUsage | null {
+  if (!value || typeof value !== "object") return null
+  const record = value as Record<string, unknown>
+  const usage = record.usage
+  if (usage && typeof usage === "object") {
+    const counts = usage as Record<string, unknown>
+    const input = usageNumber(counts.input ?? counts.input_tokens)
+    const output = usageNumber(counts.output ?? counts.output_tokens)
+    if (input != null && output != null && (input > 0 || output > 0)) {
+      return { input, output }
+    }
+  }
+  if (record.message) {
+    const fromMessage = extractTokenUsage(record.message)
+    if (fromMessage) return fromMessage
+  }
+  if (Array.isArray(record.messages)) {
+    for (let i = record.messages.length - 1; i >= 0; i -= 1) {
+      const fromMessage = extractTokenUsage(record.messages[i])
+      if (fromMessage) return fromMessage
+    }
+  }
+  return null
 }
 
 interface GatewayFrame {
@@ -263,11 +313,14 @@ class GatewaySession {
    * Wait for a chat event with matching runId and terminal state.
    * Register BEFORE chat.send to avoid missing a fast final.
    */
-  waitForChatFinal(runId: string, timeoutMs: number): Promise<string | null> {
+  waitForChatFinal(
+    runId: string,
+    timeoutMs: number,
+  ): Promise<{ text: string | null; usage: ChatTokenUsage | null }> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
-        resolve(null)
+        resolve({ text: null, usage: null })
       }, timeoutMs)
       const waiter = (frame: GatewayFrame) => {
         if (frame.type !== "event" || frame.event !== "chat") return
@@ -277,13 +330,16 @@ class GatewaySession {
         if (state === "final") {
           clearTimeout(timer)
           this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
-          resolve(extractAssistantTextFromChatPayload(payload))
+          resolve({
+            text: extractAssistantTextFromChatPayload(payload),
+            usage: extractTokenUsage(payload),
+          })
           return
         }
         if (state === "error" || state === "aborted") {
           clearTimeout(timer)
           this.eventWaiters = this.eventWaiters.filter((w) => w !== waiter)
-          resolve(null)
+          resolve({ text: null, usage: null })
         }
       }
       this.eventWaiters.push(waiter)
@@ -418,11 +474,11 @@ async function connectAttempt(params: SendChatMessageParams, factory: ChatSocket
 /** Admin HTTP RPC device.pair.approve - same Bearer + AbortController pattern as the health monitor. */
 async function approvePairing(params: SendChatMessageParams, requestId: string): Promise<boolean> {
   const fetchImpl = params.fetchImpl ?? fetch
-  const httpsUrl = params.wsUrl.replace(/^wss:/, "https:")
+  const httpUrl = params.wsUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:")
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
   try {
-    const res = await fetchImpl(`${httpsUrl}/api/v1/admin/rpc`, {
+    const res = await fetchImpl(`${httpUrl}/api/v1/admin/rpc`, {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -501,19 +557,30 @@ export async function sendChatMessage(params: SendChatMessageParams): Promise<Se
       const payload = (ack.payload ?? {}) as { runId?: string; status?: string }
       const runId = String(payload.runId ?? params.idempotencyKey)
       let replyText: string | null | undefined
+      let usage: ChatTokenUsage | null | undefined
       if (replyWait) {
         // If gateway returned a different runId, wait on that too is rare;
         // predicted id matches live captures. Still resolve the armed waiter.
-        replyText = runId === predictedRunId
+        const final = runId === predictedRunId
           ? await replyWait
           : await session.waitForChatFinal(runId, awaitReplyMs)
+        replyText = final.text
+        usage = final.usage
+        if (!usage) {
+          const history = await session.request(
+            "chat.history",
+            { sessionKey: params.sessionKey, limit: 20 },
+            Math.min(remaining, 15_000),
+          )
+          if (history.ok) usage = extractTokenUsage(history.payload)
+        }
       }
       return {
         ok: true,
         runId,
         status: String(payload.status ?? "started"),
         paired,
-        ...(awaitReplyMs > 0 ? { replyText: replyText ?? null } : {}),
+        ...(awaitReplyMs > 0 ? { replyText: replyText ?? null, usage: usage ?? null } : {}),
       }
     }
     return { ok: false, reason: "unreachable", detail: `chat.send rejected: ${ack.error?.code ?? "?"} ${ack.error?.message ?? ""}` }

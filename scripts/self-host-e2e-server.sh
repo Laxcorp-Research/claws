@@ -1,6 +1,9 @@
 #!/bin/sh
 # CI only. Next runs on the claws network so app to runtime dials the
 # container name. Chromium dials the localhost proxy, not the published port.
+# Alias app so the fixture model URL http://app:3001 resolves. The connect
+# Origin stays http://app:3000. Next stays on 3001, which is what the proxy
+# and the browser already use.
 set -eu
 docker rm -f claws-self-host-e2e >/dev/null 2>&1 || true
 cleanup() {
@@ -9,8 +12,10 @@ cleanup() {
 trap cleanup EXIT INT TERM
 docker run -d --name claws-self-host-e2e \
   --network claws \
+  --network-alias app \
   --add-host=host.docker.internal:host-gateway \
   -p 127.0.0.1:3002:3001 \
+  -e CLAWS_FIXTURE_MODEL_BASE_URL=http://app:3001/api/internal/fixture-model \
   -v "$PWD":/work \
   -w /work \
   -v /var/run/docker.sock:/var/run/docker.sock \

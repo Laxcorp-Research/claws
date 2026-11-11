@@ -84,6 +84,7 @@ function activityPayload(opts: {
   stateSyncNearCapActive?: boolean;
   healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
   lastHealthReason?: string | null;
+  deployErrorMessage?: string | null;
   lastHealthCheck?: string | null;
   expiredTools?: Array<{ name: string; status: "ERROR" | "EXPIRED" | "REVOKED"; connectionType: "API_KEY" | "OAUTH_COMPOSIO" | "CHANNEL_NATIVE" }>;
   spend?: { thisMonth: number; limit: number; percent: number };
@@ -97,6 +98,7 @@ function activityPayload(opts: {
     stateSyncNearCapActive = false,
     healthStatus = "HEALTHY",
     lastHealthReason = null,
+    deployErrorMessage = null,
     lastHealthCheck = null,
     expiredTools = [],
     spend = { thisMonth: 0, limit: 50, percent: 0 },
@@ -113,6 +115,7 @@ function activityPayload(opts: {
         healthStatus,
         lastHealthCheck,
         lastHealthReason,
+        deployErrorMessage,
         mcpSessionHealthStatus,
         mcpSessionCheckedAt: mcpSessionHealthStatus ? "2026-07-04T21:20:00.000Z" : null,
         mcpSessionLastError: mcpSessionHealthStatus === "DEAD" ? "session not found" : null,
@@ -186,6 +189,7 @@ function mockFetch(opts: {
   stateSyncNearCapActive?: boolean;
   healthStatus?: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
   lastHealthReason?: string | null;
+  deployErrorMessage?: string | null;
   apiKeySource?: string;
   trialUsed?: boolean;
   trialEndsAt?: string | null;
@@ -200,6 +204,7 @@ function mockFetch(opts: {
     stateSyncNearCapActive: opts.stateSyncNearCapActive ?? false,
     healthStatus: opts.healthStatus ?? ("HEALTHY" as const),
     lastHealthReason: opts.lastHealthReason ?? null,
+    deployErrorMessage: opts.deployErrorMessage ?? null,
     spend: opts.spend,
     status: opts.workspaceStatus,
   }
@@ -502,6 +507,17 @@ describe("DashboardPage MCP session banner", () => {
     expect(screen.queryByText("A runtime update is available - redeploy to apply")).toBeNull()
     expect(screen.queryByText("Activity feed appears silent - agents may be running but not reporting.")).toBeNull()
     expect(screen.queryByText("HubSpot connection expired")).toBeNull()
+  })
+
+  it("shows origin not allowed in the banner when the connect frame was rejected", async () => {
+    mockFetch({
+      healthStatus: "UNHEALTHY",
+      lastHealthReason: "origin not allowed",
+      deployErrorMessage:
+        "connect rejected: INVALID_REQUEST origin not allowed (open the Control UI from the gateway host or allow it in gateway.controlUi.allowedOrigins)",
+    })
+    render(<DashboardPage />)
+    expect(await screen.findByText(/origin not allowed/)).toBeDefined()
   })
 
   it("renders near-cap banner from synthetic stateSyncNearCapActive and routes Manage sessions", async () => {
