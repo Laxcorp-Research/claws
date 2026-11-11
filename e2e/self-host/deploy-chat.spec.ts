@@ -32,8 +32,8 @@ test("self-host deploy waits until the gateway is listening and chat returns fix
   })
   expect(toolRes.status(), await toolRes.text()).toBeLessThan(300)
 
-  const keyRes = await page.request.post("/api/api-keys", {
-    data: { provider: "ANTHROPIC", apiKey: "fixture-model-key", label: "proof" },
+  const keyRes = await page.request.post(`/api/workspaces/${workspaceId}/api-keys`, {
+    data: { provider: "ANTHROPIC", apiKey: "fixture-model-key" },
   })
   expect(keyRes.status(), await keyRes.text()).toBeLessThan(300)
 

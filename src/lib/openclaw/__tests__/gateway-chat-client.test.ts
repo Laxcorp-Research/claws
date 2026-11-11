@@ -45,6 +45,8 @@ interface MockGatewayOptions {
   replyText?: string
   /** Token counts attached to that final assistant message. */
   usage?: { input: number; output: number }
+  /** When set, emit chat state=error after chat.send ack. */
+  turnError?: string
 }
 
 class MockSocket implements ChatSocket {
@@ -135,6 +137,22 @@ class MockSocket implements ChatSocket {
           payload: { runId, status: this.opts.ackStatus ?? "started" },
         }),
       })
+      if (typeof this.opts.turnError === "string") {
+        queueMicrotask(() => {
+          this.emit("message", {
+            data: JSON.stringify({
+              type: "event",
+              event: "chat",
+              payload: {
+                runId,
+                sessionKey: frame.params.sessionKey,
+                state: "error",
+                errorMessage: this.opts.turnError,
+              },
+            }),
+          })
+        })
+      }
       if (typeof this.opts.replyText === "string") {
         queueMicrotask(() => {
           this.emit("message", {
@@ -172,6 +190,7 @@ function mockGateway(opts: Partial<MockGatewayOptions> = {}) {
     sends: opts.sends ?? [],
     replyText: opts.replyText,
     usage: opts.usage,
+    turnError: opts.turnError,
   }
   const sockets: MockSocket[] = []
   const factory: ChatSocketFactory = () => {
@@ -403,6 +422,23 @@ describe("gateway-chat-client", () => {
       replyText: "fixture-reply",
       usage: { input: 12, output: 4 },
     })
+  })
+
+  it("mock gateway missing-provider-auth is a failed turn, not an empty reply", async () => {
+    const sentence = 'No API key found for provider "anthropic". Auth store missing. missing-provider-auth'
+    const gw = mockGateway({
+      paired: new Set([identity.deviceId]),
+      turnError: sentence,
+    })
+    const result = await sendChatMessage({
+      ...baseParams(gw),
+      awaitReplyMs: 5_000,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.detail).toContain("missing-provider-auth")
+      expect(result.detail).toContain("No API key found for provider")
+    }
   })
 
   it("never resolves the native WebSocket when a factory is injected (CI is Node 20)", async () => {

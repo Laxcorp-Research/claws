@@ -509,6 +509,18 @@ describe("DashboardPage MCP session banner", () => {
     expect(screen.queryByText("HubSpot connection expired")).toBeNull()
   })
 
+  it("shows missing-provider-auth in the banner when the turn was rejected", async () => {
+    mockFetch({
+      healthStatus: "UNHEALTHY",
+      lastHealthReason: "missing-provider-auth",
+      deployErrorMessage:
+        'No API key found for provider "anthropic". Auth store missing. missing-provider-auth',
+    })
+    render(<DashboardPage />)
+    expect(await screen.findByText(/No API key found for provider/)).toBeDefined()
+    expect(screen.getByText(/missing-provider-auth/)).toBeDefined()
+  })
+
   it("shows origin not allowed in the banner when the connect frame was rejected", async () => {
     mockFetch({
       healthStatus: "UNHEALTHY",

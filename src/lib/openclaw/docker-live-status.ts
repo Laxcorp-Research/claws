@@ -12,6 +12,7 @@ export interface DockerLiveWorkspace {
   containerId: string | null
   containerHost?: string | null
   healthStatus?: string | null
+  lastHealthReason?: string | null
 }
 
 export interface DockerLiveStatus {
@@ -132,6 +133,21 @@ export async function readSelfHostDashboardStatus(
   }
   const upgrade = await upgradeProbe(gatewayWebSocketUrl(workspace.containerHost, "DOCKER"))
   if (upgrade.ok) {
+    const deployment = await prisma.deployment.findFirst({
+      where: { workspaceId: workspace.id },
+      orderBy: { version: "desc" },
+      select: { errorMessage: true },
+    })
+    const recorded =
+      gatewayFailureHeadline(workspace.lastHealthReason) ??
+      gatewayFailureHeadline(deployment?.errorMessage)
+    if (recorded) {
+      return {
+        status: workspace.status === "ERROR" ? "RUNNING" : workspace.status,
+        errorMessage: recorded,
+        healthStatus: "UNHEALTHY",
+      }
+    }
     const next: DockerLiveStatus = {
       status: workspace.status === "ERROR" ? "RUNNING" : workspace.status,
       errorMessage: null,

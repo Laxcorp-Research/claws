@@ -39,6 +39,11 @@ vi.mock("@/lib/trial/wake-entitlement", () => ({
 const mockLimit = vi.fn().mockResolvedValue({ success: true })
 vi.mock("@/lib/rate-limit", () => ({ chatRateLimit: { limit: (...a: unknown[]) => mockLimit(...a) } }))
 
+const mockNoteMissingProviderAuth = vi.fn()
+vi.mock("@/lib/openclaw/provider-auth-turn", () => ({
+  noteMissingProviderAuth: (...args: unknown[]) => mockNoteMissingProviderAuth(...args),
+}))
+
 import { POST, __setChatRouteDepsForTests } from "@/app/api/workspaces/[id]/chat/route"
 import { encryptDeviceIdentity, generateDeviceIdentity } from "@/lib/openclaw/device-identity"
 
@@ -357,6 +362,24 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(data.data.usage).toEqual({ input: 12, output: 4 })
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ awaitReplyMs: 90000 }))
     expect(afterQueue).toHaveLength(0)
+  })
+
+  it("self-host missing-provider-auth is 502 with the gateway sentence, never 200/null", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    const sentence = 'No API key found for provider "anthropic". missing-provider-auth'
+    mockSend.mockResolvedValue({
+      ok: false,
+      reason: "unreachable",
+      detail: sentence,
+    })
+    ;(prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "dep-1" })
+    const { status, data } = await parseResponse(await post({ message: "hello" }))
+    expect(status).toBe(502)
+    expect(data.error.code).toBe("GATEWAY_UNREACHABLE")
+    expect(data.error.message).toContain("missing-provider-auth")
+    expect(data.error.message).toContain("No API key found for provider")
+    expect(data.data?.replyText).toBeUndefined()
+    expect(mockNoteMissingProviderAuth).toHaveBeenCalledWith("ws-1", sentence)
   })
 
   it("self-host chat 502 records the gateway rejection on the workspace", async () => {

@@ -78,6 +78,27 @@ describe("self-host dashboard status", () => {
     )
   })
 
+  it("a running container keeps missing-provider-auth on the banner after the upgrade succeeds", async () => {
+    __setDockerInspectForTests({
+      inspect: vi.fn().mockResolvedValue({ running: true, exitCode: null, publishedPort: 18789 }),
+    })
+    __setDashboardUpgradeProbeForTests(async () => ({ ok: true, status: 101, body: "" }))
+    ;(prismaMock.deployment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({ errorMessage: null })
+    const sentence = 'No API key found for provider "anthropic". missing-provider-auth'
+    const live = await readSelfHostDashboardStatus({
+      id: "ws-1",
+      status: "RUNNING",
+      provider: "DOCKER",
+      containerId: "ctr-up",
+      containerHost: "claws-ws-1:18789",
+      healthStatus: "UNHEALTHY",
+      lastHealthReason: sentence,
+    })
+    expect(live.healthStatus).toBe("UNHEALTHY")
+    expect(live.errorMessage).toContain("No API key found for provider")
+    expect(prismaMock.workspace.update).not.toHaveBeenCalled()
+  })
+
   it("leaves a hibernated container stopped without flipping it to ERROR", async () => {
     __setDockerInspectForTests({
       inspect: vi.fn().mockResolvedValue({ running: false, exitCode: 0, publishedPort: null }),

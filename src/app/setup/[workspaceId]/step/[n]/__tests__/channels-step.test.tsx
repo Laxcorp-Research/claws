@@ -679,4 +679,58 @@ describe("Setup Step 4 Deploy exit drift prompt", () => {
 
     expect(await screen.findByText("This template recommends Always on")).toBeDefined()
   })
+
+  it("MODEL_KEY_MISSING shows an error banner with a link back to step 1", async () => {
+    deployStatusData = {
+      workspaceStatus: "DRAFT",
+      drift: { isStale: false, changedAreas: [] },
+    }
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url)
+      if (init?.method === "POST" && href.includes("/api/deploy/ws-1/cloud")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          success: false,
+          error: {
+            code: "MODEL_KEY_MISSING",
+            message: "Add an Anthropic API key before deploy",
+          },
+        }), { status: 422 }))
+      }
+      if (href.includes("/api/user/billing")) {
+        return jsonResponse({
+          success: true,
+          data: { trialUsed: false, trialEndsAt: null, hasActiveSubscription: false },
+        })
+      }
+      if (href.includes("/api/deploy/ws-1/status?drift=1")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            workspaceStatus: "DRAFT",
+            apiKeySource: "USER_OWN_KEY",
+            deployment: null,
+            drift: { isStale: false, changedAreas: [] },
+          },
+        })
+      }
+      if (href.includes("/api/channels/ws-1")) {
+        return jsonResponse({ success: true, data: { hasConfiguredChannels: false } })
+      }
+      if (href.includes("/api/workspaces/ws-1/tool-requirements")) {
+        return jsonResponse({
+          success: true,
+          data: { tools: [], required: [], recommended: [], source: "empty" },
+        })
+      }
+      if (href.includes("/api/workspaces/ws-1")) {
+        return jsonResponse({ success: true, data: { clawTemplate: null } })
+      }
+      return jsonResponse({ success: true, data: {} })
+    }))
+
+    render(<Step3 workspaceId="ws-1" />)
+    fireEvent.click(await screen.findByRole("button", { name: /Deploy/ }))
+    expect(await screen.findByText("Add an Anthropic API key before deploy")).toBeDefined()
+    expect(screen.getByRole("link", { name: /Add the model key/ }).getAttribute("href")).toBe("/setup/ws-1/step/1")
+  })
 })

@@ -341,6 +341,7 @@ export async function GET(
       containerId: workspace!.containerId,
       containerHost: workspace!.containerHost,
       healthStatus: workspace!.healthStatus,
+      lastHealthReason: workspace!.lastHealthReason,
     })
     liveStatus = live.status as typeof liveStatus
     liveHealth = (live.healthStatus ?? workspace!.healthStatus) as typeof liveHealth

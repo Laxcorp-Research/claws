@@ -113,6 +113,14 @@ export const HEAL_REGISTRY: Record<HealConditionId, HealPolicy> = {
     0,
     "owner-alert",
   ),
+  "provider_auth_missing": policy(
+    "provider_auth_missing",
+    "owner-only",
+    "owner",
+    "sendOwnerAlert",
+    0,
+    "owner-alert",
+  ),
 }
 
 export function getHealPolicy(id: HealConditionId): HealPolicy {

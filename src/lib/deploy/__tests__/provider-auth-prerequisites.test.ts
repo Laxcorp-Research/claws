@@ -21,7 +21,7 @@ describe("evaluateProviderAuthForModels", () => {
     })
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.code).toBe("PROVIDER_AUTH_MISSING")
+      expect(result.code).toBe("MODEL_KEY_MISSING")
       expect(result.message.toLowerCase()).toContain("anthropic")
       expect(result.missingProviders).toEqual(["ANTHROPIC"])
     }
