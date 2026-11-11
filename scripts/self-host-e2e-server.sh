@@ -1,8 +1,9 @@
 #!/bin/sh
 # CI only. Next runs on the claws network so app to runtime dials the
 # container name. Chromium dials the localhost proxy, not the published port.
-# The runtime's fixture model calls http://app:3000, so this container is
-# aliased app and listens on 3000. The browser stays on the localhost proxy.
+# Alias app so the fixture model URL http://app:3001 resolves. The connect
+# Origin stays http://app:3000. Next stays on 3001, which is what the proxy
+# and the browser already use.
 set -eu
 docker rm -f claws-self-host-e2e >/dev/null 2>&1 || true
 cleanup() {
@@ -13,8 +14,8 @@ docker run -d --name claws-self-host-e2e \
   --network claws \
   --network-alias app \
   --add-host=host.docker.internal:host-gateway \
-  -p 127.0.0.1:3002:3000 \
-  -e CONTROL_PLANE_INTERNAL_URL=http://app:3000 \
+  -p 127.0.0.1:3002:3001 \
+  -e CLAWS_FIXTURE_MODEL_BASE_URL=http://app:3001/api/internal/fixture-model \
   -v "$PWD":/work \
   -w /work \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -33,9 +34,6 @@ docker run -d --name claws-self-host-e2e \
   -e NEXTAUTH_URL \
   -e ADMIN_EMAILS \
   node:20-bookworm \
-  bash -lc "npx tsx prisma/seed.ts && exec npx next dev --port 3000 --hostname 0.0.0.0"
-set +e
+  bash -lc "npx tsx prisma/seed.ts && exec npx next dev --port 3001 --hostname 0.0.0.0"
 docker logs -f claws-self-host-e2e &
 node scripts/self-host-e2e-proxy.mjs
-status=$?
-exit "$status"

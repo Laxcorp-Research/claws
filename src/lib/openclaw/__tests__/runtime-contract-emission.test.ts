@@ -394,6 +394,19 @@ describe('version-keyed emission (same workspace, both contracts)', () => {
     expect(config.models.providers.anthropic.baseUrl.startsWith('https://')).toBe(false);
     expect(result['.env']).toContain(`ANTHROPIC_BASE_URL=${FIXTURE_MODEL_BASE_URL}`);
     expect(JSON.stringify(config)).not.toContain('up.railway.app');
+
+    process.env.CLAWS_FIXTURE_MODEL_BASE_URL = 'http://app:3001/api/internal/fixture-model';
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue(workspace);
+    const overridden = await generateWorkspace('ws-contract-1', {
+      runtimeContract: '9.4',
+      directClient: true,
+    });
+    delete process.env.CLAWS_FIXTURE_MODEL_BASE_URL;
+    const overriddenConfig = JSON.parse(overridden['openclaw.json']);
+    expect(overriddenConfig.models.providers.anthropic.baseUrl).toBe(
+      'http://app:3001/api/internal/fixture-model',
+    );
+    expect(overriddenConfig.gateway.controlUi.allowedOrigins).toEqual([SELF_HOST_APP_ORIGIN]);
   });
 
   it('OPENCLAW_CONFIG_READONLY=1 lands in .env for 9.4 only (5.22 runtime has no such knob)', async () => {

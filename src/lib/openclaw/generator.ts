@@ -65,7 +65,7 @@ import { getApiKeySource } from '@/lib/credits/api-key-source';
 import { isThinkingLevel } from '@/lib/models/thinking';
 import { ANTHROPIC_PROXY_URL } from '@/lib/openclaw/derive-container-env';
 import { DOCKER_GATEWAY_PORT } from '@/lib/openclaw/docker-engine';
-import { FIXTURE_MODEL_BASE_URL, SELF_HOST_APP_ORIGIN } from '@/lib/openclaw/gateway-origin';
+import { fixtureModelBaseUrl, SELF_HOST_APP_ORIGIN } from '@/lib/openclaw/gateway-origin';
 import { deriveAllowAgents } from '@/lib/openclaw/derive-allow-agents';
 import {
   expandSeedFilesForAgents,
@@ -895,7 +895,7 @@ function generateOpenClawConfig(
   const anthropicPlain = decryptedAnthropicKey(workspace);
   const fixtureAnthropic =
     directClient && !creditMode && anthropicPlain?.startsWith("fixture-")
-      ? { anthropic: { baseUrl: FIXTURE_MODEL_BASE_URL } }
+      ? { anthropic: { baseUrl: fixtureModelBaseUrl() } }
       : null;
   const creditModeProviders = creditMode
     ? { anthropic: { baseUrl: ANTHROPIC_PROXY_URL } }
@@ -1482,7 +1482,7 @@ function generateEnvFile(
   if (anthropicPlain && !creditMode) {
     lines.push(`ANTHROPIC_API_KEY=${anthropicPlain}`);
     if (directClient && anthropicPlain.startsWith('fixture-')) {
-      lines.push(`ANTHROPIC_BASE_URL=${FIXTURE_MODEL_BASE_URL}`);
+      lines.push(`ANTHROPIC_BASE_URL=${fixtureModelBaseUrl()}`);
     }
   }
   const OVERRIDABLE_PROVIDER_ENV = {
