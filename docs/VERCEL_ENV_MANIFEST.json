@@ -10,7 +10,7 @@
     },
     {
       "name": "DAILY_DIGEST_WORKSPACE_IDS",
-      "purpose": "Optional debug override: comma-separated workspace ids for morning digest. Empty = full predicate (Telegram connected + heartbeat armed + ever-deployed + status not DRAFT/SETUP_INCOMPLETE/STOPPED). Override still applies the predicate — it is not a bypass.",
+      "purpose": "Optional debug override: comma-separated workspace ids for morning digest. Empty = full predicate (Telegram connected + heartbeat armed + ever-deployed + status not DRAFT/SETUP_INCOMPLETE/STOPPED). Override still applies the predicate - it is not a bypass.",
       "required": false,
       "surfaces": ["src/app/api/cron/daily-digest"],
       "whereCreated": "Vercel project env (optional). Staging trial may set the fixture id for focused soak; leave unset in production for full armed fan-out"
@@ -79,7 +79,7 @@
       "purpose": "GitHub PAT (actions:write) for workflow_dispatch of marketplace-skill-sandbox.yml from enqueue",
       "required": true,
       "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
-      "whereCreated": "Vercel Preview + Production (Sensitive); fine-scoped PAT — not the Anthropic key"
+      "whereCreated": "Vercel Preview + Production (Sensitive); fine-scoped PAT - not the Anthropic key"
     },
     {
       "name": "SANDBOX_GITHUB_REPO",
@@ -90,17 +90,17 @@
     },
     {
       "name": "SANDBOX_GITHUB_REF",
-      "purpose": "Git ref for sandbox workflow_dispatch (Preview: staging; Production: main — workflow file must exist on that ref)",
+      "purpose": "Git ref for sandbox workflow_dispatch (Preview: staging; Production: main - workflow file must exist on that ref)",
       "required": false,
       "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
-      "whereCreated": "Vercel optional; defaults in code to staging — set Production=main before prod publish vetting"
+      "whereCreated": "Vercel optional; defaults in code to staging - set Production=main before prod publish vetting"
     },
     {
       "name": "SANDBOX_INTAKE_BASE_URL",
       "purpose": "Base URL the sandbox worker posts reports to (Preview: https://staging.app.buildclaws.ai; Production: https://app.buildclaws.ai)",
       "required": false,
       "surfaces": ["src/lib/marketplace/sandbox-enqueue.ts"],
-      "whereCreated": "Vercel optional; falls back to NEXTAUTH_URL then staging host — set Production explicitly to prod host"
+      "whereCreated": "Vercel optional; falls back to NEXTAUTH_URL then staging host - set Production explicitly to prod host"
     },
     {
       "name": "ADMIN_ALERT_EMAIL",

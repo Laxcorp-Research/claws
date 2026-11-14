@@ -8,7 +8,7 @@
         "enabled": true,
         "env": {
           "COMPOSIO_API_KEY": "<REDACTED:platform-scoped Composio key; injected via CLAWS_ENV_B64>",
-          "COMPOSIO_USER_ID": "<REDACTED:claws_${User.id} — from src/lib/composio.ts:getComposioUserId>",
+          "COMPOSIO_USER_ID": "<REDACTED:claws_${User.id} - from src/lib/composio.ts:getComposioUserId>",
           "COMPOSIO_CONNECTED_ACCOUNT_ID": "<REDACTED:ToolConnection.composioConnectionId>"
         },
         "config": {
