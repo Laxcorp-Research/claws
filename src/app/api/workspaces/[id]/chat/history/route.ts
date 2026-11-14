@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiError, apiSuccess, ERRORS } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
-import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
+import { formatActivityLog, withFreshDeliverablePreviews, type ActivityLogFormatInput } from "@/lib/activity-log-format"
 import { DELIVERABLE_EXTRACT_EVENT_KIND } from "@/lib/artifacts/deliverable-kind"
 import { CHAT_SEND_HELD_EVENT_KIND } from "@/lib/openclaw/chat-send-events"
 
@@ -105,12 +105,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const hasMore = rows.length > limit
   const page = rows.slice(0, limit)
   const oldest = page.at(-1)
+  const formatted = page
+    .slice()
+    .reverse()
+    .map((row) => formatActivityLog(row as ActivityLogFormatInput))
 
   return apiSuccess({
-    rows: page
-      .slice()
-      .reverse()
-      .map((row) => formatActivityLog(row as ActivityLogFormatInput)),
+    rows: await withFreshDeliverablePreviews(formatted),
     nextCursor: hasMore && oldest
       ? encodeCursor({ timestamp: oldest.timestamp.toISOString(), id: oldest.id })
       : null,

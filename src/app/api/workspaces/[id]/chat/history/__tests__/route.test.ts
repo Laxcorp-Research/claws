@@ -208,6 +208,39 @@ describe("GET /api/workspaces/[id]/chat/history", () => {
     expect(data.data.rows[0].runId).toBe("run-hold")
   })
 
+  it("a deliverable whose body starts with a schema block previews the first non-schema paragraph", async () => {
+    const stored = row({
+      id: "doc-1",
+      action: "Deliverable extracted: x-content-cycle",
+      actionType: "SYSTEM",
+      detail: "shared/deliverables/x-content-cycle.md",
+      metadata: JSON.stringify({
+        eventKind: "deliverable_extracted",
+        fileVersionId: "fv-1",
+        logicalPath: "shared/deliverables/x-content-cycle.md",
+        preview: "# x-content-cycle.md ## Schema - slot: 12 | 16 | 20",
+      }),
+    })
+    ;(prismaMock.activityLog.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([stored] as never)
+    ;(prismaMock.fileVersion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "fv-1",
+        content: [
+          "# x-content-cycle.md",
+          "",
+          "## Schema",
+          "- slot: 12 | 16 | 20",
+          "- drafts: type, full text, hook pattern",
+          "",
+          "Friday's cycle is one single and one thread.",
+        ].join("\n"),
+      },
+    ] as never)
+    const { status, data } = await parseResponse(await get())
+    expect(status).toBe(200)
+    expect(data.data.rows[0].preview).toBe("Friday's cycle is one single and one thread.")
+  })
+
   it("400 on an invalid before cursor", async () => {
     const { status, data } = await parseResponse(await get("?before=not-a-cursor"))
     expect(status).toBe(400)

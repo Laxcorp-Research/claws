@@ -34,6 +34,19 @@ describe("deliverable kind", () => {
     expect(previewFromContent("x".repeat(300)).endsWith("...")).toBe(true)
   })
 
+  it("a deliverable whose body starts with a schema block previews the first non-schema paragraph", () => {
+    const body = [
+      "# x-content-cycle.md",
+      "",
+      "## Schema",
+      "- slot: 12 | 16 | 20",
+      "- drafts: type, full text, hook pattern",
+      "",
+      "Friday's cycle is one single and one thread.",
+    ].join("\n")
+    expect(previewFromContent(body)).toBe("Friday's cycle is one single and one thread.")
+  })
+
   it("exports title + extract event kind for client card projection", () => {
     expect(titleFromDeliverablePath("shared/deliverables/x-content-cycle.md")).toBe(
       "x-content-cycle",

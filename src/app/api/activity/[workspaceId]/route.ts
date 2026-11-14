@@ -6,7 +6,7 @@ import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { apiSuccess, ERRORS } from "@/lib/api/response"
 import { getApiKeySource } from "@/lib/credits/api-key-source"
 import { hydratePendingApprovals, respondedRequestIds } from "@/lib/artifacts/pending-approvals"
-import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
+import { formatActivityLog, withFreshDeliverablePreviews, type ActivityLogFormatInput } from "@/lib/activity-log-format"
 import {
   aggregateAgentCostRow,
   parseCostRange,
@@ -604,6 +604,8 @@ export async function GET(
       nextCursor,
       limit: activityLimit,
     },
-    recentLogs: activityRows.map((log) => formatActivityLog(log as ActivityLogFormatInput)),
+    recentLogs: await withFreshDeliverablePreviews(
+      activityRows.map((log) => formatActivityLog(log as ActivityLogFormatInput)),
+    ),
   })
 }

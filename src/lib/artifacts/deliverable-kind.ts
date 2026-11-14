@@ -32,8 +32,36 @@ export function sidecarPathFor(logicalPath: string): string {
   return `${normalized}.status.json`
 }
 
+const TITLE_LINE = /^#\s+\S/
+const SCHEMA_HEADING = /^##\s+Schema\s*$/i
+
+/** Drop the leading title line and any ## Schema section. The card shows the first content after that. */
+function withoutTitleAndSchema(content: string): string {
+  const lines = content.split(/\r?\n/)
+  let index = 0
+  while (index < lines.length && lines[index].trim() === "") index += 1
+  if (index < lines.length && TITLE_LINE.test(lines[index]) && !lines[index].startsWith("##")) {
+    index += 1
+  }
+  const kept: string[] = []
+  let inSchema = false
+  for (let i = index; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+    if (SCHEMA_HEADING.test(trimmed)) {
+      inSchema = true
+      continue
+    }
+    if (inSchema) {
+      if (trimmed === "" || trimmed.startsWith("- ") || trimmed.startsWith("* ")) continue
+      inSchema = false
+    }
+    kept.push(lines[i])
+  }
+  return kept.join("\n")
+}
+
 export function previewFromContent(content: string): string {
-  const trimmed = content.replace(/\s+/g, " ").trim()
+  const trimmed = withoutTitleAndSchema(content).replace(/\s+/g, " ").trim()
   if (trimmed.length <= DELIVERABLE_PREVIEW_CHARS) return trimmed
   return `${trimmed.slice(0, DELIVERABLE_PREVIEW_CHARS).trimEnd()}...`
 }
