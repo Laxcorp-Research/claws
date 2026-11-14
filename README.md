@@ -52,7 +52,7 @@ What you see after that:
 3. Deploy starts one container for that workspace.
 4. Chat is the orchestrator. The first reply is the orchestrator, not a worker.
 
-A timed stranger run of this path on v0.1.8, from clone through a real model reply, finished in 7 minutes 5 seconds (09:49:51Z to 09:56:56Z). About 7 minutes to a real reply (measured).
+A timed stranger run on v0.1.8, from clone to a real model reply, took 7 minutes 5 seconds.
 
 ## Your first five minutes
 
@@ -60,6 +60,9 @@ A timed stranger run of this path on v0.1.8, from clone through a real model rep
 2. Deploy it.
 3. In chat, say hello.
 4. Connect Telegram: message @BotFather, send /newbot, paste the token.
+
+Telegram is the launch channel. Discord and Slack ship labeled beta. WhatsApp and Teams are staged.
+
 5. On a decision card, click Approve.
 
 ## What ships
@@ -121,8 +124,6 @@ A personal loop, with the limits the seed writes down. Source: [prisma/seed-data
 | [Job Hunter OS](prisma/seed-data/lifestyle-templates.ts) | 6 | Scouting, applications, interview coaching, and negotiation notes. |
 | [Developer Productivity OS](prisma/seed-data/lifestyle-templates.ts) | 7 | PR review, issue triage, docs, security scanning, and standups. |
 
-Telegram is a launch channel and is not labeled beta. Discord and Slack are launch channels labeled beta. WhatsApp and Microsoft Teams are staged.
-
 ## How it works
 
 ```mermaid
@@ -181,7 +182,7 @@ The self-host smoke uses the real runtime image. `e2e/self-host/deploy-chat.spec
 5. `POST /api/dashboard/:id/nap` returns `HIBERNATED`, and `docker inspect` reports the container is not running.
 6. A second chat, `hello again`, returns `fixture-reply` again, and `docker logs` contains `Runtime state restored`.
 
-A count of `it(` and `test(` at the start of a line, in `*.test.ts`, `*.test.tsx`, `*.spec.ts`, and `*.spec.tsx` under `src/` and `e2e/`, is 4119 calls in 519 files. `it.each` is one call in that count, not one per row.
+4,120 unit and integration tests in 519 files, run on every pull request.
 
 First-run issues found by stranger runs, labeled `first-run` on this repository:
 
@@ -272,4 +273,4 @@ Files under `prisma/seed-data/` are Apache License 2.0. See [prisma/seed-data/LI
 
 The runtime underneath each team is [OpenClaw](https://github.com/openclaw/openclaw). This repository is the control plane: it generates OpenClaw config and runs the OpenClaw container. It is not a fork of the runtime.
 
-Laxcorp Research, Dubai. The schedule tests use `Asia/Dubai` as the founder timezone (`src/lib/schedule/__tests__/cron-tz-parity.test.ts`). NOTICE records the copyright holder and does not record a street address.
+Laxcorp Research, Dubai.
