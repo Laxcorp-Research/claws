@@ -9,7 +9,7 @@
    deploy: `buildCommand` in `vercel.json` is `npm run build:deploy`, which is
    `prisma generate && prisma migrate deploy && next build`. If
    `prisma migrate deploy` fails, the entire build fails and the deploy is
-   aborted (fail-fast — a broken migration blocks the code deploy rather than
+   aborted (fail-fast - a broken migration blocks the code deploy rather than
    landing code that references columns the DB does not have).
 5. Verify on staging via deploy logs (the "Applying migration" line in
    `build:deploy` output) or
@@ -25,14 +25,14 @@ This couples migration timing to deploy timing. Implications:
 
 - You cannot deploy code without applying any pending migrations.
 - You cannot apply a migration without deploying code.
-- A bad migration aborts the Vercel build — the previous deploy keeps
+- A bad migration aborts the Vercel build - the previous deploy keeps
   serving traffic, but the DB is unchanged. That's the safer failure mode.
-- A migration that succeeds but a code build that fails (rare — `next build`
+- A migration that succeeds but a code build that fails (rare - `next build`
   after `migrate deploy`) leaves DB ahead of code. The previous code deploy
   still serves traffic and is still compatible with the new schema only if
   the migration was additive + nullable (the standard rule per "Rules"
   below). If a destructive migration succeeded and the build failed, you
-  have a real problem — recover via Neon PITR or a forward-only fix.
+  have a real problem - recover via Neon PITR or a forward-only fix.
 
 For risky multi-stage migrations (column rename, type change), split into
 N additive PRs so each migration step lands in lockstep with a code
@@ -41,7 +41,7 @@ deploy that tolerates both old and new schema.
 ## PR preview deploys mutate the staging Neon DB pre-merge
 
 Vercel's **preview** deployment for a PR runs `prisma migrate deploy` (via
-`build:deploy`) against the **shared staging Neon branch** — *before* the PR is
+`build:deploy`) against the **shared staging Neon branch** - *before* the PR is
 merged. The migration therefore hits staging Neon as soon as the preview build
 runs, not when the PR lands.
 
@@ -51,7 +51,7 @@ runs, not when the PR lands.
   unaffected.
 - **Destructive migration** (drop column, rename table, change column type, drop
   index): the migration hits staging Neon when the PR's **preview** deploy runs.
-  **Reverting the PR does NOT revert the migration** — staging Neon is now in a
+  **Reverting the PR does NOT revert the migration** - staging Neon is now in a
   state ahead of `main`, possibly incompatible with the code `main` is serving.
 
 ### Mitigation for destructive migrations
@@ -59,7 +59,7 @@ runs, not when the PR lands.
 - Manually verify on a local Neon branch (or a throwaway branch) **before**
   opening the PR.
 - If a PR carrying a destructive migration must be reverted, plan to also write a
-  **forward-migration** to restore the staging state — a git revert of the PR
+  **forward-migration** to restore the staging state - a git revert of the PR
   will not undo the schema change already applied to staging Neon.
 - For high-risk migrations, consider giving the feature branch **its own Neon
   branch** instead of letting the preview deploy mutate shared staging.
@@ -67,22 +67,22 @@ runs, not when the PR lands.
 **Discovered during the PR-8a/C staging deploy (2026-06):** staging Neon's
 `_prisma_migrations.finished_at` for the new column *predated* the staging-branch
 push, because the PR's preview deploy had already run the migration against shared
-staging Neon. The column was additive + nullable, so it was benign in that case —
+staging Neon. The column was additive + nullable, so it was benign in that case -
 but the pattern is a known gotcha for any future destructive migration.
 
 ### Manual migrate (escape hatch)
 
 The `npm run migrate:staging` / `npm run migrate:production` scripts still
 exist (`package.json:26-27`) for cases where you need to apply a migration
-without redeploying code — e.g. retrying after a transient Neon failure
+without redeploying code - e.g. retrying after a transient Neon failure
 during the Vercel build, or applying a hotfix migration ahead of the
 matching code deploy.
 
-## DIRECT_URL — why migrations bypass pgbouncer
+## DIRECT_URL - why migrations bypass pgbouncer
 
 `prisma migrate deploy` uses `DIRECT_URL` (direct Neon endpoint), not
 `DATABASE_URL` (pooled endpoint through pgbouncer). The selection is
-declared in **`prisma.config.ts` only** — Prisma 7 removed both
+declared in **`prisma.config.ts` only** - Prisma 7 removed both
 schema-level `url`/`directUrl` declarations (validate fails with P1012
 if you add them back) AND the dedicated `directUrl` field in
 `prisma.config.ts`. The entire `directUrl` concept is gone in favour of
@@ -106,7 +106,7 @@ both), it falls back to `DATABASE_URL` with no error.
 > schema, `prisma validate` returns P1012:
 > `The datasource property 'directUrl' is no longer supported in schema
 > files.` Same story for the `datasource.directUrl` field in
-> `prisma.config.ts` — its TypeScript type doesn't include it.
+> `prisma.config.ts` - its TypeScript type doesn't include it.
 
 ### Why bypass pgbouncer for migrations?
 
@@ -116,15 +116,15 @@ deploy cancel, OOM), the session that held Prisma's advisory lock
 (`SELECT pg_advisory_lock(72707369)`) sticks around in the pool until
 something terminates it. The next migration attempt sees a held lock,
 waits 10s, fails with `P1002 Timed out trying to acquire postgres
-advisory lock`. We hit this twice — once on PR-2b validation, again on
+advisory lock`. We hit this twice - once on PR-2b validation, again on
 PR-3's BOM-fix deploy. Bypassing pgbouncer means the lock is released
-when the migration client disconnects (or is killed) — no pool-level
+when the migration client disconnects (or is killed) - no pool-level
 sticky state.
 
 ### Runtime app traffic is unaffected
 
 Every `PrismaClient` instance in the codebase is instantiated via
-`new PrismaPg({ connectionString: process.env.DATABASE_URL })` — the
+`new PrismaPg({ connectionString: process.env.DATABASE_URL })` - the
 driver adapter is fed the pooled URL explicitly. The schema's `url` and
 `directUrl` declarations do not change runtime behavior. Only the
 Prisma CLI (`migrate`, `db push`, `db pull`) consults them.
@@ -133,7 +133,7 @@ Prisma CLI (`migrate`, `db push`, `db pull`) consults them.
 
 If you run migrations against a remote DB from your machine (e.g.
 `npm run migrate:staging` to retry a failed Vercel deploy), set
-`DIRECT_URL` in `.env.local` too — otherwise you'll hit the same
+`DIRECT_URL` in `.env.local` too - otherwise you'll hit the same
 lock-strand risk against staging or prod. Derive it from the existing
 `DATABASE_URL` by stripping the `-pooler` infix from the Neon host:
 
@@ -146,9 +146,9 @@ Or copy the "Direct connection" string from the Neon dashboard for your
 branch.
 
 If you only run migrations against a local Postgres, `DIRECT_URL` is
-not needed — Prisma falls back to `DATABASE_URL`.
+not needed - Prisma falls back to `DATABASE_URL`.
 
-## Authoring migrations on Windows — the UTF-8 BOM gotcha
+## Authoring migrations on Windows - the UTF-8 BOM gotcha
 
 PowerShell's `Set-Content -Encoding utf8` writes a UTF-8 byte-order
 mark (`EF BB BF`) as the first 3 bytes of the file. PostgreSQL rejects
@@ -178,7 +178,7 @@ ALTER TABLE "Workspace" ADD COLUMN "foo" INTEGER NOT NULL DEFAULT 0;
 )
 ```
 
-Or just use `npm run db:migrate:dev` and let Prisma generate the file —
+Or just use `npm run db:migrate:dev` and let Prisma generate the file -
 Prisma writes BOM-free files.
 
 ### Verifying a file is BOM-free
@@ -196,7 +196,7 @@ $bytes = [System.IO.File]::ReadAllBytes("prisma/migrations/<TIMESTAMP>_<name>/mi
 SQL files` step in the `quality` job that runs before npm install. If
 any `prisma/migrations/**/*.sql` starts with `EF BB BF`, the step
 fails with a GitHub annotation pointing at the offending file. This
-means a BOM'd migration cannot reach `main` — it's blocked at PR.
+means a BOM'd migration cannot reach `main` - it's blocked at PR.
 
 To interpret a failure: open the file, fix the encoding using the
 PowerShell remedy above, commit, push. The check re-runs and goes

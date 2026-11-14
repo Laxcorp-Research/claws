@@ -1,9 +1,9 @@
-# OpenClaw Gateway Protocol — Verified Contract for Dashboard Chat (PR-9/0)
+# OpenClaw Gateway Protocol - Verified Contract for Dashboard Chat (PR-9/0)
 
 This is the durable artifact of the PR-9/0 gateway-protocol spike. PR-9/A (dashboard
 chat send backend) is built against this document. Every claim is **captured evidence**
 (real frames, real payloads, real DB rows) or an upstream source citation at the exact
-tag our production image is built from — nothing here is inference.
+tag our production image is built from - nothing here is inference.
 
 ---
 
@@ -22,7 +22,7 @@ tag our production image is built from — nothing here is inference.
 
 ## 2. Gateway surface map
 
-One **multiplexed port** serves everything — WS + HTTP, default **18789**
+One **multiplexed port** serves everything - WS + HTTP, default **18789**
 (`src/config/types.gateway.ts:448-450`; our generator pins it: `laxclaws:src/lib/openclaw/generator.ts:314-321`,
 and Railway exposes it as `https://<containerHost>` / `wss://<containerHost>`).
 
@@ -44,10 +44,10 @@ and Railway exposes it as `https://<containerHost>` / `wss://<containerHost>`).
 |---|---|---|
 | `GET /healthz` | none | `{"ok":true,"status":"live"}` (captured) |
 | `GET /readyz` | none | channel readiness (`docs/CONTAINER_INFRASTRUCTURE.md:146-147`) |
-| `POST /api/v1/admin/rpc` | `Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>` | Restricted **54-method allowlist** (below). Body `{id?, method, params?}` → `{id, ok, payload?, error?}` — no `type:"req"` wrapper (`extensions/admin-http-rpc/src/handler.ts:17-38,161-179`) |
+| `POST /api/v1/admin/rpc` | `Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>` | Restricted **54-method allowlist** (below). Body `{id?, method, params?}` → `{id, ok, payload?, error?}` - no `type:"req"` wrapper (`extensions/admin-http-rpc/src/handler.ts:17-38,161-179`) |
 | `GET /sessions/<sessionKEY>/history` | Bearer token | **Takes the session KEY** (e.g. `agent:dev-commander:main`), *not* the internal session id (captured: key → 200, internal id → 404 "Session not found"). Wired at `src/gateway/server-http.ts:231,643-648`. Returns the full transcript (§5 shape) |
 
-**Admin HTTP RPC allowlist** (`extensions/admin-http-rpc/src/methods.ts:1-55`) — note
+**Admin HTTP RPC allowlist** (`extensions/admin-http-rpc/src/methods.ts:1-55`) - note
 **no `chat.send`**, but **`device.pair.list` / `device.pair.approve` ARE here** (load-bearing for §3):
 
 > health, status, logs.tail, usage.status, usage.cost, gateway.restart.request,
@@ -105,16 +105,16 @@ reads the env var by exactly that name (`src/gateway/auth-token-resolution.ts:39
 
 3. Success: `{type:"res", id, ok:true, payload:{type:"hello-ok", ...}}` carrying
    `auth.role`, `auth.scopes` (what you actually got), `features.methods/events`, and
-   `snapshot.sessionDefaults` — incl. `mainSessionKey` (captured: `"agent:dev-commander:main"`),
+   `snapshot.sessionDefaults` - incl. `mainSessionKey` (captured: `"agent:dev-commander:main"`),
    so the correct session key is discoverable from the handshake itself.
 
 ### ⚠ THE DEVICE-IDENTITY REQUIREMENT (the spike's key live finding)
 
 **A remote token-auth client with no device identity connects fine but gets its scopes
-CLEARED** — captured: `hello-ok.auth = {"role":"operator","scopes":[]}` and then
+CLEARED** - captured: `hello-ok.auth = {"role":"operator","scopes":[]}` and then
 `chat.send` → `{"ok":false,"error":{"code":"INVALID_REQUEST","message":"missing scope: operator.write"}}`.
 Scope-clearing rule: `shouldClearUnboundScopesForMissingDeviceIdentity`
-(`src/gateway/server/ws-connection/connect-policy.ts:85-100` — token/password auth without
+(`src/gateway/server/ws-connection/connect-policy.ts:85-100` - token/password auth without
 a device → clear). The loopback exemption upstream's CLI relies on does not apply to
 remote clients (`src/gateway/call.ts` `shouldOmitDeviceIdentityForGatewayCall`;
 `handshake-auth-helpers.ts` `shouldSkipLocalBackendSelfPairing` requires `direct_local` /
@@ -140,7 +140,7 @@ v3|<deviceId>|<clientId>|<clientMode>|<role>|<scopes,comma>|<signedAtMs>|<token>
              "deviceId":"e9fce6e8…","requestedRole":"operator","requestedScopes":["operator.read","operator.write"]}}}
 ```
 
-4. **Self-approve out-of-band via admin HTTP RPC** (same Bearer token) — captured:
+4. **Self-approve out-of-band via admin HTTP RPC** (same Bearer token) - captured:
    `device.pair.list` → pending entry with `requestId`; `device.pair.approve {requestId}` →
    `{"ok":true,"payload":{...,"device":{...,"scopes":["operator.read","operator.write"],"tokens":[...]}}}`.
 5. Reconnects then yield `hello-ok.auth = {"role":"operator","scopes":["operator.read","operator.write"]}`
@@ -153,14 +153,14 @@ v3|<deviceId>|<clientId>|<clientMode>|<role>|<scopes,comma>|<signedAtMs>|<token>
 |---|---|
 | Bad token | res `{"code":"INVALID_REQUEST","message":"unauthorized: gateway token mismatch (provide gateway auth token)","details":{"code":"AUTH_TOKEN_MISMATCH","authReason":"token_mismatch","canRetryWithDeviceToken":true}}` then **close 1008** |
 | Unknown device | `NOT_PAIRED` / `PAIRING_REQUIRED` (above) then close 1008 |
-| Gateway still starting | close **1013** (`src/gateway/protocol/startup-unavailable.ts:3-4`) — retryable |
+| Gateway still starting | close **1013** (`src/gateway/protocol/startup-unavailable.ts:3-4`) - retryable |
 | Gateway auth rotated mid-session | close **4001** (`message-handler.ts` "gateway auth changed") |
-| Missing scope | error **res** on the method call (no close) — connection stays usable for read methods |
+| Missing scope | error **res** on the method call (no close) - connection stays usable for read methods |
 
 ### DECISION RECORDED (for PR-9/A-vercel)
 
 **Per-workspace encrypted device keypair column** (mirrors `gatewayToken` storage), not a
-single deployment-wide identity. Rationale: blast radius — one compromised/rotated keypair
+single deployment-wide identity. Rationale: blast radius - one compromised/rotated keypair
 affects one workspace, and pairing state is per-gateway (per-container) regardless, so a
 shared identity saves nothing: every workspace's gateway must pair (and re-pair after
 hibernation wake → fresh container) individually. Pairing bootstrap must be idempotent
@@ -176,13 +176,13 @@ hibernation wake → fresh container) individually. Pairing bootstrap must be id
 {
   "sessionKey": "agent:<orchestrator-slug>:main",
   "message": "<user text>",
-  "idempotencyKey": "<uuid — REQUIRED, non-empty>",
+  "idempotencyKey": "<uuid - REQUIRED, non-empty>",
   "deliver": false
 }
 ```
 
 (Optional: `thinking`, `attachments`, `timeoutMs`, `originating*`. `deliver:false` is what
-the Control UI itself sends — `ui/src/ui/controllers/chat.ts:424-428`.)
+the Control UI itself sends - `ui/src/ui/controllers/chat.ts:424-428`.)
 
 ### Ack (captured)
 
@@ -191,31 +191,31 @@ the Control UI itself sends — `ui/src/ui/controllers/chat.ts:424-428`.)
 12:55:58.5   ⇦ res {"ok":true,"payload":{"runId":"76e24c4f-ded5-4505-9fcb-058d2526d957","status":"started"}}
 ```
 
-- **Acceptance-time ack**: 313/323/387/401ms across all captured sends — never blocks on
+- **Acceptance-time ack**: 313/323/387/401ms across all captured sends - never blocks on
   the turn. A Vercel function can 202-and-close.
 - **`runId` = the client-supplied `idempotencyKey`.** And the container-side
   `MESSAGE_RECEIVED` ActivityLog row carries it as `metadata.messageId`; the
-  `TASK_START`/`TASK_COMPLETE` rows carry it as `metadata.runId` — a complete,
+  `TASK_START`/`TASK_COMPLETE` rows carry it as `metadata.runId` - a complete,
   zero-schema-change correlation chain from send → ack → ActivityLog → reply events.
 
 ### Idempotency (captured)
 
 Same `idempotencyKey` sent twice, 4s apart: first res `{"runId":"76e24c4f-…","status":"started"}`,
-second res `{"runId":"76e24c4f-…","status":"ok"}` — **one** agent run, **one** `MESSAGE_RECEIVED`
+second res `{"runId":"76e24c4f-…","status":"ok"}` - **one** agent run, **one** `MESSAGE_RECEIVED`
 row. PR-9/A may retry sends blindly with the same key.
 
 ### Routing
 
-`chat.send` resolves the agent **from the session key** — `resolveSessionAgentId` parses
+`chat.send` resolves the agent **from the session key** - `resolveSessionAgentId` parses
 `agent:<agentId>:<mainKey>` (`src/gateway/server-methods/chat.ts:2271-2304`,
 `src/agents/agent-scope.ts:291-304`, key format `src/routing/session-key.ts:188-195`).
 It **never consults `bindings`**. Live confirmation: the run executed on `dev-commander`
-(the Orchestrator) — `TASK_START agentSlug=dev-commander`. The generator's
+(the Orchestrator) - `TASK_START agentSlug=dev-commander`. The generator's
 `channel:'*'` binding is a no-op; the Orchestrator receives traffic because the generator
-sets `default: true` on it — see §8 and issue
+sets `default: true` on it - see §8 and issue
 [#117](https://github.com/Laxcorp-Research/claws/issues/117).
 
-### WS-close survivability (captured — the architecture gate)
+### WS-close survivability (captured - the architecture gate)
 
 Long-turn soak with a real LLM (multi-step prompt, **6.0s turn**):
 
@@ -252,7 +252,7 @@ across all captured exchanges. **The existing activity wire does not deliver rep
 2. **`before_agent_run` / `agent_end` fire transport-agnostically**
    (`src/agents/pi-embedded-runner/run/attempt.ts:3795-3814, 4525-4543`) → `TASK_START` /
    `TASK_COMPLETE` rows. Critically, the `agent_end` event payload includes
-   **`messages: messagesSnapshot`** — the conversation including the assistant reply
+   **`messages: messagesSnapshot`** - the conversation including the assistant reply
    (verified in source at `attempt.ts:4529`; the same snapshot's content is what the
    history endpoint returns, captured below with the real reply).
 3. **Held-open WS clients** receive the reply as pushed events (captured, T1c-redux):
@@ -274,29 +274,29 @@ for webchat-channel turns, sourcing the assistant text from the `messages` snaps
 existing activity wire → existing SSE → dashboard. (This is PR-9/A-container: an overlay
 image rebuild via the existing `force_version` suffix flow.)
 
-**HARD REQUIREMENT — turn health on the reply row.** `agent_end`'s `success` flag (and
+**HARD REQUIREMENT - turn health on the reply row.** `agent_end`'s `success` flag (and
 the resulting `TASK_COMPLETE`) is **true even for errored turns**: captured in Phase 2,
 a turn whose LLM call failed (`authentication_error`) still produced
 `TASK_COMPLETE {success:true, durationMs:268}` while the transcript recorded
 `role:"assistant", stopReason:"error", errorMessage:"…invalid x-api-key…", content:"[assistant turn failed before producing content]"`.
 The emitted reply row must carry `stopReason`/error state from the snapshot so the chat
-panel can truthfully distinguish "answered" from "errored" — TASK_COMPLETE alone lies.
+panel can truthfully distinguish "answered" from "errored" - TASK_COMPLETE alone lies.
 
 **Verified fallback / history hydration:** `GET /sessions/<sessionKEY>/history` (Bearer
-token, plain HTTP — no WS, no pairing). Captured transcript item shapes:
+token, plain HTTP - no WS, no pairing). Captured transcript item shapes:
 
 ```json
 // user item
 {"role":"user","content":[{"type":"text","text":"List three repo-hygiene checks …"}],
  "timestamp":1781099138…, "senderLabel":"gateway-client"}
 
-// assistant item (healthy turn — REAL captured reply, truncated)
+// assistant item (healthy turn - REAL captured reply, truncated)
 {"role":"assistant","content":[{"type":"text","text":"# Weekly Repo-Hygiene Checks\n\n## 1. **Dependency Security Scanning**\nRun automated vulnerability scans (e.g., `npm audit`, `cargo audit`, Dependabot)…"}],
  "api":"anthropic-messages","provider":"anthropic","model":"claude-haiku-4-5-20251001",
  "usage":{"input":10,"output":478,"totalTokens":19319,"cost":{"total":0.02593875}},
  "stopReason":"stop","timestamp":…}
 
-// assistant item (errored turn — Phase 2 capture)
+// assistant item (errored turn - Phase 2 capture)
 {"role":"assistant","content":[{"type":"text","text":"[assistant turn failed before producing content]"}],
  "stopReason":"error","errorMessage":"{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",…}}", "usage":{…,"cost":{"total":0}}}
 ```
@@ -310,7 +310,7 @@ Response truncation is tunable via `gateway.webchat.chatHistoryMaxChars` (defaul
 
 - **Not a `channels.*` type.** The channels zod schema has no webchat key
   (`src/config/zod-schema.channels-config.ts:51-68`); `"webchat"` is the gateway's internal
-  message-surface name (`src/utils/message-channel-constants.ts:1` —
+  message-surface name (`src/utils/message-channel-constants.ts:1` -
   `INTERNAL_MESSAGE_CHANNEL = "webchat"`).
 - **Zero `openclaw.json` config required.** Webchat IS the gateway WS protocol; the
   Control UI's `/chat` page (`ui/src/ui/navigation.ts:61,144-146`) is just another WS
@@ -353,12 +353,12 @@ Full frame sequence (every step captured; see appendix A for verbatim frames):
   (observed ~0.6s after send). **The send endpoint writes NOTHING.** The UI renders the
   user message optimistically and reconciles via `idempotencyKey == metadata.messageId`
   when the row arrives on SSE. (Note: `metadata` is currently excluded from the SSE wire
-  by the PR-4d structural test — PR-9/B must extend `formatLog` + that test's exclusion
+  by the PR-4d structural test - PR-9/B must extend `formatLog` + that test's exclusion
   list deliberately.)
 - **Reply:** `agent_end` reporter extension (PR-9/A-container, overlay rebuild) emitting a
   reply row **with turn health** (§5 hard requirement); `GET /sessions/<key>/history` as
   the verified HTTP fallback and for history hydration/pagination.
-- **Status gating:** destroyed container fails fast and unambiguously (§8) — detect
+- **Status gating:** destroyed container fails fast and unambiguously (§8) - detect
   synchronously in the send function.
 
 **Rejected alternatives:**
@@ -366,7 +366,7 @@ Full frame sequence (every step captured; see appendix A for verbatim frames):
 | Alternative | Why rejected |
 |---|---|
 | HTTP admin RPC for send | No send-capable method in the 54-method allowlist (`extensions/admin-http-rpc/src/methods.ts:1-55`); allowlist is fixed at the plugin, not configurable |
-| OpenAI-compatible HTTP endpoints (`/v1/chat/completions` style) | Synchronous — blocks until the turn completes; Orchestrator turns run 30s-2min+, Vercel function timeout makes this impossible (the non-negotiable Option B constraint). Also config-gated off by default |
+| OpenAI-compatible HTTP endpoints (`/v1/chat/completions` style) | Synchronous - blocks until the turn completes; Orchestrator turns run 30s-2min+, Vercel function timeout makes this impossible (the non-negotiable Option B constraint). Also config-gated off by default |
 | Container-side polling of a Claws "pending messages" endpoint | Adds poll latency + a new internal endpoint + container plugin when a verified push path exists; keep as a future fallback only |
 | Persistent server-side WS (subscribe to `chat` events for replies) | Precluded by Vercel function lifetimes; that's what the `agent_end` reporter extension replaces |
 
@@ -375,7 +375,7 @@ Full frame sequence (every step captured; see appendix A for verbatim frames):
 ## 8. Open risks
 
 1. **Gateway-token reconciliation blind spot.** The env-reconciliation cron compares
-   exactly three credential fields — `credit_mode`, `base_url`, `key_fp`
+   exactly three credential fields - `credit_mode`, `base_url`, `key_fp`
    (`laxclaws:src/app/api/cron/reconcile-container-env/route.ts:321-328`;
    `docs/CONTAINER_ENV_RECONCILIATION_CONTRACT.md:135`). `OPENCLAW_GATEWAY_TOKEN` is
    outside the contract: if the Railway value ever diverges from `Workspace.gatewayToken`,
@@ -386,7 +386,7 @@ Full frame sequence (every step captured; see appendix A for verbatim frames):
    channel string, `src/routing/resolve-route.ts:242-279,449`); Orchestrator routing
    actually works via `default: true` + default-agent fallback
    (`laxclaws:generator.ts:272-273`; `src/agents/agent-scope-config.ts:87-99`). Tracked as
-   **[issue #117](https://github.com/Laxcorp-Research/claws/issues/117)** — generator fix
+   **[issue #117](https://github.com/Laxcorp-Research/claws/issues/117)** - generator fix
    is out of scope for this PR.
 3. **Destroyed-container transport signature** (captured, T7): HTTPS →
    **HTTP 404 in ~670ms** with Railway-edge body
@@ -401,10 +401,10 @@ Full frame sequence (every step captured; see appendix A for verbatim frames):
 5. **Device pairing adds a bootstrap state.** Pairing is per-gateway: every fresh container
    (first deploy, redeploy-after-stop, hibernation wake) starts with zero paired devices.
    **Design consequence: pairing must be re-bootstrapped after every redeploy/wake (fresh
-   gateway = unpaired), so PR-9/A's pairing flow must be idempotent and lazy on first-send —
+   gateway = unpaired), so PR-9/A's pairing flow must be idempotent and lazy on first-send -
    not deploy-time-only.** A deploy-time-only bootstrap silently breaks chat on the first
    message after any container replacement. PR-9/A's send path must treat `NOT_PAIRED` as a
-   normal, recoverable state and self-approve idempotently — not as an error. (Re-verified
+   normal, recoverable state and self-approve idempotently - not as an error. (Re-verified
    live on the spike's second deploy: same keypair, fresh gateway → `NOT_PAIRED` → admin-RPC
    approve → scoped connect.) Also note: hello-ok returns a `deviceToken` whose reuse avoids
    re-signing, but it dies with the container; the Ed25519 keypair is the durable credential.
@@ -413,7 +413,7 @@ Full frame sequence (every step captured; see appendix A for verbatim frames):
 
 ---
 
-## Appendix A — Captured evidence (verbatim, token redacted)
+## Appendix A - Captured evidence (verbatim, token redacted)
 
 ### A.1 Successful connect (paired device)
 
@@ -465,7 +465,7 @@ hello-ok (elided): `"auth":{"role":"operator","scopes":["operator.read","operato
              "sessionKey":"agent:dev-commander:main","channelId":"webchat","sourceAgentId":"dev-commander"}}
 ```
 
-No `MESSAGE_SENT` row exists — the reply reached the transcript (A.4) but not ActivityLog
+No `MESSAGE_SENT` row exists - the reply reached the transcript (A.4) but not ActivityLog
 (the PR-9/A-container gap this doc specifies the fix for).
 
 ### A.4 Real captured reply (history endpoint, same exchange)
@@ -475,7 +475,7 @@ No `MESSAGE_SENT` row exists — the reply reached the transcript (A.4) but not 
 `usage:{"input":10,"output":478,"totalTokens":19319,"cost":{"total":0.02593875}}`, text beginning:
 
 > \# Weekly Repo-Hygiene Checks
-> \#\# 1. **Dependency Security Scanning** — Run automated vulnerability scans (e.g., `npm audit`, `cargo audit`, Dependabot)…
+> \#\# 1. **Dependency Security Scanning** - Run automated vulnerability scans (e.g., `npm audit`, `cargo audit`, Dependabot)…
 
 ### A.5 Held-open reply stream (T1c-redux, 4.9s send→final)
 
@@ -488,7 +488,7 @@ No `MESSAGE_SENT` row exists — the reply reached the transcript (A.4) but not 
 ⇦ event chat  {state:"final", message:{role:"assistant", content:[{type:"text", text:"<complete reply>"}]}}
 ```
 
-### A.6 Errored-turn shapes (Phase 2, placeholder key — kept as the error contract)
+### A.6 Errored-turn shapes (Phase 2, placeholder key - kept as the error contract)
 
 ```
 ⇦ event agent {stream:"lifecycle", data:{phase:"error", error:"LLM error authentication_error: invalid x-api-key", livenessState:"blocked"}}

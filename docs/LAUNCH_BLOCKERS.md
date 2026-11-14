@@ -5,15 +5,15 @@ Single source of truth for items blocking Phase 1 soft launch and Phase 2 public
 ## Phase 1 soft launch blockers
 
 ### Resolved by PR2.9
-- [x] ~~[#70](https://github.com/Laxcorp-Research/claws/issues/70) Composio API-key broker path for Typefully/Jotform/Toggl~~ — **resolved** by PR2.9. BYOK now ships for 9 toolkits (typefully, jotform, toggl + shopify, lever, metaads, pipedrive, webflow, follow_up_boss). Twitter and docusign remain `comingSoon: true` (OAuth-only on Composio); tracked in `docs/COMPOSIO_RUNTIME_CONTRACT.md` "Custom OAuth toolkits (operator tracker)".
+- [x] ~~[#70](https://github.com/Laxcorp-Research/claws/issues/70) Composio API-key broker path for Typefully/Jotform/Toggl~~ - **resolved** by PR2.9. BYOK now ships for 9 toolkits (typefully, jotform, toggl + shopify, lever, metaads, pipedrive, webflow, follow_up_boss). Twitter and docusign remain `comingSoon: true` (OAuth-only on Composio); tracked in `docs/COMPOSIO_RUNTIME_CONTRACT.md` "Custom OAuth toolkits (operator tracker)".
 
 ### Security
 - [ ] [#72](https://github.com/Laxcorp-Research/claws/issues/72) Dependency security advisories (1 critical, 3 high)
-  - ~~`fast-uri` (2 high)~~ — **FIXED** in PR2.8a-fix1-deps via override `^3.1.2`
-  - ~~`sanitize-html` (critical, 1 GHSA)~~ — **FIXED** (fix-sanitize-html-cve); no longer present in `npm audit` as of the 2026-06-11 re-audit, not in the allowlist.
-  - ~~`protobufjs` (high, 7 GHSAs)~~ — **FIXED** by the 2026-06-11 re-audit (GH #72): upstream backported fixes to the 7.x line (the original "fix only in 8.x major" assessment is obsolete); in-range lockfile bump `7.5.5 → 7.6.3` via `@grpc/proto-loader@^7.5.5` cleared all seven GHSAs; entries removed from `audit-ci.json`.
-  - `next` (13 GHSAs: 7 high, 6 low/moderate). **Upstream fixes now exist** (advisory ranges close at `16.2.5`; we run `16.2.3`). The bump `16.2.3 → ≤16.2.7` is deliberately its own dedicated PR with full E2E/Playwright per the standing #72 policy — framework bumps don't ride a chore. Allowlisted until that PR lands; renewed 2026-06-11, expiry 2026-07-15. Gate note: the gate fails only on high/critical, so the 7 high entries are the load-bearing allowlist lines.
-  - ~~`hono` (1 high) + `nodemailer` (1 high)~~ — **FIXED** (fix/security-audit-hono-nodemailer): `hono` cleared via override `^4.12.25` (transitive under `prisma > @prisma/dev`); `nodemailer` cleared via direct bump `^7.0.13 → ^9.0.1` + override `^9.0.1` (forces the deduped `next-auth` / `@auth/core` copies). Both allowlist entries removed from `audit-ci.json` — no longer suppressed. Note: `nodemailer` 7→9 is a **major** applied via override; safe here because `nodemailer` is not imported in `src` (mail goes via Resend) and `next-auth` stays at `4.24.x` (no auth-framework bump).
+  - ~~`fast-uri` (2 high)~~ - **FIXED** in PR2.8a-fix1-deps via override `^3.1.2`
+  - ~~`sanitize-html` (critical, 1 GHSA)~~ - **FIXED** (fix-sanitize-html-cve); no longer present in `npm audit` as of the 2026-06-11 re-audit, not in the allowlist.
+  - ~~`protobufjs` (high, 7 GHSAs)~~ - **FIXED** by the 2026-06-11 re-audit (GH #72): upstream backported fixes to the 7.x line (the original "fix only in 8.x major" assessment is obsolete); in-range lockfile bump `7.5.5 → 7.6.3` via `@grpc/proto-loader@^7.5.5` cleared all seven GHSAs; entries removed from `audit-ci.json`.
+  - `next` (13 GHSAs: 7 high, 6 low/moderate). **Upstream fixes now exist** (advisory ranges close at `16.2.5`; we run `16.2.3`). The bump `16.2.3 → ≤16.2.7` is deliberately its own dedicated PR with full E2E/Playwright per the standing #72 policy - framework bumps don't ride a chore. Allowlisted until that PR lands; renewed 2026-06-11, expiry 2026-07-15. Gate note: the gate fails only on high/critical, so the 7 high entries are the load-bearing allowlist lines.
+  - ~~`hono` (1 high) + `nodemailer` (1 high)~~ - **FIXED** (fix/security-audit-hono-nodemailer): `hono` cleared via override `^4.12.25` (transitive under `prisma > @prisma/dev`); `nodemailer` cleared via direct bump `^7.0.13 → ^9.0.1` + override `^9.0.1` (forces the deduped `next-auth` / `@auth/core` copies). Both allowlist entries removed from `audit-ci.json` - no longer suppressed. Note: `nodemailer` 7→9 is a **major** applied via override; safe here because `nodemailer` is not imported in `src` (mail goes via Resend) and `next-auth` stays at `4.24.x` (no auth-framework bump).
 
 **audit-ci forcing function:** every GHSA in `audit-ci.json`'s `allowlist` must be removed or re-justified by **2026-07-15** (renewed from 2026-06-15 by the 2026-06-11 re-audit). CI will fail on any new high/critical advisory not in the allowlist, so new upstream advisories during the window force re-triage.
 
@@ -49,21 +49,21 @@ Removed by the fix/security-audit-hono-nodemailer bump (kept for the audit trail
 | GHSA-vcvr-r3jv-pc5j | `next` | RCE in `next/og` ImageResponse, patched in 16.3.6 | critical. Cleared by `next` 16.4.1. Removed from the allowlist. |
 
 ### Infrastructure / CI
-- [#73](https://github.com/Laxcorp-Research/claws/issues/73) CI E2E test Neon branch unreachable — NOT launch-blocking, listed for visibility
+- [#73](https://github.com/Laxcorp-Research/claws/issues/73) CI E2E test Neon branch unreachable - NOT launch-blocking, listed for visibility
 
-### Legal (not yet detailed — placeholder)
+### Legal (not yet detailed - placeholder)
 - [ ] Terms of Service (Dubai IFZA jurisdiction)
 - [ ] Privacy Policy
 - [ ] Refund policy
 
-### Financial (not yet detailed — placeholder)
+### Financial (not yet detailed - placeholder)
 - [ ] Dodo live mode real $1 transaction test
 - [ ] Sales tax setup
 
-### Compliance (not yet detailed — placeholder)
+### Compliance (not yet detailed - placeholder)
 - [ ] Per regulated Claw review (Medical/Law/Real Estate/Quant/B2B/Recruiter)
 
-### GTM / Operational (not yet detailed — placeholder)
+### GTM / Operational (not yet detailed - placeholder)
 - [ ] Landing page
 - [ ] support@buildclaws.ai routing
 

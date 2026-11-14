@@ -1,4 +1,4 @@
-# Contributing — Engineering Process
+# Contributing - Engineering Process
 
 This document captures engineering-process learnings that have repeatedly proven
 load-bearing on this codebase. They live here (not just in chat transcripts or
@@ -7,7 +7,7 @@ one-off contract docs) so future work doesn't re-discover them the hard way.
 ## Audit discipline (Phase A)
 
 **Principle: read-only investigation before code, contract-first.** Before
-changing a non-trivial code path, do a Phase A audit — gather the actual current
+changing a non-trivial code path, do a Phase A audit - gather the actual current
 state (schema relations, call sites, external versions, live config) and write
 down what the change assumes. Only then write code.
 
@@ -16,12 +16,12 @@ down what the change assumes. Only then write code.
 When auditing any code path with a Prisma `include:` or `select:`, **enumerate
 every relation it pulls and verify each against the change's assumptions.**
 Missing a relation in the audit means downstream predictions about behavior may
-be wrong — even if the change itself works correctly.
+be wrong - even if the change itself works correctly.
 
 **Concrete failure example (PR-8a/C WIRE-TEST E3 prediction error):** the audit
 checked the `Workspace` and `CreditAccount` relations but did not query
-`UserApiKey` for the workspace owner. The resulting prediction — that
-`expected.key_fp` would be `null` under a `USER_OWN_KEY` override — was wrong,
+`UserApiKey` for the workspace owner. The resulting prediction - that
+`expected.key_fp` would be `null` under a `USER_OWN_KEY` override - was wrong,
 because a pre-existing April-1 BYOK key existed in the database. The test still
 passed (drift *was* detected), but for a different reason than predicted. A
 correct prediction needs every relation that feeds the derivation, not just the
@@ -30,19 +30,19 @@ obvious ones.
 ### Verify external reality, don't trust memory
 
 External dependency versions, API shapes, and schema relations drift. **Verify
-them against current state before relying on them** — don't trust memory or
+them against current state before relying on them** - don't trust memory or
 stale documentation.
 
 **Concrete success example (PR-B Node 24 actions audit):** the proposed action
 target versions were listed from memory. Each was then verified via
-`gh api repos/<owner>/<repo>/releases/latest` rather than trusting the list —
+`gh api repos/<owner>/<repo>/releases/latest` rather than trusting the list -
 which caught that `actions/checkout` and `actions/setup-node` had moved to v6
 (not v5), `docker/setup-buildx-action` to v4, and `docker/build-push-action` to
 v7. The in-memory version list was stale; the verification step is what made the
 migration decision correct.
 
 **Generalizable rule:** external dependency versions, API shapes, schema
-relations — verify against current state, don't trust memory or stale docs.
+relations - verify against current state, don't trust memory or stale docs.
 
 ## Halt-between-substeps
 
@@ -58,7 +58,7 @@ begins.**
 When investigating one issue, **related findings should be addressed in the same
 context** rather than filed for "later."
 
-- Filing follow-ups or recommending separate fixes can become a drift error —
+- Filing follow-ups or recommending separate fixes can become a drift error -
   the "later" PR never gets the same context and the issue lingers.
 - **Exception:** genuine scope creep beyond the immediate context (e.g. a
   load-bearing major dependency bump surfaced mid-audit) *does* get filed as its
@@ -75,11 +75,11 @@ Each protected invariant gets **at least one mutation test**:
 4. Revert the mutation.
 
 When sub-PRs build on each other, **re-run earlier mutations against the final
-tree** at the end of the arc — this catches *silent weakening*, where a later
+tree** at the end of the arc - this catches *silent weakening*, where a later
 change inadvertently makes an earlier guard vacuous (the mutation no longer fails
 a test that used to catch it).
 
-## Rule 20 — `next build` before pushing route changes
+## Rule 20 - `next build` before pushing route changes
 
 Any PR that touches `**/route.ts` (App Router handlers) or changes the set of
 exported HTTP methods / path segments under `src/app/api/**` **must** run a
@@ -90,13 +90,13 @@ Why: Vitest and `tsc --noEmit` do not exercise Next's route-module graph,
 dynamic segment validation, or the production bundler. Several past regressions
 (missing exports, illegal client imports into route handlers, broken
 `params: Promise<>` signatures under Next 16) only failed at `next build` or on
-the Vercel build — after the unit suite was already green.
+the Vercel build - after the unit suite was already green.
 
 Minimum gate for such PRs:
 
 1. Relevant unit / Playwright suite green.
 2. `npx tsc --noEmit` (or the repo's typecheck script) green.
-3. `npm run build` green — paste the final `✓ Compiled successfully` (or
+3. `npm run build` green - paste the final `✓ Compiled successfully` (or
    equivalent) line in the PR description.
 4. Linter diagnostics clean on every file in the diff.
 

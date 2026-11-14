@@ -1,4 +1,4 @@
-# Runtime contracts — overlay ↔ OpenClaw `dist`
+# Runtime contracts - overlay ↔ OpenClaw `dist`
 
 Durable ledger of every OpenClaw internal the Claws overlay depends on.
 This is the checklist the rule-36 suite (and any RUNTIME-AUTOUPDATE candidate
@@ -52,7 +52,7 @@ changed.
 - `OPENCLAW_CONFIG_READONLY=1` in Railway env and generated `.env` (doctor cannot rewrite generator-owned `openclaw.json`)
 - `plugins.load.paths=['/opt/claws-activity-reporter']`
 - `plugins.entries.claws-activity-reporter` `{ enabled, hooks.allowConversationAccess: true }`
-- `plugins.entries.admin-http-rpc` `{ enabled: true }` only — configSchema is `additionalProperties: false`
+- `plugins.entries.admin-http-rpc` `{ enabled: true }` only - configSchema is `additionalProperties: false`
 - `cron/jobs.json` with `id`, `schedule.kind=cron`, `sessionTarget: session:agent:<slug>:main` (never literal `main` + `agentTurn`)
 - MCP `streamable-http` + static `x-api-key` (no env interpolation) when long-tail flag is on
 
@@ -86,7 +86,7 @@ changed.
 - `before_agent_run` is a **modifying gate** (`runBeforeAgentRun` →
   `runModifyingHook`), default timeout **15s**, failure policy **fail-closed**.
 - Overlay handler returns exactly `{ outcome: "pass" }` (one key) after the
-  synchronous TASK_START push. **No `timeoutMs`** on that registration — a
+  synchronous TASK_START push. **No `timeoutMs`** on that registration - a
   100ms timeout throws and blocks the turn.
 - Other void hooks keep `{ timeoutMs: 100 }`. `gateway_stop` stays 5s.
 
@@ -137,11 +137,11 @@ promote.
 | R1 | Build does not move `:candidate` or `:latest` | `src/__tests__/build-openclaw-image-workflow.test.ts` (`STOP_MOVING_CANDIDATE_ASSERT`) | still required |
 | R2 | Register is XOR `isStable` / `isCandidate`; candidate → `isLatest` only | `src/app/api/internal/versions/register/__tests__/route.test.ts` | `resolveDeployImage()` reads **`isLatest` only** when `Workspace.candidateRuntimeSoak` is true **and** `mayDeployCandidateImage` passes (staging clone, never KEEP, never production). Unflagged / KEEP / prod still `isStable` only. |
 | R3 | Force-update refuses non-stable | `src/__tests__/api/admin/versions.test.ts` | **blocks** fleet pin to 9.4. Per-workspace soak is the admin `candidate-soak` flag + next `deployToCloud`, not force-update. |
-| R4 | `openclaw.json` emission (`agents.entries`, plugins, deny, channels) | `generator.test.ts` + `runtime-contracts-r15.test.ts` + clone-tag | **ported and version-keyed (R17)** — the 9.4 shape (entries, no `list`/`default: true`, `OPENCLAW_CONFIG_READONLY=1`) is emitted only for `runtimeContract: "9.4"` targets |
+| R4 | `openclaw.json` emission (`agents.entries`, plugins, deny, channels) | `generator.test.ts` + `runtime-contracts-r15.test.ts` + clone-tag | **ported and version-keyed (R17)** - the 9.4 shape (entries, no `list`/`default: true`, `OPENCLAW_CONFIG_READONLY=1`) is emitted only for `runtimeContract: "9.4"` targets |
 | R5 | Heartbeat croner jobs + `session:agent:<slug>:main` | heartbeat-schedule + generator cron tests + clone-tag `croner@10.0.1` | overlay lock + clone-tag |
-| R6 | Activity reporter: `{ outcome: "pass" }`, no 100ms on `before_agent_run` | `claws-activity-reporter.test.ts` | **ported** — fail-closed gate is explicitly non-blocking |
+| R6 | Activity reporter: `{ outcome: "pass" }`, no 100ms on `before_agent_run` | `claws-activity-reporter.test.ts` | **ported** - fail-closed gate is explicitly non-blocking |
 | R7 | Catch-up: croner loader, `health` + `cron.run` `{id, mode:"force"}`, skip ledger | `heartbeat-catchup.test.ts` + clone-tag methods | methods still allowlisted |
-| R8 | Thinking-signature sqlite + jsonl strip + one retry | `thinking-signature-heal-overlay.test.ts` | **ported** — TEXT walker on `openclaw-agent.sqlite`; jsonl kept for legacy |
+| R8 | Thinking-signature sqlite + jsonl strip + one retry | `thinking-signature-heal-overlay.test.ts` | **ported** - TEXT walker on `openclaw-agent.sqlite`; jsonl kept for legacy |
 | R9 | State-sync sqlite bundle; no `sessions.json` rebuild over sqlite | `state-sync.test.ts` + `rebuild-sessions-index.test.ts` | **ported** |
 | R10 | Skill env sanitizer vs vendored OpenClaw 9.4 | `sanitizer-contract.test.ts` | **re-vendored** `v2026.9.4` (`env-overrides.ts` new path) |
 | R11 | Beat evidence (HEARTBEAT / poll-marker TASK_START) | `beat-evidence-contract.test.ts` | overlay_boot must not clear sticky |
@@ -149,9 +149,9 @@ promote.
 | R13 | Live mission/cron enqueue + extract + approve | same receipt | candidate soak workspace (interview-free + `httpFixtureMode`) |
 | R14 | Hibernate hold + flush | sqlite in state-sync bundle; live soak quotes HWD on the clone | jsonl-only flush closed on overlay; live HWD quotes on flagged clone |
 | R15 | Gateway healthz `{"ok":true,"status":"live"}` | process-manager + volume migration before gateway | first signal after candidate boot on the flagged clone |
-| R16 | 9.4 cron canonical store is `cron/jobs.json` (not sqlite); emit/upsert on every deploy | `container/cron-store.mjs` + `buildWorkspaceFileMap` always writes jobs.json (including `[]`); clone-tag greps `src/cron/store.ts` | redeploy with a changed schedule → jobs.json reflects it → beat fires. **Doctor's "Cron store migrated to SQLite" boot log is benign:** doctor imports the overlay-written `jobs.json` into its own store at boot and the scheduler fires from there — receipted live on the soak clone 2026-09-13: `[cron:heartbeat-twitter-commander-md-0-8]` fired at exactly 08:00:00Z on `2026.9.4-5`, `HEARTBEAT_OK`, deliverable `x-morning-trends` extracted 08:04:54Z. The catch-up module's post-migration "no-jobs" read only affects boot catch-up, never scheduled fires. |
+| R16 | 9.4 cron canonical store is `cron/jobs.json` (not sqlite); emit/upsert on every deploy | `container/cron-store.mjs` + `buildWorkspaceFileMap` always writes jobs.json (including `[]`); clone-tag greps `src/cron/store.ts` | redeploy with a changed schedule → jobs.json reflects it → beat fires. **Doctor's "Cron store migrated to SQLite" boot log is benign:** doctor imports the overlay-written `jobs.json` into its own store at boot and the scheduler fires from there - receipted live on the soak clone 2026-09-13: `[cron:heartbeat-twitter-commander-md-0-8]` fired at exactly 08:00:00Z on `2026.9.4-5`, `HEARTBEAT_OK`, deliverable `x-morning-trends` extracted 08:04:54Z. The catch-up module's post-migration "no-jobs" read only affects boot catch-up, never scheduled fires. |
 | R17 | **Version-keyed emission**: config shape follows the target image's `OpenClawVersion.runtimeContract` ("5.22" → `agents.list` + orchestrator `default: true`, no `trustedProxies`/`ownership`/`systemAgent`/`READONLY`; "9.4" → keyed `agents.entries` + `ownership: explicit` + `defaults.systemAgent` + `gateway.trustedProxies` + `OPENCLAW_CONFIG_READONLY=1`) | `runtime-contract.test.ts` + `runtime-contract-emission.test.ts` (strict Zod mirrors of BOTH gateway schemas; unconditional-9.4 restored → the 5.22 parse fails) | KEEP (5) P0 2026-09-13: unconditional 9.4 emission boot-looped every 5.22-18 wake on "Invalid config … agents.defaults: Invalid input". `resolveDeployTarget` returns the contract; `Workspace.runtimeImagePin` (explicit version pin) resolves ABOVE candidate soak and stable, and THROWS on an unregistered pin rather than falling back. |
-| R18 | **Snapshot generations**: every persist shifts current → `runtimeStatePrevSnapshot` in ONE atomic UPDATE; first persist after a contract change pins the outgoing snapshot in `preMigrationSnapshot*` for 7 days. Rollback = repin the old version + restore the pinned generation (session history recorded after the migration is lost — state it plainly in the promote card). | `state-snapshot-generations.test.ts` (single-statement invariant + shift + 7-day pin); `blob-transport.test.ts` idempotent-noop keeps duplicate finalize from double-shifting | Founder claw 2026-09-13: single-column overwrite destroyed the last 5.22 snapshot on the first 9.4 persist. Sync cap: >80MB hard-cap refusal owner-alerts via `hibernation-refuse-unsafe` (`stale-destroy.test.ts`); chunked upload for >80MB bundles stays a **logged follow-up**. |
+| R18 | **Snapshot generations**: every persist shifts current → `runtimeStatePrevSnapshot` in ONE atomic UPDATE; first persist after a contract change pins the outgoing snapshot in `preMigrationSnapshot*` for 7 days. Rollback = repin the old version + restore the pinned generation (session history recorded after the migration is lost - state it plainly in the promote card). | `state-snapshot-generations.test.ts` (single-statement invariant + shift + 7-day pin); `blob-transport.test.ts` idempotent-noop keeps duplicate finalize from double-shifting | Founder claw 2026-09-13: single-column overwrite destroyed the last 5.22 snapshot on the first 9.4 persist. Sync cap: >80MB hard-cap refusal owner-alerts via `hibernation-refuse-unsafe` (`stale-destroy.test.ts`); chunked upload for >80MB bundles stays a **logged follow-up**. |
 
 KEEP Twitter/X Growth Machine (5) `cmr3fo19r000404jlze8o7dm8` is the archive
 canary. **Never** delete, wake-onto-candidate, or use as cleanup. Fixture fire
@@ -178,7 +178,7 @@ Stable tags after `v2026.5.22` (2026-05-24): `2026.5.26`, `5.27`, `5.28`,
 | **Sessions / thinking** | Transcripts became core (5.26). SQLite is canonical by 8.x; 9.4 **refuses boot** on leftover `sessions.json` / non-sqlite stores. Thinking-signature heal that rewrites jsonl will no-op. 9.2: session tools default to all-session visibility (`tools.sessions.visibility`). |
 | **Cron** | `croner` still `10.0.1`. **R16:** 9.4 still loads `cron/jobs.json` via `resolveDefaultCronStorePath` / `loadCronStore` (JSON, not sqlite). Overlay unpacks that file on every deploy (including `[]` to drop stale Claws jobs) and re-emits after restore. `missing-id` still drops. 9.1: malformed cron rows **quarantined** instead of blocking boot. `health` + `cron.run` still on admin HTTP RPC. |
 | **Sandbox** | Env sanitizer still at `src/agents/sandbox/sanitize-env-vars.ts`. Skill env-overrides path moved (9.4 404 on old file). Daytona backend (8.1). Attachment reads must not cross sibling agent sandboxes (9.4). |
-| **Plugins** | SDK deprecations (`before_agent_start`, root `openclaw/plugin-sdk` imports — 6.34). `before_agent_run` is a fail-closed **gate** (9.x). Unified Plugins UI (9.4). `allowConversationAccess` still on `PluginEntrySchema`. |
+| **Plugins** | SDK deprecations (`before_agent_start`, root `openclaw/plugin-sdk` imports - 6.34). `before_agent_run` is a fail-closed **gate** (9.x). Unified Plugins UI (9.4). `allowConversationAccess` still on `PluginEntrySchema`. |
 
 Staging already has **unpromoted** candidate rows for `2026.6.10`, `6.11`,
 `7.1`, `7.1-2`, `8.1`, `9.2` (`isStable=false`). They never became the pin.
@@ -186,7 +186,7 @@ That is historical evidence the overlay did **not** survive those soaks.
 
 ---
 
-## 4. Candidate protocol (Phase A — no pin, no promote)
+## 4. Candidate protocol (Phase A - no pin, no promote)
 
 1. `build-openclaw-image` with `force_version=<upstream>` on `staging`.
    Register `{ isStable: false, isCandidate: true }`. Workflow must **not**

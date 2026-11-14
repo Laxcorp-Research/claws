@@ -1,9 +1,9 @@
-# Tool Connection Fix — Investigation
+# Tool Connection Fix - Investigation
 
 **Status (post-PR #2.5, 2026-04-21):** column `encryptedApiKey` has been dropped; replaced by `encryptedCredentials`. Document preserved as historical investigation.
 
 **Status:** Read-only analysis. No code changes in this PR.
-**Companion doc:** [TOOL_CONNECTION_GENERATOR_BUG.md](./TOOL_CONNECTION_GENERATOR_BUG.md) — the bug report that triggered this investigation.
+**Companion doc:** [TOOL_CONNECTION_GENERATOR_BUG.md](./TOOL_CONNECTION_GENERATOR_BUG.md) - the bug report that triggered this investigation.
 **Purpose:** Enumerate the tool/skill data model, evaluate three schema options for the fix, make a recommendation, and surface the open product decisions that block the fix PR.
 
 ---
@@ -14,8 +14,8 @@
 
 Two functions in [src/lib/openclaw/generator.ts](../src/lib/openclaw/generator.ts):
 
-- `generateSkillsEntriesConfig` (lines 373–399) — builds `openclaw.json → skills.entries`.
-- `generateToolsMd` (lines 996–1028) — renders `TOOLS.md`.
+- `generateSkillsEntriesConfig` (lines 373–399) - builds `openclaw.json → skills.entries`.
+- `generateToolsMd` (lines 996–1028) - renders `TOOLS.md`.
 
 Both read four fields that do not exist on the Prisma `ToolConnection` model:
 
@@ -34,7 +34,7 @@ Both read four fields that do not exist on the Prisma `ToolConnection` model:
 ### Runtime consequences (what happens in prod)
 
 - `generateSkillsEntriesConfig`: the early `if (!toolConn.skillSlug) continue` fires for every row, so `entries` is always `{}`.
-  - Generator side-effect (at [generator.ts:298–300](../src/lib/openclaw/generator.ts#L298)): `if (Object.keys(skillsEntries).length > 0) config.skills = { entries: skillsEntries };` — when `entries` is empty, `config.skills` is never set, so the container has no `skills.entries` block at all.
+  - Generator side-effect (at [generator.ts:298–300](../src/lib/openclaw/generator.ts#L298)): `if (Object.keys(skillsEntries).length > 0) config.skills = { entries: skillsEntries };` - when `entries` is empty, `config.skills` is never set, so the container has no `skills.entries` block at all.
 - `generateToolsMd`: the header string becomes `### undefined`, and `connectionType` is the only truthful field that prints.
 - Net effect: every user who wires up Tavily, HubSpot, Salesforce, etc. ends up with a container that reports "Connected" in our UI but never receives the credentials at runtime. Agent tool calls fail silently.
 
@@ -143,9 +143,9 @@ Cross-referencing [prisma/seed-data/skills-tool-specific.ts](../prisma/seed-data
 | `youtube-data-api`              | `youtube_data`       | Mismatch (dash vs underscore, different name) |
 | `google-search-console`         | `gsc`                | Mismatch (entirely different token) |
 | `google-analytics`              | `google_analytics`   | Mismatch (dash vs underscore)    |
-| `pipedrive`, `smartlead`, `typefully`, `coinbase`, `snyk`, `zillow`, `google-business-profile` | — | Not in catalog at all |
+| `pipedrive`, `smartlead`, `typefully`, `coinbase`, `snyk`, `zillow`, `google-business-profile` | - | Not in catalog at all |
 
-This matters because **any fix that uses `Skill.compatibleTools` for the tool→skill map must either normalize slugs or fix the seed data first**, otherwise a user connecting Twitter/X API (catalog slug `twitter_api`) would not get the `twitter-api` skill matched — exactly the same silent failure we're trying to fix.
+This matters because **any fix that uses `Skill.compatibleTools` for the tool→skill map must either normalize slugs or fix the seed data first**, otherwise a user connecting Twitter/X API (catalog slug `twitter_api`) would not get the `twitter-api` skill matched - exactly the same silent failure we're trying to fix.
 
 ---
 
@@ -204,13 +204,13 @@ These are **tool-specific env var names**, not the generic `$TOOL_API_KEY` used 
 
 > `~55 skills are bundled with OpenClaw (weather, github, etc.). We only generate skills for tools specific to the user's connected tools that aren't already bundled.`
 
-We don't have the OpenClaw source locally (no `@openclaw/*` package installed, no vendored gateway), so we cannot enumerate these. The generator currently **does not try** to configure them — it just relies on the gateway loading them from its own image.
+We don't have the OpenClaw source locally (no `@openclaw/*` package installed, no vendored gateway), so we cannot enumerate these. The generator currently **does not try** to configure them - it just relies on the gateway loading them from its own image.
 
 ### The `$TOOL_API_KEY` convention
 
 Grep of [skills-tool-specific.ts](../prisma/seed-data/skills-tool-specific.ts) returns 84 occurrences of `$TOOL_API_KEY` in `skillMd` bodies. Every TOOL_SPECIFIC built-in skill uses this **generic** placeholder.
 
-The convention (reverse-engineered from the shape of `skillMd` + how OpenClaw scopes env vars per skill): OpenClaw scopes the env block **per-skill entry**, so two skills in the same workspace can both refer to `$TOOL_API_KEY` without collision — each gets the value from its own `skills.entries[slug].env.TOOL_API_KEY`.
+The convention (reverse-engineered from the shape of `skillMd` + how OpenClaw scopes env vars per skill): OpenClaw scopes the env block **per-skill entry**, so two skills in the same workspace can both refer to `$TOOL_API_KEY` without collision - each gets the value from its own `skills.entries[slug].env.TOOL_API_KEY`.
 
 **This convention only holds if OpenClaw's runtime per-skill env scoping works as I inferred.** Not verified against OpenClaw source.
 
@@ -226,7 +226,7 @@ Five built-in skills require a **second** env var that `$TOOL_API_KEY` alone can
 | `coinbase` (`coinbase`)         | `$CB_API_SECRET`  | Same: signing secret                          |
 | `alpaca` (`alpaca`)             | `$ALPACA_SECRET`  | Trading API secret                            |
 
-**The Setup Wizard only captures a single API key per connection today.** These five tools are **already broken** for a reason different from the primary bug — even if we fix the primary bug, the second variable is never asked for, never stored, never emitted. This is a pre-existing UX gap that any schema decision should acknowledge.
+**The Setup Wizard only captures a single API key per connection today.** These five tools are **already broken** for a reason different from the primary bug - even if we fix the primary bug, the second variable is never asked for, never stored, never emitted. This is a pre-existing UX gap that any schema decision should acknowledge.
 
 ---
 
@@ -259,13 +259,13 @@ No `@openclaw/*` package in `package.json`. No vendored source under `container/
 - Whether skill slugs in `skills.entries` must match the OpenClaw-bundled skill's slug exactly, or whether user-defined slugs are allowed.
 - Whether there's a top-level `skills.enabled: boolean` or similar.
 
-**I recommend emitting only `enabled` and `env` until we have the gateway's schema in hand** — the cost of being wrong is runtime validation failure at deploy, which is better than the current silent failure but still painful.
+**I recommend emitting only `enabled` and `env` until we have the gateway's schema in hand** - the cost of being wrong is runtime validation failure at deploy, which is better than the current silent failure but still painful.
 
 ---
 
 ## 5. Three options, fully evaluated
 
-### Option A — In-code registry, skill-centric (minimal change)
+### Option A - In-code registry, skill-centric (minimal change)
 
 **Data:**
 
@@ -305,7 +305,7 @@ TOOLS.md gets `displayName` (exists on the model) with a fallback to `getToolByS
 | Multi-var tools               | Still broken (primary key works; `$SF_INSTANCE_URL` etc. missing).       |
 | Slug drift                    | Blocks ~5 tools (Twitter API, YouTube Data, GSC, Google Analytics) unless we normalize or fix seeds. |
 
-### Option B — Denormalize into `ToolConnection`
+### Option B - Denormalize into `ToolConnection`
 
 **Schema migration:**
 
@@ -324,16 +324,16 @@ model ToolConnection {
 |-------------------------------|-------------------------------------------------------------------------|
 | Setup Wizard                  | Needs new UI fields for multi-var tools (captures `envVarsJson`).        |
 | Generator path                | `ToolConnection.skillSlug` + `envVarsJson` directly. Simple read, no joins. |
-| Tool removal                  | Orphaned rows where `skillSlug` points to removed skill — cleanup job needed. |
+| Tool removal                  | Orphaned rows where `skillSlug` points to removed skill - cleanup job needed. |
 | Marketplace                   | Marketplace skills would need the same storage; duplicate or unify.      |
-| Migration path                | Prisma migration. Existing rows get `skillSlug = NULL`, `envVarsJson = NULL` — effectively **forces every user to reconnect every tool**. Backfill impossible because no mapping was ever persisted. |
-| Multi-var tools               | **Solved** — the schema now supports it.                                |
+| Migration path                | Prisma migration. Existing rows get `skillSlug = NULL`, `envVarsJson = NULL` - effectively **forces every user to reconnect every tool**. Backfill impossible because no mapping was ever persisted. |
+| Multi-var tools               | **Solved** - the schema now supports it.                                |
 | Slug drift                    | Doesn't help directly; still a concern if UI passes the wrong slug.     |
 
 **Advantage:** properly models multi-variable tools.
 **Cost:** migration, UI work, existing users must reconnect, and we still need a separate registry for Setup Wizard.
 
-### Option C — Separate `Tool` model
+### Option C - Separate `Tool` model
 
 **Schema migration:**
 
@@ -376,18 +376,18 @@ Tool metadata moves into the DB. [src/data/tool-catalog.ts](../src/data/tool-cat
 2. **Use `Skill.compatibleTools` as the tool→skill map.** It's already populated in the seeds and already read by other parts of the builder.
 3. **Hardcode `"TOOL_API_KEY"` as the emitted env var name in `skills.entries[slug].env`.** 84 grep hits across the skill library verify this convention.
 4. **Handle the slug drift in the same PR.** Fix the four seed-data mismatches (`twitter-api → twitter_api`, `youtube-data-api → youtube_data`, `google-search-console → gsc`, `google-analytics → google_analytics`). Otherwise Option A ships broken for those four tools.
-5. **Ship partial support for multi-var tools** (Salesforce, Beehiiv, Binance, Coinbase, Alpaca). Primary key works. Secondary env var missing. Flag these five in the Setup Wizard with a "Partial support — some features will fail" banner. Track as a follow-up: add multi-input UX + persistence + generator support.
+5. **Ship partial support for multi-var tools** (Salesforce, Beehiiv, Binance, Coinbase, Alpaca). Primary key works. Secondary env var missing. Flag these five in the Setup Wizard with a "Partial support - some features will fail" banner. Track as a follow-up: add multi-input UX + persistence + generator support.
 
 ### For OAUTH_COMPOSIO tools (21 of the 47)
 
 **Emit nothing into `skills.entries.env`.** Composio handles auth via `composioConnectionId` stored on the `ToolConnection`. Still emit the skill as `{ enabled: true }` if the user has a connected tool that maps to that skill, so the agent knows the skill is usable.
 
-**This is an inference.** See [open question #1](#7-open-questions) — I can't verify it from local sources.
+**This is an inference.** See [open question #1](#7-open-questions) - I can't verify it from local sources.
 
 ### Reasoning
 
 - **Smallest blast radius.** No DB migration. No user reconnection. No UI work for the 42 single-var tools.
-- **Uses data we already have.** `Skill.compatibleTools`, `ToolConnection.toolSlug`, `ToolConnection.encryptedApiKey`, `ToolConnection.displayName` — all already populated.
+- **Uses data we already have.** `Skill.compatibleTools`, `ToolConnection.toolSlug`, `ToolConnection.encryptedApiKey`, `ToolConnection.displayName` - all already populated.
 - **Honors verified conventions.** `TOOL_API_KEY` is the 84-times-over convention for built-in skills.
 - **Testable against real Prisma types.** The integration test can import `Prisma.ToolConnectionGetPayload` and `Prisma.SkillGetPayload` so any future schema change that drops a used field fails at type-check time. This blocks the drift that caused the original bug.
 - **Options B and C solve a multi-var UX problem with a schema change, when the real gap is UX.** The UI doesn't ask for `$SF_INSTANCE_URL` today; changing the schema doesn't make the user fill it in. Fix the UX first; the schema can follow.
@@ -413,11 +413,11 @@ These five decisions block the fix PR. I need your call before I write any code.
 Two possibilities:
 
 - **(a) Composio-native.** OpenClaw reads `composioConnectionId` from the container env and handles OAuth at runtime. We emit `{ enabled: true }` with **no env block** and Composio injects headers into outbound requests. The `$TOOL_API_KEY` in the skillMd becomes harmless prose because Composio replaces the whole transport.
-- **(b) Skip entirely.** Users are expected to also have an API key for these tools (Composio is just the OAuth broker), and until we can verify runtime behavior, we omit OAUTH_COMPOSIO tools from `skills.entries` entirely — the skills still exist in the agent's catalog but with no env.
+- **(b) Skip entirely.** Users are expected to also have an API key for these tools (Composio is just the OAuth broker), and until we can verify runtime behavior, we omit OAUTH_COMPOSIO tools from `skills.entries` entirely - the skills still exist in the agent's catalog but with no env.
 
 **I cannot verify this from local source.** No OpenClaw package, no Composio docs referenced in our code.
 
-**Proposed default:** (b) — safer. Ship fix for API_KEY tools; track Composio enablement as a follow-up.
+**Proposed default:** (b) - safer. Ship fix for API_KEY tools; track Composio enablement as a follow-up.
 
 **Your call:** (a) or (b)?
 
@@ -428,7 +428,7 @@ Five tools need a second env var that the Setup Wizard doesn't capture today.
 - **(a) Ship partial support now.** Primary key works. Show a "Partial support" badge in the UI. Follow-up PR adds multi-var UX + generator support.
 - **(b) Gate the fix.** Block the PR until UI + schema + generator all land together.
 
-**Proposed default:** (a). Fixing the primary path unblocks 42/47 tools immediately. The 5 multi-var tools are already broken today and remain broken after this PR — no net regression, partial progress.
+**Proposed default:** (a). Fixing the primary path unblocks 42/47 tools immediately. The 5 multi-var tools are already broken today and remain broken after this PR - no net regression, partial progress.
 
 **Your call:** (a) or (b)?
 
@@ -436,8 +436,8 @@ Five tools need a second env var that the Setup Wizard doesn't capture today.
 
 Four seed mismatches (`twitter-api`, `youtube-data-api`, `google-search-console`, `google-analytics`) plus seven skills pointing at tools that don't exist in the catalog (`pipedrive`, `smartlead`, `typefully`, `coinbase`, `snyk`, `zillow`, `google-business-profile`).
 
-- **(a) Fix seeds in the fix PR** — align `compatibleTools` values to catalog slugs; delete or reclassify the orphans.
-- **(b) Add a slug normalizer in the generator** (strip `-api`/`-data-api`, convert `-` ↔ `_`) — handles the drift without seed changes but is fragile.
+- **(a) Fix seeds in the fix PR** - align `compatibleTools` values to catalog slugs; delete or reclassify the orphans.
+- **(b) Add a slug normalizer in the generator** (strip `-api`/`-data-api`, convert `-` ↔ `_`) - handles the drift without seed changes but is fragile.
 - **(c) Separate cleanup PR.**
 
 **Proposed default:** (a). The fix PR already touches the generator and tests; one more seed change is small and gives us a consistent baseline. (b) is brittle; (c) leaves the fix half-broken for 4 tools.
