@@ -43,6 +43,11 @@ import { canWakeHibernatedWorkspace } from "@/lib/trial/wake-entitlement"
 import { isSelfHost } from "@/lib/profile"
 import { noteSelfHostGatewayRejection } from "@/lib/openclaw/docker-live-status"
 import { noteMissingProviderAuth } from "@/lib/openclaw/provider-auth-turn"
+import {
+  GATEWAY_LISTEN_TIMEOUT_MS,
+  isColdStartChatFailure,
+  probeGatewayListening,
+} from "@/lib/openclaw/gateway-ingress"
 import crypto from "node:crypto"
 
 // HTTP returns 202 + runId before the gateway turn. Waiting here for
@@ -62,11 +67,81 @@ export interface ChatRouteDeps {
   send: typeof sendChatMessage
   socketFactory?: ChatSocketFactory
   after?: ChatRouteAfter
+  /** Websocket upgrade probe. Production uses the deploy listen probe. */
+  probeGateway?: (wsUrl: string) => Promise<{ ok: boolean; status: number; body: string }>
+  probeHealth?: (url: string) => Promise<boolean>
+  sleep?: (ms: number) => Promise<void>
+  now?: () => number
 }
 const defaultDeps: ChatRouteDeps = { send: sendChatMessage, after }
 let deps: ChatRouteDeps = defaultDeps
 export function __setChatRouteDepsForTests(next: ChatRouteDeps | null) {
   deps = next ?? defaultDeps
+}
+
+function healthUrlFromWs(wsUrl: string): string {
+  const url = new URL(wsUrl)
+  url.protocol = url.protocol === "wss:" ? "https:" : "http:"
+  url.pathname = "/healthz"
+  url.search = ""
+  url.hash = ""
+  return url.toString()
+}
+
+/**
+ * After nap, RUNNING means the container started. The model turn still fails
+ * until /healthz and the websocket upgrade both succeed, and a cold start can
+ * fail the first agent run after that. Retry against the deploy listen probe
+ * until GATEWAY_LISTEN_TIMEOUT_MS, with one idempotency key.
+ */
+async function sendWhenGatewayListening(args: {
+  workspaceId: string
+  deviceKey: ChatDeviceIdentity
+  sessionKey: string
+  message: string
+  idempotencyKey: string
+}): Promise<SendChatResult> {
+  const clock = deps.now ?? Date.now
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+  const deadline = clock() + GATEWAY_LISTEN_TIMEOUT_MS
+  let last: SendChatResult = { ok: false, reason: "unreachable", detail: "gateway not listening" }
+  while (clock() < deadline) {
+    const live = await getGatewayConnectionInfo(args.workspaceId)
+    if (!live) {
+      await sleep(1000)
+      continue
+    }
+    const probed = await probeGatewayListening({
+      healthUrl: healthUrlFromWs(live.wsUrl),
+      wsUrl: live.wsUrl,
+      probeHealth: deps.probeHealth,
+      probeUpgrade: deps.probeGateway,
+    })
+    if (probed.verdict === "refuse") {
+      return {
+        ok: false,
+        reason: "unreachable",
+        detail: probed.upgrade?.body || "gateway refused the upgrade",
+      }
+    }
+    if (probed.verdict !== "ok") {
+      await sleep(1000)
+      continue
+    }
+    last = await deps.send({
+      wsUrl: live.wsUrl,
+      token: live.token,
+      deviceKey: args.deviceKey,
+      sessionKey: args.sessionKey,
+      message: args.message,
+      idempotencyKey: args.idempotencyKey,
+      awaitReplyMs: 90_000,
+      socketFactory: deps.socketFactory,
+    })
+    if (last.ok || !isColdStartChatFailure(last.detail ?? "")) return last
+    await sleep(1000)
+  }
+  return last
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -113,7 +188,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Self-host nap is docker stop. A chat message starts the same container
   // and waits for the reply. Hosted stays on the 202 hold.
+  let wokeFromNap = false
   if (isSelfHost() && workspace.status === "HIBERNATED") {
+    wokeFromNap = true
     await wakeWorkspace(id)
     const deadline = Date.now() + 90_000
     while (Date.now() < deadline) {
@@ -227,17 +304,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const idempotencyKey = crypto.randomUUID()
 
   if (isSelfHost()) {
-    const result = await deps.send({
-      wsUrl: connection.wsUrl,
-      token: connection.token,
-      deviceKey,
-      sessionKey,
-      message,
-      idempotencyKey,
-      // Long enough for a real model turn. The fixture gateway still returns as soon as it emits chat final.
-      awaitReplyMs: 90_000,
-      socketFactory: deps.socketFactory,
-    })
+    const result = wokeFromNap
+      ? await sendWhenGatewayListening({
+          workspaceId: id,
+          deviceKey,
+          sessionKey,
+          message,
+          idempotencyKey,
+        })
+      : await deps.send({
+          wsUrl: connection.wsUrl,
+          token: connection.token,
+          deviceKey,
+          sessionKey,
+          message,
+          idempotencyKey,
+          // Long enough for a real model turn. The fixture gateway still returns as soon as it emits chat final.
+          awaitReplyMs: 90_000,
+          socketFactory: deps.socketFactory,
+        })
     if (!result.ok) {
       try {
         await noteSelfHostGatewayRejection(id, result.detail ?? "Chat send failed.")

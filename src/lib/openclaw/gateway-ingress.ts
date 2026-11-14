@@ -63,6 +63,50 @@ export interface UpgradeProbeResult {
   body: string
 }
 
+/** Deploy and wake share this bound. A cold start past it is a 502, not an infinite wait. */
+export const GATEWAY_LISTEN_TIMEOUT_MS = 60_000
+
+export type GatewayListenVerdict = "ok" | "wait" | "refuse"
+
+/**
+ * The deploy listen probe: /healthz, then one websocket upgrade.
+ * "refuse" is an HTTP rejection (status >= 400). Waiting will not turn it into 101.
+ * "wait" is a gateway that is not accepting the upgrade yet.
+ */
+export async function probeGatewayListening(args: {
+  healthUrl: string
+  wsUrl: string
+  probeHealth?: (url: string) => Promise<boolean>
+  probeUpgrade?: (wsUrl: string) => Promise<UpgradeProbeResult>
+}): Promise<{ verdict: GatewayListenVerdict; upgrade: UpgradeProbeResult | null }> {
+  const probeHealth = args.probeHealth ?? (async (url: string) => {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) })
+      return res.ok
+    } catch {
+      return false
+    }
+  })
+  const probeUpgrade = args.probeUpgrade ?? probeGatewayUpgrade
+  if (!(await probeHealth(args.healthUrl))) return { verdict: "wait", upgrade: null }
+  const upgrade = await probeUpgrade(args.wsUrl)
+  if (upgrade.ok) return { verdict: "ok", upgrade }
+  if (upgrade.status >= 400) return { verdict: "refuse", upgrade }
+  return { verdict: "wait", upgrade }
+}
+
+/** Cold-start failures the chat route may retry until GATEWAY_LISTEN_TIMEOUT_MS. */
+export function isColdStartChatFailure(detail: string): boolean {
+  return (
+    detail.includes("Agent run failed") ||
+    detail.includes("no challenge/hello") ||
+    detail.includes("gateway starting") ||
+    detail.includes("socket closed") ||
+    detail.includes("socket construction failed") ||
+    detail.includes("budget exhausted before reconnect")
+  )
+}
+
 /** One websocket upgrade. 101 is healthy. A 403 body is the gateway's rejection. */
 export function probeGatewayUpgrade(wsUrl: string, timeoutMs = 2000): Promise<UpgradeProbeResult> {
   const url = new URL(wsUrl)
