@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Claws repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Fix (2026-06-08): the scheduled build started failing with
       # "No space left on device" — the GitHub-hosted runner (~14GB free) is

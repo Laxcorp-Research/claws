@@ -59,7 +59,7 @@ jobs:
             app.buildclaws.ai:443
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Require sandbox secrets
         run: |

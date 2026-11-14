@@ -25,7 +25,7 @@ jobs:
     name: Clone-tag contracts vs v2026.9.4
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -42,7 +42,7 @@ jobs:
     # secret and runs on fork pull requests the same way it runs on main.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Pull 9.4 base and bake overlay
         run: |
           set -euo pipefail
