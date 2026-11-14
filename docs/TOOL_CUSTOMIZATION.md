@@ -29,7 +29,7 @@ snapshot via `resolveWorkspaceToolRequirements`. New installs always seed JSON.
 `remove` does **not** delete `ToolConnection` rows. Disconnect / credential
 deletion is a separate explicit action (REMOVE dialog checkbox, default on).
 
-AI-provider slugs (`isAIProvider`) are rejected — they stay Step 1 domain.
+AI-provider slugs (`isAIProvider`) are rejected - they stay Step 1 domain.
 
 ## Deploy gate + Step 2
 
@@ -39,7 +39,7 @@ Both consume the workspace resolver (never live template JSON for gating).
 ## Generator + drift
 
 - Requirement-only edits (demote / dismiss / restore / remove without
-  disconnect) do **not** change config fingerprint `tools` area — no drift
+  disconnect) do **not** change config fingerprint `tools` area - no drift
   banner; no redeploy required for the gate change alone.
 - Disconnect / credential delete changes `ToolConnection` → fingerprint
   `tools` area dirty → Manage Tools / dashboard drift banner → redeploy
@@ -51,8 +51,8 @@ Both consume the workspace resolver (never live template JSON for gating).
 
 `resolveToolDependents` labels agents via:
 
-1. **Structural** — `Skill.compatibleTools` → `AgentSkill` → Agent
-2. **Prose** — SOUL.md / AGENTS.md / HEARTBEAT.md mention name or slug
+1. **Structural** - `Skill.compatibleTools` → `AgentSkill` → Agent
+2. **Prose** - SOUL.md / AGENTS.md / HEARTBEAT.md mention name or slug
 
 Honest limit: paraphrases that omit the tool name/slug are undetectable;
 many official templates seed empty `skills:[]` so prose is often the only hit.

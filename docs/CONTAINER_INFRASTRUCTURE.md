@@ -22,7 +22,7 @@ Last updated: 2026-05-31
 
 Each Claw workspace gets its own Railway service (Docker container). Vercel calls
 Railway's GraphQL API via `src/lib/openclaw/railway-client.ts`. There is no
-self-managed infrastructure — Railway handles Docker image pulling, networking,
+self-managed infrastructure - Railway handles Docker image pulling, networking,
 TLS, scaling, and restarts.
 
 ---
@@ -50,7 +50,7 @@ These must be set in `.env.local` (dev) and in Vercel (staging/production):
 | `OPENCLAW_DOCKER_IMAGE` | `ghcr.io/laxcorp-research/openclaw-runtime:2026.5.22` | Last-resort fallback only. Post-PR-1 the deployer reads `OpenClawVersion.dockerImage` from the `isStable=true` row (`resolveDeployImage()` in `deployer.ts`); this env var is consulted only if no such row exists. Leave unset in normal operation. |
 
 If `RAILWAY_API_TOKEN` or `RAILWAY_PROJECT_ID` is missing, the deployer runs
-in **simulation mode** — it walks through all deployment stages with fake delays
+in **simulation mode** - it walks through all deployment stages with fake delays
 and produces a `sim-xxxxxxxx` container ID. No real container is created.
 Simulation mode throws in `NODE_ENV=production`.
 
@@ -162,11 +162,11 @@ that the deployer relies on for safety.
 
 1. **Primary**: `prisma.openClawVersion.findFirst({ where: { isStable: true }, orderBy: { releasedAt: 'desc' } })` → returns the row's `dockerImage`, which is an immutable `:<version>` reference (the register endpoint at `src/app/api/internal/versions/register/route.ts:88-93` rejects moving pointers like `:latest`/`:candidate` so this field can never be a tag that drifts).
 2. **Fallback**: `OPENCLAW_DOCKER_IMAGE` Vercel env var (manual override; not used in normal operation).
-3. **Hardcoded last-resort**: `ghcr.io/laxcorp-research/openclaw-runtime:latest` — fires only if both (1) and (2) are unset. The current prod and staging DBs each have a stable row, so this path is never taken in normal operation.
+3. **Hardcoded last-resort**: `ghcr.io/laxcorp-research/openclaw-runtime:latest` - fires only if both (1) and (2) are unset. The current prod and staging DBs each have a stable row, so this path is never taken in normal operation.
 
 The resolved string is passed to `railway-client.createService({ image })` /
 `updateAndRedeployService(..., image)`. Railway never independently consults
-`:latest` — it pulls the exact tag the deployer hands it.
+`:latest` - it pulls the exact tag the deployer hands it.
 
 ### Tagging policy
 
@@ -178,7 +178,7 @@ successful run:
 | `:base-<upstream-version>` | **Immutable** (one per upstream release) | Upstream OpenClaw base image (no overlay). Reused across overlay-only rebuilds (e.g. `:base-2026.5.22` serves both `:2026.5.22` and `:2026.5.22-1`). |
 | `:<output-version>` | **Immutable** (PR-2b policy enforced in the workflow) | Extended image with our overlay (`container/process-manager.mjs`, `container/credit-proxy.mjs`, `container/claws-activity-reporter/`). Output version equals upstream version on a clean release (`2026.5.22`) and gets a `-N` suffix for overlay-only rebuilds (`2026.5.22-1`). |
 | `:candidate` | Moving | Always points at the newest auto-built extended image. Promote workflow asserts this digest matches the requested `:<version>` digest before retagging `:latest`. |
-| `:latest` | Moving — **only the promote workflow rewrites it** | Marks the newest stable image. Build workflow never touches this tag. |
+| `:latest` | Moving - **only the promote workflow rewrites it** | Marks the newest stable image. Build workflow never touches this tag. |
 
 The immutable-tag policy is hard-enforced in `build-openclaw-image.yml:242-250`:
 running `force_version=<X>` against an already-existing `:<X>` tag fails the
@@ -202,7 +202,7 @@ job with an error pointing the operator at `force_version=<X>-1`.
 5. POST to the register endpoint with `isCandidate=true` so a new
    `OpenClawVersion` row lands with `isLatest=true, isStable=false`. The
    default register endpoint is **staging**
-   (`https://staging.app.buildclaws.ai/api/internal/versions/register`) —
+   (`https://staging.app.buildclaws.ai/api/internal/versions/register`) -
    pass `register_endpoint` to override for prod registration on
    manual-dispatch runs.
 
@@ -225,11 +225,11 @@ gh workflow run build-openclaw-image.yml --ref staging \
 Two cases:
 
 - **First build of a particular upstream release** (`force_version=2026.5.23`): identical to the cron path. Pushes `:base-2026.5.23`, `:2026.5.23`, `:candidate`.
-- **Overlay-only rebuild on top of an upstream release that's already been built** (`force_version=2026.5.22-1`): reuses `:base-2026.5.22`, builds a new extended image, pushes the new immutable `:2026.5.22-1`, moves `:candidate`. The `-N` suffix is **required** in this case — bare `force_version=2026.5.22` against an existing `:2026.5.22` tag is rejected to preserve immutability. The PR-4c workflow refactor introduced four distinct outputs (`output_version`, `upstream_version`, `upstream_tag`, deprecated alias `source_version`) so the overlay-suffixed value and the upstream-source value never get conflated in clone/label/tag operations.
+- **Overlay-only rebuild on top of an upstream release that's already been built** (`force_version=2026.5.22-1`): reuses `:base-2026.5.22`, builds a new extended image, pushes the new immutable `:2026.5.22-1`, moves `:candidate`. The `-N` suffix is **required** in this case - bare `force_version=2026.5.22` against an existing `:2026.5.22` tag is rejected to preserve immutability. The PR-4c workflow refactor introduced four distinct outputs (`output_version`, `upstream_version`, `upstream_tag`, deprecated alias `source_version`) so the overlay-suffixed value and the upstream-source value never get conflated in clone/label/tag operations.
 
 `force_version` runs use whatever SHA the **dispatched ref** points at to
 COPY `container/*.mjs` into the final image. Overlay changes land on
-`staging` first in our flow, so **always pass `--ref staging`** — a
+`staging` first in our flow, so **always pass `--ref staging`** - a
 default-branch (`main`) dispatch silently builds the overlay from main and
 omits anything merged to staging but not yet promoted to main. This was
 caught live during the PR-9/A-container release (2026-06-10): the first
@@ -241,9 +241,9 @@ The verified end-to-end sequence for shipping a `container/` overlay change
 (first executed for PR-9/A-container, 2026-06-10/11):
 
 1. **Merge the overlay PR to `staging`.** The image build copies
-   `container/*.mjs` from the dispatched ref — staging is where the change
+   `container/*.mjs` from the dispatched ref - staging is where the change
    lives.
-2. **Dispatch the build with `--ref staging`** (see the warning above —
+2. **Dispatch the build with `--ref staging`** (see the warning above -
    default-branch dispatch silently builds a stale overlay):
 
    ```bash
@@ -254,26 +254,26 @@ The verified end-to-end sequence for shipping a `container/` overlay change
    exists (immutable-tag policy). The build registers an `isCandidate` row on
    **staging** by default.
 3. **Flip the staging stable row via the admin promote route**
-   (`POST /api/admin/versions/<row-id>/promote`, admin session) — **not** the
+   (`POST /api/admin/versions/<row-id>/promote`, admin session) - **not** the
    promote workflow at this stage. The workflow also retags GHCR `:latest`,
    which should stay parked until prod promotion; the admin route flips
    `isStable` transactionally on the staging DB and touches nothing in GHCR.
 4. **Validate on staging**: deploy/redeploy a staging workspace; confirm
    `Deployment.containerImage` AND Railway `serviceInstance.source.image`
    show the new tag; exercise the changed behavior end-to-end. Note: use a
-   full **container redeploy** for any restart needed during validation —
+   full **container redeploy** for any restart needed during validation -
    the in-process `gateway.restart.request` path silently kills the
    activity wire (see
    [#122](https://github.com/Laxcorp-Research/claws/issues/122)).
 5. **Prod promotion (separate, operator-gated step)**:
-   `promote-openclaw-image.yml` with `target_env=production` — moves
+   `promote-openclaw-image.yml` with `target_env=production` - moves
    `:latest` and writes prod's stable row.
 
 **Pre-first-customer-deploy verification item:** as of 2026-06-11 the
 **prod `OpenClawVersion` table is EMPTY** ("No versions registered" in the
 prod admin). A first prod deploy would fall through image resolution to the
 `OPENCLAW_DOCKER_IMAGE` env var or the hardcoded `:latest` fallback
-(`resolveDeployImage`, `src/lib/openclaw/deployer.ts`) — unpinned and
+(`resolveDeployImage`, `src/lib/openclaw/deployer.ts`) - unpinned and
 unaudited. The first prod promotion fixes this; verify a stable row exists
 on prod **before** any first customer deploy. (Master-tracker item.)
 
@@ -287,7 +287,7 @@ on prod **before** any first customer deploy. (Master-tracker item.)
 | `:latest` | Yes | Only on a successful `promote-openclaw-image.yml` run. |
 | `@sha256:...` (digest) | No | Never (content-addressed). |
 
-Documentation that pins to a specific `:<version>` is permanent — the tag
+Documentation that pins to a specific `:<version>` is permanent - the tag
 will not be re-pointed. Documentation that pins to `:latest` is a snapshot
 of "the digest `:latest` resolved to when the doc was written"; the
 underlying immutable `:<version>` it pointed to is the durable reference.
@@ -301,7 +301,7 @@ the stable slot:
 gh workflow run promote-openclaw-image.yml --ref main \
   -f version=<version-to-promote> \
   -f target_env=production
-# target_env is REQUIRED — no default (the old free-text register_endpoint
+# target_env is REQUIRED - no default (the old free-text register_endpoint
 # defaulted to PROD, so a staging-intended dispatch silently flipped prod's
 # stable row). Choose `production` or `staging`. The workflow maps the enum to
 # the register endpoint and FAIL-CLOSED verifies the resolved host before
@@ -330,7 +330,7 @@ The workflow:
 
 Note that `:latest` is moved unconditionally by the promote workflow even
 when `target_env` is staging. This is safe because nothing in the
-prod runtime path reads `:latest` — the prod deployer pulls
+prod runtime path reads `:latest` - the prod deployer pulls
 `OpenClawVersion.dockerImage` from its own DB's stable row, which is an
 immutable `:<version>` reference. The `:latest` tag is operational
 furniture, not a deploy instruction.
@@ -339,12 +339,12 @@ furniture, not a deploy instruction.
 
 The full sequence to move a prod workspace onto a new runtime version:
 
-1. `build-openclaw-image.yml` runs (cron or manual) — registers a candidate
+1. `build-openclaw-image.yml` runs (cron or manual) - registers a candidate
    row on **staging**.
 2. Soak the candidate on staging: redeploy a staging workspace; the staging
    deployer reads the (post-promote) staging stable row and pulls the new
    image. Validate Railway logs, plugin load, dashboard behavior.
-3. `promote-openclaw-image.yml` runs with `target_env=production` — flips
+3. `promote-openclaw-image.yml` runs with `target_env=production` - flips
    prod's `OpenClawVersion` stable row and retags GHCR `:latest`.
 4. Prod workspaces continue running on their old image until they are
    redeployed (env change, builder save, `/api/deploy/.../redeploy`, or a
@@ -352,7 +352,7 @@ The full sequence to move a prod workspace onto a new runtime version:
    workspace; nothing auto-rolls.
 
 The `OPENCLAW_DOCKER_IMAGE` env var is no longer the daily knob. Treat it
-as an escape hatch only — e.g. to force a specific workspace's next
+as an escape hatch only - e.g. to force a specific workspace's next
 `createService` call to use a non-stable image during incident response.
 
 ---
@@ -360,7 +360,7 @@ as an escape hatch only — e.g. to force a specific workspace's next
 ## Service Pool (beta-scale serviceCreate banking)
 
 Railway's only hard **daily** write cap is `serviceCreate` (25/day per
-account — the governor's ledger). Empty services cost $0 (no active
+account - the governor's ledger). Empty services cost $0 (no active
 deployment, no volume) and the per-project inventory ceiling is 100 services
 on Pro (support-raisable; the refill respects `SERVICE_POOL_PROJECT_CEILING`).
 The pool turns that into deploy capacity:
@@ -389,7 +389,7 @@ Contracts:
   queues only when **pool empty AND cap spent**.
 - **Boots identically (Rule-36)**: a pooled checkout deploys through the same
   `updateAndRedeployService` mutations (image, startCommand, healthcheck,
-  env replace, domain reuse, deployV2) as a fresh `createService` — locked by
+  env replace, domain reuse, deployV2) as a fresh `createService` - locked by
   `deployer-pool.test.ts` (byte-identical envVars + image).
 - **Recycle privacy invariant**: RECYCLING → READY only after deployment
   removed + env replaced with `CLAWS_POOLED` marker + volumes destroyed AND

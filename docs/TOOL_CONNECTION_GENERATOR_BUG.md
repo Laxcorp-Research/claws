@@ -2,7 +2,7 @@
 
 **Status (post-PR #2.5, 2026-04-21):** column `encryptedApiKey` has been dropped; replaced by `encryptedCredentials`. Document preserved as historical investigation.
 
-**Status:** Open — **LAUNCH BLOCKER**
+**Status:** Open - **LAUNCH BLOCKER**
 **Severity:** Critical
 **Discovered:** April 2026, during heartbeat system production-fix PR
 **Masking mechanism:** `@ts-nocheck` on `src/lib/openclaw/generator.ts`
@@ -16,7 +16,7 @@ The bug is invisible in two ways:
 1. **`@ts-nocheck`** at the top of `generator.ts` suppresses the 4 type errors that TypeScript would otherwise have surfaced on build.
 2. **The generator tests** (`src/lib/openclaw/__tests__/generator.test.ts`) define a mock `toolConnections` record that contains all the phantom fields, so `it('includes tool connection credentials in skills entries', ...)` passes against the mock even though the production Prisma model can never produce that shape.
 
-In production, every user who wires up a tool gets the connection saved in the DB, the UI shows "Connected," the container boots — and then no API key reaches the agent at runtime, because the `env` block of `skills.entries` never gets populated.
+In production, every user who wires up a tool gets the connection saved in the DB, the UI shows "Connected," the container boots - and then no API key reaches the agent at runtime, because the `env` block of `skills.entries` never gets populated.
 
 ## Phantom fields referenced in `generator.ts`
 
@@ -34,7 +34,7 @@ The four phantom fields and what the code tries to do with them:
 | Phantom field      | Where used                                    | What it controls                                           |
 |--------------------|-----------------------------------------------|------------------------------------------------------------|
 | `skillSlug`        | `generateSkillsEntriesConfig` (line ~372)     | Keys the `skills.entries` map (determines which skill gets the env var). |
-| `envVarMapping`    | `generateSkillsEntriesConfig`                 | `Record<envVarName, encryptedApiKey>` — what env vars the container gets. |
+| `envVarMapping`    | `generateSkillsEntriesConfig`                 | `Record<envVarName, encryptedApiKey>` - what env vars the container gets. |
 | `toolName`         | `generateToolsMd` (line ~992)                 | Display name used in the `### Heading` of `TOOLS.md`.      |
 | `notes`            | `generateToolsMd`                             | Free-text notes rendered under each tool section.          |
 
@@ -66,7 +66,7 @@ No `skillSlug`, no `envVarMapping`, no `toolName`, no `notes`. There is `toolSlu
   - Any skill that requires an env var (which is most of them) will fail with "missing API key."
   - `TOOLS.md` for every deployed container has `### undefined` sections, which the orchestrator's LLM will ingest as garbled context.
 - **User experience:** Looks like a correctly configured claw. Fails silently when the agent tries to act.
-- **Discovery risk:** Bugs of this kind tend to be reported as "the agent isn't using my API key" or "tool calls are failing" — which users will attribute to LLM quality or the external API, not to our generator.
+- **Discovery risk:** Bugs of this kind tend to be reported as "the agent isn't using my API key" or "tool calls are failing" - which users will attribute to LLM quality or the external API, not to our generator.
 
 ## Why the tests don't catch it
 
@@ -86,7 +86,7 @@ toolConnections: [
 
 The mock shape matches the (broken) code, not the Prisma model. So the test passes. This is a classic "mock drifted from reality" bug.
 
-**Any fix MUST include a test that runs against the REAL Prisma model shape** — ideally one that either uses an actual Prisma client against a test DB, or mocks the model via `Prisma.ToolConnectionGetPayload<{}>` so that adding/removing schema fields breaks the test at type-check time.
+**Any fix MUST include a test that runs against the REAL Prisma model shape** - ideally one that either uses an actual Prisma client against a test DB, or mocks the model via `Prisma.ToolConnectionGetPayload<{}>` so that adding/removing schema fields breaks the test at type-check time.
 
 ## What the fix requires
 
@@ -96,7 +96,7 @@ This is not a "rename four fields" change. A correct fix requires:
 
 We need to decide the data model for answering these questions:
 
-- **A tool is connected — which skill(s) does it authorize?**
+- **A tool is connected - which skill(s) does it authorize?**
   Options: (a) 1:1 (a tool is the skill), (b) 1:N (a tool provides multiple skills), (c) N:M (skills can use any of several tools). The current code implicitly assumes (a) via `skillSlug`, but the `Skill` table is a separate thing and the mapping was never persisted.
 
 - **What env vars does each tool produce?**
@@ -117,7 +117,7 @@ After the schema decision, add an integration test that:
 
 ### 3. Remove `@ts-nocheck`
 
-Once the above are in place, `@ts-nocheck` can come off `generator.ts`. This PR **intentionally left it on** — removing it without first fixing the tool-connection bug would force the fix to happen in this PR (scope blow-up), or would require adding `@ts-ignore` on each of the 4 phantom references (which would be a worse state than the current single blanket directive).
+Once the above are in place, `@ts-nocheck` can come off `generator.ts`. This PR **intentionally left it on** - removing it without first fixing the tool-connection bug would force the fix to happen in this PR (scope blow-up), or would require adding `@ts-ignore` on each of the 4 phantom references (which would be a worse state than the current single blanket directive).
 
 ## Why this is a launch blocker
 
@@ -127,21 +127,21 @@ Once the above are in place, `@ts-nocheck` can come off `generator.ts`. This PR 
 
 ## Do not proceed with
 
-- New tool integrations in the Builder UI — more surface area for the bug.
+- New tool integrations in the Builder UI - more surface area for the bug.
 - Marketing or onboarding flows that rely on Tavily / similar skills working out of the box.
 - Enabling tool-connection features for new user cohorts.
 
 ## Related code
 
-- `src/lib/openclaw/generator.ts` — `generateSkillsEntriesConfig` (~line 370), `generateToolsMd` (~line 990).
-- `prisma/schema.prisma` — `ToolConnection` model.
-- `src/lib/openclaw/__tests__/generator.test.ts` — tests with phantom-field mock.
+- `src/lib/openclaw/generator.ts` - `generateSkillsEntriesConfig` (~line 370), `generateToolsMd` (~line 990).
+- `prisma/schema.prisma` - `ToolConnection` model.
+- `src/lib/openclaw/__tests__/generator.test.ts` - tests with phantom-field mock.
 - UI flow: `src/app/api/tools/` and `src/components/builder/tools-drawer.tsx` (wherever tool connections are persisted).
 
 ## Fix order
 
 1. Confirm schema decision with the team.
-2. Migrate `ToolConnection` (add fields or rely on a registry — either way, the Prisma model changes).
+2. Migrate `ToolConnection` (add fields or rely on a registry - either way, the Prisma model changes).
 3. Rewrite the two broken functions in `generator.ts` to read the real shape.
 4. Add the integration test (using real Prisma types, not a handwritten mock).
 5. Remove `@ts-nocheck` from `generator.ts`.

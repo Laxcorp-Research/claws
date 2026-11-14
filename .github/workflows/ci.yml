@@ -21,6 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Fail only when an em dash (U+2014) is present. A clean tree must exit 0.
+      # `grep -rP ... && exit 1` is wrong here: grep exits 1 when it finds
+      # nothing, and `&&` then skips the exit, but a script that always
+      # reaches `exit 1` cannot go green. The if-form fails the job only
+      # on a match.
+      - name: Reject em dashes in README and docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -rP '\x{2014}' README.md docs/; then
+            echo "::error::em dash (U+2014) in README.md or docs/"
+            exit 1
+          fi
+
       # PR-2d: hard-fail any prisma/migrations/**/*.sql whose first 3 bytes
       # are EF BB BF (UTF-8 BOM). PostgreSQL's parser rejects the BOM at
       # position 0 before any DDL runs, causing `prisma migrate deploy` to
