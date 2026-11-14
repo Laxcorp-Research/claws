@@ -16,7 +16,7 @@ docker compose up -d
 
 `docker-compose.yml` starts four things: Postgres 16, Redis 7, a one-shot pull of `ghcr.io/laxcorp-research/openclaw-runtime` (the shipped tag is `2026.9.4-5`), and `ghcr.io/laxcorp-research/claws:latest` on port 3000. The app healthcheck is `GET /api/health`.
 
-Open http://localhost:3000. The first page is the owner form (`src/app/setup/owner/page.tsx`). It posts to `POST /api/setup/owner` and creates the only account. Later sign-ins use that email and password.
+Open http://localhost:3000 and create your owner account. The form is `src/app/setup/owner/page.tsx`. It posts to `POST /api/setup/owner` and creates the only account. Later sign-ins use that email and password.
 
 What you see after that:
 
@@ -372,7 +372,7 @@ First-run issues found by those stranger runs, labeled `first-run` on this repos
 
 | Issue | What broke |
 | --- | --- |
-| [#14](https://github.com/Laxcorp-Research/claws/issues/14) | The install script died during image build on npm certificate verification. |
+| [#14](https://github.com/Laxcorp-Research/claws/issues/14) | The old install path died during image build on certificate verification. |
 | [#16](https://github.com/Laxcorp-Research/claws/issues/16) | After the owner form, sign-in had no password field. |
 | [#17](https://github.com/Laxcorp-Research/claws/issues/17) | Quickstart did not pull the runtime image. |
 | [#20](https://github.com/Laxcorp-Research/claws/issues/20) | Installing Twitter/X Growth Machine opened a hosted checkout. |
