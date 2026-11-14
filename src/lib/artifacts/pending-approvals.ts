@@ -130,7 +130,7 @@ export async function hydratePendingApprovals(
     const state = states.get(fileVersionId)
     const title = sanitizeActivityText(titleFromDeliverablePath(logicalPath))
     const preview = sanitizeActivityText(
-      meta.preview ?? (fv ? previewFromContent(fv.content) : ""),
+      fv?.content ? previewFromContent(fv.content) : (meta.preview ?? ""),
     )
     out.push({
       id: req.id,

@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { ERRORS, apiSuccess } from "@/lib/api/response"
 import { prisma } from "@/lib/db"
-import { formatActivityLog, type ActivityLogFormatInput } from "@/lib/activity-log-format"
+import { formatActivityLog, withFreshDeliverablePreviews, type ActivityLogFormatInput } from "@/lib/activity-log-format"
 import {
   chatRunStateQueryWhere,
   parseRunStateRunIds,
@@ -36,6 +36,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   return apiSuccess({
-    rows: rows.map((row) => formatActivityLog(row as ActivityLogFormatInput)),
+    rows: await withFreshDeliverablePreviews(
+      rows.map((row) => formatActivityLog(row as ActivityLogFormatInput)),
+    ),
   })
 }

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { getSessionUser } from "@/lib/api/auth"
 import { verifyWorkspaceOwnership } from "@/lib/api/ownership"
 import { prisma } from "@/lib/db"
-import { formatActivityLog } from "@/lib/activity-log-format"
+import { formatActivityLog, withFreshDeliverablePreviews } from "@/lib/activity-log-format"
 import {
   CHAT_RUN_STATE_STREAM_SCOPE,
   chatRunStateInitWhere,
@@ -56,7 +56,7 @@ export async function GET(
 
       if (initialLogs.length > 0) {
         lastTimestamp = initialLogs[0].timestamp
-        send("init", initialLogs.map(formatLog).reverse())
+        send("init", await withFreshDeliverablePreviews(initialLogs.map(formatLog).reverse()))
       } else {
         send("init", [])
       }
@@ -74,8 +74,9 @@ export async function GET(
           })
           if (newLogs.length > 0) {
             lastTimestamp = newLogs[newLogs.length - 1].timestamp
-            for (const log of newLogs) {
-              send("log", formatLog(log))
+            const fresh = await withFreshDeliverablePreviews(newLogs.map((log) => formatLog(log)))
+            for (const log of fresh) {
+              send("log", log)
             }
           }
         } catch {
