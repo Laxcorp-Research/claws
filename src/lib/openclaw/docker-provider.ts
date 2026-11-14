@@ -30,7 +30,12 @@ import {
   type DockerControl,
   type DockerCreateSpec,
 } from "@/lib/openclaw/docker-engine"
-import { probeGatewayUpgrade, type UpgradeProbeResult } from "@/lib/openclaw/gateway-ingress"
+import {
+  GATEWAY_LISTEN_TIMEOUT_MS,
+  probeGatewayListening,
+  probeGatewayUpgrade,
+  type UpgradeProbeResult,
+} from "@/lib/openclaw/gateway-ingress"
 import type { DeployToCloudOptions } from "@/lib/openclaw/deployer"
 import { certsBind, prefixCaBundle, readHostCertsSource } from "@/lib/openclaw/corporate-ca"
 import { lastLogLines } from "@/lib/openclaw/gateway-failure"
@@ -43,8 +48,6 @@ export interface DockerDeployResult {
   /** True only after /healthz and a websocket upgrade both succeeded. */
   gatewayListening?: boolean
 }
-
-const GATEWAY_LISTEN_TIMEOUT_MS = 60_000
 
 class GatewayNotListening extends Error {
   readonly logs: string
@@ -112,17 +115,20 @@ async function waitForGatewayListening(args: {
       throw new GatewayNotListening(await args.docker.logs(args.containerId))
     }
     host = dialHost(args.name, args.publish, inspected.publishedPort)
-    if (await healthProbe(gatewayHealthUrl(host))) {
-      const upgrade = await upgradeProbe(gatewayWebSocketUrl(host, "DOCKER"))
-      if (upgrade.ok) {
-        return { containerHost: host, publishedPort: inspected.publishedPort }
-      }
-      // A speaking gateway that refuses the upgrade will not become healthy
-      // by waiting. /healthz alone is not listening.
-      if (upgrade.status >= 400) {
-        const logs = await args.docker.logs(args.containerId)
-        throw new GatewayNotListening(`${upgrade.body}\n${logs}`)
-      }
+    const probed = await probeGatewayListening({
+      healthUrl: gatewayHealthUrl(host),
+      wsUrl: gatewayWebSocketUrl(host, "DOCKER"),
+      probeHealth: healthProbe,
+      probeUpgrade: upgradeProbe,
+    })
+    if (probed.verdict === "ok") {
+      return { containerHost: host, publishedPort: inspected.publishedPort }
+    }
+    // A speaking gateway that refuses the upgrade will not become healthy
+    // by waiting. /healthz alone is not listening.
+    if (probed.verdict === "refuse") {
+      const logs = await args.docker.logs(args.containerId)
+      throw new GatewayNotListening(`${probed.upgrade?.body ?? ""}\n${logs}`)
     }
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }

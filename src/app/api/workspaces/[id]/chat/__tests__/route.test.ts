@@ -80,7 +80,14 @@ beforeEach(async () => {
   mockSend.mockReset()
   afterQueue.length = 0
   mockSend.mockResolvedValue({ ok: true, runId: "idem-xyz", status: "started", paired: false })
-  __setChatRouteDepsForTests({ send: mockSend, after: mockAfter })
+  __setChatRouteDepsForTests({
+    send: mockSend,
+    after: mockAfter,
+    probeHealth: async () => true,
+    probeGateway: async () => ({ ok: true, status: 101, body: "" }),
+    sleep: async () => {},
+    now: () => Date.now(),
+  })
   mockLimit.mockResolvedValue({ success: true })
 
   const { getSessionUser } = await import("@/lib/api/auth")
@@ -344,6 +351,54 @@ describe("POST /api/workspaces/[id]/chat", () => {
     expect(src).toContain("schedule(async () =>")
     expect(src).toContain("return apiSuccess({ runId: idempotencyKey }, 202)")
     expect(src).not.toMatch(/let result: SendChatResult = await attempt\(\)[\s\S]{0,400}return apiError/)
+  })
+
+  it("self-host wake whose gateway takes 20s to listen still returns 200", async () => {
+    process.env.CLAWS_PROFILE = "self-host"
+    let now = 0
+    const sendAt: number[] = []
+    ;(prismaMock.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(workspaceRow({ status: "HIBERNATED" }))
+      .mockResolvedValue(workspaceRow({ status: "RUNNING" }))
+    mockSend.mockImplementation(async () => {
+      sendAt.push(now)
+      if (now < 20_000) {
+        return {
+          ok: false,
+          reason: "unreachable",
+          detail: "Agent run failed (model: anthropic/claude-haiku-4-5-20251001).",
+        }
+      }
+      return {
+        ok: true,
+        runId: "run-wake",
+        status: "started",
+        paired: false,
+        replyText: "fixture-reply",
+        usage: { input: 3, output: 2 },
+      }
+    })
+    __setChatRouteDepsForTests({
+      send: mockSend,
+      after: mockAfter,
+      now: () => now,
+      sleep: async (ms: number) => {
+        now += ms
+      },
+      probeHealth: async () => now >= 20_000,
+      probeGateway: async () =>
+        now >= 20_000
+          ? { ok: true, status: 101, body: "" }
+          : { ok: false, status: 0, body: "not listening" },
+    })
+    const { status, data } = await parseResponse(await post({ message: "hello again" }))
+    expect(status).toBe(200)
+    expect(data.data.replyText).toBe("fixture-reply")
+    expect(sendAt.length).toBeGreaterThan(0)
+    expect(Math.min(...sendAt)).toBeGreaterThanOrEqual(20_000)
+    expect(now).toBeLessThan(60_000)
+    const keys = mockSend.mock.calls.map((call) => call[0].idempotencyKey as string)
+    expect(new Set(keys).size).toBe(1)
   })
 
   it("self-host hibernated chat wakes the container and returns the reply", async () => {

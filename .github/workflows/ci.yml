@@ -295,6 +295,95 @@ jobs:
       - name: Self-host store install walk
         run: npx playwright test --config=playwright.self-host.config.ts --retries=2
 
+  # The post-nap chat 502 was a cold start: the gateway accepted the socket
+  # and the first agent run still failed. Five separate runners, no retries,
+  # so a single flake cannot hide inside one green job.
+  self-host-smoke:
+    name: Self-host smoke ${{ matrix.run }}/5
+    runs-on: ubuntu-24.04
+    needs: [unit-tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: claws
+          POSTGRES_PASSWORD: claws
+          POSTGRES_DB: claws
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claws -d claws"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis-http:
+        image: hiett/serverless-redis-http:latest
+        env:
+          SRH_MODE: env
+          SRH_TOKEN: ci-redis-token
+          SRH_CONNECTION_STRING: redis://redis:6379
+        ports:
+          - 8079:80
+    env:
+      DATABASE_URL: postgresql://claws:claws@localhost:5432/claws
+      DIRECT_URL: postgresql://claws:claws@localhost:5432/claws
+      UPSTASH_REDIS_REST_URL: http://127.0.0.1:8079
+      UPSTASH_REDIS_REST_TOKEN: ci-redis-token
+      E2E_TEST_MODE: "true"
+      ADMIN_EMAILS: "e2e-admin@buildclaws.ai"
+      ENCRYPTION_MASTER_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ENCRYPTION_KEY_VERSION: "v1"
+      NEXTAUTH_SECRET: "ci-test-secret-ci-test-secret-ci-test-secret"
+      NEXTAUTH_URL: "http://localhost:3000"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Reset schema, apply migrations, and seed
+        run: |
+          npx prisma migrate reset --force
+          npx prisma db seed
+
+      - name: Pull the self-host runtime image
+        run: |
+          docker pull ghcr.io/laxcorp-research/openclaw-runtime:2026.9.4-5
+          docker pull node:20-bookworm
+
+      - name: Ensure the self-host docker network
+        run: docker network inspect claws >/dev/null 2>&1 || docker network create claws
+
+      - name: Install Playwright Chromium
+        timeout-minutes: 5
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: npx playwright install --with-deps chromium
+
+      - name: Post-nap chat smoke
+        run: npx playwright test --config=playwright.self-host.config.ts e2e/self-host/deploy-chat.spec.ts --retries=0
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest
